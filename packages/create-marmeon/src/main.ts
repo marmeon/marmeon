@@ -181,7 +181,7 @@ export async function main(io: Io = processIo()): Promise<number> {
   }
   let source: FrameworkSource = { version: ownVersion() };
   if (tarballs) {
-    // For the framework's maintainers (pack:smoke, image): the packages from `pnpm pack` instead of the registry (README).
+    // For the framework's maintainers (pack:smoke, image): the packages from `pnpm pack` instead of the registry (CONTRIBUTING.md, "The starter's template").
     const vendored = vendorTarballs(resolve(io.cwd, tarballs), target);
     if (vendored.size === 0) return fail(`MARMEON_CREATE_TARBALLS=${tarballs} has no framework tarballs (marmeon-*.tgz).`);
     source = { tarballs: vendored, app: target };

@@ -40,7 +40,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
         text: 'The devtools run with NODE_ENV=development only (E115) — nothing can turn them on in production, staging or without NODE_ENV (E139). Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -D @marmeon/devtools): a production install then does not even have it.',
-        docs: 'packages/devtools/README.md#only-in-development-e115-fail-closed',
+        docs: 'docs/devtools.md#only-in-development',
       }),
     },
     {
@@ -49,7 +49,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       solve: () => ({
         title: 'Fix config/devtools.ts',
         text: 'config/devtools.ts exports its settings as default: export default defineDevtools({ … }) — with what record, ignore, slowQueryMs, logLevel and storage take.',
-        docs: 'packages/devtools/README.md#settings-configdevtoolsts-optional',
+        docs: 'docs/devtools.md#settings',
       }),
     },
   ]);

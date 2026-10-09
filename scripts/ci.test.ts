@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkSource, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME, OLD_TOKEN_PREFIX, oldTokenPrefixHits } from './check-source.ts';
+import { checkSource, DOC_TEXT_RULES, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME, OLD_TOKEN_PREFIX, oldTokenPrefixHits, textRuleHits } from './check-source.ts';
 import { parts } from './ci.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
@@ -165,6 +165,65 @@ describe('check:source — the old token prefix is gone (E207)', () => {
   it('allows the way back of the rename hint in UPGRADING.md only', () => {
     expect(oldTokenPrefixHits([{ path: 'UPGRADING.md', text: `The way back: \`AUTH_TOKEN_PREFIX=${old}\`.` }])).toEqual([]);
     expect(oldTokenPrefixHits([{ path: 'README.md', text: `AUTH_TOKEN_PREFIX=${old}` }])).toHaveLength(1);
+  });
+});
+
+describe('check:source — the docs speak to their readers (rule 5)', () => {
+  const rule = (what: string) => DOC_TEXT_RULES.find((entry) => entry.what === what)!;
+  const decisions = rule('a decision number');
+  const waves = rule('a wave reference');
+  const marker = rule('the pending marker');
+
+  it('finds a decision number in the docs, the package cards, the root README, CONTRIBUTING and SECURITY — not in UPGRADING or code', () => {
+    expect(textRuleHits([
+      { path: 'docs/queues.md', text: 'A job runs once.\nThe claim is fair (E199).' },
+      { path: 'packages/queue/README.md', text: 'Fair by default, E199.' },
+      { path: 'README.md', text: 'See E36.' },
+      { path: 'CONTRIBUTING.md', text: '(E123)' },
+      { path: 'SECURITY.md', text: 'E210: the docs' },
+      { path: 'UPGRADING.md', text: 'Since E199 the claim is fair.' },
+      { path: 'packages/queue/src/worker.ts', text: '// E199' },
+      { path: 'apps/web-app/README.md', text: 'E147' },
+      { path: 'docs/sub/page.md', text: 'E12' },
+    ], decisions)).toEqual([
+      'docs/queues.md:2: The claim is fair (E199).',
+      'packages/queue/README.md:1: Fair by default, E199.',
+      'README.md:1: See E36.',
+      'CONTRIBUTING.md:1: (E123)',
+      'SECURITY.md:1: E210: the docs',
+    ]);
+  });
+
+  it('takes no hex value, exponent, E2E or E.164 for a decision number', () => {
+    const text = ['`0xE12`, `#E1234`, 1E10 and 2e10', 'E2E tests, E.164 numbers, E1 and E1000', 'BE12, E12a, the E-mail'].join('\n');
+    expect(textRuleHits([{ path: 'docs/notifications.md', text }], decisions)).toEqual([]);
+  });
+
+  it('finds a wave reference in the docs and the package cards only', () => {
+    expect(textRuleHits([
+      { path: 'docs/routing.md', text: 'Since W9 the router is typed.' },
+      { path: 'docs/forms.md', text: 'as of W10.4, and in wave 3' },
+      { path: 'packages/live/README.md', text: 'New in Wave 9.' },
+      { path: 'CONTRIBUTING.md', text: 'Wave 9 wrote it.' },
+      { path: 'docs/csp.md', text: 'W3C, HTTP/2, AW3 and W-9' },
+    ], waves)).toEqual([
+      'docs/routing.md:1: Since W9 the router is typed.',
+      'docs/forms.md:1: as of W10.4, and in wave 3',
+      'packages/live/README.md:1: New in Wave 9.',
+    ]);
+  });
+
+  it('finds the pending marker as a line of its own in a docs page — not mentioned inline, not in CONTRIBUTING', () => {
+    expect(textRuleHits([
+      { path: 'docs/routing.md', text: '# Routing\n<!-- docs:pending -->\n\nText.' },
+      { path: 'docs/middleware.md', text: '# Middleware\n  <!-- docs:pending -->  ' },
+      { path: 'docs/csrf.md', text: 'A page carries `<!-- docs:pending -->` until it is written.' },
+      { path: 'CONTRIBUTING.md', text: '<!-- docs:pending -->' },
+    ], marker)).toEqual(['docs/routing.md:2: <!-- docs:pending -->', 'docs/middleware.md:2: <!-- docs:pending -->']);
+  });
+
+  it('names each rule in the problems of check:source', () => {
+    expect(DOC_TEXT_RULES.map((entry) => entry.what)).toEqual(['a decision number', 'a wave reference', 'the pending marker']);
   });
 });
 

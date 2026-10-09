@@ -51,7 +51,7 @@ export interface TableControllerOptions {
 }
 
 /**
- * Thrown for anything the props do not offer — in production a code and the table's name (packages/http/README.md, "Error codes"):
+ * Thrown for anything the props do not offer — in production a code and the table's name (docs/errors.md#error-codes):
  * call it as `refuse('[marmeon:C9]', name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && …)` (E201: positive, so staging gets the code only), so a production build drops the explanation (E80).
  */
 function refuse(code: `[marmeon:${string}]`, table: string, explanation: string | false): never {

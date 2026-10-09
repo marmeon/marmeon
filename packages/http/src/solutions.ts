@@ -41,7 +41,7 @@ export const httpSolutions = defineSolutions([
           `export default function ${rest.at(-1) ?? 'Page'}(props: PageProps<typeof YourController>) { … }. ` +
           'Check the spelling in this.view(…) — page names are typed once `marmeon route:types` ran.',
         command: 'marmeon route:types',
-        docs: 'packages/http/README.md#error-codes',
+        docs: 'docs/pages.md#where-pages-live',
       };
     },
   },

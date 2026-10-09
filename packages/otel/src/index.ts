@@ -41,7 +41,7 @@ export type OtelConfig = ConfigOf<typeof OtelConfig>;
 
 /**
  * Subscribes to the app's channels and records spans — when an OpenTelemetry SDK is registered by the time the app boots
- * (start it first: `node --import ./bootstrap/telemetry.ts`, see the README). Without one, nothing is subscribed: no span,
+ * (start it first: `node --import ./bootstrap/telemetry.ts`, docs/observability.md#starting-the-sdk). Without one, nothing is subscribed: no span,
  * no cost, no error. `@opentelemetry/api` must be installed (an optional peer): the start fails with what to install.
  * On shutdown it unsubscribes and flushes the SDK's spans (≤ 2 s), so the last requests' and jobs' spans are not lost.
  * Found by `marmeon discover`.
@@ -56,7 +56,7 @@ export class OtelServiceProvider implements ServiceProvider {
         title: 'Install the OpenTelemetry API',
         text: '@marmeon/otel records spans through @opentelemetry/api, an optional peer the app installs — the SDK and its exporter are the app\'s too.',
         command: OTEL_INSTALL,
-        docs: 'packages/otel/README.md#starting-the-sdk',
+        docs: 'docs/observability.md#installation',
       }),
     },
   ]);
@@ -70,7 +70,7 @@ export class OtelServiceProvider implements ServiceProvider {
     const api = await loadOtelApi();
     const logger = app.container.make(Logger).child({ channel: 'otel' });
     if (!sdkRegistered(api)) {
-      logger.debug('No OpenTelemetry SDK is registered — no spans. Start one before the app boots (packages/otel/README.md).');
+      logger.debug('No OpenTelemetry SDK is registered — no spans. Start one before the app boots (docs/observability.md#starting-the-sdk).');
       return;
     }
     if (!contextPropagates(api)) {

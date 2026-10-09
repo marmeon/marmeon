@@ -26,7 +26,7 @@
  *
  * The apps live in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@marmeon or a
  * pnpm-workspace.yaml (checked by path — nothing of the repository can leak in). The scaffolder takes the framework from
- * `MARMEON_CREATE_TARBALLS` (its maintainers' switch, packages/create-marmeon/README.md): the tarballs go into the app's
+ * `MARMEON_CREATE_TARBALLS` (its maintainers' switch, CONTRIBUTING.md, "The starter's template"): the tarballs go into the app's
  * `vendor/marmeon/`, every `@marmeon/*` dependency and override points there (the exact versions of this checkout are on no
  * registry), and for pnpm nothing is hoisted — a package that imports what it does not declare (a devDependency, say) fails
  * here as it would for a user.

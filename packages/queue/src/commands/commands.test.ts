@@ -182,7 +182,7 @@ describe('the queue commands', () => {
     const index = "      // A worker without --queue claims the oldest due job of every queue in one statement (E199) — this index serves it.\n      table.index(['reserved_at', 'available_at', 'id']);\n";
     expect(stub, 'make:queue-table writes a new table with the index').toContain(index);
     const repo = new URL('../../../../', import.meta.url);
-    // The reference apps show the way an older app goes (docs/deployment.md, "The queue index of an older app"): the migration that
+    // The reference apps show the way an older app goes (docs/deployment.md#the-queue-index-of-an-older-app): the migration that
     // ran stays as it was, the index comes with its own.
     for (const [dir, created] of [
       ['apps/web-app/modules/system/migrations/', '2026_10_02_211222_create_jobs_table.ts'],

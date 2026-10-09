@@ -23,7 +23,7 @@ export const databaseSolutions = defineSolutions([
           title: `Create the table "${table}" in a migration`,
           text: `Every migration has run, and none creates "${table}". Add one to the module the table belongs to — or check the table's name in the query.`,
           command: `marmeon make:migration create_${table}_table`,
-          docs: 'packages/database/README.md#migrations-on-another-connection',
+          docs: 'docs/migrations.md#generating-migrations',
         };
       }
       const list = pending ? `${pending.slice(0, 5).join(', ')}${pending.length > 5 ? `, and ${pending.length - 5} more` : ''}` : undefined;
@@ -34,7 +34,7 @@ export const databaseSolutions = defineSolutions([
           (list ? `These migrations have not run yet: ${list}. ` : 'Its migration has probably not run yet ("marmeon migrate:status" lists them). ') +
           'In development, "marmeon migrate:fresh --seed" starts over with the seeders.',
         command: 'marmeon migrate',
-        docs: 'packages/database/README.md#migrations-on-another-connection',
+        docs: 'docs/migrations.md#running-migrations',
       };
     },
   },

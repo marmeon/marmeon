@@ -53,7 +53,7 @@ describe('@marmeon/otel without an SDK (E120)', () => {
       expect(response.status).toBe(200);
       expect(channels.built(app)).toBe(0);
       expect(logger.lines.filter((line) => line.level !== 'info')).toEqual([
-        { level: 'debug', message: 'No OpenTelemetry SDK is registered — no spans. Start one before the app boots (packages/otel/README.md).' },
+        { level: 'debug', message: 'No OpenTelemetry SDK is registered — no spans. Start one before the app boots (docs/observability.md#starting-the-sdk).' },
       ]);
     } finally {
       await app.shutdown();

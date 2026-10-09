@@ -25,6 +25,13 @@
  *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end) — but the rename hint's way back
  *      (`AUTH_TOKEN_PREFIX=…` in `UPGRADING.md`). A forgotten copy in a test or a README would teach the old default.
  *
+ *   5. **The docs speak to their readers** (W11 step 10): the pages under `docs/`, the packages' READMEs (their npm cards), the root
+ *      `README.md`, `CONTRIBUTING.md` and `SECURITY.md` carry no decision number (`E` and two or three digits — a hex value, an
+ *      exponent, `E2E` or `E.164` is none); the pages and the cards no wave reference (`W9`, `W10.4`, `Wave 9`); and no page under
+ *      `docs/` the pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline).
+ *      `UPGRADING.md` is the record of changes, exempt. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and the files it
+ *      reads — a rule for more files (the starter's template, the stubs) adds to `files`.
+ *
  * Later rules join this script (one script, several rules, each with its test and Gegenprobe).
  */
 import { spawnSync } from 'node:child_process';
@@ -164,6 +171,59 @@ export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
+/** One part of rule 5: a pattern no line of the files it reads may match. */
+export interface TextRule {
+  /** What the pattern finds, for the problem's message: `a decision number`. */
+  readonly what: string;
+  readonly pattern: RegExp;
+  /** The files it reads (relative paths, forward slashes): any of them. */
+  readonly files: readonly RegExp[];
+  /** Why, and what to write instead. */
+  readonly why: string;
+}
+
+/** The pages of the docs. */
+const DOCS_PAGES = /^docs\/[^/]+\.md$/;
+/** The packages' READMEs — what npm shows. */
+const PACKAGE_CARDS = /^packages\/[^/]+\/README\.md$/;
+/** The root README and the policies — `UPGRADING.md`, the record of changes, is exempt. */
+const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY)\.md$/;
+
+/** Rule 5: the docs speak to their readers — no decision numbers, no wave references, no page still to be written. */
+export const DOC_TEXT_RULES: readonly TextRule[] = [
+  {
+    what: 'a decision number',
+    // A word of its own: `0xE12`, `#E1234`, `1E10`, `E2E` and `E.164` are none.
+    pattern: /\bE\d{2,3}\b/,
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS],
+    why: 'say what was decided, not its number — the decisions are the maintainers\' record',
+  },
+  {
+    what: 'a wave reference',
+    pattern: /\b(?:W\d+(?:\.\d+)?|[Ww]ave \d+)\b/,
+    files: [DOCS_PAGES, PACKAGE_CARDS],
+    why: 'the docs describe the framework as it is, not when it changed — UPGRADING.md says that, by version',
+  },
+  {
+    what: 'the pending marker',
+    pattern: /^\s*<!-- docs:pending -->\s*$/,
+    files: [DOCS_PAGES],
+    why: 'every page is written — write it, or take it out of apps/docs/docs.config.ts and docs/',
+  },
+];
+
+/** Rule 5, one part: every line of the files `rule` reads that matches its pattern — `path:line: text`. */
+export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!rule.files.some((pattern) => pattern.test(path)) || !text.split('\n').some((line) => rule.pattern.test(line))) continue;
+    text.split('\n').forEach((line, index) => {
+      if (rule.pattern.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
+    });
+  }
+  return hits;
+}
+
 /** The repository's files as git sees them: tracked, and new ones that are not ignored — text only, as they are on disk. */
 export function repositoryFiles(repository: string = root): SourceFile[] {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: repository, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -192,6 +252,7 @@ export function checkSource(repository: string = root): string[] {
       (hit) => `NODE_ENV checked positively (E201 — staging is not development): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
     ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (E207 — API tokens start with marmeon_): ${hit}`),
+    ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} in the docs (${rule.why}): ${hit}`)),
   ];
 }
 
@@ -202,6 +263,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies name no decision number, no wave and no pending page.`);
   }
 }

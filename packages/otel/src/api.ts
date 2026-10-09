@@ -35,7 +35,7 @@ export async function loadOtelApi(load: ImportOtelApi = importApi): Promise<Otel
     if (error instanceof OtelSetupError) throw error;
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && message.includes('@opentelemetry/api')) {
-      throw new OtelSetupError(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: ${OTEL_INSTALL} (the SDK and an exporter are the app's, see packages/otel/README.md).`);
+      throw new OtelSetupError(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: ${OTEL_INSTALL} (the SDK and an exporter are the app's, see docs/observability.md#installation).`);
     }
     throw error;
   }

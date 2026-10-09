@@ -3,7 +3,7 @@ import { ContainerError } from './container.ts';
 import { InjectionError } from './injection/analyze.ts';
 import { defineSolutions, type Solution } from './solutions.ts';
 
-const CONTAINER_DOCS = 'packages/core/README.md#the-containers-errors';
+const CONTAINER_DOCS = 'docs/container.md#the-containers-errors';
 
 /** The core's own solutions (E130): the container, the injection transform, the configuration. Always registered. */
 export const coreSolutions = defineSolutions([
@@ -64,7 +64,7 @@ export const coreSolutions = defineSolutions([
         'brings its built dist/ — this one points Node at its sources: packed with npm pack (which ignores publishConfig.exports — pack ' +
         'with pnpm), a workspace package copied with its workspace manifest, or the @marmeon/source condition outside the ' +
         "framework's monorepo (NODE_OPTIONS).",
-      docs: 'packages/core/README.md#discovery-the-marmeon-field-and-marmeon-discover',
+      docs: 'docs/package-development.md#building-and-publishing',
     }),
   },
   {
@@ -77,7 +77,7 @@ export const coreSolutions = defineSolutions([
 
 /** What to do when the injection transform could not derive a list — by its reason. */
 function injectionSolution(key: string, reason: string | undefined): Solution {
-  const docs = 'packages/core/README.md#constructor-injection';
+  const docs = 'docs/container.md#constructor-injection';
   if (reason?.includes('"import type"')) {
     return { title: 'Import the token as a value', text: `${reason} A type-only import is erased before the code runs, so there is nothing to inject.`, docs };
   }
@@ -107,6 +107,6 @@ function configSolution(message: string): Solution {
     text:
       `The configuration is checked when the app starts: ${names} ${variables.length === 1 ? 'is' : 'are'} missing or invalid. ` +
       'Set them in .env (copy the lines from .env.example) or in the environment; .env.{NODE_ENV} (.env.test) is read on top.',
-    docs: 'packages/core/README.md#configuration',
+    docs: 'docs/configuration.md#when-a-value-is-wrong',
   };
 }

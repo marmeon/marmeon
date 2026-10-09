@@ -207,6 +207,12 @@ checked over every file of the repository — tracked, or new and not ignored. E
 4. **The old prefix of API tokens is gone**: `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says the two letters and the
    underscore of before in front of a digit, a `|`, a quote, whitespace or a line's end — but the rename hint's way back in
    `UPGRADING.md`. Tests spell it from parts like the old name.
+5. **The docs speak to their readers**: the pages under `docs/`, the packages' READMEs, the root `README.md`, `CONTRIBUTING.md`
+   and `SECURITY.md` name no decision number (an `E` and two or three digits as a word of its own — a hex value, an exponent or
+   `E2E` is none); the pages and the READMEs no wave of the maintainers' plan (a `W` and a number, or "wave" and a number); and no
+   page under `docs/` carries the placeholder marker as a line of its own ([Writing documentation](#writing-documentation)) —
+   every page is written. `UPGRADING.md`, the record of changes, is exempt. Each part is an entry of `DOC_TEXT_RULES` with its
+   pattern and the files it reads.
 
 A new rule joins the same script, with its test and its Gegenprobe.
 
@@ -511,8 +517,13 @@ other page.
 - **Links** are relative links to other docs pages: `[route model binding](routing.md#route-model-binding)`. Link to an anchor
   only on a page that is written; a page still marked pending gets a link without one. Never link to a package README or a
   source file — a reader of the docs app cannot follow it.
-- **Placeholders.** A page still to be written carries `<!-- docs:pending -->` as its own paragraph on line 2. The docs app
-  removes the line and marks the page "draft" in the navigation. Delete the line in the commit that writes the page.
+- **Placeholders.** Every page is written: `pnpm check:source` refuses a page that carries `<!-- docs:pending -->` as a line
+  of its own. While you write a new page, the marker on line 2 marks it "draft" in the navigation of `pnpm docs:dev` (the docs
+  app removes the line); delete it before you commit.
+- **Code that names a page** — a solution's `docs`, an error message, a comment — names its repository path with the anchor:
+  `docs/migrations.md#running-migrations`. A test of the docs app (`apps/docs/modules/docs/links.test.ts`) follows every such path
+  in the packages' code, the stubs, the starter's template and the apps to its page and anchor, and refuses a path to a package
+  README.
 - **Length:** as long as the topic needs. A page past about 600 lines probably wants splitting — propose it rather than
   splitting on your own.
 - **Package READMEs are cards for npm**, not documentation: one sentence on what the package is, how to install it (or that a

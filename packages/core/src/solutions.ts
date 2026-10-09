@@ -11,7 +11,7 @@ export interface Solution {
   readonly text: string;
   /** A command to copy (`marmeon migrate`) — shown, never run. */
   readonly command?: string;
-  /** Where it is documented: a README with its anchor (`packages/database/README.md#migrations`). */
+  /** Where it is documented: a page of the docs with its anchor (`docs/migrations.md#running-migrations`), or any URL. */
   readonly docs?: string;
 }
 
@@ -40,7 +40,7 @@ export interface SolutionDefinition<E = Error> {
  *   {
  *     for: ContainerError,
  *     when: (e) => e.reason === 'unbound',
- *     solve: (e) => ({ title: `Bind ${e.key} in a service provider`, text: '…', docs: 'packages/core/README.md#bindings' }),
+ *     solve: (e) => ({ title: `Bind ${e.key} in a service provider`, text: '…', docs: 'docs/container.md#binding-services' }),
  *   },
  * ]);
  * export class MyServiceProvider { static solutions = solutions; … }

@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -17,6 +18,8 @@ beforeAll(async () => {
   app = await createTestApp(application, { ssr: true });
 }, 60_000);
 afterAll(() => app?.close());
+
+const repo = resolve(import.meta.dirname, '../../../..');
 
 const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
 const PAGES = ['/', ...DOCS, ...PACKAGES.map((name) => `/packages/${name}`)];
@@ -87,8 +90,58 @@ describe('every page', () => {
   });
 
   it('names only files that exist where a README points at the code (`src/kernel.ts` — code text, no link: E10)', () => {
-    const repo = resolve(import.meta.dirname, '../../../..');
     const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.filter((file) => !existsSync(join(repo, file))).map((file) => `${page.file}: ${file}`));
     expect(missing, missing.join('\n')).toEqual([]);
   });
 });
+
+describe('the docs the framework names', () => {
+  it('every docs path the framework names leads to a page and its anchor', () => {
+    const docs = app.make(DocsRepository);
+    const anchorsOf = new Map(docs.pages().map((page) => [page.file, new Set(page.anchors)]));
+    const problems: string[] = [];
+    let named = 0;
+    for (const { path, text } of namingFiles()) {
+      text.split('\n').forEach((line, index) => {
+        const at = `${path}:${index + 1}`;
+        for (const [readme] of line.matchAll(README_PATH)) problems.push(`${at}: ${readme} names a README — the docs live in docs/`);
+        for (const [, file = '', anchor] of line.matchAll(DOCS_PATH)) {
+          named++;
+          const anchors = anchorsOf.get(file);
+          if (!anchors) problems.push(`${at}: ${file} — no such page of the docs`);
+          else if (anchor !== undefined && !anchors.has(anchor)) problems.push(`${at}: ${file}#${anchor} — no #${anchor} on that page`);
+        }
+      });
+    }
+    expect(problems, problems.join('\n')).toEqual([]);
+    // The solutions, messages and comments that name a page (measured 34): a scan that reads no file would pass with nothing found.
+    expect(named).toBeGreaterThan(25);
+  });
+});
+
+/** A docs page as code names it: `docs/<slug>.md`, maybe with its anchor (GitHub's anchors keep `_`: `#the-environment-node_env`). */
+const DOCS_PATH = /\b(docs\/[a-z0-9-]+\.md)(?:#([a-z0-9_-]+))?/g;
+/** A package's README — an npm card, never the place a message or a comment sends anyone to. */
+const README_PATH = /packages\/[a-z-]+\/README\.md/g;
+
+/**
+ * What reaches apps and their developers and may name a page of the docs: a package's code (`packages/<name>/src`, its tests and
+ * fixtures aside), the `make:auth` stubs, the starter's template and the two apps — tracked, or new and not ignored, as git lists them.
+ */
+function namingFiles(): { path: string; text: string }[] {
+  const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'packages', 'apps/web-app', 'apps/blank-app'], {
+    cwd: repo,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (listed.status !== 0) throw new Error(`git ls-files failed: ${listed.stderr}`);
+  const wanted = (path: string) =>
+    /^packages\/[^/]+\/src\/.+\.tsx?$/.test(path)
+      ? !/\.(?:test|type-test)\.tsx?$|__fixtures__\//.test(path)
+      : /^(?:packages\/auth\/stubs|packages\/create-marmeon\/template|apps\/web-app|apps\/blank-app)\//.test(path);
+  return [...new Set(listed.stdout.split('\0').filter(Boolean))]
+    .filter((path) => wanted(path) && existsSync(join(repo, path)))
+    .map((path) => ({ path, bytes: readFileSync(join(repo, path)) }))
+    .filter(({ bytes }) => !bytes.subarray(0, 8000).includes(0))
+    .map(({ path, bytes }) => ({ path, text: bytes.toString('utf8') }));
+}

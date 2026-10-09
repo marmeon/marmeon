@@ -3,7 +3,7 @@
  * visits and their events, 409/hard page changes, XSRF, the history and the in-memory page cache (E36), regions
  * (islands, E50) and layers (E53) with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
  * scroll restoration, the progress bar, the first page, route URLs and the page's messages. It may use DOM APIs, but no UI framework — and it never imports server code
- * (only `../page.ts`, the shared page contract). The adapter contract is in this package's README.
+ * (only `../page.ts`, the shared page contract). The adapter contract is in CONTRIBUTING.md, "The client core and its adapters".
  */
 export {
   DEFAULT_LEAVE_MESSAGE,

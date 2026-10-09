@@ -37,7 +37,7 @@ const thrown = (fn: () => unknown): unknown => {
 describe('the core solutions (E130)', () => {
   it('a binding that is missing: bind it in a provider', async () => {
     const [solution] = await solutions.find(thrown(() => new Container().make(WelcomeService)));
-    expect(solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'marmeon discover', docs: 'packages/core/README.md#the-containers-errors' });
+    expect(solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'marmeon discover', docs: 'docs/container.md#the-containers-errors' });
     expect(solution?.text).toContain('(needed by WelcomeService)');
   });
 
@@ -90,7 +90,7 @@ describe('the core solutions (E130)', () => {
       const error = Object.assign(new Error(thrownByNode.message), { code: thrownByNode.code });
       expect((error as { code?: string }).code).toBe('ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING');
       const [solution] = await solutions.find(error);
-      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'packages/core/README.md#discovery-the-marmeon-field-and-marmeon-discover' });
+      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'docs/package-development.md#building-and-publishing' });
       expect(solution?.text).toContain('node_modules/shipped/index.ts');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -102,7 +102,7 @@ describe('the core solutions (E130)', () => {
     const error = await resolveConfig([Config], {}).catch((failure: unknown) => failure);
     expect(error).toBeInstanceOf(ConfigError);
     const [solution] = await solutions.find(error);
-    expect(solution).toMatchObject({ title: 'Set MAIL_HOST, MAIL_PORT in .env', docs: 'packages/core/README.md#configuration' });
+    expect(solution).toMatchObject({ title: 'Set MAIL_HOST, MAIL_PORT in .env', docs: 'docs/configuration.md#when-a-value-is-wrong' });
   });
 });
 

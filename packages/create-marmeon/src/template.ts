@@ -86,7 +86,7 @@ export function titleOf(name: string): string {
     .join(' ');
 }
 
-/** Where the framework comes from: the registry at this package's version, or tarballs inside the app (maintainers, see README). */
+/** Where the framework comes from: the registry at this package's version, or tarballs inside the app (maintainers, see CONTRIBUTING.md, "The starter's template"). */
 export type FrameworkSource = { readonly version: string } | { readonly tarballs: ReadonlyMap<string, string>; readonly app: string };
 
 export interface ManifestOptions {
@@ -294,7 +294,7 @@ export function readme({ title, packageManager, kit, docker }: ReadmeOptions): s
     '',
     `Development tools — the error page, the devtools at \`/_marmeon/devtools\` and the in-page bar — run with \`NODE_ENV=development\``,
     `only (\`${run('dev')}\`). The framework's guides: https://github.com/marmeon/marmeon#readme${docker ? ' — deployment:' : ''}`,
-    ...(docker ? ['https://github.com/marmeon/marmeon/blob/main/docs/deployment.md'] : []),
+    ...(docker ? ['https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#the-docker-image'] : []),
     '',
   ];
   return lines.join('\n');
