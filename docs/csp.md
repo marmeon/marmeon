@@ -71,8 +71,9 @@ an island, an action and an API answer make no nonce at all.
 
 ## Adding directives
 
-`contentSecurityPolicy(options)` takes the directives camel-cased. Your directives join the defaults, and `false` leaves a default
-out:
+`contentSecurityPolicy(options)` takes the directives camel-cased. A new directive joins the defaults. A directive you name
+replaces the default of the same name, so a `scriptSrc` of your own must list `NONCE` and `"'strict-dynamic'"` again. Without them, the
+scripts the server allows by their nonce, such as the ones React streams into a page, are blocked. `false` leaves a default out:
 
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
@@ -155,7 +156,7 @@ A new app's `middleware/SecurityHeaders.ts` adds three headers to every response
 | `Referrer-Policy: strict-origin-when-cross-origin` | Other sites learn your origin from a link, never the path and query. |
 | `X-Frame-Options: DENY` | No page, not even one of your own, can show your pages in a frame. This stops clickjacking. |
 
-The file also holds a switch for `Strict-Transport-Security`, off by default:
+The file also holds a switch for `Strict-Transport-Security`, `false` by default. To turn it on, set:
 
 ```ts title="middleware/SecurityHeaders.ts"
 const HSTS: string | false = 'max-age=31536000; includeSubDomains';

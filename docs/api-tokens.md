@@ -81,13 +81,15 @@ The controller renders the page with the plain text instead of redirecting. A re
 session as flash data, and so write it into the session store.
 
 > [!WARNING]
-> A token is as good as a session: whoever holds it acts as its user until it expires or is revoked. The starter kit puts the
-> whole tokens page behind `confirmedPassword()`, so a stolen session cannot mint a token without the password. Keep it that way
-> on pages of your own that create tokens.
+> A token is as good as a session: whoever holds it acts as its user until it expires or is revoked, even after a password
+> reset. The starter kit puts the whole tokens page behind a confirmed address and `confirmedPassword()`: a stolen session cannot
+> mint a token without the password, and an account registered with somebody else's address cannot mint one that outlives the
+> owner's takeover. Keep both on pages of your own that create tokens. With `AUTH_PRIVATE_REGISTRATION=false` the module's
+> `ConfirmedAddress` lets everyone through, so put `verified()` on the token routes in its place.
 
 ## The token format
 
-A token reads `marmeon_12|` followed by 40 random letters and digits and an 8-digit checksum. Each part has a purpose:
+A token reads `marmeon_12|` followed by 40 random letters and digits and a checksum of 8 hexadecimal characters. Each part has a purpose:
 
 - **The prefix**, `AUTH_TOKEN_PREFIX`, lets secret scanners recognize a leaked token, for example in a public repository. It may
   hold lower-case letters, digits and `_`, at most 16 of them.

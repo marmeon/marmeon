@@ -6,13 +6,13 @@ A password is never stored, only a hash of it: a value that is cheap to check ag
 one. `Hasher` of `@marmeon/auth` makes and checks such hashes. It uses Argon2id by default, with the costs OWASP recommends, and
 computes in Node's thread pool, so a sign-in never blocks other requests.
 
-```ts title="modules/auth/controllers/RegisterController.ts"
+```ts title="modules/signup/controllers/SignUpController.ts"
 import { Hasher, password } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
-import { UserRepository } from '../UserRepository.ts';
+import { UserRepository } from '#modules/auth';
 
-export const RegisterRequest = defineRequest({
+export const SignUpRequest = defineRequest({
   schema: r.object({
     name: r.string().trim().required().min(2).max(255),
     email: r.string().trim().lowercase().required().max(255).email(),
@@ -21,8 +21,8 @@ export const RegisterRequest = defineRequest({
   }).confirmed('password'),
 });
 
-export class RegisterController extends Controller {
-  static request = RegisterRequest;
+export class SignUpController extends Controller {
+  static request = SignUpRequest;
 
   readonly #hasher: Hasher;
   readonly #users: UserRepository;
@@ -33,7 +33,7 @@ export class RegisterController extends Controller {
     this.#users = users;
   }
 
-  async handle(ctx: ContextOf<typeof RegisterRequest>) {
+  async handle(ctx: ContextOf<typeof SignUpRequest>) {
     const hash = await this.#hasher.make(ctx.body.password);
     await this.#users.register({ name: ctx.body.name, email: ctx.body.email, password: hash, locale: 'en' });
     return this.redirect().route('auth.register.sent');
@@ -41,8 +41,10 @@ export class RegisterController extends Controller {
 }
 ```
 
-The starter kit's registration does more: it hashes the password even for a known address, so both take the same time, and keeps
-quiet about which address has an account. The [starter kit](starter-kit.md#private-registration) page explains why.
+This is a reduced registration, to show the hasher. It sends no confirmation mail, since it dispatches no `Registered`, and a
+taken address silently does nothing. Do not put it in place of the starter kit's registration, which does more: it hashes the
+password even for a known address, so both take the same time, and keeps quiet about which address has an account. The
+[starter kit](starter-kit.md#private-registration) page explains why.
 
 ## Making and checking hashes
 
@@ -100,7 +102,7 @@ export const ResetPasswordRequest = defineRequest({
 });
 ```
 
-- **Long enough:** at least `min` characters, 8 by default, counted after NFKC as characters you see: an emoji is one.
+- **Long enough:** at least `min` characters, 8 by default, counted in code points after NFKC: a plain emoji is one, a flag or an emoji with a skin tone is two or more.
 - **Short enough:** at most 4096 bytes, the hasher's limit.
 - **Nothing else.** No rules about digits or symbols: NIST advises against them, because they make passwords harder to remember
   and no harder to guess.

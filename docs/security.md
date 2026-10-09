@@ -17,7 +17,8 @@ Two rules depend on `NODE_ENV`, and they are not mirror images of each other:
   `Server-Timing` header, the mail previews and Vite's dev server stay off everywhere else, `test` included.
 - **Protections apply to every other value but `test`, and to none.** JSON logs, `migrate` asking for `--force`, the warnings at
   start-up and the absence of lab pages hold for `production`, for `staging`, for a typo and for a server where nobody set
-  `NODE_ENV`.
+  `NODE_ENV`. `test` belongs to the test runner alone: it turns every protection off, and development-only routes answer under it,
+  so it never belongs on a server.
 
 A forgotten variable therefore never shows your source code to a visitor. Set `NODE_ENV` in the server's real environment, and
 never deploy a developer's `.env`: `marmeon start`, `queue:work` and `schedule:work` warn loudly when `development` comes from a
@@ -124,14 +125,19 @@ until they expire. The [encryption](encryption.md) page explains the key and its
 - **A sign-in tells nothing.** An unknown address and a wrong password get the same answer in the same time. The
   [authentication](authentication.md#signing-in) page explains how.
 - **Validation never tells whether a record exists while a field is typed.** The `unique` and `exists` rules and an async
-  `custom()` never run in a live validation, so a free and a taken address get the same answer there. Only a submit tells, behind
-  its rate limit. A schema of another library runs live only when its request says `live: true`, which a form that asks about
-  accounts must never do. The [validation](validation.md#database-rules-and-why-they-never-run-live) page explains why.
+  `custom()` do not run in a live validation unless the rule says `.live()`, which a rule that asks about accounts must never do.
+  Without it, a free and a taken address get the same answer there, and only a submit tells, behind its rate limit. A schema of
+  another library runs live only when its request says `live: true`, which a form that asks about accounts must never say either.
+  The unique index stays the truth: `failOnDuplicate()` turns its conflict into a 422. The
+  [validation](validation.md#database-rules-and-why-they-never-run-live) page explains why.
 - **Mail goes out encrypted or not at all.** SMTP uses TLS from the first byte, or requires STARTTLS, so a server without it, or
   someone who strips the offer, never sees the credentials or a reset link. `MAIL_REQUIRE_TLS=false` turns the requirement off, for
   a local relay only. The [mail](mail.md#smtp-and-tls) page has the settings.
 - **Policies decide what a user may do,** on every request. The gate asks the session's user, so on routes of the `api` group a
-  policy refuses every request: authorize those with token abilities. The [authorization](authorization.md) page explains both.
+  policy refuses every request. Authorize those with the token's abilities and an ownership check: compare `ctx.user` with the
+  record in the controller, or look the record up among the user's own. An ability only says what kind of action a token may do, never on
+  whose record, so it alone leaves every user's records one id away. The
+  [authorization](authorization.md#policies-and-api-tokens) page shows it.
 
 ### Private registration
 
@@ -150,13 +156,19 @@ is signed in at once, and a new address takes effect at once. From then on only 
 form and a list of who has an account. Outside development and tests the app logs a warning about it at every start. Turn it off
 only when the accounts of your app are public anyway. The [starter kit](starter-kit.md#turning-it-off) page shows the switch.
 
+An unconfirmed account is then a working account. Whoever registers with somebody else's address uses it at once: the module's
+`ConfirmedAddress` lets every signed-in user through, the tokens page included, which asks only for the password they chose. When
+the owner later takes the account over with a password reset, its sessions and remember-me tokens end, but an API token created in
+the meantime stays valid, up to 90 days with the starter kit. Put `verified()` in place of `ConfirmedAddress` on the token routes,
+or at least revoke unknown tokens on the tokens page after such a takeover.
+
 ### Accounts nobody confirmed
 
 `auth:prune-unverified` deletes accounts whose address was never confirmed, `AUTH_UNVERIFIED_DAYS` days after the sign-up, 7 by
 default. An account confirmed once is never deleted. The command runs only when your app turns its line on in
 `modules/auth/schedule.ts`, because deleting accounts is your app's decision. Once it runs, whoever registered with somebody else's
-address stops holding it, and nothing of an unfinished sign-up stays: the account, its tokens, what other modules keep and its
-sessions. With open registration, such an account was signed in and may have used the app before it goes. Without the line, these
+address stops holding it, and nothing of an unfinished sign-up stays: the account, its tokens and what other modules keep go,
+and its sessions end. With open registration, such an account was signed in and may have used the app before it goes. Without the line, these
 accounts stay: decide it for your app. The [email verification](verification.md#unconfirmed-accounts) page explains the rules.
 
 ## Tables and exports

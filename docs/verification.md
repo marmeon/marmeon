@@ -44,8 +44,9 @@ account can sign in at all:
   notice until its owner opens the link while signed in. Whoever registered with somebody else's address cannot confirm it, and
   the real owner takes the account over with a password reset.
 - **Open registration, `AUTH_PRIVATE_REGISTRATION=false`.** A new account is signed in at once and uses the app's pages without a
-  confirmed address, unless those pages ask for `verified()`. A change of address takes effect at once and leaves the account
-  unconfirmed until the new address is confirmed.
+  confirmed address, unless those pages ask for `verified()`. Whoever registered with somebody else's address has a working
+  account until the owner takes it over with a password reset, and an API token they created in the meantime survives that reset.
+  A change of address takes effect at once and leaves the account unconfirmed until the new address is confirmed.
 
 The [starter kit](starter-kit.md#private-registration) page explains both modes and what each tells a stranger.
 

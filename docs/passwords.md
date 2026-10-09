@@ -184,9 +184,13 @@ A successful reset:
 - deletes every remember-me token of the user,
 - dispatches `PasswordReset`.
 
-It does not sign the user in: the starter kit sends them to the login page. It does not revoke the user's API tokens either; the
-[API tokens](api-tokens.md#listing-and-revoking-tokens) page explains how to revoke them. The `password()` rule is explained on the
+It does not sign the user in: the starter kit sends them to the login page. The `password()` rule is explained on the
 [hashing](hashing.md#the-password-rule) page.
+
+> [!WARNING]
+> A reset does not revoke the user's API tokens. A reset is often the answer to a stolen password, and whoever had the password
+> may have created a token with it. After such a reset, review the tokens on the tokens page and revoke every one you do not know,
+> as the [API tokens](api-tokens.md#listing-and-revoking-tokens) page explains.
 
 ## Old tokens
 

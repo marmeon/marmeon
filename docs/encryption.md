@@ -122,10 +122,10 @@ derived for signatures accept the previous keys too. So a rotation keeps everyth
 2. Deploy, with both variables on every server.
 3. Remove the old key once nothing made with it is still around: sessions and remember-me cookies after their lifetime, queued and
    failed jobs, and signed links after their expiry. Encrypted session data is encrypted with the new key at the session's next
-   write.
+   write. A "load more" cursor made with the old key answers 400 once the key is removed.
 
-Two things follow the new key at once. The tabs of every browser find a new session epoch at their next check and reload once,
-because the epoch uses the current key only. And a "load more" cursor made with a removed key answers 400.
+One thing follows the new key at once: the tabs of every browser find a new session epoch at their next check and reload once,
+because the epoch uses the current key only.
 
 Replacing `APP_KEY` without keeping the old one signs everybody out, because no session cookie decrypts any more. It also breaks
 every signed link, and turns every encrypted job still waiting into a failure:

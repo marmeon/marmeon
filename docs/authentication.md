@@ -275,14 +275,20 @@ import { defineRoutes } from '@marmeon/http';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import { ShowAccessTokensController } from './controllers/ShowAccessTokensController.ts';
 import { ShowConfirmPasswordController } from './controllers/ShowConfirmPasswordController.ts';
+import { ConfirmedAddress } from './middleware/ConfirmedAddress.ts';
 
 export default defineRoutes((Route) => {
-  const signedIn = Route.middleware(authenticate());
-  signedIn.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
-  signedIn.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
-  signedIn.middleware(confirmedPassword()).get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
+  const confirmedAddress = Route.middleware(authenticate()).middleware(ConfirmedAddress);
+  confirmedAddress.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
+  confirmedAddress.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
+  confirmedAddress.middleware(confirmedPassword()).get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
 });
 ```
+
+`ConfirmedAddress` is the starter kit's middleware: `verified()` while the registration is private. A page that creates API tokens
+needs a confirmed address as well as the password, because a token outlives a password reset: an account registered with
+somebody else's address must never reach it. With open registration, use `verified()` there, as the
+[API tokens](api-tokens.md#creating-tokens) page explains.
 
 Everyone else goes to `auth.password.confirm`, and after the confirmation back to the page they asked for. A JSON client gets
 `423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another
@@ -300,12 +306,16 @@ devices". A stolen session must not become a way to guess the password.
 `updatePassword(password)` stores a new hash for the signed-in user. This session stays signed in. Every other session ends at its
 next request, every remember-me token of the user is deleted, this device's included, and `PasswordChanged` is dispatched.
 
-`updatePassword()` does not check the current password. The controller does that first, as the starter kit's does:
+`updatePassword()` does not check the current password. The controller does that first, as the starter kit's does, through the
+throttle of its password checks:
 
 ```ts title="modules/auth/controllers/UpdatePasswordController.ts"
 import { Auth, password, type Authenticated } from '@marmeon/auth';
-import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
+import { RateLimiter } from '@marmeon/cache';
+import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { throttlePasswordChecks } from '../throttle.ts';
 
 export const UpdatePasswordRequest = defineRequest({
   schema: r.object({ current_password: r.string().required().max(4096), password: password(), password_confirmation: r.string() }).confirmed('password'),
@@ -316,24 +326,28 @@ export class UpdatePasswordController extends Controller {
   static request = UpdatePasswordRequest;
 
   readonly #auth: Auth;
+  readonly #limiter: RateLimiter;
+  readonly #translator: Translator;
 
-  constructor(auth: Auth) {
+  constructor(auth: Auth, limiter: RateLimiter, translator: Translator) {
     super();
     this.#auth = auth;
+    this.#limiter = limiter;
+    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof UpdatePasswordRequest>) {
-    if (!(await this.#auth.confirmPassword(ctx.body.current_password))) {
-      throw new ValidationError({ current_password: ['The password is incorrect.'] });
-    }
+    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     await this.#auth.updatePassword(ctx.body.password);
-    return this.back('/settings/security');
+    return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });
   }
 }
 ```
 
-The `authorize` that returns `true` only types the context: `ctx.user` is there because the route sits behind `authenticate()`.
-The [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
+`throttlePasswordChecks()` in `modules/auth/throttle.ts` counts the try before the check, at most five a minute per user, and
+throws a field error for a wrong password. Never check a signed-in user's password without such a limit. The `authorize` that
+returns `true` only types the context: `ctx.user` is there because the route sits behind `authenticate()`. The
+[hashing](hashing.md#the-password-rule) page explains the `password()` rule.
 
 `logoutOtherDevices(password)` signs out every other device without changing the password. It checks the password, returns `false`
 when it is wrong, and otherwise hashes it again with a new salt. The other sessions end at their next request, and the
@@ -395,8 +409,8 @@ of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
 
 `end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
 table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account
-that does no harm, since its sessions end at their next request. For a user who still exists, only a new password ends the other
-sessions with these drivers.
+that does no harm, since its sessions end at their next request. For a user who still exists, only a new hash ends the other
+sessions with these drivers: a new password, or "sign out other devices".
 
 ## Signed-in pages are never cached
 
