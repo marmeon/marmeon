@@ -74,6 +74,18 @@ export class CommandArgumentsError extends Error {
   override name = 'CommandArgumentsError';
 }
 
+/**
+ * Whether `argv` asks for the command's help: `--help` or `-h` before a `--`, unless the command declares an option of that name itself.
+ * Without `Command`, a built-in the CLI knows before the app boots is not at hand yet — any `--help`/`-h` counts.
+ */
+export function wantsHelp(argv: readonly string[], Command?: CommandClass): boolean {
+  const end = argv.indexOf('--');
+  const flags = end === -1 ? argv : argv.slice(0, end);
+  const options = Object.entries(Command?.options ?? {});
+  const own = (flag: string) => options.some(([name, option]) => (flag === '--help' ? name === 'help' : option.short === 'h'));
+  return flags.some((flag) => (flag === '--help' || flag === '-h') && !own(flag));
+}
+
 /** Splits `argv` into positionals and the options `Command` declares (unknown options are an error). */
 export function parseCommandArgs(Command: CommandClass, argv: readonly string[]): Pick<CommandInput, 'args' | 'options'> {
   try {

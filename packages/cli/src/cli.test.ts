@@ -164,6 +164,19 @@ describe('marmeon (in the web app)', () => {
     expect(stdout).toBe('');
   });
 
+  it('prints a command’s description, usage and options for --help, without running it', () => {
+    const help = marmeon(webApp, ['make:controller', '--help']);
+    expect(help.code).toBe(0);
+    expect(help.stderr).toBe('');
+    expect(help.stdout).toContain('Usage: marmeon make:controller <Name> --module=<module> [--view] [--request]');
+    expect(help.stdout).toMatch(/^Options:\n {2}-m, --module=<value>\n {2}--force\n {2}--view\n {2}--request\n {2}-h, --help +Show this help$/m);
+    // An app command (the app boots to know it), with -h; after -- it is an argument, not the help.
+    const short = marmeon(webApp, ['route:list', '-h']);
+    expect(short.code).toBe(0);
+    expect(short.stdout).toMatch(/^List all registered routes|^Usage: marmeon route:list/m);
+    expect(marmeon(webApp, ['route:list', '--', '--help']).stdout).not.toContain('Usage: marmeon route:list');
+  });
+
   it('rejects unknown commands and invalid options', () => {
     expect(marmeon(webApp, ['nope']).stderr).toContain('Command "nope" is not defined');
     const invalid = marmeon(webApp, ['route:list', '--verbose']);

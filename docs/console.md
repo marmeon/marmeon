@@ -37,9 +37,10 @@ The generators, `build`, `discover`, `key:generate`, `make:lint-config` and `mak
 before the app has a valid `.env`. `route:types` registers the app's providers without booting it, as the build does, and needs
 no secret either.
 
-A command's options are checked before it runs. An unknown option is an error that prints the command's usage line, and so is
-`--help`: a command has no help page of its own yet. `marmeon list` shows each command with its description. An unknown command
-says so and exits with 1.
+A command's options are checked before it runs. An unknown option is an error that prints the command's usage line.
+`marmeon <command> --help` (or `-h`) prints the command's description, its usage line and its options, and runs nothing; after a
+`--`, `--help` is an argument like any other. `marmeon list` shows each command with its description. An unknown command says so
+and exits with 1.
 
 The environment comes from `NODE_ENV` in the shell, then from the app's `.env`. `marmeon dev` is development without one and
 `marmeon start` and `marmeon build` production. Every other command takes what it finds, and without a `NODE_ENV` it behaves like

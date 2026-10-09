@@ -49,7 +49,9 @@ if (process.env.MARMEON_CHILD === '1') {
 
   // `start` serves the build: the packages' `dist/`, also inside the monorepo — never their sources.
   const source = command !== 'start' && inWorkspace(fileURLToPath(new URL('..', import.meta.url))) && !sourceConditionActive();
-  const watch = command === 'dev';
+  // `marmeon dev --help` prints the help and ends — nothing to watch.
+  const own = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
+  const watch = command === 'dev' && !own.includes('--help') && !own.includes('-h');
   if (source || watch) {
     // `marmeon dev`: checked here too (on a copy — the child resolves for itself), or `node --watch` would wait for changes after
     // the child's start error.

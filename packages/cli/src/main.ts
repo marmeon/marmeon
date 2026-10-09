@@ -3,11 +3,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
 import { channels, messageBase, trace, type CommandRunMessage } from '@marmeon/core/diagnostics';
-import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, type CommandClass } from './command.ts';
+import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, wantsHelp, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
-import { printCommandList } from './commands/list.ts';
+import { printCommandHelp, printCommandList } from './commands/list.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
 import {
@@ -59,6 +59,11 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   const [name = 'list', ...rest] = argv;
   const builtIn = BUILT_IN.find((command) => command.command === name);
   const listing = name === 'list' || name === 'help' || name === '--help' || name === '-h';
+  // A built-in's help needs no app; an app's command is known once the app booted.
+  if (builtIn && wantsHelp(rest, builtIn)) {
+    printCommandHelp({ output }, builtIn);
+    return 0;
+  }
 
   // Boot the application unless the command works without it (generators, tooling).
   let app: Application | undefined;
@@ -91,6 +96,11 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   if (!Command) {
     output.error(`Command "${name}" is not defined. Run "marmeon list" to see all commands.`);
     return 1;
+  }
+  if (wantsHelp(rest, Command)) {
+    await app?.shutdown();
+    printCommandHelp({ output }, Command);
+    return 0;
   }
 
   try {
