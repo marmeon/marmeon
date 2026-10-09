@@ -234,31 +234,43 @@ export class Tables {
     if (Number(count) > entry.limit) {
       throw new HttpError(422, `More than ${entry.limit} rows match — narrow the filter (an export takes at most ${entry.limit}).`);
     }
-    const query = ordered(definition, project(definition, filtered, view), state);
     const names = view.columns.map(([alias]) => alias);
     const header = csvLine(view.columns.map(([alias, col]) => col.text ?? alias));
-    const batch = async (offset: number) => (await query.limit(EXPORT_BATCH).offset(offset).execute()) as Row[];
+    // Batch after batch by the key (keyset), never by OFFSET: each goes on after the last row written — in the table's order, then
+    // the key — so a row deleted or added meanwhile shifts no later row out of the file or into it twice.
+    const keyName = keyNameOf(definition);
+    const rows = this.#db.selectFrom(project(definition, filtered, view).as('table_rows')).selectAll() as SelectQueryBuilder<any, any, Row>;
+    const encrypter = this.#encrypter();
+    const batch = (cursor: string | null) =>
+      cursorPaginate(rows, {
+        column: state.sort?.column ?? keyName,
+        key: keyName,
+        cursor,
+        perPage: EXPORT_BATCH,
+        direction: state.sort?.direction ?? 'asc',
+        encrypter,
+        // The position never leaves the server; its own context all the same.
+        name: `table-export:${definition.name}`,
+      });
     const encoder = new TextEncoder();
-    const lines = (rows: readonly Row[]) => rows.map((row) => csvLine(names.map((alias) => row[alias]))).join('');
+    const lines = (batchRows: readonly Row[]) => batchRows.map((row) => csvLine(names.map((alias) => row[alias]))).join('');
     // The first batch before the answer: a failing query is an error page, not a cut-off file.
-    const first = await batch(0);
+    const first = await batch(null);
     // Later batches run once the handler has answered — a framework boundary (E107): in the request's context (its log context, its
     // request id) but outside any transaction that was open around the handler (it may have finished by then).
     const inRequest = AsyncLocalStorage.snapshot();
-    let offset = first.length;
-    let more = first.length === EXPORT_BATCH;
+    let next = first.meta.nextCursor;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(encoder.encode(CSV_BOM + header + lines(first)));
-        if (!more) controller.close();
+        controller.enqueue(encoder.encode(CSV_BOM + header + lines(first.data)));
+        if (next === null) controller.close();
       },
       async pull(controller) {
-        if (!more) return;
-        const rows = await inRequest(() => outsideTransaction(() => batch(offset)));
-        offset += rows.length;
-        more = rows.length === EXPORT_BATCH;
-        if (rows.length > 0) controller.enqueue(encoder.encode(lines(rows)));
-        if (!more) controller.close();
+        if (next === null) return;
+        const page = await inRequest(() => outsideTransaction(() => batch(next)));
+        next = page.meta.nextCursor;
+        if (page.data.length > 0) controller.enqueue(encoder.encode(lines(page.data)));
+        if (next === null) controller.close();
       },
     });
     const day = new Date().toISOString().slice(0, 10);

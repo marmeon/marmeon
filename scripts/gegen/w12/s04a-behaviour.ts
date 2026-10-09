@@ -18,6 +18,8 @@ import { defineGegenproben } from '../define.ts';
  *   limit with one attempt left); the server's start no longer asks the middleware (G12b: an undefined limiter boots, its route
  *   answers 500 at the first request); `ctx.user` not added to a limiter's context by `@marmeon/auth` (G12c: the web app's limiters
  *   do not compile without a cast).
+ * - **An export goes on after the last row it wrote** (G13) — by OFFSET again, two rows of the first batch deleted meanwhile push
+ *   "Bulk 0500" out of the file.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -112,6 +114,20 @@ export default defineGegenproben({
       patch: [{ file: 'packages/auth/src/auth.ts', find: '    readonly user?: AuthUser | undefined;\n  }\n}', replace: '    readonly account?: AuthUser | undefined;\n  }\n}' }],
       run: { command: ['pnpm', '--dir', 'apps/web-app', 'exec', 'tsc', '--noEmit', '--pretty', 'false'] },
       expect: /modules\/auth\/cache\.type-test\.ts\(26,\d+\): error TS2339: Property 'user' does not exist on type/,
+    },
+    {
+      id: 'G13',
+      title: 'the export pages its later batches by OFFSET: a row deleted from the first batch pushes a later one out of the file',
+      patch: [
+        {
+          file: 'packages/table/src/tables.ts',
+          find: '    const batch = (cursor: string | null) =>\n      cursorPaginate(rows, {',
+          replace:
+            "    const offsets = new Map<string | null, number>();\n    const batch = async (cursor: string | null) => {\n      const at = offsets.get(cursor) ?? 0;\n      const data = (await ordered(definition, project(definition, filtered, view), state).limit(EXPORT_BATCH).offset(at).execute()) as Row[];\n      const nextCursor = data.length === EXPORT_BATCH ? String(at + data.length) : null;\n      if (nextCursor !== null) offsets.set(nextCursor, at + data.length);\n      return { data, meta: { nextCursor } };\n    };\n    const keyset = (cursor: string | null) =>\n      cursorPaginate(rows, {",
+        },
+      ],
+      run: { vitest: 'packages/table/src/table.test.ts', name: 'not at an offset' },
+      expect: /\{"missing":\["Bulk 0500"\],"twice":\[\]\}: expected/,
     },
   ],
 });

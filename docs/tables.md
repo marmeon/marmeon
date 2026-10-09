@@ -289,7 +289,9 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 - **A limit.** `exportCsv().max(rows)`, 10000 by default. One count runs first, and an export over the limit is a 422 before a byte
   is sent, never a file cut short.
 - **Batches.** Rows stream in batches of 500. The first batch runs in the handler, and the later ones after it has answered: in the
-  request's context, for the log and the request id, and **outside** any transaction that was open around the handler.
+  request's context, for the log and the request id, and **outside** any transaction that was open around the handler. Each batch
+  goes on after the last row written, by the table's order and then the key, never at an offset. A row deleted meanwhile moves no
+  later row out of the file, and a row added meanwhile shows at most once.
 - **Headers.** `Content-Disposition: attachment` with a safe file name such as `members-2026-10-06.csv`, `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`, and a byte order mark, so spreadsheets read umlauts right.
 - **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed gets a

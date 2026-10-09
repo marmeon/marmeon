@@ -367,6 +367,23 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(new Set(lines).size).toBe(1204);
     });
 
+    it('goes on after the last row it wrote, not at an offset — rows deleted or added meanwhile shift nothing', async () => {
+      const application = await app(driver);
+      await application.insert(Array.from({ length: 600 }, (_, index) => ({ ...MEMBERS[1]!, id: 100 + index, name: `Bulk ${String(index).padStart(4, '0')}`, email: `b${index}@example.com` })));
+      // The first batch (500 rows) is written before the answer; the next is read when the client reads on.
+      const response = await csv(application, ADA, 'search=bulk&sort=name');
+      const db = application.connections.get();
+      // Meanwhile: two rows of the first batch are deleted, and one is added before where the export stands.
+      await db.deleteFrom('members').where('id', 'in', [100, 101]).execute();
+      await application.insert([{ ...MEMBERS[1]!, id: 900, name: 'Bulk 0000a', email: 'added@example.com' }]);
+      const rows = (await response.text()).split('\r\n').filter(Boolean).slice(1).map((line) => line.slice(1, line.indexOf('"', 1)));
+      const expected = Array.from({ length: 600 }, (_, index) => `Bulk ${String(index).padStart(4, '0')}`);
+      const missing = expected.filter((name) => !rows.includes(name));
+      const twice = rows.filter((name, index) => rows.indexOf(name) !== index);
+      expect({ missing, twice }, JSON.stringify({ missing, twice })).toEqual({ missing: [], twice: [] });
+      expect(rows).toEqual(expected);
+    });
+
     it('refuses an export over its limit (422) before streaming a byte — never a file cut short', async () => {
       const application = await app(driver);
       const response = await application.request('/teams/1/_tables/small/export/csv', { user: ADA });
