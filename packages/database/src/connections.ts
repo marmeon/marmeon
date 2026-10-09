@@ -143,7 +143,7 @@ export class Connections {
     if (!db) {
       const main = this.#instance(name);
       const options = this.options(name);
-      const dialect = this.#dialect(options); // for its compiler and adapter only — the driver is below
+      const dialect = this.#dialect(options, name); // for its compiler and adapter only — the driver is below
       const driver = new InfrastructureDriver({
         main: main.driver,
         // Every connection of this app on the same SQLite file: a transaction of any of them holds the file.
@@ -235,7 +235,7 @@ export class Connections {
     if (!instance) {
       const options = this.options(name);
       const metadata = new SchemaMetadata(options.driver);
-      const { dialect, driver } = withMarmeonDriver(this.#dialect(options), { name, target: describeConnection(options), metadata });
+      const { dialect, driver } = withMarmeonDriver(this.#dialect(options, name), { name, target: describeConnection(options), metadata });
       const plugins = [metadata.plugin(), new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
@@ -249,17 +249,18 @@ export class Connections {
     if (this.#destroyed) throw new Error(`The database connections are closed (the application shut down); cannot use "${name}".`);
     let pool = this.#pools.get(name);
     if (!pool) {
-      const dialect = this.#dialect({ ...options, poolMax: options.infrastructurePoolMax ?? DEFAULT_INFRASTRUCTURE_POOL_MAX });
+      const dialect = this.#dialect({ ...options, poolMax: options.infrastructurePoolMax ?? DEFAULT_INFRASTRUCTURE_POOL_MAX }, name);
       pool = new MarmeonDriver(dialect.createDriver(), { name, target: `${describeConnection(options)} (infrastructure pool)` }, { detached: true });
       this.#pools.set(name, pool);
     }
     return pool;
   }
 
-  #dialect(options: ConnectionOptions): Dialect {
+  #dialect(options: ConnectionOptions, name: string): Dialect {
     if (options.driver === 'sqlite') return createSqliteDialect(this.#sqlitePath(options.database));
     return createPostgresDialect({
       url: options.url,
+      name,
       poolMax: options.poolMax,
       onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: error.message }),
     });

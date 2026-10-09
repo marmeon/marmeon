@@ -86,6 +86,8 @@ Install it as a dependency, not a dev dependency. Without it, the first query fa
 Could not connect to the database connection "default" (pgsql postgres://app:***@db:5432/app): DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8
 ```
 
+A connection of your own names itself instead: `The Postgres connection "reporting" needs the "pg" package, …`.
+
 The app does not connect to Postgres when it starts, so a command that sends no query works without a running server. The first
 query connects, and a deployment's `marmeon migrate --force` is that first query, so it finds a missing driver or a wrong address
 before any request does. The [deployment](deployment.md#drivers-what-an-app-installs) page lists every driver an app may need.

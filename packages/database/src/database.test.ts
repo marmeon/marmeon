@@ -243,5 +243,8 @@ describe('pg (an optional peer, E198)', () => {
     // The message as the assertion's text: the whole command shows when it differs (Vitest shortens long strings).
     expect(message, message).toBe('DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8');
     await expect(importPg(() => Promise.reject(new SyntaxError('Unexpected token')))).rejects.toThrow(SyntaxError);
+    // A named connection is no DB_CONNECTION: the message names the connection.
+    const named = await importPg(() => Promise.reject(missing), 'reporting').then(() => 'loaded', (error: Error) => error.message);
+    expect(named, named).toBe('The Postgres connection "reporting" needs the "pg" package, which is not installed in this app: pnpm add pg@^8');
   });
 });

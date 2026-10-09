@@ -39,6 +39,7 @@ import { defineGegenproben } from '../define.ts';
  *   transaction pinned again, and the rollback at the end fails with "database is not open".
  * - **`devtools:clear`/`devtools:prune` load `config/devtools.ts` in development only** (G32) — loaded always again, a production
  *   run imports the app's devtools settings.
+ * - **The missing-`pg` message names a named connection** (G34) — `DB_CONNECTION=pgsql` for every connection again.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -250,6 +251,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/devtools/src/commands.ts', find: "  const development = app.container.make(DevtoolsConfig).environment === 'development';", replace: '  const development = app.container.has(DevtoolsConfig);' }],
       run: { vitest: 'packages/devtools/src/commands.test.ts', name: 'never load config/devtools.ts outside development' },
       expect: /production devtools:clear: threw: config\/devtools\.ts was loaded/,
+    },
+    {
+      id: 'G34',
+      title: 'the missing-pg message says DB_CONNECTION=pgsql for a named Postgres connection too',
+      patch: [{ file: 'packages/database/src/postgres.ts', find: "      const who = connection === 'default' ? 'DB_CONNECTION=pgsql' : `The Postgres connection \"${connection}\"`;", replace: "      const who = 'DB_CONNECTION=pgsql';" }],
+      run: { vitest: 'packages/database/src/database.test.ts', name: 'without pg, DB_CONNECTION=pgsql says what to install' },
+      expect: /^AssertionError: DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@\^8: expected 'DB_CONNECTION=pgsql needs the "pg" pa…' to be 'The Postgres connection "repo/,
     },
   ],
 });
