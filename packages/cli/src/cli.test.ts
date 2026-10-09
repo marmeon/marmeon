@@ -223,6 +223,14 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
     // A reading endpoint is a GET, and a GET has no body (E65): its request validates the query.
     expect(marmeon(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
+    // A writing endpoint answers with a redirect: it renders no page — --view goes with a reading name, nothing is written.
+    const writing = marmeon(app, ['make:controller', 'ArchiveInvoice', '--module=billing', '--request', '--view']);
+    expect([writing.code, writing.stderr]).toEqual([
+      1,
+      '✗ --view renders a page, and ArchiveInvoiceController answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…) for a page, or leave out --view.\n',
+    ]);
+    expect(existsSync(join(app, 'modules/billing/controllers/ArchiveInvoiceController.ts'))).toBe(false);
+    expect(existsSync(join(app, 'modules/billing/views/ArchiveInvoice.tsx'))).toBe(false);
     expect(marmeon(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
       "migrations: new URL('./migrations/', import.meta.url)",
     );

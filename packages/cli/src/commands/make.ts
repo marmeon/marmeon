@@ -87,6 +87,13 @@ export class MakeControllerCommand {
     const withView = input.options.view === true;
     // A GET has no body (E65): a reading endpoint (Show…, List…) gets a `query` schema, any other a body `schema`.
     const reads = READING.test(name);
+    // A writing endpoint answers its form with a redirect: a page beside it would never render.
+    if (withView && input.options.request === true && !reads) {
+      input.output.error(
+        `--view renders a page, and ${name} answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…) for a page, or leave out --view.`,
+      );
+      return 1;
+    }
     const template =
       input.options.request === true
         ? reads

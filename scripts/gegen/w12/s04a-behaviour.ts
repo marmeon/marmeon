@@ -23,6 +23,8 @@ import { defineGegenproben } from '../define.ts';
  * - **`job.once` on a busy key releases the attempt and gives it back** — two measures: the worker treats the busy key as an error
  *   again (G14: a job with one try fails); it releases without giving the attempt back (G14b: the next claim is attempt 2 of 1 and
  *   fails as "attempted without finishing"). Run on SQLite; `pnpm test:pgsql` / `test:redis` run the same test on the other drivers.
+ * - **`make:controller --request --view` on a writing name is refused** (G15) — without the check it writes a page its redirecting
+ *   controller never renders.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -145,6 +147,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/queue/src/worker.ts', find: 'release(reserved, ONCE_BUSY_DELAY, { refund: true });', replace: 'release(reserved, ONCE_BUSY_DELAY, { refund: false });' }],
       run: { vitest: 'packages/queue/src/reliability.test.ts', name: 'without using up a try' },
       expect: /test\.once has been attempted 1 times without finishing .*it may run 1.*: expected/,
+    },
+    {
+      id: 'G15',
+      title: 'make:controller --request --view on a writing name writes a page its controller never renders (exit 0)',
+      patch: [{ file: 'packages/cli/src/commands/make.ts', find: '    if (withView && input.options.request === true && !reads) {', replace: '    if (false) {' }],
+      run: { vitest: 'packages/cli/src/cli.test.ts', name: 'scaffolds a module, controller with view' },
+      expect: /expected \[ \+0, '' \] to deeply equal \[ 1, …\(1\) \]/,
     },
   ],
 });
