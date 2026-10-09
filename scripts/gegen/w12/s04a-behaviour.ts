@@ -13,6 +13,7 @@ import { defineGegenproben } from '../define.ts';
  *   submits anyway (G8d) sends without asking before the app started.
  * - **A read-only request's message names its own cause** — the layer's base (G9) and the deferred prop streamed after the headers
  *   (G9b) without a rule of their own fall back to an island's: "an island is read-only … Do that in the page".
+ * - **A provider with only `static solutions` is one** (G11) — without the check's third static it stops the start.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -79,6 +80,13 @@ export default defineGegenproben({
       patch: [{ file: KERNEL, find: "        rule: 'the response headers are out — ", replace: "        _rule: 'the response headers are out — " }],
       run: { vitest: 'packages/server/src/islands-ssr.test.ts', name: 'a deferred prop that writes after the headers throws in development' },
       expect: /after its response headers were sent \(a deferred prop, streamed with the page\): an island is read-only .*: expected/,
+    },
+    {
+      id: 'G11',
+      title: 'a provider that only brings solutions stops the start: "has no register(), boot(), …"',
+      patch: [{ file: 'packages/core/src/application.ts', find: ' && !Provider.health?.length && !Provider.solutions?.length) {', replace: ' && !Provider.health?.length) {' }],
+      run: { vitest: 'packages/core/src/application.test.ts', name: 'accepts a provider that only brings solutions' },
+      expect: /promise rejected "TypeError: OnlySolutions is listed as a s…" instead of resolving/,
     },
   ],
 });

@@ -111,12 +111,12 @@ export class Application {
 
   /** Register phase: build each provider through the container and let it bind services. */
   register(providers: readonly ServiceProviderClass[]): void {
-    // A provider may also only bring configuration (`static config`), which is validated earlier.
+    // A provider may also only bring configuration (`static config`, validated earlier), health checks or solutions.
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
-      if (!hooks && !Provider.config?.length && !Provider.health?.length) {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config or static health.`);
+      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length) {
+        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health or static solutions.`);
       }
       provider.register?.(this.container);
       this.#providers.push(provider);

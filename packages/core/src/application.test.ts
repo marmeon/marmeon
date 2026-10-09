@@ -5,6 +5,7 @@ import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
 import { Logger } from './logger.ts';
+import { defineSolutions } from './solutions.ts';
 import type { ServiceProvider } from './provider.ts';
 
 function recorder() {
@@ -58,6 +59,17 @@ describe('Application.shutdown', () => {
       shutdown(): void {}
     };
     await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [OnlyShutdown] })).resolves.toBeDefined();
+  });
+
+  it('accepts a provider that only brings solutions — and still stops one that brings nothing', async () => {
+    const OnlySolutions = class {
+      static solutions = defineSolutions([{ for: RangeError, solve: () => ({ title: 'Never', text: 'never' }) }]);
+    };
+    await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [OnlySolutions] })).resolves.toBeDefined();
+    const Empty = class Empty {};
+    await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [Empty] })).rejects.toThrow(
+      'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health or static solutions.',
+    );
   });
 });
 

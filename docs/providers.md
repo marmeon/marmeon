@@ -59,10 +59,10 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without `static config` or `static health` from the list below, stops the start:
+them, and without `static config`, `static health` or `static solutions` from the list below, stops the start:
 
 ```text
-NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config or static health.
+NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health or static solutions.
 ```
 
 ## The order
