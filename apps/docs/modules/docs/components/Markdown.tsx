@@ -7,7 +7,7 @@ const TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
 const PROPS: Record<string, string> = { class: 'className', tabindex: 'tabIndex' };
 
 /**
- * A page — a doc or a README — as React elements: links to other pages are `<Link prefetch>` (a visit over the protocol, fetched ahead while the
+ * A page of the docs as React elements: links to other pages are `<Link prefetch>` (a visit over the protocol, fetched ahead while the
  * pointer rests on them), anchors and external links stay `<a>`. Code blocks are the server's highlighted markup — escaped
  * text in spans, no highlighter in the browser.
  */

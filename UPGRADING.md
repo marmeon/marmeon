@@ -2,68 +2,56 @@
 
 **Marmeon was called BespokeCore up to 0.1.0** (never published). There is no entry per name — every entry below uses the new
 ones: `@marmeon/*`, the CLI `marmeon`, `create-marmeon`, `x-marmeon-*`, `/_marmeon/*`, `MARMEON_*`, `[marmeon:…]`. API tokens start with
-`marmeon_` (`marmeon_12|…`, E207) — a token handed out before keeps working only under its own prefix: until its users have new ones,
+`marmeon_` (`marmeon_12|…`) — a token handed out before keeps working only under its own prefix: until its users have new ones,
 the way back is `AUTH_TOKEN_PREFIX=bc_`.
 
-What changes for an app from one version of Marmeon to the next — in Laravel's manner: each entry says how likely it is
-to affect you (**impact**), what to do (before → after), and how to keep the old behaviour where there is a way.
+What changes for an app from one version of Marmeon to the next. Each entry says how likely it is to affect you
+(**impact**), what to do (before → after), and how to keep the old behaviour where there is a way.
 
 **Impact:** High — most apps must act. Medium — apps that use the feature must act. Low — only in rare cases, or nothing
 to do. The newest version comes first. In 0.x a minor version may break, and every break has an entry here; a patch never
-breaks ([versions and deprecations](README.md#versions-and-deprecations)). Every package, `marmeon` and
+breaks ([what a version promises](docs/releases.md#what-a-version-promises)). Every package, `marmeon` and
 `create-marmeon` share one version: upgrade them together — set every `@marmeon/*` and `marmeon` in `package.json` to the new
 version and install. Two versions of a framework package in one app mean two containers and two `Application` classes.
 
 ## Upgrading to 0.2.0 from 0.1.0
 
-The changes of Wave 10 (Marmeon: lean dependencies and the last security gaps) and of Wave 9 (client and navigation) — the newer
-wave first. Nothing is High: no app must act at once. Within a wave the entries come by impact, and within an impact by area; every
-entry says the way back, or why there is none.
+Nothing is High: no app must act at once. The entries come by impact, and within an impact by area, in the order of the
+table; every entry says the way back, or why there is none.
 
-**Wave 10** — validation with `rules` instead of an engine the app installs (an empty string by type), drivers that come with their
-package, a fair queue worker, a look without inline styles, a command for unconfirmed accounts (scheduled by the app), and the security
-gaps of development routes, staging, CSRF tokens and traces:
+0.2.0 validates with `rules` instead of an engine the app installs (an empty string by type); lists and tables keep their query and
+their cursors; the navigator uses the Navigation API; live updates have a limit per session; the registration of `make:auth` is
+private by default, and accounts that never confirmed an address can be deleted (when the app schedules it); drivers come with their
+package, the queue worker serves every queue fairly, the look needs no inline styles; and the last security gaps of development
+routes, staging, CSRF tokens, traces and logs are closed:
 
 | Area | Medium | Low |
 | --- | --- | --- |
-| Validation | [the app validates with `rules`](#medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone) · [an empty string by type](#medium-an-empty-string-by-type--rstring-keeps-it-an-empty-number-address-or-choice-is-missing) | [`@marmeon/validation`](#low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract) · [no foreign schema live](#low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it) · [`.live()` on the field](#low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field) · [the handler's 422 with the request's labels](#low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes) |
-| Dependencies | — | [`redis` and `nodemailer` come with their packages](#low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major) |
-| Queue and uploads | [`queue:work` takes every queue, fairly](#medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order) | [`uploads:prune --force`](#low-uploadsprune---hours-below-uploads_lifetime-needs---force) |
+| Validation | [the app validates with `rules`](#medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone) · [an empty string by type](#medium-an-empty-string-by-type--rstring-keeps-it-an-empty-number-address-or-choice-is-missing) | [`@marmeon/validation`](#low-marmeonvalidation--rules-typed-standard-schema-stays-the-contract) · [no foreign schema live](#low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it) · [`.live()` on the field](#low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field) · [the handler's 422 with the request's labels](#low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes) |
+| Lists and tables | [revalidations replace merged props](#medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone) · [`paginate(…, ctx.query)`](#medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated) · [`<Pagination>`](#medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels) | [GET arrays](#low-a-list-in-a-gets-data-is-the-key-repeated) · [`merge()` of a paginator](#low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up) · [encrypted cursors](#low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400) · [cursors belong to their list](#low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions) · [the default sort is everyone's](#low-a-tables-default-sort-is-a-column-everyone-sees--defaultsort-refuses-one-with-visible) · [queries take turns on a shared connection](#low-queries-on-a-shared-connection-take-turns--a-transactions-a-tests-pinned-one) · [a filter on a hidden column](#low-a-tables-filter-on-a-hidden-column-is-hidden-with-it) |
+| Navigation | [the Navigation API](#medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible) | [the guard](#low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key) · [optimistic patches on first use](#low-userouter-loads-the-pages-optimistic-patches-on-first-use) · [the kit's `Confirm`](#low-the-starter-kit-asks-in-the-pages-language--its-own-confirm) · [view transitions](#low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition) · [`reset()` after saving](#low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty) · [reloads built while rendering](#low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again) |
+| Live updates | [16 streams per session](#medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429) · [a cluster needs Redis](#medium-a-cluster-marmeon-start-with-workers-needs-live_driverredis) | — |
+| Accounts and sessions | [pending change of address](#medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns) · [`make:auth` private by default](#medium-the-registration-of-makeauth-is-private-by-default--auth_private_registrationfalse-turns-it-off) · [deleting unconfirmed accounts, opt-in](#medium-makeauth-brings-authprune-unverified--accounts-without-a-confirmed-address-go-after-auth_unverified_days-once-the-app-schedules-it) | [the CSRF token on demand](#low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none) · [a change of address keeps the confirmation](#low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone) · [`verified()` fails closed](#low-verified-treats-a-user-without-email_verified_at-as-unverified) |
+| Queue, mail and storage | [`queue:work` takes every queue, fairly](#medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order) · [SMTP requires TLS](#medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls) | [`uploads:prune --force`](#low-uploadsprune---hours-below-uploads_lifetime-needs---force) · [S3 content type](#low-an-s3-temporary-url-names-the-content-type-by-the-file-name) · [S3 disks sharing a prefix](#low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start) |
 | Look and failures | [the stylesheet `@marmeon/react/styles.css`](#medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount) | [failures load when they happen](#low-what-a-failure-shows-loads-when-it-happens--the-dialog-of-a-5xx-and-the-error-pages-are-a-chunk-of-their-own) |
-| Accounts and sessions | [deleting unconfirmed accounts, opt-in](#medium-makeauth-brings-authprune-unverified--accounts-without-a-confirmed-address-go-after-auth_unverified_days-once-the-app-schedules-it) | [the CSRF token on demand](#low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none) · [a change of address keeps the confirmation](#low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone) |
-| Lists | — | [cursors belong to their list](#low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions) · [the default sort is everyone's](#low-a-tables-default-sort-is-a-column-everyone-sees--defaultsort-refuses-one-with-visible) |
-| Development and staging | — | [staging takes the production branches](#low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings) · [the mail previews' host check](#low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev) · [404 outside development](#low-development-routes-answer-404-outside-development--whatever-their-host) · [`marmeon build` for production](#low-marmeon-build-builds-for-production-next-to-a-development-env) · [`marmeon dev` stops its companions](#low-marmeon-dev-stops-its-queue-worker-and-scheduler--on-sigterm-on-every-restart-and-when-the-server-dies) |
+| Server and deployment | — | [`redis` and `nodemailer` come with their packages](#low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major) · [`KEEP_ALIVE_TIMEOUT`](#low-the-server-keeps-idle-connections-65-s-keep_alive_timeout) · [build without `.env`](#low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile) · [tini](#low-the-image-runs-marmeon-under-tini--rebuild-it) · [pnpm 12.9.1](#low-pnpm-1291) · [`<title>`](#low-a-new-apps-title-is-its-name-not-marmeon) · [a program on 127.0.0.1 at the port](#low-the-start-warns-when-another-program-holds-127001-at-its-port--and-a-taken-port-fails-startserver) |
+| Development and staging | — | [staging takes the production branches](#low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings) · [the mail previews' host check](#low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev) · [404 outside development](#low-development-routes-answer-404-outside-development--whatever-their-host) · [`marmeon build` for production](#low-marmeon-build-builds-for-production-next-to-a-development-env) · [`marmeon dev` stops its companions](#low-marmeon-dev-stops-its-queue-worker-and-scheduler--on-sigterm-on-every-restart-and-when-the-server-dies) · [no CORS in `marmeon dev`](#low-marmeon-dev-answers-other-origins-without-cors-headers) |
 | Logs and traces | — | [`traceparent` as a span link](#low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace) · [a `URL` in a log is masked](#low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments) · [errors logged as text are masked](#low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token) |
 
-*Estimated upgrade time for Wave 10:* minutes for an app without the auth module (import `@marmeon/react/styles.css`, add the queue
-index, drop `valibot` if nothing of yours uses it); **one to two hours** for an app made with `make:auth` before Wave 10 — its module
-is yours: the `auth.css` and its import, the migration `first_verified_at`, `AccountDeletion` and `auth:prune-unverified` (and
-whether to schedule it), `.confirmed('password')` instead of `confirmed()` — and for an app whose own schemas were Valibot and should move
-to `rules` (they may stay as they are; optional strings that took `''` for missing: look at them). The guide of the wave: [validation](docs/validation.md); what changed for deployment and
-security: [deployment](docs/deployment.md), [security](docs/security.md).
-
-**Wave 9** — lists, tables, the Navigation API, live updates and private registration:
-
-| Area | Medium | Low |
-| --- | --- | --- |
-| Lists and data | [revalidations replace merged props](#medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone) · [`paginate(…, ctx.query)`](#medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated) · [`<Pagination>`](#medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels) | [GET arrays](#low-a-list-in-a-gets-data-is-the-key-repeated) · [`merge()` of a paginator](#low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up) · [encrypted cursors](#low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400) · [queries take turns on a shared connection](#low-queries-on-a-shared-connection-take-turns--a-transactions-a-tests-pinned-one) · [a filter on a hidden column](#low-a-tables-filter-on-a-hidden-column-is-hidden-with-it) |
-| Live updates | [16 streams per session](#medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429) · [a cluster needs Redis](#medium-a-cluster-marmeon-start-with-workers-needs-live_driverredis) | — |
-| Navigation | [the Navigation API](#medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible) | [the guard](#low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key) · [optimistic patches on first use](#low-userouter-loads-the-pages-optimistic-patches-on-first-use) · [the kit's `Confirm`](#low-the-starter-kit-asks-in-the-pages-language--its-own-confirm) · [view transitions](#low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition) · [`reset()` after saving](#low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty) · [reloads built while rendering](#low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again) |
-| Accounts | [`make:auth` private by default](#medium-the-registration-of-makeauth-is-private-by-default--auth_private_registrationfalse-turns-it-off) · [pending change of address](#medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns) · [SMTP requires TLS](#medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls) | — |
-| Server and deployment | — | [`KEEP_ALIVE_TIMEOUT`](#low-the-server-keeps-idle-connections-65-s-keep_alive_timeout) · [build without `.env`](#low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile) · [tini](#low-the-image-runs-marmeon-under-tini--rebuild-it) · [pnpm 12.9.1](#low-pnpm-1291) · [`<title>`](#low-a-new-apps-title-is-its-name-not-marmeon) · [a program on 127.0.0.1 at the port](#low-the-start-warns-when-another-program-holds-127001-at-its-port--and-a-taken-port-fails-startserver) |
-| Security | — | [no CORS in `marmeon dev`](#low-marmeon-dev-answers-other-origins-without-cors-headers) · [S3 content type](#low-an-s3-temporary-url-names-the-content-type-by-the-file-name) · [S3 disks sharing a prefix](#low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start) · [`verified()` fails closed](#low-verified-treats-a-user-without-email_verified_at-as-unverified) |
-
-*Estimated upgrade time for Wave 9:* minutes for most apps (read the Medium entries of the features you use); about an hour for an app with
-`merge()`d lists that load more, `paginationFrom`, live props under `--workers`, or private registration (its migration and
-controllers). The guides of the wave: [lists](docs/pagination.md), [tables](docs/tables.md), [navigation](docs/navigation.md),
-[real time](docs/realtime.md).
-
-### Wave 10 — Marmeon: lean dependencies and the last security gaps
+*Estimated upgrade time:* minutes for most apps without the auth module (import `@marmeon/react/styles.css`, add the queue
+index, drop `valibot` if nothing of yours uses it, and read the Medium entries of the features you use); about an hour for an app with
+`merge()`d lists that load more, `paginationFrom`, or live props under `--workers`; **one to two hours** for an app made with
+`make:auth` — its module is yours: the `auth.css` and its import, the migration `first_verified_at`, `AccountDeletion` and
+`auth:prune-unverified` (and whether to schedule it), `.confirmed('password')` instead of `confirmed()`, and with private registration
+its migration and controllers (about an hour more) — and for an app whose own schemas were Valibot and should move to `rules` (they
+may stay as they are; optional strings that took `''` for missing: look at them). The guides: [validation](docs/validation.md),
+[lists](docs/pagination.md), [tables](docs/tables.md), [navigation](docs/navigation.md), [real time](docs/realtime.md); what changed
+for deployment and security: [deployment](docs/deployment.md), [security](docs/security.md).
 
 #### Medium: the app validates with `rules` — `password()`, `pageQuery()`, `upload()` and a table's query are rules, `confirmed()` of @marmeon/auth is gone
 
 *Likelihood of impact: medium — every app made from the starter or `make:auth`, and every app that uses one of these helpers.* The
-starter, `make:auth`'s module, `make:*` and the docs write their schemas with `rules` of `@marmeon/validation` (E197), and the
+starter, `make:auth`'s module, `make:*` and the docs write their schemas with `rules` of `@marmeon/validation`, and the
 framework's helpers are rules now — they go into `r.object()`/`r.query()`, no longer into a Valibot object:
 
 ```ts
@@ -82,7 +70,7 @@ env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })        env: r.env({ APP_
   `marmeon.validation.confirmed` — "The password confirmation does not match." (it compares the fields as typed; the old helper
   compared them after Unicode normalization). The old text "The passwords do not match." is no framework text any more: the starter
   has it as `auth.validation.passwords_differ` (`messages: { 'password_confirmation.confirmed': … }`). The framework key
-  `marmeon.validation.confirmation` (W10 step 3) is now `marmeon.validation.confirmed`.
+  `marmeon.validation.confirmation` (of the development builds) is now `marmeon.validation.confirmed`.
 - **`pageQuery()`** (`@marmeon/database`) returns `page: r.integer().min(1).default(1)` and `per_page: r.in(sizes).default(first)` — the
   same fields and fallbacks.
 - **`upload()`** (`@marmeon/storage`) is `r.value()` with its limits as a mark (`uploadRuleOf()` reads it): `upload(…).nullable()` for an
@@ -91,11 +79,10 @@ env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })        env: r.env({ APP_
 - **Messages:** a rule's own message (`custom()`, `regex()`, `unique({ message })`) may be `trans()`'s or `translatable()`'s function;
   a key given in a request's `messages` gets the rule's parameters — `{min}`, `{max}` — where Valibot's `trans()` had `{requirement}`:
   rename the placeholder in the app's language files.
-- **The registration of `make:auth` asks no database in its schema** (E197): with `AUTH_PRIVATE_REGISTRATION=false` a taken address is
+- **The registration of `make:auth` asks no database in its schema**: with `AUTH_PRIVATE_REGISTRATION=false` a taken address is
   still a field error on submit (the unique index decides), but **no longer when the field is checked live** — a live check of a taken
-  and of a free address gets the same answer. To keep the live answer, add the check yourself:
-  `email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).findByEmail(address)) || 'auth.validation.email_taken').live()`
-  — knowing that it tells anyone who types an address whether it has an account.
+  and of a free address gets the same answer. There is no way back to the live answer: it told anyone who types an address whether
+  it has an account ([never in a live validation](docs/validation.md#never-in-a-live-validation)).
 - `r.integer()`/`r.number()` take a number's spelling too (`'7'`): a job's `JobInput` (what `dispatch()` and `assertDispatched()` take)
   is ``number | `${number}` ``, `JobPayload` (what `handle()` gets) a number.
 - An app drops `valibot` from its `package.json` and adds `@marmeon/validation` (`pnpm add @marmeon/validation && pnpm remove valibot`);
@@ -108,16 +95,16 @@ password with Valibot).
 #### Medium: an empty string by type — `r.string()` keeps it, an empty number, address or choice is missing
 
 *Likelihood of impact: medium — every app whose forms or JSON clients send empty fields to schemas of `rules`.* What a `''` is
-depends on the rule (E208 — it replaces the rule of the earlier Wave 10 builds, "an empty string counts as missing" for every rule):
+depends on the rule (the development builds of 0.2.0 counted an empty string as missing for every rule):
 where `''` can be a value, the modifiers keep it — `r.string()` (with `trim()`, `max()`, `custom()` …) and an `r.in()` that lists `''`;
 where it never is one — `r.number()`, `r.integer()`, `r.port()`, `r.boolean()`, `r.email()`, `r.url()`, `r.uuid()`, `r.date()`,
 `r.isoTimestamp()`, an `r.in()` without `''`, lists, objects, `r.value()` — it is a form's empty field and counts as missing, as
-before. Why not Laravel's `ConvertEmptyStringsToNull`: a page builder's optional "Subtitle" cleared on purpose is `''`, and turning it
+before. Why not every empty string as missing: a page builder's optional "Subtitle" cleared on purpose is `''`, and turning it
 into "missing" keeps the old subtitle (an update skips undefined) — a JSON client could never clear a field. The guide:
 [empty strings](docs/validation.md#empty-strings-a-value-or-missing--by-type).
 
 ```ts
-// subtitle: r.string().trim().max(120).optional()     before (earlier Wave 10)      after (E208)
+// subtitle: r.string().trim().max(120).optional()     before (development builds)   after
 { subtitle: '' }                                    // { subtitle: undefined }       { subtitle: '' }
 // caption: r.string().nullable() · cta: r.string().default('Read more')
 { caption: '', cta: '' }                            // { caption: null, cta: 'Read more' }   { caption: '', cta: '' }
@@ -139,14 +126,177 @@ The way back: per field, after the checks — `r.string().max(120).transform((te
 (or `? null : text` with `.nullable()`); with a check `''` would fail (`min(2)`), let it through first:
 `r.union([r.literal(''), r.string().min(2)]).transform((text) => (text === '' ? undefined : text)).optional()`.
 
+#### Medium: an action's or a live hint's reload replaces merged props — a deleted row stays gone
+
+*Likelihood of impact: medium — pages with `merge()`/`deepMerge()` props that an action or a live hint reloads.* A partial reload
+that **revalidates** — what an action reloads once it succeeded (`router.reloading({ only })`, `layer.reloading`, an island's
+`reloading`), what a live hint reloads, what `revalidateOnBack` reloads — now **replaces** the props it brings, also those the
+server marks `merge()` or `deepMerge()`. Before, it merged them: on a list that had loaded more, a row the action deleted
+came back from the pages loaded before (the first page was merged over the old list). Now the list is what the server says — and
+starts over at its first page; "load more" (a visit or reload with `data`/`query`: `<Link query={{ cursor }} only preserveUrl>`,
+`reload({ data: { cursor }, only })`) appends as before. The difference comes from where a reload comes from, not from what it
+looks like. To keep the old behaviour for one reload: `router.reloading({ only: ['people'], reset: [] })` (`reset` names the
+props it replaces — default: all it brings). Live hints and `revalidateOnBack` have no switch: they replace.
+
+#### Medium: `paginate` takes `ctx.query` — `pageQuery()` in the query schema, `paginationFrom` deprecated
+
+*Likelihood of impact: medium — controllers that paginate with `paginationFrom(ctx.query)`.* The page of a list is now a part of
+the route's query schema: spread `pageQuery({ perPage: [25, 50, 100] })` (`@marmeon/database`) into it — `?page=` and
+`?per_page=` parsed like every query field (an invalid value falls back to its default, never a 422; `ctx.query.per_page` typed
+`25 | 50 | 100`) — and hand `paginate(db, query, ctx.query)` / `repository.paginate(query, ctx.query)` the parsed query. A query
+without a page is a type error that says so. `paginationFrom` keeps working (it reads a parsed query object now too) but is
+deprecated: with a query schema, `ctx.query` is no `URLSearchParams`, and `<Pagination>` builds its links from the schema. Before:
+`paginate(db, q, paginationFrom(ctx.query, { perPage: 25 }))`; after: `query: v.object({ ...pageQuery({ perPage: [25, 50] }), … })`
+and `paginate(db, q, ctx.query)`. `{ page, perPage }` written out is still accepted.
+
+#### Medium: `<Pagination>` takes its links from the parsed query and its texts from `labels`
+
+*Likelihood of impact: medium — pages that render `<Pagination>`.* Its links come from the page's parsed query (`PageObject.query`
++ `queryDefaults`) instead of the address: the rest of the query (search, sort, page size) stays, the defaults stay out
+(`?page=1` is no page's URL), and keys the schema does not know are no longer carried along. On a route **with** a query schema,
+the schema needs the page's field — spread `pageQuery()` into it (development warns: R17); a route without a schema keeps its
+query string as before. Its texts are English unless the app passes its own words: `labels={{ navigation, previous, next, page:
+(n) => … }}`, from the app's language files (`useTranslation`) — best in a small wrapper component of the app (see the web
+app's `layouts/Pagination.tsx`); before, every text was a fixed English literal. An app without `labels` looks as before. The old links — the address's query string carried along —
+remain for a route without a query schema; with one there is no switch back (a key the schema does not know was never the page's
+state).
+
+#### Medium: the navigator uses the Navigation API — `history.state` is null, its `navigate` events are visible
+
+*Likelihood of impact: medium — code that reads or writes `history.state`, listens to `navigation`'s `navigate` event, or builds its
+own adapter or client feature.* Where the browser has the Navigation API (Chrome, Edge, Firefox 147+, Safari 26.2+), the navigator
+writes and follows the history through it: a visit commits its entry with `navigation.navigate(url, { state, info })` and
+intercepts that navigation, Back/Forward to its own entries are intercepted (`navigation.transition` — the browser's loading indicator
+while one asks the server). So **`history.state` is `null`** — an entry's state is `navigation.currentEntry.getState()` (positions
+only, as before); code that read `history.state.key` or `.url` reads it there, or not at all. **The `navigate` events of visits
+reach the app's own listeners** (`navigationType` `push`/`replace`, the navigator's `info`): a listener that intercepts or cancels
+every `navigate` now also catches visits — leave the ones with an `info` you did not set alone. A plain `<a href>`, a plain form,
+another site and entries without the navigator's state stay the browser's, as before. Without the API (Safari before 26.2) nothing
+changes: the History fallback writes `history.state` as before — a chunk `createMarmeonApp` loads only then. There is no switch
+back to the History API in a browser that has the Navigation API (the two would follow the same Back twice).
+**For an adapter of your own:** load the fallback where `!window.navigation` and pass it with the features from the start
+(`new Navigator({ …, features: [await loadHistoryFallback()] })`; development warns `[marmeon:C13]`). **For a client feature:**
+`HistoryState.index` and `HistoryWriter.index` are gone (the fallback counts for itself); a feature that wrote a field into every
+entry by wrapping `host.history.push`/`replace` gives it a value instead — `host.history.field(name, check, (entry) => value)`; the
+`popState` hook gets the navigator's `HistoryState` (no longer any `history.state`), and a new `navigate` hook sees Back/Forward before
+the navigator intercepts it (the guard's).
+
+#### Medium: one session holds at most 16 live streams per process — the 17th tab gets a 429
+
+*Likelihood of impact: medium — apps with live props whose users keep many tabs open, and tests that open many streams for one
+session.* `GET /_marmeon/live` now counts the streams of each session: beyond `LIVE_MAX_STREAMS_PER_SESSION` (default
+**16**) in one process a new stream is refused with **429** (`Retry-After: 30`, a `warn` line in the log) — the 17th tab of a browser
+gets no live hints until one of the others closes (its client tries again every 30 s). Before, one session could take every stream
+of the process (`LIVE_MAX_STREAMS`, 1000) and leave live updates dead for every other user. The counts are atomic now (fifty tabs
+opening at once never get past a limit), and a stream asked for while the server closes is refused with 503 instead of holding
+the shutdown. To allow more tabs: `LIVE_MAX_STREAMS_PER_SESSION=32` (there is no "off" — set it as high as `LIVE_MAX_STREAMS` for
+the old behaviour). A test that opens many streams for one user raises it in its environment.
+
+#### Medium: a cluster (`marmeon start` with workers) needs `LIVE_DRIVER=redis`
+
+*Likelihood of impact: medium — apps started with `marmeon start --workers=N` and the default `LIVE_DRIVER=memory`.* With the memory
+backend every worker of the cluster has its own pub/sub and its own sequences: a hint reached the tabs connected to the worker that
+sent it, and a tab that reconnected to another worker compared its sequences with another counter — live updates went missing
+without a sound. Now a worker does not start with `LIVE_DRIVER=memory` (`LiveSetupError`: "memory pub/sub never reaches the other
+workers — use LIVE_DRIVER=redis …"), and the cluster stops with the worker's code. Set `LIVE_DRIVER=redis` (with
+[@marmeon/redis](docs/redis.md)) — the web app's `.env.example` does — or start one process without `--workers`.
+One process with `memory` (`marmeon start`, `marmeon dev`) is unchanged.
+
+#### Medium: with private registration a change of address is pending until its link is clicked — migrate the new columns
+
+*Likelihood of impact: medium — apps made with `make:auth --private-registration` (or `create-marmeon --private-registration`);
+the default registration is unchanged.* The security page told whether an address has an account: "taken" for one, an address
+change for a free one. Now a new address is **pending** — kept beside the account's own until the link sent
+to it is clicked while signed in; a free and a taken address get the same answer in the same time; the owner of a taken one gets a
+note (`EmailInUseMail`) and nothing changes for anybody. The account changes only with the click (then confirmed, the old address
+told as before). Your `modules/auth` is yours, so the update does not change it — take the variant over by hand:
+
+1. A migration that adds `pending_email` (string 255, nullable), `pending_email_token` (string 64, nullable, **`.secret()`**) and
+   `pending_email_expires_at` (timestamp, nullable) to `users` — `stubs/react/modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts`
+   of `@marmeon/auth`; `marmeon migrate`, then the regenerated `bootstrap/database.d.ts` (a `User` literal of yours — mail
+   previews, test doubles — needs `pending_email` and `pending_email_expires_at`).
+2. From the same directory: `email-change.ts`, the new methods of `UserRepository.ts` (`requestEmailChange`, `pendingEmailChange`,
+   `confirmEmailChange`, `cancelEmailChange`, `pruneEmailChanges`; `changeEmail` goes), `controllers/UpdateEmailController.ts`,
+   `controllers/ConfirmEmailChangeController.ts`, `controllers/ShowSecurityController.ts` and `views/Security.tsx` (the pending
+   address), `jobs/SendEmailChangeMailJob.ts` (in `jobs` of `index.ts`), `mail/ConfirmNewEmailMail.ts`, `mail/EmailInUseMail.ts`,
+   `tasks/PruneEmailChanges.ts` (in `schedule.ts`), the two routes of `routes.ts` (`throttle('email-change')` on `PUT
+   /settings/email`, the signed `/email/change/:id/:token`) and `email-change.test.ts`; the `email-change` limiter of the default
+   `AuthServiceProvider.ts` and the texts of `lang/en.ts` (`security.email_change_sent`, `security.email_pending`, `email_change.*`,
+   `mail.confirm_new_email.*`, `mail.email_in_use.*`).
+
+Until then the old controller keeps working — and keeps telling "taken". (The templates are one module with both behaviours
+now — see the next entry: the files above now read `AuthConfig.privateRegistration`.)
+
+#### Medium: the registration of `make:auth` is private by default — `AUTH_PRIVATE_REGISTRATION=false` turns it off
+
+*Likelihood of impact: medium — new auth modules (`marmeon make:auth`, `create-marmeon`'s starter kit) and scripts that pass
+`--private-registration`; a module generated before is yours and does not change.* The private registration is the
+default now, and the flag that chose it is gone: `make:auth` writes **one** module whose registration and change of
+address never tell whether an address has an account — the same answer in the same time, a note to the owner instead, a
+confirmed address before the app's pages open, a pending change of address. The controllers decide at run time by
+`AuthConfig.privateRegistration` (`AUTH_PRIVATE_REGISTRATION`, default `true`; only `true` and `false` boot):
+
+| | before (0.1.0) | after (0.2.0) |
+| --- | --- | --- |
+| `marmeon make:auth` | registration says "taken", signs in at once | private |
+| `marmeon make:auth --private-registration` | private | a warning (the flag is gone) — the same module as without it |
+| `create-marmeon --private-registration` | private | a warning on stderr — the same app as without it (with `--minimal` no longer an error) |
+| An open registration in a new module | the default | `AUTH_PRIVATE_REGISTRATION=false` in `.env` |
+
+With `AUTH_PRIVATE_REGISTRATION=false` the module behaves as the old default did: a taken address is a field error on submit (no
+longer live — the validation entry above), a new account is signed in at once and the app's pages let an unconfirmed account
+through (`middleware/ConfirmedAddress.ts`; put `verified()` there to keep asking), a new address takes effect at once; `/register/sent` and `/email/change/…` answer 404, and
+the `pending_email` columns stay unused. Outside development and tests the boot then warns once (`PRIVATE_REGISTRATION_OFF_WARNING`
+of `@marmeon/auth`): the form tells anyone who has an account. Scripts and CI that call `make:auth --private-registration` or
+`create-marmeon --private-registration` keep working — drop the flag to silence the warning. `AuthConfig` has two more fields,
+`privateRegistration` and `protected`: an `AuthConfig` object you build by hand (a test double) needs them.
+
+#### Medium: `make:auth` brings `auth:prune-unverified` — accounts without a confirmed address go after `AUTH_UNVERIFIED_DAYS` once the app schedules it
+
+*Likelihood of impact: medium — every app with the module of `make:auth`, above all one with `AUTH_PRIVATE_REGISTRATION=false`.* An
+account whose address was never confirmed stays forever: whoever signed up with somebody else's address keeps holding it (a
+"pre-hijacked" account), and the data of sign-ups nobody finished stays too. The module has a command for it now:
+`auth:prune-unverified` deletes every account that **never** confirmed an address (`email_verified_at` and the new
+`first_verified_at` null) and was made more than `AUTH_UNVERIFIED_DAYS` ago (default **7**; only whole numbers boot; `0`: it deletes
+none) — through the module's new `AccountDeletion`: the row (remember-me and API tokens cascade), its reset token, what other modules
+keep (they listen to `AccountDeleted`, in the same transaction) and its sessions (`UserSessions` of `@marmeon/session`: removed from
+the `database` store, ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** An
+account that was confirmed once never goes — `users.first_verified_at` keeps the first confirmation for good (the verification link
+sets it), so a pending change (private registration) or an unconfirmed new address (`AUTH_PRIVATE_REGISTRATION=false`) leaves it alone.
+
+**The module does not schedule it:** deleting accounts is the app's decision — an app whose model has unconfirmed accounts on
+purpose (an invited team, an import) must not lose them to a framework default. `modules/auth/schedule.ts` has the line, commented out
+with what it does; the app turns it on (the web app of this repository does):
+
+```ts
+// modules/auth/schedule.ts — the line, off           // modules/auth/index.ts — new
+// s.command('auth:prune-unverified').daily().at('03:20').onOneServer();      commands: [PruneUnverifiedCommand],
+```
+
+- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have used the app for days before it goes,
+  if it never clicks its link — once the schedule runs it. Tell your users in the verification mail, or raise the days.
+- **A new column, `users.first_verified_at`** (migration `0001_01_01_000005_add_first_verified_at_to_users_table.ts`): it fills
+  itself from `email_verified_at` for every account confirmed before; `markEmailVerified` (and the confirmed change of address) set
+  it with `coalesce(first_verified_at, now)`. A factory or seeder of your own that makes confirmed users sets it too.
+- An app made with `make:auth` before: copy the migration, `AccountDeletion.ts`, `commands/PruneUnverifiedCommand.ts`, the methods
+  `unconfirmedSince`/`deleteAccounts` and the new `markEmailVerified` of `UserRepository.ts`, the factory, the (commented) schedule
+  line and `commands` from the stubs (`packages/auth/stubs/react/modules/auth/`), or run `marmeon make:auth --force` on a clean tree
+  and merge. Without them nothing is deleted; without the schedule line nothing is deleted by itself — `marmeon auth:prune-unverified`
+  runs it by hand.
+- New API: `UserSessions` (`end(userId)`) and the optional `SessionStore#destroyUser(userId)` (the `database` store has it), and
+  `Inbox#deleteAll(recipient)` of `@marmeon/notifications`. The boot no longer warns about `AUTH_UNVERIFIED_DAYS=0`
+  (`UNVERIFIED_KEPT_NOTICE` of the development builds is gone): without a schedule there is nothing to warn about.
+
+The way back: leave the schedule line off (the default) — or, where it runs, `AUTH_UNVERIFIED_DAYS=0` or a larger number of days.
+
 #### Medium: `queue:work` takes every queue, fairly — a `--queue` list keeps its strict order
 
 *Likelihood of impact: medium — apps with more than one queue, and every app with `make:auth` (its mails go to `mail`).* A worker
 without `--queue` took only the connection's queue (`default`): the auth module's mails waited unless the worker was started with
 `--queue=mail,default` — and even then they waited behind a full `default` queue, because a list is a strict priority. Now a worker
-without `--queue` takes **every queue, fairly** (E199): the `database` driver the oldest due job of all queues in one statement
+without `--queue` takes **every queue, fairly**: the `database` driver the oldest due job of all queues in one statement
 (an expired claim first), `redis` the queues in turn. `--queue=*` alone means the same; `--queue=mail,default` still narrows a
-worker down to these queues in strict order (Laravel's), and `*` in a list stands for every queue it does not name
+worker down to these queues in strict order, and `*` in a list stands for every queue it does not name
 (`--queue=mail,*`). `marmeon dev`, `make:docker`'s compose file and systemd unit, the starter's README and `make:auth`'s hint start
 the worker without `--queue`.
 
@@ -184,13 +334,23 @@ marmeon queue:work --queue=*        # alphabetically  marmeon queue:work --queue
 The way back: name the queues in the order you want them — `--queue=default,mail` is the strict order of before, `--queue=default`
 the old default. A priority without starving the rest: two workers, one without `--queue` and one with `--queue=mail`.
 
+#### Medium: SMTP requires TLS — STARTTLS or no mail (`MAIL_REQUIRE_TLS`)
+
+*Likelihood of impact: medium — apps with `MAIL_MAILER=smtp` on a server without TLS (a local relay, Mailpit).* Without
+`MAIL_SECURE=true` the SMTP transport upgraded with STARTTLS only when the server offered it — and sent in plain text when it did not:
+a server without STARTTLS, or someone on the network who strips the offer, got the credentials and every mail, reset links
+included. Now STARTTLS is required: such a send fails (a queued mail is retried and lands with the failed jobs) instead of going
+out unencrypted. `MAIL_SECURE=true` (TLS from the first byte, port 465) is unchanged. A server without TLS that you trust — Mailpit on
+port 1025, a relay on the same machine — takes `MAIL_REQUIRE_TLS=false` (commented in `.env.example`); `new SmtpTransport({ …,
+requireTls: false })` the same. The old behaviour: `MAIL_REQUIRE_TLS=false`.
+
 #### Medium: the framework's look is a stylesheet — import `@marmeon/react/styles.css`, `LayerDialog`'s `style` arrives after the mount
 
 *Likelihood of impact: medium — every app that shows layers, `ConfirmDialog`, the failure dialogs or the built-in error page, and every
 app with `make:auth`.* The framework gave its components their default look as inline `style` props — `LayerDialog`, `ConfirmDialog`,
 the dialogs of a failed visit, the built-in error page and `make:auth`'s layouts. Rendered on the server (a deep link to a layer, a
 404, a sign-in page) they became `style` attributes, which a strict Content-Security-Policy (`style-src` without `'unsafe-inline'`)
-blocks — a nonce does not cover attributes, and React does not add a blocked attribute while it hydrates (E202). Now they render
+blocks — a nonce does not cover attributes, and React does not add a blocked attribute while it hydrates. Now they render
 classes, and the look is a stylesheet of the app's origin: `@marmeon/react/styles.css`. Import it once in the client entry —
 `marmeon build` puts it into the stylesheet the built `index.html` links:
 
@@ -223,48 +383,10 @@ import '../modules/auth/auth.css';         // make:auth's module, if the app has
 The way back: none needed. An app that styled `[data-marmeon-layer]` itself can leave the import out and keep its rules — set what it
 took from the old inline defaults.
 
-#### Medium: `make:auth` brings `auth:prune-unverified` — accounts without a confirmed address go after `AUTH_UNVERIFIED_DAYS` once the app schedules it
-
-*Likelihood of impact: medium — every app with the module of `make:auth`, above all one with `AUTH_PRIVATE_REGISTRATION=false`.* An
-account whose address was never confirmed stays forever: whoever signed up with somebody else's address keeps holding it (a
-"pre-hijacked" account), and the data of sign-ups nobody finished stays too. The module has a command for it now (E203):
-`auth:prune-unverified` deletes every account that **never** confirmed an address (`email_verified_at` and the new
-`first_verified_at` null) and was made more than `AUTH_UNVERIFIED_DAYS` ago (default **7**; only whole numbers boot; `0`: it deletes
-none) — through the module's new `AccountDeletion`: the row (remember-me and API tokens cascade), its reset token, what other modules
-keep (they listen to `AccountDeleted`, in the same transaction) and its sessions (`UserSessions` of `@marmeon/session`: removed from
-the `database` store, ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** An
-account that was confirmed once never goes — `users.first_verified_at` keeps the first confirmation for good (the verification link
-sets it), so a pending change (private registration) or an unconfirmed new address (`AUTH_PRIVATE_REGISTRATION=false`) leaves it alone.
-
-**The module does not schedule it (E209):** deleting accounts is the app's decision — an app whose model has unconfirmed accounts on
-purpose (an invited team, an import) must not lose them to a framework default. `modules/auth/schedule.ts` has the line, commented out
-with what it does; the app turns it on (the web app of this repository does):
-
-```ts
-// modules/auth/schedule.ts — the line, off           // modules/auth/index.ts — new
-// s.command('auth:prune-unverified').daily().at('03:20').onOneServer();      commands: [PruneUnverifiedCommand],
-```
-
-- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have used the app for days before it goes,
-  if it never clicks its link — once the schedule runs it. Tell your users in the verification mail, or raise the days.
-- **A new column, `users.first_verified_at`** (migration `0001_01_01_000005_add_first_verified_at_to_users_table.ts`): it fills
-  itself from `email_verified_at` for every account confirmed before; `markEmailVerified` (and the confirmed change of address) set
-  it with `coalesce(first_verified_at, now)`. A factory or seeder of your own that makes confirmed users sets it too.
-- An app made with `make:auth` before: copy the migration, `AccountDeletion.ts`, `commands/PruneUnverifiedCommand.ts`, the methods
-  `unconfirmedSince`/`deleteAccounts` and the new `markEmailVerified` of `UserRepository.ts`, the factory, the (commented) schedule
-  line and `commands` from the stubs (`packages/auth/stubs/react/modules/auth/`), or run `marmeon make:auth --force` on a clean tree
-  and merge. Without them nothing is deleted; without the schedule line nothing is deleted by itself — `marmeon auth:prune-unverified`
-  runs it by hand.
-- New API: `UserSessions` (`end(userId)`) and the optional `SessionStore#destroyUser(userId)` (the `database` store has it), and
-  `Inbox#deleteAll(recipient)` of `@marmeon/notifications`. The boot no longer warns about `AUTH_UNVERIFIED_DAYS=0`
-  (`UNVERIFIED_KEPT_NOTICE` of the earlier Wave 10 builds is gone): without a schedule there is nothing to warn about.
-
-The way back: leave the schedule line off (the default) — or, where it runs, `AUTH_UNVERIFIED_DAYS=0` or a larger number of days.
-
-#### Low: `@marmeon/validation` — Laravel's rules, typed; Standard Schema stays the contract
+#### Low: `@marmeon/validation` — rules, typed; Standard Schema stays the contract
 
 *Likelihood of impact: low — nothing has to change; apps whose schemas build messages with `translatable()`/`trans()`.* A new package
-(E197): `import { rules as r } from '@marmeon/validation'` builds request, query and config schemas with Laravel's names —
+`import { rules as r } from '@marmeon/validation'` builds request, query and config schemas from chained rules —
 `r.string().trim().required().max(255)`, `r.query({ page: r.integer().min(1).default(1) })`, `r.env({ APP_PORT: r.port().default(3960) })` —
 with messages in the request's language (`marmeon.validation.*`, English and German in `@marmeon/i18n`), the first problem of a field
 only, and `unique`/`exists` that get their repository from the request and **never run in a live validation** unless the rule says
@@ -273,7 +395,7 @@ only, and `unique`/`exists` that get their repository from the request and **nev
 keeps working everywhere (the stubs, templates and helpers moved to `rules` — the Medium entry above).
 
 What changes for every app, quietly: `validateRequest` hands each schema `libraryOptions: { marmeon: { resolve, ctx, live } }` (other
-libraries ignore it); `defineRequest` takes `messages` and `attributes` (Laravel's `messages()`/`attributes()`); a message made with
+libraries ignore it); `defineRequest` takes `messages` and `attributes`; a message made with
 `translatable()`/`trans()` may name its field with `{attribute}` (the path with underscores as spaces, or the request's `attributes`);
 a live validation drops an issue a rule marked as not live. The Standard Schema interface lives in `@marmeon/core` only — the router
 re-exports the same types (`@marmeon/router` now depends on `@marmeon/core`, types only). The guide:
@@ -284,11 +406,11 @@ The way back: none needed — schemas of Valibot, Zod or any Standard Schema lib
 #### Low: a live validation runs no schema of another library — `live: true` lets it
 
 *Likelihood of impact: low — apps whose request schemas are Zod, ArkType, Valibot or another library's, and that check fields live
-(`useForm(…, { validate })`).* A live validation (E62) ran the whole schema of any library — an async `refine()` that asks the
+(`useForm(…, { validate })`).* A live validation ran the whole schema of any library — an async `refine()` that asks the
 database answered "taken" while an address was typed, to anyone, without a submit. The router cannot see which of another library's
-checks ask the database, so it no longer runs one live (E206, decided by Max, 08.10.): the answer is `204`, as for a valid field;
-the submit validates as before. `rules` of `@marmeon/validation` are unchanged — they run live and keep their database checks out
-(E197). A request opts its schema in when nothing it checks tells more than a submit:
+checks ask the database, so it no longer runs one live: the answer is `204`, as for a valid field; the submit validates as before.
+`rules` of `@marmeon/validation` are unchanged — they run live and keep their database checks out. A request opts its schema in
+when nothing it checks tells more than a submit:
 
 ```ts
 export const RenameTeamRequest = defineRequest({ schema: z.object({ slug: z.string().refine(…) }), live: true });
@@ -319,387 +441,6 @@ already been taken." even where the request names the field (`attributes: { emai
 An error with labels of its own keeps them. The way back: none needed — pass labels to `ValidationError.fromIssues(…, labels)` to
 choose others.
 
-#### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
-
-*Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,
-[CONTRIBUTING](CONTRIBUTING.md#dependencies-of-drivers)): a package that wraps exactly one driver brings it. `@marmeon/redis` depends
-on `redis` (node-redis `^6.2.1`, before an optional peer `^5 || ^6`), and `@marmeon/mail` on `nodemailer` (`^10`, the decided
-exception: no dependencies of its own, the production path). Before: `pnpm add @marmeon/redis redis`, and `pnpm add nodemailer` for
-`MAIL_MAILER=smtp`; after: `pnpm add @marmeon/redis`, and nothing for SMTP. The app's own `redis`/`nodemailer` entries can go unless
-its code imports them — kept, they do no harm (the same major is one copy); node-redis 5 is no longer what the framework talks to.
-Gone with the missing client: `RedisSetupError`, `REDIS_INSTALL`, `loadRedisClient`, the type `ImportRedisClient` and the
-`importClient` option of `RedisConnections`. A starter-kit install grows by `nodemailer` (≈ 1.9 MB, one package).
-
-The drivers that stay optional peers — the AWS SDK (`@marmeon/storage`), `mjml` (`@marmeon/mail`), `pg` (`@marmeon/database`) — and
-the shared peers `@opentelemetry/api` and `vite` are named with the tested major: `pnpm add @aws-sdk/client-s3@^3
-@aws-sdk/s3-request-presigner@^3`, `pnpm add @aws-sdk/s3-presigned-post@^3`, `pnpm add mjml@^5`, `pnpm add pg@^8`,
-`pnpm add @opentelemetry/api@^1`, `pnpm add -D vite@^8 @marmeon/vite`. A default disk or `UPLOADS_DISK` on S3 without the SDK now fails
-the start (it failed the first use); an S3 disk the app only names still says it on first use. A broken install of `mjml` or `pg`
-shows its own error instead of "install it". The table of what to install for which driver: [deployment](docs/deployment.md#drivers-what-an-app-installs).
-
-The way back: none needed — an app's own `redis` or `nodemailer` entry may stay (the same major is one copy); an S3 default disk
-that should start without the SDK is not possible any more (it failed on first use before).
-
-#### Low: `uploads:prune --hours` below `UPLOADS_LIFETIME` needs `--force`
-
-*Likelihood of impact: low — scripts that call `uploads:prune --hours=0` (or below the token lifetime).* `--hours=0` deleted every
-temporary upload — also those whose token still worked (a form still open lost its file). Now `--hours` below `UPLOADS_LIFETIME`
-(default 120 minutes) stops with the reason and exit code 1; `--force` deletes them anyway. The scheduled `uploads:prune` (24 hours)
-is not affected. The way back: add `--force`.
-
-#### Low: what a failure shows loads when it happens — the dialog of a 5xx and the error pages are a chunk of their own
-
-*Likelihood of impact: low — apps that count on the error dialog appearing in the same tick, and tests that look for it at once.*
-The dialog with the server's error page (a 5xx answer to a visit), the app's error page for a page that threw while rendering and the
-built-in `errors/Error` are a chunk of their own (E202, like the layers, E71): `<MarmeonApp>` loads it when the failure happens — about
-0.4 KB gzip less in every first download. The error boundary and the notice of an unreachable server stay in the first download (offline,
-no chunk loads). If the chunk cannot load either, a 5xx shows that notice and a page that threw shows nothing in its place — never an
-error of its own. A test that looks for `dialog[data-marmeon-failure="server"]` right after the visit waits a tick for it (`findBy…`,
-a settle). The way back: none needed.
-
-#### Low: a session draws its CSRF token when something needs it — a guest's request makes none
-
-*Likelihood of impact: low — code that reads `session.currentToken()`, and custom middleware that expects every session to have a
-`_token`.* `Session.start()` made a token for every new session — 30 random bytes per guest request, thrown away with the session
-that was never kept (E143). Now the token is made on demand (E203): the first `session.token()`, a page of a kept session
-(`page.csrf`) or the `XSRF-TOKEN` cookie of a kept session makes it, once; signing in and out (`regenerate()`, `invalidate()`) renew
-it at once, as before. The check is unchanged: a post that needs the token and has none is a 419. `currentToken()` (internal) is
-`string | undefined` now — `undefined` for a session that never needed one. An island resolved in-process gives its page's token;
-one that reads a session without a token gives none (never one it made and cannot save). The way back: none needed — call
-`session.token()` where you need the token.
-
-#### Low: `make:auth` — a change of address keeps an account's confirmation, and `emailTaken()` is gone
-
-*Likelihood of impact: low — apps made with `make:auth` whose accounts were confirmed by `email_verified_at` alone (an import, a
-seeder, an admin tool) and that run with `AUTH_PRIVATE_REGISTRATION=false`.* With the open registration a change of address clears
-`email_verified_at` at once; an account that had only that (no `first_verified_at`) became "never confirmed" — and
-`auth:prune-unverified` deleted it seven days later. `changeEmail()` of the module's `UserRepository` now keeps the confirmation first:
-`first_verified_at = coalesce(first_verified_at, email_verified_at)`. The module is your app's code — add the line to your
-`changeEmail()`:
-
-```ts
-await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
-```
-
-`UserRepository.emailTaken()` is gone from the stubs: nothing used it, and "is this address taken?" is what the private registration
-never answers (E146). The way back: none needed — an app that wants the live check writes it with `findByEmail()`
-([validation](docs/validation.md#database-rules-and-why-they-never-run-live)).
-
-#### Low: a table's and an inbox's cursors belong to their list — `name` in `CursorOptions`
-
-*Likelihood of impact: low — cursors kept in URLs across the upgrade.* An encrypted cursor was bound to its order (columns,
-direction) only: one of another list with the same order decrypted — as a position among this list's rows. `cursorPaginate` takes
-an optional `name` now, part of the cursor's context: a table passes its name, an inbox its recipient — another table's or another
-recipient's cursor is a 400 (`InvalidCursorError`). A cursor of a table or an inbox from before the upgrade is a 400 once ("load more"
-starts again from the first page). Unnamed lists are unchanged. The way back: none needed — name your own lists
-(`name: 'articles'`) to get the same.
-
-#### Low: a table's default sort is a column everyone sees — `defaultSort` refuses one with `.visible()`
-
-*Likelihood of impact: low — tables whose `defaultSort` (or first sortable column) has `.visible(…)`.* The default sort of such a
-column answered every user who may not see it with a 400 on the page itself, without a `?sort=` of their own ("does not sort by
-that"). `defineTable` refuses it now — a compile error (`'-email' is a column with .visible() — whoever may not see it would get a 400;
-…`) and a `TypeError` at the start — and without `defaultSort` takes the first sortable column without `.visible()`. The way back:
-none — sort by a column everyone sees; whoever may see the hidden one sorts by it in the URL.
-
-#### Low: staging takes the production branches of the browser code and of server rendering — short codes, no development warnings
-
-*Likelihood of impact: low — apps on a staging server (`NODE_ENV=staging`) or built with one.* The client core, the React adapter,
-the table's client and server rendering asked `process.env.NODE_ENV !== 'production'` for their explanations, warnings, devtools
-hooks and error details — so `NODE_ENV=staging` (and any other value) took the development branch wherever the value is read at run
-time: in server rendering always, in the browser when `marmeon build` ran with `NODE_ENV=staging`. They ask positively now (E201):
-`process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`. On staging an error says its code (`[marmeon:R2] users/Show`
-instead of the explanation), the late-`<Head>` warning and the hydration notice on the page are gone, the devtools hook is never
-called, and a React error page rendered on the server shows no exception message. Development and tests are unchanged; a production
-client bundle is byte for byte the same. Two things stay as they were and are worth knowing: React renders with **its** development
-build wherever `NODE_ENV` is not `production` (server rendering on staging; the browser too after a `NODE_ENV=staging` build), and
-that build sends the message and stack of an error thrown after the shell into the page — see [deployment](docs/deployment.md#configuration). Code of your own that does the same check: `pnpm check:source` refuses
-`!== 'production'` in this repository's packages; an app's code is its own.
-
-The way back: none needed — to read a full message on staging, run the app with `NODE_ENV=development` on a machine of your own.
-
-#### Low: the mail previews answer only `localhost` and the host of `APP_URL` — the devtools' host check moved to `@marmeon/core/dev`
-
-*Likelihood of impact: low — developers who open `/_marmeon/mail` through another host name, and code that imported `allowedHosts`,
-`LOOPBACK_HOSTS` or `hostAllowed` from `@marmeon/devtools`.* The mail previews (development only) had no host check: behind a DNS
-rebinding a page on another site could read them — Vite's own host check is skipped under HTTPS. They now sit behind the same guard
-as the devtools (E200): `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL` get the page, any other `Host` a 403; every
-answer is `no-store`, `nosniff`, `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`, without CORS headers. The guard lives
-in `@marmeon/core/dev`: `devHosts(appUrl)` (before `allowedHosts` of `@marmeon/devtools`), `hostAllowed(request, hosts)`,
-`LOOPBACK_HOSTS`, and `devOnly(hosts, handler)` for a development route of your own; `@marmeon/devtools` no longer exports them.
-
-```ts
-// before                                                   // after
-import { allowedHosts, hostAllowed } from '@marmeon/devtools';   import { devHosts, devOnly, hostAllowed } from '@marmeon/core/dev';
-const hosts = allowedHosts(env.APP_URL);                    const hosts = devHosts(env.APP_URL);
-                                                            Route.get('/_dev/report', devOnly(hosts, () => report()));
-```
-
-The way back: open the previews through `localhost` or set `APP_URL` to the host you use.
-
-#### Low: development routes answer 404 outside development — whatever their host
-
-*Likelihood of impact: low — apps with a development route of their own behind `devOnly()`.* `devOnly(hosts, handler)` checked the
-host only: a route of your own registered without asking the environment answered on a server too — and there the host of `APP_URL`
-is the public one. Now the guard answers **404** unless `NODE_ENV` is `development` (or `test`, for the app's tests) — asked on every
-request, positively (E115, fail-closed); the host check stays as it was. The framework's own development routes are registered in
-development only, so they are unchanged. The way back: none — a route that must answer on a server is no development route; give it a
-guard of its own.
-
-#### Low: `marmeon build` builds for production next to a development `.env`
-
-*Likelihood of impact: low — builds that ran on a developer's machine (`pnpm build`) and were served.* `marmeon build` took
-`NODE_ENV=development` from the app's `.env` (E170) — and Vite baked the development branches and React's development build into
-`dist/client`: error messages and stacks for every visitor. A `NODE_ENV=development` **from `.env`** is now set aside — the build runs with
-`NODE_ENV=production` (set, not removed: Vite reads the `.env` files itself) — and says so (`NODE_ENV=development of .env is for the commands of this machine — marmeon build builds for production.`). A `NODE_ENV`
-set in the environment itself is respected, with a warning unless it is `production`; without any, the build sets `production`
-(as `marmeon start` does). Images, CI and `pack:smoke` built without a `.env` already. The way back: `NODE_ENV=development pnpm build` — with its warning.
-
-#### Low: `marmeon dev` stops its queue worker and scheduler — on SIGTERM, on every restart, and when the server dies
-
-*Likelihood of impact: low — development machines that ended `marmeon dev` other than with Ctrl+C, or changed server code while it ran.*
-Vite 8's dev server loads Rolldown, whose `signal-exit` re-raises a signal when it finds itself the only listener — and the server's own
-SIGTERM listener was a `once`, gone by then: the server ended without its shutdown, and the `queue:work` and `schedule:work` it had
-started kept running — after a SIGTERM to `marmeon dev` and after **every restart of `node --watch`** (a second worker per code change).
-The server keeps its listeners now (a drain on SIGTERM again), and each companion has an IPC channel to it: when the channel closes — the
-server killed or crashed — the companion stops as on SIGTERM (its running job finishes). The way back: none needed. Leftovers of before:
-`ps -o pid,ppid,command -ax | grep "queue:work\|schedule:work"` (parent `1`) and `kill <PID>` — never a pattern kill.
-
-#### Low: a caller's `traceparent` is a link of the request's span — `OTEL_TRUST_TRACEPARENT=true` continues its trace
-
-*Likelihood of impact: low — apps with `@marmeon/otel` whose traces span services.* A request's server span continued the trace of
-any `traceparent` header — so a client chose the trace its requests landed in, and its sampled flag decided whether they were
-recorded at all (`-00` turned tracing off for it, `-01` on past your sampler). Now every request from outside starts a trace of its
-own (your sampler decides) and a valid incoming `traceparent` is a **span link** (decided by Max, 07.10.): the caller's context stays
-findable, nothing of it is taken — its baggage neither. In-process requests (islands, a layer's base) stay children of their page's,
-a job continues the trace of its dispatch (E131).
-
-```sh
-OTEL_TRUST_TRACEPARENT=true   # behind an edge (gateway, ingress, mesh) that sets or strips the header — or for an internal service
-```
-
-A trusted proxy (`TRUSTED_PROXIES`) is no such edge by itself: it usually passes the client's header on unchanged. A hand-made setup
-passes `instrument(app, api, { redactor: app.container.make(Redactor), trustTraceparent: true })` (`Redactor` of `@marmeon/core`). The way back: `OTEL_TRUST_TRACEPARENT=true`.
-
-#### Low: a `URL` in a log context is masked like text — its query token and token-like path segments
-
-*Likelihood of impact: low — log readers who searched for whole URLs logged as objects.* `logger.info('…', { link: new URL(…) })`
-wrote the URL as it was (its `toJSON`): a `?token=…` or `/reset-password/<token>` reached the log. Now `redact()` masks a `URL` and
-`URLSearchParams` like text (`token=[redacted]`, `/reset-password/[redacted]`), and the `Redactor` (devtools, error page, spans)
-shows a `URL` through `url()` instead of an empty object. A path segment of 40 or more URL-safe characters counts as a token as soon as
-it has upper- and lower-case letters (W10 step 9c: the rule before — a digit too, few `-`/`_` — let about 1 in 370 reset tokens through
-into the log); shorter segments still need a digit, lower-case slugs and UUIDs stay. The way back: none needed — log `url.pathname` or a
-field you choose.
-
-#### Low: errors the framework logs as text are masked — a URL's password, a token
-
-*Likelihood of impact: low — log readers who searched for the full text of a failure.* `redact()` masks a log context by key; a
-string is written as it is. The framework wrote errors as strings — `{ exception: String(error) }` in terminate hooks, deferred work,
-islands and a layer's base, session garbage collection, the live backend and the scheduler, and the exception handler's report put the
-error's message into the log line itself — so `postgres://app:secret@db` or `token=…` in a message reached the log in clear. Each of
-them goes through `redactText()` now (`postgres://app:***@db`, `token=[redacted]`, token-like path segments, API tokens); so do an
-island's path and a listener failure's message. The way back: none needed — your own log calls: pass the error itself or
-`redactText(String(error))` ([log](docs/logging.md#keeping-secrets-out-of-the-log)).
-
-### Wave 9 — client and navigation
-
-#### Medium: an action's or a live hint's reload replaces merged props — a deleted row stays gone
-
-*Likelihood of impact: medium — pages with `merge()`/`deepMerge()` props that an action or a live hint reloads.* A partial reload
-that **revalidates** — what an action reloads once it succeeded (`router.reloading({ only })`, `layer.reloading`, an island's
-`reloading`), what a live hint reloads, what `revalidateOnBack` reloads — now **replaces** the props it brings, also those the
-server marks `merge()` or `deepMerge()` (E183). Before, it merged them: on a list that had loaded more, a row the action deleted
-came back from the pages loaded before (the first page was merged over the old list). Now the list is what the server says — and
-starts over at its first page; "load more" (a visit or reload with `data`/`query`: `<Link query={{ cursor }} only preserveUrl>`,
-`reload({ data: { cursor }, only })`) appends as before. The difference comes from where a reload comes from, not from what it
-looks like. To keep the old behaviour for one reload: `router.reloading({ only: ['people'], reset: [] })` (`reset` names the
-props it replaces — default: all it brings). Live hints and `revalidateOnBack` have no switch: they replace.
-
-#### Medium: `paginate` takes `ctx.query` — `pageQuery()` in the query schema, `paginationFrom` deprecated
-
-*Likelihood of impact: medium — controllers that paginate with `paginationFrom(ctx.query)`.* The page of a list is now a part of
-the route's query schema: spread `pageQuery({ perPage: [25, 50, 100] })` (`@marmeon/database`) into it — `?page=` and
-`?per_page=` parsed like every query field (an invalid value falls back to its default, never a 422; `ctx.query.per_page` typed
-`25 | 50 | 100`) — and hand `paginate(db, query, ctx.query)` / `repository.paginate(query, ctx.query)` the parsed query. A query
-without a page is a type error that says so. `paginationFrom` keeps working (it reads a parsed query object now too) but is
-deprecated: with a query schema, `ctx.query` is no `URLSearchParams`, and `<Pagination>` builds its links from the schema. Before:
-`paginate(db, q, paginationFrom(ctx.query, { perPage: 25 }))`; after: `query: v.object({ ...pageQuery({ perPage: [25, 50] }), … })`
-and `paginate(db, q, ctx.query)`. `{ page, perPage }` written out is still accepted.
-
-#### Medium: `<Pagination>` takes its links from the parsed query and its texts from `labels`
-
-*Likelihood of impact: medium — pages that render `<Pagination>`.* Its links come from the page's parsed query (`PageObject.query`
-+ `queryDefaults`, E55) instead of the address: the rest of the query (search, sort, page size) stays, the defaults stay out
-(`?page=1` is no page's URL), and keys the schema does not know are no longer carried along. On a route **with** a query schema,
-the schema needs the page's field — spread `pageQuery()` into it (development warns: R17); a route without a schema keeps its
-query string as before. Its texts are English unless the app passes its own words: `labels={{ navigation, previous, next, page:
-(n) => … }}`, from the app's language files (`useTranslation`, E38) — best in a small wrapper component of the app (see the web
-app's `layouts/Pagination.tsx`); before, every text was a fixed English literal. An app without `labels` looks as before. The old links — the address's query string carried along —
-remain for a route without a query schema; with one there is no switch back (a key the schema does not know was never the page's
-state).
-
-#### Medium: one session holds at most 16 live streams per process — the 17th tab gets a 429
-
-*Likelihood of impact: medium — apps with live props whose users keep many tabs open, and tests that open many streams for one
-session.* `GET /_marmeon/live` now counts the streams of each session (W9 step 4): beyond `LIVE_MAX_STREAMS_PER_SESSION` (default
-**16**) in one process a new stream is refused with **429** (`Retry-After: 30`, a `warn` line in the log) — the 17th tab of a browser
-gets no live hints until one of the others closes (its client tries again every 30 s). Before, one session could take every stream
-of the process (`LIVE_MAX_STREAMS`, 1000) and leave live updates dead for every other user. The counts are atomic now (fifty tabs
-opening at once never get past a limit), and a stream asked for while the server closes is refused with 503 instead of holding
-the shutdown. To allow more tabs: `LIVE_MAX_STREAMS_PER_SESSION=32` (there is no "off" — set it as high as `LIVE_MAX_STREAMS` for
-the old behaviour). A test that opens many streams for one user raises it in its environment.
-
-#### Medium: a cluster (`marmeon start` with workers) needs `LIVE_DRIVER=redis`
-
-*Likelihood of impact: medium — apps started with `marmeon start --workers=N` and the default `LIVE_DRIVER=memory`.* With the memory
-backend every worker of the cluster has its own pub/sub and its own sequences: a hint reached the tabs connected to the worker that
-sent it, and a tab that reconnected to another worker compared its sequences with another counter — live updates went missing
-without a sound. Now a worker does not start with `LIVE_DRIVER=memory` (`LiveSetupError`: "memory pub/sub never reaches the other
-workers — use LIVE_DRIVER=redis …"), and the cluster stops with the worker's code. Set `LIVE_DRIVER=redis` (with
-[@marmeon/redis](docs/redis.md)) — the web app's `.env.example` does — or start one process without `--workers`.
-One process with `memory` (`marmeon start`, `marmeon dev`) is unchanged.
-
-#### Medium: the navigator uses the Navigation API — `history.state` is null, its `navigate` events are visible
-
-*Likelihood of impact: medium — code that reads or writes `history.state`, listens to `navigation`'s `navigate` event, or builds its
-own adapter or client feature.* Where the browser has the Navigation API (Chrome, Edge, Firefox 147+, Safari 26.2+), the navigator
-writes and follows the history through it (E184): a visit commits its entry with `navigation.navigate(url, { state, info })` and
-intercepts that navigation, Back/Forward to its own entries are intercepted (`navigation.transition` — the browser's loading indicator
-while one asks the server). So **`history.state` is `null`** — an entry's state is `navigation.currentEntry.getState()` (positions
-only, as before, E36); code that read `history.state.key` or `.url` reads it there, or not at all. **The `navigate` events of visits
-reach the app's own listeners** (`navigationType` `push`/`replace`, the navigator's `info`): a listener that intercepts or cancels
-every `navigate` now also catches visits — leave the ones with an `info` you did not set alone. A plain `<a href>`, a plain form,
-another site and entries without the navigator's state stay the browser's, as before. Without the API (Safari before 26.2) nothing
-changes: the History fallback writes `history.state` as before — a chunk `createMarmeonApp` loads only then. There is no switch
-back to the History API in a browser that has the Navigation API (the two would follow the same Back twice).
-**For an adapter of your own:** load the fallback where `!window.navigation` and pass it with the features from the start
-(`new Navigator({ …, features: [await loadHistoryFallback()] })`; development warns `[marmeon:C13]`). **For a client feature:**
-`HistoryState.index` and `HistoryWriter.index` are gone (the fallback counts for itself); a feature that wrote a field into every
-entry by wrapping `host.history.push`/`replace` gives it a value instead — `host.history.field(name, check, (entry) => value)`; the
-`popState` hook gets the navigator's `HistoryState` (no longer any `history.state`), and a new `navigate` hook sees Back/Forward before
-the navigator intercepts it (the guard's).
-
-#### Medium: with private registration a change of address is pending until its link is clicked — migrate the new columns
-
-*Likelihood of impact: medium — apps made with `make:auth --private-registration` (or `create-marmeon --private-registration`);
-the default registration is unchanged.* The security page told whether an address has an account: "taken" for one, an address
-change for a free one (W9 step 9, E146/E187). Now a new address is **pending** — kept beside the account's own until the link sent
-to it is clicked while signed in; a free and a taken address get the same answer in the same time; the owner of a taken one gets a
-note (`EmailInUseMail`) and nothing changes for anybody. The account changes only with the click (then confirmed, the old address
-told as before). Your `modules/auth` is yours, so the update does not change it — take the variant over by hand:
-
-1. A migration that adds `pending_email` (string 255, nullable), `pending_email_token` (string 64, nullable, **`.secret()`**) and
-   `pending_email_expires_at` (timestamp, nullable) to `users` — `stubs/react/modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts`
-   of `@marmeon/auth`; `marmeon migrate`, then the regenerated `bootstrap/database.d.ts` (a `User` literal of yours — mail
-   previews, test doubles — needs `pending_email` and `pending_email_expires_at`).
-2. From the same directory: `email-change.ts`, the new methods of `UserRepository.ts` (`requestEmailChange`, `pendingEmailChange`,
-   `confirmEmailChange`, `cancelEmailChange`, `pruneEmailChanges`; `changeEmail` goes), `controllers/UpdateEmailController.ts`,
-   `controllers/ConfirmEmailChangeController.ts`, `controllers/ShowSecurityController.ts` and `views/Security.tsx` (the pending
-   address), `jobs/SendEmailChangeMailJob.ts` (in `jobs` of `index.ts`), `mail/ConfirmNewEmailMail.ts`, `mail/EmailInUseMail.ts`,
-   `tasks/PruneEmailChanges.ts` (in `schedule.ts`), the two routes of `routes.ts` (`throttle('email-change')` on `PUT
-   /settings/email`, the signed `/email/change/:id/:token`) and `email-change.test.ts`; the `email-change` limiter of the default
-   `AuthServiceProvider.ts` and the texts of `lang/en.ts` (`security.email_change_sent`, `security.email_pending`, `email_change.*`,
-   `mail.confirm_new_email.*`, `mail.email_in_use.*`).
-
-Until then the old controller keeps working — and keeps telling "taken". (Since E193 the templates are one module with both
-behaviours — see the next entry: the files above now read `AuthConfig.privateRegistration`.)
-
-#### Medium: the registration of `make:auth` is private by default — `AUTH_PRIVATE_REGISTRATION=false` turns it off
-
-*Likelihood of impact: medium — new auth modules (`marmeon make:auth`, `create-marmeon`'s starter kit) and scripts that pass
-`--private-registration`; a module generated before is yours and does not change.* The private registration (E146) is the
-default now, and the flag that chose it is gone (E193): `make:auth` writes **one** module whose registration and change of
-address never tell whether an address has an account — the same answer in the same time, a note to the owner instead, a
-confirmed address before the app's pages open, a pending change of address. The controllers decide at run time by
-`AuthConfig.privateRegistration` (`AUTH_PRIVATE_REGISTRATION`, default `true`; only `true` and `false` boot):
-
-| | before (0.1.0) | after (0.2.0) |
-| --- | --- | --- |
-| `marmeon make:auth` | registration says "taken", signs in at once | private |
-| `marmeon make:auth --private-registration` | private | a warning (the flag is gone) — the same module as without it |
-| `create-marmeon --private-registration` | private | a warning on stderr — the same app as without it (with `--minimal` no longer an error) |
-| Laravel-like registration in a new module | the default | `AUTH_PRIVATE_REGISTRATION=false` in `.env` |
-
-With `AUTH_PRIVATE_REGISTRATION=false` the module behaves as the old default did: a taken address is a field error (live and on
-submit), a new account is signed in at once and the app's pages let an unconfirmed account through (`middleware/ConfirmedAddress.ts`;
-put `verified()` there to keep asking), a new address takes effect at once; `/register/sent` and `/email/change/…` answer 404, and
-the `pending_email` columns stay unused. Outside development and tests the boot then warns once (`PRIVATE_REGISTRATION_OFF_WARNING`
-of `@marmeon/auth`): the form tells anyone who has an account. Scripts and CI that call `make:auth --private-registration` or
-`create-marmeon --private-registration` keep working — drop the flag to silence the warning. `AuthConfig` has two more fields,
-`privateRegistration` and `protected`: an `AuthConfig` object you build by hand (a test double) needs them.
-
-#### Medium: SMTP requires TLS — STARTTLS or no mail (`MAIL_REQUIRE_TLS`)
-
-*Likelihood of impact: medium — apps with `MAIL_MAILER=smtp` on a server without TLS (a local relay, Mailpit).* Without
-`MAIL_SECURE=true` the SMTP transport upgraded with STARTTLS only when the server offered it — and sent in plain text when it did not:
-a server without STARTTLS, or someone on the network who strips the offer, got the credentials and every mail, reset links
-included. Now STARTTLS is required (E192): such a send fails (a queued mail is retried and lands with the failed jobs) instead of going
-out unencrypted. `MAIL_SECURE=true` (TLS from the first byte, port 465) is unchanged. A server without TLS that you trust — Mailpit on
-port 1025, a relay on the same machine — takes `MAIL_REQUIRE_TLS=false` (commented in `.env.example`); `new SmtpTransport({ …,
-requireTls: false })` the same. The old behaviour: `MAIL_REQUIRE_TLS=false`.
-
-#### Low: the server keeps idle connections 65 s (`KEEP_ALIVE_TIMEOUT`)
-
-*Likelihood of impact: low — apps behind a proxy or a load balancer.* Node closes an idle keep-alive connection after 5 s; nginx (the
-`make:docker --nginx` template: `upstream { keepalive 16; }`) keeps its connections to the app 60 s — so now and then it sent a
-request on a connection the app was just closing, and the browser got a 502. The server now keeps them `KEEP_ALIVE_TIMEOUT` seconds
-(default **65**, `headersTimeout` a second longer), above nginx's upstream `keepalive_timeout` (60 s, now written into the template) and an
-AWS load balancer's idle timeout (60 s). Behind a proxy that keeps them longer (Google's load balancer: 600 s) set
-`KEEP_ALIVE_TIMEOUT` above it; an nginx config of your own with a longer `keepalive_timeout` keeps it below. Nothing to do otherwise —
-an idle connection stays open a minute longer than before (the drain on shutdown closes idle connections at once, as before).
-The old behaviour: `KEEP_ALIVE_TIMEOUT=5`.
-
-#### Low: `marmeon build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
-
-*Likelihood of impact: low — Dockerfiles and CI jobs written for 0.1.0 keep working; a provider that reads configuration while it
-registers.* `marmeon build` writes the route types (`marmeon route:types`) from the app in its **build phase** (E187,
-`createApplication({ phase: 'build' })`): every provider registered, none booted — no connection, no driver check — and the
-configuration that does not validate without `.env` (`APP_KEY`, `APP_NAME`, `APP_URL`, database passwords, mail credentials …)
-left out instead of failing. Before, the Dockerfile of `make:docker` copied `.env.example` to `.env` and generated a throwaway
-`APP_KEY` for the build; now it runs `NODE_ENV=production marmeon build` with neither, and its `.dockerignore` keeps every
-`.env*` out (no `!.env.example`). In a Dockerfile of your own, remove the `cp .env.example .env`, the
-`APP_KEY="$(marmeon key:generate --show)"` and any `ARG`/`ENV` you added only for the build. Two consequences: a provider that
-reads such a configuration in `register()` fails the build with `The configuration "…" is not available while building` — read
-it in `boot()` or later; and named routes belong where `register()` sees them — a module's `routes` (the http provider now loads
-them while registering, no longer in `boot()`) or a provider's own `register()`: routes loaded in `boot()` still serve requests
-but are no longer in `bootstrap/routes.ts`. `marmeon route:types` runs so everywhere — also `route:types --check` in CI, without
-a key. (`static boots = 'build'` is read for the built-in commands only: an app's own commands are found by booting the app, so
-they run in a booted one.)
-
-#### Low: the image runs `marmeon` under tini — rebuild it
-
-*Likelihood of impact: low — images built from a Dockerfile of `make:docker`; Compose files with `init: true`.* The final stage of
-the Dockerfile installs `tini` (the Debian package) and starts `ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]` (E187): Node as
-PID 1 reaps no orphaned process (it stayed a zombie) and the kernel drops a signal to PID 1 that has no handler yet. tini passes
-SIGTERM on and ends with marmeon's exit code — 0 after the drain, 70 for a stuck job, as before. `compose.production.yaml` no
-longer sets `init: true` and the docs no longer ask for `docker run --init` (with one, tini runs as its child and warns that it is
-not PID 1). To take it over: `marmeon make:docker --force` (it rewrites the Docker files — keep your own changes), or add the
-`apt-get install -y --no-install-recommends tini` line to the final stage, change the `ENTRYPOINT`, drop `init: true` — and
-rebuild the image.
-
-#### Low: pnpm 12.9.1
-
-*Likelihood of impact: low.* New apps pin `pnpm@12.9.1` in `packageManager`, and `make:docker` installs that version when the
-app names none (`TESTED_PNPM`). An app keeps the pnpm it pins; to follow: `pnpm self-update 12.9.1` (a standalone pnpm) or
-`npm i -g pnpm@12.9.1`, then set `"packageManager": "pnpm@12.9.1"` and run `pnpm install` once (pnpm 12 records itself in the
-lockfile).
-
-#### Low: a new app's `<title>` is its name, not "Marmeon"
-
-*Likelihood of impact: low — nothing to do.* `create-marmeon my-shop` writes `<title>My Shop</title>` into `index.html` (the
-blank app's is a neutral `<title>App</title>`); before, every new app was titled "Marmeon" until a page set its own. An
-existing app changes the `<title>` in its `index.html` by hand.
-
-#### Low: the start warns when another program holds 127.0.0.1 at its port — and a taken port fails `startServer`
-
-*Likelihood of impact: low — servers on every interface (no `HOST`, `::`, `0.0.0.0`), mostly on macOS.* macOS lets a server on every
-interface listen beside a program that holds the same port on 127.0.0.1 only — requests to `127.0.0.1:<port>` then reach that program,
-not the app (W9 step 2: `/up` answered 501). `marmeon start`/`dev` (and a cluster's primary, once) now look before listening and log a
-warning: "Another program holds 127.0.0.1:<port> — … Set HOST … or another PORT." The start goes on (elsewhere it fails with
-EADDRINUSE right after). Not looked at with `PORT=0` or a single interface in `HOST`. `startServer()` now rejects with Node's error
-(`EADDRINUSE`, `EACCES`) when it cannot listen — before, the error was an uncaught exception; `marmeon start` reports both the same
-way. No switch: set `HOST` (127.0.0.1 behind a proxy on the machine, 0.0.0.0 in a container) and the warning has nothing to say.
-
 #### Low: a list in a GET's data is the key repeated
 
 *Likelihood of impact: low — `visit`/`reload`/`useForm` GETs with a list in `data`.* `reload({ data: { role: ['admin', 'owner'] } })`
@@ -723,11 +464,28 @@ authenticated with the app key, its own context per order (columns, direction) �
 value from the URL nor make up a cursor (one of another list with the same order decrypts there, as a position among that list's
 own rows). `cursorPaginate(query, { …, encrypter })` takes the `Encrypter` (inject it from
 `@marmeon/encryption`; without it a type error); a cursor that does not decrypt — changed, of another order, of a key that
-was rotated away, or **the base64url format before Wave 9** (bookmarked "load more" URLs) — answers **400** instead of the first
+was rotated away, or **the base64url format of 0.1.0** (bookmarked "load more" URLs) — answers **400** instead of the first
 page. Also: the unique `key` (default `id`) is added as the last order by itself (`{ column: 'name' }` orders by `(name, id)`),
 a nullable sort column orders `NULLS LAST` and a NULL is a cursor like any other (before: "load more" started over), and an
 `orderBy` of the query is taken out (before it came first). There is no way back to readable cursors — they showed the values of
 the sort columns, hidden ones included.
+
+#### Low: a table's and an inbox's cursors belong to their list — `name` in `CursorOptions`
+
+*Likelihood of impact: low — cursors kept in URLs across the upgrade.* An encrypted cursor was bound to its order (columns,
+direction) only: one of another list with the same order decrypted — as a position among this list's rows. `cursorPaginate` takes
+an optional `name` now, part of the cursor's context: a table passes its name, an inbox its recipient — another table's or another
+recipient's cursor is a 400 (`InvalidCursorError`). A cursor of a table or an inbox from before the upgrade is a 400 once ("load more"
+starts again from the first page). Unnamed lists are unchanged. The way back: none needed — name your own lists
+(`name: 'articles'`) to get the same.
+
+#### Low: a table's default sort is a column everyone sees — `defaultSort` refuses one with `.visible()`
+
+*Likelihood of impact: low — tables whose `defaultSort` (or first sortable column) has `.visible(…)`.* The default sort of such a
+column answered every user who may not see it with a 400 on the page itself, without a `?sort=` of their own ("does not sort by
+that"). `defineTable` refuses it now — a compile error (`'-email' is a column with .visible() — whoever may not see it would get a 400;
+…`) and a `TypeError` at the start — and without `defaultSort` takes the first sortable column without `.visible()`. The way back:
+none — sort by a column everyone sees; whoever may see the hidden one sorts by it in the URL.
 
 #### Low: queries on a shared connection take turns — a transaction's, a test's pinned one
 
@@ -759,7 +517,7 @@ undo" for a Back the browser lets the page cancel.
 #### Low: `useRouter()` loads the page's optimistic patches on first use
 
 *Likelihood of impact: low — pages that call `router.optimistic()` or `router.reloading()`.* The code of the page's optimistic patches
-is no longer in the first download of every app with a router (W9 step 7, ≈ 0.6 KB gzip): it loads with the first
+is no longer in the first download of every app with a router (≈ 0.6 KB gzip): it loads with the first
 `router.optimistic()`/`reloading()` call, a chunk of its own. That first patch of a page shows a moment later — the time to fetch the
 chunk — every later one at once; a chunk that cannot load shows no patch, and the action's reload ends without one (its answer still
 lands). A test that asserts a patch synchronously after the first call awaits a tick. There is no switch to bundle the patches
@@ -775,7 +533,7 @@ and adds `confirm: Confirm` to `bootstrap/client.tsx` — or keeps the browser's
 
 #### Low: view transitions are opt-in — with `viewTransition: 'react'` a page change is a React transition
 
-*Likelihood of impact: low — apps that turn view transitions on (W9 step 8, E185).* Nothing changes without the option: a page change
+*Likelihood of impact: low — apps that turn view transitions on.* Nothing changes without the option: a page change
 renders as the plain update it was. `viewTransition: true` (`createMarmeonApp`, a `<Link>`, a visit) wraps the swap of a page in
 `document.startViewTransition` — the page is loaded first, its history entry and scroll follow once it is swapped in, and Back/Forward
 carry the type `back`/`forward`; none under `prefers-reduced-motion: reduce` or in a hidden tab, none for a layer. With
@@ -801,12 +559,46 @@ was a bug; a later `reset()` goes back to the saved state.
 the optimistic patches on first use, such a page failed its server render with `[marmeon:R11]` (the browser then rendered it — the
 web app's `/notifications`). On the server both now hand out a target nothing uses (actions run in the browser). Nothing to do.
 
-#### Low: `marmeon dev` answers other origins without CORS headers
+#### Low: a session draws its CSRF token when something needs it — a guest's request makes none
 
-*Likelihood of impact: low — development only.* Vite's development server answered any page on `localhost`, `127.0.0.1` or `[::1]` — at
-any port — with `Access-Control-Allow-Origin`, also on the app's own answers: a page of another local project could read the devtools'
-API, mail previews or the error page. Vite runs with `cors: false` now. The app and its modules share one origin; nothing of the
-framework needed it. No switch.
+*Likelihood of impact: low — code that reads `session.currentToken()`, and custom middleware that expects every session to have a
+`_token`.* `Session.start()` made a token for every new session — 30 random bytes per guest request, thrown away with the session
+that was never kept. Now the token is made on demand: the first `session.token()`, a page of a kept session
+(`page.csrf`) or the `XSRF-TOKEN` cookie of a kept session makes it, once; signing in and out (`regenerate()`, `invalidate()`) renew
+it at once, as before. The check is unchanged: a post that needs the token and has none is a 419. `currentToken()` (internal) is
+`string | undefined` now — `undefined` for a session that never needed one. An island resolved in-process gives its page's token;
+one that reads a session without a token gives none (never one it made and cannot save). The way back: none needed — call
+`session.token()` where you need the token.
+
+#### Low: `make:auth` — a change of address keeps an account's confirmation, and `emailTaken()` is gone
+
+*Likelihood of impact: low — apps made with `make:auth` whose accounts were confirmed by `email_verified_at` alone (an import, a
+seeder, an admin tool) and that run with `AUTH_PRIVATE_REGISTRATION=false`.* With the open registration a change of address clears
+`email_verified_at` at once; an account that had only that (no `first_verified_at`) became "never confirmed" — and
+`auth:prune-unverified` deleted it seven days later. `changeEmail()` of the module's `UserRepository` now keeps the confirmation first:
+`first_verified_at = coalesce(first_verified_at, email_verified_at)`. The module is your app's code — add the line to your
+`changeEmail()`:
+
+```ts
+await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
+```
+
+`UserRepository.emailTaken()` is gone from the stubs: nothing used it, and "is this address taken?" is what the private registration
+never answers. The way back: none needed — `findByEmail()` stays, and no check of addresses runs live
+([never in a live validation](docs/validation.md#never-in-a-live-validation)).
+
+#### Low: `verified()` treats a user without `email_verified_at` as unverified
+
+*Likelihood of impact: low — custom user providers that select columns.* The middleware let through every user whose
+`email_verified_at` was not `null` — also one whose provider did not load the column (`undefined`). It fails closed now: the notice page
+(403 for JSON). Load the column with the user.
+
+#### Low: `uploads:prune --hours` below `UPLOADS_LIFETIME` needs `--force`
+
+*Likelihood of impact: low — scripts that call `uploads:prune --hours=0` (or below the token lifetime).* `--hours=0` deleted every
+temporary upload — also those whose token still worked (a form still open lost its file). Now `--hours` below `UPLOADS_LIFETIME`
+(default 120 minutes) stops with the reason and exit code 1; `--force` deletes them anyway. The scheduled `uploads:prune` (24 hours)
+is not affected. The way back: add `--force`.
 
 #### Low: an S3 temporary URL names the content type by the file name
 
@@ -822,31 +614,223 @@ now also a private S3 disk whose `root` nests with a public S3 disk's in the sam
 the public disk's URLs (and the bucket policy that makes them public) would reach the private files. Give the disks separate
 prefixes (`root`) or buckets.
 
-#### Low: `verified()` treats a user without `email_verified_at` as unverified
+#### Low: what a failure shows loads when it happens — the dialog of a 5xx and the error pages are a chunk of their own
 
-*Likelihood of impact: low — custom user providers that select columns.* The middleware let through every user whose
-`email_verified_at` was not `null` — also one whose provider did not load the column (`undefined`). It fails closed now: the notice page
-(403 for JSON). Load the column with the user.
+*Likelihood of impact: low — apps that count on the error dialog appearing in the same tick, and tests that look for it at once.*
+The dialog with the server's error page (a 5xx answer to a visit), the app's error page for a page that threw while rendering and the
+built-in `errors/Error` are a chunk of their own (like the layers): `<MarmeonApp>` loads it when the failure happens — about
+0.4 KB gzip less in every first download. The error boundary and the notice of an unreachable server stay in the first download (offline,
+no chunk loads). If the chunk cannot load either, a 5xx shows that notice and a page that threw shows nothing in its place — never an
+error of its own. A test that looks for `dialog[data-marmeon-failure="server"]` right after the visit waits a tick for it (`findBy…`,
+a settle). The way back: none needed.
+
+#### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
+
+*Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule
+([CONTRIBUTING](CONTRIBUTING.md#dependencies-of-drivers)): a package that wraps exactly one driver brings it. `@marmeon/redis` depends
+on `redis` (node-redis `^6.2.1`, before an optional peer `^5 || ^6`), and `@marmeon/mail` on `nodemailer` (`^10`, the decided
+exception: no dependencies of its own, the production path). Before: `pnpm add @marmeon/redis redis`, and `pnpm add nodemailer` for
+`MAIL_MAILER=smtp`; after: `pnpm add @marmeon/redis`, and nothing for SMTP. The app's own `redis`/`nodemailer` entries can go unless
+its code imports them — kept, they do no harm (the same major is one copy); node-redis 5 is no longer what the framework talks to.
+Gone with the missing client: `RedisSetupError`, `REDIS_INSTALL`, `loadRedisClient`, the type `ImportRedisClient` and the
+`importClient` option of `RedisConnections`. A starter-kit install grows by `nodemailer` (≈ 1.9 MB, one package).
+
+The drivers that stay optional peers — the AWS SDK (`@marmeon/storage`), `mjml` (`@marmeon/mail`), `pg` (`@marmeon/database`) — and
+the shared peers `@opentelemetry/api` and `vite` are named with the tested major: `pnpm add @aws-sdk/client-s3@^3
+@aws-sdk/s3-request-presigner@^3`, `pnpm add @aws-sdk/s3-presigned-post@^3`, `pnpm add mjml@^5`, `pnpm add pg@^8`,
+`pnpm add @opentelemetry/api@^1`, `pnpm add -D vite@^8 @marmeon/vite`. A default disk or `UPLOADS_DISK` on S3 without the SDK now fails
+the start (it failed the first use); an S3 disk the app only names still says it on first use. A broken install of `mjml` or `pg`
+shows its own error instead of "install it". The table of what to install for which driver: [deployment](docs/deployment.md#drivers-what-an-app-installs).
+
+The way back: none needed — an app's own `redis` or `nodemailer` entry may stay (the same major is one copy); an S3 default disk
+that should start without the SDK is not possible any more (it failed on first use before).
+
+#### Low: the server keeps idle connections 65 s (`KEEP_ALIVE_TIMEOUT`)
+
+*Likelihood of impact: low — apps behind a proxy or a load balancer.* Node closes an idle keep-alive connection after 5 s; nginx (the
+`make:docker --nginx` template: `upstream { keepalive 16; }`) keeps its connections to the app 60 s — so now and then it sent a
+request on a connection the app was just closing, and the browser got a 502. The server now keeps them `KEEP_ALIVE_TIMEOUT` seconds
+(default **65**, `headersTimeout` a second longer), above nginx's upstream `keepalive_timeout` (60 s, now written into the template) and an
+AWS load balancer's idle timeout (60 s). Behind a proxy that keeps them longer (Google's load balancer: 600 s) set
+`KEEP_ALIVE_TIMEOUT` above it; an nginx config of your own with a longer `keepalive_timeout` keeps it below. Nothing to do otherwise —
+an idle connection stays open a minute longer than before (the drain on shutdown closes idle connections at once, as before).
+The old behaviour: `KEEP_ALIVE_TIMEOUT=5`.
+
+#### Low: `marmeon build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
+
+*Likelihood of impact: low — Dockerfiles and CI jobs written for 0.1.0 keep working; a provider that reads configuration while it
+registers.* `marmeon build` writes the route types (`marmeon route:types`) from the app in its **build phase**
+(`createApplication({ phase: 'build' })`): every provider registered, none booted — no connection, no driver check — and the
+configuration that does not validate without `.env` (`APP_KEY`, `APP_NAME`, `APP_URL`, database passwords, mail credentials …)
+left out instead of failing. Before, the Dockerfile of `make:docker` copied `.env.example` to `.env` and generated a throwaway
+`APP_KEY` for the build; now it runs `NODE_ENV=production marmeon build` with neither, and its `.dockerignore` keeps every
+`.env*` out (no `!.env.example`). In a Dockerfile of your own, remove the `cp .env.example .env`, the
+`APP_KEY="$(marmeon key:generate --show)"` and any `ARG`/`ENV` you added only for the build. Two consequences: a provider that
+reads such a configuration in `register()` fails the build with `The configuration "…" is not available while building` — read
+it in `boot()` or later; and named routes belong where `register()` sees them — a module's `routes` (the http provider now loads
+them while registering, no longer in `boot()`) or a provider's own `register()`: routes loaded in `boot()` still serve requests
+but are no longer in `bootstrap/routes.ts`. `marmeon route:types` runs so everywhere — also `route:types --check` in CI, without
+a key. (`static boots = 'build'` is read for the built-in commands only: an app's own commands are found by booting the app, so
+they run in a booted one.)
+
+#### Low: the image runs `marmeon` under tini — rebuild it
+
+*Likelihood of impact: low — images built from a Dockerfile of `make:docker`; Compose files with `init: true`.* The final stage of
+the Dockerfile installs `tini` (the Debian package) and starts `ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]`: Node as
+PID 1 reaps no orphaned process (it stayed a zombie) and the kernel drops a signal to PID 1 that has no handler yet. tini passes
+SIGTERM on and ends with marmeon's exit code — 0 after the drain, 70 for a stuck job, as before. `compose.production.yaml` no
+longer sets `init: true` and the docs no longer ask for `docker run --init` (with one, tini runs as its child and warns that it is
+not PID 1). To take it over: `marmeon make:docker --force` (it rewrites the Docker files — keep your own changes), or add the
+`apt-get install -y --no-install-recommends tini` line to the final stage, change the `ENTRYPOINT`, drop `init: true` — and
+rebuild the image.
+
+#### Low: pnpm 12.9.1
+
+*Likelihood of impact: low.* New apps pin `pnpm@12.9.1` in `packageManager`, and `make:docker` installs that version when the
+app names none (`TESTED_PNPM`). An app keeps the pnpm it pins; to follow: `pnpm self-update 12.9.1` (a standalone pnpm) or
+`npm i -g pnpm@12.9.1`, then set `"packageManager": "pnpm@12.9.1"` and run `pnpm install` once (pnpm 12 records itself in the
+lockfile).
+
+#### Low: a new app's `<title>` is its name, not "Marmeon"
+
+*Likelihood of impact: low — nothing to do.* `create-marmeon my-shop` writes `<title>My Shop</title>` into `index.html` (the
+blank app's is a neutral `<title>App</title>`); before, every new app was titled "Marmeon" until a page set its own. An
+existing app changes the `<title>` in its `index.html` by hand.
+
+#### Low: the start warns when another program holds 127.0.0.1 at its port — and a taken port fails `startServer`
+
+*Likelihood of impact: low — servers on every interface (no `HOST`, `::`, `0.0.0.0`), mostly on macOS.* macOS lets a server on every
+interface listen beside a program that holds the same port on 127.0.0.1 only — requests to `127.0.0.1:<port>` then reach that program,
+not the app (`/up` answered 501). `marmeon start`/`dev` (and a cluster's primary, once) now look before listening and log a
+warning: "Another program holds 127.0.0.1:<port> — … Set HOST … or another PORT." The start goes on (elsewhere it fails with
+EADDRINUSE right after). Not looked at with `PORT=0` or a single interface in `HOST`. `startServer()` now rejects with Node's error
+(`EADDRINUSE`, `EACCES`) when it cannot listen — before, the error was an uncaught exception; `marmeon start` reports both the same
+way. No switch: set `HOST` (127.0.0.1 behind a proxy on the machine, 0.0.0.0 in a container) and the warning has nothing to say.
+
+#### Low: staging takes the production branches of the browser code and of server rendering — short codes, no development warnings
+
+*Likelihood of impact: low — apps on a staging server (`NODE_ENV=staging`) or built with one.* The client core, the React adapter,
+the table's client and server rendering asked `process.env.NODE_ENV !== 'production'` for their explanations, warnings, devtools
+hooks and error details — so `NODE_ENV=staging` (and any other value) took the development branch wherever the value is read at run
+time: in server rendering always, in the browser when `marmeon build` ran with `NODE_ENV=staging`. They ask positively now:
+`process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`. On staging an error says its code (`[marmeon:R2] users/Show`
+instead of the explanation), the late-`<Head>` warning and the hydration notice on the page are gone, the devtools hook is never
+called, and a React error page rendered on the server shows no exception message. Development and tests are unchanged; a production
+client bundle is byte for byte the same. Two things stay as they were and are worth knowing: React renders with **its** development
+build wherever `NODE_ENV` is not `production` (server rendering on staging; the browser too after a `NODE_ENV=staging` build), and
+that build sends the message and stack of an error thrown after the shell into the page — see [deployment](docs/deployment.md#configuration). Code of your own that does the same check: `pnpm check:source` refuses
+`!== 'production'` in this repository's packages; an app's code is its own.
+
+The way back: none needed — to read a full message on staging, run the app with `NODE_ENV=development` on a machine of your own.
+
+#### Low: the mail previews answer only `localhost` and the host of `APP_URL` — the devtools' host check moved to `@marmeon/core/dev`
+
+*Likelihood of impact: low — developers who open `/_marmeon/mail` through another host name, and code that imported `allowedHosts`,
+`LOOPBACK_HOSTS` or `hostAllowed` from `@marmeon/devtools`.* The mail previews (development only) had no host check: behind a DNS
+rebinding a page on another site could read them — Vite's own host check is skipped under HTTPS. They now sit behind the same guard
+as the devtools: `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL` get the page, any other `Host` a 403; every
+answer is `no-store`, `nosniff`, `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`, without CORS headers. The guard lives
+in `@marmeon/core/dev`: `devHosts(appUrl)` (before `allowedHosts` of `@marmeon/devtools`), `hostAllowed(request, hosts)`,
+`LOOPBACK_HOSTS`, and `devOnly(hosts, handler)` for a development route of your own; `@marmeon/devtools` no longer exports them.
+
+```ts
+// before                                                   // after
+import { allowedHosts, hostAllowed } from '@marmeon/devtools';   import { devHosts, devOnly, hostAllowed } from '@marmeon/core/dev';
+const hosts = allowedHosts(env.APP_URL);                    const hosts = devHosts(env.APP_URL);
+                                                            Route.get('/_dev/report', devOnly(hosts, () => report()));
+```
+
+The way back: open the previews through `localhost` or set `APP_URL` to the host you use.
+
+#### Low: development routes answer 404 outside development — whatever their host
+
+*Likelihood of impact: low — apps with a development route of their own behind `devOnly()`.* `devOnly(hosts, handler)` checked the
+host only: a route of your own registered without asking the environment answered on a server too — and there the host of `APP_URL`
+is the public one. Now the guard answers **404** unless `NODE_ENV` is `development` (or `test`, for the app's tests) — asked on every
+request, positively (fail-closed); the host check stays as it was. The framework's own development routes are registered in
+development only, so they are unchanged. The way back: none — a route that must answer on a server is no development route; give it a
+guard of its own.
+
+#### Low: `marmeon build` builds for production next to a development `.env`
+
+*Likelihood of impact: low — builds that ran on a developer's machine (`pnpm build`) and were served.* `marmeon build` took
+`NODE_ENV=development` from the app's `.env` — and Vite baked the development branches and React's development build into
+`dist/client`: error messages and stacks for every visitor. A `NODE_ENV=development` **from `.env`** is now set aside — the build runs with
+`NODE_ENV=production` (set, not removed: Vite reads the `.env` files itself) — and says so (`NODE_ENV=development of .env is for the commands of this machine — marmeon build builds for production.`). A `NODE_ENV`
+set in the environment itself is respected, with a warning unless it is `production`; without any, the build sets `production`
+(as `marmeon start` does). Images, CI and `pack:smoke` built without a `.env` already. The way back: `NODE_ENV=development pnpm build` — with its warning.
+
+#### Low: `marmeon dev` stops its queue worker and scheduler — on SIGTERM, on every restart, and when the server dies
+
+*Likelihood of impact: low — development machines that ended `marmeon dev` other than with Ctrl+C, or changed server code while it ran.*
+Vite 8's dev server loads Rolldown, whose `signal-exit` re-raises a signal when it finds itself the only listener — and the server's own
+SIGTERM listener was a `once`, gone by then: the server ended without its shutdown, and the `queue:work` and `schedule:work` it had
+started kept running — after a SIGTERM to `marmeon dev` and after **every restart of `node --watch`** (a second worker per code change).
+The server keeps its listeners now (a drain on SIGTERM again), and each companion has an IPC channel to it: when the channel closes — the
+server killed or crashed — the companion stops as on SIGTERM (its running job finishes). The way back: none needed. Leftovers of before:
+`ps -o pid,ppid,command -ax | grep "queue:work\|schedule:work"` (parent `1`) and `kill <PID>` — never a pattern kill.
+
+#### Low: `marmeon dev` answers other origins without CORS headers
+
+*Likelihood of impact: low — development only.* Vite's development server answered any page on `localhost`, `127.0.0.1` or `[::1]` — at
+any port — with `Access-Control-Allow-Origin`, also on the app's own answers: a page of another local project could read the devtools'
+API, mail previews or the error page. Vite runs with `cors: false` now. The app and its modules share one origin; nothing of the
+framework needed it. No switch.
+
+#### Low: a caller's `traceparent` is a link of the request's span — `OTEL_TRUST_TRACEPARENT=true` continues its trace
+
+*Likelihood of impact: low — apps with `@marmeon/otel` whose traces span services.* A request's server span continued the trace of
+any `traceparent` header — so a client chose the trace its requests landed in, and its sampled flag decided whether they were
+recorded at all (`-00` turned tracing off for it, `-01` on past your sampler). Now every request from outside starts a trace of its
+own (your sampler decides) and a valid incoming `traceparent` is a **span link**: the caller's context stays
+findable, nothing of it is taken — its baggage neither. In-process requests (islands, a layer's base) stay children of their page's,
+a job continues the trace of its dispatch.
+
+```sh
+OTEL_TRUST_TRACEPARENT=true   # behind an edge (gateway, ingress, mesh) that sets or strips the header — or for an internal service
+```
+
+A trusted proxy (`TRUSTED_PROXIES`) is no such edge by itself: it usually passes the client's header on unchanged. A hand-made setup
+passes `instrument(app, api, { redactor: app.container.make(Redactor), trustTraceparent: true })` (`Redactor` of `@marmeon/core`). The way back: `OTEL_TRUST_TRACEPARENT=true`.
+
+#### Low: a `URL` in a log context is masked like text — its query token and token-like path segments
+
+*Likelihood of impact: low — log readers who searched for whole URLs logged as objects.* `logger.info('…', { link: new URL(…) })`
+wrote the URL as it was (its `toJSON`): a `?token=…` or `/reset-password/<token>` reached the log. Now `redact()` masks a `URL` and
+`URLSearchParams` like text (`token=[redacted]`, `/reset-password/[redacted]`), and the `Redactor` (devtools, error page, spans)
+shows a `URL` through `url()` instead of an empty object. A path segment of 40 or more URL-safe characters counts as a token as soon as
+it has upper- and lower-case letters (the rule of the development builds — a digit too, few `-`/`_` — let about 1 in 370 reset
+tokens through into the log); shorter segments still need a digit, lower-case slugs and UUIDs stay. The way back: none needed — log
+`url.pathname` or a field you choose.
+
+#### Low: errors the framework logs as text are masked — a URL's password, a token
+
+*Likelihood of impact: low — log readers who searched for the full text of a failure.* `redact()` masks a log context by key; a
+string is written as it is. The framework wrote errors as strings — `{ exception: String(error) }` in terminate hooks, deferred work,
+islands and a layer's base, session garbage collection, the live backend and the scheduler, and the exception handler's report put the
+error's message into the log line itself — so `postgres://app:secret@db` or `token=…` in a message reached the log in clear. Each of
+them goes through `redactText()` now (`postgres://app:***@db`, `token=[redacted]`, token-like path segments, API tokens); so do an
+island's path and a listener failure's message. The way back: none needed — your own log calls: pass the error itself or
+`redactText(String(error))` ([log](docs/logging.md#keeping-secrets-out-of-the-log)).
 
 ## Upgrading to 0.1.0 from the development snapshots
 
 0.1.0 is the first release. An app made from it (`pnpm create marmeon`) has nothing to upgrade. This section is for apps
-that followed the repository during its development waves: the changes of Wave 8 (ship-ready) first, then those of Wave 7
-(devtools and observability) and Wave 6 (background services) — an app that followed until a wave reads from that wave
-upwards.
+that followed the repository during its development, which came in three steps — the newest first: ship-ready, devtools and
+observability, background services. An app reads every step it does not have yet, from the oldest of them upwards.
 
-*Estimated upgrade time:* about an hour for an app from Wave 7 — the High entries of Wave 8 (`marmeon` as a
-dependency, the sessions table) and the Medium ones its features touch; half a day from Wave 6 or with a `SessionStore` of its
-own. The first day after a release pnpm may hold the new versions back (`minimumReleaseAge`) — see
-[the first day after a release](docs/releases.md#the-first-day-after-a-release).
+*Estimated upgrade time:* about an hour for an app that has the devtools and observability — the High entries of the
+ship-ready step (`marmeon` as a dependency, the sessions table) and the Medium ones its features touch; half a day for an app that
+stopped at the background services, or with a `SessionStore` of its own. The first day after a release pnpm may hold the new
+versions back (`minimumReleaseAge`) — see [the first day after a release](docs/releases.md#the-first-day-after-a-release).
 
-### Wave 8 — ship-ready
+### Ship-ready: one version, protected environments, hashed sessions
 
 #### High: `marmeon` is a dependency of the app
 
 *Likelihood of impact: high — every app.* `marmeon start`, `queue:work`, `schedule:work` and `migrate` run on the server, and a
 production install (`pnpm install --prod`, a Docker image) leaves dev dependencies out — there was no `node_modules/.bin/marmeon`
-(E159). Move it: `pnpm add marmeon` (pnpm moves it from `devDependencies` to `dependencies`). The same holds for what
+Move it: `pnpm add marmeon` (pnpm moves it from `devDependencies` to `dependencies`). The same holds for what
 `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` loads in production — the OpenTelemetry SDK packages of
 [@marmeon/otel](docs/observability.md#installation) belong in `dependencies`. `marmeon make:auth` names a runtime package it finds only
 among the dev dependencies.
@@ -854,9 +838,9 @@ among the dev dependencies.
 #### High: session keys are hashed — every user is signed out once; a `database` sessions table needs its upgrade migration
 
 *Likelihood of impact: high — every app with sessions (once, at the deployment).* The stores keep a session under the SHA-256 of
-its id now, never the id (E144): a leaked backup, replica or Redis yields no cookie that works. Sessions stored before are not
+its id now, never the id: a leaked backup, replica or Redis yields no cookie that works. Sessions stored before are not
 found any more — **every user is signed out once** (remember-me cookies sign them back in where the app has them). With
-`SESSION_DRIVER=database` the `sessions` table also needs a `version` column (writes compare it, E145): run
+`SESSION_DRIVER=database` the `sessions` table also needs a `version` column (writes compare it): run
 `marmeon make:session-table --upgrade` and `marmeon migrate` before the new code serves requests — the migration makes the table
 anew (its rows are keyed by raw ids, which nothing should keep). Without it every request fails with "The sessions table has no
 version column … Run `marmeon make:session-table --upgrade`". New apps get the new table from `marmeon make:session-table`. The
@@ -867,7 +851,7 @@ keys.
 #### Medium: protections apply to every `NODE_ENV` but `development` and `test` — staging and a missing `NODE_ENV` included
 
 *Likelihood of impact: medium — apps that deploy with `NODE_ENV=staging`, another custom value, or none at all.* Before, a
-protection checked for `NODE_ENV=production`; now it is fail-closed (E139, E164): wherever `NODE_ENV` is not `development` or
+protection checked for `NODE_ENV=production`; now it is fail-closed: wherever `NODE_ENV` is not `development` or
 `test` the app is protected like production —
 
 - `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed` refuse without `--force` (a deployment script
@@ -881,14 +865,14 @@ protection checked for `NODE_ENV=production`; now it is fail-closed (E139, E164)
 This includes commands typed on a development machine without any `NODE_ENV`: outside `marmeon dev` (which sets `development`
 itself) `marmeon migrate` asks for `--force` and writes no table types — put `NODE_ENV=development` into the app's `.env` (next
 entry) or the shell.
-The development tools still run with `NODE_ENV=development` only (E115). To keep pretty logs in staging: `LOG_FORMAT=pretty`.
+The development tools still run with `NODE_ENV=development` only. To keep pretty logs in staging: `LOG_FORMAT=pretty`.
 Code of your own checks `environment.isProtected()` / `environment.isDevelopment()` from `@marmeon/core`
 ([The environment](docs/configuration.md#the-environment-node_env)) instead of comparing with `'production'`.
 
 #### Medium: `NODE_ENV` falls back to the app's `.env`
 
 *Likelihood of impact: medium — every app (do it once on each development machine; check every server).* `NODE_ENV` is resolved
-once per process (E170): the environment's value wins; else the one in the app's `.env` (only the base file — a `NODE_ENV` in
+once per process: the environment's value wins; else the one in the app's `.env` (only the base file — a `NODE_ENV` in
 `.env.{NODE_ENV}` is ignored with a warning); else none, which is protected (`marmeon start` then sets `production`). Config
 definitions, the CLI and the server read the same resolved value now (before, a `.env` `NODE_ENV` reached config definitions only).
 On a development machine add `NODE_ENV=development` to `.env` (the `.env.example` files of the starters carry it). **On servers**
@@ -908,15 +892,15 @@ a log alert that matched the old line. The old behaviour: `NODE_ENV=production m
 
 *Likelihood of impact: medium — workflows that ran `marmeon migrate` without `NODE_ENV` or in tests and committed the result.*
 `migrate` and `migrate:fresh` regenerated `bootstrap/database.d.ts` with any `NODE_ENV` but `production` — on a staging box that
-wrote into the app directory. Now only in development (E164). Elsewhere run `marmeon db:types` (it writes the file from the
+wrote into the app directory. Now only in development. Elsewhere run `marmeon db:types` (it writes the file from the
 migrations alone) or migrate with `NODE_ENV=development`.
 
 #### Medium: cookies are `Secure` when `APP_URL` is `https://` — every cookie of the request
 
 *Likelihood of impact: medium — apps whose `APP_URL` is `https://…` but that are reached over plain HTTP somewhere (a local
 `.env` copied from production, a health check over `http://`).* `SESSION_SECURE_COOKIE` defaulted to `false` — in production too.
-Now it follows `APP_URL` when unset (E162): `https://` → `Secure`, `http://` → not; `true`/`false` still decide. It applies to
-every cookie the app sets without saying (`CookieDefaults`, bound by `@marmeon/session`, Laravel's cookie jar defaults): the
+Now it follows `APP_URL` when unset: `https://` → `Secure`, `http://` → not; `true`/`false` still decide. It applies to
+every cookie the app sets without saying (`CookieDefaults`, bound by `@marmeon/session`): the
 session's, `XSRF-TOKEN`, the remember-me token, the reset link's, the `cookie` driver's and an app's own `ctx.cookies.set(…)`.
 A browser never sends a `Secure` cookie over plain HTTP — a staging server reached as `http://` with `APP_URL=https://…` loses
 its sessions. Set `APP_URL` to the address users open, or `SESSION_SECURE_COOKIE=false` (warned about at boot), or a single
@@ -926,7 +910,7 @@ sent without Secure: APP_URL is not https:// — …").
 #### Medium: behind `TRUSTED_PROXIES`, `X-Forwarded-Proto` and `-Host` set the request's URL; ranges are allowed, typos fail the start
 
 *Likelihood of impact: medium — apps behind a reverse proxy or load balancer.* Before, `TRUSTED_PROXIES` only decided whose
-`X-Forwarded-For` sets `ctx.ip`, and only by exact address. Now (E162) it takes CIDR ranges (`10.0.0.0/8`, `fd00::/8`), and from a
+`X-Forwarded-For` sets `ctx.ip`, and only by exact address. Now it takes CIDR ranges (`10.0.0.0/8`, `fd00::/8`), and from a
 trusted peer `X-Forwarded-Proto` (`http`/`https`) and `X-Forwarded-Host` replace the protocol and host of `ctx.request.url` — the
 CSRF origin check, an island's origin and the asset version's reload URL see the address the client used. An entry that is no
 address, range or `*` (`proxy.internal`) fails the start: `server: TRUSTED_PROXIES — Expected addresses or ranges like
@@ -936,7 +920,7 @@ sure the proxy **sets** these headers ([Behind a proxy](docs/deployment.md#trust
 #### Medium: CSRF — the browser's word first; a request from another site is 403, not 419
 
 *Likelihood of impact: medium — apps with clients that post to `web` routes without a browser, tests with `csrf: true`, and code
-that looks for 419.* `VerifyCsrfToken` decides in stages now (E143, Laravel 13's model, [CSRF protection](docs/csrf.md#how-a-request-is-checked)):
+that looks for 419.* `VerifyCsrfToken` decides in stages now ([CSRF protection](docs/csrf.md#how-a-request-is-checked)):
 `Sec-Fetch-Site: same-origin` passes without a token; `same-site`/`cross-site` is refused with **403** unless its `Origin` is in
 `CSRF_TRUSTED_ORIGINS`; without Fetch Metadata the `Origin` decides (the app's own — the one the request reaches it at, or
 `APP_URL`'s — passes, any other is 403); only a request with neither header needs the session's token (419 without it, as
@@ -953,7 +937,7 @@ There is no switch back: what passes without a token now is what the browser its
 
 *Likelihood of impact: medium — apps whose guest pages put `session.token()` into their props, or let guests upload files or
 follow live channels.* A page handed every visitor the session's token (`PageObject.csrf`), which kept a session — a row, a file,
-a Redis key and a cookie for every visit of the login page, bots included. Now (E143) a page carries `csrf` only when there is a
+a Redis key and a cookie for every visit of the login page, bots included. Now a page carries `csrf` only when there is a
 session anyway; a guest's forms pass by the browser's word (above). A session starts when something is written: a sign-in, flash
 data, the errors of a failed form, `session.put()`.
 
@@ -961,7 +945,7 @@ data, the errors of a failed form, `session.put()`.
   call keeps a session for every visitor. Drop the field (what `marmeon make:auth` writes now: a plain form post passes by Fetch
   Metadata or `Origin`), or render `usePage().csrf` only when it is there (`<Form>` does that by itself).
 - A guest's page with an upload field calls `session.persist()` in its controller: an upload belongs to a session, and an upload
-  request (read-only, W6.9) cannot start one. A page that signs a live channel keeps the session by itself.
+  request (read-only) cannot start one. A page that signs a live channel keeps the session by itself.
 - `PageSession.scope()` is `undefined` without a kept session (it was a hash of an id nobody would see again); a live stream
   without a session answers 401 (was 403).
 - New on `Session`: `persist()` (keep a session nothing was written to, because something is bound to it) and `exists` (a
@@ -971,8 +955,8 @@ data, the errors of a failed form, `session.put()`.
 
 *Likelihood of impact: medium — apps with a `SessionStore` of their own; low for the others (behaviour gets better).* Before, a
 loaded session was written back whole (`writeIfExists`) and the later of two requests won with its copy — a flash message one
-request showed could come back with a prefetch's copy (W5b.7), messages of parallel requests were lost. Now every write compares
-the version it read (E145): on a conflict the session is read again and this request's changes are applied — what it changed wins
+request showed could come back with a prefetch's copy, messages of parallel requests were lost. Now every write compares
+the version it read: on a conflict the session is read again and this request's changes are applied — what it changed wins
 key by key, flash messages are merged by id ([Hashed keys, versions and encryption](docs/session.md#how-sessions-are-stored)).
 A request whose session keeps being written by others for 2 s saves nothing and logs a warning; read-modify-write
 routes declare `block()` (next entries). **The store contract changed** — before → after:
@@ -993,7 +977,7 @@ by the session id reads `store.read(sessionKey(id))` and parses `data`.
 
 *Likelihood of impact: medium — apps that sign in or out, or switch the language; nothing to do unless you want the old
 behaviour.* Before, a tab kept what it showed (pages in memory, islands, pages fetched ahead, once props, remembered input) after
-another tab signed out, until its own next request (E66). Now (E148, E149) `createMarmeonApp` loads the `tabSync` feature with the
+another tab signed out, until its own next request. Now `createMarmeonApp` loads the `tabSync` feature with the
 first page: every page object carries the session's epoch (`PageObject.epoch`, opaque), the tabs post it on a `BroadcastChannel`
 (`{ v: 1, epoch }`, nothing else), and a tab that hears another one — or becomes visible again, or comes back from the
 back/forward cache — asks `GET /_marmeon/session`; if the epoch there is new, it lets go of everything and loads again. With
@@ -1001,7 +985,7 @@ unsaved changes on screen it asks first (a `leave` question with `reason: 'sessi
 default text is English). Back/Forward to an entry of an older epoch loads it from the server
 ([Tab sync](docs/client-features.md#tab-sync)).
 
-- The old behaviour: `createMarmeonApp({ …, tabSync: false })` — then the risk E66 is back: a tab shows what it kept after a
+- The old behaviour: `createMarmeonApp({ …, tabSync: false })` — then the risk is back: a tab shows what it kept after a
   sign-out elsewhere until its next request.
 - An adapter of your own attaches it from the start: `new Navigator({ …, features: [await loadTabSync()] })`.
 - The path `/_marmeon/session` is the framework's now (in the `web` group, read-only).
@@ -1011,7 +995,7 @@ default text is English). Back/Forward to an entry of an older epoch loads it fr
 #### Medium: signing out clears the site's storage too — `Clear-Site-Data: "cache", "storage"`; `clear({ siteCache })` is `clear({ siteData })`
 
 *Likelihood of impact: medium — apps that keep something in `localStorage`, `sessionStorage` or IndexedDB, or call
-`ClientHistory.clear({ siteCache: true })`.* `Auth.logout()` asked for `Clear-Site-Data: "cache"`; now (E165) it asks for
+`ClientHistory.clear({ siteCache: true })`.* `Auth.logout()` asked for `Clear-Site-Data: "cache"`; now it asks for
 `"cache", "storage"`: the browser drops the site's HTTP cache **and its storage** — local and session storage, IndexedDB, service
 workers — in every tab. What a signed-in user left there does not wait for the next one. Before → after:
 
@@ -1026,13 +1010,13 @@ To keep the storage across a sign-out (a theme setting, say), call `history.clea
 
 #### Low: `SESSION_ENCRYPT` encrypts the session data in its store
 
-*Likelihood of impact: low — new, off by default.* `SESSION_ENCRYPT=true` (E144) encrypts the payload in the file, the `payload`
+*Likelihood of impact: low — new, off by default.* `SESSION_ENCRYPT=true` encrypts the payload in the file, the `payload`
 column or the Redis value with `APP_KEY` (AES-256-GCM; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Turning it on or
 off signs everybody out once. The `cookie` driver's data is a cookie and encrypted anyway. The web app turns it on.
 
 #### Low: `Route.….block()` runs a route's requests one at a time per session
 
-*Likelihood of impact: low — new.* `RouteDefinition.block(lockSeconds = 10, waitSeconds = lockSeconds)` (Laravel's, E145) takes an
+*Likelihood of impact: low — new.* `RouteDefinition.block(lockSeconds = 10, waitSeconds = lockSeconds)` takes an
 atomic lock on the session — through `@marmeon/cache`, which the app then needs — before `StartSession` reads it and frees it
 after saving; a request that waits longer gets 423 ([Blocking routes](docs/session.md#requests-that-must-not-overlap)). The web app
 and `make:auth` (both variants) block `PUT /settings/password` and `POST /settings/devices/logout`: a password hash and its
@@ -1041,7 +1025,7 @@ fingerprint in the session must stay a pair. Apps generated before can add `.blo
 #### Low: `marmeon key:generate --force` keeps the old key in `APP_PREVIOUS_KEYS`
 
 *Likelihood of impact: low — apps that rotate their key.* `--force` replaced `APP_KEY` and left nothing behind — every session,
-encrypted cookie and signed link died. Now the old key moves to the front of `APP_PREVIOUS_KEYS` in `.env` (E169), so all of it
+encrypted cookie and signed link died. Now the old key moves to the front of `APP_PREVIOUS_KEYS` in `.env`, so all of it
 stays valid; drop old keys from the list once nothing needs them, and set both variables on every server. To start without the
 old key, remove it from `APP_PREVIOUS_KEYS` by hand.
 
@@ -1054,22 +1038,22 @@ let `http://admin.example.com` through), and an entry with a path (`https://admi
 
 *Likelihood of impact: low — nothing to do.* `ip` and `userAgent` of `Login` were what the app passed to `attempt()`/`login()` —
 the generated `LoginController` passed nothing, so they were `null` (a remember-me sign-in always). Now `Auth` takes them from
-`RequestInfo` (http, E169: the address through `TRUSTED_PROXIES`, like `ctx.ip`); passing them still overrides. `RequestInfo` is
+`RequestInfo` (http: the address through `TRUSTED_PROXIES`, like `ctx.ip`); passing them still overrides. `RequestInfo` is
 injectable wherever a service needs to know who sent the request.
 
 #### Low: `marmeon make:auth --private-registration`; the generated forms carry no `_token`
 
 *Likelihood of impact: low — new; existing modules belong to their app.* `make:auth` writes forms without a `_token` field (no
 `csrfToken` props, no `Session` in the page controllers — Fetch Metadata and `Origin` vouch for a plain post), its registration tests in `registration.test.ts`,
-and with `--private-registration` the variant that never tells whether an address has an account (E146,
-[Private registration](docs/starter-kit.md#private-registration)): the same answer in the same time
+and with `--private-registration` the variant that never tells whether an address has an account
+([Private registration](docs/starter-kit.md#private-registration)): the same answer in the same time
 for new and known addresses, `AccountExistsMail` to the owner, no live check of the address, a confirmed address before the app
 opens. A module generated before can take the views over by hand; the registration is the app's choice.
 
 #### Low: one process for `marmeon start` and every command
 
 *Likelihood of impact: low — process supervisors and scripts that relied on the launcher.* `marmeon start`, `queue:work`,
-`schedule:work`, `migrate` and the other commands now run in the process that was started (E159) — no launcher in front:
+`schedule:work`, `migrate` and the other commands now run in the process that was started — no launcher in front:
 PID 1 in a container is the server, signals reach it directly, a stuck worker's exit code 70 is the process's own, and
 `NODE_OPTIONS='--import …'` (telemetry) is loaded once instead of twice. Only `marmeon dev` (`node --watch`) and commands inside
 the framework's monorepo start a second Node. Nothing to change — a supervisor that sent its signal to the launcher's process
@@ -1081,14 +1065,14 @@ group still reaches the one process.
 `.marmeon/manifest.source.json` is the monorepo's (`@marmeon/source`) — switching between `marmeon dev` and `marmeon start`
 there no longer rewrites it on every switch (the first start after `dev` took ≈ 550 instead of ≈ 410 ms). Module paths are relative
 to the app (a manifest written in a build stage works where the app is copied to). `marmeon build` writes the production manifest;
-a server whose `.marmeon/` is read-only starts with one warning (discovered in memory) instead of failing with `EACCES` (E160).
+a server whose `.marmeon/` is read-only starts with one warning (discovered in memory) instead of failing with `EACCES`.
 The old `manifest.json` is rewritten once (format version 3). `.marmeon/` stays out of git.
 
 #### Low: `marmeon build` precomputes the injection lists — deploy what you built
 
 *Likelihood of impact: low — deployments that change app code on the server without running `marmeon build` again.* `marmeon
 build` now writes `.marmeon/injections.json` first: the constructor-injection lists of every app module, with the SHA-256 of the
-source they came from (E138). In a protected environment (production, staging, no `NODE_ENV`) the start applies them and does
+source they came from. In a protected environment (production, staging, no `NODE_ENV`) the start applies them and does
 not load oxc-parser — the web app starts in ≈ 270 instead of ≈ 385 ms, together with the compile cache below. Nothing is trusted
 blindly: a module changed after the build (or missing from the file) is analysed as before, and the app logs once
 `Build artifacts are stale (N files: …) … run marmeon build again.` (`Build artifacts are missing (.marmeon/injections.json)` without
@@ -1100,7 +1084,7 @@ production (`modules/users/X.ts:12`), the absolute path in development.
 
 *Likelihood of impact: low — servers whose app directory is read-only, or apps whose `storage/` is not ignored by git.* `marmeon
 start` turns on Node's compile cache (type-stripped sources and V8 code cache) in `storage/framework/compile-cache` before the app
-loads, and writes it once the server listens (E138; ≈ 60 ms of the web app's start). A changed module is never served from it —
+loads, and writes it once the server listens (≈ 60 ms of the web app's start). A changed module is never served from it —
 Node checks every entry against the source after the injection hook. A directory that cannot be written leaves the start
 uncached, without an error. To put it elsewhere: `NODE_COMPILE_CACHE=/path`; to turn it off: `NODE_DISABLE_COMPILE_CACHE=1`.
 The blank app's `storage/framework/.gitignore` ignores it already; an app that keeps `storage/` in git ignores
@@ -1117,8 +1101,8 @@ app. The APIs are unchanged; `insertionsOf`, `applyInsertions`, `computeInjectio
 #### Low: `environments(…)` of the scheduler counts a missing `NODE_ENV` as `production`
 
 *Likelihood of impact: low — schedules with `.environments(…)` on servers without `NODE_ENV`.* Before, a missing `NODE_ENV`
-counted as `development` — a task limited to `production` never ran there. Now it counts as `production`, like Laravel's
-`APP_ENV` default and the fail-closed rule above (E139). `schedule:work` names the environment it assumed when it starts.
+counted as `development` — a task limited to `production` never ran there. Now it counts as `production`, like the fail-closed
+rule above. `schedule:work` names the environment it assumed when it starts.
 
 #### Low: `createTestApp` runs as `NODE_ENV=test` unless its `env` names another
 
@@ -1143,7 +1127,7 @@ app's `.gitignore`.
 #### Low: an opt-in Content-Security-Policy with a nonce per response — on in the web app and the starter's shell
 
 *Likelihood of impact: low — apps that turn it on, and apps with their own `index.html` tags.* New: `contentSecurityPolicy()` from
-`@marmeon/http` (E147) — `script-src 'nonce-…' 'strict-dynamic'; object-src 'none'; base-uri 'self'` on every HTML response,
+`@marmeon/http` — `script-src 'nonce-…' 'strict-dynamic'; object-src 'none'; base-uri 'self'` on every HTML response,
 directives added or left out per app ([Content-Security-Policy](docs/csp.md)). The blank
 app (the base of `create-marmeon`) registers it next to its new `middleware/SecurityHeaders.ts` (with an HSTS switch, off by
 default). For every app: `marmeon()` sets Vite's `html.cspNonce` to `__marmeon_csp_nonce__` (`CSP_NONCE_PLACEHOLDER`) — a value
@@ -1155,14 +1139,14 @@ of your own in `vite.config.ts` is replaced; the built `index.html` carries `non
 
 #### Low: `/assets/*` cached a year and sent precompressed — `marmeon build` writes `.br` and `.gz`
 
-*Likelihood of impact: low — nothing to do.* Assets had no `Cache-Control` and went uncompressed. Now (E162) they answer with
+*Likelihood of impact: low — nothing to do.* Assets had no `Cache-Control` and went uncompressed. Now they answer with
 `public, max-age=31536000, immutable`, and `marmeon build` writes a `.br` and a `.gz` next to every compressible file of
 `dist/client/assets`, which the server sends by `Accept-Encoding` (`Vary: Accept-Encoding`). The server never compresses per
 request — documents least of all (BREACH); a proxy may compress what it likes. Deploy `dist/` as built (the variants included).
 
 #### Low: `HOST` chooses the interface; the start line names it and the port it got
 
-*Likelihood of impact: low.* The server listened on every interface; it still does unless `HOST` is set (E162) — `127.0.0.1`
+*Likelihood of impact: low.* The server listened on every interface; it still does unless `HOST` is set — `127.0.0.1`
 behind a proxy on the same machine, `0.0.0.0` in a container. `RunningServer.port` and the start line are the port the server
 actually got (with `PORT=0` the system's choice, before `0`).
 
@@ -1176,7 +1160,7 @@ preview's `srcdoc` frame never ran (sandbox) and still does not.
 
 *Likelihood of impact: low — apps whose monitoring expects a fresh readiness run on every probe, or that call `startServer()`
 themselves.* Readiness falls at the stop signal now, not when the server closes: `503 {"status":"draining"}` at once, while `/up`
-stays 200 until the server closes (E163). A result of the checks answers every probe for one second (failing results too) — a
+stays 200 until the server closes. A result of the checks answers every probe for one second (failing results too) — a
 probe right after a database came back may still see `failing` for up to a second. New and off by default: `SHUTDOWN_DELAY`
 (seconds) keeps the server answering after SIGTERM before it closes (responses then carry `Connection: close`) — set it to about 5
 behind a load balancer that learns from its probes (kamal-proxy, Traefik, cloud load balancers, Kubernetes ingresses) instead of a
@@ -1187,17 +1171,17 @@ listens instead of ending the process.
 
 #### Low: `marmeon start --workers=N` and `marmeon make:docker`
 
-*Likelihood of impact: low — nothing to do; new.* `marmeon start --workers=N` runs N servers on one port with `node:cluster` (E140)
+*Likelihood of impact: low — nothing to do; new.* `marmeon start --workers=N` runs N servers on one port with `node:cluster`
 — the primary passes signals on, each worker drains, the exit code is 0 when all ended with 0
 ([Several processes](docs/deployment.md#several-processes-on-one-machine)). `marmeon make:docker [--caddy|--nginx]
 [--systemd]` writes a Dockerfile (`node:26-slim`, non-root, health check, `marmeon` as the process), `.dockerignore`,
-`compose.production.yaml` with one role per container and, on request, a proxy configuration and systemd units (E141,
-[Production files](docs/deployment.md#the-docker-image)). The deployment guide is `docs/deployment.md`.
+`compose.production.yaml` with one role per container and, on request, a proxy configuration and systemd units
+([Production files](docs/deployment.md#the-docker-image)). The deployment guide is `docs/deployment.md`.
 
 #### Low: a flash message stays with the tab that flashed it
 
 *Likelihood of impact: low — apps with a `Flasher` of their own.* A message waited in the session for whichever answer the user
-was shown next — another tab's poll could take it (E67). Now (E165) every request of a tab names its document
+was shown next — another tab's poll could take it. Now every request of a tab names its document
 (`x-marmeon-document`, the tabSync feature), a message is bound to the document whose request flashed it
 (`FlashEntry.document`), and another document's request leaves it; a request naming none — a full page load, a client without tab
 sync — takes every message. A `Flasher` of your own takes the document: `takeFlash(document?: string)`, `hasFlash(document?:
@@ -1207,7 +1191,7 @@ string)`; `PageSession` implementations add `generation()` (the session's part o
 
 *Likelihood of impact: low — middleware that keeps a reference to a response after handing it on.* The framework's middleware (the
 cookies, `SetLocale`, the CSP, `NoStoreWhenSignedIn`, `throttle`, `cacheControl`, the kernel's request id) used to copy every
-response before adding a header; a page was copied four or five times (W8 step 9). They now go through `editableResponse(response)`
+response before adding a header; a page was copied four or five times. They now go through `editableResponse(response)`
 ([@marmeon/router](docs/middleware.md#changing-the-response), also exported by
 @marmeon/http): a response the framework made for this request is changed in place, any other — one your action or middleware
 returns — is copied once and then owned. Your own responses are never changed in place, as before. What changes: a middleware
@@ -1231,7 +1215,7 @@ and `APP_PREVIOUS_KEYS`; nobody is signed out. A tag shorter than 16 bytes was n
 #### Low: `marmeon make:auth` no longer maps `/` to the sign-in page
 
 *Likelihood of impact: low — apps that generate the auth module from now on.* The generated routes had `GET /` show the sign-in
-page to guests; the starter kit of `create-marmeon` has a home module for `/` (E150), and two modules must not claim one
+page to guests; the starter kit of `create-marmeon` has a home module for `/`, and two modules must not claim one
 path. An app made with `make:auth` alone answers `/` with 404 until it has a page there. An existing `modules/auth` is the app's
 code and keeps its route. To have the old behaviour in a new module: `guests.get('/', ShowLoginController);` in
 `modules/auth/routes.ts`.
@@ -1240,7 +1224,7 @@ code and keeps its route. To have the old behaviour in a new module: `guests.get
 
 *Likelihood of impact: low — apps copied from `apps/blank-app` before.* New apps start with `pnpm create marmeon my-app`
 ([create-marmeon](docs/installation.md)): the starter kit (`make:auth`, a home page, the devtools, oxlint,
-Vitest) by default, the blank app with `--minimal` (E150, E167). The blank app is that output: it has `@marmeon/devtools` as a
+Vitest) by default, the blank app with `--minimal`. The blank app is that output: it has `@marmeon/devtools` as a
 dev dependency (development only, absent from production installs), a first test (`modules/system/system.test.ts`, `GET /up`),
 a `test` script (`vitest run`) and `engines.node`. In an older copy: `pnpm add -D @marmeon/devtools` for the devtools, the
 rest as you like. `make:auth` names the devtools only for an app that lacks them.
@@ -1256,9 +1240,9 @@ before, and reloaded the page once or twice (a 504 "Outdated Optimize Dep" in th
 
 *Likelihood of impact: low — apps that took the framework from a checkout or from tarballs.* The packages were `0.0.0`, linked
 from the repository (`workspace:*`) or installed from `pnpm pack` tarballs (`file:`). From 0.1.0 they come from npm, all at one
-version (E152: Changesets with one `fixed` group — every `@marmeon/*` package, `marmeon` and `create-marmeon`), and
+version (Changesets with one `fixed` group — every `@marmeon/*` package, `marmeon` and `create-marmeon`), and
 they name each other at exactly that version. Replace every `workspace:*`, `file:…` or `0.0.0` of a `@marmeon/*` package or `marmeon` in
-the app's `package.json` with `0.1.0` (and drop the `overrides` that pointed at tarballs). There is no meta package (E194):
+the app's `package.json` with `0.1.0` (and drop the `overrides` that pointed at tarballs). There is no meta package:
 an app lists the packages it imports, all at that one version.
 
 #### Medium: `TRUSTED_PROXIES='*'` trusts the direct peer only — a client can no longer choose its address
@@ -1266,7 +1250,7 @@ an app lists the packages it imports, all at that one version.
 *Likelihood of impact: medium — apps with `TRUSTED_PROXIES='*'`.* `*` trusted every hop of `X-Forwarded-For`, so `ctx.ip` was its
 left-most entry. Behind a proxy that appends to the header (nginx's `$proxy_add_x_forwarded_for` — which the `make:docker --nginx`
 template used together with `*`), that entry is the one the client sent itself: any client could choose the address that rate
-limits (sign-in, registration, password resets), logs and the `Login` event see. Now (E172, as Laravel and Symfony read `*`) `*`
+limits (sign-in, registration, password resets), logs and the `Login` event see. Now `*`
 means "the direct peer is the proxy": `ctx.ip` is the right-most entry — the address that proxy saw — and `X-Forwarded-Proto`/
 `-Host` keep taking the right-most value; explicit addresses and ranges keep the walk from the right past every trusted hop. The
 nginx template also sets `proxy_set_header X-Forwarded-For $remote_addr;` now (as Caddy does).
@@ -1274,7 +1258,7 @@ nginx template also sets `proxy_set_header X-Forwarded-For $remote_addr;` now (a
 - Two proxies in a row (a CDN in front of nginx) with `*`: `ctx.ip` is now the CDN's address — list both proxies' addresses or
   ranges instead of `*` (`TRUSTED_PROXIES=10.0.0.0/8,173.245.48.0/20,…`).
 - An app made with `make:docker --nginx` before: change that line in `deploy/nginx.conf` (or run `marmeon make:docker --nginx
-  --force`) — with E172 it is safe either way.
+  --force`) — with this change it is safe either way.
 - `clientIp(remote, forwardedFor, ['*'])` (router) returns the right-most entry; a check function keeps the walk.
 
 #### Low: a guest's island that follows a live channel answers without the subscription — not 500
@@ -1331,9 +1315,9 @@ condition.
 package is called `marmeon-monorepo` (the name `marmeon` is the CLI's), and packages are packed and
 published with pnpm only (`npm pack` would ship the `@marmeon/source` condition). Apps are not affected.
 
-### Wave 7 — devtools and observability
+### Devtools and observability
 
-The 22 hints of the Wave 7 acceptance, sorted by impact; where Wave 8 changed a hint, the entry says so.
+Sorted by impact; where the ship-ready step changed an entry, the entry says so.
 
 #### High: every app needs an `APP_KEY`
 
@@ -1347,16 +1331,16 @@ without a key.
 
 *Likelihood of impact: medium — apps that ran staging, tests or a missing `NODE_ENV` with the development tools, and tests of
 the mail preview.* Server-Timing, the development error page (`ServerConfig.debug`), the devtools, the **mail preview**
-(`MailConfig.previews`) and Vite's dev server in `startServer`/`marmeon serve` are on only when `NODE_ENV` is `development`
-(E115). Staging, test and a missing `NODE_ENV` serve the build, and `marmeon serve` starts no worker, scheduler or watcher there.
-Tests of the mail preview create their app with `createTestApp(App, { env: { NODE_ENV: 'development' } })`. *Changed by Wave 8
-(E139, E170):* the protections — JSON logs, `migrate --force`, the boot warnings — now apply to every `NODE_ENV` but
-`development` and `test`, and `NODE_ENV` falls back to the app's `.env` (the Wave 8 entries above). There is no switch to turn a
+(`MailConfig.previews`) and Vite's dev server in `startServer`/`marmeon serve` are on only when `NODE_ENV` is `development`.
+Staging, test and a missing `NODE_ENV` serve the build, and `marmeon serve` starts no worker, scheduler or watcher there.
+Tests of the mail preview create their app with `createTestApp(App, { env: { NODE_ENV: 'development' } })`. *Changed by the ship-ready
+step:* the protections — JSON logs, `migrate --force`, the boot warnings — now apply to every `NODE_ENV` but
+`development` and `test`, and `NODE_ENV` falls back to the app's `.env` (the ship-ready entries above). There is no switch to turn a
 development tool on elsewhere.
 
 #### Medium: `/up` and `/up/ready` belong to the framework
 
-*Likelihood of impact: medium — apps with a route of their own at `/up` or `/up/ready`.* The health endpoints (E126) answer
+*Likelihood of impact: medium — apps with a route of their own at `/up` or `/up/ready`.* The health endpoints answer
 before every middleware group; an app route on one of the two paths is a boot error ("Give the route another path, or move the
 health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off)"). Move your route, or the health check with `HEALTH_PATH=/healthz` —
 `HEALTH_PATH=off` turns the endpoints off (a container's health check then needs another way).
@@ -1380,7 +1364,7 @@ missing in production (`ERR_MODULE_NOT_FOUND`) is discovered anew once instead o
 #### Medium: client code imports server modules with `import type` only
 
 *Likelihood of impact: medium — apps whose views or client code import controllers, jobs, repositories or other server
-modules for a type.* The Vite plugin checks the client's imports (E121): a value import of a server module breaks `marmeon
+modules for a type.* The Vite plugin checks the client's imports: a value import of a server module breaks `marmeon
 dev`, `marmeon build` and the SSR tests with an error naming the import chain. **`import { type X } from '…'` counts as a value
 import** (the module is still loaded); write `import type { X } from '…'`. Your own conventions go into
 `marmeon({ serverModules: [...] })`.
@@ -1389,18 +1373,18 @@ import** (the module is still loaded); write `import type { X } from '…'`. You
 
 *Likelihood of impact: medium — apps that deploy without a mail transport.* `log` is the default mailer in every environment
 and writes the mails' texts — password-reset and verification links included — unredacted to the log. The start warns once per
-process (`LOG_MAILER_WARNING`) when the app is protected (E135; *changed by Wave 8, E139:* every `NODE_ENV` but `development`
+process (`LOG_MAILER_WARNING`) when the app is protected (*changed by the ship-ready step:* every `NODE_ENV` but `development`
 and `test`, staging and a missing `NODE_ENV` included). In production set `MAIL_MAILER=smtp` (and the `MAIL_*` settings); in
 development the log mailer is the way to read the links.
 
 #### Low: `marmeon dev` sets `NODE_ENV=development` when it is missing
 
 *Likelihood of impact: low.* With another `NODE_ENV` set, `marmeon dev` warns and serves the build instead of Vite's dev
-server. (Wave 8 also resolves `NODE_ENV` from the app's `.env`, E170 — see above.)
+server. (The ship-ready step also resolves `NODE_ENV` from the app's `.env` — see above.)
 
 #### Low: `onOneServer()` and `withoutOverlapping()` with a `file` or `memory` cache warn instead of throwing
 
-*Likelihood of impact: low — apps whose scheduler uses those cache stores.* E123 revises E88: a task with `onOneServer()` or
+*Likelihood of impact: low — apps whose scheduler uses those cache stores.* A task with `onOneServer()` or
 `withoutOverlapping()` on a cache that cannot lock across machines no longer throws a `ScheduleError` — the start warns in every
 environment (also `schedule:list`). `ScheduleError` remains for a missing cache. `checkProcess` skips the commands of other
 environments. Use a `database` or `redis` cache for tasks that must run once.
@@ -1408,14 +1392,14 @@ environments. Use a `database` or `redis` cache for tasks that must run once.
 #### Low: the scheduler's events — the field is `skipped`
 
 *Likelihood of impact: low — apps that listen to the scheduler.* `ScheduledTaskStarting`, `ScheduledTaskFinished` (`ms`),
-`ScheduledTaskFailed` (`error`, `ms`) and `ScheduledTaskSkipped` (`skipped`) share `task`, `minute` and `reason` (E127). The
-skipped event's field is called `skipped`, not `reason` as E127 sketched it.
+`ScheduledTaskFailed` (`error`, `ms`) and `ScheduledTaskSkipped` (`skipped`) share `task`, `minute` and `reason`. The
+skipped event's field is called `skipped`, not `reason`.
 
 #### Low: diagnostics channels for observing the framework
 
 *Likelihood of impact: low — new; custom drivers may add methods.* `@marmeon/core/diagnostics` publishes `http.request`,
 `db.query`, `queue.dispatch`, `queue.job`, `schedule.task`, `mail.send`, `notification.send`, `live.refresh`, `render.ssr`,
-`command.run`, `log`, `exception` and `event` (E118; API `channels.subscribe/tracing/event/built/around`). A subscriber that
+`command.run`, `log`, `exception` and `event` (API `channels.subscribe/tracing/event/built/around`). A subscriber that
 throws becomes a process warning. The messages carry **raw** values — a subscriber that records them redacts with `Redactor`.
 `JobRecord.requestId` is always set, `traceparent` once a tracer listens. A `QueueDriver` of your own may implement `counts()`,
 a `PageRenderer` of your own `failed()` (both optional).
@@ -1435,7 +1419,7 @@ nested `.oxlintrc.json` replaces the root's instead of extending it.
 #### Low: redaction reaches into lists, child loggers and the request log line
 
 *Likelihood of impact: low — log consumers that matched redacted values.* `redact()` looks into arrays, maps, sets and errors
-(deeper than 6 levels → `[…]`, E125); the bindings of `logger.child()` and the `ConsoleLogger` are redacted; **the request log
+(deeper than 6 levels → `[…]`); the bindings of `logger.child()` and the `ConsoleLogger` are redacted; **the request log
 line shows sensitive route parameters and token-like path segments as `[redacted]`**; `Redactor.headers` accepts list values.
 
 #### Low: `html`, `raw`, `Html` and `escapeHtml` live in `@marmeon/core`
@@ -1454,14 +1438,14 @@ line shows sensitive route parameters and token-like path segments as `[redacted
 
 *Likelihood of impact: low — apps that trace.* `@marmeon/otel` is optional and has only `@opentelemetry/api` as a peer; the
 SDK and the exporter are the app's, loaded with `NODE_OPTIONS=--import ./bootstrap/telemetry.ts` (no `sdk-node`: its
-`protobufjs` needs a postinstall script pnpm refuses). *Changed by Wave 8 (E159):* the SDK packages belong in `dependencies` —
+`protobufjs` needs a postinstall script pnpm refuses). *Changed by the ship-ready step:* the SDK packages belong in `dependencies` —
 a production install leaves dev dependencies out — and `marmeon start` runs in one process, so the `--import` applies exactly
 once.
 
 #### Low: a defaulted constructor parameter of an injectable type warns
 
 *Likelihood of impact: low.* A class the container builds whose constructor has a default or optional parameter of an
-injectable type is never injected there (E128) — the development log warns once. Remove the default, or give the class a
+injectable type is never injected there — the development log warns once. Remove the default, or give the class a
 `static inject` list.
 
 #### Low: a `ConfigError` shows its solution only when it lists variables
@@ -1471,7 +1455,7 @@ injectable type is never injected there (E128) — the development log warns onc
 #### Low: tinker keeps a history — plain text, and a banner where it is protected
 
 *Likelihood of impact: low.* `marmeon tinker` writes its history to `storage/framework/tinker_history` (0600, the plain text of
-what was typed; `--no-history` keeps none). In production — since Wave 8 in every protected environment — it shows a red
+what was typed; `--no-history` keeps none). In production — since the ship-ready step in every protected environment — it shows a red
 banner (`PRODUCTION`, `PROTECTED (staging)`).
 
 #### Low (contributors): `pnpm run ci` is the check command — not `pnpm ci`
@@ -1485,7 +1469,7 @@ checked).
 *Likelihood of impact: low — only for work on Marmeon itself.* At the end of a Vitest run the repository's global setup drops
 the databases it created (`marmeon_{test,cache,queue,schedule,types}_*`) — only on the server of `MARMEON_TEST_PGSQL_URL`.
 
-### Wave 6 — background services
+### Background services
 
 #### Medium: an event with a queued listener needs `static event` and `static schema`
 
@@ -1511,19 +1495,19 @@ relative link against; `compose()` refuses `href="/…"`. Build links from `APP_
 *Likelihood of impact: low — code that constructs `Login` itself.* `Login` (auth) has a required `via`
 (`'attempt' | 'login' | 'remember'`) and `ip`/`userAgent` (`LoginOptions` take them) and is queueable
 (`static event = 'auth.login'`); `Registered` is queueable too (`auth.registered`, `{ userId }`). Pass `via` where you construct
-`Login`. (Wave 8 fills `ip` and `userAgent` by itself — `RequestInfo`, above.)
+`Login`. (The ship-ready step fills `ip` and `userAgent` by itself — `RequestInfo`, above.)
 
 #### Low: queued listeners have no `afterCommit` any more
 
-*Likelihood of impact: low.* E109: queued listeners join the transaction like every dispatch (a row in it on the database
+*Likelihood of impact: low.* Queued listeners join the transaction like every dispatch (a row in it on the database
 queue, held until the commit elsewhere) — `afterCommit` in `static queue` is a type error ("afterCommit is always on: queued
-listeners join the transaction (E107/E109) — remove it") and a boot error. Remove it.
+listeners join the transaction — remove it") and a boot error. Remove it.
 
 #### Low: custom stores implement more
 
 *Likelihood of impact: low — apps with a store of their own.* A `CacheStore` implements `add`, `increment`, `lock`, `unlock`,
-`forceUnlock` and `lockOwner` (and optionally `prune`). A `SessionStore` implemented `writeIfExists` in Wave 6 — since Wave 8 its
-`write` compares versions instead (the Wave 8 entry above, [Your own store](docs/session.md#a-store-of-your-own)).
+`forceUnlock` and `lockOwner` (and optionally `prune`). A `SessionStore` implemented `writeIfExists` in this step — since the ship-ready
+step its `write` compares versions instead (the ship-ready entry above, [Your own store](docs/session.md#a-store-of-your-own)).
 
 #### Low: constructors that take a `Clock` take it as a required parameter
 

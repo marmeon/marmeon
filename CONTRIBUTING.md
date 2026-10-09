@@ -76,8 +76,9 @@ package store, the registry and Docker — without them they are reported as ski
   removes them when the test, or the file, is done.
 - **A measure comes with its Gegenproben** ([below](#gegenproben)).
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
-- **A change an app can notice** gets an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — and a
-  changeset ([Changesets and releases](#changesets-and-releases)).
+- **A change an app can notice** gets an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — in the
+  next version's section, in its place by impact and area, and a changeset ([Changesets and releases](#changesets-and-releases));
+  `scripts/check-changesets.ts` lists its anchor under that section.
 - **A change to a public API, an environment default or a command** changes its page under `docs/` in the same commit
   ([Writing documentation](#writing-documentation)).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.
@@ -207,18 +208,21 @@ checked over every file of the repository — tracked, or new and not ignored. E
 4. **The old prefix of API tokens is gone**: `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says the two letters and the
    underscore of before in front of a digit, a `|`, a quote, whitespace or a line's end — but the rename hint's way back in
    `UPGRADING.md`. Tests spell it from parts like the old name.
-5. **The docs speak to their readers**: the pages under `docs/`, the packages' READMEs, the root `README.md`, `CONTRIBUTING.md`
-   and `SECURITY.md` name no decision number (an `E` and two or three digits as a word of its own — a hex value, an exponent or
-   `E2E` is none); the pages and the READMEs no wave of the maintainers' plan (a `W` and a number, or "wave" and a number); and no
-   page under `docs/` carries the placeholder marker as a line of its own ([Writing documentation](#writing-documentation)) —
-   every page is written. What every new app copies, the starter's template (`packages/create-marmeon/template/`) and the
-   packages' stubs (`packages/<name>/stubs/`: the `make:auth` module, the migrations of `make:*-table`), carries no decision number, no wave and no personal date of the plan ("Max 07.10.");
-   the pages, the READMEs and those copies compare Marmeon with no other framework. `UPGRADING.md`, the record of changes, is
-   exempt. Each part is an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
+5. **The docs speak to their readers**: the pages under `docs/`, the packages' READMEs, the root `README.md` and the three
+   policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) name no decision number (an `E` and two or three
+   digits as a word of its own — a hex value, an exponent or `E2E` is none) and compare Marmeon with no other framework; the
+   pages, the READMEs and `UPGRADING.md` name no wave of the maintainers' plan (a `W` and a number, or "wave" and a number) —
+   this file may, for the Gegenproben's paths and steps; and no page under `docs/` carries the placeholder marker as a line of
+   its own ([Writing documentation](#writing-documentation)) — every page is written. What every new app copies, the starter's
+   template (`packages/create-marmeon/template/`) and the packages' stubs (`packages/<name>/stubs/`: the `make:auth` module, the
+   migrations of `make:*-table`), carries no decision number, no wave, no personal date of the plan ("Max 07.10.") and no
+   other framework. `UPGRADING.md` says what changed by version and by what it changes, never by decision or wave. Each part
+   is an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
 6. **The framework's messages speak to app developers**: no string of a package's code (`packages/<name>/src/`, tests and
-   fixtures aside) names a decision number, a wave or another framework — errors, warnings, solutions, command descriptions and
-   output, the files the `make:*` generators write and the devtools' pages reach every app. Only strings count, read with
-   oxc-parser: comments, names and regular expressions are for maintainers and may keep their decision numbers.
+   fixtures aside) or of its launchers (`packages/<name>/bin/*.js`) names a decision number, a wave or another framework —
+   errors, warnings, solutions, command descriptions and output, the files the `make:*` generators write and the devtools'
+   pages reach every app. Only strings count, read with oxc-parser: comments, names and regular expressions are for
+   maintainers and may keep their decision numbers.
 
 A new rule joins the same script, with its test and its Gegenprobe.
 
@@ -226,8 +230,8 @@ A new rule joins the same script, with its test and its Gegenprobe.
 
 A test that passes proves little until it fails without the thing it tests. A *Gegenprobe* (counter-check) takes a measure out —
 a patch — and shows the test turning red **for the measure's reason**. They live in the repository, one file per step of a wave
-(`scripts/gegen/w10/s05-queue.ts`, `scripts/gegen/w9/s04-live.ts`) and run with `pnpm gegen` — never as part of `pnpm run ci` (they patch the working tree;
-`scripts/ci.test.ts` keeps them out):
+(`scripts/gegen/w10/s05-queue.ts`, `scripts/gegen/w9/s04-live.ts`) and run with `pnpm gegen` — never as part of `pnpm run ci`
+(they patch the working tree; `scripts/ci.test.ts` keeps them out):
 
 ```sh
 pnpm gegen --list                 # waves, steps, cases
@@ -528,14 +532,15 @@ other page.
   app removes the line); delete it before you commit.
 - **Code that names a page** — a solution's `docs`, an error message, a comment — names its repository path with the anchor:
   `docs/migrations.md#running-migrations`. A test of the docs app (`apps/docs/modules/docs/links.test.ts`) follows every such path
-  in the packages' code, the stubs, the starter's template and the apps to its page and anchor, and refuses a path to a package
-  README.
+  in the packages' code, the stubs, the starter's template, the apps, the package READMEs and the root README to its page and
+  anchor, refuses a path to a package README, and refuses a page without its anchor outside the READMEs (which list pages).
 - **Length:** as long as the topic needs. A page past about 600 lines probably wants splitting — propose it rather than
   splitting on your own.
 - **Package READMEs are cards for npm**, not documentation: one sentence on what the package is, how to install it (or that a
   new app has it), one short example taken from its docs page, the page's links and the licence line. npm shows a README without
   the repository, so a card links with absolute GitHub URLs
-  (`https://github.com/marmeon/marmeon/blob/main/docs/<page>.md#<anchor>`). A package that needs a third-party driver names the exact install command. Everything else belongs on a docs page.
+  (`https://github.com/marmeon/marmeon/blob/main/docs/<page>.md#<anchor>`) — the docs app's links test checks each page and
+  anchor. A package that needs a third-party driver names the exact install command. Everything else belongs on a docs page.
 
 When the code and a README disagree, the code is right: describe what it does, and report the difference (or the bug) rather
 than writing around it.

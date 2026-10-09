@@ -58,7 +58,8 @@ export default defineGegenproben({
       title: 'a Wave 10 entry reworded while ordering UPGRADING.md: its anchor is gone, the release check names it',
       patch: [{ file: 'UPGRADING.md', find: '#### Low: `uploads:prune --hours` below `UPLOADS_LIFETIME` needs `--force`\n', replace: '#### Low: `uploads:prune --hours` below the lifetime needs `--force`\n' }],
       run: { command: ['node', 'scripts/check-changesets.ts'] },
-      expect: /UPGRADING\.md lacks a Wave 10 entry: #low-uploadsprune---hours-below-uploads_lifetime-needs---force/,
+      // Since W11 step 10c (E215) the entries of 0.2.0 are one list, under the release's own heading.
+      expect: /UPGRADING\.md lacks an entry of "Upgrading to 0\.2\.0": #low-uploadsprune---hours-below-uploads_lifetime-needs---force/,
     },
   ],
 });

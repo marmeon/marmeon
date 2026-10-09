@@ -1,6 +1,6 @@
 # Blank app
 
-An app without modules — what `create-marmeon --minimal` writes ([create-marmeon](../../docs/installation.md)):
+An app without modules — what `create-marmeon --minimal` writes ([create-marmeon](../../docs/installation.md#a-blank-app)):
 `pnpm template:sync` copies it into the scaffolder's template (`.gitignore` and `package.json` stored as `_gitignore` and
 `_package.json`, a standalone `tsconfig.json`, empty `APP_KEY`s; this README stays here), and a test fails while the two differ.
 Edit it here, then sync. The starter kit is this app plus the home module and `marmeon make:auth`.
@@ -16,5 +16,5 @@ Besides `system` it has what every new app should start with, both global middle
 `middleware/SecurityHeaders.ts` on every response (`nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
 `X-Frame-Options: DENY`, and an HSTS switch — `HSTS`, off — to turn on once the site is HTTPS only; it sets the headers through
 `editableResponse()`) and a strict Content-Security-Policy with a nonce per response on every document
-(`contentSecurityPolicy()` — [Content-Security-Policy](../../docs/csp.md)): add
+(`contentSecurityPolicy()` — [Content-Security-Policy](../../docs/csp.md#adding-directives)): add
 directives for what your pages load from elsewhere.

@@ -21,9 +21,12 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   `UPGRADING.md` is marked `changes: true`: its sections come after every other hit of the search.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; no `docs/*.md` carries it any more, and `pnpm check:source` refuses it.
-- **The text speaks to app developers.** `pnpm check:source` (rule 5) refuses decision numbers in the pages, the package
-  READMEs and the root's README, CONTRIBUTING and SECURITY, and wave references in the pages and the READMEs; `UPGRADING.md` is
-  exempt. The same rule reads the starter's template and the packages' stubs, which every new app copies.
+- **The text speaks to app developers.** `pnpm check:source` rule 5 refuses decision numbers and comparisons with another
+  framework in the pages, the package READMEs, the root's README and the three policies (`UPGRADING.md` among them), and wave
+  references in the pages, the READMEs and `UPGRADING.md` (not in CONTRIBUTING, which names the Gegenproben's paths). It reads
+  the starter's template and the packages' stubs, which every new app copies, for all of these and a personal date too. Rule 6
+  reads the strings of the packages' code and launchers — messages, solutions, command output — for a decision number, a wave
+  or another framework; comments stay the maintainers'.
 - **The start page** (`/`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
@@ -47,8 +50,10 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   on the pages they fetch.
 - **Tests:** `modules/docs/links.test.ts` renders every page on the server and checks every link and anchor, that no page
   runs an inline script, and that a page names only files that exist (a link to a README is "no such page", a link to a
-  directory fails) — and that every `docs/<page>.md#<anchor>` the framework's code, the stubs, the starter's template and the
-  apps name leads to a page and its anchor (a path to a package README fails, and so does an anchor GitHub cannot make).
+  directory fails) — and that every `docs/<page>.md#<anchor>` the framework's code, every package's stubs, the starter's
+  template, the apps, the package READMEs and the root README name (the READMEs by their GitHub URL) leads to a page and its
+  anchor (a path to a package README fails, and so does an anchor GitHub cannot make or, outside the READMEs, a page without
+  one). `styles.test.ts` reads the stylesheet's phone layout: the menu is an overlay that scrolls.
   `docs.test.ts` checks the sections and their pages, previous and next, the start page, the search, caching, the policy and
   the headers, cookies, the 404 (also for `/packages/…`) and the boot checks.
 

@@ -10,8 +10,10 @@
  *      stages the packages, staged with pnpm (`pnpm stage publish` through `release:stage`) after `pack:check`, never `npm publish`,
  *      a plain `pnpm publish` or an npm token; the version pull request through Changesets; a GitHub-hosted runner.
  *   5. **`scripts/npm-trust.sh`** names every package (`node scripts/npm-trust.ts` writes it) and allows staged publishing only.
- *   6. **`UPGRADING.md`** has every entry of the list below, under its wave — the 22 hints of the Wave 7 acceptance, the Wave 6
- *      hints, the Wave 8 changes —, each with an impact and its likelihood, and no placeholder left.
+ *   6. **`UPGRADING.md`** has every entry of the list below, under its section — the entries of 0.2.0, and of 0.1.0 those of its
+ *      three development steps (ship-ready; devtools and observability, with the 22 hints of their acceptance; background
+ *      services) —, each with an impact and its likelihood, and no placeholder left. A section is the heading an entry stands
+ *      under: the release's own (`## Upgrading to 0.2.0 …`) or one of its steps (`### Ship-ready: …`).
  *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode", E153), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
  *      private vulnerability reporting, the deprecation policy in the root README.
  * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).
@@ -25,15 +27,23 @@ import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
-/** The entries UPGRADING.md must keep, by wave — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
-export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
-  'Wave 10': [
+/**
+ * The sections of UPGRADING.md whose entries it must keep: the start of the heading an entry stands under — a release
+ * (`## Upgrading to 0.2.0 from 0.1.0`) or one of its steps (`### Ship-ready: …`). Entries come by impact, so a section's list
+ * follows the release's history, not the file's order.
+ */
+export type UpgradingSection = 'Upgrading to 0.2.0' | 'Ship-ready' | 'Devtools and observability' | 'Background services';
+
+/** The entries UPGRADING.md must keep, by section — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
+export const UPGRADING_ANCHORS: Readonly<Record<UpgradingSection, readonly string[]>> = {
+  // 0.2.0: what Wave 10 and Wave 9 changed, one list since E215.
+  'Upgrading to 0.2.0': [
     'medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone', // W10.4, E197
     'medium-an-empty-string-by-type--rstring-keeps-it-an-empty-number-address-or-choice-is-missing', // W10.9c+, E208
     'medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order', // W10.5, E199
     'medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount', // W10.7, E202
     'medium-makeauth-brings-authprune-unverified--accounts-without-a-confirmed-address-go-after-auth_unverified_days-once-the-app-schedules-it', // W10.8, E203, E209
-    'low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract', // W10.3, E197
+    'low-marmeonvalidation--rules-typed-standard-schema-stays-the-contract', // W10.3, E197
     'low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it', // W10.9b, E206
     'low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field', // W10.9b, E197
     'low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes', // W10.9b
@@ -52,8 +62,6 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace', // W10.8, E205
     'low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments', // W10.8, E204
     'low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token', // W10.9b, E125
-  ],
-  'Wave 9': [
     'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187
     'low-the-image-runs-marmeon-under-tini--rebuild-it',
     'low-pnpm-1291',
@@ -85,7 +93,8 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'low-verified-treats-a-user-without-email_verified_at-as-unverified',
     'medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls', // E192
   ],
-  'Wave 8': [
+  // 0.1.0 from the development snapshots: Wave 8.
+  'Ship-ready': [
     'high-marmeon-is-a-dependency-of-the-app',
     'high-session-keys-are-hashed--every-user-is-signed-out-once-a-database-sessions-table-needs-its-upgrade-migration',
     'medium-protections-apply-to-every-node_env-but-development-and-test--staging-and-a-missing-node_env-included',
@@ -137,8 +146,8 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'low-marmeon-in-a-copy-under-node_modules-runs-its-dist-a-failed-start-names-nodes-error-code',
     'low-contributors-the-monorepo-needs-pnpm-12',
   ],
-  // The 22 hints of the Wave 7 acceptance (W8 step 11), in their order there.
-  'Wave 7': [
+  // Wave 7: the 22 hints of its acceptance (W8 step 11), in their order there.
+  'Devtools and observability': [
     'low-contributors-pnpm-run-ci-is-the-check-command--not-pnpm-ci', // 1
     'medium-development-features-run-with-node_envdevelopment-only--never-not-production', // 2 (E115; E139)
     'low-marmeon-dev-sets-node_envdevelopment-when-it-is-missing', // 3
@@ -162,8 +171,8 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'low-contributors-the-postgres-test-databases-are-dropped-after-a-test-run', // 21
     'medium-mail_mailerlog-writes-mail-texts-to-the-log--protected-environments-warn', // 22 (E135; E139)
   ],
-  // From the queue README's "Upgrading from before Wave 6".
-  'Wave 6': [
+  // Wave 6: from the queue README's "Upgrading from before Wave 6".
+  'Background services': [
     'medium-an-event-with-a-queued-listener-needs-static-event-and-static-schema',
     'medium-createtestapp-fakes-the-queue-events-storage-and-notifications',
     'medium-mails-need-absolute-links',
@@ -361,17 +370,17 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
   if (!existsSync(file)) return ['UPGRADING.md is missing (E168)'];
   const problems: string[] = [];
   const text = readFileSync(file, 'utf8');
-  const entries = new Map<string, { wave: string; body: string }>();
-  let wave = '';
+  const entries = new Map<string, { section: string; body: string }>();
+  let section = '';
   let current: string | undefined;
   for (const line of text.split('\n')) {
     const heading = /^(#{2,4}) (.+)$/.exec(line);
-    if (heading?.[1] === '###') wave = heading[2]!;
+    if (heading && heading[1] !== '####') section = heading[2]!;
     if (heading) {
       current = heading[1] === '####' ? slug(heading[2]!) : undefined;
       if (current !== undefined) {
         if (entries.has(current)) problems.push(`UPGRADING.md: two entries have the anchor #${current}`);
-        entries.set(current, { wave, body: '' });
+        entries.set(current, { section, body: '' });
         if (!/^#### (High|Medium|Low)( \(contributors\))?: /.test(line)) problems.push(`UPGRADING.md: "${line}" — an entry starts with its impact (High:, Medium:, Low:)`);
       }
     } else if (current !== undefined) entries.get(current)!.body += `${line}\n`;
@@ -379,9 +388,9 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
   for (const [name, list] of Object.entries(anchors)) {
     list.forEach((anchor, index) => {
       const entry = entries.get(anchor);
-      const label = name === 'Wave 7' ? `the Wave 7 hint ${index + 1}` : `a ${name} entry`;
+      const label = name === 'Devtools and observability' ? `the devtools hint ${index + 1}` : `an entry of "${name}"`;
       if (!entry) problems.push(`UPGRADING.md lacks ${label}: #${anchor}`);
-      else if (!entry.wave.startsWith(name)) problems.push(`UPGRADING.md: #${anchor} (${label}) is under "${entry.wave}", not "${name}"`);
+      else if (!entry.section.startsWith(name)) problems.push(`UPGRADING.md: #${anchor} (${label}) is under "${entry.section}", not "${name}"`);
     });
   }
   for (const [anchor, entry] of entries) {

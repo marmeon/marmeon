@@ -114,14 +114,16 @@ describe('the docs the framework names', () => {
           const anchor = hash?.replace(/[.:!?]+$/, '');
           const anchors = anchorsOf.get(file);
           if (!anchors) problems.push(`${at}: ${file} — no such page of the docs`);
+          else if (anchor === undefined && !CARD.test(path)) problems.push(`${at}: ${file} — name the section too (${file}#<anchor>): a whole page is no answer`);
           else if (anchor !== undefined && !SLUG.test(anchor)) problems.push(`${at}: ${file}#${anchor} — no anchor GitHub makes (lower-case letters, digits, - and _)`);
           else if (anchor !== undefined && !anchors.has(anchor)) problems.push(`${at}: ${file}#${anchor} — no #${anchor} on that page`);
         }
       });
     }
     expect(problems, problems.join('\n')).toEqual([]);
-    // The solutions, messages and comments that name a page (measured 34): a scan that reads no file would pass with nothing found.
-    expect(named).toBeGreaterThan(25);
+    // The pages named (measured 185: 34 by the solutions, messages and comments, the rest by the cards and the root README's links).
+    // The threshold is that − 10 %: a scan that reads no file, or not the cards, would pass with too little found.
+    expect(named).toBeGreaterThan(165);
   });
 });
 
@@ -133,15 +135,20 @@ describe('the docs the framework names', () => {
 const DOCS_PATH = /\b(docs\/[a-z0-9-]+\.md)(?:#([^\s`'"()[\]<>,;]*))?/g;
 /** An anchor as GitHub makes it from an English heading: lower-case letters, digits, `-` and `_` (`#the-environment-node_env`). */
 const SLUG = /^[a-z0-9_-]+$/;
+/** A package's card or the root README: a list of the docs' pages, so a link to a whole page is what they mean. */
+const CARD = /^(?:packages\/[^/]+\/)?README\.md$/;
 /** A package's README — an npm card, never the place a message or a comment sends anyone to. */
 const README_PATH = /packages\/[a-z-]+\/README\.md/g;
 
 /**
  * What reaches apps and their developers and may name a page of the docs: a package's code (`packages/<name>/src`, its tests and
- * fixtures aside), the `make:auth` stubs, the starter's template and the two apps — tracked, or new and not ignored, as git lists them.
+ * fixtures aside), every package's stubs (`make:auth`'s module, the migrations `make:*-table` copies), the starter's template, the
+ * two apps, the packages' cards (`packages/<name>/README.md`, what npm shows) and the root README — tracked, or new and not ignored,
+ * as git lists them. The cards and the README link a page by its GitHub URL (`https://github.com/marmeon/marmeon/blob/main/docs/
+ * <page>.md#<anchor>`); {@link DOCS_PATH} finds the `docs/…` inside it.
  */
 function namingFiles(): { path: string; text: string }[] {
-  const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'packages', 'apps/web-app', 'apps/blank-app'], {
+  const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'packages', 'apps/web-app', 'apps/blank-app', 'README.md'], {
     cwd: repo,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -150,7 +157,8 @@ function namingFiles(): { path: string; text: string }[] {
   const wanted = (path: string) =>
     /^packages\/[^/]+\/src\/.+\.tsx?$/.test(path)
       ? !/\.(?:test|type-test)\.tsx?$|__fixtures__\//.test(path)
-      : /^(?:packages\/auth\/stubs|packages\/create-marmeon\/template|apps\/web-app|apps\/blank-app)\//.test(path);
+      : /^(?:packages\/[^/]+\/stubs|packages\/create-marmeon\/template|apps\/web-app|apps\/blank-app)\//.test(path) ||
+        /^(?:packages\/[^/]+\/)?README\.md$/.test(path);
   return [...new Set(listed.stdout.split('\0').filter(Boolean))]
     .filter((path) => wanted(path) && existsSync(join(repo, path)))
     .map((path) => ({ path, bytes: readFileSync(join(repo, path)) }))

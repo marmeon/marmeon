@@ -25,17 +25,19 @@
  *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end) — but the rename hint's way back
  *      (`AUTH_TOKEN_PREFIX=…` in `UPGRADING.md`). A forgotten copy in a test or a README would teach the old default.
  *
- *   5. **The docs speak to their readers** (W11 step 10, E214): the pages under `docs/`, the packages' READMEs (their npm cards), the
- *      root `README.md`, `CONTRIBUTING.md` and `SECURITY.md` carry no decision number (`E` and two or three digits — a hex value, an
- *      exponent, `E2E` or `E.164` is none); the pages and the cards no wave reference (`W9`, `W10.4`, `Wave 9`); and no page under
- *      `docs/` the pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline). What
- *      every new app copies — the starter's template and the packages' stubs — carries no decision number, no wave reference and
- *      no personal date ("Max 07.10."); the pages, the cards and those copies no comparison with another framework.
- *      `UPGRADING.md` is the record of changes, exempt. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and the files it
- *      reads.
+ *   5. **The docs speak to their readers** (W11 step 10, E214, E215): the pages under `docs/`, the packages' READMEs (their npm
+ *      cards), the root `README.md` and the policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) carry no
+ *      decision number (`E` and two or three digits — a hex value, an exponent, `E2E` or `E.164` is none) and no comparison with
+ *      another framework; the pages, the cards and the upgrade guide no wave reference (`W9`, `W10.4`, `Wave 9`) —
+ *      `CONTRIBUTING.md` names the Gegenproben's paths (`scripts/gegen/w10/…`) and steps (`'W9.4'`); and no page under `docs/` the
+ *      pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline). What every new app
+ *      copies — the starter's template and the packages' stubs — carries no decision number, no wave reference, no personal date
+ *      ("Max 07.10.") and no comparison with another framework. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and
+ *      the files it reads.
  *
  *   6. **The framework's messages speak to app developers** (W11 step 10, E214): the strings of a package's code
- *      (`packages/<name>/src/`, tests, type tests and fixtures aside) — errors, warnings, solutions, command descriptions and
+ *      (`packages/<name>/src/`, tests, type tests and fixtures aside, and the launchers `packages/<name>/bin/*.js`) — errors,
+ *      warnings, solutions, command descriptions and
  *      output, the files `make:*` writes, the devtools' pages — carry no decision number, no wave reference and no other framework,
  *      as rule 5's patterns find them. Only strings count (read with oxc-parser): comments, names and regular expressions are the
  *      maintainers' and keep their decision numbers.
@@ -195,8 +197,10 @@ export interface TextRule {
 const DOCS_PAGES = /^docs\/[^/]+\.md$/;
 /** The packages' READMEs — what npm shows. */
 const PACKAGE_CARDS = /^packages\/[^/]+\/README\.md$/;
-/** The root README and the policies — `UPGRADING.md`, the record of changes, is exempt. */
-const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY)\.md$/;
+/** The root README and the policies the docs show as pages (Upgrade Guide, Contributing, Security Policy). */
+const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY|UPGRADING)\.md$/;
+/** The upgrade guide: it says what changed by version, not by wave. */
+const UPGRADE_GUIDE = /^UPGRADING\.md$/;
 /**
  * What every new app copies and keeps: the starter's template (`create-marmeon`) and the packages' stubs (`make:auth`'s module,
  * the migrations of `make:queue-table`, `make:session-table`, …) — every comment of them lands in an app, so it speaks to that
@@ -216,7 +220,8 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
   {
     what: 'a wave reference',
     pattern: /\b(?:W\d+(?:\.\d+)?|[Ww]ave \d+)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, APP_COPIES],
+    // Not CONTRIBUTING.md: it names the Gegenproben's paths (`scripts/gegen/w10/…`) and steps (`step: 'W9.4'`).
+    files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES],
     why: 'the docs describe the framework as it is, not when it changed — UPGRADING.md says that, by version',
   },
   {
@@ -235,7 +240,7 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
   {
     what: 'a comparison with another framework',
     pattern: /\b(?:Laravel|Breeze|Inertia|Rails|Django|Symfony|AdonisJS|NestJS|Next\.js|Nuxt)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, APP_COPIES],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],
     why: 'describe Marmeon as it is — a reader may know no other framework',
   },
 ];
@@ -257,8 +262,8 @@ export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): strin
   return hits;
 }
 
-/** A package's code, as it runs in an app: `packages/<name>/src/`, its tests, type tests and fixtures aside. */
-const RUNTIME_CODE = /^packages\/[^/]+\/src\/(?!.*__fixtures__\/).+(?<!\.test|\.type-test)\.tsx?$/;
+/** A package's code, as it runs in an app: `packages/<name>/src/` (its tests, type tests and fixtures aside) and its launchers (`bin/*.js`). */
+const RUNTIME_CODE = /^packages\/[^/]+\/(?:src\/(?!.*__fixtures__\/).+(?<!\.test|\.type-test)\.tsx?|bin\/[^/]+\.js)$/;
 /** What rule 6 looks for in the strings of that code: rule 5's parts that hold for every text an app developer reads. */
 const RUNTIME_TEXT_RULES = DOC_TEXT_RULES.filter((rule) => ['a decision number', 'a wave reference', 'a comparison with another framework'].includes(rule.what));
 
@@ -343,6 +348,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies name no decision number, no wave and no pending page; the starter's template and the packages' stubs no decision number, wave or personal date; neither they nor the docs compare Marmeon with another framework; no string of a package's code names a decision, a wave or another framework.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies (the upgrade guide among them) name no decision number and compare Marmeon with no other framework; the docs, the cards and the upgrade guide name no wave, no page is pending; the starter's template and the packages' stubs name no decision number, wave, personal date or other framework; no string of a package's code or launchers names a decision, a wave or another framework.`);
   }
 }

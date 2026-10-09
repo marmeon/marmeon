@@ -256,8 +256,8 @@ filled in yet, and so are errors of the body as a whole.
 - A route without a body schema, such as a `GET` or a closure, has nothing to check and answers 400.
 - A live validation is read-only: it writes no session, sets no cookie and does no work after its response.
 - Live validations have a rate limit of their own, from the cache package that every new app has: 30 a minute per route and
-  address. A `throttle()` on the route holds them to
-  its limit without counting them. The [rate limiting](rate-limiting.md#live-validations) page shows how to change it.
+  address. A `throttle()` on the route holds them to its limit without counting them. The
+  [rate limiting](rate-limiting.md#live-validations) page shows how to change it.
 - Password fields and files are never sent.
 
 ## Database rules, and why they never run live
@@ -291,12 +291,7 @@ r.object({ slug: r.string().unique(NoteRepository, 'slug').live(), email: r.emai
 ```
 
 The starter kit's registration has no database rule at all. With private registration, the default, it never tells whether an
-address is taken. With `AUTH_PRIVATE_REGISTRATION=false`, the unique index tells on submit. An app that wants a live "taken" back
-writes it itself, and should know what it gives away:
-
-```ts
-email: email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).findByEmail(address)) || 'auth.validation.email_taken').live(),
-```
+address is taken. With `AUTH_PRIVATE_REGISTRATION=false`, the unique index tells on submit, behind the registration's rate limit.
 
 ### The unique index is the truth
 

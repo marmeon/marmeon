@@ -1,5 +1,5 @@
 /**
- * A rendered page (a doc or a README) as data (no HTML string): an element is `{ t: tag, a: attributes, c: children }` (short keys —
+ * A rendered page of the docs as data (no HTML string): an element is `{ t: tag, a: attributes, c: children }` (short keys —
  * a page has thousands), text is a string, and a highlighted code block is `{ html }` — markup the server's highlighter made
  * from escaped text, nothing of the file. Internal links carry `data-internal` (the view renders them as `<Link prefetch>`).
  */

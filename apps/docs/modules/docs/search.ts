@@ -2,7 +2,7 @@
 export interface IndexedSection {
   /** The page: `/docs/<slug>`. */
   readonly path: string;
-  /** The page's title — `@marmeon/scheduler`. */
+  /** The page's title — `Task Scheduling`. */
   readonly page: string;
   readonly heading: string;
   readonly anchor: string;

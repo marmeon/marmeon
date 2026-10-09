@@ -1,6 +1,6 @@
 /*
  * The web app's styles — linked from index.html (a stylesheet of its own: no inline styles needed for any of this). The views name
- * classes, never `style` props: a `style` attribute in the server's markup is what a strict `style-src` blocks (docs/navigation.md).
+ * classes, never `style` props: a `style` attribute in the server's markup is what a strict `style-src` blocks (docs/styling.md#a-strict-policy-for-styles).
  *
  * View transitions (E185): `createMarmeonApp({ viewTransition: 'react' })` (bootstrap/client.tsx) — each page change renders in a
  * React transition with its direction as a type, and React 19.3 animates the views' <ViewTransition>. The framework ships no

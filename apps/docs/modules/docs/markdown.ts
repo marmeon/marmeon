@@ -250,7 +250,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
           stack.pop();
           break;
         case 'image':
-          // Images of a README live in the repository, not in this app: their text stands in.
+          // Images of a page live in the repository, not in this app: their text stands in.
           top().c.push(plainText(token.children ?? []));
           break;
         default:

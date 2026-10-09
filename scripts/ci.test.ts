@@ -174,7 +174,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
   const waves = rule('a wave reference');
   const marker = rule('the pending marker');
 
-  it('finds a decision number in the docs, the package cards, the root README, CONTRIBUTING and SECURITY — not in UPGRADING or code', () => {
+  it('finds a decision number in the docs, the package cards, the root README, CONTRIBUTING, SECURITY and UPGRADING — not in code', () => {
     expect(textRuleHits([
       { path: 'docs/queues.md', text: 'A job runs once.\nThe claim is fair (E199).' },
       { path: 'packages/queue/README.md', text: 'Fair by default, E199.' },
@@ -191,6 +191,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
       'README.md:1: See E36.',
       'CONTRIBUTING.md:1: (E123)',
       'SECURITY.md:1: E210: the docs',
+      'UPGRADING.md:1: Since E199 the claim is fair.',
     ]);
   });
 
@@ -199,17 +200,19 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     expect(textRuleHits([{ path: 'docs/notifications.md', text }], decisions)).toEqual([]);
   });
 
-  it('finds a wave reference in the docs and the package cards only', () => {
+  it('finds a wave reference in the docs, the package cards and the upgrade guide — not in CONTRIBUTING (its Gegenproben\'s paths)', () => {
     expect(textRuleHits([
       { path: 'docs/routing.md', text: 'Since W9 the router is typed.' },
       { path: 'docs/forms.md', text: 'as of W10.4, and in wave 3' },
       { path: 'packages/live/README.md', text: 'New in Wave 9.' },
-      { path: 'CONTRIBUTING.md', text: 'Wave 9 wrote it.' },
+      { path: 'UPGRADING.md', text: '### Wave 10 — lean dependencies' },
+      { path: 'CONTRIBUTING.md', text: "Wave 9 wrote it: `scripts/gegen/w10/s09-docs.ts`, step: 'W9.4'" },
       { path: 'docs/csp.md', text: 'W3C, HTTP/2, AW3 and W-9' },
     ], waves)).toEqual([
       'docs/routing.md:1: Since W9 the router is typed.',
       'docs/forms.md:1: as of W10.4, and in wave 3',
       'packages/live/README.md:1: New in Wave 9.',
+      'UPGRADING.md:1: ### Wave 10 — lean dependencies',
     ]);
   });
 
@@ -258,7 +261,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     ]);
   });
 
-  it('finds a comparison with another framework in the docs, the package cards and what a new app copies', () => {
+  it('finds a comparison with another framework in the docs, the package cards, the root texts and what a new app copies', () => {
     const frameworks = rule('a comparison with another framework');
     expect(textRuleHits([
       { path: 'docs/authentication.md', text: 'Like Laravel Breeze, the module is yours.' },
@@ -267,11 +270,19 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
       { path: 'packages/create-marmeon/template/base/.env.example', text: "# like Laravel's starter kits" },
       { path: 'docs/routing.md', text: 'rails of a track, a breeze of air, laravel in lower case' },
       { path: 'packages/create-marmeon/src/main.ts', text: '// like create-nuxt and Laravel' },
+      { path: 'README.md', text: 'A framework like Rails.' },
+      { path: 'CONTRIBUTING.md', text: "Laravel's style guide" },
+      { path: 'SECURITY.md', text: 'as Symfony does' },
+      { path: 'UPGRADING.md', text: "in Laravel's manner" },
     ], frameworks)).toEqual([
       'docs/authentication.md:1: Like Laravel Breeze, the module is yours.',
       "packages/validation/README.md:1: Inertia's partial reloads",
       "packages/auth/stubs/react/modules/auth/controllers/LoginController.ts:1: /** (Laravel Breeze's default). */",
       "packages/create-marmeon/template/base/.env.example:1: # like Laravel's starter kits",
+      'README.md:1: A framework like Rails.',
+      "CONTRIBUTING.md:1: Laravel's style guide",
+      'SECURITY.md:1: as Symfony does',
+      "UPGRADING.md:1: in Laravel's manner",
     ]);
   });
 
@@ -285,6 +296,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     ]);
     expect(textRuleWhere('docs/queues.md')).toBe('in the docs');
     expect(textRuleWhere('packages/queue/README.md')).toBe('in the docs');
+    expect(textRuleWhere('UPGRADING.md')).toBe('in the docs');
     expect(textRuleWhere('packages/auth/stubs/react/modules/auth/routes.ts')).toBe('in what every new app copies');
     expect(textRuleWhere('packages/create-marmeon/template/base/.env.example')).toBe('in what every new app copies');
     expect(textRuleWhere('packages/session/stubs/migrations/create_sessions_table.ts')).toBe('in what every new app copies');
@@ -306,6 +318,20 @@ describe("check:source — the framework's messages speak to app developers (rul
       "packages/core/src/application.tsx:3: a comparison with another framework: 'Laravel\\'s rules, typed'",
       'packages/core/src/application.tsx:4: a decision number: Development only (E115)',
       'packages/core/src/application.tsx:5: a wave reference: "fine (W10.4)"',
+    ]);
+  });
+
+  it('reads the launchers too — packages/<name>/bin/*.js print to every developer', () => {
+    const text = ["// E108: one process (W8 step 4)", "console.error('marmeon needs Node 26 (E108).');", 'const w = `since Wave 10`;'].join('\n');
+    expect(runtimeStringHits([
+      { path: 'packages/cli/bin/marmeon.js', text },
+      { path: 'packages/create-marmeon/bin/create-marmeon.js', text: "process.stderr.write('Laravel-like starter\\n');" },
+      { path: 'packages/cli/bin/sub/helper.js', text: "const e = '(E62)';" },
+      { path: 'packages/cli/scripts/build.js', text: "const e = '(E62)';" },
+    ])).toEqual([
+      "packages/cli/bin/marmeon.js:2: a decision number: 'marmeon needs Node 26 (E108).'",
+      'packages/cli/bin/marmeon.js:3: a wave reference: since Wave 10',
+      "packages/create-marmeon/bin/create-marmeon.js:1: a comparison with another framework: 'Laravel-like starter\\n'",
     ]);
   });
 

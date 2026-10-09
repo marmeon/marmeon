@@ -51,18 +51,19 @@ export default defineGegenproben({
     {
       id: 'G1b',
       title: 'the decision-number rule reads no file: its unit test is red',
-      patch: [{ file: 'scripts/check-source.ts', find: '    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],', replace: '    files: [],' }],
+      // W11 step 10c: the anchor names the rule's pattern too — the framework rule reads the same files since (C-M2, E215).
+      patch: [{ file: 'scripts/check-source.ts', find: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],', replace: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [],' }],
       run: ci('finds a decision number in the docs'),
-      // Vitest shortens the lists: nothing found where five hits are expected.
-      expect: /expected \[\] to deeply equal \[ …\(5\) \]/,
+      // Vitest shortens the lists: nothing found where six hits are expected (UPGRADING.md's among them since step 10c).
+      expect: /expected \[\] to deeply equal \[ …\(6\) \]/,
     },
     {
       id: 'G2b',
       title: 'the wave rule without "Wave 9": its unit test is red',
       patch: [{ file: 'scripts/check-source.ts', find: '    pattern: /\\b(?:W\\d+(?:\\.\\d+)?|[Ww]ave \\d+)\\b/,', replace: '    pattern: /\\bW\\d+(?:\\.\\d+)?\\b/,' }],
-      run: ci('finds a wave reference in the docs and the package cards only'),
-      // Two of the three found: "New in Wave 9." of the package README is missed.
-      expect: /expected \[ …\(2\) \] to deeply equal \[ …\(3\) \]/,
+      run: ci('finds a wave reference in the docs, the package cards and the upgrade guide'),
+      // Two of the four found: "New in Wave 9." of the package README and UPGRADING.md's "### Wave 10" are missed.
+      expect: /expected \[ …\(2\) \] to deeply equal \[ …\(4\) \]/,
     },
     {
       id: 'G3b',
