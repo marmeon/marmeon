@@ -25,6 +25,7 @@ import {
 import type { AuthUser } from '@marmeon/auth';
 import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
+import { misnested } from './markup.ts';
 
 /** Where @marmeon/session keeps flash messages waiting for a response that is shown (E60). */
 const FLASH_MESSAGES = '_flash_messages';
@@ -498,12 +499,15 @@ export class TestResponse {
   /**
    * The markup is what the browser renders from the page object it receives — the page hydrates without a mismatch.
    * Compares the document with one rendered again from the page's JSON (what the browser reads), so a prop the server
-   * rendered differently than it sent (a `Date` instead of its string) fails here.
+   * rendered differently than it sent (a `Date` instead of its string) fails here — and checks that the browser's HTML parser
+   * builds the tree the markup says: a `<form>` (a `<Link>` that sends) inside a `<p>` fails, the parser closes the `<p>` first.
    */
   assertHydrates(): this {
     this.#requireSsr('assertHydrates');
     this.assertServerRendered();
     const { rerendered, rendered = this.body } = this.#ssr!;
+    const nesting = misnested(rendered);
+    if (nesting !== undefined) this.#fail(`Expected the page to hydrate: ${nesting}, so React finds other elements than it rendered.`);
     if (rerendered === undefined) this.#fail('Could not render the page again from its JSON');
     if (rerendered !== rendered) {
       let at = 0;

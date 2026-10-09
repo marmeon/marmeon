@@ -144,10 +144,20 @@ describe('the pages, rendered on the server', () => {
     const sudo = continuing(await app.post('/login', credentials(ada)));
     const html = { headers: { accept: 'text/html' } };
     for (const [client, url] of [[app, '/login'], [app, '/register'], [sudo, '/dashboard'], [sudo, '/settings/security'], [sudo, '/settings/tokens']] as const) {
-      const { body } = await client.get(url, html).assertOk().assertServerRendered();
+      const { body } = await client.get(url, html).assertOk().assertServerRendered().assertHydrates();
       const styled = body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
       expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
     }
+  });
+
+  it('hydrate with their links that send — a <Link> to an action renders a form, which no <p> may hold', async () => {
+    await app.close();
+    // Open registration: an unconfirmed account reaches the dashboard, with its note to confirm the address.
+    app = await createTestApp(application, { database: 'refresh', ssr: true, env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    const grace = await app.factory(UserFactory).state('unverified').create();
+    const unverified = continuing(await app.post('/login', credentials(grace)));
+    const html = { headers: { accept: 'text/html' } };
+    for (const url of ['/dashboard', '/email/verify']) await unverified.get(url, html).assertOk().assertHydrates();
   });
 });
 

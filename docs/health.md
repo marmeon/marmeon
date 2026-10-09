@@ -103,6 +103,10 @@ every instance takes every instance out of the load balancer at once, which turn
 | `cache` | `@marmeon/cache` | Adds a key and removes it again, through the configured store. | The driver. |
 | `queue` | `@marmeon/queue` | Reads the size of the default connection's default queue. | The connection and how many jobs wait. |
 
+The `database` check asks the connections the process has used so far. The packages' connections count from the start: the cache,
+the sessions, the queue and notifications check theirs while the app boots. A connection that only a controller reaches counts from
+its first query in this process. Until then a fresh instance answers ready while that database is down.
+
 A check that fails names what failed, such as the database connection, in the development details.
 
 ## What the answer shows

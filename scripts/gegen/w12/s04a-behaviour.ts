@@ -10,7 +10,9 @@ import { defineGegenproben } from '../define.ts';
  * - **A `<Link>` that sends is a real form** — four measures, each its own case: a `type="button"` again (G8) does nothing without
  *   JavaScript (the starter's sign-out among them); the page's token left out (G8b) gets the session's form a 419; the click not
  *   stopped (G8c) posts the form beside the visit — two requests, the second after the page changed; a link with `confirm` that
- *   submits anyway (G8d) sends without asking before the app started.
+ *   submits anyway (G8d) sends without asking before the app started. Fix round 1: the page's token goes to this site only (G8e: a
+ *   link to another origin carries it); a sending link back in a `<p>` (G8f: the web app's VerifyEmail) fails `assertHydrates()`,
+ *   whose nesting check names it.
  * - **A read-only request's message names its own cause** — the layer's base (G9) and the deferred prop streamed after the headers
  *   (G9b) without a rule of their own fall back to an island's: "an island is read-only … Do that in the page".
  * - **A provider with only `static solutions` is one** (G11) — without the check's third static it stops the start.
@@ -19,7 +21,7 @@ import { defineGegenproben } from '../define.ts';
  *   answers 500 at the first request); `ctx.user` not added to a limiter's context by `@marmeon/auth` (G12c: the web app's limiters
  *   do not compile without a cast).
  * - **An export goes on after the last row it wrote** (G13) — by OFFSET again, two rows of the first batch deleted meanwhile push
- *   "Bulk 0500" out of the file.
+ *   "Bulk 0500" out of the file; a cursor that refuses booleans (G13b) ends a boolean-sorted export at its second batch.
  * - **`job.once` on a busy key releases the attempt and gives it back** — two measures: the worker treats the busy key as an error
  *   again (G14: a job with one try fails); it releases without giving the attempt back (G14b: the next claim is attempt 2 of 1 and
  *   fails as "attempted without finishing"). Run on SQLite; `pnpm test:pgsql` / `test:redis` run the same test on the other drivers.
@@ -79,7 +81,7 @@ export default defineGegenproben({
     {
       id: 'G8b',
       title: "the form leaves the page's CSRF token out: a signed-in user's sign-out without JavaScript fails with 419",
-      patch: [{ file: LINK, find: '        {page.csrf !== undefined && <input type="hidden" name={FORM_TOKEN_FIELD}', replace: '        {false && <input type="hidden" name={FORM_TOKEN_FIELD}' }],
+      patch: [{ file: LINK, find: '        {page.csrf !== undefined && !OTHER_ORIGIN.test(href) && <input type="hidden" name={FORM_TOKEN_FIELD}', replace: '        {false && <input type="hidden" name={FORM_TOKEN_FIELD}' }],
       run: LINK_FORM,
       expect: /\["<form class=\\"marmeon-link\\" action=\\"\/logout\\" method=\\"post\\"><button type=\\"submit\\">Sign out<\/button><\/form>",.*: expected/,
     },
@@ -96,6 +98,23 @@ export default defineGegenproben({
       patch: [{ file: LINK, find: "<button type={confirm === undefined ? 'submit' : 'button'}", replace: '<button type="submit"' }],
       run: LINK_FORM,
       expect: /<button type=\\"submit\\">Sign out everywhere<\/button><\/form>"\]: expected/,
+    },
+    {
+      id: 'G8e',
+      title: "a link that sends to another origin carries the page's CSRF token in its form",
+      patch: [{ file: LINK, find: '{page.csrf !== undefined && !OTHER_ORIGIN.test(href) && <input', replace: '{page.csrf !== undefined && <input' }],
+      run: LINK_FORM,
+      expect: /action=\\"https:\/\/elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\" value=\\"t0ken\\"\/>.*: expected/,
+    },
+    {
+      id: 'G8f',
+      title: "the web app's VerifyEmail holds its sending link in a <p> again: the browser closes the <p> at the form, the page does not hydrate",
+      patch: [
+        { file: 'apps/web-app/modules/auth/views/VerifyEmail.tsx', find: '      <div className="paragraph">', replace: '      <p>' },
+        { file: 'apps/web-app/modules/auth/views/VerifyEmail.tsx', find: '      </div>\n    </main>', replace: '      </p>\n    </main>' },
+      ],
+      run: { vitest: 'apps/web-app/modules/user-profile/ssr.test.ts', name: 'hydrates the pages with a link that sends' },
+      expect: /Expected the page to hydrate: <form> inside <p> \(.*main > p\): the browser closes the <p> first/,
     },
     {
       id: 'G9',
@@ -140,6 +159,19 @@ export default defineGegenproben({
       expect: /modules\/auth\/cache\.type-test\.ts\(26,\d+\): error TS2339: Property 'user' does not exist on type/,
     },
     {
+      id: 'G12d',
+      title: "the server's start check calls any static verify again: an app's own middleware method runs at the start",
+      patch: [
+        {
+          file: KERNEL,
+          find: '(middleware as { [START_CHECK]?: unknown })[START_CHECK] : undefined;',
+          replace: '((middleware as { [START_CHECK]?: unknown })[START_CHECK] ?? (middleware as { verify?: unknown }).verify) : undefined;',
+        },
+      ],
+      run: { vitest: 'packages/cache/src/rate-limiter.test.ts', name: 'lets the allowed attempts through' },
+      expect: /the start check called an app's own static verify/,
+    },
+    {
       id: 'G13',
       title: 'the export pages its later batches by OFFSET: a row deleted from the first batch pushes a later one out of the file',
       patch: [
@@ -152,6 +184,13 @@ export default defineGegenproben({
       ],
       run: { vitest: 'packages/table/src/table.test.ts', name: 'not at an offset' },
       expect: /\{"missing":\["Bulk 0500"\],"twice":\[\]\}: expected/,
+    },
+    {
+      id: 'G13b',
+      title: 'the cursor refuses a boolean again: an export sorted by a boolean column ends at its second batch',
+      patch: [{ file: 'packages/database/src/pagination.ts', find: " || typeof item === 'number' || typeof item === 'boolean') ? values", replace: " || typeof item === 'number') ? values" }],
+      run: { vitest: 'packages/table/src/table.test.ts', name: 'also when sorted by a boolean column' },
+      expect: /active: 0 rows — the stream failed: InvalidCursorError/,
     },
     {
       id: 'G14',

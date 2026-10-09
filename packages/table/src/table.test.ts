@@ -384,6 +384,29 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(rows).toEqual(expected);
     });
 
+    it('goes on after the last row also when sorted by a boolean column — both ways, NULLs last (a cursor keeps the boolean)', async () => {
+      const application = await app(driver);
+      // 275 true, 275 false, 50 NULL: the 500th row — where the second batch goes on — is a boolean either way.
+      const active = (index: number) => (index >= 550 ? null : index % 2 === 0);
+      await application.insert(Array.from({ length: 600 }, (_, index) => ({ ...MEMBERS[1]!, id: 100 + index, name: `Bulk ${String(index).padStart(4, '0')}`, email: `b${index}@example.com`, active: active(index) })));
+      // Ties by the key, in the sort's direction.
+      const names = (rank: (value: boolean | null) => number, direction: 1 | -1) =>
+        Array.from({ length: 600 }, (_, index) => index)
+          .sort((a, b) => rank(active(a)) - rank(active(b)) || (a - b) * direction)
+          .map((index) => `Bulk ${String(index).padStart(4, '0')}`);
+      for (const [sort, rank] of [
+        ['active', (value: boolean | null) => (value === false ? 0 : value === true ? 1 : 2)],
+        ['-active', (value: boolean | null) => (value === true ? 0 : value === false ? 1 : 2)],
+      ] as const) {
+        const response = await application.request(`/teams/1/_tables/active/export/csv?search=bulk&sort=${sort}`, { user: ADA });
+        const text = await response.text().catch((error: unknown) => `the stream failed: ${String(error)}`);
+        const rows = text.split('\r\n').filter(Boolean).slice(1).map((line) => line.slice(1, line.indexOf('"', 1)));
+        expect(rows.length, `${sort}: ${rows.length} rows — ${text.includes('the stream failed') ? text.slice(text.indexOf('the stream failed')) : 'complete'}`).toBe(600);
+        // Members the search leaves out (Ada, Alan, …) have no "Bulk" in their name — only the bulk rows count.
+        expect(rows, sort).toEqual(names(rank, sort.startsWith('-') ? -1 : 1));
+      }
+    });
+
     it('refuses an export over its limit (422) before streaming a byte — never a file cut short', async () => {
       const application = await app(driver);
       const response = await application.request('/teams/1/_tables/small/export/csv', { user: ADA });

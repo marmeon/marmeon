@@ -88,7 +88,9 @@ The queue gives you two tools for that:
 
 `once()` makes repeats rare, not impossible: a worker that dies after `fn` and before the marker runs `fn` again. While one attempt
 runs `fn` for a key, another attempt with the same key does not run it alongside. That attempt goes back to the queue for five
-seconds and does not count, so it runs again also when the job has only one try.
+seconds and does not count, so it runs again also when the job has only one try. It runs `handle()` from the start each time,
+every five seconds for as long as the other attempt holds the key, without using up a try. Put `job.once()` first in `handle()`,
+or keep what runs before it safe to repeat.
 `once()` needs `@marmeon/cache`, and with workers on several machines a cache they share: `database` or `redis`.
 
 ### Inside a transaction

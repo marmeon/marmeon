@@ -278,7 +278,8 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     return (
       <form action={href} method="post" className="marmeon-link">
         {method !== 'post' && <input type="hidden" name={FORM_METHOD_FIELD} value={method.toUpperCase()} />}
-        {page.csrf !== undefined && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
+        {/* The page's token goes to this site only: never into a form that posts to another origin (a scheme, or `//`). */}
+        {page.csrf !== undefined && !OTHER_ORIGIN.test(href) && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
         {data &&
           !(data instanceof FormData) &&
           Object.entries(data).map(([name, value]) =>
@@ -330,6 +331,9 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
 }
 
 const noSubscription = () => () => {};
+
+/** An `href` that may lead to another origin: with a scheme (`https:`), or protocol-relative (`//`, `/\` as browsers read it). */
+const OTHER_ORIGIN = /^(?:[a-z][a-z\d+.-]*:|[/\\]{2})/i;
 
 /** Path and query — what a visit's URL is. */
 function withoutHash(href: string): string {

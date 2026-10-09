@@ -81,9 +81,10 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
         </p>
       )}
       {isOwnProfile && auth?.user && !auth.user.verified && (
-        <p role="note">
+        // A <div>, not a <p>: the link sends (a POST), so it renders a form — which a <p> cannot hold.
+        <div role="note" className="paragraph">
           {t('show.verify')} <Link route="auth.verification.send">{t('show.verify_again')}</Link>
-        </p>
+        </div>
       )}
       {/* Offered only when the policy allows it (`abilities`, E61) — plain booleans, the server checks again on submit. A
           layer (E53): the profile stays under it, with its activity and statistics as loaded. */}

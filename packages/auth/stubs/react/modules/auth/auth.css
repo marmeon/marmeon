@@ -35,6 +35,11 @@
   flex: 1;
 }
 
+/* A paragraph that holds a link that sends (a form): a <div> with a paragraph's spacing — a <p> cannot hold a form. */
+.auth-paragraph {
+  margin-block: 1em;
+}
+
 /* AccessTokens: one ability per line. */
 .auth-choice {
   display: block;

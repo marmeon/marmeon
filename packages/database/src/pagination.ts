@@ -248,9 +248,13 @@ function rowsAfter(eb: ExpressionBuilder<any, any>, columns: readonly string[], 
   return terms.length === 0 ? sql<SqlBool>`1 = 0` : eb.or(terms);
 }
 
-/** A row's value as the cursor keeps it: a date as its ISO string (what both drivers compare with), the rest as JSON has it. */
+/**
+ * A row's value as the cursor keeps it: a date as its ISO string (what both drivers compare with), a bigint as its digits (JSON
+ * has none; both drivers compare a number column with them), the rest — string, number, boolean, null — as JSON has it.
+ */
 function cursorValue(value: unknown): unknown {
-  return value instanceof Date ? value.toISOString() : value;
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === 'bigint' ? String(value) : value;
 }
 
 /** The values of a cursor of this list, one per column — undefined for anything else. */
@@ -262,5 +266,5 @@ async function decodeCursor(encrypter: CursorEncrypter, cursor: string, context:
     return undefined;
   }
   if (!Array.isArray(values) || values.length !== columns) return undefined;
-  return values.every((item) => item === null || typeof item === 'string' || typeof item === 'number') ? values : undefined;
+  return values.every((item) => item === null || typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') ? values : undefined;
 }

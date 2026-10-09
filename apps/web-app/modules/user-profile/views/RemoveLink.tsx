@@ -16,7 +16,8 @@ export default function RemoveLink({ link, userId }: Props) {
         <code>{link.url}</code>
       </p>
       <p data-layer-description="">{t('remove.text')}</p>
-      <p>
+      {/* A <div>, not a <p>: the DELETE link renders a form — which a <p> cannot hold. */}
+      <div className="paragraph">
         {/* The safe choice first, and focused. */}
         <button type="button" autoFocus onClick={() => void layer.close()}>
           {t('remove.keep')}
@@ -25,7 +26,7 @@ export default function RemoveLink({ link, userId }: Props) {
         <Link route="user-profile.links.destroy" params={{ user: userId, link: link.id }}>
           {t('remove.confirm')}
         </Link>
-      </p>
+      </div>
     </section>
   );
 }

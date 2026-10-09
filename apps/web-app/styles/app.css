@@ -30,6 +30,11 @@
   display: block;
 }
 
+/* A paragraph that holds a link that sends (a form): a <div> with a paragraph's spacing — a <p> cannot hold a form. */
+.paragraph {
+  margin-block: 1em;
+}
+
 .muted,
 [data-notification][data-read] {
   opacity: 0.6;

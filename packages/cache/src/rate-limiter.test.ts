@@ -15,6 +15,15 @@ class LoginLimits {
   }
 }
 
+class OwnVerify {
+  static verify(): void {
+    throw new Error('the start check called an app\'s own static verify');
+  }
+  handle(_ctx: unknown, next: () => Promise<Response>) {
+    return next();
+  }
+}
+
 async function boot({ broken = false } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
@@ -28,6 +37,8 @@ async function boot({ broken = false } = {}) {
           Route.middleware(throttle('login')).post('/login', () => ({ ok: true }));
           Route.middleware(throttle('api')).get('/items', () => []);
           if (broken) Route.middleware(throttle('nope')).get('/broken', () => []);
+          // An app's middleware with a `static verify` of its own: the server's start check never calls it.
+          Route.middleware(OwnVerify).get('/own', () => []);
         }),
       }),
     ],

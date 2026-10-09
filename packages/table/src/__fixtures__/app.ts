@@ -150,6 +150,15 @@ export const SmallExportTable = defineTable({
   export: { csv: exportCsv().max(3) },
 });
 
+/** Sorted by a boolean column (with NULLs) — exported in batches by its keyset. */
+export const ActiveTable = defineTable({
+  name: 'active',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable().searchable(), active: column('members.active').sortable() },
+  export: { csv: exportCsv() },
+});
+
 /** Keyed by text (the e-mail): keys are parsed as text, never as numbers. */
 export const ByEmailTable = defineTable({
   name: 'by-email',
@@ -261,6 +270,7 @@ const routes = defineRoutes((Route) => {
   team.get('/export-in-transaction', ExportInTransaction);
   tableRoutes(team, SmallExportTable);
   tableRoutes(team, ByEmailTable);
+  tableRoutes(team, ActiveTable);
 });
 
 export interface TableTestApp {
@@ -270,7 +280,7 @@ export interface TableTestApp {
   /** Every query since the app started (or since `queries.length = 0`). */
   readonly queries: QueryEvent[];
   request(path: string, init?: { user?: number; method?: string; json?: unknown; action?: boolean; form?: string; headers?: Record<string, string> }): Promise<Response>;
-  insert(rows: readonly Partial<{ id: number; team_id: number; name: string; email: string; role: string; created_at: string; last_seen_at: string | null }>[]): Promise<void>;
+  insert(rows: readonly Partial<{ id: number; team_id: number; name: string; email: string; role: string; created_at: string; last_seen_at: string | null; active: boolean | null }>[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -330,6 +340,7 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
     table.string('password').default('secret-hash');
     table.timestamp('created_at');
     table.timestamp('last_seen_at').nullable();
+    table.boolean('active').nullable();
   });
   const queries: QueryEvent[] = [];
   connections.onQuery((query) => void queries.push(query));

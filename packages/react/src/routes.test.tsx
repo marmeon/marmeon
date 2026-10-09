@@ -33,6 +33,12 @@ function Page({ id }: { id: number }) {
         Sign out everywhere
       </Link>
       <Link href="https://example.com">elsewhere</Link>
+      <Link href="https://elsewhere.example/hook" method="post">
+        Elsewhere
+      </Link>
+      <Link href="//elsewhere.example/hook" method="post">
+        Protocol-relative
+      </Link>
       <p>{route('people.show', { person: id, page: 2 })}</p>
       <p>
         {form.method} {form.url}
@@ -71,6 +77,9 @@ describe('routes in the browser', () => {
       form('/people/7/notes', `${token}<input type="hidden" name="title" value="Hi"/><input type="hidden" name="stars" value="5"/>`, '<button type="submit">Note</button>'),
       // A link that asks first never sends without asking: without JavaScript its button does nothing.
       form('/logout', token, '<button type="button">Sign out everywhere</button>'),
+      // Another origin never gets the page's CSRF token, not even without JavaScript.
+      form('https://elsewhere.example/hook', '', '<button type="submit">Elsewhere</button>'),
+      form('//elsewhere.example/hook', '', '<button type="submit">Protocol-relative</button>'),
     ]);
   });
 

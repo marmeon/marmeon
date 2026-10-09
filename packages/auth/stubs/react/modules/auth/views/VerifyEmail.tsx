@@ -12,9 +12,10 @@ export default function VerifyEmail({ email }: Props) {
       <Head title={t('verify.title')} />
       <h1>{t('verify.title')}</h1>
       <p>{t('verify.intro', { email })}</p>
-      <p>
+      {/* A <div>, not a <p>: the first link sends (a POST), so it renders a form — which a <p> cannot hold. */}
+      <div className="auth-paragraph">
         <Link route="auth.verification.send">{t('verify.resend')}</Link> · <Link route="dashboard">{t('verify.back')}</Link>
-      </p>
+      </div>
     </main>
   );
 }

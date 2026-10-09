@@ -135,6 +135,9 @@ export type HttpKernel = Hono & {
   settle(): Promise<void>;
 };
 
+/** The start check of route middleware (internal; the same `Symbol.for` key in @marmeon/cache's `throttle()`). */
+const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
+
 /**
  * The HTTP kernel: Hono does the URL matching, the Marmeon router runs the
  * typed middleware pipeline and the action. Controllers and middleware classes
@@ -394,11 +397,11 @@ export function createHttpKernel(
   };
 
   // Middleware that needs what the app defines while it boots (a named rate limiter) says so now, not at its first request:
-  // each class's `static verify(container, route)` runs once, for the first route that uses it.
+  // a class's method under the internal start-check symbol runs once, for the first route that uses it.
   const verified = new Set<unknown>();
   for (const route of router.routes) {
     for (const middleware of router.middlewareFor(route)) {
-      const verify = typeof middleware === 'function' ? (middleware as { verify?: unknown }).verify : undefined;
+      const verify = typeof middleware === 'function' ? (middleware as { [START_CHECK]?: unknown })[START_CHECK] : undefined;
       if (typeof verify !== 'function' || verified.has(middleware)) continue;
       verified.add(middleware);
       (verify as (container: Container, route: string) => void).call(middleware, container, `${route.methods.join('|')} ${route.path}`);

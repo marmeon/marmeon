@@ -211,7 +211,8 @@ it('renders a note on the server, and the browser takes it over', async () => {
 - **`assertServerRendered()`** fails with the error the render threw, in the page's frame or after it.
 - **`assertHydrates()`** renders the page again from the JSON the browser receives and compares the markup. A prop that the
   server renders differently from what it sends fails here, such as a `Date` that reaches the browser as a string. The comparison
-  uses the response's CSP nonce, as the browser reads the document.
+  uses the response's CSP nonce, as the browser reads the document. It also fails when the browser's HTML parser would build
+  another tree than the markup says, such as a [link that sends](navigation.md#links-that-send) inside a `<p>`.
 - **`assertSee(text)`** and **`assertDontSee(text)`** search the markup. Without `ssr`, the body holds only the page object's
   JSON.
 

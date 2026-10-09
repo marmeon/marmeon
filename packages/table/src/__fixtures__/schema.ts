@@ -16,6 +16,7 @@ declare module '@marmeon/database' {
       password: Secret<string>;
       created_at: Timestamp;
       last_seen_at: Timestamp | null;
+      active: boolean | null;
     };
   }
 }

@@ -69,12 +69,24 @@ an object with `title`, `confirmLabel`, `destructive` and `prompt`, a text the u
 
 Without JavaScript the browser posts the form, as it does for a [form](forms.md#without-javascript): `PUT`, `PATCH` and `DELETE`
 travel as a hidden `_method` field, the page's CSRF token as `_token`, and the strings and numbers of `data` as hidden fields.
+The token goes only to this site: a link whose `href` names another origin, with a scheme or `//`, sends none.
 Other values of `data` go along with JavaScript only. A link with `confirm` never sends without asking, so without JavaScript its
 button does nothing. With JavaScript the click sends the request once, as a visit, and the browser does not post the form as well.
 
-The form has the class `marmeon-link`, and `@marmeon/react/styles.css` lays it out as if it were not there: the button sits in the
-text like a link. Without that stylesheet the form is a block of its own. Give the button its look through `className`. A form
-cannot sit inside another form, so keep such a link out of a `<Form>`.
+The form has the class `marmeon-link`, and `@marmeon/react/styles.css` lays it out as if it were not there, so the button flows
+with the text around it. Without that stylesheet the form is a block of its own. Give the button its look through `className`.
+
+A link that sends is a form in the markup, so it cannot sit where HTML allows no form: not in a `<p>`, a heading, a `<span>` or
+another element that holds only text, and not in another form or `<Form>`. The browser would move it out of a `<p>` while it reads
+the page, and the page would not hydrate. Put it in a `<div>`, a list item or a `<nav>` instead:
+
+```tsx
+<div role="note">
+  Not confirmed yet. <Link route="auth.verification.send">Send the mail again</Link>
+</div>
+```
+
+`assertHydrates()` in a [page test](testing-pages.md#server-rendering) fails on such markup.
 
 ### The current link
 

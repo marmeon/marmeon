@@ -34,6 +34,13 @@ describe('the profile page, rendered on the server', () => {
       .assertSee('<h1>Alan Turing</h1>');
   });
 
+  it('hydrates the pages with a link that sends — a <Link> to an action renders a form, which no <p> may hold', async () => {
+    const grace = await app.factory(UserFactory).state('unverified').create();
+    const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
+    await app.actingAs(grace).get('/email/verify', page).assertOk().assertHydrates(); // "resend the mail"
+    await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertHydrates(); // the layer's "Remove"
+  });
+
   it('renders with the deferred part still loading (and it hydrates)', async () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}`, page).assertServerRendered().assertHydrates();
     expect(response.body).toContain('<a href="/people">All people</a>');

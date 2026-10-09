@@ -118,8 +118,8 @@ export class RateLimiter {
  */
 export function throttle(name: string): MiddlewareClass<{}, {}> {
   const Throttle = class {
-    /** @internal — asked once when the server starts, for every route that uses it: the limiter must be defined by then. */
-    static verify(container: Resolver, route: string): void {
+    /** Asked once when the server starts (the kernel's start check, an internal symbol): the limiter must be defined by then. */
+    static [START_CHECK](container: Resolver, route: string): void {
       if (container.make(RateLimiter).limiter(name)) return;
       throw new Error(`Rate limiter [${name}] is not defined, but ${route} uses throttle('${name}'). Define it in a provider's boot(): app.container.make(RateLimiter).for('${name}', …).`);
     }
@@ -181,6 +181,13 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
   Object.defineProperty(Throttle, 'name', { value: `throttle:${name}` });
   return Throttle;
 }
+
+/**
+ * The server's start check of route middleware — internal: the kernel calls a middleware class's method under this key once,
+ * for the first route that uses it (`Symbol.for`: the same symbol in @marmeon/server, without an export). An app's own `static
+ * verify` or any other name is never called.
+ */
+const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
 
 /** The name of the limiter for live validations — `limiter.for('live-validation', (ctx) => …)` replaces the default. */
 export const LIVE_VALIDATION_LIMITER = 'live-validation';
