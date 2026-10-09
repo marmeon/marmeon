@@ -234,8 +234,10 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `verified()` after `authenticate()` on every route of your own that signed-in users reach.
 - `marmeon dev` over HTTPS or with `allowedHosts: true` only on a trusted network. Staging private, since it shows server errors.
 - Whether unconfirmed accounts go: the `auth:prune-unverified` line in `modules/auth/schedule.ts`, and `AUTH_UNVERIFIED_DAYS` as you
-  want it, 7 by default. With `AUTH_PRIVATE_REGISTRATION=false`, tell your users that an unconfirmed account goes.
-- `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header.
+  want it, 7 by default. With `AUTH_PRIVATE_REGISTRATION=false`, tell your users that an unconfirmed account goes, and set
+  `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`.
+- `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header, and `OTEL_RECORD_QUERY_VALUES` only when your URLs carry no
+  personal data.
 - HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`, or the proxy.
 - `TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
   `X-Forwarded-*` itself and does not compress pages.

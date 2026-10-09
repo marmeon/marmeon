@@ -146,7 +146,8 @@ describe('@marmeon/otel (E120)', () => {
       'marmeon.route.name': 'people.show',
       'marmeon.controller': 'ShowPersonController',
     });
-    expect(request.attributes['url.query']).toBe('page=2&token=[redacted]');
+    // Only the keys of the query leave the process by default (OTEL_RECORD_QUERY_VALUES=true records the values).
+    expect(request.attributes['url.query']).toBe('page=&token=');
     expect(request.attributes['marmeon.request.id']).toBe(response.headers.get('x-request-id'));
     expect(request.status.code).toBe(SpanStatusCode.UNSET);
     const traceId = request.spanContext().traceId;
@@ -245,6 +246,25 @@ describe('@marmeon/otel (E120)', () => {
     expect(span!.attributes['http.request.header.cookie']).toEqual(['[redacted]']);
     expect(span!.attributes['http.request.header.x-tenant']).toEqual(['acme']);
     expect(dump(span)).not.toMatch(/secret-api-token|a-reset-token-value|session=abc/);
+  });
+
+  it('records the keys of the query only — its values with OTEL_RECORD_QUERY_VALUES=true, masked like any text', async () => {
+    const query = (attributes: Record<string, unknown> | undefined) => String(attributes?.['url.query']);
+    const url = 'http://shop.test/people/7?q=ada%40example.com&page=2&flag&token=secret-in-the-url&q=second';
+    const { app: booting } = boot();
+    await using app = await booting;
+    await spans();
+    await createHttpKernel(app).request(url);
+    const [plain] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
+    expect(query(plain?.attributes), dump(plain)).toBe('q=&page=&flag&token=&q=');
+    expect(dump(plain)).not.toMatch(/ada%40example|ada@example|second|secret-in-the-url/);
+
+    const { app: recording } = boot({ OTEL_RECORD_QUERY_VALUES: 'true' });
+    await using withValues = await recording;
+    await spans();
+    await createHttpKernel(withValues).request(url);
+    const [valued] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
+    expect(query(valued?.attributes), dump(valued)).toBe('q=ada%40example.com&page=2&flag&token=[redacted]&q=second');
   });
 
   it('names the deployment on every span it records: deployment.environment.name is APP_ENV (by default the one NODE_ENV goes with)', async () => {

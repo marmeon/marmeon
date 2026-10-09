@@ -212,7 +212,7 @@ dashboards and alerts on these names:
 
 | Span | Attributes |
 | --- | --- |
-| Request | `http.request.method` (`_OTHER` for a method outside the standard ones, with `http.request.method_original`), `http.route`, `http.response.status_code`, `url.scheme`, `url.path` with sensitive route parameters redacted, `url.query` and `user_agent.original` redacted, `server.address`, `server.port`, `http.request.header.<name>` for the headers you name, `marmeon.request.id`, `marmeon.region` (`island` or `layer`), `marmeon.route.name`, `marmeon.controller`. A request without a route is named after its method alone. |
+| Request | `http.request.method` (`_OTHER` for a method outside the standard ones, with `http.request.method_original`), `http.route`, `http.response.status_code`, `url.scheme`, `url.path` with sensitive route parameters redacted, `url.query` (its keys only, unless `OTEL_RECORD_QUERY_VALUES=true`) and `user_agent.original` redacted, `server.address`, `server.port`, `http.request.header.<name>` for the headers you name, `marmeon.request.id`, `marmeon.region` (`island` or `layer`), `marmeon.route.name`, `marmeon.controller`. A request without a route is named after its method alone. |
 | Query | `db.system.name`, `db.query.text` (the statement, never its parameters), `db.operation.name`, `db.collection.name`, `marmeon.db.connection`. |
 | Dispatch | `messaging.system` (`marmeon`), `messaging.operation.type` (`send`), `messaging.operation.name` (`dispatch`, `bulk` or `chain`), `messaging.destination.name` (the queue), `messaging.message.id` for one job, `messaging.batch.message_count` for several, `marmeon.queue.connection`, `marmeon.queue.jobs`, `marmeon.queue.delay` in seconds. Several jobs make one span named `send <queue>`. |
 | Job | `messaging.system`, `messaging.operation.type` (`process`), `messaging.destination.name`, `messaging.message.id`, `marmeon.job`, `marmeon.job.attempt` (from 1), `marmeon.queue.connection`, `marmeon.request.origin_id` (the request that dispatched it), `marmeon.job.outcome` (`done`, `discarded`, `released` or `failed`). |
@@ -280,8 +280,9 @@ Every attribute and exception that may hold a secret passes the app's redactor, 
 `user_agent.original`, exception messages and stacks, the query text, and path segments of route parameters with a sensitive
 name, so `/reset-password/:token` becomes `/reset-password/[redacted]`. The redactor masks by name and by the shape of a text.
 
-- **The URL's query string** is exported as `url.query`, with secret-looking values masked. Every other value leaves the process
-  as it is, an e-mail address or a search term included. Keep personal data out of the URLs of your routes.
+- **The URL's query string** is exported as `url.query` with its keys only: `?q=ada%40example.com&page=2` becomes `q=&page=`, so
+  an e-mail address, a search term or a token under a harmless name stays in the process. `OTEL_RECORD_QUERY_VALUES=true` exports
+  the values too, with secret-looking ones masked, while every other value leaves the process as it is.
 - **The bound parameters of SQL statements** are never recorded. `db.query.text` is the statement as it is sent: a value written
   into the SQL itself, with `sql.raw()` or `sql.lit()`, is part of the text and is exported.
 - **Request headers** are recorded only when you name them, and then redacted by name:
@@ -299,6 +300,7 @@ This records `http.request.header.x-tenant`, while `authorization`, `cookie` and
 | `OTEL_SDK_DISABLED` | `false` | `true`: no spans from the framework, and the API is not even loaded. The SDK honours it too. |
 | `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | empty | Request headers to record, separated by commas. |
 | `OTEL_TRUST_TRACEPARENT` | `false` | `true`: an incoming `traceparent` is the parent of the request's span instead of a link. |
+| `OTEL_RECORD_QUERY_VALUES` | `false` | `true`: `url.query` carries the values of the query, masked like any text, not only its keys. |
 
 Everything else belongs to the SDK: `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER` and the rest.
 

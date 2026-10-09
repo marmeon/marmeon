@@ -22,6 +22,11 @@ export interface InstrumentOptions {
    */
   readonly trustTraceparent?: boolean;
   /**
+   * `url.query` with its values — `OTEL_RECORD_QUERY_VALUES=true`, masked as text by the redactor. Off by default: a span records
+   * only the keys (`q=&page=`), since a query carries e-mail addresses, search terms or a token under a harmless name.
+   */
+  readonly recordQueryValues?: boolean;
+  /**
    * The app's environment (`APP_ENV`, E217): `deployment.environment.name` on every span the framework starts. The resource is the
    * SDK's — the app's `bootstrap/telemetry.ts` — so the framework says it per span; `OTEL_RESOURCE_ATTRIBUTES` puts it on the resource.
    */
@@ -48,7 +53,7 @@ export function traceparentOf(span: Span): string {
  * log lines, the app's own spans) is its child. Returns `off`.
  */
 export function instrument(app: Application, api: OtelApi, options: InstrumentOptions): () => void {
-  const { redactor } = options;
+  const { redactor, recordQueryValues = false } = options;
   const tracer = api.trace.getTracer(options.tracerName ?? '@marmeon/otel');
   const requestHeaders = (options.requestHeaders ?? []).map((name) => name.toLowerCase()).filter(Boolean);
   /** The span of each operation in flight — set in `start`, used by the operation's wrapper and its `end`. */
@@ -129,7 +134,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             'http.route': request.routePath,
             'http.response.status_code': status,
             'url.path': redactedPath(request.path, request.routePath, redactor),
-            'url.query': url && url.search.length > 1 ? redactor.text(url.search.slice(1)) : undefined,
+            'url.query': url && url.search.length > 1 ? redactor.text(recordQueryValues ? url.search.slice(1) : queryKeys(url.search)) : undefined,
             'marmeon.route.name': request.route,
             'marmeon.controller': request.controller,
           }),
@@ -334,6 +339,16 @@ function remoteContext(api: OtelApi, traceparent: string): Context | undefined {
   const spanContext = { traceId: match[1]!, spanId: match[2]!, traceFlags: Number.parseInt(match[3]!, 16), isRemote: true };
   if (!api.isSpanContextValid(spanContext)) return undefined;
   return api.trace.setSpanContext(api.ROOT_CONTEXT, spanContext);
+}
+
+/** A query string's keys without their values, in order and as sent: `?q=ada&page=2&flag` → `q=&page=&flag`. */
+function queryKeys(search: string): string {
+  return search
+    .replace(/^\?/, '')
+    .split('&')
+    .filter((part) => part !== '')
+    .map((part) => (part.includes('=') ? `${part.slice(0, part.indexOf('='))}=` : part))
+    .join('&');
 }
 
 /** The one table a statement names (`from`, `into`, `update`) — none when it names several (a subquery): the name would guess. */

@@ -18,7 +18,8 @@ pnpm marmeon start    # serves the build: NODE_ENV=production unless the environ
 NODE_ENV=production APP_ENV=staging pnpm marmeon start   # a staging server: production, named staging
 ```
 
-`NODE_ENV` is `development`, `test` or `production`; any other value stops the start. `APP_ENV` only names the environment.
+`NODE_ENV` is `development`, `test` or `production`; any other value stops the start. `APP_ENV` names the environment and picks
+the scheduled tasks of `.environments()`; it never weakens a protection or turns on a development tool.
 
 `GET /up` answers once the app booted, `GET /up/ready` runs every health check of the app and its packages. On `SIGTERM` the
 server leaves readiness, finishes the requests in flight and exits.

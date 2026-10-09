@@ -19,6 +19,7 @@ const flag = (name: string) => env.string().regex(/^(?:true|false)$/i, `${name} 
  * OTEL_SDK_DISABLED=true                                        # no spans from Marmeon (the SDK honours it too)
  * OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST=x-tenant,accept-language   # recorded request headers, redacted
  * OTEL_TRUST_TRACEPARENT=true                                   # continue a caller's trace — only behind an edge that sets the header
+ * OTEL_RECORD_QUERY_VALUES=true                                 # url.query with its values (masked), not only its keys
  * ```
  */
 export const OtelConfig = defineConfig('otel', {
@@ -26,12 +27,15 @@ export const OtelConfig = defineConfig('otel', {
     OTEL_SDK_DISABLED: flag('OTEL_SDK_DISABLED'),
     OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: env.list(env.string()).default([]),
     OTEL_TRUST_TRACEPARENT: flag('OTEL_TRUST_TRACEPARENT'),
+    OTEL_RECORD_QUERY_VALUES: flag('OTEL_RECORD_QUERY_VALUES'),
   }),
   resolve: (e) => ({
     disabled: e.OTEL_SDK_DISABLED.toLowerCase() === 'true',
     requestHeaders: e.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST.map((name) => name.toLowerCase()),
     /** Continue an incoming request's trace (`traceparent`) instead of linking it — see `InstrumentOptions.trustTraceparent`. */
     trustTraceparent: e.OTEL_TRUST_TRACEPARENT.toLowerCase() === 'true',
+    /** `url.query` with its values (masked as text) — by default only its keys leave the process. */
+    recordQueryValues: e.OTEL_RECORD_QUERY_VALUES.toLowerCase() === 'true',
   }),
 });
 export type OtelConfig = ConfigOf<typeof OtelConfig>;
@@ -79,6 +83,7 @@ export class OtelServiceProvider implements ServiceProvider {
       ...(app.container.has(LogContextSources) ? { logContext: app.container.make(LogContextSources) } : {}),
       requestHeaders: config.requestHeaders,
       trustTraceparent: config.trustTraceparent,
+      recordQueryValues: config.recordQueryValues,
       ...(app.container.has(EnvironmentConfig) ? { environment: app.container.make(EnvironmentConfig).app } : {}),
     });
   }

@@ -19,6 +19,8 @@ import { defineGegenproben } from '../define.ts';
  *   request's gate (G4), the gate does not ask what it was told (G4b); either way the author's token gets 403. The session's user
  *   still counts on pages (G4c: a gate that asks only the token refuses every signed-in page). The token's abilities stay checked
  *   on top (G4d: `abilities()` taken out lets a read-only token update through the policy).
+ * - **`url.query` carries the keys only, unless `OTEL_RECORD_QUERY_VALUES=true`** — the span recording the values again (G6) exports
+ *   an e-mail address and a search term; the option read as always on (G6b) does the same through the config.
  */
 const SESSION_FLASH = { vitest: 'packages/session/src/session.test.ts', name: 'flashes input like redirect().withInput()' } as const;
 const LOG_KEYS = { vitest: 'packages/log/src/log.test.ts', name: 'redacts the names the app' } as const;
@@ -27,6 +29,7 @@ const CHANGE_REVOKES = { vitest: 'packages/auth/src/auth.test.ts', name: 'revoke
 const NEW_PASSWORD = 'packages/auth/src/new-password.ts';
 const TOKEN_POLICIES = { vitest: 'packages/auth/src/gate.test.ts', name: 'lets a token user the policy allows through' } as const;
 const GATE = 'packages/auth/src/gate.ts';
+const OTEL_QUERY = { vitest: 'packages/otel/src/otel.test.ts', name: 'records the keys of the query only' } as const;
 const LOG_ERRORS = { vitest: 'packages/log/src/log.test.ts', name: 'writes an error under any key with its type, message and stack' } as const;
 
 export default defineGegenproben({
@@ -192,6 +195,35 @@ export default defineGegenproben({
       patch: [{ file: 'packages/auth/src/middleware.ts', find: '      const missing = required.filter((ability) => !tokenCan(ctx.token, ability));', replace: '      const missing: string[] = [];' }],
       run: { vitest: 'packages/auth/src/gate.test.ts', name: "still asks the token's abilities on top" },
       expect: /expected \{ status: 200.* to deeply equal \{ status: 403/,
+    },
+    // --- 6 · url.query carries the keys only ------------------------------------------------------------------------------------------
+    {
+      id: 'G6',
+      title: 'the server span records the whole query again: an e-mail address and a search term leave the process',
+      patch: [
+        {
+          file: 'packages/otel/src/tracer.ts',
+          find: "redactor.text(recordQueryValues ? url.search.slice(1) : queryKeys(url.search))",
+          replace: 'redactor.text(url.search.slice(1))',
+        },
+      ],
+      run: OTEL_QUERY,
+      expect: /"url\.query":"q=ada%40example\.com&page=2&flag&token=\[redacted\]&q=second"/,
+      masks: 'G6b',
+    },
+    {
+      id: 'G6b',
+      title: 'OTEL_RECORD_QUERY_VALUES is read as on when unset: every app exports the values of its queries',
+      patch: [
+        {
+          file: 'packages/otel/src/index.ts',
+          find: "    recordQueryValues: e.OTEL_RECORD_QUERY_VALUES.toLowerCase() === 'true',",
+          replace: "    recordQueryValues: e.OTEL_RECORD_QUERY_VALUES.toLowerCase() !== 'yes',",
+        },
+      ],
+      run: OTEL_QUERY,
+      expect: /"url\.query":"q=ada%40example\.com&page=2&flag&token=\[redacted\]&q=second"/,
+      masks: 'G6',
     },
   ],
 });
