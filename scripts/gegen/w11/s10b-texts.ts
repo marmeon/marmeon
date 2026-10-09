@@ -160,10 +160,13 @@ export default defineGegenproben({
     },
     {
       id: 'T8b',
-      title: 'with the earlier pattern, which captured only a lower-case anchor, the same anchor passed as a page alone',
+      title: 'with the earlier pattern, which captured only a lower-case anchor, the same anchor passed as a page alone (whole pages allowed, as before 10c)',
       patch: [
         { file: 'packages/database/src/solutions.ts', find: "docs: 'docs/migrations.md#running-migrations',", replace: "docs: 'docs/migrations.md#Running-Migrations'," },
         { file: 'apps/docs/modules/docs/links.test.ts', find: DOCS_PATH, replace: 'const DOCS_PATH = /\\b(docs\\/[a-z0-9-]+\\.md)(?:#([a-z0-9_-]+))?/g;' },
+        // Since 10c a reference to a whole page is refused too ("name the section too"): left in, the probe would be red for that reason, not
+        // for the pattern. Taken out, only the pattern decides — as when the probe was written.
+        { file: 'apps/docs/modules/docs/links.test.ts', find: 'else if (anchor === undefined && !CARD.test(path))', replace: 'else if (false)' },
       ],
       run: NAMED,
       expectGreen: true,

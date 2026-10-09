@@ -81,8 +81,9 @@ env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })        env: r.env({ APP_
   rename the placeholder in the app's language files.
 - **The registration of `make:auth` asks no database in its schema**: with `AUTH_PRIVATE_REGISTRATION=false` a taken address is
   still a field error on submit (the unique index decides), but **no longer when the field is checked live** — a live check of a taken
-  and of a free address gets the same answer. There is no way back to the live answer: it told anyone who types an address whether
-  it has an account ([never in a live validation](docs/validation.md#never-in-a-live-validation)).
+  and of a free address gets the same answer. The framework gives no way back to the live answer, and it is not advisable: a hand-written
+  `.custom(…).live()` still runs live, but it tells anyone who types an address whether it has an account
+  ([never in a live validation](docs/validation.md#never-in-a-live-validation)).
 - `r.integer()`/`r.number()` take a number's spelling too (`'7'`): a job's `JobInput` (what `dispatch()` and `assertDispatched()` take)
   is ``number | `${number}` ``, `JobPayload` (what `handle()` gets) a number.
 - An app drops `valibot` from its `package.json` and adds `@marmeon/validation` (`pnpm add @marmeon/validation && pnpm remove valibot`);
@@ -584,8 +585,9 @@ await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(f
 ```
 
 `UserRepository.emailTaken()` is gone from the stubs: nothing used it, and "is this address taken?" is what the private registration
-never answers. The way back: none needed — `findByEmail()` stays, and no check of addresses runs live
-([never in a live validation](docs/validation.md#never-in-a-live-validation)).
+never answers. The way back: none needed — `findByEmail()` stays, and no check of addresses runs live. Writing one yourself is
+possible (`.custom(…).live()` runs live), with the enumeration warning of
+[never in a live validation](docs/validation.md#never-in-a-live-validation).
 
 #### Low: `verified()` treats a user without `email_verified_at` as unverified
 

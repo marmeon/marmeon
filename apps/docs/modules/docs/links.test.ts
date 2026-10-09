@@ -7,6 +7,7 @@ import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
 import { DOCS_CSP } from './DocsServiceProvider.ts';
 import { DocsRepository } from './DocsRepository.ts';
+import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 /**
  * The link check (instead of checking a static export, E133): every page — the start page and the docs — renders on the server,
@@ -54,7 +55,7 @@ describe('every page', () => {
     rendered.set(path, scan(response.body));
     inline.set(path, executableInline(response.body));
     policies.add(response.headers.get('content-security-policy'));
-  });
+  }, SSR_TEST_TIMEOUT);
 
   it("runs no inline script — the 'self' policy of a publicly cached page holds without a nonce (E147)", () => {
     expect(inline.size).toBe(PAGES.length);

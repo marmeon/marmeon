@@ -12,6 +12,7 @@ import { CachePublicly } from './middleware/CachePublicly.ts';
 import { DocsConfig } from '../../config/docs.ts';
 import { PENDING_MARKER } from './markdown.ts';
 import type { SearchResult } from './search.ts';
+import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 // Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
@@ -90,7 +91,7 @@ describe('pages', () => {
     expect(response.body).toContain('Not Found');
     expect(response.body).toContain('class="frame bare"');
     expect(response.body).not.toContain('id="sidebar"');
-  });
+  }, SSR_TEST_TIMEOUT);
 
   it('shares the navigation — the ten sections with their pages, nothing else — once per tab', async () => {
     const page = (await app.navigating().get('/docs/routing').assertOk()).page()!;
@@ -226,8 +227,8 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     expect((await ssr.navigating().get('/docs/csp').assertOk()).headers.get('content-security-policy')).toBeNull();
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
     expect((await dev.get('/', document).assertOk()).headers.get('content-security-policy')).toMatch(/^script-src 'nonce-[\w+/=-]+' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'$/);
-    // Two more apps, each rendering every page with Shiki when it boots: about 3.3 s alone, over Vitest's 5 s beside the other suites.
-  }, 30_000);
+    // Two more apps, each rendering every page with Shiki when it boots.
+  }, SSR_TEST_TIMEOUT);
 
   it('never marks an answer with a cookie public (a cache would hand the cookie to everyone)', async () => {
     const config = app.make(DocsConfig);
@@ -342,7 +343,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, SSR_TEST_TIMEOUT);
 
   it('the app does not boot then', async () => {
     const dir = copy();

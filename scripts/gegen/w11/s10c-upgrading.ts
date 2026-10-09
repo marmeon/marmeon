@@ -35,14 +35,14 @@ export default defineGegenproben({
       title: 'a decision number back in an entry of the Upgrade Guide: check:source names it',
       patch: [{ file: 'UPGRADING.md', find: 'included. Now STARTTLS is required: such a send fails', replace: 'included. Now STARTTLS is required (E192): such a send fails' }],
       run: SOURCE,
-      expect: /a decision number in the docs \([^)]*\): UPGRADING\.md:342: included\. Now STARTTLS is required \(E192\)/,
+      expect: /a decision number in the docs \([^)]*\): UPGRADING\.md:343: included\. Now STARTTLS is required \(E192\)/,
     },
     {
       id: 'U2',
       title: 'a step of 0.1.0 named by its wave again: check:source names the heading',
       patch: [{ file: 'UPGRADING.md', find: '\n### Devtools and observability\n', replace: '\n### Wave 7 — devtools and observability\n' }],
       run: SOURCE,
-      expect: /a wave reference in the docs \([^)]*\): UPGRADING\.md:1318: ### Wave 7 — devtools and observability/,
+      expect: /a wave reference in the docs \([^)]*\): UPGRADING\.md:1320: ### Wave 7 — devtools and observability/,
     },
     {
       id: 'U3',
