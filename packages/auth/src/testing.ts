@@ -1,5 +1,5 @@
 import type { Container } from '@marmeon/core';
-import { AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
+import { AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 import { AccessTokenStore } from './tokens.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
@@ -11,7 +11,7 @@ export async function authenticatedSession(container: Container, user: AuthUser)
   const id = idOf(user);
   const credentials = await container.createScope().make(UserProvider).findById(id as never);
   if (!credentials) throw new Error(`actingAs(): there is no user ${id} — create it first (e.g. with a factory).`);
-  return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: passwordFingerprint(credentials.passwordHash) };
+  return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: sessionFingerprint(credentials) };
 }
 
 /** A real API token for `user` with `abilities` — what `actingAs(user, { guard: 'api' })` sends as `Authorization: Bearer …`. */

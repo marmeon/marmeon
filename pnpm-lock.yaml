@@ -521,6 +521,9 @@ importers:
       '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
+      '@marmeon/redis':
+        specifier: workspace:*
+        version: link:../redis
       '@marmeon/server':
         specifier: workspace:*
         version: link:../server

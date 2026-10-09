@@ -34,3 +34,19 @@ export async function migratedConnections(driver: 'sqlite' | 'pgsql'): Promise<{
     },
   };
 }
+
+/** A fresh, empty Postgres database (`pnpm test:pgsql`): its URL, and `drop()` removes it. */
+export async function freshPgsqlDatabase(): Promise<{ url: string; drop: () => Promise<void> }> {
+  const name = `marmeon_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
+  await sql`create database ${sql.id(name)}`.execute(admin.get());
+  const url = new URL(PGSQL_URL!);
+  url.pathname = `/${name}`;
+  return {
+    url: url.href,
+    drop: async () => {
+      await sql`drop database ${sql.id(name)} with (force)`.execute(admin.get());
+      await admin.destroy();
+    },
+  };
+}

@@ -35,6 +35,11 @@ export interface Credentials<U = AuthUser> {
   readonly user: U;
   /** `null` for users who cannot sign in with a password (e.g. only by link or OAuth, later). */
   readonly passwordHash: PasswordHash | null;
+  /**
+   * A value of the account that `auth.updateSessionKey()` replaces to end the account's other sessions — a `session_key`
+   * column the app keeps. Optional: without it, only a new password hash ends them.
+   */
+  readonly sessionKey?: string | null;
 }
 
 /**
@@ -48,6 +53,11 @@ export interface UserProvider<U = AuthUser> {
   findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
   /** Stores a new hash (rehash on login, password change, reset). */
   updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash): Promise<void>;
+  /**
+   * Stores a new session key (`auth.updateSessionKey()`); `findById()` and `findForLogin()` hand it back as `sessionKey`.
+   * Optional — needed only by apps that end the other sessions of an account without changing its password.
+   */
+  updateSessionKey?(id: U extends { readonly id: infer Id } ? Id : never, key: string): Promise<void>;
 }
 // Annotated: the declaration then names `UserProvider` instead of spelling out the app's user type.
 export const UserProvider: Token<UserProvider> = token<UserProvider>('UserProvider');

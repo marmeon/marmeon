@@ -97,7 +97,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 ```
 
 `Credentials` is `{ user, passwordHash }`: the hash travels next to the user, never inside it, so it cannot reach a page by
-accident. A user who cannot sign in with a password has `passwordHash: null`. `findForLogin()` gets what the person typed after
+accident. A user who cannot sign in with a password has `passwordHash: null`. `Credentials` may also carry a `sessionKey`, a value of
+the account that ends its other sessions when it changes, as [signing out without a password](#signing-out-other-devices-without-a-password)
+explains. `findForLogin()` gets what the person typed after
 the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Until a provider is
 bound, the first use of `UserProvider` throws an error that says how to bind one.
 
@@ -206,7 +208,8 @@ session:
 
 - **A new session.** The session gets a new id and a new CSRF token, and keeps its data. An id handed out before the sign-in signs
   nobody in: this stops session fixation.
-- **A fingerprint, not the hash.** The session keeps a SHA-256 of the user's password hash, never the hash itself.
+- **A fingerprint, not the hash.** The session keeps a SHA-256 of the account's id, password hash and session key, never the hash
+  itself. Two accounts never share one, also without a password.
 - **A fresh page.** The browser loads the next page in full, so no page kept in its memory from before the sign-in comes back. A
   sign-in by the remember-me cookie continues the same person's session and skips this.
 
@@ -359,14 +362,64 @@ The starter kit runs both routes with `.block()`: one such request per session a
 with the fingerprint of the other request's hash, and sign it out. The [session](session.md#requests-that-must-not-overlap) page
 explains `block()`.
 
+### Signing out other devices without a password
+
+An account that signs in by a link or through another provider has no password to check. `updateSessionKey()` signs out its other
+devices all the same: it draws a new random session key, stores it with `updateSessionKey(id, key)` of your `UserProvider`, and
+gives this session the new fingerprint. The other sessions end at their next request with every session driver, and the
+remember-me tokens of the other devices are deleted. It works for accounts with a password too.
+
+The key is a column of the account that your provider stores and hands back as `sessionKey` from `findById()` and
+`findForLogin()`:
+
+```ts
+// in a migration
+await schema.alter('users', (table) => table.string('session_key', 64).nullable().secret());
+
+// in the UserRepository
+async updateSessionKey(id: number, key: string): Promise<void> {
+  await this.update(id, { session_key: key });
+}
+// and in #credentials(): return { user, passwordHash: password as PasswordHash, sessionKey: session_key };
+```
+
+`updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. Without
+`updateSessionKey` on the provider it throws an error that names the method, and it throws as well when `findById()` does not hand
+the new key back. It never leaves the other devices signed in while it seems to have worked.
+
+```ts title="modules/auth/controllers/SignOutOtherDevicesController.ts"
+import { Auth, type Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+
+export class SignOutOtherDevicesController extends Controller {
+  readonly #auth: Auth;
+
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+
+  async handle(_ctx: HttpContext<Authenticated>) {
+    await this.#auth.updateSessionKey();
+    return this.back('/settings/security');
+  }
+}
+```
+
+Run such a route with `.block()` as well. `logoutOtherDevices(password)` stays the way for an account with a password: it checks
+the password first. An app without session keys keeps its fingerprints of id and hash.
+
+### API tokens
+
 A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, and "sign out other devices"
 never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains when to turn it on.
 
 ## Ending every session of a user
 
-A session signs in with a fingerprint of the user's password hash, and every request compares it with the current hash. When the
-password changes anywhere, every other session stops matching and ends at its next request. When the user is deleted, the lookup
+A session signs in with a fingerprint of the account, its id, password hash and session key, and every request compares it with
+the account as it is now. When the password or the session key changes anywhere, every other session stops matching and ends at
+its next request. When the user is deleted, the lookup
 finds nobody, and the session ends the same way. A request that only reads, such as an island, treats such a session as a guest
 and leaves the ending to the next page request.
 
@@ -410,8 +463,9 @@ of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
 
 `end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
 table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account
-that does no harm, since its sessions end at their next request. For a user who still exists, only a new hash ends the other
-sessions with these drivers: a new password, or "sign out other devices".
+that does no harm, since its sessions end at their next request. For a user who still exists, a new fingerprint ends the other
+sessions with every driver: a new password, `logoutOtherDevices(password)` or `updateSessionKey()`. `end(id)` stays the way to
+end every session of a user at once, the current one included, and only with the `database` driver.
 
 ## Signed-in pages are never cached
 

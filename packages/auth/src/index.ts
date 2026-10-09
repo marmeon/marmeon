@@ -16,7 +16,7 @@ import { warnAboutCookieSessions } from './session-driver.ts';
 import { UserProvider } from './user.ts';
 
 // Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
-export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
+export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 export type { LoginOptions } from './auth.ts';
 export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';

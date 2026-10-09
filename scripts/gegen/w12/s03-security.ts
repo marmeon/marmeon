@@ -19,6 +19,9 @@ import { defineGegenproben } from '../define.ts';
  *   request's gate (G4), the gate does not ask what it was told (G4b); either way the author's token gets 403. The session's user
  *   still counts on pages (G4c: a gate that asks only the token refuses every signed-in page). The token's abilities stay checked
  *   on top (G4d: `abilities()` taken out lets a read-only token update through the policy).
+ * - **The fingerprint is the account's: id, password hash and session key** — the key left out again (G5): a new key ends no
+ *   other session, the other device stays signed in; the id left out (G5b): two accounts without a password share one;
+ *   `updateSessionKey()` without the provider's method doing nothing instead of failing (G5c).
  * - **`url.query` carries the keys only, unless `OTEL_RECORD_QUERY_VALUES=true`** — the span recording the values again (G6) exports
  *   an e-mail address and a search term; the option read as always on (G6b) does the same through the config.
  */
@@ -29,6 +32,7 @@ const CHANGE_REVOKES = { vitest: 'packages/auth/src/auth.test.ts', name: 'revoke
 const NEW_PASSWORD = 'packages/auth/src/new-password.ts';
 const TOKEN_POLICIES = { vitest: 'packages/auth/src/gate.test.ts', name: 'lets a token user the policy allows through' } as const;
 const GATE = 'packages/auth/src/gate.ts';
+const AUTH = 'packages/auth/src/auth.ts';
 const OTEL_QUERY = { vitest: 'packages/otel/src/otel.test.ts', name: 'records the keys of the query only' } as const;
 const LOG_ERRORS = { vitest: 'packages/log/src/log.test.ts', name: 'writes an error under any key with its type, message and stack' } as const;
 
@@ -195,6 +199,28 @@ export default defineGegenproben({
       patch: [{ file: 'packages/auth/src/middleware.ts', find: '      const missing = required.filter((ability) => !tokenCan(ctx.token, ability));', replace: '      const missing: string[] = [];' }],
       run: { vitest: 'packages/auth/src/gate.test.ts', name: "still asks the token's abilities on top" },
       expect: /expected \{ status: 200.* to deeply equal \{ status: 403/,
+    },
+    // --- 5 · The fingerprint is the account's -----------------------------------------------------------------------------------------
+    {
+      id: 'G5',
+      title: 'the fingerprint ignores the session key again: updateSessionKey() leaves the other device signed in',
+      patch: [{ file: AUTH, find: "  const parts = [String(idOf(credentials.user)), credentials.passwordHash ?? '', credentials.sessionKey ?? ''];", replace: "  const parts = [String(idOf(credentials.user)), credentials.passwordHash ?? '', ''];" }],
+      run: { vitest: 'packages/auth/src/session-key.test.ts', name: 'SESSION_DRIVER=memory' },
+      expect: /the other session: expected 200 to be 401/,
+    },
+    {
+      id: 'G5b',
+      title: 'the fingerprint ignores the account: two accounts without a password share one',
+      patch: [{ file: AUTH, find: "  const parts = [String(idOf(credentials.user)), credentials.passwordHash ?? '', credentials.sessionKey ?? ''];", replace: "  const parts = ['', credentials.passwordHash ?? '', credentials.sessionKey ?? ''];" }],
+      run: { vitest: 'packages/auth/src/session-key.test.ts', name: 'differs between two accounts without a password' },
+      expect: /two passwordless accounts: expected '[\w-]+…' not to be '[\w-]+…'/,
+    },
+    {
+      id: 'G5c',
+      title: 'updateSessionKey() without the provider\'s method returns as if it had worked: no error names what to implement',
+      patch: [{ file: AUTH, find: "    if (typeof this.#users.updateSessionKey !== 'function') {", replace: "    if (typeof this.#users.updateSessionKey !== 'function') return;\n    if (typeof this.#users.updateSessionKey !== 'function') {" }],
+      run: { vitest: 'packages/auth/src/session-key.test.ts', name: 'when the UserProvider cannot store a key' },
+      expect: /\{"done":true\}: expected/,
     },
     // --- 6 · url.query carries the keys only ------------------------------------------------------------------------------------------
     {

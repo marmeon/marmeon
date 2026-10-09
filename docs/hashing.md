@@ -116,7 +116,8 @@ explains `confirmed()` and its message.
 
 The hash is a secret column of the users table, so `Row<'users'>` and every query that selects all columns leave it out. Only the
 `UserProvider` reads it, and hands it next to the user as `Credentials`, never inside it. The session keeps only a fingerprint of
-the hash, which the [authentication](authentication.md#ending-every-session-of-a-user) page explains.
+the account, its id, hash and session key, which the [authentication](authentication.md#ending-every-session-of-a-user) page
+explains.
 
 ## Configuration
 

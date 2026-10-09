@@ -74,6 +74,7 @@
   "devDependencies": {
     "marmeon": "workspace:*",
     "@marmeon/encryption": "workspace:*",
+    "@marmeon/redis": "workspace:*",
     "@marmeon/server": "workspace:*"
   },
   "peerDependencies": {

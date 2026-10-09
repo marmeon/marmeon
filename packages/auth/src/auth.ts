@@ -1,11 +1,11 @@
-import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
+import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { EventDispatcher, Logger } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
-import { Hasher, type PasswordHash } from './hashing.ts';
+import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
@@ -14,7 +14,7 @@ import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } 
 export const AUTH_SESSION_KEYS = {
   /** The user's id (the session package's key: the `database` session driver copies it into `user_id`). */
   id: SESSION_USER_KEY,
-  /** A fingerprint of the user's password hash when the session signed in (E26). */
+  /** The account's fingerprint when the session signed in (E26): its id, password hash and session key. */
   password: '_auth_password',
   /** When the password was last typed (sign-in, confirmation), in Unix seconds — for `confirmedPassword()`. */
   confirmedAt: '_auth_confirmed_at',
@@ -32,12 +32,13 @@ declare module '@marmeon/session' {
 }
 
 /**
- * What the session remembers of the password hash: a SHA-256 of it. A password change anywhere
- * changes the hash, so every other session's fingerprint stops matching — and that session ends.
- * The hash itself never goes into the session.
+ * What the session remembers of the account (E26): a SHA-256 of its id, its password hash and its session key. A new
+ * password or a new session key (`auth.updateSessionKey()`) changes it, so every other session's fingerprint stops matching —
+ * and that session ends. Two accounts never share one, also without a password. The hash itself never goes into the session.
  */
-export function passwordFingerprint(hash: PasswordHash | null): string {
-  return oneShotHash('sha256', `marmeon-auth:${hash ?? ''}`, 'base64url');
+export function sessionFingerprint(credentials: Credentials): string {
+  const parts = [String(idOf(credentials.user)), credentials.passwordHash ?? '', credentials.sessionKey ?? ''];
+  return oneShotHash('sha256', `marmeon-auth:${JSON.stringify(parts)}`, 'base64url');
 }
 
 export interface LoginOptions {
@@ -112,15 +113,14 @@ export class Auth {
   async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<AuthUser | undefined> {
     const credentials = await this.#check(identifier, password);
     if (!credentials) return undefined;
-    await this.#login(credentials.user, credentials.passwordHash, options, 'attempt');
+    await this.#login(credentials, options, 'attempt');
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now()); // the password was just typed
     return credentials.user;
   }
 
   /** Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the current hash. */
   async login(user: AuthUser, options: LoginOptions = {}): Promise<void> {
-    const credentials = await this.#credentials(user);
-    await this.#login(credentials.user, credentials.passwordHash, options, 'login');
+    await this.#login(await this.#credentials(user), options, 'login');
   }
 
   /**
@@ -185,7 +185,7 @@ export class Auth {
     const hash = await this.#hasher.make(password);
     const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(user), hash, 'change');
     this.#cookies.delete(this.#config.rememberCookie);
-    this.#session.put(AUTH_SESSION_KEYS.password, passwordFingerprint(hash));
+    this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(await this.#credentials(user)));
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
     await this.#events.dispatch(new PasswordChanged(user, revoked));
   }
@@ -201,8 +201,35 @@ export class Auth {
     const hash = await this.#hasher.make(password);
     await this.#users.updatePasswordHash(idOf(user) as never, hash);
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
-    this.#session.put(AUTH_SESSION_KEYS.password, passwordFingerprint(hash));
+    this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(await this.#credentials(user)));
     return true;
+  }
+
+  /**
+   * Signs out every other device without a password — for accounts that sign in by link or OAuth, or whenever the app
+   * confirmed the user its own way before: stores a new random session key (`UserProvider.updateSessionKey()`), so the other
+   * sessions' fingerprints stop matching, and drops the other devices' remember-me tokens; this session stays. Throws when the
+   * provider cannot store a key, or does not hand it back from `findById()` — it never pretends to have signed anybody out.
+   */
+  async updateSessionKey(): Promise<void> {
+    const user = await this.#requireUser('updateSessionKey');
+    if (typeof this.#users.updateSessionKey !== 'function') {
+      throw new Error(
+        'auth.updateSessionKey() needs UserProvider.updateSessionKey(id, key): store the key in a column of the account ' +
+          '(a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
+      );
+    }
+    const key = randomBytes(32).toString('base64url');
+    await this.#users.updateSessionKey(idOf(user) as never, key);
+    const credentials = await this.#credentials(user);
+    if (credentials.sessionKey !== key) {
+      throw new Error(
+        'auth.updateSessionKey() stored a new key, but UserProvider.findById() does not hand it back as sessionKey — the other ' +
+          'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForLogin().',
+      );
+    }
+    await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
+    this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(credentials));
   }
 
   async #check(identifier: string, password: string): Promise<Credentials | undefined> {
@@ -219,15 +246,16 @@ export class Auth {
     if (!this.#hasher.needsRehash(found.passwordHash)) return found;
     const passwordHash = await this.#hasher.make(password);
     await this.#users.updatePasswordHash(idOf(found.user) as never, passwordHash);
-    return { user: found.user, passwordHash };
+    return { ...found, passwordHash };
   }
 
-  async #login(user: AuthUser, hash: PasswordHash | null, { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions, via: LoginVia): Promise<void> {
+  async #login(credentials: Credentials, { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions, via: LoginVia): Promise<void> {
+    const { user } = credentials;
     const viaRemember = via === 'remember';
     // A session id (and CSRF token) handed out before login must not survive it: session fixation.
     this.#session.regenerate();
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
-    this.#session.put(AUTH_SESSION_KEYS.password, passwordFingerprint(hash));
+    this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(credentials));
     if (viaRemember) this.#session.put(AUTH_SESSION_KEYS.viaRemember, true);
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
     if (remember && !viaRemember) {
@@ -248,8 +276,8 @@ export class Auth {
     if (id === undefined) return this.#fromRememberCookie();
     const found = await this.#users.findById(id as never);
     const fingerprint = this.#session.get(AUTH_SESSION_KEYS.password);
-    if (!found || typeof fingerprint !== 'string' || !equal(fingerprint, passwordFingerprint(found.passwordHash))) {
-      // Deleted, or the password changed since this session signed in: this session ends — by the next request that may
+    if (!found || typeof fingerprint !== 'string' || !equal(fingerprint, sessionFingerprint(found))) {
+      // Deleted, or the password or the session key changed since this session signed in: this session ends — by the next request that may
       // write it (an island's is read-only, E52: for it, nobody is signed in).
       if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
@@ -277,7 +305,7 @@ export class Auth {
       return undefined;
     }
     if (result.cookie) this.#setCookie(result.cookie, result.expiresAt);
-    await this.#login(found.user, found.passwordHash, {}, 'remember');
+    await this.#login(found, {}, 'remember');
     return found.user;
   }
 
