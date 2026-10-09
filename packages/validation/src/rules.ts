@@ -6,7 +6,7 @@ import { ArrayRule, definition, NumberRule, objectRule, Rule, StringRule, type O
 /** A number option of `r.in()` as a form or a URL sends it: `25` → `'25'`. */
 type Spelled<T> = T extends number ? `${T}` : never;
 
-/** What `r.boolean()` takes: true/false, and what forms, URLs and `.env` files say for them. */
+/** What `r.boolean()` takes: true/false, and what forms and URLs say for them. */
 export type BooleanInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
 
 /** What `r.accepted()` takes — what a checkbox may send (a form's state starts at `false`); only a yes passes. */
@@ -25,13 +25,6 @@ export type CheckQueryFields<S extends Shape> = {
       ? `Query field '${K & string}' is read from the URL as text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.in([…]), r.array(…)`
       : S[K]
     : `Query field '${K & string}' needs .default(…) — a query is parsed field by field and never answers 422; .optional() leaves it undefined`;
-};
-
-/** `S` when every field can be read from the environment (strings) — the message the compiler shows otherwise. */
-export type CheckEnvFields<S extends Shape> = {
-  [K in keyof S]: [Extract<Exclude<InputOf<S[K]>, undefined>, string>] extends [never]
-    ? `Environment variable '${K & string}' is text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.port(), r.list(…)`
-    : S[K];
 };
 
 const numberEngine = () => engine.typed('number', (value) => engine.toNumber(value) !== undefined, engine.toNumber);
@@ -57,7 +50,7 @@ function choice<const T extends readonly (string | number)[]>(values: T, key: 'i
 }
 
 /**
- * The rules (E197) — Laravel's names, typed: each builds a Standard Schema object that `defineRequest`, `defineConfig`, a job's
+ * The rules (E197) — Laravel's names, typed: each builds a Standard Schema object that `defineRequest`, a job's
  * `static schema` and `parseQuery` take. Messages come in the request's language (`marmeon.validation.*`, English and German in
  * @marmeon/i18n; English without it), the first problem of a field only (`bail`).
  *
@@ -71,7 +64,6 @@ function choice<const T extends readonly (string | number)[]>(values: T, key: 'i
  *   tags:    r.array(r.string().max(30)).max(10).default([]),
  * }),
  * query: r.query({ sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1) }),
- * env:   r.env({ APP_PORT: r.port().default(3960), INVITES: r.boolean().default(false), ADMINS: r.list(r.email()).default([]) }),
  * ```
  */
 export const rules = {
@@ -84,7 +76,7 @@ export const rules = {
   /** A whole number — or a string that spells one. */
   integer: (): NumberRule => numberRule().integer(),
 
-  /** true or false — and `1`/`0`, `'on'`/`'off'`, `'yes'`/`'no'`, `'true'`/`'false'` (forms, URLs, `.env`). */
+  /** true or false — and `1`/`0`, `'on'`/`'off'`, `'yes'`/`'no'`, `'true'`/`'false'` (forms, URLs). */
   boolean: (): Rule<boolean, BooleanInput> => new Rule(definition(() => engine.typed('boolean', (value) => engine.toBoolean(value) !== undefined, engine.toBoolean))),
 
   /** Accepted — a ticked checkbox (`on`), `yes`, `1`, `true` — Laravel's `accepted` (terms of service). Becomes `true`. */
@@ -167,24 +159,13 @@ export const rules = {
    */
   query: <const S extends Shape>(fields: S & CheckQueryFields<S>): ObjectRule<S> => objectRule(fields as S),
 
-  /**
-   * The environment variables of a config (`defineConfig`) — strings, read like a query: `r.integer()`, `r.boolean()`, `r.port()`
-   * and `r.list()` take them; an empty variable (`APP_PORT=`, `S3_BUCKET=`) counts as missing — for `r.string()` too, unlike a form
-   * (E208): a `.env` has no other way to say "not set". Messages name the variable as it is written.
-   *
-   * ```ts
-   * env: r.env({ APP_PORT: r.port().default(3960), INVITES: r.boolean().default(false), ADMINS: r.list(r.email()).default([]) }),
-   * ```
-   */
-  env: <const S extends Shape>(fields: S & CheckEnvFields<S>): ObjectRule<S> => objectRule(fields as S, 'raw', true),
-
-  /** A port number, 1–65535 (`PORT=3000`). */
+  /** A port number, 1–65535. */
   port: (): Rule<number, number | `${number}`> =>
     new Rule(
       definition(() => engine.pipeEngine(numberEngine(), [engine.check((value: number) => Number.isSafeInteger(value) && value >= 1 && value <= 65535, engine.message('port'))], false)),
     ),
 
-  /** A comma-separated list (`.env`: `ADMINS=ada@example.com, alan@example.com`) or a list — each item checked by `item`. */
+  /** A comma-separated list (`ada@example.com, alan@example.com`) or a list — each item checked by `item`. */
   list: <Item extends Rule<any, any>>(item: Item): ArrayRule<InferOutput<Item>, InferInput<Item>, string | InferInput<Item>[]> =>
     new ArrayRule(
       definition((context) => engine.listEngine(item['~engine'](context), item['~rule'].async), {

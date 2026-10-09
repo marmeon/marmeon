@@ -106,20 +106,20 @@ Another database is a definition with a name. It reads its own variables, which 
 configuration. This one gives the cache and the sessions a SQLite file of their own:
 
 ```ts title="config/database.ts"
+import { env } from '@marmeon/core';
 import { defineConnection } from '@marmeon/database';
-import { rules as r } from '@marmeon/validation';
 
 export const SystemDatabase = defineConnection('system', {
-  env: r.env({
-    SYSTEM_DB_DATABASE: r.string().default('storage/system.sqlite'),
+  env: env({
+    SYSTEM_DB_DATABASE: env.string().default('storage/system.sqlite'),
   }),
-  resolve: (env) => ({ driver: 'sqlite', database: env.SYSTEM_DB_DATABASE }),
+  resolve: (e) => ({ driver: 'sqlite', database: e.SYSTEM_DB_DATABASE }),
 });
 ```
 
 List the definition in `config` of `defineApplication()` in `bootstrap/app.ts`, or of the module that needs it. `resolve`
 returns either `{ driver: 'sqlite', database }` or `{ driver: 'pgsql', url, poolMax?, infrastructurePoolMax? }`, so a reporting
-database on Postgres reads `resolve: (env) => ({ driver: 'pgsql', url: env.REPORTING_DB_URL, poolMax: 5 })`.
+database on Postgres reads `resolve: (e) => ({ driver: 'pgsql', url: e.REPORTING_DB_URL, poolMax: 5 })`.
 
 `default` is the name of the connection of `DB_CONNECTION`, and `defineConnection('default', …)` throws. Ask `Connections` for any
 connection by its name:

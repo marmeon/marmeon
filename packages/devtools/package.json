@@ -75,8 +75,7 @@
     ]
   },
   "dependencies": {
-    "@marmeon/core": "workspace:*",
-    "valibot": "^1.5.0"
+    "@marmeon/core": "workspace:*"
   },
   "peerDependencies": {
     "marmeon": "workspace:*",
@@ -118,6 +117,7 @@
     "@marmeon/scheduler": "workspace:*",
     "@marmeon/server": "workspace:*",
     "happy-dom": "^20.14.5",
-    "vite": "^8.3.1"
+    "vite": "^8.3.1",
+    "valibot": "^1.5.0"
   }
 }

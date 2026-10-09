@@ -229,6 +229,9 @@ describe('the gate (E115: fail closed, development only)', () => {
     await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(protected\)[\s\S]*never run in production, staging or without NODE_ENV/);
     await expect(boot({ NODE_ENV: 'staging', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with staging \(protected\)/);
     await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with unset NODE_ENV/);
+    // In any case — and only true or false: 1 is no way round the check.
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'TRUE' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(protected\)/);
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: '1' })).rejects.toThrow(/devtools: DEVTOOLS_ENABLED — DEVTOOLS_ENABLED must be true or false\./);
     await expect(boot({ NODE_ENV: 'production' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run in production/);
     await expect(boot({ NODE_ENV: 'staging' }, { test: true })).rejects.toThrow(/NODE_ENV=staging — they never run/);
     // What `marmeon` prints with it (E130): the devtools' own solution — not "set the variables in .env".

@@ -19,7 +19,7 @@ const registration = (name: string) => ({ vitest: `${WEB}/auth.test.ts`, name })
 const fixture = { vitest: 'packages/auth/src/make-auth.test.ts', name: 'gives a new app a working auth area' };
 
 /** The default turned round: `AUTH_PRIVATE_REGISTRATION` unset means off. */
-const DEFAULT_OFF = { file: CONFIG, find: "AUTH_PRIVATE_REGISTRATION: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'true'),", replace: "AUTH_PRIVATE_REGISTRATION: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'false')," };
+const DEFAULT_OFF = { file: CONFIG, find: "AUTH_PRIVATE_REGISTRATION: env.in(['true', 'false']).default('true'),", replace: "AUTH_PRIVATE_REGISTRATION: env.in(['true', 'false']).default('false')," };
 /** The sign-up asks the database first and, for a known address, only queues the note — no hash: the same answer, faster. */
 const KNOWN_ADDRESS_SHORTCUT = {
   file: REGISTER,
@@ -93,7 +93,7 @@ export default defineGegenproben({
     {
       id: 'G3',
       title: 'any value but "true" turns it off quietly: a typo ("no", "0") boots with private registration off',
-      patch: [{ file: CONFIG, find: "AUTH_PRIVATE_REGISTRATION: v.optional(v.pipe(v.picklist(['true', 'false']),", replace: "AUTH_PRIVATE_REGISTRATION: v.optional(v.pipe(v.string(),"}],
+      patch: [{ file: CONFIG, find: "AUTH_PRIVATE_REGISTRATION: env.in(['true', 'false']).default('true'),", replace: "AUTH_PRIVATE_REGISTRATION: env.string().default('true')," }],
       run: { vitest: 'packages/auth/src/private-registration.test.ts', name: 'is on unless set to false' },
       expect: /promise resolved .* instead of rejecting/,
     },
@@ -123,7 +123,7 @@ export default defineGegenproben({
     {
       id: 'G5b',
       title: 'the warning only for NODE_ENV=production: staging and a missing NODE_ENV stay quiet (not fail-closed, E139)',
-      patch: [{ file: CONFIG, find: '    protected: environment.isProtected(env),', replace: "    protected: env.NODE_ENV === 'production'," }],
+      patch: [{ file: CONFIG, find: '    protected: environment.isProtected(e),', replace: "    protected: e.NODE_ENV === 'production'," }],
       run: { vitest: 'packages/auth/src/private-registration.test.ts', name: 'turned off outside development and tests' },
       expect: /staging \(protected, E139\): the boot must warn: expected \[\]/,
     },

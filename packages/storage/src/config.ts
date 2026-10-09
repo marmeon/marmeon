@@ -1,5 +1,4 @@
-import { defineConfig, type ConfigDefinition, type InferOutput, type StandardSchemaV1 } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, type ConfigDefinition, type InferOutput, type StandardSchemaV1 } from '@marmeon/core';
 import type { Disk, PrivateDisk, PublicDisk, Visibility } from './disk.ts';
 
 interface DiskBase {
@@ -57,7 +56,7 @@ export interface StorageDefinition<D extends Readonly<Record<string, DiskOptions
   readonly storage: true;
 }
 
-const NO_ENV = r.env({});
+const NO_ENV = env({});
 
 /**
  * The app's disks (E91). List the definition in the app's `config` and register its types once:
@@ -65,12 +64,12 @@ const NO_ENV = r.env({});
  * ```ts
  * // config/storage.ts
  * export const Storage = defineStorage({
- *   env: r.env({ S3_BUCKET: r.string().optional(), S3_REGION: r.string().optional() }),
+ *   env: env({ S3_BUCKET: env.string().optional(), S3_REGION: env.string().optional() }),
  *   default: 'local',
- *   disks: (env) => ({
+ *   disks: (e) => ({
  *     local: { driver: 'local', root: 'storage/app/private' },
  *     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
- *     s3: { driver: 's3', bucket: env.S3_BUCKET, region: env.S3_REGION },
+ *     s3: { driver: 's3', bucket: e.S3_BUCKET, region: e.S3_REGION },
  *   }),
  * });
  * declare module '@marmeon/storage' { interface StorageTypes { storage: typeof Storage } }

@@ -61,7 +61,6 @@
   "dependencies": {
     "@marmeon/core": "workspace:*",
     "pino": "^10.3.1",
-    "pino-pretty": "^13.1.3",
-    "valibot": "^1.5.0"
+    "pino-pretty": "^13.1.3"
   }
 }

@@ -202,7 +202,7 @@ export default defineGegenproben({
     {
       id: 'G10',
       title: 'the old default prefix of API tokens back in the auth config: check:source names it (E207)',
-      patch: [{ file: 'packages/auth/src/config.ts', find: "'lower-case letters, digits and _ only')), 'marmeon_'),", replace: `'lower-case letters, digits and _ only')), '${OLD_PREFIX}'),` }],
+      patch: [{ file: 'packages/auth/src/config.ts', find: "'lower-case letters, digits and _ only').default('marmeon_'),", replace: `'lower-case letters, digits and _ only').default('${OLD_PREFIX}'),` }],
       run: { command: ['pnpm', 'run', 'check:source'] },
       expect: /the old token prefix \(E207 — API tokens start with marmeon_\): packages\/auth\/src\/config\.ts:19/,
     },

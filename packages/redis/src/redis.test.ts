@@ -1,5 +1,4 @@
-import { createApplication, type Logger } from '@marmeon/core';
-import * as v from 'valibot';
+import { createApplication, env, type Logger } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { defineRedisScript, RedisConnections } from './connections.ts';
 import { defineRedisConnection, RedisConfig, RedisServiceProvider } from './index.ts';
@@ -39,8 +38,8 @@ describe('RedisConnections without a server', () => {
 
   it('configures the default from REDIS_URL, prefixed with the app name unless REDIS_PREFIX says otherwise', async () => {
     const Queue = defineRedisConnection('queue', {
-      env: v.object({ QUEUE_REDIS_URL: v.string() }),
-      resolve: (env) => ({ url: env.QUEUE_REDIS_URL, prefix: 'q:' }),
+      env: env({ QUEUE_REDIS_URL: env.string() }),
+      resolve: (e) => ({ url: e.QUEUE_REDIS_URL, prefix: 'q:' }),
     });
     const app = await createApplication({
       root: import.meta.dirname,
@@ -54,7 +53,15 @@ describe('RedisConnections without a server', () => {
     expect(redis.names()).toEqual(['default', 'queue']);
     expect(redis.options('queue')).toEqual({ url: 'redis://queue.internal:6379', prefix: 'q:' });
     await app.shutdown(); // nothing was opened: nothing to wait for
-    expect(() => defineRedisConnection('default', { env: v.object({}), resolve: () => ({ url: 'redis://x', prefix: '' }) })).toThrow(/REDIS_URL/);
+    expect(() => defineRedisConnection('default', { env: env({}), resolve: () => ({ url: 'redis://x', prefix: '' }) })).toThrow(/REDIS_URL/);
+  });
+
+  it('takes an empty REDIS_PREFIX as a missing one — the app name, never a key without a prefix', async () => {
+    const prefix = async (variables: Record<string, string>) =>
+      (await createApplication({ root: import.meta.dirname, discover: false, env: { APP_NAME: 'Shop', ...variables }, providers: [RedisServiceProvider] })).container.make(RedisConfig).default.prefix;
+    expect(await prefix({ REDIS_PREFIX: '' })).toBe('shop:');
+    expect(await prefix({ REDIS_PREFIX: 'tenant-a:' })).toBe('tenant-a:');
+    expect(await prefix({ APP_NAME: '' })).toBe('marmeon:');
   });
 
   it('rejects a REDIS_URL that is not one', async () => {

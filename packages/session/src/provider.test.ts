@@ -1,12 +1,11 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { RedisConnections, RedisServiceProvider } from '@marmeon/redis';
 import { createHttpKernel } from '@marmeon/server';
-import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
@@ -193,7 +192,7 @@ describe('SESSION_DRIVER', () => {
 
 describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', () => {
   class Rollback extends Error {}
-  const System = (file: string) => defineConnection('system', { env: v.object({}), resolve: () => ({ driver: 'sqlite', database: file }) });
+  const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) });
   const DATA = JSON.stringify({ _token: 'x'.repeat(40), visits: 1 });
   const NEW = { expectedVersion: undefined, lifetimeSeconds: 60 };
   const ids = async (connections: Connections, name = 'default') =>

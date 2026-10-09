@@ -1,6 +1,5 @@
 // Type guarantees of the rules (W10 step 3, E197) — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
 // compiler shows them (directives removed once and read), are quoted in the comments.
-import { defineConfig, type ConfigOf } from '@marmeon/core';
 import { defineRequest, type ContextOf, type FormOf, type QueryOf } from '@marmeon/router';
 import { rules as r } from './index.ts';
 
@@ -66,17 +65,6 @@ r.query({ page: r.integer().min(1) });
 // from the URL as text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.in([…]), r.array(…)"'.
 // @ts-expect-error — an object cannot come from a URL
 r.query({ address: r.object({ city: r.string() }).optional() });
-
-const AppConfig = defineConfig('app', {
-  env: r.env({ APP_PORT: r.port().default(3960), INVITES: r.boolean().default(false), ADMINS: r.list(r.email()).default([]), APP_NAME: r.string().required() }),
-  resolve: (env) => ({ port: env.APP_PORT, invites: env.INVITES, admins: env.ADMINS, name: env.APP_NAME }),
-});
-same<ConfigOf<typeof AppConfig>, { port: number; invites: boolean; admins: string[]; name: string }>(true);
-
-// Type 'ArrayRule<string, string, string[]>' is not assignable to type '"Environment variable 'TAGS' is text — give it a rule that
-// takes a string: r.string(), r.integer(), r.boolean(), r.port(), r.list(…)"'. (Each message comes after the line naming the intersection.)
-// @ts-expect-error — r.array() reads no string (r.list() does)
-r.env({ TAGS: r.array(r.string()) });
 
 // ——— The output changes with the modifiers and transform ———
 

@@ -37,7 +37,7 @@ The [cache](cache.md#drivers), [session](session.md#drivers), [queues](queues.md
 | `REDIS_PREFIX` | the app's name as a slug, and `:` | Put in front of every key and channel, so two apps on one Redis never share a key. `My App` becomes `my-app:`. |
 
 `REDIS_URL` must start with `redis://` or `rediss://`, or the app does not start. The prefix comes from `APP_NAME`, and
-`marmeon:` when the name is not set. Leave `REDIS_PREFIX` out for that default: an empty `REDIS_PREFIX=` sets no prefix at all.
+`marmeon:` when the name is not set. Leave `REDIS_PREFIX` out for that default; an empty `REDIS_PREFIX=` counts as not set too.
 A prefix you set is used as you write it, so end it with the colon yourself: `REDIS_PREFIX=notes-app:`.
 
 Redis holds sessions, queued jobs and locks. Keep it off the public network, give it a password in the URL, and use `rediss://`
@@ -63,12 +63,12 @@ Another Redis, a separate instance for the queue for example, is a definition wi
 checked at the start like all [configuration](configuration.md):
 
 ```ts title="config/redis.ts"
+import { env } from '@marmeon/core';
 import { defineRedisConnection } from '@marmeon/redis';
-import { rules as r } from '@marmeon/validation';
 
 export const QueueRedis = defineRedisConnection('queue', {
-  env: r.env({ QUEUE_REDIS_URL: r.string() }),
-  resolve: (env) => ({ url: env.QUEUE_REDIS_URL, prefix: 'notes-app:' }),
+  env: env({ QUEUE_REDIS_URL: env.url({ protocols: ['redis', 'rediss'] }) }),
+  resolve: (e) => ({ url: e.QUEUE_REDIS_URL, prefix: 'notes-app:' }),
 });
 ```
 

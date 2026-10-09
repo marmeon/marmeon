@@ -1,4 +1,4 @@
-import { defineConfig, resolveConfig, type StandardSchemaV1 } from '@marmeon/core';
+import type { StandardSchemaV1 } from '@marmeon/core';
 import { issueOfFields, parseQuery, translatable } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { metaOf, rules as r, type Rule } from './index.ts';
@@ -222,16 +222,6 @@ describe('an empty string — by type (E208)', () => {
     expect(result).toEqual({ value: { limit: undefined, label: '' } });
   });
 
-  it("r.env(): an empty variable is a missing one — for a string too (S3_BUCKET= says 'not set')", async () => {
-    const env = r.env({ S3_BUCKET: r.string().optional(), APP_NAME: r.string().default('Marmeon'), NOTE: r.string().nullable(), PLAIN: r.string(), PORT: r.port().default(3000) });
-    const result = await check(env, { S3_BUCKET: '', APP_NAME: '', NOTE: '', PLAIN: '', PORT: '' });
-    expect((result.value as { S3_BUCKET?: string } | undefined)?.S3_BUCKET, 'S3_BUCKET= is "not set"').toBeUndefined();
-    expect(result).toEqual({ value: { S3_BUCKET: undefined, APP_NAME: 'Marmeon', NOTE: null, PLAIN: '', PORT: 3000 } });
-    // The same rules in a form keep ''.
-    const form = r.object({ S3_BUCKET: r.string().optional(), APP_NAME: r.string().default('Marmeon') });
-    expect(await check(form, { S3_BUCKET: '', APP_NAME: '' })).toEqual({ value: { S3_BUCKET: '', APP_NAME: '' } });
-  });
-
   it("r.query(): a URL's empty field follows the type, like a form's (?q= is '', ?page= the default)", async () => {
     const query = r.query({ q: r.string().trim().optional(), page: r.integer().min(1).default(1), sort: r.in(['name', '-name']).default('name') });
     const parsed = await parseQuery(query, new URLSearchParams('q=&page=&sort='));
@@ -374,27 +364,6 @@ describe('queries (E56)', () => {
     expect(fallback.value.page).toBe(1);
     expect(fallback.dropped).toEqual(['page']);
     expect(await check(query, {})).toEqual({ value: { q: '', sort: 'name', page: 1, per_page: 10, mine: false, tag: [] } });
-  });
-});
-
-describe('environment variables (defineConfig)', () => {
-  const AppConfig = defineConfig('app', {
-    env: r.env({ APP_PORT: r.port().default(3960), INVITES: r.boolean().default(false), ADMINS: r.list(r.email()).default([]), APP_NAME: r.string().trim().required() }),
-    resolve: (env) => env,
-  });
-
-  it('strings read like a query; an empty variable is missing; other variables are left out', async () => {
-    const resolved = await resolveConfig([AppConfig], { APP_PORT: '', INVITES: 'yes', ADMINS: ' ada@example.com,, alan@example.com ', APP_NAME: 'Marmeon', HOME: '/root' });
-    expect(resolved.get(AppConfig)).toEqual({ APP_PORT: 3960, INVITES: true, ADMINS: ['ada@example.com', 'alan@example.com'], APP_NAME: 'Marmeon' });
-  });
-
-  it('messages name the variable as it is written', async () => {
-    const error = (await resolveConfig([AppConfig], { APP_PORT: '70000', ADMINS: 'ada@example.com, nope' }).catch((failure: unknown) => failure)) as Error;
-    expect(error.message.split('\n').filter((line) => line.startsWith('  •'))).toEqual([
-      '  • app: APP_PORT — The APP_PORT field must be a port number from 1 to 65535.',
-      '  • app: ADMINS.1 — The ADMINS.1 field must be a valid email address.',
-      '  • app: APP_NAME — The APP_NAME field is required.',
-    ]);
   });
 });
 

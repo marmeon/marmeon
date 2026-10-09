@@ -1,5 +1,5 @@
+import { env } from '@marmeon/core';
 import { defineConnection } from '@marmeon/database';
-import { rules as r } from '@marmeon/validation';
 
 /**
  * The `system` connection: a SQLite file of its own for the cache (with rate limits and locks) and the sessions —
@@ -11,9 +11,9 @@ import { rules as r } from '@marmeon/validation';
  * a small pool of their own to the app's database by themselves. This connection then stays unused (it never opens).
  */
 export const SystemDatabase = defineConnection('system', {
-  env: r.env({
+  env: env({
     /** The file, relative to the app root (`:memory:` in tests). */
-    SYSTEM_DB_DATABASE: r.string().default('storage/system.sqlite'),
+    SYSTEM_DB_DATABASE: env.string().default('storage/system.sqlite'),
   }),
-  resolve: (env) => ({ driver: 'sqlite', database: env.SYSTEM_DB_DATABASE }),
+  resolve: (e) => ({ driver: 'sqlite', database: e.SYSTEM_DB_DATABASE }),
 });

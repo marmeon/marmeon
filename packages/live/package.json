@@ -62,8 +62,7 @@
   "dependencies": {
     "@marmeon/core": "workspace:*",
     "@marmeon/encryption": "workspace:*",
-    "@marmeon/http": "workspace:*",
-    "valibot": "^1.5.0"
+    "@marmeon/http": "workspace:*"
   },
   "peerDependencies": {
     "@marmeon/notifications": "workspace:*",

@@ -1,5 +1,4 @@
-import { defineConfig, environment, type ConfigOf } from '@marmeon/core';
-import * as v from 'valibot';
+import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 
 function isTimeZone(value: string): boolean {
   try {
@@ -21,10 +20,10 @@ function isTimeZone(value: string): boolean {
  * protected like production; Laravel's `APP_ENV` defaults to `production` too).
  */
 export const ScheduleConfig = defineConfig('schedule', {
-  env: v.object({
-    SCHEDULE_TIMEZONE: v.optional(v.pipe(v.string(), v.check(isTimeZone, 'Expected an IANA time zone like Europe/Berlin or UTC')), 'UTC'),
-    NODE_ENV: v.optional(v.string()),
+  env: env({
+    SCHEDULE_TIMEZONE: env.string().check(isTimeZone, 'Expected an IANA time zone like Europe/Berlin or UTC').default('UTC'),
+    NODE_ENV: env.string().optional(),
   }),
-  resolve: (env) => ({ timezone: env.SCHEDULE_TIMEZONE, environment: environment.name(env) ?? 'production' }),
+  resolve: (e) => ({ timezone: e.SCHEDULE_TIMEZONE, environment: environment.name(e) ?? 'production' }),
 });
 export type ScheduleConfig = ConfigOf<typeof ScheduleConfig>;

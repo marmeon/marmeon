@@ -32,8 +32,10 @@ describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
     expect((await boot({ NODE_ENV: 'test' })).app.container.make(AuthConfig).privateRegistration, 'unset, private registration must be on').toBe(true);
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: 'true' })).app.container.make(AuthConfig).privateRegistration).toBe(true);
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: 'false' })).app.container.make(AuthConfig).privateRegistration).toBe(false);
+    // An empty variable is a missing one: on.
+    expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: '' })).app.container.make(AuthConfig).privateRegistration, 'empty, private registration must be on').toBe(true);
     // Fail-closed: a typo never turns it off quietly — the boot names the variable.
-    for (const value of ['no', '0', 'FALSE', 'off', '']) {
+    for (const value of ['no', '0', 'FALSE', 'off']) {
       await expect(boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: value })).rejects.toThrow(/auth: AUTH_PRIVATE_REGISTRATION/);
     }
   });
@@ -57,8 +59,9 @@ describe('AUTH_UNVERIFIED_DAYS (E203)', () => {
     expect(await days(), 'unset, unconfirmed accounts must go after 7 days').toBe(7);
     expect(await days('30')).toBe(30);
     expect(await days('0')).toBe(0);
+    expect(await days(''), 'empty is unset: 7 days').toBe(7);
     // Fail-closed: a typo never turns the prune off (or makes it delete at once) quietly — the boot names the variable.
-    for (const value of ['-1', '1.5', '7d', 'seven', '', ' 7', '1e3', '0x10']) {
+    for (const value of ['-1', '1.5', '7d', 'seven', ' 7', '1e3', '0x10']) {
       await expect(boot({ NODE_ENV: 'test', AUTH_UNVERIFIED_DAYS: value }), value).rejects.toThrow(/auth: AUTH_UNVERIFIED_DAYS/);
     }
   });

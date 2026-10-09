@@ -1,9 +1,8 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ConfigError, defineConfig, environment, type ConfigOf } from '@marmeon/core';
+import { ConfigError, defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 import { devHosts } from '@marmeon/core/dev';
-import * as v from 'valibot';
 import { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES } from './file-store.ts';
 
 /** The devtools cannot run as configured: forced on in production (E115), or `config/devtools.ts` malformed. */
@@ -140,28 +139,30 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
  * Tests opt in with `createTestApp(App, { devtools: true })`.
  */
 export const DevtoolsConfig = defineConfig('devtools', {
-  env: v.object({
-    NODE_ENV: v.optional(v.string()),
-    DEVTOOLS_ENABLED: v.optional(v.pipe(v.string(), v.toLowerCase(), v.picklist(['true', 'false']))),
+  env: env({
+    NODE_ENV: env.string().optional(),
+    /** `true` or `false`, in any case. */
+    DEVTOOLS_ENABLED: env.string().regex(/^(?:true|false)$/i, 'DEVTOOLS_ENABLED must be true or false.').optional(),
     /** The app's own address: its host may open the pages too (besides `localhost`, `127.0.0.1` and `[::1]`). */
-    APP_URL: v.optional(v.string()),
+    APP_URL: env.string().optional(),
   }),
-  resolve: (env) => {
-    if (env.DEVTOOLS_ENABLED === 'true' && environment.isProtected(env)) {
+  resolve: (e) => {
+    const switched = e.DEVTOOLS_ENABLED?.toLowerCase();
+    if (switched === 'true' && environment.isProtected(e)) {
       throw new DevtoolsConfigError(
-        `DEVTOOLS_ENABLED=true with ${environment.describe(env)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV. ` +
+        `DEVTOOLS_ENABLED=true with ${environment.describe(e)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV. ` +
           'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @marmeon/devtools as a dev dependency.',
       );
     }
     return {
-      enabled: environment.isDevelopment(env) && env.DEVTOOLS_ENABLED !== 'false',
-      environment: environment.name(env),
+      enabled: environment.isDevelopment(e) && switched !== 'false',
+      environment: environment.name(e),
       /** Production, staging, no `NODE_ENV` (E139): a test's opt-in fails the start there. */
-      protected: environment.isProtected(env),
+      protected: environment.isProtected(e),
       /** `DEVTOOLS_ENABLED=true` in a test: it has no effect (said once, at the start). */
-      ineffective: env.DEVTOOLS_ENABLED === 'true' && !environment.isDevelopment(env),
+      ineffective: switched === 'true' && !environment.isDevelopment(e),
       /** The hosts the pages answer (a request for any other gets 403 — DNS rebinding): loopback names and `APP_URL`'s host. */
-      hosts: devHosts(env.APP_URL),
+      hosts: devHosts(e.APP_URL),
     };
   },
 });

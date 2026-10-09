@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Every input of an app passes a schema: a form's body, a URL's query, a configuration's environment variables, a job's payload.
+Every input of an app passes a schema: a form's body, a URL's query, a job's payload.
 The framework writes its schemas with `rules` of `@marmeon/validation`. The rules carry familiar names such as `required`, `max`,
 `email`, `in`, `confirmed` and `unique`, they are typed from end to end, and their messages come in the request's language:
 
@@ -65,8 +65,8 @@ A body that fails answers in one of two ways:
 
 A nested field carries its full path: `address.city`, `links.0.url`.
 
-The same rules serve every other place that takes a schema: `query` of a request, `env` of a `defineConfig()`, `static schema` of
-a job, and `parseQuery()` by hand. The rules are server code. A view imports the request's types, never a rule, so no code of
+The same rules serve every other place that takes a schema: `query` of a request, `static schema` of a job, and `parseQuery()` by
+hand. The rules are server code. A view imports the request's types, never a rule, so no code of
 `@marmeon/validation` reaches the browser. An app needs no other validation library: the engine under the rules is the package's
 own dependency, and no type of it shows in your code.
 
@@ -88,7 +88,7 @@ import { rules as r } from '@marmeon/validation';
 | `r.object({...})` | An object. Fields the shape does not name are left out. | The fields' outputs |
 | `r.array(rule)` | A list, each item checked by `rule`. | A list |
 | `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` | `r.string()` with that check. | `string` |
-| `r.query({...})`, `r.env({...})`, `r.port()`, `r.list(rule)` | A URL's fields, environment variables, a port from 1 to 65535, a comma-separated list. | |
+| `r.query({...})`, `r.port()`, `r.list(rule)` | A URL's fields, a port from 1 to 65535, a comma-separated list. | |
 | `r.value<Output, Input>(check)` | What `check` passes: a type of your own. | The value |
 
 Each type then has its checks, which run **in the order you write them**: `trim()` before `required()` makes `' '` missing.
@@ -157,9 +157,7 @@ schema: r.object({
 `trim()` runs inside the rule, after the modifier looked: `'   '` with `r.string().trim().optional()` becomes `''` and is kept, like
 a `''` sent as it is. With `required()` it is "required". A form and a JSON client get the same answer.
 
-A query follows the same rules: `?q=` is `''` for `r.string()` and missing for `r.integer()`. Environment variables are the
-exception: in `r.env()` every empty variable counts as missing, for `r.string()` too. `S3_BUCKET=` in an environment file means
-"not set", and a file has no other way to say it.
+A query follows the same rules: `?q=` is `''` for `r.string()` and missing for `r.integer()`.
 
 To make `''` missing in a string field, turn it into `undefined` or `null` after the checks:
 
@@ -188,7 +186,6 @@ r.string().trim().transform((text) => text.split(' ')) // input string, output s
 | `ctx.body` | The body's output. | `{ title: string; slug: string; link: string \| null; tags: string[] }` |
 | `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` types its fields with it. | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
 | `QueryOf<ListNotesController>` | The parsed query, an output. | `{ sort: 'title' \| '-title'; page: number }` |
-| `ConfigOf<typeof NotesConfig>` | What `resolve` makes of the environment's output. | |
 
 A field of `when()` is optional in the output.
 
@@ -225,7 +222,7 @@ de  Der Wert für E-Mail ist bereits vergeben.                  marmeon.validati
 
 - **`{attribute}`** is the field: its path with underscores as spaces, so `password_confirmation` is "password confirmation" and a
   nested one reads `users.1.email`. A request's `attributes` name fields themselves, with a translation key or a text per field,
-  and `*` for one segment of a path: `{ 'links.*.url': 'link' }`. In `r.env()`, a variable keeps its name as written: `APP_PORT`.
+  and `*` for one segment of a path: `{ 'links.*.url': 'link' }`.
 - **`messages`** replace the framework's message of a rule. `{ 'slug.unique': 'notes.validation.slug_taken' }` replaces it for one
   field, `{ required: 'Fill this in.' }` for every field, and `<field>.<rule>` wins over `<rule>`. The rule is the part of the key
   after `marmeon.validation.`, so `max` for `max.string`. A message may use the rule's placeholders: `'Keep {attribute} under
@@ -357,7 +354,7 @@ schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'im
 first bytes, never from its name: HTML sent as `.png` is refused. Nothing chosen is "Choose a file.". Lists of files are not
 supported yet. The [requests](requests.md#files) page shows a whole controller.
 
-## Queries and environment variables
+## Queries
 
 `r.query({ … })` reads a URL. A query never answers 422: a field the schema rejects falls back to its default. So every field needs
 one or is `optional()`, and its rule must take a string, as `r.integer()`, `r.boolean()`, `r.in([10, 25])` and `r.array()` with a
@@ -375,13 +372,9 @@ query: r.query({
 The [requests](requests.md#query-schemas) page explains how a query is parsed, and the [pagination](pagination.md) page builds a
 list on it. A [data table's](tables.md#the-url-is-strict) query is stricter on purpose: it answers 400.
 
-`r.env({ … })` is the `env` of a `defineConfig()`. Every variable is a string, read like a query, with `r.port()` and
-`r.list(rule)` for `ADMINS=ada@example.com, alan@example.com`, and an empty variable is missing. A wrong value stops the start and
-names every variable at once. The [configuration](configuration.md#reading-variables) page covers it.
-
 ## Other libraries
 
-A schema of any Standard Schema library works wherever a rule does: `defineRequest()`, `parseQuery()`, `defineConfig()` and a job's
+A schema of any Standard Schema library works wherever a rule does: `defineRequest()`, `parseQuery()` and a job's
 `static schema`. Your app installs the library itself:
 
 ```ts
@@ -437,10 +430,6 @@ r.query({ page: r.integer().min(1) })
 r.query({ address: r.object({ city: r.string() }).optional() })
   … '"Query field 'address' is read from the URL as text — give it a rule that takes a string: r.string(), r.integer(),
   r.boolean(), r.in([…]), r.array(…)"'.
-
-r.env({ TAGS: r.array(r.string()) })
-  … '"Environment variable 'TAGS' is text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.port(),
-  r.list(…)"'.
 
 r.string().optional().max(3)
   Property 'max' does not exist on type 'Rule<string | undefined, string | undefined>'.        — the modifiers come last

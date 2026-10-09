@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, createSecretKey, randomBytes, type KeyObject } from 'node:crypto';
-import { defineConfig, defineSolutions, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
-import * as v from 'valibot';
+import { defineConfig, defineSolutions, env, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 
 /**
  * Symmetric, authenticated encryption with the application key (Laravel's
@@ -24,27 +23,15 @@ export class DecryptError extends Error {
 }
 
 /** `base64:` + 32 random bytes, as written by `marmeon key:generate`. */
-const KEY = v.pipe(
-  v.string(),
-  v.nonEmpty('Missing — run "marmeon key:generate"'),
-  v.check((value) => decodeKey(value) !== undefined, 'Expected "base64:" followed by 32 base64-encoded bytes — run "marmeon key:generate"'),
-  v.transform((value) => decodeKey(value)!),
-);
+const KEY = env.string().check((value) => decodeKey(value) !== undefined, 'Expected "base64:" followed by 32 base64-encoded bytes — run "marmeon key:generate"');
 
 export const EncryptionConfig = defineConfig('encryption', {
-  env: v.object({
-    APP_KEY: v.optional(KEY, ''), // a missing key gets the same helpful message as an empty one
+  env: env({
+    APP_KEY: KEY.required('Missing — run "marmeon key:generate"'),
     /** Former keys, comma-separated: payloads encrypted with them still decrypt (key rotation). */
-    APP_PREVIOUS_KEYS: v.optional(
-      v.pipe(
-        v.string(),
-        v.transform((value) => value.split(',').map((key) => key.trim()).filter(Boolean)),
-        v.array(KEY),
-      ),
-      '',
-    ),
+    APP_PREVIOUS_KEYS: env.list(KEY).default([]),
   }),
-  resolve: (env) => ({ key: env.APP_KEY, previousKeys: env.APP_PREVIOUS_KEYS }),
+  resolve: (e) => ({ key: decodeKey(e.APP_KEY)!, previousKeys: e.APP_PREVIOUS_KEYS.map((key) => decodeKey(key)!) }),
 });
 export type EncryptionConfig = ConfigOf<typeof EncryptionConfig>;
 

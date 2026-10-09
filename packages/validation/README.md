@@ -1,8 +1,7 @@
 # @marmeon/validation
 
 The validation rules of Marmeon apps — `r.string()`, `r.integer()`, `r.email()`, `r.object()`, `.unique()` and the rest —
-typed from end to end, with messages in the request's language, for request bodies, queries, environment variables and job
-payloads.
+typed from end to end, with messages in the request's language, for request bodies, queries and job payloads.
 
 ## Installation
 

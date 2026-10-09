@@ -1,8 +1,7 @@
-import { defineConfig, type ConfigOf } from '@marmeon/core';
-import * as v from 'valibot';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 import type { QueueConnectionOptions } from './queue.ts';
 
-const seconds = (name: string) => v.pipe(v.string(), v.transform(Number), v.number(`${name} must be a number of seconds`), v.integer(), v.minValue(1));
+const seconds = (name: string) => env.integer(`${name} must be a number of seconds`).min(1).default(90);
 
 /**
  * The queue connections (E83): `sync` runs a job at once, in the dispatching process (scripts, tests); `database` keeps
@@ -24,28 +23,28 @@ const seconds = (name: string) => v.pipe(v.string(), v.transform(Number), v.numb
  * claimed by a second worker — `queue:work` refuses to start otherwise.
  */
 export const QueueConfig = defineConfig('queue', {
-  env: v.object({
-    QUEUE_CONNECTION: v.optional(v.picklist(['sync', 'database', 'redis']), 'database'),
-    DB_QUEUE_CONNECTION: v.optional(v.string(), 'default'),
-    DB_QUEUE: v.optional(v.pipe(v.string(), v.nonEmpty()), 'default'),
-    DB_QUEUE_RETRY_AFTER: v.optional(seconds('DB_QUEUE_RETRY_AFTER'), '90'),
-    REDIS_QUEUE_CONNECTION: v.optional(v.string(), 'default'),
-    REDIS_QUEUE: v.optional(v.pipe(v.string(), v.nonEmpty()), 'default'),
-    REDIS_QUEUE_RETRY_AFTER: v.optional(seconds('REDIS_QUEUE_RETRY_AFTER'), '90'),
-    QUEUE_FAILED_DRIVER: v.optional(v.picklist(['database', 'null']), 'database'),
+  env: env({
+    QUEUE_CONNECTION: env.in(['sync', 'database', 'redis']).default('database'),
+    DB_QUEUE_CONNECTION: env.string().default('default'),
+    DB_QUEUE: env.string().default('default'),
+    DB_QUEUE_RETRY_AFTER: seconds('DB_QUEUE_RETRY_AFTER'),
+    REDIS_QUEUE_CONNECTION: env.string().default('default'),
+    REDIS_QUEUE: env.string().default('default'),
+    REDIS_QUEUE_RETRY_AFTER: seconds('REDIS_QUEUE_RETRY_AFTER'),
+    QUEUE_FAILED_DRIVER: env.in(['database', 'null']).default('database'),
     /** The database connection of `failed_jobs` (default: DB_QUEUE_CONNECTION). */
-    QUEUE_FAILED_CONNECTION: v.optional(v.string()),
+    QUEUE_FAILED_CONNECTION: env.string().optional(),
   }),
-  resolve: (env) => {
+  resolve: (e) => {
     const connections: Record<string, QueueConnectionOptions> = {
       sync: { driver: 'sync', queue: 'default' },
-      database: { driver: 'database', queue: env.DB_QUEUE, connection: env.DB_QUEUE_CONNECTION, retryAfter: env.DB_QUEUE_RETRY_AFTER },
-      redis: { driver: 'redis', queue: env.REDIS_QUEUE, connection: env.REDIS_QUEUE_CONNECTION, retryAfter: env.REDIS_QUEUE_RETRY_AFTER },
+      database: { driver: 'database', queue: e.DB_QUEUE, connection: e.DB_QUEUE_CONNECTION, retryAfter: e.DB_QUEUE_RETRY_AFTER },
+      redis: { driver: 'redis', queue: e.REDIS_QUEUE, connection: e.REDIS_QUEUE_CONNECTION, retryAfter: e.REDIS_QUEUE_RETRY_AFTER },
     };
     return {
-      default: env.QUEUE_CONNECTION as string,
+      default: e.QUEUE_CONNECTION as string,
       connections,
-      failed: { driver: env.QUEUE_FAILED_DRIVER, connection: env.QUEUE_FAILED_CONNECTION ?? env.DB_QUEUE_CONNECTION },
+      failed: { driver: e.QUEUE_FAILED_DRIVER, connection: e.QUEUE_FAILED_CONNECTION ?? e.DB_QUEUE_CONNECTION },
     };
   },
 });

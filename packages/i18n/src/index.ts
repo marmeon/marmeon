@@ -1,10 +1,9 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, defineConfig, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { editableResponse, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
 import { Session } from '@marmeon/session';
-import * as v from 'valibot';
 import { Catalog } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
 import frameworkEn from './lang/en.ts';
@@ -24,45 +23,34 @@ declare module '@marmeon/session' {
   }
 }
 
-const tag = v.pipe(v.string(), v.check((value: string) => isLanguageTag(value), 'Expected a language tag like en or de-AT'));
+const tag = env.string().check(isLanguageTag, 'Expected a language tag like en or de-AT');
 
 export const I18nConfig = defineConfig('i18n', {
-  env: v.pipe(
-    v.object({
-      /** The default locale — for visitors whose session, account and browser name none of the supported ones. */
-      APP_LOCALE: v.optional(tag, 'en'),
-      /** Where a message missing in a locale comes from (the language of the source files, `lang/en.ts`). */
-      APP_FALLBACK_LOCALE: v.optional(tag, 'en'),
-      /**
-       * The supported locales, comma-separated (`en,de`). Default: every locale the app has language files for
-       * (`modules/<module>/lang/<locale>.ts`, `lang/<locale>.ts`), plus APP_LOCALE and APP_FALLBACK_LOCALE.
-       */
-      APP_LOCALES: v.optional(
-        v.pipe(
-          v.string(),
-          v.transform((value) => value.split(',').map((locale) => locale.trim()).filter(Boolean)),
-          v.check((locales: string[]) => locales.every((locale) => isLanguageTag(locale)), 'Expected language tags like en,de'),
-        ),
-        '',
-      ),
-    }),
-    v.forward(
-      v.check(({ APP_LOCALE, APP_LOCALES }) => APP_LOCALES.length === 0 || supportedLocale(APP_LOCALE, APP_LOCALES) !== undefined, 'APP_LOCALE must be one of APP_LOCALES'),
-      ['APP_LOCALE'],
+  env: env({
+    /** The default locale — for visitors whose session, account and browser name none of the supported ones. */
+    APP_LOCALE: tag.default('en'),
+    /** Where a message missing in a locale comes from (the language of the source files, `lang/en.ts`). */
+    APP_FALLBACK_LOCALE: tag.default('en'),
+    /**
+     * The supported locales, comma-separated (`en,de`). Default: every locale the app has language files for
+     * (`modules/<module>/lang/<locale>.ts`, `lang/<locale>.ts`), plus APP_LOCALE and APP_FALLBACK_LOCALE.
+     */
+    APP_LOCALES: env
+      .list(env.string())
+      .check((locales) => locales.every((locale) => isLanguageTag(locale)), 'Expected language tags like en,de')
+      .default([]),
+  })
+    .check((e) => e.APP_LOCALES.length === 0 || supportedLocale(e.APP_LOCALE, e.APP_LOCALES) !== undefined, 'APP_LOCALE must be one of APP_LOCALES', 'APP_LOCALE')
+    .check(
+      (e) => e.APP_LOCALES.length === 0 || supportedLocale(e.APP_FALLBACK_LOCALE, e.APP_LOCALES) !== undefined,
+      'APP_FALLBACK_LOCALE must be one of APP_LOCALES',
+      'APP_FALLBACK_LOCALE',
     ),
-    v.forward(
-      v.check(
-        ({ APP_FALLBACK_LOCALE, APP_LOCALES }) => APP_LOCALES.length === 0 || supportedLocale(APP_FALLBACK_LOCALE, APP_LOCALES) !== undefined,
-        'APP_FALLBACK_LOCALE must be one of APP_LOCALES',
-      ),
-      ['APP_FALLBACK_LOCALE'],
-    ),
-  ),
-  resolve: (env) => {
-    const explicit = env.APP_LOCALES.length > 0 ? env.APP_LOCALES : undefined;
+  resolve: (e) => {
+    const explicit = e.APP_LOCALES.length > 0 ? e.APP_LOCALES : undefined;
     // In the spelling of the list, when there is one.
     const spell = (locale: string) => (explicit ? supportedLocale(locale, explicit)! : locale);
-    return { locale: spell(env.APP_LOCALE), fallback: spell(env.APP_FALLBACK_LOCALE), locales: explicit };
+    return { locale: spell(e.APP_LOCALE), fallback: spell(e.APP_FALLBACK_LOCALE), locales: explicit };
   },
 });
 export type I18nConfig = ConfigOf<typeof I18nConfig>;

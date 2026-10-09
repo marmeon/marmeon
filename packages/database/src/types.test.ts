@@ -1,6 +1,5 @@
-import { ConsoleLogger, type Container } from '@marmeon/core';
+import { ConsoleLogger, env, type Container } from '@marmeon/core';
 import type { Generated, Kysely } from 'kysely';
-import { rules as r } from '@marmeon/validation';
 import { expectTypeOf, it } from 'vitest';
 import type { ModuleDefinition } from '@marmeon/core';
 import type { Selectable } from 'kysely';
@@ -47,13 +46,13 @@ it('types connections, configuration and the query log', () => {
   expectTypeOf(fromContainer).returns.toEqualTypeOf<Kysely<Tables>>();
   expectTypeOf<Database>().toEqualTypeOf<Kysely<Tables>>();
 
-  defineConnection('reporting', { env: r.env({ URL: r.string() }), resolve: (env) => ({ driver: 'pgsql', url: env.URL }) });
+  defineConnection('reporting', { env: env({ URL: env.string() }), resolve: (e) => ({ driver: 'pgsql', url: e.URL }) });
   // @ts-expect-error — (3) unknown driver
-  defineConnection('a', { env: r.env({}), resolve: () => ({ driver: 'mysql', url: 'x' }) });
+  defineConnection('a', { env: env({}), resolve: () => ({ driver: 'mysql', url: 'x' }) });
   // @ts-expect-error — (4) SQLite needs a database file
-  defineConnection('b', { env: r.env({}), resolve: () => ({ driver: 'sqlite' }) });
+  defineConnection('b', { env: env({}), resolve: () => ({ driver: 'sqlite' }) });
   // @ts-expect-error — (5) env is typed by the schema
-  defineConnection('c', { env: r.env({ URL: r.string() }), resolve: (env) => ({ driver: 'pgsql', url: env.DB_URL }) });
+  defineConnection('c', { env: env({ URL: env.string() }), resolve: (e) => ({ driver: 'pgsql', url: e.DB_URL }) });
 
   connections.onQuery((query) => {
     expectTypeOf(query).toEqualTypeOf<QueryEvent>();

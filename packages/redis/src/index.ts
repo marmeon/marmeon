@@ -1,5 +1,4 @@
-import { Application, defineConfig, Logger, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@marmeon/core';
-import * as v from 'valibot';
+import { Application, defineConfig, env, Logger, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@marmeon/core';
 import { RedisConnections, type RedisConnectionOptions } from './connections.ts';
 import { RedisHealthCheck } from './health.ts';
 
@@ -8,8 +7,6 @@ import { RedisHealthCheck } from './health.ts';
 export { defineRedisScript, describeRedisUrl, RedisConnection, RedisConnections } from './connections.ts';
 export type { RedisConnectionOptions, RedisScript } from './connections.ts';
 export { RedisHealthCheck } from './health.ts';
-
-const redisUrl = v.pipe(v.string(), v.regex(/^rediss?:\/\//, 'Expected a redis:// or rediss:// URL'), v.url());
 
 /** `My App` → `my-app:` — the default prefix, so two apps on one Redis never share a key. */
 function prefixOf(name: string): string {
@@ -29,12 +26,12 @@ function prefixOf(name: string): string {
  * ```
  */
 export const RedisConfig = defineConfig('redis', {
-  env: v.object({
-    REDIS_URL: v.optional(redisUrl, 'redis://127.0.0.1:6379'),
-    REDIS_PREFIX: v.optional(v.string()),
-    APP_NAME: v.optional(v.string(), 'marmeon'),
+  env: env({
+    REDIS_URL: env.url({ protocols: ['redis', 'rediss'], message: 'Expected a redis:// or rediss:// URL' }).default('redis://127.0.0.1:6379'),
+    REDIS_PREFIX: env.string().optional(),
+    APP_NAME: env.string().default('marmeon'),
   }),
-  resolve: (env): { default: RedisConnectionOptions } => ({ default: { url: env.REDIS_URL, prefix: env.REDIS_PREFIX ?? prefixOf(env.APP_NAME) } }),
+  resolve: (e): { default: RedisConnectionOptions } => ({ default: { url: e.REDIS_URL, prefix: e.REDIS_PREFIX ?? prefixOf(e.APP_NAME) } }),
 });
 export type RedisConfig = ConfigOf<typeof RedisConfig>;
 
@@ -49,8 +46,8 @@ export interface RedisConnectionDefinition extends ConfigDefinition<RedisConnect
  *
  * ```ts
  * export const QueueRedis = defineRedisConnection('queue', {
- *   env: r.env({ QUEUE_REDIS_URL: r.string() }),
- *   resolve: (env) => ({ url: env.QUEUE_REDIS_URL, prefix: 'myapp:' }),
+ *   env: env({ QUEUE_REDIS_URL: env.url({ protocols: ['redis', 'rediss'] }) }),
+ *   resolve: (e) => ({ url: e.QUEUE_REDIS_URL, prefix: 'myapp:' }),
  * });
  * defineApplication({ config: [QueueRedis], … });
  * redis.get('queue')

@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
@@ -14,7 +14,6 @@ import { Limit, RateLimiter, throttle } from './rate-limiter.ts';
 import { DatabaseStore } from './stores/database.ts';
 import { RedisStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
-import * as v from 'valibot';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 class Limits {
@@ -92,7 +91,7 @@ describe('CACHE_DRIVER', () => {
 describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', () => {
   class Rollback extends Error {}
   /** A connection with a SQLite file of its own for the cache (as the web app's `system`). */
-  const System = (file: string) => defineConnection('system', { env: v.object({}), resolve: () => ({ driver: 'sqlite', database: file }) });
+  const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) });
   const counted = async (connections: Connections, name = 'default') =>
     (await sql<{ value: string }>`select value from cache where key = 'limiter:login'`.execute(connections.get(name))).rows.map((row) => row.value);
 

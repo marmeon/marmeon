@@ -60,7 +60,6 @@
     ]
   },
   "dependencies": {
-    "@marmeon/core": "workspace:*",
-    "valibot": "^1.5.0"
+    "@marmeon/core": "workspace:*"
   }
 }

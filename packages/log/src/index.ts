@@ -1,20 +1,19 @@
-import { Application, currentLogContext, defineConfig, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
+import { Application, currentLogContext, defineConfig, env, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
 import { channels, messageBase } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { pino, type Logger as Pino } from 'pino';
 import type pinoPretty from 'pino-pretty';
-import * as v from 'valibot';
 
 export const LogConfig = defineConfig('log', {
-  env: v.object({
-    LOG_LEVEL: v.optional(v.picklist(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']), 'info'),
+  env: env({
+    LOG_LEVEL: env.in(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
     /** `pretty` for humans, `json` for log shippers. Defaults to pretty with `NODE_ENV=development` only (E164) — JSON everywhere else, also without a `NODE_ENV`. */
-    LOG_FORMAT: v.optional(v.picklist(['pretty', 'json'])),
-    NODE_ENV: v.optional(v.string()),
+    LOG_FORMAT: env.in(['pretty', 'json']).optional(),
+    NODE_ENV: env.string().optional(),
   }),
-  resolve: (env) => ({
-    level: env.LOG_LEVEL,
-    format: env.LOG_FORMAT ?? (environment.isDevelopment(env) ? 'pretty' : 'json'),
+  resolve: (e) => ({
+    level: e.LOG_LEVEL,
+    format: e.LOG_FORMAT ?? (environment.isDevelopment(e) ? 'pretty' : 'json'),
   }),
 });
 export type LogConfig = ConfigOf<typeof LogConfig>;

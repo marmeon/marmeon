@@ -1,6 +1,6 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Clock, createApplication, TestClock, type ConfigDefinition } from '@marmeon/core';
+import { Clock, createApplication, env, TestClock, type ConfigDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
@@ -341,11 +341,10 @@ describe('configuration', () => {
   });
 
   it('env: the disks from validated variables', async () => {
-    const { rules: r } = await import('@marmeon/validation');
     const config = defineStorage({
-      env: r.env({ FILES_ROOT: r.string() }),
+      env: env({ FILES_ROOT: env.string() }),
       default: 'files',
-      disks: (env) => ({ files: { driver: 'local', root: env.FILES_ROOT } }),
+      disks: (e) => ({ files: { driver: 'local', root: e.FILES_ROOT } }),
     });
     await expect(boot(config)).rejects.toThrow('FILES_ROOT');
   });

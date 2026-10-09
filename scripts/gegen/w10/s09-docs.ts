@@ -17,7 +17,8 @@ import { defineGegenproben } from '../define.ts';
  *
  * Since the docs have sections, the guides are pages of them (`/docs/<slug>`): the anchors and reasons moved with them, the measures are
  * the same. The validation page links no README any more and the READMEs are no pages (W11 step 10): G2 patches its link into the
- * configuration page.
+ * configuration page. Since the environment is read by the core's env reader (W12 step 1), the validation page has no section on
+ * it: G2 patches the package development guide's link to the same anchor.
  */
 const START = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'highlights every code block of every page' };
 /** The whole describe: the link test reads what the page tests rendered before it (alone it sees no page). */
@@ -37,10 +38,10 @@ export default defineGegenproben({
     // --- The link check -----------------------------------------------------------------------------------------------------------
     {
       id: 'G2',
-      title: 'the validation guide links to an anchor the configuration page does not have',
-      patch: [{ file: 'docs/validation.md', find: '(configuration.md#reading-variables)', replace: '(configuration.md#reading-the-variables)' }],
+      title: 'a guide links to an anchor the configuration page does not have',
+      patch: [{ file: 'docs/package-development.md', find: '(configuration.md#reading-variables)', replace: '(configuration.md#reading-the-variables)' }],
       run: LINKS,
-      expect: /\/docs\/validation: \/docs\/configuration#reading-the-variables — no #reading-the-variables on \/docs\/configuration/,
+      expect: /\/docs\/package-development: \/docs\/configuration#reading-the-variables — no #reading-the-variables on \/docs\/configuration/,
     },
     {
       id: 'G2b',

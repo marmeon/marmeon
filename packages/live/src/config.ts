@@ -1,7 +1,4 @@
-import { defineConfig, type ConfigOf } from '@marmeon/core';
-import * as v from 'valibot';
-
-const NUMBER = v.pipe(v.string(), v.transform(Number), v.integer());
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 /**
  * Live props (W6.10, E89, E104):
@@ -17,23 +14,23 @@ const NUMBER = v.pipe(v.string(), v.transform(Number), v.integer());
  * ```
  */
 export const LiveConfig = defineConfig('live', {
-  env: v.object({
-    LIVE_DRIVER: v.optional(v.picklist(['memory', 'redis'], 'Expected memory or redis'), 'memory'),
-    LIVE_REDIS_CONNECTION: v.optional(v.pipe(v.string(), v.nonEmpty()), 'default'),
-    LIVE_HEARTBEAT: v.optional(v.pipe(NUMBER, v.minValue(1), v.maxValue(300)), '20'),
-    LIVE_RETRY: v.optional(v.pipe(NUMBER, v.minValue(100), v.maxValue(600_000)), '3000'),
-    LIVE_MAX_STREAMS: v.optional(v.pipe(NUMBER, v.minValue(1)), '1000'),
-    LIVE_MAX_STREAMS_PER_SESSION: v.optional(v.pipe(NUMBER, v.minValue(1)), '16'),
-    LIVE_MAX_CHANNELS: v.optional(v.pipe(NUMBER, v.minValue(1), v.maxValue(200)), '20'),
+  env: env({
+    LIVE_DRIVER: env.in(['memory', 'redis'], 'Expected memory or redis').default('memory'),
+    LIVE_REDIS_CONNECTION: env.string().default('default'),
+    LIVE_HEARTBEAT: env.integer().min(1).max(300).default(20),
+    LIVE_RETRY: env.integer().min(100).max(600_000).default(3000),
+    LIVE_MAX_STREAMS: env.integer().min(1).default(1000),
+    LIVE_MAX_STREAMS_PER_SESSION: env.integer().min(1).default(16),
+    LIVE_MAX_CHANNELS: env.integer().min(1).max(200).default(20),
   }),
-  resolve: (env) => ({
-    driver: env.LIVE_DRIVER,
-    redisConnection: env.LIVE_REDIS_CONNECTION,
-    heartbeat: env.LIVE_HEARTBEAT,
-    retry: env.LIVE_RETRY,
-    maxStreams: env.LIVE_MAX_STREAMS,
-    maxStreamsPerSession: env.LIVE_MAX_STREAMS_PER_SESSION,
-    maxChannels: env.LIVE_MAX_CHANNELS,
+  resolve: (e) => ({
+    driver: e.LIVE_DRIVER,
+    redisConnection: e.LIVE_REDIS_CONNECTION,
+    heartbeat: e.LIVE_HEARTBEAT,
+    retry: e.LIVE_RETRY,
+    maxStreams: e.LIVE_MAX_STREAMS,
+    maxStreamsPerSession: e.LIVE_MAX_STREAMS_PER_SESSION,
+    maxChannels: e.LIVE_MAX_CHANNELS,
   }),
 });
 export type LiveConfig = ConfigOf<typeof LiveConfig>;

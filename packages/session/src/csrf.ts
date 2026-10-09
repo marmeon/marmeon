@@ -1,38 +1,26 @@
 import { timingSafeEqual } from 'node:crypto';
-import { defineConfig, type ConfigOf } from '@marmeon/core';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
-import * as v from 'valibot';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
 
+const ORIGIN = 'Expected an origin like https://admin.example.com (no path)';
+
 export const CsrfConfig = defineConfig('csrf', {
-  env: v.object({
+  env: env({
     /**
      * Other origins allowed to post to this app, comma-separated (`https://admin.example.com`) — scheme, host and port, no
      * path. The app's own origin — the one a request reaches it at, and `APP_URL`'s — is always allowed.
      */
-    CSRF_TRUSTED_ORIGINS: v.optional(
-      v.pipe(
-        v.string(),
-        v.transform((value) => value.split(',').map((origin) => origin.trim()).filter(Boolean)),
-        v.array(
-          v.pipe(
-            v.string(),
-            v.url(),
-            v.check((origin) => /^https?:$/.test(new URL(origin).protocol) && new URL(origin).origin === origin.replace(/\/$/, ''), 'Expected an origin like https://admin.example.com (no path)'),
-          ),
-        ),
-      ),
-      '',
-    ),
+    CSRF_TRUSTED_ORIGINS: env.list(env.url({ message: ORIGIN }).check((origin) => new URL(origin).origin === origin.replace(/\/$/, ''), ORIGIN)).default([]),
     /** The app's address: its origin may always post (behind a proxy whose `X-Forwarded-*` the app does not trust, too). */
-    APP_URL: v.optional(v.string()),
+    APP_URL: env.string().optional(),
   }),
-  resolve: (env) => ({
+  resolve: (e) => ({
     /** Serialized origins (`https://admin.example.com`) — compared as the browser sends them in `Origin`. */
-    trustedOrigins: env.CSRF_TRUSTED_ORIGINS.map((origin) => new URL(origin).origin),
+    trustedOrigins: e.CSRF_TRUSTED_ORIGINS.map((origin) => new URL(origin).origin),
     /** `APP_URL`'s origin, if it is a URL. */
-    appOrigin: URL.parse(env.APP_URL ?? '')?.origin,
+    appOrigin: URL.parse(e.APP_URL ?? '')?.origin,
   }),
 });
 export type CsrfConfig = ConfigOf<typeof CsrfConfig>;

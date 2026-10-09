@@ -79,8 +79,7 @@
   "dependencies": {
     "@marmeon/core": "workspace:*",
     "@marmeon/router": "workspace:*",
-    "@marmeon/session": "workspace:*",
-    "valibot": "^1.5.0"
+    "@marmeon/session": "workspace:*"
   },
   "devDependencies": {
     "@marmeon/auth": "workspace:*",
@@ -88,6 +87,7 @@
     "@marmeon/http": "workspace:*",
     "@marmeon/server": "workspace:*",
     "@marmeon/validation": "workspace:*",
-    "marmeon": "workspace:*"
+    "marmeon": "workspace:*",
+    "valibot": "^1.5.0"
   }
 }

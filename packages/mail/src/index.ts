@@ -1,6 +1,5 @@
-import { Application, defineConfig, environment, Logger, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, defineConfig, env, environment, Logger, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { devHosts, devOnly } from '@marmeon/core/dev';
-import * as v from 'valibot';
 import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
 import { MailPreviews } from './preview.ts';
 import { SendQueuedMail } from './queued.ts';
@@ -23,38 +22,45 @@ export { ArrayTransport, LogTransport, MailTransport, SmtpTransport } from './tr
 export type { SmtpOptions } from './transports.ts';
 
 export const MailConfig = defineConfig('mail', {
-  env: v.object({
+  env: env({
     /** `log` (default: written to the log, nothing is sent), `array` (kept in memory) or `smtp` (nodemailer, a dependency of this package — E198). */
-    MAIL_MAILER: v.optional(v.picklist(['log', 'array', 'smtp']), 'log'),
-    MAIL_FROM_ADDRESS: v.optional(v.pipe(v.string(), v.email('MAIL_FROM_ADDRESS must be an e-mail address')), 'hello@example.com'),
-    MAIL_FROM_NAME: v.optional(v.string(), ''),
-    MAIL_HOST: v.optional(v.string(), '127.0.0.1'),
-    MAIL_PORT: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(65_535)), '587'),
+    MAIL_MAILER: env.in(['log', 'array', 'smtp']).default('log'),
+    MAIL_FROM_ADDRESS: env.email('MAIL_FROM_ADDRESS must be an e-mail address').default('hello@example.com'),
+    MAIL_FROM_NAME: env.string().default(''),
+    MAIL_HOST: env.string().default('127.0.0.1'),
+    MAIL_PORT: env.port().default(587),
     /** `true`: TLS from the first byte (port 465). Otherwise STARTTLS (required unless MAIL_REQUIRE_TLS=false). */
-    MAIL_SECURE: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'false'),
+    MAIL_SECURE: env.in(['true', 'false']).default('false'),
     // Without MAIL_SECURE: STARTTLS or no mail (E192) — `false` only for a local server without TLS (Mailpit).
-    MAIL_REQUIRE_TLS: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'true'),
-    MAIL_USERNAME: v.optional(v.string(), ''),
-    MAIL_PASSWORD: v.optional(v.string(), ''),
-    NODE_ENV: v.optional(v.string()),
-    APP_URL: v.optional(v.string()),
+    MAIL_REQUIRE_TLS: env.in(['true', 'false']).default('true'),
+    MAIL_USERNAME: env.string().default(''),
+    MAIL_PASSWORD: env.string().default(''),
+    NODE_ENV: env.string().optional(),
+    APP_URL: env.string().optional(),
   }),
-  resolve: (env) => ({
-    mailer: env.MAIL_MAILER,
-    from: env.MAIL_FROM_NAME ? { address: env.MAIL_FROM_ADDRESS, name: env.MAIL_FROM_NAME } : env.MAIL_FROM_ADDRESS,
-    smtp: { host: env.MAIL_HOST, port: env.MAIL_PORT, secure: env.MAIL_SECURE, requireTls: env.MAIL_REQUIRE_TLS, username: env.MAIL_USERNAME, password: env.MAIL_PASSWORD },
+  resolve: (e) => ({
+    mailer: e.MAIL_MAILER,
+    from: e.MAIL_FROM_NAME ? { address: e.MAIL_FROM_ADDRESS, name: e.MAIL_FROM_NAME } : e.MAIL_FROM_ADDRESS,
+    smtp: {
+      host: e.MAIL_HOST,
+      port: e.MAIL_PORT,
+      secure: e.MAIL_SECURE === 'true',
+      requireTls: e.MAIL_REQUIRE_TLS === 'true',
+      username: e.MAIL_USERNAME,
+      password: e.MAIL_PASSWORD,
+    },
     /**
      * The mail previews under `/_marmeon/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
      * a test, staging or a server without `NODE_ENV` has no such routes.
      */
-    previews: environment.isDevelopment(env),
+    previews: environment.isDevelopment(e),
     /** The hosts the previews answer (E200 — DNS rebinding): loopback names and `APP_URL`'s; any other gets 403. */
-    previewHosts: devHosts(env.APP_URL),
+    previewHosts: devHosts(e.APP_URL),
     /**
      * Protected (E139 — every `NODE_ENV` but `development` and `test`: production, staging, none): the boot warns about
      * `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}).
      */
-    protected: environment.isProtected(env),
+    protected: environment.isProtected(e),
   }),
 });
 export type MailConfig = ConfigOf<typeof MailConfig>;

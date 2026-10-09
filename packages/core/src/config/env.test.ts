@@ -255,7 +255,8 @@ describe('env through defineConfig — the start error', () => {
       (failure: unknown) => failure,
     )) as Error;
     expect(error).toBeInstanceOf(ConfigError);
-    expect(error.message).toBe(
+    // The whole text as the failure's message: Vitest shortens the two strings it compares.
+    expect(error.message, error.message).toBe(
       [
         'Invalid configuration — the application cannot start:',
         '  • app: APP_NAME — APP_NAME is required.',

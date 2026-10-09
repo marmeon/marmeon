@@ -58,21 +58,21 @@ Without any configuration an app has three disks on the local file system:
 Disks of your own come from `defineStorage()`, a configuration you list in the app's `config`:
 
 ```ts title="config/storage.ts"
+import { env } from '@marmeon/core';
 import { defineStorage } from '@marmeon/storage';
-import { rules as r } from '@marmeon/validation';
 
 export const AppStorage = defineStorage({
-  env: r.env({
-    S3_BUCKET: r.string().optional(),
-    S3_REGION: r.string().optional(),
-    S3_ENDPOINT: r.url().optional(),
+  env: env({
+    S3_BUCKET: env.string().optional(),
+    S3_REGION: env.string().optional(),
+    S3_ENDPOINT: env.url().optional(),
   }),
   default: 'local',
-  disks: (env) => ({
+  disks: (e) => ({
     local: { driver: 'local', root: 'storage/app/private' },
     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
     uploads: { driver: 'local', root: 'storage/app/uploads' },
-    s3: { driver: 's3', bucket: env.S3_BUCKET, region: env.S3_REGION, endpoint: env.S3_ENDPOINT },
+    s3: { driver: 's3', bucket: e.S3_BUCKET, region: e.S3_REGION, endpoint: e.S3_ENDPOINT },
   }),
 });
 

@@ -160,7 +160,7 @@ export default defineGegenproben({
     {
       id: 'G12b',
       title: 'MAIL_REQUIRE_TLS defaults to false: an app that sets nothing sends in plain text',
-      patch: [{ file: 'packages/mail/src/index.ts', find: "v.transform((value) => value === 'true')), 'true'),", replace: "v.transform((value) => value === 'true')), 'false')," }],
+      patch: [{ file: 'packages/mail/src/index.ts', find: "MAIL_REQUIRE_TLS: env.in(['true', 'false']).default('true'),", replace: "MAIL_REQUIRE_TLS: env.in(['true', 'false']).default('false')," }],
       run: { vitest: 'packages/mail/src/mail.test.ts', name: 'asks nodemailer for STARTTLS unless MAIL_REQUIRE_TLS=false' },
       // Vitest shortens the strings: the reason is the default's line, its value cut after "fa…" (false).
       expect: /the default: expected 'port 587, secure false, requireTLS fa…' to be 'port 587, secure false, requireTLS tr…'/,

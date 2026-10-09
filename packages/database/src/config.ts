@@ -1,5 +1,4 @@
-import { defineConfig, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@marmeon/core';
 
 /**
  * Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. `pgsql`: a URL, the size of its
@@ -25,28 +24,28 @@ export const DEFAULT_INFRASTRUCTURE_POOL_MAX = 4;
  * ```
  */
 export const DatabaseConfig = defineConfig('database', {
-  env: r.env({
-    DB_CONNECTION: r.in(['sqlite', 'pgsql']).default('sqlite'),
-    DB_DATABASE: r.string().optional(),
-    DB_URL: r.string().regex(/^postgres(ql)?:\/\//, 'Expected a postgres:// URL').url({ protocols: ['postgres', 'postgresql'] }).optional(),
-    DB_HOST: r.string().default('127.0.0.1'),
-    DB_PORT: r.port().default(5432),
-    DB_USERNAME: r.string().default('postgres'),
-    DB_PASSWORD: r.string().default(''),
+  env: env({
+    DB_CONNECTION: env.in(['sqlite', 'pgsql']).default('sqlite'),
+    DB_DATABASE: env.string().optional(),
+    DB_URL: env.url({ protocols: ['postgres', 'postgresql'], message: 'Expected a postgres:// URL' }).optional(),
+    DB_HOST: env.string().default('127.0.0.1'),
+    DB_PORT: env.port().default(5432),
+    DB_USERNAME: env.string().default('postgres'),
+    DB_PASSWORD: env.string().default(''),
     /** Largest number of pooled Postgres connections. */
-    DB_POOL_MAX: r.integer().min(1).default(10),
+    DB_POOL_MAX: env.integer().min(1).default(10),
     /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions — E108). */
-    DB_INFRA_POOL_MAX: r.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
+    DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
   }),
-  resolve: (env): { default: ConnectionOptions } => {
-    if (env.DB_CONNECTION === 'sqlite') return { default: { driver: 'sqlite', database: env.DB_DATABASE ?? 'storage/database.sqlite' } };
-    const url = new URL(env.DB_URL ?? `postgres://${env.DB_HOST}:${env.DB_PORT}`);
-    if (!env.DB_URL) {
-      url.username = env.DB_USERNAME;
-      url.password = env.DB_PASSWORD;
-      url.pathname = `/${env.DB_DATABASE ?? 'marmeon'}`;
+  resolve: (e): { default: ConnectionOptions } => {
+    if (e.DB_CONNECTION === 'sqlite') return { default: { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite' } };
+    const url = new URL(e.DB_URL ?? `postgres://${e.DB_HOST}:${e.DB_PORT}`);
+    if (!e.DB_URL) {
+      url.username = e.DB_USERNAME;
+      url.password = e.DB_PASSWORD;
+      url.pathname = `/${e.DB_DATABASE ?? 'marmeon'}`;
     }
-    return { default: { driver: 'pgsql', url: url.href, poolMax: env.DB_POOL_MAX, infrastructurePoolMax: env.DB_INFRA_POOL_MAX } };
+    return { default: { driver: 'pgsql', url: url.href, poolMax: e.DB_POOL_MAX, infrastructurePoolMax: e.DB_INFRA_POOL_MAX } };
   },
 });
 export type DatabaseConfig = ConfigOf<typeof DatabaseConfig>;
@@ -62,8 +61,8 @@ export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions
  *
  * ```ts
  * export const Reporting = defineConnection('reporting', {
- *   env: r.env({ REPORTING_DB_URL: r.url({ protocols: ['postgres', 'postgresql'] }) }),
- *   resolve: (env) => ({ driver: 'pgsql', url: env.REPORTING_DB_URL }),
+ *   env: env({ REPORTING_DB_URL: env.url({ protocols: ['postgres', 'postgresql'] }) }),
+ *   resolve: (e) => ({ driver: 'pgsql', url: e.REPORTING_DB_URL }),
  * });
  * defineApplication({ config: [Reporting], … });
  * connections.get('reporting')

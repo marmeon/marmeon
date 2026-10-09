@@ -23,8 +23,6 @@ export interface RuleDefinition {
   readonly live: boolean;
   /** An object, a list or a union: its rules are other rules — `.live()` belongs on them, never on it (E197). */
   readonly container: boolean;
-  /** How a message names a field: in words (`password confirmation`) or as written (`APP_PORT`, for `.env`). */
-  readonly attributes: 'humanized' | 'raw';
   /**
    * `''` is a value of the rule (E208): a string's, an `r.in()`'s that lists it — `optional()`/`nullable()`/`default()` keep it. Where
    * it never can be one (numbers, booleans, e-mail addresses, URLs, dates, lists, objects …) a form's empty field counts as missing.
@@ -56,7 +54,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
     this['~standard'] = {
       version: 1,
       vendor: 'marmeon',
-      validate: (value, options) => engine.validate((context) => this['~engine'](context), definition.async, value, options, definition.attributes) as never,
+      validate: (value, options) => engine.validate((context) => this['~engine'](context), definition.async, value, options) as never,
     };
   }
 
@@ -184,7 +182,6 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
       contextual: definition.contextual,
       live: false,
       container: definition.container,
-      attributes: definition.attributes,
       keepsEmpty: definition.keepsEmpty,
       meta: definition.meta,
     });
@@ -203,7 +200,7 @@ function build(definition: RuleDefinition, context: BuildContext): Engine {
 
 /** A rule's base on its own. */
 export function definition(base: (context: BuildContext) => Engine, parts: Partial<RuleDefinition> = {}): RuleDefinition {
-  return { base, steps: [], async: false, contextual: false, live: false, container: false, attributes: 'humanized', keepsEmpty: false, meta: {}, ...parts };
+  return { base, steps: [], async: false, contextual: false, live: false, container: false, keepsEmpty: false, meta: {}, ...parts };
 }
 
 /** A step that never depends on the request. */
@@ -379,7 +376,7 @@ function isDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-/** A number, or a string that spells one (a form, a URL, `.env`) — becomes a number. */
+/** A number, or a string that spells one (a form, a URL) — becomes a number. */
 export class NumberRule extends Rule<number, number | `${number}`> {
   /** A whole number (a safe integer). */
   integer(): this {
@@ -449,12 +446,10 @@ interface ObjectParts {
   readonly shape: Shape;
   readonly whens: readonly { readonly condition: (data: any) => boolean; readonly shape: Shape }[];
   readonly confirmations: readonly Confirmation[];
-  /** `r.env()`: an empty variable counts as missing, whatever its rule (`S3_BUCKET=` in a `.env.example` is "not set"). */
-  readonly emptyIsMissing: boolean;
 }
 
 /**
- * An object of fields — a form's body, a query, `.env`. Fields the shape does not name are left out. `When` holds the fields of
+ * An object of fields — a form's body, a query. Fields the shape does not name are left out. `When` holds the fields of
  * `.when()`: there only when their condition holds.
  */
 export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>, Simplify<ShapeInput<S> & Partial<ShapeInput<When>>>> {
@@ -512,13 +507,13 @@ function objectParts(rule: Rule<any, any>): ObjectParts {
 }
 
 /** An object's definition: its base builds the fields' rules; `previous` lends its steps (an object that had `.custom()` keeps it). */
-export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition, attributes: 'humanized' | 'raw' = previous?.attributes ?? 'humanized'): RuleDefinition {
+export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition): RuleDefinition {
   const rules = [...Object.values(parts.shape), ...parts.whens.flatMap((when) => Object.values(when.shape))];
   const async = rules.some((rule) => rule['~rule'].async);
   const base = (context: BuildContext): Engine => {
     const entries = (shape: Shape) => Object.fromEntries(Object.entries(shape).map(([key, rule]) => [key, rule['~engine'](context)]));
     const whens: ConditionalFields[] = parts.whens.map((when) => ({ condition: when.condition, entries: entries(when.shape) }));
-    return engine.objectEngine(entries(parts.shape), whens, parts.confirmations, async, parts.emptyIsMissing);
+    return engine.objectEngine(entries(parts.shape), whens, parts.confirmations, async);
   };
   PARTS.set(base as never, parts);
   const steps = previous?.steps ?? [];
@@ -529,15 +524,14 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition, 
     contextual: rules.some((rule) => rule['~rule'].contextual) || steps.some((s) => s.contextual),
     live: previous?.live ?? false,
     container: true,
-    attributes,
     keepsEmpty: false,
     meta: previous?.meta ?? {},
   };
 }
 
-export function objectRule<S extends Shape>(shape: S, attributes: 'humanized' | 'raw' = 'humanized', emptyIsMissing = false): ObjectRule<S> {
+export function objectRule<S extends Shape>(shape: S): ObjectRule<S> {
   for (const [key, rule] of Object.entries(shape)) {
     if (!(rule instanceof Rule)) throw new TypeError(`Field '${key}' is no rule of @marmeon/validation — r.object() takes rules (r.string(), r.integer() …).`);
   }
-  return new ObjectRule(objectDefinition({ shape, whens: [], confirmations: [], emptyIsMissing }, undefined, attributes));
+  return new ObjectRule(objectDefinition({ shape, whens: [], confirmations: [] }));
 }

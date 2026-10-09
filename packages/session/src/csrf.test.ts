@@ -224,6 +224,8 @@ describe('VerifyCsrfToken', () => {
       const { send } = await boot({ CSRF_TRUSTED_ORIGINS: 'https://admin.example.com' });
       expect((await send('/save', { method: 'POST', headers: { origin: 'https://admin.example.com' } })).status).toBe(200);
       await expect(boot({ CSRF_TRUSTED_ORIGINS: 'https://admin.example.com/panel' })).rejects.toThrow(/Expected an origin like https:\/\/admin\.example\.com/);
+      // No URL at all: the same line of the start error, never a crash of the start.
+      await expect(boot({ CSRF_TRUSTED_ORIGINS: 'admin.example.com' })).rejects.toThrow(/csrf: CSRF_TRUSTED_ORIGINS — Expected an origin like https:\/\/admin\.example\.com/);
     });
 
     it('`Sec-Fetch-Site: none` (a navigation the user started — never a form) passes nothing by itself: Origin, then the token', async () => {

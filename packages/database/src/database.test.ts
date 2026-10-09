@@ -1,9 +1,8 @@
 import { tmpdir } from 'node:os';
-import { createApplication } from '@marmeon/core';
+import { createApplication, env } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { jsonArrayFrom as pgJsonArrayFrom } from 'kysely/helpers/postgres';
 import { jsonArrayFrom as sqliteJsonArrayFrom } from 'kysely/helpers/sqlite';
-import { rules as r } from '@marmeon/validation';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { Connections, Database, DatabaseConnectionError, DatabaseServiceProvider, defineConnection, type QueryEvent } from './index.ts';
@@ -197,8 +196,8 @@ describe('connection errors', () => {
 describe('DatabaseServiceProvider', () => {
   const root = tempDir('marmeon-db-');
   const Reporting = defineConnection('reporting', {
-    env: r.env({ REPORTING_DB: r.string() }),
-    resolve: (env) => ({ driver: 'sqlite', database: env.REPORTING_DB }),
+    env: env({ REPORTING_DB: env.string() }),
+    resolve: (e) => ({ driver: 'sqlite', database: e.REPORTING_DB }),
   });
 
   it('binds the default Database and named connections, and closes them on shutdown', async () => {

@@ -1,5 +1,4 @@
-import { defineConfig, defineSolutions, LogContextSources, Logger, Redactor, type Application, type ConfigOf, type ServiceProvider } from '@marmeon/core';
-import * as v from 'valibot';
+import { defineConfig, defineSolutions, env, LogContextSources, Logger, Redactor, type Application, type ConfigOf, type ServiceProvider } from '@marmeon/core';
 import { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered, type OtelApi } from './api.ts';
 import { instrument } from './tracer.ts';
 
@@ -10,10 +9,8 @@ export type { ImportOtelApi } from './api.ts';
 export { instrument, redactedPath, traceparentOf } from './tracer.ts';
 export type { InstrumentOptions } from './tracer.ts';
 
-const list = v.pipe(
-  v.string(),
-  v.transform((value) => value.split(',').map((name) => name.trim().toLowerCase()).filter(Boolean)),
-);
+/** `true` or `false`, in any case (as the SDK reads its own). */
+const flag = (name: string) => env.string().regex(/^(?:true|false)$/i, `${name} must be true or false.`).default('false');
 
 /**
  * The OpenTelemetry environment this package reads — the SDK reads its own (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_*`, …):
@@ -25,16 +22,16 @@ const list = v.pipe(
  * ```
  */
 export const OtelConfig = defineConfig('otel', {
-  env: v.object({
-    OTEL_SDK_DISABLED: v.optional(v.pipe(v.string(), v.toLowerCase(), v.picklist(['true', 'false'])), 'false'),
-    OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: v.optional(list, ''),
-    OTEL_TRUST_TRACEPARENT: v.optional(v.pipe(v.string(), v.toLowerCase(), v.picklist(['true', 'false'])), 'false'),
+  env: env({
+    OTEL_SDK_DISABLED: flag('OTEL_SDK_DISABLED'),
+    OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: env.list(env.string()).default([]),
+    OTEL_TRUST_TRACEPARENT: flag('OTEL_TRUST_TRACEPARENT'),
   }),
-  resolve: (env) => ({
-    disabled: env.OTEL_SDK_DISABLED === 'true',
-    requestHeaders: env.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST,
+  resolve: (e) => ({
+    disabled: e.OTEL_SDK_DISABLED.toLowerCase() === 'true',
+    requestHeaders: e.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST.map((name) => name.toLowerCase()),
     /** Continue an incoming request's trace (`traceparent`) instead of linking it — see `InstrumentOptions.trustTraceparent`. */
-    trustTraceparent: env.OTEL_TRUST_TRACEPARENT === 'true',
+    trustTraceparent: e.OTEL_TRUST_TRACEPARENT.toLowerCase() === 'true',
   }),
 });
 export type OtelConfig = ConfigOf<typeof OtelConfig>;

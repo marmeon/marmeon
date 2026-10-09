@@ -1,5 +1,5 @@
+import { env } from '@marmeon/core';
 import { defineStorage } from '@marmeon/storage';
-import { rules as r } from '@marmeon/validation';
 
 /**
  * The app's disks (E91). `local` is private — its files only ever leave through a signed, expiring URL (`temporaryUrl()`,
@@ -8,15 +8,15 @@ import { rules as r } from '@marmeon/validation';
  * (.env.example) and `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`; nothing uses it until then.
  */
 export const AppStorage = defineStorage({
-  env: r.env({
-    S3_BUCKET: r.string().optional(),
-    S3_REGION: r.string().optional(),
-    S3_ENDPOINT: r.url().optional(),
-    S3_ACCESS_KEY_ID: r.string().optional(),
-    S3_SECRET_ACCESS_KEY: r.string().optional(),
+  env: env({
+    S3_BUCKET: env.string().optional(),
+    S3_REGION: env.string().optional(),
+    S3_ENDPOINT: env.url().optional(),
+    S3_ACCESS_KEY_ID: env.string().optional(),
+    S3_SECRET_ACCESS_KEY: env.string().optional(),
   }),
   default: 'local',
-  disks: (env) => ({
+  disks: (e) => ({
     local: { driver: 'local', root: 'storage/app/private' },
     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
     // Uploads wait here (UPLOADS_DISK) until a form checked and stored them — the avatar, then, on `public`. Private, and
@@ -24,10 +24,10 @@ export const AppStorage = defineStorage({
     uploads: { driver: 'local', root: 'storage/app/uploads' },
     s3: {
       driver: 's3',
-      bucket: env.S3_BUCKET,
-      region: env.S3_REGION,
-      endpoint: env.S3_ENDPOINT,
-      credentials: env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY ? { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY } : undefined,
+      bucket: e.S3_BUCKET,
+      region: e.S3_REGION,
+      endpoint: e.S3_ENDPOINT,
+      credentials: e.S3_ACCESS_KEY_ID && e.S3_SECRET_ACCESS_KEY ? { accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY } : undefined,
     },
   }),
 });

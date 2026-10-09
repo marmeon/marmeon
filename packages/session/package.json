@@ -64,8 +64,7 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/encryption": "workspace:*",
     "@marmeon/http": "workspace:*",
-    "@marmeon/router": "workspace:*",
-    "valibot": "^1.5.0"
+    "@marmeon/router": "workspace:*"
   },
   "peerDependencies": {
     "@marmeon/cache": "workspace:*",

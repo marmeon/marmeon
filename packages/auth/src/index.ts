@@ -1,6 +1,5 @@
-import { defineConfig, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { defineConfig, env, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { MiddlewarePriority, Router } from '@marmeon/router';
-import * as v from 'valibot';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
@@ -52,13 +51,12 @@ export {
 } from './hashing.ts';
 export type { Argon2Options, HashDriver, HasherOptions, PasswordHash, ScryptOptions } from './hashing.ts';
 
-const whole = (fallback: number, [min, max]: readonly [number, number]) =>
-  v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(min), v.maxValue(max)), String(fallback));
+const whole = (fallback: number, [min, max]: readonly [number, number]) => env.integer().min(min).max(max).default(fallback);
 
 export const HashConfig = defineConfig('hash', {
-  env: v.object({
+  env: env({
     /** `argon2id` (default, OWASP's first choice) or `scrypt` (where Node lacks argon2). Hashes of both are verified either way. */
-    HASH_DRIVER: v.optional(v.picklist(['argon2id', 'scrypt']), DEFAULT_HASHER_OPTIONS.driver),
+    HASH_DRIVER: env.in(['argon2id', 'scrypt']).default(DEFAULT_HASHER_OPTIONS.driver),
     /** argon2id: KiB of memory per hash (OWASP: 19456). Tests set it low in `.env.test`. */
     HASH_ARGON_MEMORY: whole(DEFAULT_HASHER_OPTIONS.argon2.memory, HASH_LIMITS.argon2.memory),
     HASH_ARGON_TIME: whole(DEFAULT_HASHER_OPTIONS.argon2.time, HASH_LIMITS.argon2.time),
@@ -68,10 +66,10 @@ export const HashConfig = defineConfig('hash', {
     HASH_SCRYPT_BLOCK_SIZE: whole(DEFAULT_HASHER_OPTIONS.scrypt.blockSize, HASH_LIMITS.scrypt.blockSize),
     HASH_SCRYPT_PARALLELISM: whole(DEFAULT_HASHER_OPTIONS.scrypt.parallelism, HASH_LIMITS.scrypt.parallelism),
   }),
-  resolve: (env) => ({
-    driver: env.HASH_DRIVER,
-    argon2: { memory: env.HASH_ARGON_MEMORY, time: env.HASH_ARGON_TIME, parallelism: env.HASH_ARGON_PARALLELISM },
-    scrypt: { cost: env.HASH_SCRYPT_COST, blockSize: env.HASH_SCRYPT_BLOCK_SIZE, parallelism: env.HASH_SCRYPT_PARALLELISM },
+  resolve: (e) => ({
+    driver: e.HASH_DRIVER,
+    argon2: { memory: e.HASH_ARGON_MEMORY, time: e.HASH_ARGON_TIME, parallelism: e.HASH_ARGON_PARALLELISM },
+    scrypt: { cost: e.HASH_SCRYPT_COST, blockSize: e.HASH_SCRYPT_BLOCK_SIZE, parallelism: e.HASH_SCRYPT_PARALLELISM },
   }),
 });
 export type HashConfig = ConfigOf<typeof HashConfig>;

@@ -13,8 +13,8 @@ import { defineGegenproben } from '../define.ts';
 const smoke = { command: ['pnpm', 'run', 'pack:smoke'], timeout: 15 * 60_000 } as const;
 const redisAsPeer = {
   file: 'packages/redis/package.json',
-  find: '    "redis": "^6.2.1",\n    "valibot": "^1.5.0"\n  }\n}',
-  replace: '    "valibot": "^1.5.0"\n  },\n  "peerDependencies": {\n    "redis": "^6.2.1"\n  },\n  "peerDependenciesMeta": {\n    "redis": {\n      "optional": true\n    }\n  }\n}',
+  find: '    "@marmeon/core": "workspace:*",\n    "redis": "^6.2.1"\n  }\n}',
+  replace: '    "@marmeon/core": "workspace:*"\n  },\n  "peerDependencies": {\n    "redis": "^6.2.1"\n  },\n  "peerDependenciesMeta": {\n    "redis": {\n      "optional": true\n    }\n  }\n}',
 };
 const kitInstallsRedis = {
   file: 'scripts/pack-smoke.ts',
@@ -92,7 +92,7 @@ export default defineGegenproben({
     {
       id: 'G4',
       title: '@opentelemetry/api as a dependency of @marmeon/otel: the driver rule refuses a second API instance',
-      patch: [{ file: 'packages/otel/package.json', find: '    "@marmeon/core": "workspace:*",\n    "valibot"', replace: '    "@marmeon/core": "workspace:*",\n    "@opentelemetry/api": "^1.9.0",\n    "valibot"' }],
+      patch: [{ file: 'packages/otel/package.json', find: '  "dependencies": {\n    "@marmeon/core": "workspace:*"\n  },', replace: '  "dependencies": {\n    "@marmeon/core": "workspace:*",\n    "@opentelemetry/api": "^1.9.0"\n  },' }],
       run: { vitest: 'scripts/ci.test.ts', name: 'the driver rule (E198) > holds for every package' },
       expect: /@marmeon\/otel: @opentelemetry\/api must stay a peer, not a dependency \(E198\) — the app and the framework share one instance/,
     },

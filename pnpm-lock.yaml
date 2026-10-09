@@ -536,9 +536,6 @@ importers:
       '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/database':
         specifier: workspace:*
@@ -558,6 +555,9 @@ importers:
       marmeon:
         specifier: workspace:*
         version: link:../cli
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
 
   packages/cli:
     dependencies:
@@ -619,9 +619,6 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/database':
         specifier: workspace:*
@@ -656,6 +653,9 @@ importers:
       marmeon:
         specifier: workspace:*
         version: link:../cli
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)(yaml@2.9.1)
@@ -665,9 +665,6 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
 
   packages/http:
     dependencies:
@@ -699,9 +696,6 @@ importers:
       '@marmeon/session':
         specifier: workspace:*
         version: link:../session
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/auth':
         specifier: workspace:*
@@ -721,6 +715,9 @@ importers:
       marmeon:
         specifier: workspace:*
         version: link:../cli
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
 
   packages/live:
     dependencies:
@@ -733,9 +730,6 @@ importers:
       '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/database':
         specifier: workspace:*
@@ -767,9 +761,6 @@ importers:
       pino-pretty:
         specifier: ^13.1.3
         version: 13.1.3
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
 
   packages/mail:
     dependencies:
@@ -832,9 +823,6 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/database':
         specifier: workspace:*
@@ -869,6 +857,9 @@ importers:
       '@opentelemetry/sdk-trace':
         specifier: 2.11.0
         version: 2.11.0(@opentelemetry/api@1.9.1)
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
 
   packages/queue:
     dependencies:
@@ -937,9 +928,6 @@ importers:
       redis:
         specifier: ^6.2.1
         version: 6.2.1(@opentelemetry/api@1.9.1)
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
 
   packages/router:
     dependencies:
@@ -956,9 +944,6 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/cache':
         specifier: workspace:*
@@ -978,6 +963,9 @@ importers:
       marmeon:
         specifier: workspace:*
         version: link:../cli
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
 
   packages/server:
     dependencies:
@@ -996,13 +984,13 @@ importers:
       hono:
         specifier: ^4.13.11
         version: 4.13.11
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)(yaml@2.9.1)
@@ -1021,9 +1009,6 @@ importers:
       '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/cache':
         specifier: workspace:*

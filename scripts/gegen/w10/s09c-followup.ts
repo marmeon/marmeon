@@ -7,7 +7,8 @@ import { defineGegenproben } from '../define.ts';
  * bio stays) ↔ where `''` never is a value it is missing (G2 a form's empty number field is a 422 without it, G2b the catalogue) — a
  * masking pair: one rule for all hides either half. `r.in()` decides by its options (G3 an empty `<select>` without `''` is missing ↔
  * G3b with `''` among them it is the value), the formats are missing (G4), a union keeps `''` when one of its rules does (G5), `r.env()`
- * takes every empty variable as missing (G6), and the lab's async check lets an empty code pass (G7: the app's own adjustment).
+ * took every empty variable as missing (G6, retired with `r.env()` in W12 step 1), and the lab's async check lets an empty code pass
+ * (G7: the app's own adjustment).
  *
  * E209, deleting unconfirmed accounts is opt-in: the stub's schedule line on again → the generated test "no deletion the module
  * schedules" fails (G8, the make:auth fixture); the boot warning about `AUTH_UNVERIFIED_DAYS=0` is gone (G9).
@@ -55,8 +56,8 @@ export default defineGegenproben({
     },
     {
       id: 'G2',
-      title: "'' is never missing outside .env: a form's empty number field is a 422 (\"required\") instead of undefined",
-      patch: [{ file: ENGINE, find: "if (value === '' && (!keepsEmpty || (config", replace: "if (value === '' && ((config" }],
+      title: "'' is never missing: a form's empty number field is a 422 (\"required\") instead of undefined",
+      patch: [{ file: ENGINE, find: "if (value === '' && !keepsEmpty) {", replace: "if (value === '' && false) {" }],
       run: requests('a form sends the same strings'),
       expect: /a form's empty fields were refused: \{"width":\["The width field is required\."\],"link":\["The link field must be a valid URL\."\],"align":\["The align field is required\."\]\}/,
       masks: 'G1',
@@ -64,7 +65,7 @@ export default defineGegenproben({
     {
       id: 'G2b',
       title: "the same, the catalogue: numbers, booleans, formats, lists, objects and r.value() refuse an empty field",
-      patch: [{ file: ENGINE, find: "if (value === '' && (!keepsEmpty || (config", replace: "if (value === '' && ((config" }],
+      patch: [{ file: ENGINE, find: "if (value === '' && !keepsEmpty) {", replace: "if (value === '' && false) {" }],
       run: rules("where '' never is a value"),
       expect: /'' refused where it is missing: \["age","price","newsletter","port","email","website","id","day","at","tags","address","token"\]/,
     },
@@ -98,13 +99,8 @@ export default defineGegenproben({
       run: rules('r.union()'),
       expect: /a union with r\.string\(\) lost '': expected undefined to be ''/,
     },
-    {
-      id: 'G6',
-      title: "r.env() like a form: S3_BUCKET= is '' (\"set\") instead of missing",
-      patch: [{ file: RULES, find: "objectRule(fields as S, 'raw', true)", replace: "objectRule(fields as S, 'raw')" }],
-      run: rules('r.env()'),
-      expect: /S3_BUCKET= is "not set": expected '' to be undefined/,
-    },
+    // G6 retired (W12 step 1): r.env() is gone — the core's env reader reads the environment, and an empty variable is missing for
+    // every block there (W12/s01 G1).
     {
       id: 'G7',
       title: "the lab's invitation check asks for '' too: an empty code field is \"unknown\"",

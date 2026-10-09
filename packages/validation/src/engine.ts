@@ -74,12 +74,11 @@ export function validate(
   async: boolean,
   value: unknown,
   options: StandardOptions | undefined,
-  attributes: 'humanized' | 'raw',
 ): StandardResult<unknown> | Promise<StandardResult<unknown>> {
   const request = requestOf(options);
   const schema: Schema = build({ request, live: request?.live === true, liveOptIn: false });
-  if (async) return v.safeParseAsync(schema, value, CONFIG).then((result) => standardResult(result, attributes));
-  return standardResult(v.safeParse(schema, value, CONFIG), attributes);
+  if (async) return v.safeParseAsync(schema, value, CONFIG).then(standardResult);
+  return standardResult(v.safeParse(schema, value, CONFIG));
 }
 
 function requestOf(options: StandardOptions | undefined): ValidationContext | undefined {
@@ -87,19 +86,18 @@ function requestOf(options: StandardOptions | undefined): ValidationContext | un
   return typeof marmeon === 'object' && marmeon !== null && typeof (marmeon as ValidationContext).resolve === 'function' ? (marmeon as ValidationContext) : undefined;
 }
 
-function standardResult(result: { success: boolean; output: unknown; issues?: readonly any[] }, attributes: 'humanized' | 'raw'): StandardResult<unknown> {
+function standardResult(result: { success: boolean; output: unknown; issues?: readonly any[] }): StandardResult<unknown> {
   if (result.success) return { value: result.output };
-  return { issues: (result.issues ?? []).map((issue) => standardIssue(issue, attributes)) };
+  return { issues: (result.issues ?? []).map(standardIssue) };
 }
 
 /** A plain issue: `path` as keys (`['links', 0, 'url']`), what the rule left on it (its key, "not live"), the field named. */
-function standardIssue(issue: any, attributes: 'humanized' | 'raw'): StandardIssue {
+function standardIssue(issue: any): StandardIssue {
   const path: PropertyKey[] | undefined = issue.path?.map((item: { key: PropertyKey }) => item.key);
   const plain: { message: string; path?: PropertyKey[] } = path ? { message: issue.message, path } : { message: issue.message };
   for (const symbol of Object.getOwnPropertySymbols(issue)) Object.defineProperty(plain, symbol, { value: issue[symbol], configurable: true });
-  const field = path?.map(String).join('.');
-  // An environment variable keeps its name (APP_PORT); a form field reads as words (password_confirmation → "password confirmation").
-  plain.message = messageOf(plain, attributes === 'raw' && field ? { labels: { attributes: { [field]: field } } } : {});
+  // A field reads as words (password_confirmation → "password confirmation").
+  plain.message = messageOf(plain);
   return plain;
 }
 
@@ -120,7 +118,7 @@ export function toNumber(value: unknown): number | undefined {
 const TRUE = new Set<unknown>([true, 1, '1', 'true', 'on', 'yes']);
 const FALSE = new Set<unknown>([false, 0, '0', 'false', 'off', 'no']);
 
-/** true/false, and what forms, URLs and `.env` files say for them (`1`, `on`, `yes` …). */
+/** true/false, and what forms and URLs say for them (`1`, `on`, `yes` …). */
 export function toBoolean(value: unknown): boolean | undefined {
   return TRUE.has(value) ? true : FALSE.has(value) ? false : undefined;
 }
@@ -171,7 +169,7 @@ export function unionEngine(options: readonly Engine[], async: boolean): Engine 
   return (async ? v.unionAsync(options as Schema[], typeMessage('union')) : v.union(options as Schema[], typeMessage('union'))) as unknown as Engine;
 }
 
-/** A comma-separated list (`.env`: `ADMINS=a@x.io, b@x.io`) or a list — each item checked by `item`. */
+/** A comma-separated list (`a@x.io, b@x.io`) or a list — each item checked by `item`. */
 export function listEngine(item: Engine, async: boolean): Engine {
   const split = (value: string | unknown[]) => (typeof value === 'string' ? value.split(',').map((part) => part.trim()).filter((part) => part !== '') : value);
   const base = v.custom((value) => typeof value === 'string' || Array.isArray(value), typeMessage('array'));
@@ -200,15 +198,12 @@ export function objectEngine(
   whens: readonly ConditionalFields[],
   confirmations: readonly Confirmation[],
   async: boolean,
-  emptyIsMissing = false,
 ): Engine {
   const base: Schema = async ? v.objectAsync(entries as Record<string, Schema>, typeMessage('object')) : v.object(entries as Record<string, Schema>, typeMessage('object'));
-  if (whens.length === 0 && confirmations.length === 0 && !emptyIsMissing) return base as unknown as Engine;
+  if (whens.length === 0 && confirmations.length === 0) return base as unknown as Engine;
   return {
     ...base,
-    '~run'(dataset: Dataset, given: unknown) {
-      // r.env(): its fields (and the fields of their fields) take an empty variable as a missing one.
-      const config = emptyIsMissing ? { ...(given as object), [EMPTY_IS_MISSING]: true } : given;
+    '~run'(dataset: Dataset, config: unknown) {
       const input = dataset.value;
       const result = base['~run'](dataset, config);
       if (!async) return afterObject(result, input, whens, confirmations, config, false);
@@ -285,15 +280,11 @@ export interface Modifier {
   readonly keepsEmpty: boolean;
 }
 
-/** Set on the config an `r.env()` object runs its fields with: an empty variable (`APP_PORT=`) is a missing one, whatever its rule. */
-const EMPTY_IS_MISSING = Symbol('marmeon.validation.emptyIsMissing');
-
 /**
  * `.optional()`, `.nullable()`, `.default()`: what a missing value is. An empty string (E208, "by type"): a value where the rule
  * takes it — a string (a page builder's subtitle somebody cleared on purpose is `''`, not missing), an `r.in()` that lists `''` —;
  * where it never can be one (a number, a boolean, an e-mail address, a date, a list …) it is a form's empty field and counts as
- * missing: `null` where the rule is nullable and has no default, else undefined (the default). In `r.env()` every empty variable
- * counts as missing.
+ * missing: `null` where the rule is nullable and has no default, else undefined (the default).
  */
 export function modifiedEngine(inner: Engine, { optional, nullable, fallback, keepsEmpty }: Modifier, async: boolean): Engine {
   const schema = inner as Schema;
@@ -307,7 +298,7 @@ export function modifiedEngine(inner: Engine, { optional, nullable, fallback, ke
     default: fallback !== undefined ? () => undefined : undefined,
     '~run'(dataset: Dataset, config: unknown) {
       let value = dataset.value;
-      if (value === '' && (!keepsEmpty || (config as Record<symbol, unknown> | undefined)?.[EMPTY_IS_MISSING] === true)) {
+      if (value === '' && !keepsEmpty) {
         value = nullable && fallback === undefined ? null : undefined;
       }
       if (value === undefined && optional) {

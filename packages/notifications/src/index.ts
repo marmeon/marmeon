@@ -1,6 +1,5 @@
-import { Application, Clock, defineConfig, Translator, type ConfigOf, type Container, type Resolver, type ServiceProvider, fillPlaceholders } from '@marmeon/core';
+import { Application, Clock, defineConfig, env, Translator, type ConfigOf, type Container, type Resolver, type ServiceProvider, fillPlaceholders } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import * as v from 'valibot';
 import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
 import { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
 import { Inbox } from './inbox.ts';
@@ -73,10 +72,10 @@ declare module '@marmeon/core' {
  * ```
  */
 export const NotificationConfig = defineConfig('notifications', {
-  env: v.object({
-    NOTIFICATIONS_CONNECTION: v.optional(v.pipe(v.string(), v.nonEmpty()), 'default'),
+  env: env({
+    NOTIFICATIONS_CONNECTION: env.string().default('default'),
   }),
-  resolve: (env) => ({ connection: env.NOTIFICATIONS_CONNECTION }),
+  resolve: (e) => ({ connection: e.NOTIFICATIONS_CONNECTION }),
 });
 export type NotificationConfig = ConfigOf<typeof NotificationConfig>;
 
