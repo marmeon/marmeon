@@ -109,19 +109,27 @@ export class TransportMailer implements Mailer {
   }
 }
 
-/** `href="/users/me"`, `src='../logo.png'`, `href=?page=2` — a link a mail client cannot resolve. */
-const RELATIVE_LINK = /\b(?:href|src)\s*=\s*(["']?)\s*((?:\/(?!\/)|\.{1,2}\/|\?)[^"'\s>]*)/i;
+/** The mail's tags — the attributes are inside them; text (escaped) never is. */
+const TAG = /<[a-z][^>]*>/gi;
+/** Every `href` and `src` of a tag, quoted or not. */
+const LINK = /(?<![\w-])(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
+/** What a mail client can follow: a scheme (`https:`, `mailto:`, `tel:`, `cid:`) — or a place in the mail itself (`#top`). */
+const ABSOLUTE = /^(?:[a-z][a-z\d+.-]*:|#)/i;
 
 /**
- * Links in a mail are absolute — a mail client has no page to resolve `/users/me` against, and a mail composed in a
- * worker has no request whose host could fill one in (nor should a Host header ever decide where a link points).
+ * Links in a mail are absolute — a mail client has no page to resolve `/users/me` or `notes/7` against, and a mail composed in a
+ * worker has no request whose host could fill one in (nor should a Host header ever decide where a link points). Every link
+ * without a scheme is refused, `//host/…` too: whatever the mail client would guess.
  */
 function checkLinks(mailable: Mailable, html: string): void {
-  const relative = RELATIVE_LINK.exec(html);
-  if (relative) {
-    throw new MailError(
-      `${mailable.constructor.name} links to "${relative[2]}" — a link in a mail must be absolute. Build it from APP_URL: new URL(path, config.url).href, or a signed URL with { base: config.url }.`,
-    );
+  for (const [tag] of html.matchAll(TAG)) {
+    for (const match of tag.matchAll(LINK)) {
+      const link = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+      if (ABSOLUTE.test(link)) continue;
+      throw new MailError(
+        `${mailable.constructor.name} links to "${link}" — a link in a mail must be absolute. Build it from APP_URL: new URL(path, config.url).href, or a signed URL with { base: config.url }.`,
+      );
+    }
   }
 }
 

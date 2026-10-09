@@ -30,6 +30,7 @@ import { defineGegenproben } from '../define.ts';
  *   `Flasher.started` the session's own "add the StartSession middleware" comes through.
  * - **`key:generate` says what `--force` does** (G18) — the old text claims a new key makes sessions unreadable, while `--force`
  *   keeps the old key in `APP_PREVIOUS_KEYS`.
+ * - **A mail's links need a scheme** (G19) — checked only for a leading `/`, `./`, `../` or `?` again, `notes/7` reaches the mail.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -192,6 +193,13 @@ export default defineGegenproben({
       ],
       run: { vitest: 'packages/cli/src/cli.test.ts', name: 'generates the application key into .env' },
       expect: /expected '✗ APP_KEY is already set\. Replacing i…' to be '✗ APP_KEY is already set\. --force rep…'/,
+    },
+    {
+      id: 'G19',
+      title: 'the mail link check looks for a leading /, ./, ../ or ? only: href="notes/7" reaches the mail',
+      patch: [{ file: 'packages/mail/src/mailer.ts', find: "const ABSOLUTE = /^(?:[a-z][a-z\\d+.-]*:|#)/i;", replace: "const ABSOLUTE = /^(?!\\/(?!\\/)|\\.{1,2}\\/|\\?)/;" }],
+      run: { vitest: 'packages/mail/src/queued.test.ts', name: 'refuses relative links' },
+      expect: /relative links that passed: \["notes\/7","reset-password\?token=abc","\/\/app\.test\/reset","www\.app\.test\/reset",""\]: expected/,
     },
   ],
 });

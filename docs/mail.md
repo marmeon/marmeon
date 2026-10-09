@@ -162,7 +162,9 @@ with the recipient's stored locale, which falls back to `APP_LOCALE`. The
 ## Links are absolute
 
 A mail client has no page to resolve `/notes/7` against, and a mail composed in a worker has no request whose host could fill one
-in. Composing a mail fails when a link or an image starts with `/`, `./`, `../` or `?`:
+in. Composing a mail fails when the `href` or `src` of a link or an image has no scheme, such as `https:`, `mailto:`, `tel:` or
+`cid:`. That covers `/notes/7`, `notes/7`, `?page=2` and `//app.test/notes/7` alike. Only a link to a place in the mail itself,
+such as `#top`, needs none:
 
 ```text
 NoteSharedMail links to "/notes/7" — a link in a mail must be absolute. Build it from APP_URL: new URL(path, config.url).href, or a signed URL with { base: config.url }.

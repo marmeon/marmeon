@@ -130,6 +130,15 @@ describe('mailer.queue() (E105)', () => {
       'ResetMail links to "/reset-password?token=abc" — a link in a mail must be absolute. Build it from APP_URL',
     );
     await expect(mailer.send(new ResetMail('../reset'))).rejects.toThrow(MailError);
+    // Every link without a scheme is relative — not only the ones that start with / ./ ../ or ?.
+    const passed: string[] = [];
+    for (const link of ['notes/7', 'reset-password?token=abc', '//app.test/reset', 'www.app.test/reset', '']) {
+      const error = await mailer.send(new ResetMail(link)).then(() => undefined, (failure: unknown) => failure);
+      if (!(error instanceof MailError) || !error.message.startsWith(`ResetMail links to "${link}" — a link in a mail must be absolute.`)) passed.push(link);
+    }
+    expect(passed, `relative links that passed: ${JSON.stringify(passed)}`).toEqual([]);
+    await expect(mailer.send(new ResetMail('#top'))).resolves.toBeDefined(); // a place in the mail itself
+    await expect(mailer.send(new ResetMail('tel:+4930123'))).resolves.toBeDefined();
     await expect(mailer.send(new ResetMail('https://app.test/reset'))).resolves.toBeDefined();
     await expect(mailer.send(new ResetMail('mailto:help@app.test'))).resolves.toBeDefined();
   });
