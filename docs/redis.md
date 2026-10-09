@@ -133,7 +133,7 @@ Every connection closes when the app shuts down, duplicates included.
   queue. A request with Redis down gets an error, a 500. When a working connection drops, the log says so with a warning.
 - **There is no fallback store.** Decide per app whether Redis is critical, and watch it with the readiness check.
 
-The cache, sessions and the queue load the client when the app starts, so a broken install stops the start. An unreachable Redis
+The cache, sessions, the queue and live updates load the client when the app starts, so a broken install stops the start. An unreachable Redis
 is noticed by the first command. A queue worker that cannot reach Redis, when it starts or later, stops with the error, so run it
 under a supervisor that starts it again.
 

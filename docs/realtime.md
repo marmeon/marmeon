@@ -205,8 +205,9 @@ screen.
 | `LIVE_MAX_STREAMS_PER_SESSION` | `16` | Open streams of one session per process. Beyond it, `429` with `Retry-After: 30` and a warning in the log. |
 | `LIVE_MAX_CHANNELS` | `20` | Channels per stream, at most 200. Beyond it, `400`. |
 
-The app fails at the start without an `APP_KEY`, with `LIVE_DRIVER=redis` but no `@marmeon/redis`, or with an unknown Redis
-connection.
+The app fails at the start without an `APP_KEY`, with `LIVE_DRIVER=redis` but no `@marmeon/redis`, with a Redis client that does
+not load, or with an unknown Redis connection. It does not connect to Redis at the start: an unreachable server shows with the
+first hint.
 
 ### Limits
 

@@ -42,6 +42,8 @@ import { defineGegenproben } from '../define.ts';
  * - **The missing-`pg` message names a named connection** (G34) — `DB_CONNECTION=pgsql` for every connection again.
  * - **Readiness opens only the connections the app uses** (G35) — every configured one again: the unused `system` SQLite file is
  *   opened (and created) by `/up/ready`.
+ * - **`LIVE_DRIVER=redis` loads the Redis client at the start** (G36) — without `verify()` a broken install boots and fails the
+ *   first hint.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -267,6 +269,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/database/src/health.ts', find: '    const names = this.#connections.used();', replace: '    const names = this.#connections.names();' }],
       run: { vitest: 'packages/database/src/health.test.ts', name: 'never opens one it does not' },
       expect: /checked: default, system: expected/,
+    },
+    {
+      id: 'G36',
+      title: 'LIVE_DRIVER=redis does not load the client at the start: a broken install boots',
+      patch: [{ file: 'packages/live/src/index.ts', find: '      await connections.verify();\n', replace: '' }],
+      run: { vitest: 'packages/live/src/redis-boot.test.ts', name: 'loads the Redis client when the app starts' },
+      expect: /expected 'started' to be 'Cannot find package "redis" \(a broken…'/,
     },
   ],
 });

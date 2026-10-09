@@ -141,8 +141,11 @@ export class LiveServiceProvider implements ServiceProvider {
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
         throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add @marmeon/redis; marmeon discover).');
       }
-      // An unknown connection name fails the start, with the known ones.
-      container.make(this.#redis.RedisConnections).options(config.redisConnection);
+      // An unknown connection name fails the start, with the known ones — and so does a client that cannot load (a broken
+      // install), as for the cache, the sessions and the queue: not the first hint.
+      const connections = container.make(this.#redis.RedisConnections);
+      connections.options(config.redisConnection);
+      await connections.verify();
     }
     // The keys come from APP_KEY: a missing key fails the start, not the first page.
     container.make(LiveTokens);
