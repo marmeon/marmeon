@@ -223,7 +223,7 @@ export {};
 
 A page and an action's JSON can carry a flash message too: `this.view(…).flash(…)` and `this.json(…).flash(…)`. Both flash data
 and flash messages need a started session, so a route of the `api` group cannot use them: the redirect fails with an error that
-says the session has not been started.
+names the route and says to put it in the `web` group, or to add `StartSession` to its group.
 
 ## JSON
 

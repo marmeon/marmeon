@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
-import { CookieJar } from '@marmeon/router';
+import { RedirectResult } from '@marmeon/http';
+import { CookieJar, Router } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
@@ -314,6 +315,17 @@ describe('Session', () => {
 
   it('explains a missing StartSession', () => {
     expect(() => new Session(new MemorySessionStore(), config, plainSessionCodec).get('user_id')).toThrow('add the StartSession middleware');
+  });
+
+  it('as the Flasher of a route without StartSession: redirect().with() and .flash() name the route and the web group', () => {
+    const session = new Session(new MemorySessionStore(), config, plainSessionCodec);
+    const api = new Request('http://app.test/api/notes', { method: 'POST' });
+    const message = (what: string) =>
+      `${what} needs a session, and POST /api/notes runs without one: StartSession is not among its middleware. Put the route in the web group (an API route has none), or add StartSession to its group.`;
+    expect(() => new RedirectResult('/').with('status', 'Saved.').toResponse(api, new Router(), session)).toThrow(message('redirect().with()'));
+    expect(() => new RedirectResult('/').flash('toast', 'Saved.' as never).toResponse(api, new Router(), session)).toThrow(message('redirect().flash()'));
+    // Without data to keep it needs none: intended() goes to its fallback.
+    expect(new RedirectResult('/notes').intended().toResponse(api, new Router(), session).headers.get('location')).toBe('/notes');
   });
 
   it('types declared keys and leaves the rest unknown', async () => {

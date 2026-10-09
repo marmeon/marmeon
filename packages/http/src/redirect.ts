@@ -12,6 +12,8 @@ const REDIRECT_RESULT = Symbol.for('marmeon.redirect-result');
  * session), so http needs no session itself.
  */
 export interface Flasher {
+  /** False while the request's session has not started — a route without `StartSession` (outside the `web` group). */
+  readonly started?: boolean;
   flash(key: string, value: unknown): void;
   /** Returns a stored value and removes it. */
   pull(key: string): unknown;
@@ -140,17 +142,18 @@ export class RedirectResult {
 
   toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response {
     if (this.#flash.size > 0) {
-      if (!flasher) throw new Error('redirect().with() needs a session: install @marmeon/session and start it for this route.');
+      sessionFor('redirect().with()', request, flasher);
       for (const [key, value] of this.#flash) flasher.flash(key, value);
     }
     if (this.#messages.length > 0) {
-      if (!flasher) throw new Error('redirect().flash() needs a session: install @marmeon/session and start it for this route.');
+      sessionFor('redirect().flash()', request, flasher);
       // Bound to the document whose request flashed them (E165): another tab's request (a poll, a visit) never takes them —
       // this tab's next answer does, or the full page load that follows a 409.
       const document = request.headers.get(DOCUMENT_HEADER);
       for (const message of this.#messages) flasher.queueFlash(document ? { ...message, document } : message);
     }
-    const intended = this.#intended ? flasher?.pull(INTENDED_KEY) : undefined;
+    // Without a session nothing was stored: the fallback.
+    const intended = this.#intended && flasher?.started !== false ? flasher?.pull(INTENDED_KEY) : undefined;
     const headers = new Headers(this.#headers);
     headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
@@ -229,5 +232,15 @@ function previousUrl(request: Request): string | undefined {
     return previous.pathname + previous.search;
   } catch {
     return undefined;
+  }
+}
+
+/** What keeps data for the next request: the session — or an error that names why there is none for this route. */
+function sessionFor(what: string, request: Request, flasher: Flasher | undefined): asserts flasher is Flasher {
+  if (!flasher) throw new Error(`${what} needs a session: install @marmeon/session and start it for this route.`);
+  if (flasher.started === false) {
+    throw new Error(
+      `${what} needs a session, and ${request.method} ${new URL(request.url).pathname} runs without one: StartSession is not among its middleware. Put the route in the web group (an API route has none), or add StartSession to its group.`,
+    );
   }
 }

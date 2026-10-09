@@ -26,6 +26,8 @@ import { defineGegenproben } from '../define.ts';
  * - **`make:controller --request --view` on a writing name is refused** (G15) — without the check it writes a page its redirecting
  *   controller never renders.
  * - **`package:build` fails for a directory without a `tsconfig.json`** (G16) — skipped again, the command ends with exit 0.
+ * - **`redirect().with()` on a route without a session names the route and the `web` group** (G17) — without the check of
+ *   `Flasher.started` the session's own "add the StartSession middleware" comes through.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -168,6 +170,13 @@ export default defineGegenproben({
       ],
       run: { vitest: 'packages/cli/src/package-build.test.ts', name: 'fails for a directory without a tsconfig.json' },
       expect: /expected \[ \+0, \[\] \] to deeply equal \[ 1, …\(1\) \]/,
+    },
+    {
+      id: 'G17',
+      title: "redirect().with() on an API route passes the unstarted session on: the message is the session's, not the route's",
+      patch: [{ file: 'packages/http/src/redirect.ts', find: '  if (flasher.started === false) {', replace: '  if (flasher.started === undefined) {' }],
+      run: { vitest: 'packages/session/src/session.test.ts', name: 'as the Flasher of a route without StartSession' },
+      expect: /to throw error including 'redirect\(\)\.with\(\) needs a session, an…' but got 'The session has not been started — ad…'/,
     },
   ],
 });
