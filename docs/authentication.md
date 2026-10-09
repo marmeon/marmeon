@@ -286,8 +286,8 @@ export default defineRoutes((Route) => {
 ```
 
 `ConfirmedAddress` is the starter kit's middleware: `verified()` while the registration is private. A page that creates API tokens
-needs a confirmed address as well as the password, because a token outlives a password reset: an account registered with
-somebody else's address must never reach it. With open registration, use `verified()` there, as the
+needs a confirmed address as well as the password, because a token outlives a password reset unless
+`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`: an account registered with somebody else's address must never reach it. With open registration, use `verified()` there, as the
 [API tokens](api-tokens.md#creating-tokens) page explains.
 
 Everyone else goes to `auth.password.confirm`, and after the confirmation back to the page they asked for. A JSON client gets
@@ -304,7 +304,9 @@ devices". A stolen session must not become a way to guess the password.
 ## Changing the password
 
 `updatePassword(password)` stores a new hash for the signed-in user. This session stays signed in. Every other session ends at its
-next request, every remember-me token of the user is deleted, this device's included, and `PasswordChanged` is dispatched.
+next request, every remember-me token of the user is deleted, this device's included, and `PasswordChanged` is dispatched. With
+`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
+hash, and the log says how many.
 
 `updatePassword()` does not check the current password. The controller does that first, as the starter kit's does, through the
 throttle of its password checks:
@@ -357,10 +359,9 @@ The starter kit runs both routes with `.block()`: one such request per session a
 with the fingerprint of the other request's hash, and sign it out. The [session](session.md#requests-that-must-not-overlap) page
 explains `block()`.
 
-> [!NOTE]
-> Neither a new password nor "sign out other devices" revokes the user's API tokens. A token stays valid until it expires or is
-> revoked on the tokens page. The [API tokens](api-tokens.md#listing-and-revoking-tokens) page explains why a token is as good as a
-> session.
+A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, and "sign out other devices"
+never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
+[API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains when to turn it on.
 
 ## Ending every session of a user
 
@@ -437,8 +438,8 @@ running during a sign-out brings the signed-in cookie back with its answer, and 
 | `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
 | `Lockout` | The starter kit's login throttle turns an attempt away | `identifier`, `ip` |
 | `Registered` | Your registration, after it created the account | `user` |
-| `PasswordChanged` | `updatePassword()` | `user` |
-| `PasswordReset` | A reset with a link from the mail | `user` |
+| `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
+| `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
 
 `Failed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
 it tells whether the address has an account. The `ip` and `userAgent` of `Login` are the request's, the address resolved through
@@ -481,6 +482,7 @@ listeners.
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |
 | `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password, set by the user or by a reset, revokes every API token of the user. Only `true` and `false` start. See [API tokens](api-tokens.md#revoking-every-token-with-a-new-password). |
 
 The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its
 range stops the start. The `HASH_*` variables are on the [hashing](hashing.md#configuration) page.

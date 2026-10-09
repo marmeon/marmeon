@@ -117,7 +117,9 @@ and the change-of-address link answer 404.
 > Outside development and tests the app logs a warning about it at every start.
 
 Only `true` and `false` are allowed. Any other value stops the start; an empty one counts as unset. To demand a confirmed address with private registration
-off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`.
+off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`. Set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`
+as well: an account registered with somebody else's address may have created an API token, and the owner's password reset then
+ends it, as the [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
 
 ## Mail, the queue and the scheduler
 
@@ -160,6 +162,7 @@ export const schedule = defineSchedule((s) => {
 | --- | --- | --- |
 | `AUTH_PRIVATE_REGISTRATION` | `true` | `false` makes the registration and the change of address say "taken", and signs a new account in at once. |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days an account may stay without a confirmed address before `auth:prune-unverified` deletes it. `0`: the command deletes none. |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every API token of the user. Set it with `AUTH_PRIVATE_REGISTRATION=false`. |
 
 The [authentication](authentication.md#configuration) page lists the other `AUTH_*` variables, such as how long "remember me" lasts.
 

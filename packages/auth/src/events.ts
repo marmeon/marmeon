@@ -116,22 +116,34 @@ export class Registered {
   }
 }
 
-/** A user's password changed (themselves, or by a reset) — every other session and remember-me token ended. */
+/**
+ * A user changed their password (`Auth.updatePassword()`) — every other session and remember-me token ended, and with
+ * `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token (`revokedTokens`: how many).
+ */
 export class PasswordChanged {
   readonly #event = true;
   readonly user: AuthUser;
+  /** The API tokens the new password revoked — 0 unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`. */
+  readonly revokedTokens: number;
 
-  constructor(user: AuthUser) {
+  constructor(user: AuthUser, revokedTokens = 0) {
     this.user = user;
+    this.revokedTokens = revokedTokens;
   }
 }
 
-/** A password was reset by e-mail link — every session and remember-me token of the user ended. */
+/**
+ * A password was reset by e-mail link — every session and remember-me token of the user ended, and with
+ * `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token (`revokedTokens`: how many).
+ */
 export class PasswordReset {
   readonly #event = true;
   readonly user: AuthUser;
+  /** The API tokens the new password revoked — 0 unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`. */
+  readonly revokedTokens: number;
 
-  constructor(user: AuthUser) {
+  constructor(user: AuthUser, revokedTokens = 0) {
     this.user = user;
+    this.revokedTokens = revokedTokens;
   }
 }

@@ -1,4 +1,5 @@
 import { defineConfig, env, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
 import { MiddlewarePriority, Router } from '@marmeon/router';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
@@ -6,6 +7,7 @@ import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
+import { NewPassword } from './new-password.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
@@ -91,6 +93,8 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
+    // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
+    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger)));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new Error(

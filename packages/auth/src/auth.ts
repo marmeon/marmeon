@@ -6,6 +6,7 @@ import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher, type PasswordHash } from './hashing.ts';
+import { NewPassword } from './new-password.ts';
 import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 
@@ -72,6 +73,7 @@ export class Auth {
   readonly #logger: Logger;
   readonly #history: ClientHistory;
   readonly #request: RequestInfo;
+  readonly #newPassword: NewPassword;
   #user: Promise<AuthUser | undefined> | undefined;
 
   constructor(
@@ -86,6 +88,7 @@ export class Auth {
     logger: Logger,
     history: ClientHistory,
     request: RequestInfo,
+    newPassword: NewPassword,
   ) {
     this.#session = session;
     this.#users = users;
@@ -98,6 +101,7 @@ export class Auth {
     this.#logger = logger;
     this.#history = history;
     this.#request = request;
+    this.#newPassword = newPassword;
   }
 
   /**
@@ -174,16 +178,16 @@ export class Auth {
   /**
    * Sets a new password for the signed-in user. Every other session ends (their fingerprint no
    * longer matches) and every remember-me token is dropped — this device's too; this session stays.
+   * With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked in the transaction of the new hash.
    */
   async updatePassword(password: string): Promise<void> {
     const user = await this.#requireUser('updatePassword');
     const hash = await this.#hasher.make(password);
-    await this.#users.updatePasswordHash(idOf(user) as never, hash);
-    await this.#remember.forgetUser(idOf(user));
+    const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(user), hash, 'change');
     this.#cookies.delete(this.#config.rememberCookie);
     this.#session.put(AUTH_SESSION_KEYS.password, passwordFingerprint(hash));
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
-    await this.#events.dispatch(new PasswordChanged(user));
+    await this.#events.dispatch(new PasswordChanged(user, revoked));
   }
 
   /**

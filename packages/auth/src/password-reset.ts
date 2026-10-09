@@ -4,6 +4,7 @@ import { Connections } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
+import { NewPassword } from './new-password.ts';
 import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
@@ -102,7 +103,7 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
 /**
  * "Forgot password" (Laravel's password broker): a token for a known e-mail — sent by mail, never shown —
  * and the reset with it. After a reset every remember-me token of the user is gone and every
- * session ends (the password fingerprint changed).
+ * session ends (the password fingerprint changed); with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token too.
  *
  * ```ts
  * this.#afterResponse.defer(async () => {   // same answer, same time, whether the e-mail exists or not
@@ -115,17 +116,27 @@ export class PasswordBroker {
   readonly #users: UserProvider;
   readonly #tokens: PasswordResetTokenStore;
   readonly #hasher: Hasher;
-  readonly #remember: RememberTokenStore;
   readonly #events: EventDispatcher;
   readonly #config: AuthConfig;
+  readonly #remember: RememberTokenStore;
+  readonly #newPassword: NewPassword;
 
-  constructor(users: UserProvider, tokens: PasswordResetTokenStore, hasher: Hasher, remember: RememberTokenStore, events: EventDispatcher, config: AuthConfig) {
+  constructor(
+    users: UserProvider,
+    tokens: PasswordResetTokenStore,
+    hasher: Hasher,
+    remember: RememberTokenStore,
+    events: EventDispatcher,
+    config: AuthConfig,
+    newPassword: NewPassword,
+  ) {
     this.#users = users;
     this.#tokens = tokens;
     this.#hasher = hasher;
-    this.#remember = remember;
     this.#events = events;
     this.#config = config;
+    this.#remember = remember;
+    this.#newPassword = newPassword;
   }
 
   /** A token for `email` (normalized like the login) — `undefined` for an unknown e-mail, and within `AUTH_RESET_THROTTLE` of the last one. */
@@ -138,15 +149,15 @@ export class PasswordBroker {
 
   /**
    * Sets `password` if `token` belongs to `email` and is unused and fresh. One answer — `undefined` — for
-   * an unknown e-mail and a wrong, used or expired token.
+   * an unknown e-mail and a wrong, used or expired token. With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token
+   * of the user is revoked in the transaction of the new hash.
    */
   async reset(email: string, value: string, password: string): Promise<AuthUser | undefined> {
     if (!(await this.#tokens.consume(email, value, this.#config.resetExpire * 60))) return undefined;
     const found = await this.#users.findForLogin(email);
     if (!found) return undefined;
-    await this.#users.updatePasswordHash(idOf(found.user) as never, await this.#hasher.make(password));
-    await this.#remember.forgetUser(idOf(found.user));
-    await this.#events.dispatch(new PasswordReset(found.user));
+    const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(found.user), await this.#hasher.make(password), 'reset');
+    await this.#events.dispatch(new PasswordReset(found.user, revoked));
     return found.user;
   }
 }

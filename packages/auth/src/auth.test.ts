@@ -1,4 +1,4 @@
-import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { createApplication, defineModule, inTransaction, listen, type Container } from '@marmeon/core';
 import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -6,6 +6,7 @@ import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
+  AccessTokenStore,
   Auth,
   AUTH_SESSION_KEYS,
   authenticate,
@@ -43,6 +44,8 @@ declare module './user.ts' {
 class MemoryUsers implements UserProvider<TestUser> {
   readonly rows = new Map<number, { user: TestUser; hash: PasswordHash | null }>();
   readonly rehashed: number[] = [];
+  /** Whether each new hash was written inside a database transaction. */
+  readonly inTransaction: boolean[] = [];
 
   async findById(id: number): Promise<Credentials<TestUser> | undefined> {
     const row = this.rows.get(id);
@@ -57,6 +60,7 @@ class MemoryUsers implements UserProvider<TestUser> {
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
     this.rows.get(id)!.hash = hash;
     this.rehashed.push(id);
+    this.inTransaction.push(inTransaction());
   }
 }
 
@@ -285,7 +289,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO);
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -526,6 +530,27 @@ describe('password changes and confirmation', () => {
     expect(await (await browser(new Map([['remember_web', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
     expect(events).toEqual([expect.any(PasswordChanged)]);
     expect((await login(browser().send, 'a new secret')).status).toBe(303);
+  });
+
+  it('revokes every API token of the user with a new password — with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true, in the transaction of the new hash', async () => {
+    for (const revoke of [true, false]) {
+      const { add, browser, application, users } = await boot(revoke ? { env: { AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: 'true' } } : {});
+      const alan: TestUser = { id: 2, name: 'Alan', email: 'alan@example.com' };
+      await add(ada);
+      await add(alan);
+      const tokens = application.container.make(AccessTokenStore);
+      const adas = [await tokens.create(1, 'cli'), await tokens.create(1, 'ci')];
+      const alans = await tokens.create(2, 'cli');
+      const laptop = browser();
+      await login(laptop.send);
+      events.length = 0;
+      expect(await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()).toEqual({ changed: true });
+      const valid = await Promise.all(adas.map(async ({ plainText }) => (await tokens.find(plainText)) !== undefined));
+      expect(valid, `revoke=${revoke}: Ada's tokens still valid: ${JSON.stringify(valid)}`).toEqual(revoke ? [false, false] : [true, true]);
+      expect(await tokens.find(alans.plainText), "another user's token").toBeDefined();
+      expect((events[0] as PasswordChanged).revokedTokens).toBe(revoke ? 2 : 0);
+      if (revoke) expect(users.inTransaction.at(-1), 'the new hash was written outside the transaction').toBe(true);
+    }
   });
 
   it('signs out the other devices with the password — this one stays, and keeps its remember-me token', async () => {

@@ -81,11 +81,12 @@ The controller renders the page with the plain text instead of redirecting. A re
 session as flash data, and so write it into the session store.
 
 > [!WARNING]
-> A token is as good as a session: whoever holds it acts as its user until it expires or is revoked, even after a password
-> reset. The starter kit puts the whole tokens page behind a confirmed address and `confirmedPassword()`: a stolen session cannot
-> mint a token without the password, and an account registered with somebody else's address cannot mint one that outlives the
-> owner's takeover. Keep both on pages of your own that create tokens. With `AUTH_PRIVATE_REGISTRATION=false` the module's
-> `ConfirmedAddress` lets everyone through, so put `verified()` on the token routes in its place.
+> A token is as good as a session: whoever holds it acts as its user until it expires or is revoked, after a password reset too
+> unless [`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`](#revoking-every-token-with-a-new-password). The starter kit puts the whole
+> tokens page behind a confirmed address and `confirmedPassword()`: a stolen session cannot mint a token without the password,
+> and an account registered with somebody else's address cannot mint one that outlives the owner's takeover. Keep both on pages
+> of your own that create tokens. With `AUTH_PRIVATE_REGISTRATION=false` the module's `ConfirmedAddress` lets everyone through,
+> so put `verified()` on the token routes in its place.
 
 ## The token format
 
@@ -171,9 +172,26 @@ export const TOKEN_ABILITIES = ['users:read', 'notes:read', 'notes:write'] as co
 `revoke()` takes the user's id as well, so a user can never revoke another user's token by its number. The starter kit answers 404
 for such a request, the same as for a token that does not exist.
 
-A token stays valid until it expires or is revoked. A new password, a password reset and "sign out other devices" leave a user's
-tokens as they are. A user who thinks a token leaked revokes it on the tokens page. When an account is deleted, its tokens go with
-it.
+A token stays valid until it expires or is revoked. A user who thinks a token leaked revokes it on the tokens page. When an account
+is deleted, its tokens go with it. "Sign out other devices" leaves the tokens as they are.
+
+### Revoking every token with a new password
+
+By default a new password and a password reset leave the user's tokens as they are. With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`
+both revoke every token of the user:
+
+```sh title=".env"
+AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true
+```
+
+`updatePassword()` and the reset delete the tokens in the same transaction as the new hash, so a new password never stands next to
+an old token, and a failed delete keeps the old password. The log notes how many tokens went, and `PasswordChanged` and
+`PasswordReset` carry the number as `revokedTokens`. Your scripts and integrations then need a new token after every password
+change.
+
+Turn it on when a reset is how a stolen account comes back to its owner: whoever had the password may have created a token with
+it. With open registration, `AUTH_PRIVATE_REGISTRATION=false`, turn it on: an account registered with somebody else's address can
+create a token before the owner takes the account over with a reset, and the reset then ends that token too.
 
 ## Pruning tokens
 
@@ -199,14 +217,16 @@ export const schedule = defineSchedule((s) => {
 ## A store of your own
 
 Tokens live in the `personal_access_tokens` table by default, through `DatabaseAccessTokens`. To keep them elsewhere, bind your own
-`AccessTokenStore` in a provider. It implements `create`, `find`, `touch`, `list`, `revoke` and `prune`, and keeps a hash of each
-secret, never the secret.
+`AccessTokenStore` in a provider. It implements `create`, `find`, `touch`, `list`, `revoke`, `revokeAll` and `prune`, and keeps a
+hash of each secret, never the secret. `revokeAll(userId)` deletes every token of the user and returns how many; a new password
+calls it inside its transaction, so a store on the database joins it.
 
 ## Configuration
 
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of every token. Lower-case letters, digits and `_`, at most 16. Changing it invalidates every token made before. |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every token of the user. Only `true` and `false` start; an empty one counts as unset. |
 
 ## Testing
 

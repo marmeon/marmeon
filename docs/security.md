@@ -158,9 +158,10 @@ only when the accounts of your app are public anyway. The [starter kit](starter-
 
 An unconfirmed account is then a working account. Whoever registers with somebody else's address uses it at once: the module's
 `ConfirmedAddress` lets every signed-in user through, the tokens page included, which asks only for the password they chose. When
-the owner later takes the account over with a password reset, its sessions and remember-me tokens end, but an API token created in
-the meantime stays valid, up to 90 days with the starter kit. Put `verified()` in place of `ConfirmedAddress` on the token routes,
-or at least revoke unknown tokens on the tokens page after such a takeover.
+the owner later takes the account over with a password reset, its sessions and remember-me tokens end. An API token created in the
+meantime ends with them only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`; without it, it stays valid, up to 90 days with the
+starter kit. With open registration, set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` and put `verified()` in place of
+`ConfirmedAddress` on the token routes.
 
 ### Accounts nobody confirmed
 

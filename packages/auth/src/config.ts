@@ -31,6 +31,12 @@ export const AuthConfig = defineConfig('auth', {
      * on (E209). A whole number; `0`: the command deletes nothing.
      */
     AUTH_UNVERIFIED_DAYS: env.integer(DAYS).min(0, DAYS).max(99_999, DAYS).default(7),
+    /**
+     * `true`: a new password — set by the user (`Auth.updatePassword()`) or by a reset link (`PasswordBroker.reset()`) — also revokes
+     * every API token of the account, in the transaction of the new hash. `false` (the default) keeps them: a token stays valid until
+     * it expires or is revoked. Only `true` and `false` start; empty counts as unset.
+     */
+    AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: env.in(['true', 'false']).default('false'),
     NODE_ENV: env.string().optional(),
   }),
   resolve: (e) => ({
@@ -43,6 +49,8 @@ export const AuthConfig = defineConfig('auth', {
     privateRegistration: e.AUTH_PRIVATE_REGISTRATION === 'true',
     /** Days before `auth:prune-unverified` deletes an account without a confirmed address — 0: it deletes none. */
     unverifiedDays: e.AUTH_UNVERIFIED_DAYS,
+    /** A new password revokes every API token of the account, in the transaction of the new hash. */
+    revokeTokensOnPasswordChange: e.AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE === 'true',
     /** Protected (E139 — every `NODE_ENV` but `development` and `test`): turning private registration off is warned about at boot. */
     protected: environment.isProtected(e),
   }),

@@ -68,6 +68,8 @@ export interface AccessTokenStore {
   list(userId: number | string): Promise<AccessToken[]>;
   /** Revokes one token of the user — `false` if the user has no such token. */
   revoke(userId: number | string, id: number): Promise<boolean>;
+  /** Revokes every token of the user (a new password with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) — how many. */
+  revokeAll(userId: number | string): Promise<number>;
   /**
    * Deletes the tokens that expired more than `graceSeconds` ago (`marmeon auth:prune-tokens`) — they stop working when
    * they expire, but stay listed until pruned. How many. Tokens without an expiry stay until revoked.
@@ -164,6 +166,11 @@ export class DatabaseAccessTokens implements AccessTokenStore {
   async revoke(userId: number | string, id: number): Promise<boolean> {
     const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numDeletedRows > 0n;
+  }
+
+  async revokeAll(userId: number | string): Promise<number> {
+    const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('user_id', '=', userId).executeTakeFirst();
+    return Number(result.numDeletedRows);
   }
 
   async prune(graceSeconds = 0): Promise<number> {

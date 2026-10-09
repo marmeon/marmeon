@@ -182,15 +182,15 @@ A successful reset:
 
 - stores a new hash, so every session of the user ends at its next request,
 - deletes every remember-me token of the user,
-- dispatches `PasswordReset`.
+- with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, revokes every API token of the user, in the same transaction as the new hash,
+- dispatches `PasswordReset`, with `revokedTokens`, the number of API tokens it revoked.
 
 It does not sign the user in: the starter kit sends them to the login page. The `password()` rule is explained on the
 [hashing](hashing.md#the-password-rule) page.
 
-> [!WARNING]
-> A reset does not revoke the user's API tokens. A reset is often the answer to a stolen password, and whoever had the password
-> may have created a token with it. After such a reset, review the tokens on the tokens page and revoke every one you do not know,
-> as the [API tokens](api-tokens.md#listing-and-revoking-tokens) page explains.
+A reset is often the answer to a stolen password, and whoever had the password may have created an API token with it. By default the
+tokens stay valid after a reset. Set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` to end them with the reset, as the
+[API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
 
 ## Old tokens
 
@@ -221,6 +221,7 @@ only for the current, fresh token of the address, and uses it up in the same ste
 | --- | --- | --- |
 | `AUTH_RESET_EXPIRE` | `60` | Minutes a reset link works. At least 1. |
 | `AUTH_RESET_THROTTLE` | `60` | Seconds before another link goes to the same address. `0` sends one for every request. |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a reset, and every other new password, revokes every API token of the user. |
 
 ## Testing
 
