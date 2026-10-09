@@ -93,9 +93,10 @@ The line is built only when it goes somewhere. With `LOG_LEVEL=warn` or `silent`
 
 ## Keeping secrets out of the log
 
-Before an entry is written, its context passes the redaction. Every key that contains `pass`, `secret`, `token`,
+Before an entry is written, its context passes the app's `Redactor`. Every key that contains `pass`, `secret`, `token`,
 `authorization`, `cookie`, `remember`, `apikey` with or without a `-` or `_`, or `signature`, in any case, has its value replaced
-by `[redacted]`. So `password`, `new_password` and `api_key` are masked, and so is a harmless `passport`:
+by `[redacted]`. So `password`, `new_password` and `api_key` are masked, and so is a harmless `passport`. The names that packages
+and your providers add with `addKeys()`, such as the name of the session cookie, are masked the same way:
 
 ```ts
 logger.info('Login failed', { email, password, headers: { authorization: 'Bearer …', accept: 'application/json' } });
@@ -104,16 +105,15 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 
 - Nested objects, lists, maps and sets are redacted too, down to six levels. Anything deeper is written as `[…]`.
 - A child logger's bindings pass the redaction as well.
-- An error under the key `err` stays an error of its class, so the log writes its type, message and stack, the message and
-  stack masked as text and its own fields redacted by key. Its causes are treated alike.
+- An error is written as its `type`, `message` and `stack` under any key and at any depth, not only under `err`. The message
+  and the stack name its causes, after `: ` and `caused by:`, and are masked as text. Its own fields are redacted by key, and
+  the errors of an `AggregateError` go to `aggregateErrors`.
 - A `URL` or `URLSearchParams` is written as text, masked: neither a `?token=` nor a token in the path survives.
 
 > [!WARNING]
 > Only keys are checked. The message and the strings in a context are written as they are, so never put a secret into either.
 > Never turn an error into a string before you log it: `{ exception: String(error) }` is a string, and a connection URL with its
-> password in the error's message goes out as it is. Log the error itself, under the key `err`:
-> `logger.error('Import failed', { err: error })`. Under any other key, an error is written as `{}`, without its message and
-> stack.
+> password in the error's message goes out as it is. Log the error itself: `logger.error('Import failed', { err: error })`.
 
 When you must log text that may hold a secret, mask it with `redactText()` of `@marmeon/core`. It takes out the values of
 sensitive keys such as `token=…`, bearer credentials, passwords in URLs, password hashes, API tokens and path segments that look
@@ -123,10 +123,10 @@ failed jobs and scheduled tasks, and work after the response.
 ### What the framework shows elsewhere
 
 The development error page, the devtools and the traces of the OpenTelemetry package show far more than a log line: headers,
-request bodies, queries, payloads of jobs. They all pass the app's `Redactor` first, which goes further than the log's redaction:
+request bodies, queries, payloads of jobs. They pass the same `Redactor` as the log, and use more of it:
 
-- **By key**, at any depth, with the same list. Packages add names of their own, such as the name of the session cookie.
-- **In text**, as `redactText()` does, with the added names' values too.
+- **By key**, at any depth, with the same list and the names packages add, such as the name of the session cookie.
+- **In every string**, as `redactText()` does, with the added names' values too.
 - **Queries** on a table with secret columns show none of their parameters.
 - **Encrypted payloads**, such as a job marked as encrypted, show as `[encrypted]`.
 - **Paths and URLs** by their route: the values of sensitive route parameters are replaced.

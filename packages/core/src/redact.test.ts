@@ -158,7 +158,7 @@ describe('redact() — the log path, completed (W7.11)', () => {
     expect(JSON.stringify(shown)).not.toMatch(/hunter2|k-1|t0k3n|sel\.val|"s"/);
   });
 
-  it('keeps an error an error of its class — message, stack, own fields and every cause redacted', () => {
+  it('writes an error under any key as its type, message and stack with the causes — masked, own fields redacted by key', () => {
     class HttpError extends Error {
       override name = 'HttpError';
     }
@@ -168,19 +168,31 @@ describe('redact() — the log path, completed (W7.11)', () => {
       response: { data: [{ access_token: 'a-1' }] },
     });
     const aggregate = new AggregateError([new Error('one secret=s1')], 'two failed');
-    const shown = redact({ err: error, aggregate }) as { err: Error & Record<string, unknown>; aggregate: AggregateError };
-    expect(shown.err).toBeInstanceOf(HttpError);
-    expect(shown.err.message).toBe('auth failed for password=[redacted]');
-    expect(shown.err.stack).toContain('password=[redacted]');
-    expect(shown.err).toMatchObject({ name: 'HttpError', code: 'EAUTH', response: { data: [{ access_token: REDACTED }] } });
-    expect((shown.err.cause as Error).message).toBe('socket token=[redacted]');
-    expect((shown.err.cause as Error & { config: unknown }).config).toEqual({ headers: { authorization: REDACTED } });
-    expect(shown.aggregate.errors.map((item: Error) => item.message)).toEqual(['one secret=[redacted]']);
+    const shown = redact({ err: error, failure: { last: error }, aggregate }) as Record<string, Record<string, unknown>>;
+    const written = {
+      type: 'HttpError',
+      message: 'auth failed for password=[redacted]: socket token=[redacted]',
+      stack: expect.stringMatching(/^HttpError: auth failed for password=\[redacted\]\n {4}at [^]*\ncaused by: Error: socket token=\[redacted\]\n {4}at /),
+      // A class field is an own field.
+      name: 'HttpError',
+      code: 'EAUTH',
+      response: { data: [{ access_token: REDACTED }] },
+    };
+    expect(shown.err).toEqual(written);
+    expect(shown.failure).toEqual({ last: written });
+    expect(shown.aggregate).toMatchObject({ type: 'AggregateError', message: 'two failed', aggregateErrors: [{ type: 'Error', message: 'one secret=[redacted]' }] });
     // The original is untouched.
     expect(error.message).toBe('auth failed for password=x');
-    // Whatever serializes it — JSON or a logger's error serializer reading its fields — finds no secret.
-    const fields = (value: Error) => JSON.stringify({ ...value, message: value.message, stack: value.stack, cause: String((value.cause as Error).message) });
-    expect(fields(shown.err)).not.toMatch(/password=x|token=y|Basic z|a-1/);
+    // Plain data: JSON writes all of it, and no secret.
+    expect(JSON.stringify(shown)).not.toMatch(/password=x|token=y|Basic z|a-1|s1/);
+    expect(JSON.stringify(shown)).toContain('"type":"HttpError"');
+  });
+
+  it("redacts the names an app's Redactor adds, by key and in an error's text", () => {
+    const redactor = new Redactor(['marmeon_session']);
+    const shown = redactor.log({ MARMEON_SESSION: 's1', nested: [{ marmeon_session: 's2' }], err: new Error('rejected marmeon_session=s3') });
+    expect(shown).toMatchObject({ MARMEON_SESSION: REDACTED, nested: [{ marmeon_session: REDACTED }], err: { message: 'rejected marmeon_session=[redacted]' } });
+    expect(JSON.stringify(redact({ marmeon_session: 's1' }))).toContain('s1');
   });
 
   it('survives cycles and leaves out what is nested deeper than six levels', () => {

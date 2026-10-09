@@ -208,13 +208,14 @@ process, so limit connections at the proxy as well. The [real-time updates](real
 ## Logs and recordings
 
 The log masks the values of keys that look like secrets, such as `password`, `token`, `cookie` or `authorization`, in nested
-objects too. A `URL` in the context, and the message and stack of an error under the key `err`, are masked as text. Every other
-string, the message included, is written as it is, so never put a secret into one. The
-[logging](logging.md#keeping-secrets-out-of-the-log) page lists the rules, and `redactText()` for text you must log.
+objects too, and the names packages add to the app's `Redactor`, such as the session cookie's. A `URL` in the context, and the
+message and stack of an error under any key, are masked as text. Every other string, the message included, is written as it is,
+so never put a secret into one. The [logging](logging.md#keeping-secrets-out-of-the-log) page lists the rules, and
+`redactText()` for text you must log.
 
-The devtools' recordings, the development error page and traces go further: they pass the app's `Redactor`, which also masks text
-and the names packages add, such as the session cookie's. The devtools exist in development only and refuse other hosts. The
-[logging](logging.md#what-the-framework-shows-elsewhere) page explains what each shows.
+The devtools' recordings, the development error page and traces go further: the same `Redactor` also masks every string there.
+The devtools exist in development only and refuse other hosts. The [logging](logging.md#what-the-framework-shows-elsewhere) page
+explains what each shows.
 
 ## Traces
 

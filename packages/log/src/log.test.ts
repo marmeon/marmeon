@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { ConsoleLogger, createApplication, describeError, LogContextSources, redactText, runWithJob, runWithRequest, runWithTask } from '@marmeon/core';
+import { ConsoleLogger, createApplication, describeError, LogContextSources, Redactor, redactText, runWithJob, runWithRequest, runWithTask } from '@marmeon/core';
 import { channels, type LogMessage } from '@marmeon/core/diagnostics';
 import { describe, expect, it } from 'vitest';
 import { createPinoLogger, LogConfig } from './index.ts';
@@ -162,8 +162,54 @@ describe('@marmeon/log', () => {
     for (const secret of ['bound-t0k3n', 'bound-pw', 'hunter2', 'k-2', 'errpw', 'c4use', 'Basic c2VjcmV0', 'own-field']) expect(all).not.toContain(secret);
     expect(lines[0]).toMatchObject({ channel: 'auth', token: '[redacted]', user: { password: '[redacted]' }, users: [{ email: 'ada@example.com', password: '[redacted]' }, [{ api_key: '[redacted]' }]] });
     // pino's error serializer still knows the error: its class, message with causes, stack and fields.
-    expect(lines[1]).toMatchObject({ err: { type: 'Error', message: expect.stringContaining('auth failed for password=[redacted]'), code: 'EAUTH', secret: '[redacted]' } });
+    expect(lines[1], JSON.stringify(lines[1])).toMatchObject({ err: { type: 'Error', message: expect.stringContaining('auth failed for password=[redacted]'), code: 'EAUTH', secret: '[redacted]' } });
     expect((lines[1]!.err as { stack: string }).stack).toContain('caused by: Error: socket token=[redacted]');
+  });
+
+  it("counter-check: redacts the names the app's Redactor adds (addKeys) — in the context, a child's bindings and an error's text", async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    app.container.make(Redactor).addKeys('marmeon_session', 'X-Tenant-Key');
+    const raw: string[] = [];
+    const stream = new Writable({ write: (chunk, _encoding, done) => (raw.push(String(chunk)), done()) });
+    const logger = createPinoLogger({ level: 'info', format: 'json' }, stream, app);
+    logger.child({ marmeon_session: 'bound-s3ss' }).info('Visit', { headers: { 'x-tenant-key': 'tenant-k3y' }, list: [{ MARMEON_SESSION: 'listed-s3ss' }] });
+    logger.error('Failed', { err: new Error('cookie marmeon_session=err-s3ss rejected') });
+    const all = raw.join('');
+    for (const secret of ['bound-s3ss', 'tenant-k3y', 'listed-s3ss', 'err-s3ss']) expect(all, `${secret} in ${all}`).not.toContain(secret);
+    expect(JSON.parse(raw[0]!)).toMatchObject({ marmeon_session: '[redacted]', headers: { 'x-tenant-key': '[redacted]' } });
+
+    const written: string[] = [];
+    const log = console.log;
+    console.log = (line: string) => void written.push(line);
+    try {
+      new ConsoleLogger({}, app).child({ marmeon_session: 'bound-s3ss' }).info('Visit', { 'X-Tenant-Key': 'tenant-k3y' });
+    } finally {
+      console.log = log;
+    }
+    expect(written.join(''), JSON.stringify(written)).not.toMatch(/bound-s3ss|tenant-k3y/);
+  });
+
+  it('counter-check: writes an error under any key with its type, message and stack — masked like under err, never as {}', () => {
+    const { lines, raw, logger } = capture();
+    const failure = () => Object.assign(new TypeError('import failed for password=errpw', { cause: new Error('socket token=c4use') }), { code: 'EIMPORT', secret: 'own-field' });
+    logger.error('Failed', { error: failure(), job: { last: failure() }, errors: [failure()] });
+    const all = raw.join('');
+    for (const secret of ['errpw', 'c4use', 'own-field']) expect(all, all).not.toContain(secret);
+    const written = { type: 'TypeError', message: expect.stringContaining('import failed for password=[redacted]'), stack: expect.stringContaining('TypeError: import failed'), code: 'EIMPORT', secret: '[redacted]' };
+    expect(lines[0], JSON.stringify(lines[0])).toMatchObject({ error: written, job: { last: written }, errors: [written] });
+    expect((lines[0]!.error as { stack: string }).stack).toContain('caused by: Error: socket token=[redacted]');
+
+    const printed: string[] = [];
+    const log = console.error;
+    console.error = (line: string) => void printed.push(line);
+    try {
+      new ConsoleLogger().error('Failed', { err: failure(), error: failure() });
+    } finally {
+      console.error = log;
+    }
+    const data = JSON.parse(printed[0]!.slice('[error] Failed '.length)) as Record<string, unknown>;
+    expect(data, printed[0]).toMatchObject({ err: written, error: written });
+    expect(printed[0]).not.toMatch(/errpw|c4use|own-field/);
   });
 
   it('counter-check: the console fallback redacts like pino (W7.11)', () => {

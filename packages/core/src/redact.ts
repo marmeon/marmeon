@@ -2,52 +2,18 @@
 export const REDACTED_KEYS = /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature/i;
 
 /**
- * A copy of `context` with sensitive values replaced by `[redacted]` — by key, at any depth (`password`,
- * `new_password`, `headers.authorization`, `remember_web` …), also inside lists, maps and sets and in an error's own fields
- * and its causes. An error stays an error of its class (a logger's error serializer still knows it), its message and stack
- * masked as text ({@link redactText}). Deeper than six levels, a value is left out (`[…]`). Other messages are not scanned:
- * never put secrets into a log message ({@link redactText} is the safety net for text that may hold some).
+ * A log entry's context with sensitive values replaced by `[redacted]`, by the core's key list alone — what
+ * {@link Redactor.log} does for a logger without an app. A logger of an app redacts with the app's `Redactor`, so the names
+ * the app's packages add count too.
  */
-export function redact(context: Record<string, unknown>, depth = 0): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) out[key] = REDACTED_KEYS.test(key) ? '[redacted]' : redactNested(value, depth);
-  return out;
+export function redact(context: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return new Redactor().log(context);
 }
 
+/** How deep {@link Redactor.log} follows a log context; deeper values are written as `[…]`. */
 const MAX_DEPTH = 6;
-
-/** A value inside a log context, redacted like {@link redact} does a context (`depth`: the level of the object holding it). */
-function redactNested(value: unknown, depth: number): unknown {
-  if (value === null || typeof value !== 'object') return value;
-  if (depth >= MAX_DEPTH) return '[…]';
-  if (value instanceof Error) return redactError(value, depth + 1, new Set());
-  if (Array.isArray(value) || value instanceof Set) return [...(value as Iterable<unknown>)].map((item) => redactNested(item, depth + 1));
-  if (value instanceof Map) return redact(Object.fromEntries(value), depth + 1);
-  // A URL is text with a query (`?token=…`) and a path (`/reset-password/<token>`): masked like text, never written as it is.
-  if (value instanceof URL || value instanceof URLSearchParams) return redactText(String(value));
-  // Dates, buffers and typed arrays: written as they are (their `toJSON`, or bytes).
-  if (typeof (value as { toJSON?: unknown }).toJSON === 'function' || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return value;
-  return redact(value as Record<string, unknown>, depth + 1);
-}
-
-/** A copy of `error` of the same class: message and stack masked, own fields redacted by key, causes and aggregated errors alike. */
-function redactError(error: Error, depth: number, seen: Set<Error>): Error {
-  seen.add(error);
-  const copy = Object.create(Object.getPrototypeOf(error) as object) as Error;
-  const hidden = (key: string, value: unknown) => Object.defineProperty(copy, key, { value, writable: true, configurable: true, enumerable: false });
-  hidden('message', redactText(String(error.message)));
-  if (typeof error.stack === 'string') hidden('stack', redactText(error.stack));
-  const nested = (value: unknown): unknown =>
-    value instanceof Error ? (seen.has(value) || depth >= MAX_DEPTH ? '[…]' : redactError(value, depth + 1, seen)) : redactNested(value, depth);
-  if ('cause' in error) hidden('cause', nested(error.cause));
-  const errors = (error as { errors?: unknown }).errors;
-  if (Array.isArray(errors) && !Object.prototype.propertyIsEnumerable.call(error, 'errors')) hidden('errors', errors.map(nested));
-  for (const [key, value] of Object.entries(error)) {
-    if (key === 'cause') continue;
-    (copy as unknown as Record<string, unknown>)[key] = REDACTED_KEYS.test(key) ? '[redacted]' : nested(value);
-  }
-  return copy;
-}
+/** How many causes an error's message and stack name at most. */
+const MAX_CAUSES = 5;
 
 // `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value (not a statement's `?`/`$1`
 // placeholder: `where password = ?` stays readable). Matches start at a word's
@@ -155,6 +121,65 @@ export class Redactor {
   /** Whether the value under `key` is never shown. */
   isSensitive(key: string): boolean {
     return REDACTED_KEYS.test(key) || this.#keys.has(key.toLowerCase());
+  }
+
+  /**
+   * A log entry's context that may be written — the log path, plain data for any logger:
+   *
+   * - **by key**, at any depth: the values of sensitive keys ({@link isSensitive}: the core's list and the added names) replaced,
+   *   also inside lists, maps and sets; deeper than six levels, a value is written as `[…]`;
+   * - **errors under any key** as `{ type, message, stack, …own fields }` — the message and stack name the causes
+   *   (`: cause`, `caused by: …`), are masked as text ({@link text}) and their own fields are redacted by key; an aggregate
+   *   error's errors go to `aggregateErrors`;
+   * - **URLs** as masked text; dates, buffers and other strings as they are (only keys are checked in a context).
+   */
+  log(context: Readonly<Record<string, unknown>>): Record<string, unknown> {
+    return this.#logObject(context, 0);
+  }
+
+  #logObject(context: Readonly<Record<string, unknown>>, depth: number): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(context)) out[key] = this.isSensitive(key) ? REDACTED : this.#logValue(value, depth);
+    return out;
+  }
+
+  /** A value inside a log context (`depth`: the level of the object holding it). */
+  #logValue(value: unknown, depth: number): unknown {
+    if (value === null || typeof value !== 'object') return value;
+    if (depth >= MAX_DEPTH) return '[…]';
+    if (value instanceof Error) return this.#logError(value, depth + 1, new Set());
+    if (Array.isArray(value) || value instanceof Set) return [...(value as Iterable<unknown>)].map((item) => this.#logValue(item, depth + 1));
+    if (value instanceof Map) return this.#logObject(Object.fromEntries(value), depth + 1);
+    // A URL is text with a query (`?token=…`) and a path (`/reset-password/<token>`): masked like text, never written as it is.
+    if (value instanceof URL || value instanceof URLSearchParams) return this.text(String(value));
+    // Dates, buffers and typed arrays: written as they are (their `toJSON`, or bytes).
+    if (typeof (value as { toJSON?: unknown }).toJSON === 'function' || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return value;
+    return this.#logObject(value as Record<string, unknown>, depth + 1);
+  }
+
+  /** An error as a logger writes it: its type, message and stack with the causes', masked; its own fields redacted by key. */
+  #logError(error: Error, depth: number, seen: Set<Error>): Record<string, unknown> {
+    seen.add(error);
+    const causes: Error[] = [];
+    for (let cause = error.cause; cause instanceof Error && !causes.includes(cause) && cause !== error && causes.length < MAX_CAUSES; cause = cause.cause) causes.push(cause);
+    const constructor = (error as { constructor?: unknown }).constructor;
+    const out: Record<string, unknown> = {
+      type: typeof constructor === 'function' && constructor.name !== '' ? constructor.name : error.name,
+      // Each one masked on its own: a value is masked up to the next space, which would take the `: ` joining them along.
+      message: [error, ...causes].map((item) => this.text(String(item.message))).join(': '),
+      stack: [error, ...causes].map((item) => this.text(item.stack ?? `${item.name}: ${item.message}`)).join('\ncaused by: '),
+    };
+    const nested = (value: unknown): unknown =>
+      value instanceof Error ? (seen.has(value) || depth >= MAX_DEPTH ? '[…]' : this.#logError(value, depth + 1, seen)) : this.#logValue(value, depth);
+    const errors = (error as { errors?: unknown }).errors;
+    if (Array.isArray(errors)) out.aggregateErrors = errors.map(nested);
+    // A cause that is no error is not in the message: written as a field.
+    if (error.cause !== undefined && !(error.cause instanceof Error)) out.cause = this.isSensitive('cause') ? REDACTED : nested(error.cause);
+    for (const [key, value] of Object.entries(error)) {
+      if (key in out || key === 'cause') continue;
+      out[key] = this.isSensitive(key) ? REDACTED : nested(value);
+    }
+    return out;
   }
 
   /** `text` without what looks like a secret ({@link redactText} and the added names' values), cut at {@link MAX_ENTRY_BYTES}. */
@@ -292,7 +317,7 @@ function truncate(text: string): string {
  * causes — redacted like a log entry ({@link redact} for properties, {@link redactText} for the text).
  */
 export function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return redactText(typeof error === 'string' ? error : safeJson(redactNested(error, 0)));
+  if (!(error instanceof Error)) return redactText(typeof error === 'string' ? error : safeJson(redact({ value: error }).value));
   const parts: string[] = [];
   let current: unknown = error;
   for (let depth = 0; current instanceof Error && depth < 5; depth++) {
@@ -301,7 +326,7 @@ export function describeError(error: unknown): string {
     parts.push(`${depth > 0 ? 'Caused by: ' : ''}${current.stack ?? `${current.name}: ${current.message}`}${properties}`);
     current = current.cause;
   }
-  if (current !== undefined && !(current instanceof Error)) parts.push(`Caused by: ${typeof current === 'string' ? current : safeJson(redactNested(current, 0))}`);
+  if (current !== undefined && !(current instanceof Error)) parts.push(`Caused by: ${typeof current === 'string' ? current : safeJson(redact({ value: current }).value)}`);
   return redactText(parts.join('\n'));
 }
 

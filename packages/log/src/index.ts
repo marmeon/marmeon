@@ -1,4 +1,4 @@
-import { Application, currentLogContext, defineConfig, env, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
+import { Application, currentLogContext, defineConfig, env, environment, logContextSourcesOf, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
 import { channels, messageBase } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { pino, type Logger as Pino } from 'pino';
@@ -41,12 +41,15 @@ export class PinoLogger implements Logger {
   /** This logger's own bindings — with its parent's, only computed for a message on the channel. */
   readonly #bindings: LogContext | undefined;
   readonly #parent: PinoLogger | undefined;
+  /** The app's `Redactor` (its packages add names to it), or one of the core's key list without an app. */
+  readonly #redactor: Redactor;
 
   constructor(logger: Pino, app?: Application, bindings?: LogContext, parent?: PinoLogger) {
     this.#pino = logger;
     this.#app = app;
     this.#bindings = bindings;
     this.#parent = parent;
+    this.#redactor = parent ? parent.#redactor : redactorOf(app);
   }
 
   debug(message: string, context?: LogContext): void {
@@ -71,7 +74,7 @@ export class PinoLogger implements Logger {
   }
   child(bindings: LogContext): Logger {
     // pino writes a child's bindings once, at creation, past `formatters.log` — so they are redacted here (E125).
-    return new PinoLogger(this.#pino.child(redact(bindings)), this.#app, bindings, this);
+    return new PinoLogger(this.#pino.child(this.#redactor.log(bindings)), this.#app, bindings, this);
   }
 
   #publish(level: 'debug' | 'info' | 'warn' | 'error', message: string, context: LogContext | undefined): void {
@@ -85,6 +88,11 @@ export class PinoLogger implements Logger {
 
 // The redaction lives in core: the queue redacts a failed job's error the same way (E105).
 export { redact, REDACTED_KEYS } from '@marmeon/core';
+
+/** The app's `Redactor` — one per app, with the names its packages add (the session's cookie) — or the core's key list alone. */
+function redactorOf(app: Application | undefined): Redactor {
+  return app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
+}
 
 /** The log context without the keys `instance` (a child logger) is bound with — each key once in a JSON line. */
 function withoutBound(context: Readonly<Record<string, unknown>>, instance: unknown): Readonly<Record<string, unknown>> {
@@ -108,12 +116,16 @@ export function createPinoLogger(config: LogOptions, destination?: NodeJS.Writab
     destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv' }) : undefined);
   // What the app's packages add to every entry (@marmeon/otel: `trace_id`, `span_id`) — nothing to merge without a source.
   const sources = logContextSourcesOf(app);
+  const redactor = redactorOf(app);
   const logger = pino(
     {
       level: config.level,
       // The app's environment on every entry (E217: `APP_ENV`, informative) — a log shipper tells one deployment from another by it.
       base: config.environment === undefined ? undefined : { appEnv: config.environment },
-      formatters: { log: (object) => redact(object) },
+      // The app's Redactor (E125): sensitive keys at any depth, an error under any key as type, message and stack, masked.
+      formatters: { log: (object) => redactor.log(object) },
+      // The redaction wrote `err` already, in the shape of pino's error serializer — which would take it for an object of its own.
+      serializers: { err: (value: unknown) => value },
       // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt; and
       // what the app's log context sources add (the active span's ids).
       // A key a child logger is bound with already (the scheduler's `task`) is left out: pino would write it twice.

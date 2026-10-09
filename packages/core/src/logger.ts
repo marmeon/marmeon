@@ -1,6 +1,6 @@
 import type { Application } from './application.ts';
 import { channels, messageBase } from './diagnostics.ts';
-import { redact } from './redact.ts';
+import { Redactor } from './redact.ts';
 import { currentLogContext } from './request-context.ts';
 import { token } from './token.ts';
 
@@ -69,15 +69,18 @@ export function logContextSourcesOf(app: Application | undefined): LogContextSou
 
 /**
  * Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included.
- * With an `app`, entries also go to the `log` channel (E118) while something listens.
+ * With an `app`, entries also go to the `log` channel (E118) while something listens, and are redacted by the app's
+ * `Redactor` (the names its packages add count too).
  */
 export class ConsoleLogger implements Logger {
   readonly #bindings: LogContext;
   readonly #app: Application | undefined;
+  readonly #redactor: Redactor;
 
   constructor(bindings: LogContext = {}, app?: Application) {
     this.#bindings = bindings;
     this.#app = app;
+    this.#redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
   }
 
   debug(message: string, context?: LogContext): void {
@@ -98,7 +101,7 @@ export class ConsoleLogger implements Logger {
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
-    const data = redact({ ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context });
+    const data = this.#redactor.log({ ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context });
     const line = `[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`;
     (level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }
