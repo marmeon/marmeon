@@ -266,7 +266,19 @@ export class MarmeonDriver implements Driver {
     return this.#driver.releaseSavepoint!(...args);
   }
 
-  destroy(options?: Parameters<Driver['destroy']>[0]): Promise<void> {
+  async destroy(options?: Parameters<Driver['destroy']>[0]): Promise<void> {
+    // Closed while isolated (a test that closes its connections itself): its transaction is undone now, before the connection
+    // goes — the isolation's rollback() finds nothing left to do instead of failing on a closed database.
+    const pinned = this.#pinned;
+    if (pinned) {
+      this.#pinned = undefined;
+      this.#depth.delete(pinned);
+      try {
+        await this.#driver.rollbackTransaction(pinned);
+      } finally {
+        await this.#driver.releaseConnection(pinned);
+      }
+    }
     return this.#driver.destroy(options);
   }
 

@@ -65,7 +65,8 @@ Another test app with database: 'refresh' is still open. Close it first (await a
 ```
 
 A test app made inside a test closes when the test ends. To switch to a test app with other options in the middle of a test,
-close the first one with `await app.close()`.
+close the first one with `await app.close()`. A test that closes the database connections itself, with `connections.destroy()`,
+rolls its transaction back right there, and the cleanup at the end of the test has nothing left to do.
 
 ## Factories
 

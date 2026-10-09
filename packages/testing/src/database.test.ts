@@ -86,6 +86,16 @@ describe.each(drivers)('a refreshed database on %s', (driver) => {
     await next.assertDatabaseMissing<'notes', NotesTables>('notes', { title: 'Welcome' });
   });
 
+  it('cleans up after a test that closed its database connections itself — its writes undone, no "database is not open"', async () => {
+    await app.factory(NoteFactory).create({ title: 'Closed over' });
+    await app.make(Connections).destroy();
+    const closed = await app.close().then(() => 'closed', (error: unknown) => String(error));
+    expect(closed).toBe('closed');
+    const next = await createTestApp(definition, { database: 'refresh' });
+    await next.assertDatabaseMissing<'notes', NotesTables>('notes', { title: 'Closed over' });
+    await next.close();
+  });
+
   it('explains failed database assertions with what the table holds', async () => {
     await app.factory(NoteFactory).create({ title: 'Shopping' });
     await expect(app.assertDatabaseHas<'notes', NotesTables>('notes', { title: 'Groceries' })).rejects.toThrow(

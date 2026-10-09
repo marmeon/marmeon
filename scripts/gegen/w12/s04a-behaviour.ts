@@ -35,6 +35,8 @@ import { defineGegenproben } from '../define.ts';
  * - **`make:queue-table` and `make:notifications-table` write migrations on their configured connection** — the queue's stub
  *   without `connection` (G30) creates `jobs` on `default` whatever `DB_QUEUE_CONNECTION` says; the notifications' alike (G30b); a
  *   `QUEUE_FAILED_CONNECTION` of its own is not checked (G30c) and `failed_jobs` lands where nothing looks.
+ * - **A refreshed test that closes its connections itself is cleaned up** (G31) — the driver's destroy leaves the isolation's
+ *   transaction pinned again, and the rollback at the end fails with "database is not open".
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -232,6 +234,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/queue/src/config.ts', find: "  if (config.failed.driver === 'database' && config.failed.connection !== jobs) {", replace: '  if (false) {' }],
       run: { vitest: 'packages/queue/src/commands/commands.test.ts', name: "make:queue-table's migration runs on DB_QUEUE_CONNECTION" },
       expect: /promise resolved "'default'" instead of rejecting/,
+    },
+    {
+      id: 'G31',
+      title: 'destroying an isolated connection leaves its transaction pinned: the cleanup fails with "database is not open"',
+      patch: [{ file: 'packages/database/src/driver.ts', find: '    const pinned = this.#pinned;\n    if (pinned) {', replace: '    const pinned = this.#pinned;\n    if (pinned && false) {' }],
+      run: { vitest: 'packages/testing/src/database.test.ts', name: 'closed its database connections itself' },
+      expect: /expected 'Error: database is not open' to be 'closed'/,
     },
   ],
 });
