@@ -37,6 +37,8 @@ import { defineGegenproben } from '../define.ts';
  *   `QUEUE_FAILED_CONNECTION` of its own is not checked (G30c) and `failed_jobs` lands where nothing looks.
  * - **A refreshed test that closes its connections itself is cleaned up** (G31) — the driver's destroy leaves the isolation's
  *   transaction pinned again, and the rollback at the end fails with "database is not open".
+ * - **`devtools:clear`/`devtools:prune` load `config/devtools.ts` in development only** (G32) — loaded always again, a production
+ *   run imports the app's devtools settings.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -241,6 +243,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/database/src/driver.ts', find: '    const pinned = this.#pinned;\n    if (pinned) {', replace: '    const pinned = this.#pinned;\n    if (pinned && false) {' }],
       run: { vitest: 'packages/testing/src/database.test.ts', name: 'closed its database connections itself' },
       expect: /expected 'Error: database is not open' to be 'closed'/,
+    },
+    {
+      id: 'G32',
+      title: 'the devtools commands load config/devtools.ts in every environment again',
+      patch: [{ file: 'packages/devtools/src/commands.ts', find: "  const development = app.container.make(DevtoolsConfig).environment === 'development';", replace: '  const development = app.container.has(DevtoolsConfig);' }],
+      run: { vitest: 'packages/devtools/src/commands.test.ts', name: 'never load config/devtools.ts outside development' },
+      expect: /production devtools:clear: threw: config\/devtools\.ts was loaded/,
     },
   ],
 });

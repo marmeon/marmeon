@@ -37,8 +37,9 @@ instead of being ignored. With `NODE_ENV=test` it has no effect, and the start l
 > loudly when `development` comes from a `.env`. Keep the package a dev dependency: a production install without dev
 > dependencies does not even have it.
 
-The commands `devtools:clear` and `devtools:prune` exist wherever the package is installed. They only remove files, in the
-directory that `config/devtools.ts` names.
+The commands `devtools:clear` and `devtools:prune` exist wherever the package is installed. They only remove files: in
+development in the directory that `config/devtools.ts` names, anywhere else in the default directory, `storage/framework/devtools`.
+They load `config/devtools.ts` in development only, as the devtools do.
 
 ## What they record
 

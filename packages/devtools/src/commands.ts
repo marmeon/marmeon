@@ -1,13 +1,18 @@
 import { Application } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
-import { loadDevtoolsOptions, resolveOptions } from './config.ts';
+import { DevtoolsConfig, loadDevtoolsOptions, resolveOptions } from './config.ts';
 import { FileStore } from './file-store.ts';
 import { DevtoolsStore } from './store.ts';
 
-/** The app's store — the recorder's, or (devtools off in this process: no `NODE_ENV=development`) its files from the settings. */
+/**
+ * The app's store — the recorder's, or (devtools off in this process) its files: where `config/devtools.ts` puts them in
+ * development (`DEVTOOLS_ENABLED=false`), the default directory anywhere else — the app's devtools settings are loaded in
+ * development only.
+ */
 async function storeOf(app: Application): Promise<DevtoolsStore> {
   if (app.container.has(DevtoolsStore)) return app.container.make(DevtoolsStore);
-  const { storage } = resolveOptions(await loadDevtoolsOptions(app.root), app.root);
+  const development = app.container.make(DevtoolsConfig).environment === 'development';
+  const { storage } = resolveOptions(development ? await loadDevtoolsOptions(app.root) : {}, app.root);
   return new FileStore({ directory: storage.path, maxBytes: storage.maxBytes, maxAgeHours: storage.maxAgeHours });
 }
 
