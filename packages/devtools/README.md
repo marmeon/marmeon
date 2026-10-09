@@ -11,8 +11,8 @@ A dev dependency of every new Marmeon app. In another app:
 pnpm add -D @marmeon/devtools
 ```
 
-The devtools run only with `NODE_ENV=development`, which `marmeon dev` sets. Under `test`, `staging`, `production` or no
-`NODE_ENV` nothing is recorded and their pages answer `404`.
+The devtools run only with `NODE_ENV=development`, which `marmeon dev` sets. Under `test`, `production` (whatever `APP_ENV`
+says) or no `NODE_ENV` nothing is recorded and their pages answer `404`.
 
 ## Settings
 

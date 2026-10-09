@@ -130,7 +130,7 @@ describe('check:source — NODE_ENV is checked positively (E201)', () => {
     ])).toEqual([]);
   });
 
-  it('covers the apps and the starter\'s template too — what people copy — and Vite\'s DEV / !PROD (true in a staging build)', () => {
+  it('covers the apps and the starter\'s template too — what people copy — and Vite\'s DEV / !PROD (true in a build without NODE_ENV=production)', () => {
     expect(negativeEnvHits([
       { path: 'apps/web-app/modules/lab/views/Lab.tsx', text: "if (process.env.NODE_ENV !== 'production') x();" },
       { path: 'packages/create-marmeon/template/base/bootstrap/client.tsx', text: 'if (import.meta.env.DEV) console.info(\'dev\');' },

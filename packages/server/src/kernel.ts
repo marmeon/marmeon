@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { heldOnLoopback } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, redactText, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, redactText, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
@@ -90,7 +90,7 @@ export interface KernelOptions {
   /**
    * What a write in a read-only request (an island's, E52) does: throw (`true`, the default with `NODE_ENV=development` and
    * `test` — the mistake shows where it is made) or get dropped and logged (`false`, the default everywhere else — production,
-   * staging, no `NODE_ENV` (E164): the island and its page stay whole).
+   * no `NODE_ENV` (E164): the island and its page stay whole).
    */
   strictReadOnly?: boolean;
   /** How long an island resolved in-process may take before it shows its `exception` fallback (ms, default 10 s). */
@@ -726,8 +726,8 @@ export interface ServeOptions {
   host?: string;
   /**
    * `development` runs Vite's dev server in front of the app (source modules, HMR, `/__open-in-editor`); `production` serves
-   * the build. Defaults to `development` only with `NODE_ENV=development` (E115) — a missing `NODE_ENV`, `test` or `staging`
-   * serves the build: never "anything but production".
+   * the build. Defaults to `development` only with `NODE_ENV=development` (E115) — `production`, a missing `NODE_ENV` or `test`
+   * serves the build: never "anything but production". Any other `NODE_ENV` does not start (E217).
    */
   mode?: 'development' | 'production';
   /**
@@ -771,11 +771,14 @@ export async function startServer({
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
   host = app.container.has(ServerConfig) ? app.container.make(ServerConfig).host : undefined,
-  mode = environment.isDevelopment() ? 'development' : 'production',
+  mode: chosenMode,
   drainTimeoutMs = 8_000,
   shutdownDelayMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).shutdownDelayMs : 0,
   keepAliveTimeoutMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).keepAliveTimeoutMs : 65_000,
 }: ServeOptions): Promise<RunningServer> {
+  // An unknown NODE_ENV never serves (E217) — also where a script changed it after the app booted.
+  environment.check();
+  const mode = chosenMode ?? (environment.isDevelopment() ? 'development' : 'production');
   // Node closes an idle keep-alive connection after 5 s by default; a proxy that keeps its connections to the app longer (nginx's
   // upstream keepalive: 60 s) sends the next request on one the app is closing — a 502 now and then (W9 step 4). The app
   // waits longer than the proxy. A request's headers may take a second longer (the usual pairing, `headersTimeout` above
@@ -797,11 +800,11 @@ export async function startServer({
       root,
       ssrEntry,
       httpServer: server,
-      // Bound only with NODE_ENV=development (E115): a Vite dev server on a staging box adds nothing.
+      // Bound only with NODE_ENV=development (E115): a Vite dev server elsewhere adds nothing.
       devBody: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).body : ''),
       devHead: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).head : ''),
     });
-    // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development` (E115), not this mode: Vite on a staging box shows no stack.
+    // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development` (E115), not this mode: Vite asked for elsewhere shows no stack.
     kernel = createHttpKernel(app, { renderer });
     const handle = getRequestListener(kernel.fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
@@ -857,11 +860,12 @@ export async function startServer({
       const listening = (server.address() as { port?: number } | null)?.port ?? port;
       const routes = app.container.make(Router).routes.length;
       const packages = app.packages.length ? `, packages: ${app.packages.join(', ')}` : '';
-      // The environment as the framework reads it (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
+      // The environment as the framework reads it (E139, E217): `in production (APP_ENV=staging)` — APP_ENV as the configuration read it.
       const serving = mode === 'development' ? "Vite's dev server" : 'the build';
+      const named = app.container.has(EnvironmentConfig) ? app.container.make(EnvironmentConfig).app : undefined;
       app.container
         .make(Logger)
-        .info(`Marmeon in ${environment.describe()} on http://${shownHost(host)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
+        .info(`Marmeon in ${environment.describe(process.env, named)} on http://${shownHost(host)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
       resolve({ server, port: listening, close });
     });
   });

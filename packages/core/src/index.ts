@@ -61,10 +61,11 @@ export { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_K
 export type { RedactableQuery } from './redact.ts';
 export { ConfigError, defineConfig, loadEnv, resolveConfig } from './config/config.ts';
 export { env } from './config/env.ts';
+export { EnvironmentConfig } from './config/environment-config.ts';
 export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable } from './config/env.ts';
-export { DOTENV_MARKER, environment, readEnvFile, resolveEnvironment } from './environment.ts';
+export { DOTENV_MARKER, environment, NODE_ENVIRONMENTS, readEnvFile, resolveEnvironment } from './environment.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
-export type { NodeEnvironment, ResolvedEnvironment } from './environment.ts';
+export type { NodeEnvironment, NodeEnvironmentName, ResolvedEnvironment } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
 export type { ModuleDefinition } from './module.ts';

@@ -224,7 +224,8 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
   it('logs without a request context', () => {
     const { stdout } = marmeon(['tinker', '-e', "make('Logger').info('from tinker', { step: 4 }); 'logged'"], { ...env, LOG_LEVEL: 'info', LOG_FORMAT: 'json' });
     const line = stdout.split('\n').find((text) => text.includes('from tinker'));
-    expect(JSON.parse(line!)).toEqual({ level: 30, time: expect.any(Number), step: 4, msg: 'from tinker' });
+    // The app's environment on every entry (APP_ENV, by default the one NODE_ENV=test goes with).
+    expect(JSON.parse(line!)).toEqual({ level: 30, time: expect.any(Number), appEnv: 'testing', step: 4, msg: 'from tinker' });
   });
 
   it('shows the environment and the database in the banner — in production as a warning, never a secret', async () => {
@@ -232,19 +233,26 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     const config = { APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent' };
     const production = { ...env, ...config, NODE_ENV: 'production' };
     const development = await session(['--no-history'], { ...env, ...config, NODE_ENV: 'development', DEVTOOLS_ENABLED: 'false' }, '.exit\n');
-    expect(development.stdout).toContain(`Marmeon tinker · @marmeon/web-app · NODE_ENV=development · db sqlite (${env.DB_DATABASE}) · .ls lists helpers`);
+    expect(development.stdout).toContain(`Marmeon tinker · @marmeon/web-app · NODE_ENV=development · APP_ENV=local · db sqlite (${env.DB_DATABASE}) · .ls lists helpers`);
     expect(development.stdout).not.toContain('PRODUCTION');
     const interactive = await session(['--no-history'], production, '.exit\n');
-    expect(interactive.stdout).toContain(`PRODUCTION — NODE_ENV=production, db sqlite (${env.DB_DATABASE}): every change is real.`);
+    expect(interactive.stdout).toContain(`PRODUCTION — NODE_ENV=production, APP_ENV=production, db sqlite (${env.DB_DATABASE}): every change is real.`);
     expect(interactive.stdout).not.toContain(production.APP_KEY);
     // --execute: the value alone on stdout, the warning on stderr.
     const script = marmeon(['tinker', '--sandbox', '-e', '1 + 1'], production);
     expect(script.stdout).toBe('2\n');
-    expect(script.stderr).toContain('PRODUCTION — NODE_ENV=production, db sqlite');
+    expect(script.stderr).toContain('PRODUCTION — NODE_ENV=production, APP_ENV=production, db sqlite');
     expect(script.stderr).toContain('changes are rolled back at the end (--sandbox).');
-    // Fail-closed (E139): staging is protected like production.
-    const staging = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'staging' });
-    expect(staging.stderr).toContain('PROTECTED (staging) — NODE_ENV=staging, db sqlite');
+    // A staging server (E217): production, named by APP_ENV — and APP_ENV=local unprotects nothing.
+    const staging = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'production', APP_ENV: 'staging' });
+    expect(staging.stderr).toContain('PRODUCTION — NODE_ENV=production, APP_ENV=staging, db sqlite');
+    const local = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'production', APP_ENV: 'local' });
+    expect(local.stderr).toContain('PRODUCTION — NODE_ENV=production, APP_ENV=local, db sqlite');
+    // Any other NODE_ENV does not start: the start error, nothing evaluated.
+    const unknown = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'staging' });
+    expect(unknown.code).toBe(1);
+    expect(unknown.stdout).toBe('');
+    expect(unknown.stderr).toContain('NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging');
   });
 
   it('keeps a history in storage/framework/tinker_history only for the owner — none with --no-history', async () => {

@@ -44,6 +44,12 @@ read a setting through a config definition, not through `process.env`: only the 
 
 ## The environment: `NODE_ENV`
 
+Two variables describe where the app runs. `NODE_ENV` decides what the framework does, and it has exactly three values.
+`APP_ENV` is the name you give the environment: it is shown, and it selects the scheduled tasks that run.
+
+The app reads both through `EnvironmentConfig` of `@marmeon/core`, which every app has. `APP_ENV` is not part of your app's
+`config/app.ts`: the framework's own parts, such as the start line and the logs, read it too.
+
 `NODE_ENV` decides two things: whether the development tools run, and whether the protections apply. The two rules are not
 mirror images of each other:
 
@@ -51,16 +57,40 @@ mirror images of each other:
 | --- | --- | --- |
 | `development` | on | off |
 | `test` | off | off |
-| `production`, `staging`, any other value, or none | off | on |
+| `production`, or none | off | on |
+
+Any other value stops the start, before anything of the app runs:
+
+```text
+✗ Invalid environment — the application cannot start:
+  • NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging. NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).
+```
 
 The development tools are Vite's dev server, the error page with the code that threw, the devtools, the `Server-Timing` header,
 the mail previews, readable logs and the table types that `migrate` writes. The protections are JSON logs, `migrate` asking for
 `--force` and the warnings at start-up. In addition, a write in a request that may only read is dropped and logged instead of
 thrown.
 
-The protections fail closed. A staging server, a typo in `NODE_ENV` and a server where nobody set it are all protected like
-production, because a forgotten variable must never show your source code to a visitor. There is no switch to turn this off:
-set `NODE_ENV=development` on your own machine, and nowhere else.
+The protections fail closed. A server where nobody set `NODE_ENV` is protected like production, because a forgotten variable must
+never show your source code to a visitor. There is no switch to turn this off: set `NODE_ENV=development` on your own machine, and
+nowhere else.
+
+### `APP_ENV`: the environment's name
+
+`APP_ENV` names the environment: `local`, `staging`, `production` or a name of your own. Without it, the name follows `NODE_ENV`:
+
+| `NODE_ENV` | `APP_ENV` when it is not set |
+| --- | --- |
+| `development` | `local` |
+| `test` | `testing` |
+| `production`, or none | `production` |
+
+The name appears in the start line, as the `appEnv` field of every JSON log entry, as `deployment.environment.name` on every span
+the framework records, and in the header of the devtools. It also selects which scheduled tasks run: a task with
+`.environments('staging')` runs where `APP_ENV=staging`, and one with `.environments('production')` does not run there, as the
+[scheduling](scheduling.md#conditions) page shows. That is all it does. `APP_ENV` never weakens a protection and
+never enables a development tool: `APP_ENV=local` on a server with `NODE_ENV=production` is protected, and its development routes
+answer 404.
 
 ### Where `NODE_ENV` comes from
 
@@ -69,38 +99,38 @@ The `marmeon` command decides `NODE_ENV` once, before it loads anything of the a
 1. The process's own `NODE_ENV` wins.
 2. Otherwise the one in `.env`. A new app's `.env` says `development`, so every command on your machine runs in development.
 3. Otherwise the command's own default: `marmeon start` and `marmeon build` use `production`, `marmeon dev` uses `development`.
-   Every other command runs without one, and is protected.
+   Every other command runs without one, which is production.
 
-Only the base `.env` can set it. A `.env.staging` is chosen by `NODE_ENV=staging`, so it cannot choose it: a `NODE_ENV` line in it
-is ignored, with a warning. The value is written into `process.env.NODE_ENV`, so every part of the app reads the same one.
+Only the base `.env` can set it. A `.env.production` is chosen by `NODE_ENV=production`, so it cannot choose it: a `NODE_ENV` line
+in it is ignored, with a warning. The value is written into `process.env.NODE_ENV`, so every part of the app reads the same one.
+`APP_ENV` is read the same way as any other variable: the real environment, then `.env.{NODE_ENV}`, then `.env`.
 
-`marmeon build` is the exception to the second rule. A `development` from `.env` belongs to the commands of your machine, so the
-build sets it aside, says so, and builds for production.
+`marmeon build` builds the browser code for production unless the environment itself says `NODE_ENV=development`. A
+`development` from `.env` belongs to the commands of your machine, so the build sets it aside and says so; `test` builds for
+production as well.
 
-The start line says where the value came from, for example `development (from .env)`. A `.env` copied to a server would turn
-the development tools on there. `marmeon start`, `queue:work` and `schedule:work` still run in that case, but each logs a loud
-warning that begins with `NODE_ENV=development comes from .env, not from the environment`. On a server, set `NODE_ENV` in the
-real environment.
+The start line says where the value came from, for example `development (APP_ENV=local, NODE_ENV from .env)`. A `.env` copied to a
+server would turn the development tools on there. `marmeon start`, `queue:work` and `schedule:work` still run in that case, but
+each logs a loud warning that begins with `NODE_ENV=development comes from .env, not from the environment`. On a server, set
+`NODE_ENV` in the real environment.
 
 ### Staging
 
-Marmeon takes its production branches under any `NODE_ENV` but `development` and `test`. React does not: it uses its production
-build only with `NODE_ENV=production`, and its development build under every other value.
+A staging server runs as production and says so in its name:
 
-> [!WARNING]
-> A staging server shows its server errors to whoever opens the page. With `NODE_ENV=staging`, React renders with its
-> development build, and an error thrown in a part of a page that streams in after the first part reaches the browser with its
-> message and its stack trace. Keep staging behind a login or in a private network, put no real customer data on it, and treat
-> every message a server error can carry as visible to its visitors.
+```sh
+NODE_ENV=production APP_ENV=staging marmeon start
+```
 
-Build a staging image with `NODE_ENV=production` and set `staging` only when it runs. A client built under `NODE_ENV=staging`
-carries React's development build into the browser as well. The [deployment](deployment.md#staging) page covers both.
+It gets every protection and the production builds of the framework and of React, so a server error reaches the visitor as a
+plain error page, never with its message or stack. The start line reads `production (APP_ENV=staging)`, and its logs and traces
+carry the name. The [deployment](deployment.md#staging) page shows the image and the variables.
 
 ### Asking for the environment in code
 
-`environment` from `@marmeon/core` answers the questions of the table above. Ask `isProtected()` where your code protects
+`environment` from `@marmeon/core` answers the questions of the tables above. Ask `isProtected()` where your code protects
 something, and `isDevelopment()` where it offers a development tool. Never compare `NODE_ENV` with `'production'`: that would
-treat staging and a missing value as development.
+treat a missing value as development. Never ask `APP_ENV` whether to protect something either: it is a name, not a switch.
 
 ```ts title="config/demo.ts"
 import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
@@ -117,8 +147,28 @@ export type DemoConfig = ConfigOf<typeof DemoConfig>;
 ```
 
 Inside `resolve`, pass its argument on: it is the environment the definition was checked against, which a test may set itself. Outside
-a definition, the functions read `process.env`. `environment.isTest()`, `environment.name()` and `environment.describe()` complete
-the set. `describe()` returns what the start line shows, such as `staging (protected)`.
+a definition, the functions read `process.env`. `environment.isTest()`, `environment.name()`, `environment.app()` and
+`environment.describe()` complete the set. `describe()` returns what the start line shows, such as `production (APP_ENV=staging)`.
+
+To show the environment's name, ask for `EnvironmentConfig`. Every app has it, and it reads `NODE_ENV` and `APP_ENV` like any other
+variable, so an `APP_ENV` in `.env` counts too:
+
+```ts title="modules/system/controllers/ShowStatusController.ts"
+import { EnvironmentConfig } from '@marmeon/core';
+
+export class ShowStatusController {
+  readonly #environment: EnvironmentConfig;
+
+  constructor(environment: EnvironmentConfig) {
+    this.#environment = environment;
+  }
+
+  handle() {
+    // { node: 'production', app: 'staging' } on a staging server
+    return { environment: this.#environment.app };
+  }
+}
+```
 
 Code that also runs in the browser cannot import `environment`. It checks the value inline, and positively:
 `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`. The client build replaces the expression with the
@@ -279,7 +329,8 @@ These are the settings a new app starts with. Each feature's page lists its own 
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `NODE_ENV` | the command's | `development` turns the development tools on. Every value but `development` and `test` is protected. |
+| `NODE_ENV` | the command's | `development`, `test` or `production`; any other value stops the start. `development` turns the development tools on; `production` and none are protected. |
+| `APP_ENV` | `local`, `testing` or `production`, by `NODE_ENV` | The environment's name in the start line, the logs and the traces, and what `.environments()` of a scheduled task compares against. It never weakens a protection or enables a development tool. |
 | `APP_NAME` | none, required | The app's name. The starter kit shows it on its pages and in its mails. |
 | `APP_URL` | none, required | The app's address. `https://` makes the cookies `Secure`, unless `SESSION_SECURE_COOKIE` says otherwise. |
 | `APP_KEY` | none, required | The key that encrypts cookies and signs URLs: `base64:` and 32 random bytes. |

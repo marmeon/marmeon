@@ -126,7 +126,7 @@ export async function createMarmeonApp({ resolve, rootId = 'app', title, routes,
 /** React's own report (the console), and in development the page's name and a notice on the page. */
 function reportRecoverable(error: unknown, component: string): void {
   // Development (and tests) only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the explanations.
-  // Positive (E201): a staging build reports like production — no notice on the page.
+  // Positive (E201): any build but development (and the tests) reports like production — no notice on the page.
   if (!(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')) {
     globalThis.reportError?.(error);
     return;

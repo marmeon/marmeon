@@ -647,7 +647,7 @@ async function main(): Promise<number> {
     // As a developer migrates: NODE_ENV=development from the .env (E170) — no --force there.
     await pnpmApp.step('marmeon migrate (development from .env)', () => {
       const output = pnpmApp.marmeon('migrate');
-      if (!output.includes('Environment: development (from .env)')) throw new SmokeError(`marmeon migrate did not take NODE_ENV=development from .env:\n${output}`);
+      if (!output.includes('Environment: development (APP_ENV=local, NODE_ENV from .env)')) throw new SmokeError(`marmeon migrate did not take NODE_ENV=development from .env:\n${output}`);
     });
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
@@ -744,6 +744,33 @@ async function main(): Promise<number> {
       const leaked = developmentBranchesIn(join(npmApp.app, 'dist/client'));
       if (leaked.length > 0) throw new SmokeError(`npm run build with the development .env built a development client — ${leaked.join(', ')} carry __MARMEON_DEVTOOLS_HOOK__.`);
       if (!output.includes('marmeon build builds for production')) throw new SmokeError(`npm run build did not say that it builds for production:\n${output}`);
+    });
+    // The client is production's unless the environment says development (E217): NODE_ENV=test builds it for production too, and a
+    // NODE_ENV that is none of development, test, production builds nothing.
+    await npmApp.step('NODE_ENV=test npm run build → a production client; NODE_ENV=staging npm run build → the start error', () => {
+      const output = npmApp.run('npm', ['run', 'build'], { NODE_ENV: 'test' });
+      const leaked = developmentBranchesIn(join(npmApp.app, 'dist/client'));
+      if (leaked.length > 0) throw new SmokeError(`NODE_ENV=test npm run build built a development client — ${leaked.join(', ')} carry __MARMEON_DEVTOOLS_HOOK__.`);
+      if (!output.includes('marmeon build with NODE_ENV=test builds for production')) throw new SmokeError(`NODE_ENV=test npm run build did not say that it builds for production:\n${output}`);
+      const staging = spawnSync('npm', ['run', 'build'], { cwd: npmApp.app, env: { ...npmApp.env, NODE_ENV: 'staging' }, encoding: 'utf8' });
+      const said = `${staging.stdout}${staging.stderr}`;
+      if (staging.status === 0 || !said.includes('NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging')) {
+        throw new SmokeError(`NODE_ENV=staging npm run build should stop with the start error (exit ${staging.status}):\n${said}`);
+      }
+    });
+    // The staging probe (E217): production, named by APP_ENV — and NODE_ENV=staging does not start.
+    await npmApp.step('marmeon start with NODE_ENV=production APP_ENV=staging → the start line names it; NODE_ENV=staging → the start error', async () => {
+      await npmApp.serve(
+        '/up',
+        async (_base, output) => {
+          if (!output().includes('Marmeon in production (APP_ENV=staging) on http://')) throw new SmokeError(`the start line does not name APP_ENV=staging:\n${output()}`);
+        },
+        { APP_ENV: 'staging' },
+      );
+      const failing = await npmApp.startFailing({ NODE_ENV: 'staging' });
+      if (failing.code !== 1 || !failing.output.includes('NODE_ENV=staging is not an environment Node knows')) {
+        throw new SmokeError(`NODE_ENV=staging marmeon start should stop with the start error (exit ${failing.code}):\n${failing.output}`);
+      }
     });
     await npmApp.step('marmeon start → GET /up 200', () => npmApp.serve('/up'));
     const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');

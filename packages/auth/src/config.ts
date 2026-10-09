@@ -20,7 +20,7 @@ export const AuthConfig = defineConfig('auth', {
     /**
      * Private registration (E146, the default since E193): registration and the change of address never tell whether an address
      * has an account — the same answer in the same time, a note to the owner instead. `false` (and only `false`: anything but
-     * `true`/`false` stops the boot) makes them say "taken", like Laravel's starter kits; outside development and tests the boot
+     * `true`/`false` stops the boot; empty counts as unset) makes them say "taken", like Laravel's starter kits; outside development and tests the boot
      * then warns ({@link PRIVATE_REGISTRATION_OFF_WARNING}). The auth module `marmeon make:auth` writes reads it.
      */
     AUTH_PRIVATE_REGISTRATION: env.in(['true', 'false']).default('true'),
@@ -50,7 +50,7 @@ export const AuthConfig = defineConfig('auth', {
 export type AuthConfig = ConfigOf<typeof AuthConfig>;
 
 /**
- * What the boot logs, once per process, when a protected environment (production, staging, no `NODE_ENV` — E139) runs with
+ * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV` — E139) runs with
  * `AUTH_PRIVATE_REGISTRATION=false` (E193).
  */
 export const PRIVATE_REGISTRATION_OFF_WARNING =

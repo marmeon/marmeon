@@ -222,6 +222,11 @@ dashboards and alerts on these names:
 | Live hint | `marmeon.live.channel`, `marmeon.live.only`. |
 | Server rendering | `marmeon.view`, `marmeon.ssr.complete`, `marmeon.ssr.streamed`. |
 
+Every span the framework records also carries `deployment.environment.name`: the app's `APP_ENV`, such as `staging`, or the name
+that goes with `NODE_ENV`, as the [configuration](configuration.md#app_env-the-environments-name) page explains. The resource belongs to
+your SDK. To name the environment there too, set `OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=staging` beside
+`OTEL_SERVICE_NAME`: the `envDetector` above reads it.
+
 A failed operation marks its span as failed, with `error.type` set to the error's class and an `exception` event whose message
 and stack are redacted. A request that ends in a `5xx` without an exception gets the status code as its `error.type`. A job or a
 scheduled task that failed without throwing gets the error status only.

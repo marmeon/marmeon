@@ -75,7 +75,7 @@ export class QueueWorkCommand {
     // A worker as development because a .env says so (E170): a production command — said loudly, not refused.
     const fromDotEnv = environment.dotEnvDevelopmentWarning('queue:work');
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
-    // The environment it assumed (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
+    // The environment it assumed (E139, E217): `in production (APP_ENV=staging)`, `in production (APP_ENV=production, NODE_ENV unset)`.
     output.line(`Processing jobs of the ${connection} connection: ${describeQueues(queues, this.#connections.options(connection).driver)} — in ${environment.describe()}`);
     try {
       const result = await worker.run({

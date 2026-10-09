@@ -43,8 +43,8 @@ says so and exits with 1.
 
 The environment comes from `NODE_ENV` in the shell, then from the app's `.env`. `marmeon dev` is development without one and
 `marmeon start` and `marmeon build` production. Every other command takes what it finds, and without a `NODE_ENV` it behaves like
-production: `migrate` then asks for `--force`. The [configuration](configuration.md#where-node_env-comes-from) page explains the
-rules.
+production: `migrate` then asks for `--force`. A `NODE_ENV` other than `development`, `test` or `production` stops every command
+before it runs. The [configuration](configuration.md#where-node_env-comes-from) page explains the rules.
 
 ## The development server
 
@@ -262,8 +262,8 @@ stderr and the exit code is 1. A signal ends it with 130.
 ### On a server
 
 Tinker works in every environment: whoever has a shell on the server can already do anything the app can. Where the app is
-protected, in production, staging or without a `NODE_ENV`, the banner says so in red and names the database:
-`PRODUCTION — NODE_ENV=production, db pgsql (db.internal:5432/app): every change is real.` It names the driver, host and
+protected, in production, a staging server included, or without a `NODE_ENV`, the banner says so in red and names the database:
+`PRODUCTION — NODE_ENV=production, APP_ENV=staging, db pgsql (db.internal:5432/app): every change is real.` It names the driver, host and
 database, never a user or a password. With `--execute` the same line goes to stderr, so a script's stdout keeps only the value.
 `--sandbox` is the safe way to look around.
 

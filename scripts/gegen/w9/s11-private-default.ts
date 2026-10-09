@@ -122,10 +122,10 @@ export default defineGegenproben({
     },
     {
       id: 'G5b',
-      title: 'the warning only for NODE_ENV=production: staging and a missing NODE_ENV stay quiet (not fail-closed, E139)',
+      title: 'the warning only for NODE_ENV=production: a missing NODE_ENV stays quiet (not fail-closed, E139)',
       patch: [{ file: CONFIG, find: '    protected: environment.isProtected(e),', replace: "    protected: e.NODE_ENV === 'production'," }],
       run: { vitest: 'packages/auth/src/private-registration.test.ts', name: 'turned off outside development and tests' },
-      expect: /staging \(protected, E139\): the boot must warn: expected \[\]/,
+      expect: /no NODE_ENV \(protected, E139\): the boot must warn: expected \[\]/,
     },
     // --- A confirmed address: only while private ------------------------------------------------------------------------------
     {

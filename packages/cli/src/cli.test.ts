@@ -82,11 +82,11 @@ describe('marmeon (in the web app)', () => {
     expect(ran.slice(0, 3)).toEqual(['2026_10_01_120000_create_users_table', '2026_10_01_120100_create_login_activity_table', '2026_10_01_120101_create_profile_links_table']);
     expect(ran).toEqual(ran.toSorted());
     // It names the environment it assumed — and a test writes no table types (E164: development only).
-    expect(migrate.stdout).toMatch(/^Environment: test\n/);
+    expect(migrate.stdout).toMatch(/^Environment: test \(APP_ENV=testing\)\n/);
     expect(migrate.stdout).not.toContain('database.d.ts');
   });
 
-  it('asks for --force wherever the app is protected — staging and a missing NODE_ENV too — and writes table types in development only (E139, E164)', () => {
+  it('asks for --force wherever the app is protected — APP_ENV=local on production too — and writes table types in development only (E139, E164, E217)', () => {
     const memory = { DB_DATABASE: ':memory:' };
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
     const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
@@ -94,14 +94,23 @@ describe('marmeon (in the web app)', () => {
     // Development regenerates the table types (already committed, so unchanged).
     const development = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
     expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
-    expect(marmeon(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (protected)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
-    // Fail-closed (E139): staging and a missing NODE_ENV ask for --force too; with it, staging migrates — and writes no types.
-    const staging = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'staging' });
+    expect(marmeon(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (APP_ENV=production)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
+    // APP_ENV names the environment and protects or opens nothing (E217): APP_ENV=local on production asks for --force; with it,
+    // it migrates — and writes no types (development only).
+    const local = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'production', APP_ENV: 'local' });
+    expect(local.code, 'APP_ENV=local on production migrated without --force').toBe(1);
+    expect(local.stdout).toContain('Environment: production (APP_ENV=local)\n');
+    expect(local.stdout).not.toContain('Migrated');
+    expect(local.stderr).toContain('Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
+    // Any other NODE_ENV stops before the app loads — with the way to name a staging server.
+    const staging = marmeon(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'staging' });
     expect(staging.code).toBe(1);
-    expect(staging.stdout).toContain('Environment: staging (protected)\n');
-    expect(staging.stdout).not.toContain('Migrated');
-    expect(staging.stderr).toContain('Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
-    const forced = marmeon(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'staging' });
+    expect(staging.stdout).toBe('');
+    expect(staging.stderr).toBe(
+      '✗ Invalid environment — the application cannot start:\n  • NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging. ' +
+        'NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).\n',
+    );
+    const forced = marmeon(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'production', APP_ENV: 'staging' });
     expect(forced.code).toBe(0);
     expect(forced.stdout).toContain('Migrated 2026_10_01_120000_create_users_table');
     expect(forced.stdout).not.toContain('database.d.ts');
@@ -356,8 +365,9 @@ describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
 });
 
 /**
- * `marmeon start` (E139, E159): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
- * it — and the `NODE_ENV` it is given (staging stays staging, protected; a missing one becomes production). An app of its own
+ * `marmeon start` (E139, E159, E217): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
+ * it — and the `NODE_ENV` it is given (a missing one becomes production; one that is none of development, test, production does not
+ * start), with `APP_ENV` naming the environment (a staging server: `NODE_ENV=production APP_ENV=staging`). An app of its own
  * that resolves the framework's built `dist/` like an installed one (`start` never uses the source condition).
  */
 describe('marmeon start', () => {
@@ -372,6 +382,8 @@ describe('marmeon start', () => {
       mkdirSync(join(app, 'node_modules/@marmeon'), { recursive: true });
       symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@marmeon', name), 'dir');
     }
+    // For the SSR bundle of the staging probe (not discovered: no dependency) — React resolves from the package's own folder.
+    symlinkSync(join(repo, 'packages/react'), join(app, 'node_modules/@marmeon/react'), 'dir');
     mkdirSync(join(app, 'bootstrap'));
     mkdirSync(join(app, 'services'));
     // A class built by the container at boot: what it was injected with is in the output (E138).
@@ -382,7 +394,7 @@ describe('marmeon start', () => {
         "import { join } from 'node:path';",
         "import { setTimeout as sleep } from 'node:timers/promises';",
         "import { defineApplication, defineModule, Logger, type Application } from '@marmeon/core';",
-        "import { defineRoutes } from '@marmeon/http';",
+        "import { defineRoutes, view } from '@marmeon/http';",
         "import { Greeter } from '../services/Greeter.ts';",
         '// The logger as a service takes it while the app boots — its warnings later on are said.',
         'let bootLogger: Logger | undefined;',
@@ -408,7 +420,9 @@ describe('marmeon start', () => {
         '  }',
         '}',
         "const slow = defineModule({ name: 'slow', apiRoutes: defineRoutes((Route) => { Route.get('/slow', async () => { await sleep(600); return { pid: process.pid }; }); Route.get('/warn', () => { bootLogger?.warn('warned at runtime'); return { pid: process.pid }; }); Route.get('/signal-exit', () => { loadSignalExit(); return { pid: process.pid }; }); }) });",
-        "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider], modules: [slow] });",
+        "// A page whose Suspense boundary fails after the shell (the staging probe's /lab/late-error).",
+        "const late = defineModule({ name: 'late', routes: defineRoutes((Route) => { Route.get('/late-error', () => view('lab/LateError', {})); }) });",
+        "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider], modules: [slow, late] });",
         '',
       ].join('\n'),
     );
@@ -456,14 +470,15 @@ describe('marmeon start', () => {
     return { child, port, base: `http://${host}:${port}`, exited, output: () => output };
   }
 
-  it('is one process, respects NODE_ENV=staging — protected, JSON logs — and drains on SIGTERM (E139, E159, E102)', async () => {
-    const server = await start({ NODE_ENV: 'staging' });
+  it('is one process, runs a staging server as production named by APP_ENV — JSON logs with appEnv — and drains on SIGTERM (E139, E159, E102, E217)', async () => {
+    const server = await start({ NODE_ENV: 'production', APP_ENV: 'staging' });
     try {
       // No launcher, no child: the process that was started is the server.
       expect(spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout).toBe('');
       expect((await fetch(`${server.base}/up`)).status).toBe(200);
       const line = server.output().split('\n').find((entry) => entry.includes('Marmeon in'))!;
-      expect(JSON.parse(line).msg).toMatch(new RegExp(`^Marmeon in staging \\(protected\\) on http://127.0.0.1:${server.port} \\(the build; `));
+      expect(JSON.parse(line).msg).toMatch(new RegExp(`^Marmeon in production \\(APP_ENV=staging\\) on http://127.0.0.1:${server.port} \\(the build; `));
+      expect(JSON.parse(line).appEnv, 'the JSON log entry names the environment').toBe('staging');
     } finally {
       server.child.kill('SIGTERM');
     }
@@ -662,13 +677,13 @@ describe('marmeon start', () => {
     }
   }, 30_000);
 
-  it('the process NODE_ENV wins over .env — staging stays staging, no warning (E170)', async () => {
-    writeFileSync(join(app, '.env'), 'NODE_ENV=development\n');
+  it('the process NODE_ENV wins over .env — production stays production, no warning (E170); APP_ENV of .env names it', async () => {
+    writeFileSync(join(app, '.env'), 'NODE_ENV=development\nAPP_ENV=staging\n');
     try {
-      const server = await start({ NODE_ENV: 'staging' });
+      const server = await start({ NODE_ENV: 'production' });
       server.child.kill('SIGTERM');
       expect(await server.exited).toBe(0);
-      expect(server.output()).toContain(`Marmeon in staging (protected) on http://127.0.0.1:${server.port}`);
+      expect(server.output()).toContain(`Marmeon in production (APP_ENV=staging) on http://127.0.0.1:${server.port}`);
       expect(server.output()).not.toContain('comes from .env');
     } finally {
       rmSync(join(app, '.env'));
@@ -679,7 +694,76 @@ describe('marmeon start', () => {
     const server = await start({});
     server.child.kill('SIGTERM');
     expect(await server.exited).toBe(0);
-    expect(server.output()).toContain('Marmeon in production (protected) on http://127.0.0.1:');
+    expect(server.output()).toContain('Marmeon in production (APP_ENV=production) on http://127.0.0.1:');
+  }, 30_000);
+
+  it('does not start with any other NODE_ENV — the start error names the way: NODE_ENV=production and APP_ENV (E217)', () => {
+    const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    const run = (env: Record<string, string>) =>
+      spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', ...env } });
+    const staging = run({ NODE_ENV: 'staging' });
+    expect(staging.status).toBe(1);
+    expect(staging.stdout, 'nothing of the app ran').toBe('');
+    expect(staging.stderr).toContain('NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging.');
+    expect(staging.stderr).not.toContain(' on http://');
+    // From .env just the same — said so.
+    writeFileSync(join(app, '.env'), 'NODE_ENV=staging\n');
+    try {
+      const fromDotEnv = run({});
+      expect(fromDotEnv.status).toBe(1);
+      expect(fromDotEnv.stderr).toContain('NODE_ENV=staging (in .env) is not an environment Node knows');
+    } finally {
+      rmSync(join(app, '.env'));
+    }
+  }, 30_000);
+
+  it('a staging server (NODE_ENV=production APP_ENV=staging) streams a late server-rendering error as its digest only — no message, no stack (E217)', async () => {
+    // A real SSR bundle: React's server renderer, chosen by the process's NODE_ENV when it loads — the page's boundary fails after the shell.
+    const ssr = join(app, 'dist/server/ssr.js');
+    const template = join(app, 'dist/client/index.html');
+    const originals = { ssr: readFileSync(ssr, 'utf8'), template: readFileSync(template, 'utf8') };
+    writeFileSync(template, '<!doctype html><html><head></head><body><div id="app"><!--app-html--></div></body></html>\n');
+    writeFileSync(
+      ssr,
+      [
+        "import { createRequire } from 'node:module';",
+        "import { createSsrRenderer } from '@marmeon/react/server';",
+        "const { createElement, Suspense, use } = createRequire(import.meta.resolve('@marmeon/react/server'))('react');",
+        'function LatePart({ failing }) {',
+        '  use(failing);',
+        '  return null;',
+        '}',
+        'function LateError() {',
+        "  const failing = new Promise((_, reject) => setTimeout(() => reject(new Error('SECRET-MESSAGE of the late part')), 30));",
+        "  return createElement('main', null, createElement('h1', null, 'Late error'), createElement(Suspense, { fallback: createElement('p', null, 'Loading the late part…') }, createElement(LatePart, { failing })));",
+        '}',
+        'export const render = createSsrRenderer(async () => LateError);',
+        '',
+      ].join('\n'),
+    );
+    try {
+      const server = await start({ NODE_ENV: 'production', APP_ENV: 'staging' });
+      try {
+        expect(server.output()).toContain(`Marmeon in production (APP_ENV=staging) on http://127.0.0.1:${server.port}`);
+        const response = await fetch(`${server.base}/late-error`, { headers: { accept: 'text/html' } });
+        const html = await response.text();
+        expect(response.status, server.output()).toBe(200);
+        expect(html).toContain('<h1>Late error</h1>');
+        // The boundary goes to the browser with the framework's digest — React's production build sends nothing else (its
+        // development build, which any NODE_ENV but production loads, adds the message and the stack).
+        for (const leak of ['SECRET-MESSAGE', 'at LatePart', 'ssr.js:']) expect(html, `the stream leaks ${leak}`).not.toContain(leak);
+        expect(html).toContain('$RX("B:0","marmeon:ssr")');
+        // The error itself goes to the log, not to the visitor.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(server.output()).toContain('failed in a Suspense boundary');
+      } finally {
+        server.child.kill('SIGTERM');
+      }
+      expect(await server.exited).toBe(0);
+    } finally {
+      writeFileSync(ssr, originals.ssr);
+      writeFileSync(template, originals.template);
+    }
   }, 30_000);
 
   /** One start until it listens, then SIGTERM: its output and the modules it loaded. */
@@ -845,7 +929,7 @@ describe('NODE_ENV from the app’s .env (E170)', () => {
     writeFileSync(join(app, '.env'), `NODE_ENV=development\n${config(app)}`);
     rmSync(join(app, 'bootstrap/database.d.ts'), { force: true });
     const migrate = inApp(['migrate']);
-    expect(migrate.stdout).toContain('Environment: development (from .env)\n');
+    expect(migrate.stdout).toContain('Environment: development (APP_ENV=local, NODE_ENV from .env)\n');
     expect(migrate.stdout).toContain('Wrote bootstrap/database.d.ts');
     expect(migrate.code).toBe(0);
     expect(existsSync(join(app, 'bootstrap/database.d.ts'))).toBe(true);
@@ -853,32 +937,33 @@ describe('NODE_ENV from the app’s .env (E170)', () => {
     const worker = inApp(['queue:work', '--stop-when-empty']);
     expect(worker.code).toBe(0);
     expect(`${worker.stdout}${worker.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: marmeon queue:work runs with the development tools');
-    expect(worker.stdout).toContain('— in development (from .env)');
+    expect(worker.stdout).toContain('— in development (APP_ENV=local, NODE_ENV from .env)');
   }, 30_000);
 
   it('the process NODE_ENV wins over .env', () => {
     writeFileSync(join(app, '.env'), `NODE_ENV=development\n${config(app)}`);
-    const staging = inApp(['migrate'], { NODE_ENV: 'staging' });
-    expect(staging.code).toBe(1);
-    expect(staging.stdout).toContain('Environment: staging (protected)\n');
-    expect(staging.stderr).toContain('Pass --force to migrate');
+    const production = inApp(['migrate'], { NODE_ENV: 'production' });
+    expect(production.code).toBe(1);
+    expect(production.stdout).toContain('Environment: production (APP_ENV=production)\n');
+    expect(production.stderr).toContain('Pass --force to migrate');
   }, 30_000);
 
   it('ignores NODE_ENV in .env.{NODE_ENV} — and without NODE_ENV anywhere the app is protected', () => {
-    writeFileSync(join(app, '.env'), `NODE_ENV=staging\n${config(app)}`);
-    writeFileSync(join(app, '.env.staging'), 'NODE_ENV=development\n');
+    writeFileSync(join(app, '.env'), `NODE_ENV=production\nAPP_ENV=qa\n${config(app)}`);
+    writeFileSync(join(app, '.env.production'), 'NODE_ENV=development\nAPP_ENV=staging\n');
     try {
       const staging = inApp(['migrate']);
-      expect(staging.stderr).toContain('NODE_ENV in .env.staging is ignored: .env.staging is chosen by NODE_ENV and cannot set it');
-      expect(staging.stdout).toContain('Environment: staging (protected, from .env)\n');
+      expect(staging.stderr).toContain('NODE_ENV in .env.production is ignored: .env.production is chosen by NODE_ENV and cannot set it');
+      // APP_ENV as the configuration layers it: .env.production over .env.
+      expect(staging.stdout).toContain('Environment: production (APP_ENV=staging, NODE_ENV from .env)\n');
       expect(staging.code).toBe(1);
     } finally {
-      rmSync(join(app, '.env.staging'));
+      rmSync(join(app, '.env.production'));
     }
     writeFileSync(join(app, '.env'), config(app));
     const unset = inApp(['migrate']);
     expect(unset.code).toBe(1);
-    expect(unset.stderr).toContain('The application is protected (unset NODE_ENV (protected, like production)). Pass --force to migrate');
+    expect(unset.stderr).toContain('The application is protected (production (APP_ENV=production, NODE_ENV unset)). Pass --force to migrate');
   }, 30_000);
 });
 

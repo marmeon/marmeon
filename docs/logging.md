@@ -50,15 +50,20 @@ built on pino. Without the package, a minimal console logger writes one line per
 | `LOG_LEVEL` | `info` | The lowest level written: `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `silent`. |
 | `LOG_FORMAT` | `pretty` with `NODE_ENV=development`, else `json` | `pretty` for people, `json` for log shippers. |
 
-The default format fails closed. Only `NODE_ENV=development`, which `marmeon dev` and a new app's `.env` set, gives pretty lines. A
-staging server, a worker started without `NODE_ENV` and a test log JSON. A new app's `.env.test` sets `LOG_LEVEL=silent`, so tests
+The default format fails closed. Only `NODE_ENV=development`, which `marmeon dev` and a new app's `.env` set, gives pretty lines.
+Production, a staging server among them, a worker started without `NODE_ENV` and a test log JSON. A new app's `.env.test` sets `LOG_LEVEL=silent`, so tests
 write nothing.
 
-A JSON line holds pino's numeric level, the time in milliseconds, then the context, and the message as `msg`:
+A JSON line holds pino's numeric level, the time in milliseconds, the environment's name as `appEnv`, then the context, and the
+message as `msg`:
 
 ```json
-{"level":30,"time":1759574400000,"channel":"http","requestId":"9f1c…","route":"notes.show","ms":12,"msg":"GET /notes/7 200"}
+{"level":30,"time":1759574400000,"appEnv":"staging","channel":"http","requestId":"9f1c…","route":"notes.show","ms":12,"msg":"GET /notes/7 200"}
 ```
+
+`appEnv` is `APP_ENV`, or the name that goes with `NODE_ENV` when it is not set: `production`, `local` or `testing`. A log shipper
+that collects several environments tells them apart by it. The
+[configuration](configuration.md#app_env-the-environments-name) page explains the name.
 
 The levels are numbers: 20 for `debug`, 30 for `info`, 40 for `warn`, 50 for `error`. Neither format writes the process id or the
 host name.

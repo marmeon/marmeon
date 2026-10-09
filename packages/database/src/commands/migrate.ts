@@ -14,8 +14,8 @@ function report(output: CommandInput['output'], verb: string) {
 }
 
 /**
- * After new migrations ran: regenerate the table types — with `NODE_ENV=development` only (E164). Anywhere else (staging,
- * production, a test) the committed file is final, and the app directory may not even be writable.
+ * After new migrations ran: regenerate the table types — with `NODE_ENV=development` only (E164). Anywhere else
+ * (production, a test) the committed file is final, and the app directory may not even be writable.
  */
 async function afterMigrating(generator: TypeGenerator, input: CommandInput, types: boolean): Promise<void> {
   if (!types || !environment.isDevelopment()) return;

@@ -185,7 +185,7 @@ describe('the schedule', () => {
     expect(schedule.due('2026-10-05T01:10:00Z')).toEqual(['every-minute', 'berlin-night']); // 03:10 in Berlin (CEST)
     expect(schedule.due('2026-11-05T02:10:00Z')).toEqual(['every-minute', 'berlin-night']); // 03:10 in Berlin (CET)
     expect(schedule.due('2026-10-04T00:00:00Z')).toEqual(['every-minute', 'fixture:prune --hours=168']); // Sunday midnight UTC
-    // Not in this environment (NODE_ENV=test): never due.
+    // Not in this environment (NODE_ENV=test: APP_ENV testing): never due.
     expect(schedule.due('2026-10-05T11:00:00Z')).toEqual(['every-minute']);
     await app.shutdown();
   });
@@ -571,10 +571,10 @@ describe('a schedule set up wrongly', () => {
   });
 
   it('does not ask for a command limited to other environments — its package may be a dev dependency (devtools:prune)', async () => {
-    const elsewhere = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('development')), { env: { NODE_ENV: 'production' } });
+    const elsewhere = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('local')), { env: { NODE_ENV: 'production' } });
     await expect(elsewhere.scheduler.checkProcess()).resolves.toBeUndefined();
     await elsewhere.app.shutdown();
-    const here = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('development')), { env: { NODE_ENV: 'development' } });
+    const here = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('local')), { env: { NODE_ENV: 'development' } });
     await expect(here.scheduler.checkProcess()).rejects.toThrow('runs the command "devtools:prune", which the app does not have.');
     await here.app.shutdown();
   });
@@ -582,10 +582,29 @@ describe('a schedule set up wrongly', () => {
   it('counts a missing NODE_ENV as production for environments() — protected like production (E139)', async () => {
     const schedule = defineSchedule((s) => {
       s.call(CountRun).hourly().environments('production').name('production-only');
-      s.call(CountRun).hourly().environments('development').name('development-only');
+      s.call(CountRun).hourly().environments('local').name('local-only');
     });
     const unset = await boot(schedule, { env: { NODE_ENV: '' } });
     expect(unset.schedule.due('2026-10-05T11:00:00Z')).toEqual(['production-only']);
     await unset.app.shutdown();
+  });
+
+  it('selects the tasks by APP_ENV (E221): a staging server runs its staging tasks and leaves production\'s out', async () => {
+    const schedule = defineSchedule((s) => {
+      s.call(CountRun).hourly().environments('production').name('production-only');
+      s.call(CountRun).hourly().environments('staging').name('staging-only');
+      s.call(CountRun).hourly().environments('staging', 'production').name('both');
+      s.call(CountRun).hourly().environments('local').name('local-only');
+    });
+    const at = '2026-10-05T11:00:00Z';
+    const staging = await boot(schedule, { env: { NODE_ENV: 'production', APP_ENV: 'staging' } });
+    expect(staging.schedule.due(at), 'NODE_ENV=production APP_ENV=staging').toEqual(['staging-only', 'both']);
+    await staging.app.shutdown();
+    const production = await boot(schedule, { env: { NODE_ENV: 'production' } });
+    expect(production.schedule.due(at), 'NODE_ENV=production (APP_ENV production by default)').toEqual(['production-only', 'both']);
+    await production.app.shutdown();
+    const development = await boot(schedule, { env: { NODE_ENV: 'development' } });
+    expect(development.schedule.due(at), 'NODE_ENV=development (APP_ENV local by default)').toEqual(['local-only']);
+    await development.app.shutdown();
   });
 });

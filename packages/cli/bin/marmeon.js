@@ -15,10 +15,11 @@
  * URL and checks it against a hash of the source it compiles — the source after the injection hook — so a changed module
  * is compiled afresh, never served from an old entry. A directory that cannot be written leaves the start uncached.
  *
- * `NODE_ENV` (E139, E170) is resolved once, in the process that runs the command, before anything of the app loads
+ * `NODE_ENV` (E139, E170, E217) is resolved once, in the process that runs the command, before anything of the app loads
  * (`resolveEnvironment` of `@marmeon/core/environment`): the environment's value wins; else the app's `.env` (marked, and
- * named as `development (from .env)`); else `marmeon start` sets `production` and `marmeon dev` `development`; else it stays
- * unset — protected like production.
+ * named as `NODE_ENV from .env`); else `marmeon start` and `marmeon build` set `production` and `marmeon dev` `development`;
+ * else it stays unset — production. A value that is none of `development`, `test`, `production` stops every command here,
+ * with the hint to set `NODE_ENV=production` and `APP_ENV=<name>` — before a development tool or a check could read it.
  */
 import { spawn } from 'node:child_process';
 import { enableCompileCache, getCompileCacheDir } from 'node:module';
@@ -50,6 +51,9 @@ if (process.env.MARMEON_CHILD === '1') {
   const source = command !== 'start' && inWorkspace(fileURLToPath(new URL('..', import.meta.url))) && !sourceConditionActive();
   const watch = command === 'dev';
   if (source || watch) {
+    // `marmeon dev`: checked here too (on a copy — the child resolves for itself), or `node --watch` would wait for changes after
+    // the child's start error.
+    if (watch && !(await environmentKnown({ ...process.env }))) process.exit(1);
     const flags = [...(source ? [`--conditions=${SOURCE_CONDITION}`] : []), ...(watch ? ['--watch'] : [])];
     const child = spawn(process.execPath, [...flags, fileURLToPath(import.meta.url), ...args], {
       stdio: 'inherit',
@@ -76,14 +80,24 @@ function compileCache() {
  */
 async function runHere(args, launch) {
   const { buildEnvironment, DOTENV_MARKER, environment, resolveEnvironment } = await import('@marmeon/core/environment');
-  // `start` is production unless the environment or .env says otherwise (staging); `dev` is development (E115: development-only
+  // `start` is production unless the environment or .env says development; `dev` is development (E115: development-only
   // tools check for `NODE_ENV=development`, never for "not production").
   // `build` builds for production without one (Vite would read a NODE_ENV of the .env files itself — W10 step 9b).
   const fallback = launch === 'start' || launch === 'build' ? 'production' : launch === 'dev' ? 'development' : undefined;
-  const resolved = resolveEnvironment(process.cwd(), { fallback });
+  let resolved;
+  try {
+    resolved = resolveEnvironment(process.cwd(), { fallback });
+  } catch (error) {
+    // An unknown NODE_ENV (E217): the start error, nothing of the app loaded.
+    if (error?.name !== 'ConfigError') throw error;
+    process.stderr.write(`✗ ${error.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
   for (const warning of resolved.warnings) process.stderr.write(`⚠ ${warning}\n`);
   if (launch === 'build') {
-    // What the build bakes into dist/client: a development NODE_ENV of .env never (W10 step 9b) — production, as an image builds it.
+    // What the build bakes into dist/client: production unless the environment says development — never a NODE_ENV=development
+    // of .env (W10 step 9b), never test.
     const { notes, warnings } = buildEnvironment();
     for (const note of notes) process.stderr.write(`${note}\n`);
     for (const warning of warnings) process.stderr.write(`⚠ ${warning}\n`);
@@ -106,6 +120,22 @@ async function runHere(args, launch) {
   // go of the channel instead would end it with 0: node:cluster's own rule).
   if (process.exitCode !== 0 && process.env.MARMEON_CLUSTER_WORKER === '1' && process.connected) {
     process.stderr.write('', () => process.stdout.write('', () => process.exit()));
+  }
+}
+
+/** Whether `NODE_ENV` is one the framework knows — else its start error is written (E217). `env` is resolved in place. */
+async function environmentKnown(env) {
+  // Without this condition the monorepo's core resolves to its dist/ — not built yet in a fresh checkout: the child checks then.
+  const loaded = await import('@marmeon/core/environment').catch(() => undefined);
+  if (!loaded) return true;
+  const { resolveEnvironment } = loaded;
+  try {
+    resolveEnvironment(process.cwd(), { env });
+    return true;
+  } catch (error) {
+    if (error?.name !== 'ConfigError') throw error;
+    process.stderr.write(`✗ ${error.message}\n`);
+    return false;
   }
 }
 

@@ -94,7 +94,7 @@ export function notInDevelopment(): Response {
 
 /**
  * Wraps a development route's handler — or a middleware's `handle` (its `next` comes through): outside development (`NODE_ENV`
- * neither `development` nor `test` — production, staging, a typo, none) a 404, fail-closed; a request for a host outside `hosts`
+ * neither `development` nor `test` — production, none, a value the start check let through) a 404, fail-closed; a request for a host outside `hosts`
  * gets 403; in both cases the handler never runs. Every answer gets {@link devSecured}'s headers (`no-store`, CORP/COOP
  * `same-origin`, `nosniff`, no CORS).
  *

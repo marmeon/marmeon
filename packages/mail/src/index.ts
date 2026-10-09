@@ -51,13 +51,13 @@ export const MailConfig = defineConfig('mail', {
     },
     /**
      * The mail previews under `/_marmeon/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
-     * a test, staging or a server without `NODE_ENV` has no such routes.
+     * a test, production or a server without `NODE_ENV` has no such routes.
      */
     previews: environment.isDevelopment(e),
     /** The hosts the previews answer (E200 — DNS rebinding): loopback names and `APP_URL`'s; any other gets 403. */
     previewHosts: devHosts(e.APP_URL),
     /**
-     * Protected (E139 — every `NODE_ENV` but `development` and `test`: production, staging, none): the boot warns about
+     * Protected (E139 — every `NODE_ENV` but `development` and `test`: production, none): the boot warns about
      * `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}).
      */
     protected: environment.isProtected(e),
@@ -66,7 +66,7 @@ export const MailConfig = defineConfig('mail', {
 export type MailConfig = ConfigOf<typeof MailConfig>;
 
 /**
- * What the boot logs, once per process, when a protected environment (production, staging, no `NODE_ENV` — E139) runs on the
+ * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV` — E139) runs on the
  * `log` mailer — the default when `MAIL_MAILER` is not set.
  * The log mailer stays as it is everywhere (Laravel's too): in development the links of a mail are clicked from the log.
  */

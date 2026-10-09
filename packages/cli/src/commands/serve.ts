@@ -53,7 +53,7 @@ export class ServeCommand {
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
     // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
-    // NODE_ENV=development only (E115; `marmeon dev` sets it), never with "anything but production" (staging, test, unset).
+    // NODE_ENV=development only (E115; `marmeon dev` sets it), never with "anything but production" (test, unset).
     const development = environment.isDevelopment();
     const workers = workerCount(options.workers);
     if (typeof workers === 'string') {

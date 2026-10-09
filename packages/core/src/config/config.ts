@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { readEnvFile } from '../environment.ts';
+import { ConfigError, readEnvFile } from '../environment.ts';
 import type { Token } from '../token.ts';
 import { issuePath, type InferOutput, type StandardSchemaV1 } from './standard-schema.ts';
 
@@ -33,9 +33,8 @@ export function defineConfig<const Schema extends StandardSchemaV1, T>(
   return Object.freeze({ key: Symbol(`config:${name}`), name, env: definition.env, resolve: definition.resolve });
 }
 
-export class ConfigError extends Error {
-  override name = 'ConfigError';
-}
+// The start's error lives beside `NODE_ENV`'s check (an unknown `NODE_ENV` fails with it too).
+export { ConfigError };
 
 /**
  * Reads `.env`, then `.env.{mode}` on top (e.g. `.env.test`, like Laravel's

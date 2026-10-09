@@ -200,15 +200,15 @@ describe('Server-Timing (E129)', () => {
     await application.shutdown();
   });
 
-  it.each(['production', 'test', 'staging'])('never with NODE_ENV=%s — development only, not "not production" (E115)', async (mode) => {
-    const { application, kernel } = await boot({ NODE_ENV: mode });
+  it.each<Record<string, string>>([{ NODE_ENV: 'production' }, { NODE_ENV: 'test' }, { NODE_ENV: 'production', APP_ENV: 'local' }])('never with %j — development only, not "not production" (E115), whatever APP_ENV says', async (env) => {
+    const { application, kernel } = await boot(env);
     expect((await kernel.request('/users/7')).headers.has('server-timing')).toBe(false);
     expect(channels.tracing('db.query').hasSubscribers).toBe(false);
     await application.shutdown();
   });
 
-  it.each([['development', true], ['production', false], ['test', false], ['staging', false]])('binds the development document (DevDocument) with NODE_ENV=%s: %s', async (mode, bound) => {
-    const { application } = await boot({ NODE_ENV: mode });
+  it.each([[{ NODE_ENV: 'development' }, true], [{ NODE_ENV: 'production' }, false], [{ NODE_ENV: 'test' }, false], [{ NODE_ENV: 'production', APP_ENV: 'local' }, false]])('binds the development document (DevDocument) with %j: %s', async (env, bound) => {
+    const { application } = await boot(env);
     expect(application.container.has(DevDocument)).toBe(bound);
     await application.shutdown();
   });

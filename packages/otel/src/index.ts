@@ -1,4 +1,4 @@
-import { defineConfig, defineSolutions, env, LogContextSources, Logger, Redactor, type Application, type ConfigOf, type ServiceProvider } from '@marmeon/core';
+import { defineConfig, defineSolutions, env, EnvironmentConfig, LogContextSources, Logger, Redactor, type Application, type ConfigOf, type ServiceProvider } from '@marmeon/core';
 import { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered, type OtelApi } from './api.ts';
 import { instrument } from './tracer.ts';
 
@@ -79,6 +79,7 @@ export class OtelServiceProvider implements ServiceProvider {
       ...(app.container.has(LogContextSources) ? { logContext: app.container.make(LogContextSources) } : {}),
       requestHeaders: config.requestHeaders,
       trustTraceparent: config.trustTraceparent,
+      ...(app.container.has(EnvironmentConfig) ? { environment: app.container.make(EnvironmentConfig).app } : {}),
     });
   }
 

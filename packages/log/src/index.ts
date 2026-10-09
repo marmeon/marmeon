@@ -10,13 +10,23 @@ export const LogConfig = defineConfig('log', {
     /** `pretty` for humans, `json` for log shippers. Defaults to pretty with `NODE_ENV=development` only (E164) — JSON everywhere else, also without a `NODE_ENV`. */
     LOG_FORMAT: env.in(['pretty', 'json']).optional(),
     NODE_ENV: env.string().optional(),
+    APP_ENV: env.string().optional(),
   }),
   resolve: (e) => ({
     level: e.LOG_LEVEL,
     format: e.LOG_FORMAT ?? (environment.isDevelopment(e) ? 'pretty' : 'json'),
+    /** `APP_ENV` (`staging`, `production`, …; by default the one `NODE_ENV` goes with): the `appEnv` field of every JSON entry (E217). */
+    environment: environment.app(e),
   }),
 });
 export type LogConfig = ConfigOf<typeof LogConfig>;
+
+/** What `createPinoLogger` needs: the level, the format — and the app's environment, written as `appEnv` into every entry. */
+export interface LogOptions {
+  readonly level: LogConfig['level'];
+  readonly format: LogConfig['format'];
+  readonly environment?: string | undefined;
+}
 
 const entries = channels.event('log');
 
@@ -85,7 +95,7 @@ function withoutBound(context: Readonly<Record<string, unknown>>, instance: unkn
 }
 
 /**
- * pino-pretty, loaded when a logger is pretty (E138) — in development. JSON logs (production, staging, workers) never load
+ * pino-pretty, loaded when a logger is pretty (E138) — in development. JSON logs (production, tests, workers) never load
  * its 28 modules. Synchronous (`require`), because the logger is made synchronously.
  */
 function pretty(): typeof pinoPretty {
@@ -93,15 +103,16 @@ function pretty(): typeof pinoPretty {
 }
 
 /** `app`: its entries also go to the `log` channel (E118) while something listens. */
-export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream, app?: Application): Logger {
+export function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
-    destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
+    destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv' }) : undefined);
   // What the app's packages add to every entry (@marmeon/otel: `trace_id`, `span_id`) — nothing to merge without a source.
   const sources = logContextSourcesOf(app);
   const logger = pino(
     {
       level: config.level,
-      base: undefined,
+      // The app's environment on every entry (E217: `APP_ENV`, informative) — a log shipper tells one deployment from another by it.
+      base: config.environment === undefined ? undefined : { appEnv: config.environment },
       formatters: { log: (object) => redact(object) },
       // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt; and
       // what the app's log context sources add (the active span's ids).

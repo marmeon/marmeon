@@ -134,13 +134,15 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
 
 /**
  * Whether the devtools run (E115, fail closed): **only** with `NODE_ENV=development` — not "anything but production" (a missing
- * `NODE_ENV`, `test` or `staging` keeps them off). `DEVTOOLS_ENABLED=false` turns them off there too; `DEVTOOLS_ENABLED=true`
- * cannot turn them on anywhere else — where the app is protected (E139: production, staging, no `NODE_ENV`) it fails the start.
+ * `NODE_ENV`, `test` or `production` keeps them off, whatever `APP_ENV` says). `DEVTOOLS_ENABLED=false` turns them off there too; `DEVTOOLS_ENABLED=true`
+ * cannot turn them on anywhere else — where the app is protected (E139: production, no `NODE_ENV`) it fails the start.
  * Tests opt in with `createTestApp(App, { devtools: true })`.
  */
 export const DevtoolsConfig = defineConfig('devtools', {
   env: env({
     NODE_ENV: env.string().optional(),
+    /** Named in the start error — it opens nothing. */
+    APP_ENV: env.string().optional(),
     /** `true` or `false`, in any case. */
     DEVTOOLS_ENABLED: env.string().regex(/^(?:true|false)$/i, 'DEVTOOLS_ENABLED must be true or false.').optional(),
     /** The app's own address: its host may open the pages too (besides `localhost`, `127.0.0.1` and `[::1]`). */
@@ -150,14 +152,14 @@ export const DevtoolsConfig = defineConfig('devtools', {
     const switched = e.DEVTOOLS_ENABLED?.toLowerCase();
     if (switched === 'true' && environment.isProtected(e)) {
       throw new DevtoolsConfigError(
-        `DEVTOOLS_ENABLED=true with ${environment.describe(e)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV. ` +
+        `DEVTOOLS_ENABLED=true with ${environment.describe(e)}: the devtools record requests, queries and mails — they never run in production or without NODE_ENV, whatever APP_ENV says. ` +
           'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @marmeon/devtools as a dev dependency.',
       );
     }
     return {
       enabled: environment.isDevelopment(e) && switched !== 'false',
       environment: environment.name(e),
-      /** Production, staging, no `NODE_ENV` (E139): a test's opt-in fails the start there. */
+      /** Production, no `NODE_ENV` (E139): a test's opt-in fails the start there. */
       protected: environment.isProtected(e),
       /** `DEVTOOLS_ENABLED=true` in a test: it has no effect (said once, at the start). */
       ineffective: switched === 'true' && !environment.isDevelopment(e),

@@ -70,7 +70,7 @@ export class SessionServiceProvider implements ServiceProvider {
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.
     const { driver, connection, secure, secureFrom } = app.container.make(SessionConfig);
-    // Protected (E139: staging, production, no NODE_ENV) and cookies without Secure (E162): said once, at boot.
+    // Protected (E139: production, no NODE_ENV) and cookies without Secure (E162): said once, at boot.
     if (app.container.make(SessionConfig).protected && !secure) app.container.make(Logger).warn(insecureCookieWarning(secureFrom), { secureFrom });
     if (driver === 'redis') {
       const redis = await importRedis();

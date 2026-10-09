@@ -124,7 +124,7 @@ describe('startServer', () => {
     });
   });
 
-  it('runs Vite\'s dev server only with NODE_ENV=development — staging, test or no NODE_ENV serve the build (E115)', async () => {
+  it('runs Vite\'s dev server only with NODE_ENV=development — test or no NODE_ENV serve the build (E115), any other value does not start (E217)', async () => {
     const before = process.env.NODE_ENV;
     const app = await createApplication({
       root,
@@ -133,7 +133,10 @@ describe('startServer', () => {
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     });
     try {
-      for (const nodeEnv of ['staging', 'test', 'production', undefined]) {
+      // An unknown NODE_ENV — set after the app booted — never serves: the start error, before any mode is chosen.
+      process.env.NODE_ENV = 'staging';
+      await expect(startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0 })).rejects.toThrow(/NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging/);
+      for (const nodeEnv of ['test', 'production', undefined]) {
         if (nodeEnv === undefined) delete process.env.NODE_ENV;
         else process.env.NODE_ENV = nodeEnv;
         // The production renderer: this root has no build — so no Vite, no source modules, no `/__open-in-editor`.

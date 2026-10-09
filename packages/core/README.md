@@ -36,7 +36,9 @@ export default defineModule({
 
 The module joins the app in `modules` of `defineApplication()` in `bootstrap/app.ts`. Any class that asks for `NotesConfig` in its
 constructor gets the checked values: the container injects by type, from generated lists, without decorators. `env` reads the
-variables without a validation library; an empty variable counts as missing.
+variables without a validation library; an empty variable counts as missing. `environment` answers whether the app is in
+development or protected (`NODE_ENV`: `development`, `test` or `production`, nothing else starts), and `EnvironmentConfig` names it
+(`APP_ENV`).
 
 ## Documentation
 
@@ -44,6 +46,7 @@ variables without a validation library; an empty variable counts as missing.
 - [Service Container](https://github.com/marmeon/marmeon/blob/main/docs/container.md)
 - [Service Providers](https://github.com/marmeon/marmeon/blob/main/docs/providers.md)
 - [Configuration](https://github.com/marmeon/marmeon/blob/main/docs/configuration.md)
+- [Configuration: `NODE_ENV` and `APP_ENV`](https://github.com/marmeon/marmeon/blob/main/docs/configuration.md#the-environment-node_env)
 - [Events](https://github.com/marmeon/marmeon/blob/main/docs/events.md)
 - [Context](https://github.com/marmeon/marmeon/blob/main/docs/context.md)
 - [Health Checks](https://github.com/marmeon/marmeon/blob/main/docs/health.md)

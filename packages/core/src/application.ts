@@ -1,5 +1,6 @@
 import cluster from 'node:cluster';
 import { ConfigError, invalidConfiguration, loadEnv, validateConfig, type ConfigDefinition } from './config/config.ts';
+import { EnvironmentConfig } from './config/environment-config.ts';
 import { Container } from './container.ts';
 import { coreSolutions } from './core-solutions.ts';
 import { Redactor } from './redact.ts';
@@ -195,8 +196,9 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     ...modules.flatMap((module) => module.providers ?? []),
   ];
 
-  // Configuration from the app, its modules and every provider (packages bring their own).
+  // Configuration from the app, its modules and every provider (packages bring their own) — and the environment, every app's.
   const definitions = new Set([
+    EnvironmentConfig,
     ...(options.config ?? []),
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),
@@ -205,6 +207,8 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   // that boots the app itself gets the same answer here. An app given its own `env` (a test fixture) decides for itself.
   const resolved = options.env ? undefined : resolveEnvironment(options.root);
   const env = options.env ?? loadEnv(options.root);
+  // An unknown NODE_ENV stops the start before anything asks it (E217) — also for an app given its own `env`.
+  environment.check(env);
   const phase = options.phase ?? 'run';
   const { resolved: config, problems } = await validateConfig([...definitions], env);
   if (problems.size > 0 && phase === 'run') throw invalidConfiguration(problems);

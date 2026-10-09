@@ -252,7 +252,7 @@ The command is not scheduled by itself, because deleting accounts is your app's 
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days an account may stay without a confirmed address before `auth:prune-unverified` deletes it. A whole number; `0` deletes none. |
-| `AUTH_PRIVATE_REGISTRATION` | `true` | Whether registration and the change of address keep quiet about known addresses. Only `true` and `false` start. |
+| `AUTH_PRIVATE_REGISTRATION` | `true` | Whether registration and the change of address keep quiet about known addresses. Only `true` and `false` start; empty counts as unset. |
 
 ## Testing
 

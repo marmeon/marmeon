@@ -14,10 +14,11 @@
  *
  *   3. **`NODE_ENV` is checked positively** (E201, W10 step 6): no `!== 'production'` (any quotes, also `!=`), no
  *      `NODE_ENV === 'production'` and no `import.meta.env.DEV` / `!import.meta.env.PROD` (Vite sets them from `NODE_ENV ===
- *      'production'`: a staging build is `DEV`) in a package's code (`packages/<name>/src/`, the `make:auth` stubs), the starter's
- *      template (`packages/create-marmeon/template/`) and the apps (`apps/<name>/`) — what people copy — tests and fixtures aside.
- *      Either sends `staging`, a typo or a missing `NODE_ENV` down the development branch — long messages, warnings, devtools hooks
- *      and error details in server rendering, which reads `NODE_ENV` at run time. Development branches ask
+ *      'production'`: a build with any other value, or none, is `DEV`) in a package's code (`packages/<name>/src/`, the `make:auth`
+ *      stubs), the starter's template (`packages/create-marmeon/template/`) and the apps (`apps/<name>/`) — what people copy — tests
+ *      and fixtures aside. Either sends a missing `NODE_ENV` (production, E217) — or a value only a hand-made build folds in — down
+ *      the development branch: long messages, warnings, devtools hooks and error details in server rendering, which reads `NODE_ENV`
+ *      at run time. Development branches ask
  *      `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (inline: a client build folds it away), server
  *      code `environment.isDevelopment()` / `environment.isProtected()` of @marmeon/core.
  *
@@ -156,9 +157,9 @@ const NEGATIVE_ENV = new RegExp(
   [
     `!==?\\s*(['"\`])production\\1`, // x !== 'production'
     `(['"\`])production\\2\\s*!==?`, // 'production' !== x
-    `NODE_ENV\\s*===?\\s*(['"\`])production\\3`, // NODE_ENV === 'production' (staging falls into the else)
+    `NODE_ENV\\s*===?\\s*(['"\`])production\\3`, // NODE_ENV === 'production' (a missing NODE_ENV falls into the else)
     `(['"\`])production\\4\\s*===?\\s*(?:process\\.env\\.|env\\.)?NODE_ENV`,
-    `\\bimport\\.meta\\.env\\.DEV\\b`, // Vite's DEV: true for any NODE_ENV but production (a staging build)
+    `\\bimport\\.meta\\.env\\.DEV\\b`, // Vite's DEV: true for any NODE_ENV but production (a build without one)
     `!\\s*import\\.meta\\.env\\.PROD\\b`,
   ].join('|'),
 );
@@ -331,7 +332,7 @@ export function checkSource(repository: string = root): string[] {
     ...oldNameHits(files).map((hit) => `the old name (E196): ${hit}`),
     ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates (E197): ${hit}`),
     ...negativeEnvHits(files).map(
-      (hit) => `NODE_ENV checked positively (E201 — staging is not development): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
+      (hit) => `NODE_ENV checked positively (E201 — only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
     ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (E207 — API tokens start with marmeon_): ${hit}`),
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),

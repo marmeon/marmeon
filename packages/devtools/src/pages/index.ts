@@ -1,4 +1,4 @@
-import { outsideTransaction, type Application, type Redactor } from '@marmeon/core';
+import { EnvironmentConfig, outsideTransaction, type Application, type Redactor } from '@marmeon/core';
 import { devOnly } from '@marmeon/core/dev';
 import type { EmptyObject, HttpContext, Next } from '@marmeon/router';
 import { ENTRY_TYPES, type AnyEntry, type EntryType } from '../entry.ts';
@@ -142,9 +142,14 @@ class DevtoolsPages {
     this.#closing = closing;
   }
 
+  /** The app's `APP_ENV` for the header (E217) — informative, as everywhere. */
+  #environment(): { environment?: string } {
+    return this.#app.container.has(EnvironmentConfig) ? { environment: this.#app.container.make(EnvironmentConfig).app } : {};
+  }
+
   async #frame(): Promise<Frame> {
     const usage = await this.#store.usage();
-    return { usage, mailPreviews: this.#mailPreviews() };
+    return { usage, mailPreviews: this.#mailPreviews(), ...this.#environment() };
   }
 
   async overview(): Promise<Response> {
@@ -164,7 +169,7 @@ class DevtoolsPages {
     ];
     return htmlResponse(
       overviewPage(
-        { usage, mailPreviews: this.#mailPreviews() },
+        { usage, mailPreviews: this.#mailPreviews(), ...this.#environment() },
         { requests, exceptions, slowQueries, failedJobs, queue, schedule, warnings, usage, ...(this.#maxBytes ? { maxBytes: this.#maxBytes } : {}) },
       ),
     );

@@ -93,13 +93,13 @@ export class TinkerCommand {
   #banner(session: TinkerSession, output: CommandInput['output'], history: string | undefined): void {
     const env = process.env.NODE_ENV ?? '(not set)';
     const database = session.database();
-    const parts = [style('bold', 'Marmeon tinker'), session.appName(), `NODE_ENV=${env}`, ...(database ? [`db ${database}`] : []), '.ls lists helpers'];
+    const parts = [style('bold', 'Marmeon tinker'), session.appName(), `NODE_ENV=${env}`, `APP_ENV=${environment.app()}`, ...(database ? [`db ${database}`] : []), '.ls lists helpers'];
     output.line(parts.join(' · '));
     if (session.sandbox) {
       output.line(style('cyan', 'Sandbox: every change to the default connection is rolled back when the session ends (mails, files and Redis are real).'));
       if (database?.startsWith('sqlite')) output.line(style('dim', 'SQLite: once the session wrote, other processes (the dev server, a worker) cannot write to the file until it ends.'));
     }
-    // Protected (E139): production, staging and a missing NODE_ENV get the red line.
+    // Protected (E139): production and a missing NODE_ENV get the red line — whatever APP_ENV says.
     if (environment.isProtected()) output.line(style(['bold', 'red'], this.#productionLine(session)));
     if (!history) output.line(style('dim', 'No history (--no-history).'));
   }
@@ -108,7 +108,7 @@ export class TinkerCommand {
     const database = session.database();
     const name = environment.name();
     const label = name === undefined || name === 'production' ? 'PRODUCTION' : `PROTECTED (${name})`;
-    return `${label} — NODE_ENV=${name ?? '(not set)'}${database ? `, db ${database}` : ''}: ${session.sandbox ? 'changes are rolled back at the end (--sandbox).' : 'every change is real.'}`;
+    return `${label} — NODE_ENV=${name ?? '(not set)'}, APP_ENV=${environment.app()}${database ? `, db ${database}` : ''}: ${session.sandbox ? 'changes are rolled back at the end (--sandbox).' : 'every change is real.'}`;
   }
 }
 

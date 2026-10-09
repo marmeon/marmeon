@@ -187,8 +187,8 @@ function files(root: string): string {
 }
 
 describe('the gate (E115: fail closed, development only)', () => {
-  it.each([['test'], ['staging'], ['']])('subscribes to nothing and writes nothing with NODE_ENV=%j', async (environment) => {
-    const { app, root, kernel } = await boot(environment === '' ? {} : { NODE_ENV: environment });
+  it.each([[{ NODE_ENV: 'test' }], [{ NODE_ENV: 'production', APP_ENV: 'local' }], [{}]])('subscribes to nothing and writes nothing with %j', async (environment) => {
+    const { app, root, kernel } = await boot(environment);
     try {
       expect(app.container.has(Recorder)).toBe(false);
       expect(app.container.has(DevtoolsStore)).toBe(false);
@@ -225,15 +225,15 @@ describe('the gate (E115: fail closed, development only)', () => {
     }
   });
 
-  it('fails the start with DEVTOOLS_ENABLED=true where the app is protected — and a test opt-in there (E139: staging and no NODE_ENV too)', async () => {
-    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(protected\)[\s\S]*never run in production, staging or without NODE_ENV/);
-    await expect(boot({ NODE_ENV: 'staging', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with staging \(protected\)/);
-    await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with unset NODE_ENV/);
+  it('fails the start with DEVTOOLS_ENABLED=true where the app is protected — and a test opt-in there (E139: no NODE_ENV too; APP_ENV opens nothing)', async () => {
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production\)[\s\S]*never run in production or without NODE_ENV, whatever APP_ENV says/);
+    await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=local\)/);
+    await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production, NODE_ENV unset\)/);
     // In any case — and only true or false: 1 is no way round the check.
-    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'TRUE' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(protected\)/);
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'TRUE' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production\)/);
     await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: '1' })).rejects.toThrow(/devtools: DEVTOOLS_ENABLED — DEVTOOLS_ENABLED must be true or false\./);
     await expect(boot({ NODE_ENV: 'production' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run in production/);
-    await expect(boot({ NODE_ENV: 'staging' }, { test: true })).rejects.toThrow(/NODE_ENV=staging — they never run/);
+    await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run/);
     // What `marmeon` prints with it (E130): the devtools' own solution — not "set the variables in .env".
     const error = await boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' }).catch((failure: unknown) => failure);
     const solutions = await new ErrorSolutions([...DevtoolsServiceProvider.solutions, ...coreSolutions]).find(error);

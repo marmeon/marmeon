@@ -39,7 +39,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       when: (e) => e.message.startsWith('DEVTOOLS_ENABLED=true with') || e.message.startsWith('The devtools were opted in'),
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
-        text: 'The devtools run with NODE_ENV=development only — nothing can turn them on in production, staging or without NODE_ENV. Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -D @marmeon/devtools): a production install then does not even have it.',
+        text: 'The devtools run with NODE_ENV=development only — nothing can turn them on in production or without NODE_ENV, whatever APP_ENV says. Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -D @marmeon/devtools): a production install then does not even have it.',
         docs: 'docs/devtools.md#only-in-development',
       }),
     },
@@ -64,7 +64,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     const test = app.container.has(DevtoolsTestOptIn) ? app.container.make(DevtoolsTestOptIn) : undefined;
     if (test && config.protected) {
       throw new DevtoolsConfigError(
-        `The devtools were opted in (createTestApp(…, { devtools: true })) with NODE_ENV=${config.environment ?? '(unset)'} — they never run in production, staging or without NODE_ENV.`,
+        `The devtools were opted in (createTestApp(…, { devtools: true })) with NODE_ENV=${config.environment ?? '(unset)'} — they never run in production or without NODE_ENV.`,
       );
     }
     if (config.ineffective && !test) {

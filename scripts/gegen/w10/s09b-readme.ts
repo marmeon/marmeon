@@ -133,7 +133,7 @@ export default defineGegenproben({
     {
       id: 'G6',
       title: 'buildEnvironment without the .env rule: NODE_ENV=development of .env reaches the build (a development client)',
-      patch: [{ file: ENV, find: '  if (environment.isDevelopment(env) && environment.fromDotEnv(env)) {', replace: '  if (false) {' }],
+      patch: [{ file: ENV, find: '  if (environment.isDevelopment(env) && !environment.fromDotEnv(env)) {', replace: '  if (environment.isDevelopment(env)) {' }],
       run: environment('is set aside'),
       expect: /the development NODE_ENV of \.env reached the build: expected 'development' to be 'production'/,
       masks: 'G6b',
@@ -141,9 +141,9 @@ export default defineGegenproben({
     {
       id: 'G6b',
       title: 'the rule over-reaching: an explicit NODE_ENV=development of the shell is overridden too — the environment no longer wins',
-      patch: [{ file: ENV, find: '  if (environment.isDevelopment(env) && environment.fromDotEnv(env)) {', replace: '  if (environment.isDevelopment(env)) {' }],
-      run: environment('a NODE_ENV the environment sets is respected'),
-      expect: /an explicit NODE_ENV was overridden: expected 'production' to be 'development'/,
+      patch: [{ file: ENV, find: '  if (environment.isDevelopment(env) && !environment.fromDotEnv(env)) {', replace: '  if (false) {' }],
+      run: environment('a NODE_ENV=development the environment sets is respected'),
+      expect: /an explicit NODE_ENV=development was overridden: expected 'production' to be 'development'/,
       masks: 'G6',
     },
     {
@@ -193,8 +193,8 @@ export default defineGegenproben({
     },
     {
       id: 'G9b',
-      title: 'rule 3 without Vite\'s DEV: `import.meta.env.DEV` (true in a staging build) passes',
-      patch: [{ file: CHECK, find: "    `\\\\bimport\\\\.meta\\\\.env\\\\.DEV\\\\b`, // Vite's DEV: true for any NODE_ENV but production (a staging build)\n", replace: '' }],
+      title: 'rule 3 without Vite\'s DEV: `import.meta.env.DEV` (true in a build without NODE_ENV=production) passes',
+      patch: [{ file: CHECK, find: "    `\\\\bimport\\\\.meta\\\\.env\\\\.DEV\\\\b`, // Vite's DEV: true for any NODE_ENV but production (a build without one)\n", replace: '' }],
       run: ci('covers the apps and the starter'),
       expect: /expected \[ …\(2\) \] to deeply equal \[ …\(4\) \]/,
       masks: 'G9',

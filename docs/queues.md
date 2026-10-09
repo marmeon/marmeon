@@ -227,7 +227,7 @@ pnpm marmeon queue:work
 ```
 
 Its first line says what it serves and which environment it assumed, such as `Processing jobs of the database connection: every
-queue (oldest first) — in production (protected)`. On a server, set `NODE_ENV` in the worker's environment, not only in `.env`:
+queue (oldest first) — in production (APP_ENV=production)`. On a server, set `NODE_ENV` in the worker's environment, not only in `.env`:
 a worker that is `development` only because of the app's `.env` logs a warning and runs anyway. The
 [configuration](configuration.md#where-node_env-comes-from) page explains where `NODE_ENV` comes from.
 

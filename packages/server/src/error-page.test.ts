@@ -269,9 +269,9 @@ describe('the development error page (E119)', () => {
 });
 
 describe('the development error page — only in development (E115)', () => {
-  for (const nodeEnv of ['production', 'test', 'staging']) {
-    it(`NODE_ENV=${nodeEnv}: no recorder, no subscriber — the plain error page without stack, queries, headers or code`, async () => {
-      const { application, kernel } = await boot({ env: { NODE_ENV: nodeEnv } });
+  for (const env of [{ NODE_ENV: 'production' }, { NODE_ENV: 'test' }, { NODE_ENV: 'production', APP_ENV: 'local' }] as Record<string, string>[]) {
+    it(`${JSON.stringify(env)}: no recorder, no subscriber — the plain error page without stack, queries, headers or code`, async () => {
+      const { application, kernel } = await boot({ env });
       try {
         expect(application.container.make(ServerConfig).debug).toBe(false);
         expect(application.container.has(DevRequestRecorder)).toBe(false);

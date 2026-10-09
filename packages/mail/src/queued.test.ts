@@ -242,8 +242,8 @@ describe('mail previews (E106)', () => {
     expect(paths).toEqual(expect.arrayContaining(['/_marmeon/mail', '/_marmeon/mail/:module/:mail']));
   });
 
-  // E115 (W7 step 8): development only — not "anything but production" (a test, staging or a server without NODE_ENV).
-  it.each([['production'], ['test'], ['staging'], ['']])('is not registered with NODE_ENV=%j (empty: unset)', async (environment) => {
+  // E115 (W7 step 8): development only — not "anything but production" (a test, production or a server without NODE_ENV).
+  it.each([['production'], ['test'], ['']])('is not registered with NODE_ENV=%j (empty: unset)', async (environment) => {
     const application = await previewApp(environment);
     expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_marmeon/mail');
     expect(application.container.has(MailPreviews)).toBe(false);

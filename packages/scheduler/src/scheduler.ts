@@ -240,7 +240,7 @@ export class Scheduler {
     if (!this.#container.has(Cache)) {
       throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).');
     }
-    // A command limited to other environments is never run here — and may not exist here (`devtools:prune` in development:
+    // A command limited to other environments is never run here — and may not exist here (`devtools:prune` locally:
     // its package is a dev dependency, absent in a production install).
     const commands = tasks.filter((task) => task.definition.kind === 'command' && typeof task.definition.target === 'string' && this.#inEnvironment(task));
     if (commands.length > 0) {

@@ -115,7 +115,7 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
   when(filter: TaskFilter): ScheduledTask<K>;
   /** Does not run when `filter` says true. */
   skip(filter: TaskFilter): ScheduledTask<K>;
-  /** Runs only in these environments (`NODE_ENV`): `.environments('production')`. */
+  /** Runs only in these environments — by `APP_ENV` (default `local`, `testing` or `production` by `NODE_ENV`): `.environments('production')`. */
   environments(...names: [string, ...string[]]): ScheduledTask<K>;
   /**
    * Runs on one server only, when several run the scheduler (E88): the first to take the lock

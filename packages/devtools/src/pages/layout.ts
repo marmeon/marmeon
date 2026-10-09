@@ -58,6 +58,8 @@ export interface LayoutOptions {
   readonly usage?: { readonly bytes: number; readonly entries: number };
   /** Whether the app has mail previews (`/_marmeon/mail`) — linked in the navigation. */
   readonly mailPreviews?: boolean;
+  /** The app's environment (`APP_ENV`, informative) — named in the header. */
+  readonly environment?: string;
 }
 
 /** A whole page: header, navigation, the content, the inline style and script (both allowed by hash, `PAGE_CSP`). */
@@ -75,6 +77,8 @@ export function layout(options: LayoutOptions, content: Html): string {
 </head>
 <body>
 <header class="top"><a class="brand" href="${BASE}">Marmeon devtools</a><span class="dev">development only</span>${
+    options.environment ? html`<span class="dev">APP_ENV=${options.environment}</span>` : ''
+  }${
     options.usage ? html`<span class="usage">${options.usage.entries} entries · ${megabytes(options.usage.bytes)}</span>` : ''
   }</header>
 <nav class="types" aria-label="Devtools">

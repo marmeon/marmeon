@@ -291,7 +291,7 @@ it(
     const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], {}, sqliteEnv);
     expect(marmeon('make:auth')).toMatchObject({ code: 0, out: expect.stringContaining('Wrote bootstrap/routes.ts') });
     expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'home': { method: 'get'; path: '/'; controller: typeof ShowHomeController };");
-    expect(marmeon('migrate')).toMatchObject({ code: 0, out: expect.stringContaining('Environment: development (from .env)') });
+    expect(marmeon('migrate')).toMatchObject({ code: 0, out: expect.stringContaining('Environment: development (APP_ENV=local, NODE_ENV from .env)') });
     const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
     expect(typecheck.out).toBe('');
     expect(typecheck.code).toBe(0);

@@ -65,11 +65,12 @@ can end up in `dist/`. The [configuration](configuration.md#configuration-and-th
 provider.
 
 `marmeon start` serves the build. It runs with `NODE_ENV=production` unless the environment or `.env` sets another value, and it
-never starts Vite, a worker or the scheduler. Its start line names the environment and what it serves. In production it is the
-message of a JSON log entry:
+never starts Vite, a worker or the scheduler. A `NODE_ENV` other than `development`, `test` or `production` stops it before
+anything runs. Its start line names the environment, its `APP_ENV` and what it serves. In production it is the message of a JSON
+log entry:
 
 ```text
-Marmeon in production (protected) on http://localhost:3000 (the build; 54 routes, 7 modules, packages: …)
+Marmeon in production (APP_ENV=production) on http://localhost:3000 (the build; 54 routes, 7 modules, packages: …)
 ```
 
 The app stays TypeScript in production. Node strips the types of the app's files, and the packages run their compiled `dist/`.
@@ -187,7 +188,8 @@ The settings a server needs, beyond those of each feature:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `NODE_ENV` | `production` in the image | Set it in the real environment. `staging` is protected the same way, with one difference, below. |
+| `NODE_ENV` | `production` in the image | Set it in the real environment. `development`, `test` or `production`; any other value stops the start. |
+| `APP_ENV` | `production` | The environment's name: `staging`, `production` or one of your own. Shown in the start line, the logs and the traces, and it selects the scheduled tasks (`.environments('staging')`). It never weakens a protection or enables a development tool. |
 | `APP_KEY` | none | The key from `marmeon key:generate --show`. The same on every instance, and a secret. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys while you rotate, comma-separated. |
 | `APP_URL` | none | `https://…`. Cookies get `Secure` from it unless `SESSION_SECURE_COOKIE` says otherwise, and a protected app on `http://` warns at every start. Over plain HTTP, browsers also ignore the `Clear-Site-Data` of a sign-out, so a server without TLS leaves its pages in the browser's cache after a sign-out. |
@@ -226,20 +228,23 @@ the STARTTLS requirement off. Use it only for a relay without TLS on the same ma
 
 ### Staging
 
-`NODE_ENV=staging` is protected like production, and Marmeon's own code takes its production branches there. React does not: it
-uses its production build only under `NODE_ENV=production`.
+A staging server is a production server with another name. Run it with `NODE_ENV=production` and name it with `APP_ENV`:
 
-> [!WARNING]
-> A staging server shows its server errors to whoever opens the page. With `NODE_ENV=staging`, React renders with its
-> development build, and an error thrown in a part of a page that streams in after the first part reaches the browser with its
-> message and its stack trace. Production sends a short code alone. Keep staging behind a login or in a private network, put no
-> real customer data on it, and treat every message a server error can carry, such as SQL, paths and values, as visible to its
-> visitors.
+```sh title=".env.production"
+NODE_ENV=production
+APP_ENV=staging
+APP_URL=https://staging.example.com
+```
 
-React's development build also makes server rendering slower on staging than in production. Build a staging image with
-`NODE_ENV=production`, as the Dockerfile does, and set `staging` only when the container runs: a client built under another
-`NODE_ENV` carries React's development build into every visitor's browser. `marmeon build` warns when it runs under any
-`NODE_ENV` but `production`.
+It gets every protection of production and the production builds of the framework and of React: a server error reaches the
+visitor as the plain error page, and a part of a page that fails after the first part streams in goes to the browser as a short
+code, without its message or stack. The development routes answer 404, and `migrate` asks for `--force`. The start line reads
+`production (APP_ENV=staging)`, every JSON log entry carries `"appEnv":"staging"`, and every span the framework records carries
+`deployment.environment.name`.
+
+`NODE_ENV=staging` does not start: the start error names the two variables to set instead. Build the image once, with the
+Dockerfile's `NODE_ENV=production`, and run the same image as staging and as production with a different `APP_ENV`. `marmeon
+build` builds the browser's files for production under every `NODE_ENV` but `development`.
 
 ## Stopping without dropped requests
 

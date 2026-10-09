@@ -8,9 +8,10 @@ import { defineGegenproben } from '../define.ts';
  * routes — each route has its own scenario (G1 mail previews, G2 devtools), and X1 shows the mail test stays green when the devtools
  * lose the guard (a test of one route says nothing about the other). G3–G3c break the shared function itself.
  *
- * E201: isomorphic and server-rendering code checks `=== 'development' || === 'test'`. Each place a staging value is read at run
- * time has its own scenario: the client core (G4, G4b), server rendering (G5), the hydration report (G6). `check:source` rule 3 finds a
- * negative check put back (G7) — X7 shows the staging tests alone miss a site they do not cover (masking pair G7 ↔ X7). G8: a
+ * E201: isomorphic and server-rendering code checks `=== 'development' || === 'test'`. Each place `NODE_ENV` is read at run time
+ * has its own scenario with a missing `NODE_ENV` — production (E217; since W12 step 2 the value a negative check gets wrong, `staging`
+ * no longer starts): the client core (G4, G4b), server rendering (G5), the hydration report (G6). `check:source` rule 3 finds a
+ * negative check put back (G7) — X7 shows those tests alone miss a site they do not cover (masking pair G7 ↔ X7). G8: a
  * development branch that does not fold (a helper instead of the inline check) ships its explanation in the production bundle.
  */
 const MAIL = 'packages/mail/src/index.ts';
@@ -85,10 +86,10 @@ export default defineGegenproben({
       run: mailTest,
       expect: /localhost:3960 \/_marmeon\/mail: expected null to be 'same-origin'/,
     },
-    // --- E201: staging is not development --------------------------------------------------------------------------------------------
+    // --- E201: only development and test are development (a missing NODE_ENV is production) ------------------------------------------
     {
       id: 'G4',
-      title: 'the client core asks !== production again (C1): NODE_ENV=staging gets the explanation',
+      title: 'the client core asks !== production again (C1): a missing NODE_ENV gets the explanation',
       patch: [
         {
           file: 'packages/http/src/client/routes.ts',
@@ -97,18 +98,18 @@ export default defineGegenproben({
         },
       ],
       run: nodeEnvTest,
-      expect: /NODE_ENV=staging c1: expected '\[marmeon:C1\] Route \[people\.show\]: the/,
+      expect: /NODE_ENV=undefined c1: expected '\[marmeon:C1\] Route \[people\.show\]: the/,
     },
     {
       id: 'G4b',
-      title: 'isDevelopment() asks !== production again: staging counts as development (error details in server rendering)',
+      title: 'isDevelopment() asks !== production again: a missing NODE_ENV counts as development (error details in server rendering)',
       patch: [{ file: 'packages/http/src/client/document.ts', find: `    return ${POSITIVE};`, replace: `    return ${NEGATIVE};` }],
       run: nodeEnvTest,
-      expect: /NODE_ENV=staging development: expected true to be false/,
+      expect: /NODE_ENV=undefined development: expected true to be false/,
     },
     {
       id: 'G5',
-      title: 'server rendering resolves a page with !== production again (R2): staging renders the explanation',
+      title: 'server rendering resolves a page with !== production again (R2): a missing NODE_ENV renders the explanation',
       patch: [
         {
           file: 'packages/react/src/pages.ts',
@@ -116,27 +117,27 @@ export default defineGegenproben({
           replace: `        ${NEGATIVE} ? \`[marmeon:R2] Page`,
         },
       ],
-      run: { vitest: 'packages/react/src/server.test.tsx', name: 'takes no development branch with NODE_ENV=staging' },
+      run: { vitest: 'packages/react/src/server.test.tsx', name: 'takes no development branch without NODE_ENV' },
       expect: /to throw error matching .* but got '\[marmeon:R2\] Page \[app\/Nope\] not/,
     },
     {
       id: 'G5b',
-      title: 'server rendering warns about a late <Head> on staging (isDevelopment negative): the warning reaches the log',
+      title: 'server rendering warns about a late <Head> without NODE_ENV (isDevelopment negative): the warning reaches the log',
       patch: [{ file: 'packages/http/src/client/document.ts', find: `    return ${POSITIVE};`, replace: `    return ${NEGATIVE};` }],
-      run: { vitest: 'packages/react/src/server.test.tsx', name: 'takes no development branch with NODE_ENV=staging' },
+      run: { vitest: 'packages/react/src/server.test.tsx', name: 'takes no development branch without NODE_ENV' },
       expect: /expected "vi\.fn\(\)" to not be called at all, but actually been called 1 times/,
     },
     {
       id: 'G6',
-      title: 'the hydration report asks === production again: a staging page shows the development notice',
+      title: 'the hydration report asks === production again: a page without NODE_ENV shows the development notice',
       patch: [{ file: 'packages/react/src/client.tsx', find: `  if (!(${POSITIVE})) {`, replace: "  if (process.env.NODE_ENV === 'production') {" }],
-      run: { vitest: 'packages/react/src/client.test.tsx', name: 'reports a mismatch like production with NODE_ENV=staging' },
+      run: { vitest: 'packages/react/src/client.test.tsx', name: 'reports a mismatch like production without NODE_ENV' },
       expect: /the development notice: expected '\[marmeon\] Hydration mismatch/,
     },
     // --- check:source rule 3 -------------------------------------------------------------------------------------------------------
     {
       id: 'G7',
-      title: 'a negative check put back where no staging test looks (R9 in app.tsx): check:source names the line',
+      title: 'a negative check put back where no NODE_ENV test looks (R9 in app.tsx): check:source names the line',
       patch: [r9Back],
       run: { command: ['pnpm', 'run', 'check:source'] },
       expect: /NODE_ENV checked positively \(E201[^\n]*packages\/react\/src\/app\.tsx:\d+:/,
@@ -144,7 +145,7 @@ export default defineGegenproben({
     },
     {
       id: 'X7',
-      title: 'masking probe: the same site put back — the staging tests stay green; only the rule finds it',
+      title: 'masking probe: the same site put back — the NODE_ENV tests stay green; only the rule finds it',
       patch: [r9Back],
       run: { vitest: ['packages/http/src/client/node-env.test.ts', 'packages/react/src/server.test.tsx', 'packages/react/src/client.test.tsx'] },
       expectGreen: true,

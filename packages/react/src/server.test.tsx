@@ -310,8 +310,8 @@ describe('streaming SSR (E37)', () => {
     expect(onWarning).toHaveBeenCalledWith(expect.stringContaining('<Head title="Late"> in [app/LateHead] rendered after the document head was sent'));
   });
 
-  it('takes no development branch with NODE_ENV=staging (E201): no late-<Head> warning, short codes — SSR reads NODE_ENV at run time', async () => {
-    vi.stubEnv('NODE_ENV', 'staging');
+  it('takes no development branch without NODE_ENV — production (E201, E217): no late-<Head> warning, short codes — SSR reads NODE_ENV at run time', async () => {
+    vi.stubEnv('NODE_ENV', undefined);
     try {
       const slow = later<string>();
       const onWarning = vi.fn();

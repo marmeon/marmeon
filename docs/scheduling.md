@@ -142,7 +142,7 @@ really pass.
 | --- | --- |
 | `when(filter)` | Runs only when `filter` returns `true`. |
 | `skip(filter)` | Does not run when `filter` returns `true`. |
-| `environments('production')` | Runs only in these environments, by `NODE_ENV`. A missing `NODE_ENV` counts as `production`. |
+| `environments('production')` | Runs only in these environments, by `APP_ENV`. Without it the name follows `NODE_ENV`: `local`, `testing` or `production`. |
 
 A filter is asked every time the task is due. It gets the run's container scope, so it can ask a service, here a config
 definition of the module:
@@ -151,9 +151,26 @@ definition of the module:
 s.command('reports:send').daily().at('07:00').when((scope) => scope.make(ReportsConfig).enabled);
 ```
 
+`environments()` compares against the environment's name, `APP_ENV`. A staging server, `NODE_ENV=production APP_ENV=staging`,
+runs the tasks of `.environments('staging')` and leaves those of `.environments('production')` out:
+
+```ts title="modules/reports/schedule.ts"
+import { defineSchedule } from '@marmeon/scheduler';
+
+export const schedule = defineSchedule((s) => {
+  // Mails to customers: production only, never from staging.
+  s.command('reports:send').daily().at('07:00').environments('production');
+  // A copy of production's data for the testers: staging only.
+  s.command('reports:refresh-demo').daily().at('05:00').environments('staging');
+});
+```
+
+Selecting tasks is all `APP_ENV` does here. It never weakens a protection and never enables a development tool, which follow
+`NODE_ENV` alone, as the [configuration](configuration.md#app_env-the-environments-name) page explains.
+
 The scheduler checks at its start that every `s.command()` names a command the app has and every `s.job()` a job a module lists.
 A task limited to other environments is left out of that check, because it never runs here and its package may be a dev
-dependency: `s.command('devtools:prune').hourlyAt(40).environments('development')`.
+dependency: `s.command('devtools:prune').hourlyAt(40).environments('local')`.
 
 ## Several servers and long runs
 
@@ -203,7 +220,7 @@ pnpm marmeon schedule:work
 ```
 
 Its first line names its tasks and the environment it assumed, such as `Running the schedule every minute: 3 tasks (session:prune,
-cache:prune, queue:prune-failed --hours=168) — in production (protected)`. On `SIGTERM` or `SIGINT` it starts no new run, gives
+cache:prune, queue:prune-failed --hours=168) — in production (APP_ENV=production)`. On `SIGTERM` or `SIGINT` it starts no new run, gives
 the runs still going `--stop-timeout` seconds, 30 by default, then ends and frees their locks.
 
 | Command | What it does |
@@ -238,7 +255,7 @@ Every run is a unit of work of its own, like a request or a job: outside any tra
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `SCHEDULE_TIMEZONE` | `UTC` | Whose clocks the tasks' times are on: an IANA name such as `Europe/Berlin`, checked at the start. |
-| `NODE_ENV` | `production` when missing | What `environments()` compares against. |
+| `APP_ENV` | `local`, `testing` or `production`, by `NODE_ENV` | What `environments()` compares against. |
 
 ## Housekeeping commands
 

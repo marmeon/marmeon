@@ -85,7 +85,7 @@ export const ServerConfig = defineConfig('server', {
     /**
      * Development error handling (E115, E119): the error page with code, request, queries and solutions, exception details in
      * JSON errors, the Vite overlay for server-rendering errors. Only when `NODE_ENV=development` — never "not production":
-     * a staging or test server shows the plain error page.
+     * a production or test server shows the plain error page, whatever `APP_ENV` says.
      */
     debug: environment.isDevelopment(e),
   }),

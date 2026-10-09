@@ -3,6 +3,7 @@ import { createApplication, type Application } from './application.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
+import { EnvironmentConfig } from './config/environment-config.ts';
 import { Logger } from './logger.ts';
 import type { ServiceProvider } from './provider.ts';
 
@@ -146,5 +147,24 @@ describe('createApplication({ phase: "build" }) (E187)', () => {
     expect(error).toBeInstanceOf(ConfigError);
     expect((error as Error).message).toMatch(/^Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet these variables in the environment or in \.env \(see \.env\.example\)\.$/);
     expect(registered).toEqual([]);
+  });
+});
+
+describe('the environment (E217)', () => {
+  it('stops the start at a NODE_ENV that is none of development, test, production — also for an app given its own env', async () => {
+    await expect(createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'staging' } })).rejects.toThrow(ConfigError);
+    await expect(createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'staging' } })).rejects.toThrow(
+      'NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging.',
+    );
+  });
+
+  it('every app has EnvironmentConfig: NODE_ENV and APP_ENV, read like every variable — APP_ENV by default the one NODE_ENV goes with', async () => {
+    const read = async (environment: Record<string, string>) =>
+      (await createApplication({ root: import.meta.dirname, discover: false, env: environment })).container.make(EnvironmentConfig);
+    expect(await read({ NODE_ENV: 'production', APP_ENV: 'staging' })).toEqual({ node: 'production', app: 'staging' });
+    expect(await read({ NODE_ENV: 'production', APP_ENV: '' })).toEqual({ node: 'production', app: 'production' });
+    expect(await read({})).toEqual({ node: 'production', app: 'production' });
+    expect(await read({ NODE_ENV: 'development' })).toEqual({ node: 'development', app: 'local' });
+    expect(await read({ NODE_ENV: 'test' })).toEqual({ node: 'test', app: 'testing' });
   });
 });

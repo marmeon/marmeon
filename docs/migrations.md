@@ -117,18 +117,18 @@ A rollback needs the file of every migration it undoes. One whose file is gone s
 
 ### Where the app is protected
 
-Outside development and tests the app is protected: in production, in staging, and when `NODE_ENV` is not set at all. There
-`migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed` refuse to run without `--force`. Each command first
-names the environment it assumed:
+Outside development and tests the app is protected: in production, whatever `APP_ENV` names it, and when `NODE_ENV` is not set
+at all. There `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed` refuse to run without `--force`. Each
+command first names the environment it assumed, here on a staging server:
 
 ```text
-Environment: staging (protected)
-The application is protected (staging (protected)). Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).
+Environment: production (APP_ENV=staging)
+The application is protected (production (APP_ENV=staging)). Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).
 ```
 
 A deployment runs `marmeon migrate --force` once, before the new version takes requests. The
 [deployment](deployment.md#the-short-version) page shows it in a one-off container. On your machine, `NODE_ENV=development` in
-`.env` needs no `--force`, and the line reads `Environment: development (from .env)`. The
+`.env` needs no `--force`, and the line reads `Environment: development (APP_ENV=local, NODE_ENV from .env)`. The
 [configuration](configuration.md#where-node_env-comes-from) page explains where `NODE_ENV` comes from.
 
 ## Columns

@@ -229,8 +229,8 @@ describe('MailServiceProvider', () => {
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'array' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'development' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'test' })).toEqual([]);
-    // Fail-closed (E139): staging and a missing NODE_ENV are protected like production.
-    expect(await warningsWith({ NODE_ENV: 'staging' })).toEqual([LOG_MAILER_WARNING]);
+    // Fail-closed (E139): a missing NODE_ENV is protected like production — APP_ENV changes nothing (E217).
+    expect(await warningsWith({ NODE_ENV: 'production', APP_ENV: 'local' })).toEqual([LOG_MAILER_WARNING]);
     expect(await warningsWith({ NODE_ENV: '' })).toEqual([LOG_MAILER_WARNING]);
   });
 

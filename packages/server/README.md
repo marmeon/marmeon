@@ -15,7 +15,10 @@ has `vite` and `@marmeon/vite` as dev dependencies; `marmeon start` serves the b
 ```sh
 pnpm marmeon build    # injection lists, route types, type check, the browser's files and the server rendering
 pnpm marmeon start    # serves the build: NODE_ENV=production unless the environment or .env says otherwise
+NODE_ENV=production APP_ENV=staging pnpm marmeon start   # a staging server: production, named staging
 ```
+
+`NODE_ENV` is `development`, `test` or `production`; any other value stops the start. `APP_ENV` only names the environment.
 
 `GET /up` answers once the app booted, `GET /up/ready` runs every health check of the app and its packages. On `SIGTERM` the
 server leaves readiness, finishes the requests in flight and exits.
@@ -24,6 +27,7 @@ server leaves readiness, finishes the requests in flight and exits.
 
 - [Request Lifecycle](https://github.com/marmeon/marmeon/blob/main/docs/lifecycle.md)
 - [Deployment](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md)
+- [Deployment: staging](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#staging)
 - [Deployment: stopping without dropped requests](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#stopping-without-dropped-requests)
 - [Health Checks](https://github.com/marmeon/marmeon/blob/main/docs/health.md)
 - [Error Handling: the development error page](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#the-development-error-page)

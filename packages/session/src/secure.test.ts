@@ -33,7 +33,7 @@ describe('SESSION_SECURE_COOKIE follows APP_URL (E162)', () => {
 
   it('warns once at boot when a protected environment sends cookies without Secure — never in development or test', async () => {
     expect((await boot({ NODE_ENV: 'production', APP_URL: 'http://example.com' })).warnings).toEqual([insecureCookieWarning('APP_URL')]);
-    expect((await boot({ NODE_ENV: 'staging', APP_URL: 'https://example.com', SESSION_SECURE_COOKIE: 'false' })).warnings).toEqual([insecureCookieWarning('SESSION_SECURE_COOKIE')]);
+    expect((await boot({ NODE_ENV: 'production', APP_ENV: 'local', APP_URL: 'https://example.com', SESSION_SECURE_COOKIE: 'false' })).warnings).toEqual([insecureCookieWarning('SESSION_SECURE_COOKIE')]);
     expect((await boot({ APP_URL: 'http://example.com' })).warnings).toEqual([insecureCookieWarning('APP_URL')]); // no NODE_ENV = protected (E139)
     expect((await boot({ NODE_ENV: 'production', APP_URL: 'https://example.com' })).warnings).toEqual([]);
     expect((await boot({ NODE_ENV: 'development', APP_URL: 'http://localhost:3000' })).warnings).toEqual([]);

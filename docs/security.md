@@ -11,28 +11,28 @@ Found a vulnerability in the framework? Report it privately, as [SECURITY.md](..
 
 ## The environment decides, and fails closed
 
-Two rules depend on `NODE_ENV`, and they are not mirror images of each other:
+`NODE_ENV` is `development`, `test` or `production`; any other value stops the start. Two rules depend on it, and they are not
+mirror images of each other:
 
 - **Development tools run only with `NODE_ENV=development`.** The error page with the code that threw, the devtools, the
   `Server-Timing` header, the mail previews and Vite's dev server stay off everywhere else, `test` included.
-- **Protections apply to every other value but `test`, and to none.** JSON logs, `migrate` asking for `--force`, the warnings at
-  start-up and the absence of lab pages hold for `production`, for `staging`, for a typo and for a server where nobody set
-  `NODE_ENV`. `test` belongs to the test runner alone: it turns every protection off, and development-only routes answer under it,
-  so it never belongs on a server.
+- **Protections apply to `production` and to a server where nobody set `NODE_ENV`.** JSON logs, `migrate` asking for `--force`,
+  the warnings at start-up and the absence of lab pages hold there. `test` belongs to the test runner alone: it turns every
+  protection off, and development-only routes answer under it, so it never belongs on a server.
+
+`APP_ENV` names the environment (`staging`, `production`, a name of your own) and changes neither rule: `APP_ENV=local` on a
+server with `NODE_ENV=production` is protected, and its development routes answer 404. A staging server is
+`NODE_ENV=production APP_ENV=staging`, with the production builds of the framework and of React, so a server error never reaches
+its visitors with a message or a stack.
 
 A forgotten variable therefore never shows your source code to a visitor. Set `NODE_ENV` in the server's real environment, and
 never deploy a developer's `.env`: `marmeon start`, `queue:work` and `schedule:work` warn loudly when `development` comes from a
-`.env`, and the start line says `development (from .env)`. The [configuration](configuration.md#the-environment-node_env) page
-explains where `NODE_ENV` comes from.
+`.env`, and the start line says `development (APP_ENV=local, NODE_ENV from .env)`. The
+[configuration](configuration.md#the-environment-node_env) page explains where `NODE_ENV` comes from.
 
 Code that runs in the browser and in server rendering checks for development positively, as `development` or `test`, never as
-"not production". On staging, with a typo or without a value, an error in the browser shows only its short code, such as
-`[marmeon:R2] users/Show`, no development warning appears, and an error page rendered on the server carries no exception message.
-
-> [!WARNING]
-> React picks its own development build wherever `NODE_ENV` is not `production`. On a staging server, that build sends the message
-> and the stack of a server error into the page. Keep staging behind a login or in a private network, with no real data, as the
-> [deployment](deployment.md#staging) page explains.
+"not production". Without a value, an error in the browser shows only its short code, such as `[marmeon:R2] users/Show`, no
+development warning appears, and an error page rendered on the server carries no exception message.
 
 ## Development routes
 

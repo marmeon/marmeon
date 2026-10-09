@@ -164,10 +164,9 @@ renders the page itself.
 The page exists only with `NODE_ENV=development`: in production, staging and tests nothing of it is loaded, and the error page
 shows no stack, queries, headers or code. A test asks for it with `createTestApp(application, { debug: true })`.
 
-> [!WARNING]
-> Staging does not show the development error page, but it is not as quiet as production either. A staging server renders with
-> React's development build, and an error in a part of a page that streams in late reaches the browser with its message and its
-> stack. The [configuration](configuration.md#staging) page explains it.
+A staging server runs as production, `NODE_ENV=production APP_ENV=staging`, and is just as quiet: an error in a part of a page
+that streams in late reaches the browser as a short code, without its message or stack. The
+[configuration](configuration.md#staging) page explains it.
 
 ### Solutions
 
@@ -227,7 +226,7 @@ know, throws an explanation in development: what is wrong and how to fix it. A p
 such as `[marmeon:R2] users/Show`, so the explanations cost no download. Both start with the same code. Run the app in development
 to read the whole message, or look the code up here.
 
-The explanation comes only with `NODE_ENV` set to `development` or `test`. A build or a server under any other value, `staging`
+The explanation comes only with `NODE_ENV` set to `development` or `test`. A build or a server in production, a staging server
 included, gets the code alone.
 
 | Code | Where | Meaning |

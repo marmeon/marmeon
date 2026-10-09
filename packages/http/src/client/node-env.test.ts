@@ -6,8 +6,9 @@ import { createPoll } from './poll.ts';
 import { resolveRoute } from './routes.ts';
 
 // E201 (W10 step 6): development branches ask `NODE_ENV === 'development' || === 'test'` — positively. A client build has the value
-// folded in by Vite; server rendering and these tests read it at run time, so `staging`, a typo or none must take the production
-// branch: the short code, no explanation, no devtools hook. (Before: `!== 'production'` — staging got every development branch.)
+// folded in by Vite; server rendering and these tests read it at run time, so a missing NODE_ENV (production, E217) must take the
+// production branch: the short code, no explanation, no devtools hook — and so must, fail-closed, a value the start refuses but a
+// hand-made build could still fold in (a typo, `staging`). (Before: `!== 'production'` — a missing NODE_ENV got every development branch.)
 afterEach(() => {
   vi.unstubAllEnvs();
   delete (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__;
@@ -39,7 +40,7 @@ function observe(value: string | undefined) {
 }
 
 describe('NODE_ENV is checked positively in the client core (E201)', () => {
-  it.each([['staging'], ['production'], [undefined], ['Development'], ['dev']])('NODE_ENV=%j takes the production branch: short codes, no devtools hook', (value) => {
+  it.each([[undefined], ['production'], ['Development'], ['dev'], ['staging']])('NODE_ENV=%j takes the production branch: short codes, no devtools hook', (value) => {
     const seen = observe(value);
     const expected = { development: false, c1: '[marmeon:C1] people.show', c2: '[marmeon:C2] people.show', c5: '[marmeon:C5] 0', hook: 0 };
     for (const [key, short] of Object.entries(expected)) expect(seen[key as keyof typeof seen], `NODE_ENV=${value} ${key}`).toBe(short);

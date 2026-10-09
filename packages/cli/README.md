@@ -21,12 +21,16 @@ pnpm marmeon make:controller ShowNote --module=notes --view
 `marmeon list` prints every command the app has. Every installed package adds its commands, and so does every module that lists
 some. With npm, run them as `npx marmeon …`.
 
+Every command runs with `NODE_ENV` `development`, `test` or `production` and stops at any other value; a staging server is
+`NODE_ENV=production APP_ENV=staging`. `marmeon build` builds the browser's files for production unless `NODE_ENV=development`.
+
 ## Documentation
 
 - [Console](https://github.com/marmeon/marmeon/blob/main/docs/console.md)
 - [Console: the development server](https://github.com/marmeon/marmeon/blob/main/docs/console.md#the-development-server)
 - [Console: writing commands](https://github.com/marmeon/marmeon/blob/main/docs/console.md#writing-commands)
 - [Console: lint](https://github.com/marmeon/marmeon/blob/main/docs/console.md#lint)
+- [Configuration: the environment](https://github.com/marmeon/marmeon/blob/main/docs/configuration.md#the-environment-node_env)
 - [Deployment](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

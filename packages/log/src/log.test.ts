@@ -27,6 +27,28 @@ describe('@marmeon/log', () => {
     expect(format('development', 'json')).toBe('json');
   });
 
+  it('names the app\'s environment in every JSON entry — appEnv, from APP_ENV or the one NODE_ENV goes with (E217)', () => {
+    const resolve = (env: Record<string, string | undefined>) => LogConfig.resolve({ LOG_LEVEL: 'info', ...env }).environment;
+    expect(resolve({ NODE_ENV: 'production', APP_ENV: 'staging' })).toBe('staging');
+    expect(resolve({ NODE_ENV: 'production' })).toBe('production');
+    expect(resolve({ NODE_ENV: 'development' })).toBe('local');
+    expect(resolve({ NODE_ENV: 'test' })).toBe('testing');
+    const lines: Record<string, unknown>[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(JSON.parse(String(chunk)));
+        done();
+      },
+    });
+    const logger = createPinoLogger({ level: 'info', format: 'json', environment: 'staging' }, stream);
+    logger.info('Started');
+    logger.child({ channel: 'http' }).warn('Slow');
+    expect(lines).toEqual([
+      { level: 30, time: expect.any(Number), appEnv: 'staging', msg: 'Started' },
+      { level: 40, time: expect.any(Number), appEnv: 'staging', channel: 'http', msg: 'Slow' },
+    ]);
+  });
+
   it('writes JSON with the message and context, in Laravel argument order', () => {
     const { lines, logger } = capture();
     logger.info('User signed in', { userId: '1' });

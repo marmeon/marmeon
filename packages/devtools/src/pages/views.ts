@@ -24,7 +24,7 @@ import {
 import { columnCount, jobStatus, levelBadge, origin, readableUrl, requestBadges, row, statusBadge, summary, tableHead } from './rows.ts';
 
 /** What every page shows in its frame. */
-export type Frame = Pick<LayoutOptions, 'usage' | 'mailPreviews'>;
+export type Frame = Pick<LayoutOptions, 'usage' | 'mailPreviews' | 'environment'>;
 
 /** A list's filters, from its query string — what the store narrows by. */
 export interface ListFilters {

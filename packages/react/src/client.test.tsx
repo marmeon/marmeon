@@ -109,15 +109,15 @@ describe('createMarmeonApp — hydration', () => {
     }
   });
 
-  it('reports a mismatch like production with NODE_ENV=staging (E201): no notice, no explanation, no devtools hook — React\'s report only', async () => {
+  it('reports a mismatch like production without NODE_ENV (E201, E217): no notice, no explanation, no devtools hook — React\'s report only', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const reportError = vi.fn();
     vi.stubGlobal('reportError', reportError);
     const hook = { navigator: vi.fn(), recoverable: vi.fn() };
     (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = hook;
     try {
-      // Server and browser render under staging: what a staging server and a staging build (Vite folds "staging" in) do.
-      vi.stubEnv('NODE_ENV', 'staging');
+      // Server and browser render without NODE_ENV — production: a negative check (`!== 'production'`) would take the development branch.
+      vi.stubEnv('NODE_ENV', undefined);
       serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), await ssr(page({ name: 'Ada', lastLoginAt: at as unknown as string })));
       await start();
       expect(notice()?.textContent ?? null, 'the development notice').toBeNull();

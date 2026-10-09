@@ -7,7 +7,7 @@
  *
  * **Development only (E115).** Nothing in the framework imports it: the devtools' client (`@marmeon/devtools/client`, served by
  * the Vite dev server only) attaches it through the dev hook (`__MARMEON_DEVTOOLS_HOOK__`), which the core and the React adapter
- * call only under `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (E201: positive — staging is not development) — a production build drops those calls (and so the hook's name).
+ * call only under `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (E201: positive — only development and test are development branches) — a production build drops those calls (and so the hook's name).
  *
  * **What it holds is the server's data** (validation messages, patched props, a hydration error's text): **only in slots of the
  * document**, emptied by the core when the document is left — signing out leaves none of it (E36), whatever the bar showed.

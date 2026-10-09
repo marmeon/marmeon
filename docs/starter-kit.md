@@ -116,7 +116,7 @@ and the change-of-address link answer 404.
 > With private registration off, the rate limit of the form is all that stops a stranger from finding out who has an account.
 > Outside development and tests the app logs a warning about it at every start.
 
-Only `true` and `false` are allowed. Any other value stops the start. To demand a confirmed address with private registration
+Only `true` and `false` are allowed. Any other value stops the start; an empty one counts as unset. To demand a confirmed address with private registration
 off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`.
 
 ## Mail, the queue and the scheduler

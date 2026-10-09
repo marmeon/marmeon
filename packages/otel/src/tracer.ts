@@ -21,6 +21,11 @@ export interface InstrumentOptions {
    * whose callers are your own. A trusted proxy is no such edge by itself: it usually passes the client's header on unchanged.
    */
   readonly trustTraceparent?: boolean;
+  /**
+   * The app's environment (`APP_ENV`, E217): `deployment.environment.name` on every span the framework starts. The resource is the
+   * SDK's — the app's `bootstrap/telemetry.ts` — so the framework says it per span; `OTEL_RESOURCE_ATTRIBUTES` puts it on the resource.
+   */
+  readonly environment?: string;
 }
 
 const KNOWN_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH']);
@@ -52,8 +57,9 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
   const typed = new WeakSet<Span>();
   const offs: (() => void)[] = [];
 
+  const deployment: Attributes = options.environment === undefined ? {} : { 'deployment.environment.name': options.environment };
   const start = (message: object, name: string, kind: SpanKind, attributes: Attributes, parent: Context = api.context.active(), extra: SpanOptions = {}): Span => {
-    const span = tracer.startSpan(name, { kind, startTime: (message as { startedAt: number }).startedAt, attributes: clean(attributes), ...extra }, parent);
+    const span = tracer.startSpan(name, { kind, startTime: (message as { startedAt: number }).startedAt, attributes: clean({ ...deployment, ...attributes }), ...extra }, parent);
     spans.set(message, span);
     return span;
   };
@@ -167,6 +173,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             kind: api.SpanKind.CLIENT,
             startTime: query.startedAt,
             attributes: clean({
+              ...deployment,
               'db.system.name': system,
               // The statement only — its parameters never (E125): Kysely binds every value, so the text holds placeholders.
               'db.query.text': redactor.text(query.sql),

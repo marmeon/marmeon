@@ -23,13 +23,13 @@ for its worker and its scheduler too. Everywhere else nothing is recorded, nothi
 | Environment | The devtools |
 | --- | --- |
 | `NODE_ENV=development` | Record, and serve their pages. |
-| `NODE_ENV=test`, `staging`, `production`, or no `NODE_ENV` | Off. Their routes answer `404`, and the start does not load `config/devtools.ts`. |
+| `NODE_ENV=test`, `production` with any `APP_ENV`, or no `NODE_ENV` | Off. Their routes answer `404`, and the start does not load `config/devtools.ts`. |
 | `DEVTOOLS_ENABLED=false` | Off, also in development. |
 | `DEVTOOLS_ENABLED=true` where the app is protected | The start fails. |
 | `createTestApp(application, { devtools: true })` | Record into memory, for the test. |
 
 The rule asks for development, not for "anything but production": a server whose `NODE_ENV` was forgotten records nothing.
-`DEVTOOLS_ENABLED=true` cannot turn them on anywhere else, and with `production`, `staging` or no `NODE_ENV` it stops the start
+`DEVTOOLS_ENABLED=true` cannot turn them on anywhere else, and with `production` or no `NODE_ENV` it stops the start
 instead of being ignored. With `NODE_ENV=test` it has no effect, and the start logs a warning.
 
 > [!WARNING]
@@ -147,7 +147,7 @@ the command:
 import { defineSchedule } from '@marmeon/scheduler';
 
 export const schedule = defineSchedule((s) => {
-  s.command('devtools:prune').hourlyAt(40).environments('development');
+  s.command('devtools:prune').hourlyAt(40).environments('local');
 });
 ```
 

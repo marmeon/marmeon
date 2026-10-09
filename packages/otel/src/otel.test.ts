@@ -247,6 +247,20 @@ describe('@marmeon/otel (E120)', () => {
     expect(dump(span)).not.toMatch(/secret-api-token|a-reset-token-value|session=abc/);
   });
 
+  it('names the deployment on every span it records: deployment.environment.name is APP_ENV (by default the one NODE_ENV goes with)', async () => {
+    const { app: booting } = boot({ NODE_ENV: 'production', APP_ENV: 'staging' });
+    await using app = await booting;
+    await spans();
+    await createHttpKernel(app).request('http://shop.test/people/7');
+    const all = await spans();
+    expect(all.length).toBeGreaterThan(1);
+    for (const span of all) expect(span.attributes['deployment.environment.name'], span.name).toBe('staging');
+    const { app: plain } = boot({ NODE_ENV: 'test' });
+    await using tested = await plain;
+    await createHttpKernel(tested).request('http://shop.test/people/7');
+    expect(byName(await spans(), 'GET /people/:person')!.attributes['deployment.environment.name']).toBe('testing');
+  });
+
   it('stops on shutdown: no subscriber left, nothing built for the app any more', async () => {
     const { app: booting } = boot();
     const app = await booting;

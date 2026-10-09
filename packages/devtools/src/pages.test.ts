@@ -109,8 +109,9 @@ async function readStream(response: Response, until: RegExp, ms = 5000): Promise
 }
 
 describe('the devtools pages (W7 step 8): only where the devtools run (E115)', () => {
-  it.each([['test'], ['staging'], ['production'], ['']])('do not exist with NODE_ENV=%j and no opt-in — not one route', async (environment) => {
-    const { app, kernel } = await boot(environment === '' ? {} : { NODE_ENV: environment }, { test: false });
+  // APP_ENV names the environment and opens nothing (E217): production with APP_ENV=local has no devtools either.
+  it.each([[{ NODE_ENV: 'test' }], [{ NODE_ENV: 'production', APP_ENV: 'local' }], [{ NODE_ENV: 'production' }], [{}]])('do not exist with %j and no opt-in — not one route', async (environment) => {
+    const { app, kernel } = await boot(environment, { test: false });
     try {
       expect(devtoolsPaths(app)).toEqual([]);
       expect((await kernel.request(BASE)).status).toBe(404);
@@ -162,6 +163,16 @@ describe('the devtools pages (W7 step 8): only where the devtools run (E115)', (
           expect(other.status, `${method} ${path}`).toBe(404);
         }
       }
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('name the app\'s environment in the header — APP_ENV, escaped like everything else', async () => {
+    const { app, kernel } = await boot({ APP_ENV: 'qa <b>' });
+    try {
+      const page = await (await kernel.request(BASE)).text();
+      expect(page).toContain('<span class="dev">development only</span><span class="dev">APP_ENV=qa &lt;b&gt;</span>');
     } finally {
       await app.shutdown();
     }
