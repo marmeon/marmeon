@@ -250,21 +250,22 @@ describe('@marmeon/otel (E120)', () => {
 
   it('records the keys of the query only — its values with OTEL_RECORD_QUERY_VALUES=true, masked like any text', async () => {
     const query = (attributes: Record<string, unknown> | undefined) => String(attributes?.['url.query']);
-    const url = 'http://shop.test/people/7?q=ada%40example.com&page=2&flag&token=secret-in-the-url&q=second';
+    // A part without `=` may be a flag or a value (`?ada@example.com`): it is never written as it is.
+    const url = 'http://shop.test/people/7?q=ada%40example.com&page=2&bare-ada%40example.com&token=secret-in-the-url&q=second';
     const { app: booting } = boot();
     await using app = await booting;
     await spans();
     await createHttpKernel(app).request(url);
     const [plain] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
-    expect(query(plain?.attributes), dump(plain)).toBe('q=&page=&flag&token=&q=');
-    expect(dump(plain)).not.toMatch(/ada%40example|ada@example|second|secret-in-the-url/);
+    expect(query(plain?.attributes), dump(plain)).toBe('q=&page=&[redacted]&token=&q=');
+    expect(dump(plain)).not.toMatch(/ada%40example|ada@example|bare|second|secret-in-the-url/);
 
     const { app: recording } = boot({ OTEL_RECORD_QUERY_VALUES: 'true' });
     await using withValues = await recording;
     await spans();
     await createHttpKernel(withValues).request(url);
     const [valued] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
-    expect(query(valued?.attributes), dump(valued)).toBe('q=ada%40example.com&page=2&flag&token=[redacted]&q=second');
+    expect(query(valued?.attributes), dump(valued)).toBe('q=ada%40example.com&page=2&bare-ada%40example.com&token=[redacted]&q=second');
   });
 
   it('names the deployment on every span it records: deployment.environment.name is APP_ENV (by default the one NODE_ENV goes with)', async () => {

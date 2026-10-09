@@ -111,6 +111,8 @@ describe.each(drivers)('password reset on %s', (driver) => {
     await expect(broker(true, failing).reset('ada@example.com', created.token, 'new password')).rejects.toThrow('the revocation failed');
     expect(await apiTokens.find(adas[0]!.plainText), 'the delete of the failed transaction was kept').toBeDefined();
     expect(events).toEqual([]);
+    // This provider keeps its hashes outside the database's transaction: the revocation comes first, so a failed one writes no hash.
+    expect(await hasher.verify('old password', hash), 'a new hash next to live tokens').toBe(true);
   });
 
   it('counter-check: an expired token, another e-mail’s token, a guessed token — all one answer', async () => {

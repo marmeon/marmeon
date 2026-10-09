@@ -281,7 +281,8 @@ Every attribute and exception that may hold a secret passes the app's redactor, 
 name, so `/reset-password/:token` becomes `/reset-password/[redacted]`. The redactor masks by name and by the shape of a text.
 
 - **The URL's query string** is exported as `url.query` with its keys only: `?q=ada%40example.com&page=2` becomes `q=&page=`, so
-  an e-mail address, a search term or a token under a harmless name stays in the process. `OTEL_RECORD_QUERY_VALUES=true` exports
+  an e-mail address, a search term or a token under a harmless name stays in the process. A part without `=`, such as
+  `?ada%40example.com`, could be a value, so it is written as `[redacted]`. `OTEL_RECORD_QUERY_VALUES=true` exports
   the values too, with secret-looking ones masked, while every other value leaves the process as it is.
 - **The bound parameters of SQL statements** are never recorded. `db.query.text` is the statement as it is sent: a value written
   into the SQL itself, with `sql.raw()` or `sql.lit()`, is part of the text and is exported.

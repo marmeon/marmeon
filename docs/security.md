@@ -236,6 +236,7 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - Whether unconfirmed accounts go: the `auth:prune-unverified` line in `modules/auth/schedule.ts`, and `AUTH_UNVERIFIED_DAYS` as you
   want it, 7 by default. With `AUTH_PRIVATE_REGISTRATION=false`, tell your users that an unconfirmed account goes, and set
   `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`.
+- `abilities()` on every API route that acts: without it, every token of a user acts with all of the user's rights.
 - `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header, and `OTEL_RECORD_QUERY_VALUES` only when your URLs carry no
   personal data.
 - HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`, or the proxy.

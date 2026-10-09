@@ -14,16 +14,19 @@ import { defineGegenproben } from '../define.ts';
  * - **A new password revokes the API tokens with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, in its transaction** — the revocation
  *   taken out of the shared step (G3) leaves every token valid after a reset and a change; outside the transaction (G3b) a failed
  *   revocation keeps its delete while the reset fails; the default `true` (G3c) revokes without the option. Each caller asks the shared
- *   step: `Auth.updatePassword()` writing the hash itself (G3d), `PasswordBroker.reset()` alike (G3e). G3 masks G3d and G3e.
+ *   step: `Auth.updatePassword()` writing the hash itself (G3d), `PasswordBroker.reset()` alike (G3e). G3 masks G3d and G3e. The
+ *   tokens go first (G3f: revoked after the hash, a provider outside the transaction keeps the new hash when the revocation fails).
  * - **`can()` and the gate see the token's user on API routes** — two halves, each its own case: the token guard does not tell the
  *   request's gate (G4), the gate does not ask what it was told (G4b); either way the author's token gets 403. The session's user
  *   still counts on pages (G4c: a gate that asks only the token refuses every signed-in page). The token's abilities stay checked
  *   on top (G4d: `abilities()` taken out lets a read-only token update through the policy).
  * - **The fingerprint is the account's: id, password hash and session key** — the key left out again (G5): a new key ends no
  *   other session, the other device stays signed in; the id left out (G5b): two accounts without a password share one;
- *   `updateSessionKey()` without the provider's method doing nothing instead of failing (G5c).
+ *   `updateSessionKey()` without the provider's method doing nothing instead of failing (G5c); a password sign-in stamped from
+ *   `findForLogin()` instead of `findById()` (G5d).
  * - **`url.query` carries the keys only, unless `OTEL_RECORD_QUERY_VALUES=true`** — the span recording the values again (G6) exports
- *   an e-mail address and a search term; the option read as always on (G6b) does the same through the config.
+ *   an e-mail address and a search term; the option read as always on (G6b) does the same through the config; a part without `=`
+ *   written as it is (G6c) exports a bare address.
  */
 const SESSION_FLASH = { vitest: 'packages/session/src/session.test.ts', name: 'flashes input like redirect().withInput()' } as const;
 const LOG_KEYS = { vitest: 'packages/log/src/log.test.ts', name: 'redacts the names the app' } as const;
@@ -103,7 +106,7 @@ export default defineGegenproben({
     {
       id: 'G3',
       title: 'the shared step stores the new password without revoking: every API token stays valid after a reset with the option on',
-      patch: [{ file: NEW_PASSWORD, find: '      return revoke ? this.#tokens().revokeAll(id) : 0;', replace: '      return revoke ? 0 : 0;' }],
+      patch: [{ file: NEW_PASSWORD, find: '      const revoked = revoke ? await this.#tokens().revokeAll(id) : 0;', replace: '      const revoked = revoke ? 0 : 0;' }],
       run: RESET_REVOKES,
       expect: /Ada's tokens still valid: \[true,true\]/,
       masks: 'G3d',
@@ -156,6 +159,19 @@ export default defineGegenproben({
       run: RESET_REVOKES,
       expect: /Ada's tokens still valid: \[true,true\]/,
       masks: 'G3',
+    },
+    {
+      id: 'G3f',
+      title: 'the hash is written before the revocation: a provider outside the transaction keeps a new hash next to live tokens',
+      patch: [
+        {
+          file: NEW_PASSWORD,
+          find: '      const revoked = revoke ? await this.#tokens().revokeAll(id) : 0;\n      await users.updatePasswordHash(id as never, hash);\n',
+          replace: '      await users.updatePasswordHash(id as never, hash);\n      const revoked = revoke ? await this.#tokens().revokeAll(id) : 0;\n',
+        },
+      ],
+      run: { vitest: 'packages/auth/src/password-reset.test.ts', name: 'the revocation fails' },
+      expect: /a new hash next to live tokens: expected false to be true/,
     },
     // --- 4 · can() and the gate see the token's user on API routes ----------------------------------------------------------------------
     {
@@ -222,6 +238,13 @@ export default defineGegenproben({
       run: { vitest: 'packages/auth/src/session-key.test.ts', name: 'when the UserProvider cannot store a key' },
       expect: /\{"done":true\}: expected/,
     },
+    {
+      id: 'G5d',
+      title: 'attempt() stamps the fingerprint from findForLogin(): a provider that leaves the key out there ends every password sign-in',
+      patch: [{ file: AUTH, find: "    await this.#login(await this.#credentials(credentials.user), options, 'attempt');", replace: "    await this.#login(credentials, options, 'attempt');" }],
+      run: { vitest: 'packages/auth/src/session-key.test.ts', name: 'stamps the fingerprint from findById()' },
+      expect: /the next request after the sign-in: expected 401 to be 200/,
+    },
     // --- 6 · url.query carries the keys only ------------------------------------------------------------------------------------------
     {
       id: 'G6',
@@ -234,7 +257,7 @@ export default defineGegenproben({
         },
       ],
       run: OTEL_QUERY,
-      expect: /"url\.query":"q=ada%40example\.com&page=2&flag&token=\[redacted\]&q=second"/,
+      expect: /"url\.query":"q=ada%40example\.com&page=2&bare-ada%40example\.com&token=\[redacted\]&q=second"/,
       masks: 'G6b',
     },
     {
@@ -248,8 +271,15 @@ export default defineGegenproben({
         },
       ],
       run: OTEL_QUERY,
-      expect: /"url\.query":"q=ada%40example\.com&page=2&flag&token=\[redacted\]&q=second"/,
+      expect: /"url\.query":"q=ada%40example\.com&page=2&bare-ada%40example\.com&token=\[redacted\]&q=second"/,
       masks: 'G6',
+    },
+    {
+      id: 'G6c',
+      title: 'a query part without = is written as it is: ?ada@example.com leaves the process as a "key"',
+      patch: [{ file: 'packages/otel/src/tracer.ts', find: "`${part.slice(0, part.indexOf('='))}=` : REDACTED))", replace: "`${part.slice(0, part.indexOf('='))}=` : part))" }],
+      run: OTEL_QUERY,
+      expect: /"url\.query":"q=&page=&bare-ada%40example\.com&token=&q="/,
     },
   ],
 });

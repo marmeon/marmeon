@@ -113,7 +113,8 @@ export class Auth {
   async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<AuthUser | undefined> {
     const credentials = await this.#check(identifier, password);
     if (!credentials) return undefined;
-    await this.#login(credentials, options, 'attempt');
+    // The fingerprint from the account as findById() sees it — what every later request compares with (the session key included).
+    await this.#login(await this.#credentials(credentials.user), options, 'attempt');
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now()); // the password was just typed
     return credentials.user;
   }

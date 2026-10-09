@@ -184,8 +184,9 @@ both revoke every token of the user:
 AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true
 ```
 
-`updatePassword()` and the reset delete the tokens in the same transaction as the new hash, so a new password never stands next to
-an old token, and a failed delete keeps the old password. The log notes how many tokens went, and `PasswordChanged` and
+`updatePassword()` and the reset delete the tokens first and then store the new hash, in one transaction of the default
+connection. A failed delete stores no hash, so a new password never stands next to an old token. When storing the hash fails,
+the transaction gives the tokens back, as long as your token store uses the default connection, as `DatabaseAccessTokens` does. The log notes how many tokens went, and `PasswordChanged` and
 `PasswordReset` carry the number as `revokedTokens`. Your scripts and integrations then need a new token after every password
 change.
 

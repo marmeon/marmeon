@@ -369,18 +369,31 @@ devices all the same: it draws a new random session key, stores it with `updateS
 gives this session the new fingerprint. The other sessions end at their next request with every session driver, and the
 remember-me tokens of the other devices are deleted. It works for accounts with a password too.
 
-The key is a column of the account that your provider stores and hands back as `sessionKey` from `findById()` and
-`findForLogin()`:
+The key is a column of the account. Mark it secret, so that `Row<'users'>` and every query that selects all columns leave it out:
+
+```ts title="modules/auth/migrations/2026_10_10_120000_add_session_key_to_users_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => schema.alter('users', (table) => table.string('session_key', 64).nullable().secret()),
+  down: (schema) => schema.alter('users', (table) => table.dropColumn('session_key')),
+});
+```
+
+Your provider stores the key and hands it back as `sessionKey` from `findById()` and `findForLogin()`. A secret column is read
+only when it is named, as the starter kit's `UserRepository` reads the password hash:
 
 ```ts
-// in a migration
-await schema.alter('users', (table) => table.string('session_key', 64).nullable().secret());
-
-// in the UserRepository
 async updateSessionKey(id: number, key: string): Promise<void> {
   await this.update(id, { session_key: key });
 }
-// and in #credentials(): return { user, passwordHash: password as PasswordHash, sessionKey: session_key };
+
+async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
+  const row = await query.selectAll().select((eb) => [secret(eb, 'password'), secret(eb, 'session_key')]).executeTakeFirst();
+  if (!row) return undefined;
+  const { password, session_key, ...user } = row;
+  return { user, passwordHash: password as PasswordHash, sessionKey: session_key };
+}
 ```
 
 `updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. Without

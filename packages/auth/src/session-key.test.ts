@@ -10,7 +10,7 @@ import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore } from '@marmeon/session';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
-import { Auth, authenticate, AuthServiceProvider, sessionFingerprint, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { Auth, authenticate, AuthServiceProvider, Hasher, sessionFingerprint, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
@@ -80,6 +80,18 @@ class EndOtherSessionsController extends Controller {
   }
 }
 
+class LoginController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    const { email, password } = (await ctx.input()) as { email: string; password: string };
+    return { user: (await this.#auth.attempt(email, password))?.id ?? null };
+  }
+}
+
 class WhoController extends Controller {
   readonly #auth: Auth;
   constructor(auth: Auth) {
@@ -95,6 +107,7 @@ const routes = defineRoutes((Route) => {
   Route.post('/as/:id', SignInController);
   Route.get('/login', () => 'login').name('auth.login');
   Route.get('/who', WhoController);
+  Route.post('/login', LoginController);
   const signedIn = Route.middleware(authenticate());
   signedIn.get('/me', (ctx) => ({ id: ctx.user.id }));
   signedIn.post('/end-other-sessions', EndOtherSessionsController);
@@ -180,9 +193,13 @@ async function boot(driver: Driver, users: UserProvider) {
   const kernel = createHttpKernel(application);
   /** A tiny browser: keeps its cookies between requests. */
   const browser = (jar: Map<string, string> = new Map()) => {
-    const send = async (path: string, init: { method?: string; headers?: Record<string, string> } = {}) => {
+    const send = async (path: string, init: { method?: string; headers?: Record<string, string>; json?: unknown } = {}) => {
       const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
-      const response = await kernel.request(path, { method: init.method ?? 'GET', headers: { cookie, accept: 'application/json', ...init.headers } });
+      const response = await kernel.request(path, {
+        method: init.method ?? 'GET',
+        headers: { cookie, accept: 'application/json', ...(init.json ? { 'content-type': 'application/json' } : {}), ...init.headers },
+        ...(init.json ? { body: JSON.stringify(init.json) } : {}),
+      });
       for (const header of response.headers.getSetCookie()) {
         const [pair, ...attributes] = header.split(';');
         const [name, value] = pair!.split('=') as [string, string];
@@ -193,7 +210,7 @@ async function boot(driver: Driver, users: UserProvider) {
     };
     return { send, jar };
   };
-  return { browser };
+  return { browser, hasher: application.container.make(Hasher) };
 }
 
 const link: AuthUser = { id: 2, name: 'Link', email: 'link@example.com' };
@@ -251,6 +268,23 @@ describe.each(drivers)('auth.updateSessionKey() with SESSION_DRIVER=$name', (dri
     await laptop.send('/end-other-sessions', { method: 'POST' });
     expect(users.rows.get(2)!.key).not.toBe(first);
     expect((await laptop.send('/me')).status).toBe(200);
+  });
+});
+
+describe('a password sign-in after a new session key', () => {
+  it('stamps the fingerprint from findById(), as login() does — a provider that leaves the key out of findForLogin() keeps its sign-ins', async () => {
+    class KeylessLogin extends KeyedUsers {
+      override async findForLogin(email: string): Promise<Credentials | undefined> {
+        const found = await super.findForLogin(email);
+        return found && { user: found.user, passwordHash: found.passwordHash };
+      }
+    }
+    const users = new KeylessLogin();
+    const { browser, hasher } = await boot(drivers[0]!, users);
+    users.rows.set(4, { user: { id: 4, name: 'Ada', email: 'ada@example.com' }, hash: await hasher.make('secret'), key: 'a-rotated-key' });
+    const laptop = browser();
+    expect(await (await laptop.send('/login', { method: 'POST', json: { email: 'ada@example.com', password: 'secret' } })).json()).toEqual({ user: 4 });
+    expect((await laptop.send('/me')).status, 'the next request after the sign-in').toBe(200);
   });
 });
 

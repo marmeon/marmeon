@@ -304,6 +304,11 @@ The author's token with `notes:write` updates the note. Another user's token get
 `notes:write` gets 403 before the policy is asked. An ability only says what kind of action a token may do, never on whose
 record: the policy says that.
 
+> [!WARNING]
+> A route behind `authenticate('api')` without `abilities()` lets every token of the user act with all of the user's rights: the
+> policies, a `before()` that lets an admin do anything included. A token the user created to read notes then deletes them too.
+> Give every API route that acts an `abilities()` of its own.
+
 ## Testing
 
 A test signs in as a user with `actingAs()` and asserts the status:

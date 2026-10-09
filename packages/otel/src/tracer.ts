@@ -1,4 +1,4 @@
-import type { Application, LogContextSources, Redactor } from '@marmeon/core';
+import { REDACTED, type Application, type LogContextSources, type Redactor } from '@marmeon/core';
 import { channels, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type QueueDispatchMessage, type QueueJobMessage, type TracingName } from '@marmeon/core/diagnostics';
 import type { Attributes, Context, Link, Span, SpanKind, SpanOptions } from '@opentelemetry/api';
 import type { OtelApi } from './api.ts';
@@ -23,7 +23,8 @@ export interface InstrumentOptions {
   readonly trustTraceparent?: boolean;
   /**
    * `url.query` with its values — `OTEL_RECORD_QUERY_VALUES=true`, masked as text by the redactor. Off by default: a span records
-   * only the keys (`q=&page=`), since a query carries e-mail addresses, search terms or a token under a harmless name.
+   * only the keys (`q=&page=`; a part without `=` as `[redacted]`), since a query carries e-mail addresses, search terms or a token
+   * under a harmless name.
    */
   readonly recordQueryValues?: boolean;
   /**
@@ -341,13 +342,16 @@ function remoteContext(api: OtelApi, traceparent: string): Context | undefined {
   return api.trace.setSpanContext(api.ROOT_CONTEXT, spanContext);
 }
 
-/** A query string's keys without their values, in order and as sent: `?q=ada&page=2&flag` → `q=&page=&flag`. */
+/**
+ * A query string's keys without their values, in order and as sent: `?q=ada&page=2&ada@example.com` → `q=&page=&[redacted]`. A part
+ * without `=` may be a flag or a value (an address, a token) — no telling which, so it is never written as it is.
+ */
 function queryKeys(search: string): string {
   return search
     .replace(/^\?/, '')
     .split('&')
     .filter((part) => part !== '')
-    .map((part) => (part.includes('=') ? `${part.slice(0, part.indexOf('='))}=` : part))
+    .map((part) => (part.includes('=') ? `${part.slice(0, part.indexOf('='))}=` : REDACTED))
     .join('&');
 }
 
