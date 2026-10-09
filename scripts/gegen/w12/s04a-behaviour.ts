@@ -32,6 +32,9 @@ import { defineGegenproben } from '../define.ts';
  *   keeps the old key in `APP_PREVIOUS_KEYS`.
  * - **A mail's links need a scheme** (G19) — checked only for a leading `/`, `./`, `../` or `?` again, `notes/7` reaches the mail.
  * - **The error page names a `defineMiddleware()` by its name** (G21) — classes only again, the object shows as "(anonymous)".
+ * - **`make:queue-table` and `make:notifications-table` write migrations on their configured connection** — the queue's stub
+ *   without `connection` (G30) creates `jobs` on `default` whatever `DB_QUEUE_CONNECTION` says; the notifications' alike (G30b); a
+ *   `QUEUE_FAILED_CONNECTION` of its own is not checked (G30c) and `failed_jobs` lands where nothing looks.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -208,6 +211,27 @@ export default defineGegenproben({
       patch: [{ file: KERNEL, find: ".map((middleware) => middleware.name || '(anonymous)'),", replace: ".map((middleware) => (typeof middleware === 'function' && middleware.name) || '(anonymous)')," }],
       run: { vitest: 'packages/server/src/error-page.test.ts', name: 'shows the class, the message, the throwing line' },
       expect: /CheckAssetVersion, \(anonymous\): expected '.*' to contain 'AuditTrail'/,
+    },
+    {
+      id: 'G30',
+      title: "make:queue-table's migration has no connection: jobs land on default whatever DB_QUEUE_CONNECTION says",
+      patch: [{ file: 'packages/queue/stubs/migrations/create_jobs_table.ts', find: '  connection: queueTablesConnection,\n', replace: '' }],
+      run: { vitest: 'packages/queue/src/commands/commands.test.ts', name: "make:queue-table's migration runs on DB_QUEUE_CONNECTION" },
+      expect: /expected 'default' to be 'queue'/,
+    },
+    {
+      id: 'G30b',
+      title: "make:notifications-table's migration has no connection: the table lands on default whatever NOTIFICATIONS_CONNECTION says",
+      patch: [{ file: 'packages/notifications/stubs/migrations/create_notifications_table.ts', find: '  connection: notificationsTableConnection,\n', replace: '' }],
+      run: { vitest: 'packages/notifications/src/commands.test.ts', name: 'writes a migration that runs on NOTIFICATIONS_CONNECTION' },
+      expect: /expected 'default' to be 'inbox'/,
+    },
+    {
+      id: 'G30c',
+      title: 'a QUEUE_FAILED_CONNECTION of its own is not checked: failed_jobs is created on the jobs connection, where nothing looks',
+      patch: [{ file: 'packages/queue/src/config.ts', find: "  if (config.failed.driver === 'database' && config.failed.connection !== jobs) {", replace: '  if (false) {' }],
+      run: { vitest: 'packages/queue/src/commands/commands.test.ts', name: "make:queue-table's migration runs on DB_QUEUE_CONNECTION" },
+      expect: /promise resolved "'default'" instead of rejecting/,
     },
   ],
 });

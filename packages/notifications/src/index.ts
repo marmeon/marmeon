@@ -79,6 +79,14 @@ export const NotificationConfig = defineConfig('notifications', {
 });
 export type NotificationConfig = ConfigOf<typeof NotificationConfig>;
 
+/**
+ * The connection the `notifications` table belongs on — for the migration `marmeon make:notifications-table` writes
+ * (`connection` in `defineMigration`): `NOTIFICATIONS_CONNECTION`, where the database channel and the Inbox look.
+ */
+export function notificationsTableConnection(container: Resolver): string {
+  return container.make(NotificationConfig).connection;
+}
+
 type QueueModule = typeof import('@marmeon/queue');
 type MailModule = typeof import('@marmeon/mail');
 type I18nModule = typeof import('@marmeon/i18n');

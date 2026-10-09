@@ -1,9 +1,12 @@
 import { defineMigration } from '@marmeon/database';
+import { queueTablesConnection } from '@marmeon/queue';
 
 // The tables of QUEUE_CONNECTION=database (written by `marmeon make:queue-table`): a row per queued job — its record as
 // JSON, the attempts so far, when a worker claimed it (null: waiting) and when it may run, all in epoch milliseconds —
 // and a row per failed job, with the error (redacted) that ended it. `marmeon queue:prune-failed` empties the second.
 export default defineMigration({
+  // DB_QUEUE_CONNECTION — failed_jobs goes with it (a QUEUE_FAILED_CONNECTION of its own stops the migration and says what to do).
+  connection: queueTablesConnection,
   up: async (schema) => {
     await schema.create('jobs', (table) => {
       table.id();

@@ -1,7 +1,10 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveConfig, type Resolver } from '@marmeon/core';
+import type { Migration } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { MakeNotificationsTableCommand, NOTIFICATIONS_MIGRATION } from './commands.ts';
+import { NotificationConfig } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function app(): string {
@@ -21,6 +24,17 @@ function run(root: string, options: Record<string, string> = {}) {
 }
 
 describe('make:notifications-table', () => {
+  it('writes a migration that runs on NOTIFICATIONS_CONNECTION — where the database channel looks', async () => {
+    const { default: migration } = (await import(NOTIFICATIONS_MIGRATION.href)) as { default: Migration };
+    const on = async (env: Record<string, string>) => {
+      const config = (await resolveConfig([NotificationConfig], env)).get(NotificationConfig);
+      const container = { make: () => config } as unknown as Resolver;
+      return typeof migration.connection === 'function' ? migration.connection(container) : (migration.connection ?? 'default');
+    };
+    expect(await on({ NOTIFICATIONS_CONNECTION: 'inbox' })).toBe('inbox');
+    expect(await on({})).toBe('default');
+  });
+
   it('writes the migration into a new system module (E96), registers the module, and refuses a second one', async () => {
     const root = app();
     const first = run(root);

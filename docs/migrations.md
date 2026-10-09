@@ -326,17 +326,16 @@ pnpm marmeon migrate
 | --- | --- |
 | `make:cache-table` | `cache`, `cache_locks`, on the cache's connection |
 | `make:session-table` | `sessions`, on the sessions' connection |
-| `make:queue-table` | `jobs`, `failed_jobs`, on `default` |
-| `make:notifications-table` | `notifications`, on `default` |
+| `make:queue-table` | `jobs`, `failed_jobs`, on the queue's connection |
+| `make:notifications-table` | `notifications`, on the notifications' connection |
 | `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
-to `bootstrap/app.ts` when it does not exist yet. It refuses when any module already has a migration for the table. The cache's,
-the sessions' and the uploads' migrations follow `CACHE_CONNECTION`, `SESSION_CONNECTION` and `UPLOADS_CONNECTION`, so their
-tables land on the [connection](database.md#infrastructure-connections) those drivers write on.
+to `bootstrap/app.ts` when it does not exist yet. It refuses when any module already has a migration for the table. Each migration
+reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `SESSION_CONNECTION`, `DB_QUEUE_CONNECTION`,
+`NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
+[connection](database.md#infrastructure-connections) the driver reads and writes.
 
-The queue's and the notifications' migrations do not follow their variables: they create their tables on `default`, whatever
-`DB_QUEUE_CONNECTION`, `QUEUE_FAILED_CONNECTION` or `NOTIFICATIONS_CONNECTION` say. When you point one of these at another
-connection, add `connection: 'name'` to the migration the command wrote, as in
-[migrations on another connection](#migrations-on-another-connection), before you run it, and split the queue's migration in two
-when `jobs` and `failed_jobs` go to different connections. Otherwise the driver looks for a table that is not there.
+The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops
+with a message instead of creating the table where nothing looks. Move the `failed_jobs` part into a migration of its own with
+that `connection`, as in [migrations on another connection](#migrations-on-another-connection).

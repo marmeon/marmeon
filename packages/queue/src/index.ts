@@ -12,7 +12,7 @@ import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
 // The queue (E83–E85, E98): jobs as injectable classes with a stable name and a payload schema, drivers behind one
 // contract (sync, database, redis), a worker with a scope per job, retries, failed jobs, unique jobs, chains, job
 // middleware, job events — and a fake for tests.
-export { QueueConfig } from './config.ts';
+export { QueueConfig, queueTablesConnection } from './config.ts';
 export { QueueHealthCheck } from './health.ts';
 export { checkTimeouts, QueueConnections } from './connections.ts';
 export { backoffDelay } from './driver.ts';

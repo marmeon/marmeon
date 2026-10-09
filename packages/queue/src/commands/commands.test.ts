@@ -1,14 +1,14 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CliServiceProvider, CommandRegistry, DevProcesses } from 'marmeon';
-import { Clock, createApplication, Logger, TestClock, type Application } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider } from '@marmeon/database';
+import { Clock, createApplication, Logger, resolveConfig, TestClock, type Application, type Resolver } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from '../__fixtures__/targets.ts';
 import { QueueConnections } from '../connections.ts';
-import { Queue, QueueServiceProvider } from '../index.ts';
+import { Queue, QUEUE_MIGRATION, QueueConfig, QueueServiceProvider } from '../index.ts';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './failed.ts';
 import { QueueWorkCommand } from './work.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -191,6 +191,23 @@ describe('the queue commands', () => {
       expect(readFileSync(new URL(dir + created, repo), 'utf8'), dir).toBe(stub);
       expect(readdirSync(new URL(dir, repo)).filter((file) => /jobs_table/.test(file)), dir).toEqual([created]);
     }
+  });
+
+  it("make:queue-table's migration runs on DB_QUEUE_CONNECTION — a failed_jobs connection of its own stops it with what to do", async () => {
+    const { default: migration } = (await import(QUEUE_MIGRATION.href)) as { default: Migration };
+    const on = async (env: Record<string, string>) => {
+      const config = (await resolveConfig([QueueConfig], env)).get(QueueConfig);
+      const container = { make: () => config } as unknown as Resolver;
+      return typeof migration.connection === 'function' ? migration.connection(container) : (migration.connection ?? 'default');
+    };
+    expect(await on({ DB_QUEUE_CONNECTION: 'queue' })).toBe('queue');
+    expect(await on({})).toBe('default');
+    expect(await on({ DB_QUEUE_CONNECTION: 'queue', QUEUE_FAILED_CONNECTION: 'queue' })).toBe('queue');
+    // Failed jobs only logged: their table is never used, wherever QUEUE_FAILED_CONNECTION points.
+    expect(await on({ DB_QUEUE_CONNECTION: 'queue', QUEUE_FAILED_DRIVER: 'null', QUEUE_FAILED_CONNECTION: 'archive' })).toBe('queue');
+    await expect(on({ QUEUE_FAILED_CONNECTION: 'archive' })).rejects.toThrow(
+      'The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Move the failed_jobs part into a migration of its own with connection: \'archive\', or let both use one connection.',
+    );
   });
 
   it('make:queue-table writes the migration of jobs and failed_jobs into the system module (E96)', async () => {

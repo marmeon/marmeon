@@ -1,4 +1,4 @@
-import { defineConfig, env, type ConfigOf } from '@marmeon/core';
+import { defineConfig, env, type ConfigOf, type Resolver } from '@marmeon/core';
 import type { QueueConnectionOptions } from './queue.ts';
 
 const seconds = (name: string) => env.integer(`${name} must be a number of seconds`).min(1).default(90);
@@ -49,3 +49,20 @@ export const QueueConfig = defineConfig('queue', {
   },
 });
 export type QueueConfig = ConfigOf<typeof QueueConfig>;
+
+/**
+ * The connection the queue's tables belong on — for the migration `marmeon make:queue-table` writes (`connection` in
+ * `defineMigration`): `DB_QUEUE_CONNECTION`. It creates `failed_jobs` there too, so a `QUEUE_FAILED_CONNECTION` of its own (with
+ * failed jobs kept in the database) stops the migration with what to do, instead of creating the table where nothing looks.
+ */
+export function queueTablesConnection(container: Resolver): string {
+  const config = container.make(QueueConfig);
+  const database = config.connections.database;
+  const jobs = database && 'connection' in database ? database.connection : 'default';
+  if (config.failed.driver === 'database' && config.failed.connection !== jobs) {
+    throw new Error(
+      `The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (${jobs}) — but QUEUE_FAILED_CONNECTION is ${config.failed.connection}. Move the failed_jobs part into a migration of its own with connection: '${config.failed.connection}', or let both use one connection.`,
+    );
+  }
+  return jobs;
+}

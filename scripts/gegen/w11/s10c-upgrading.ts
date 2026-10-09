@@ -121,7 +121,7 @@ export default defineGegenproben({
         },
       ],
       run: NAMED,
-      expect: /packages\/queue\/stubs\/migrations\/create_jobs_table\.ts:6: docs\/queues\.md#the-jobs-table — no #the-jobs-table on that page/,
+      expect: /packages\/queue\/stubs\/migrations\/create_jobs_table\.ts:7: docs\/queues\.md#the-jobs-table — no #the-jobs-table on that page/,
     },
     // --- check:source rule 6 reads the launchers ------------------------------------------------------------------------------------
     {
