@@ -545,7 +545,9 @@ export function createHttpKernel(
           ? 'an upload is read-only — it stores a file beside the page: no session, cookies or flash data, no work after the response.'
           : stream
             ? 'an event stream is read-only — it stays open beside the page and only listens: no session, cookies or flash data, no work after the response.'
-            : undefined;
+            : island
+              ? undefined
+              : "a layer's base is read-only — it renders under the layer for its deep link, beside the layer's own request: it cannot change the session, cookies or flash data, nor defer work after the response. Do that in the layer's own route or an action.";
       readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message), ...(rule ? { rule } : {}) });
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
@@ -588,6 +590,7 @@ export function createHttpKernel(
     if (!island && !parent && readOnly) {
       readOnly.engage({
         reason: `${request.method} ${pathname} after its response headers were sent (a deferred prop, streamed with the page)`,
+        rule: 'the response headers are out — a deferred prop streamed with the page cannot change the session, cookies or flash data, nor defer work after the response. Do that in the controller before it returns the page, or in an action.',
         strict: strictReadOnly,
         report: (message) => logger.error(message),
       });

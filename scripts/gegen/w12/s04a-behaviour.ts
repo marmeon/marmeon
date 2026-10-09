@@ -11,12 +11,15 @@ import { defineGegenproben } from '../define.ts';
  *   JavaScript (the starter's sign-out among them); the page's token left out (G8b) gets the session's form a 419; the click not
  *   stopped (G8c) posts the form beside the visit — two requests, the second after the page changed; a link with `confirm` that
  *   submits anyway (G8d) sends without asking before the app started.
+ * - **A read-only request's message names its own cause** — the layer's base (G9) and the deferred prop streamed after the headers
+ *   (G9b) without a rule of their own fall back to an island's: "an island is read-only … Do that in the page".
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
 const LINK_FORM = { vitest: 'packages/react/src/routes.test.tsx', name: 'renders a link that sends as a real form' } as const;
 const LINK_VISIT = { vitest: 'packages/react/src/prefetch-poll.test.tsx', name: 'sends one visit with JavaScript' } as const;
 const LINK = 'packages/react/src/link.tsx';
+const KERNEL = 'packages/server/src/kernel.ts';
 
 export default defineGegenproben({
   step: 'W12.4a',
@@ -62,6 +65,20 @@ export default defineGegenproben({
       patch: [{ file: LINK, find: "<button type={confirm === undefined ? 'submit' : 'button'}", replace: '<button type="submit"' }],
       run: LINK_FORM,
       expect: /<button type=\\"submit\\">Sign out everywhere<\/button><\/form>"\]: expected/,
+    },
+    {
+      id: 'G9',
+      title: "a layer's base has no rule of its own: its write is reported as an island's",
+      patch: [{ file: KERNEL, find: "            : island\n              ? undefined\n              : \"a layer's base is read-only", replace: "            : true\n              ? undefined\n              : \"a layer's base is read-only" }],
+      run: { vitest: 'packages/server/src/layers.test.ts', name: 'resolves the base read-only' },
+      expect: /in a layer's base, resolved for its deep link \(GET \/writes\): an island is read-only .*: expected/,
+    },
+    {
+      id: 'G9b',
+      title: 'a deferred prop streamed after the headers has no rule of its own: its write is reported as an island\'s',
+      patch: [{ file: KERNEL, find: "        rule: 'the response headers are out — ", replace: "        _rule: 'the response headers are out — " }],
+      run: { vitest: 'packages/server/src/islands-ssr.test.ts', name: 'a deferred prop that writes after the headers throws in development' },
+      expect: /after its response headers were sent \(a deferred prop, streamed with the page\): an island is read-only .*: expected/,
     },
   ],
 });

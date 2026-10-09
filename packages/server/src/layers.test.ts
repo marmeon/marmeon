@@ -154,6 +154,10 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
     const page = documentPage(await response.text());
     expect(page.component).toBe('layers/Backdrop');
     expect(response.headers.getSetCookie().join()).not.toContain('written');
+    // The message names the base and its rule — not an island's.
+    const message = logged.find((line) => line.includes("in a layer's base")) ?? JSON.stringify(logged);
+    expect(message, message).toMatch(/: a layer's base is read-only — .* Do that in the layer's own route or an action\./);
+    expect(message).not.toContain('island');
   });
 
   it('closeLayer(): “close” to a layer’s request — a redirect to anything else (no JavaScript)', async () => {

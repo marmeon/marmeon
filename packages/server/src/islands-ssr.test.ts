@@ -278,6 +278,9 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     logged.length = 0;
     const lenient = await (await production.request('/page/deferred-writes')).text();
     expect(lenient).toContain('<deferred group="default">{"props":{"report":"written"}}</deferred>');
-    expect(logged.some((message) => message.includes("cookies.set('written-late') in GET /page/deferred-writes after its response headers were sent"))).toBe(true);
+    const message = logged.find((line) => line.includes("cookies.set('written-late') in GET /page/deferred-writes after its response headers were sent")) ?? JSON.stringify(logged);
+    // Its own rule, not an island's: the deferred prop wrote after the headers.
+    expect(message, message).toMatch(/: the response headers are out — .* Do that in the controller before it returns the page, or in an action\./);
+    expect(message).not.toContain('island');
   });
 });

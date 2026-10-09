@@ -11,7 +11,7 @@ export interface ReadOnlyOptions {
   readonly strict: boolean;
   /** Where a dropped write is reported (the log). */
   readonly report: (message: string) => void;
-  /** Why it may not write, and where to do it instead — default: an island's rule (E52). */
+  /** Why it may not write, and where to do it instead — default: an island's rule (E52). Every other read-only request names its own. */
   readonly rule?: string;
 }
 

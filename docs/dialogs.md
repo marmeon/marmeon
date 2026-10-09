@@ -45,8 +45,8 @@ shows alone over an empty surface inside the app's layout. Nothing of the base i
 
 > [!WARNING]
 > A base resolved for a deep link only reads. Its middleware and controller cannot write the session, set a cookie or queue work
-> after the response, and it takes no flash message. In development and in tests such a write throws a `ReadOnlyViolation`. In
-> production it is dropped and logged, so a base route that records something works as a page and loses the write as a base. Keep
+> after the response, and it takes no flash message. In development and in tests such a write throws a `ReadOnlyViolation` that
+> names the base and where the write belongs. In production it is dropped and logged, so a base route that records something works as a page and loses the write as a base. Keep
 > writes in the layer's own route or in an action.
 
 ### The link
