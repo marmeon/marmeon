@@ -192,8 +192,20 @@ export class Connections {
         `Database connection "${name}" is not configured. Known: ${this.names().join(', ')}. Add one with defineConnection('${name}', …) in the app's config.`,
       );
     }
+    this.#used.add(name);
     return options;
   }
+
+  /**
+   * The connections this process uses — `default`, and every one asked for since: a query, an infrastructure connection, or a
+   * package that checks its connection when it boots (the cache, sessions, the queue, notifications). Readiness asks these only,
+   * so a connection the app configures and nothing uses is never opened (a SQLite file never created).
+   */
+  used(): string[] {
+    return this.names().filter((name) => this.#used.has(name));
+  }
+
+  readonly #used = new Set<string>(['default']);
 
   /** Listens to every query on every connection. Returns a function that stops listening. */
   onQuery(listener: (query: QueryEvent) => void): () => void {

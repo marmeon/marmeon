@@ -40,6 +40,8 @@ import { defineGegenproben } from '../define.ts';
  * - **`devtools:clear`/`devtools:prune` load `config/devtools.ts` in development only** (G32) — loaded always again, a production
  *   run imports the app's devtools settings.
  * - **The missing-`pg` message names a named connection** (G34) — `DB_CONNECTION=pgsql` for every connection again.
+ * - **Readiness opens only the connections the app uses** (G35) — every configured one again: the unused `system` SQLite file is
+ *   opened (and created) by `/up/ready`.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -258,6 +260,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/database/src/postgres.ts', find: "      const who = connection === 'default' ? 'DB_CONNECTION=pgsql' : `The Postgres connection \"${connection}\"`;", replace: "      const who = 'DB_CONNECTION=pgsql';" }],
       run: { vitest: 'packages/database/src/database.test.ts', name: 'without pg, DB_CONNECTION=pgsql says what to install' },
       expect: /^AssertionError: DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@\^8: expected 'DB_CONNECTION=pgsql needs the "pg" pa…' to be 'The Postgres connection "repo/,
+    },
+    {
+      id: 'G35',
+      title: 'readiness asks every configured connection again: it opens the unused system SQLite file',
+      patch: [{ file: 'packages/database/src/health.ts', find: '    const names = this.#connections.used();', replace: '    const names = this.#connections.names();' }],
+      run: { vitest: 'packages/database/src/health.test.ts', name: 'never opens one it does not' },
+      expect: /checked: default, system: expected/,
     },
   ],
 });

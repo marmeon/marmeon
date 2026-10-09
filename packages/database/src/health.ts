@@ -3,8 +3,8 @@ import { sql } from 'kysely';
 import { Connections } from './connections.ts';
 
 /**
- * Readiness (E126): every configured connection answers `select 1` — the app's pool, as requests use it. Registered by the
- * `DatabaseServiceProvider` for `/up/ready`.
+ * Readiness (E126): every connection the app uses answers `select 1` — the app's pool, as requests use it (`Connections.used()`:
+ * `default` and what was asked for; one nothing uses is never opened). Registered by the `DatabaseServiceProvider` for `/up/ready`.
  */
 export class DatabaseHealthCheck implements HealthCheck {
   static check = 'database';
@@ -16,7 +16,7 @@ export class DatabaseHealthCheck implements HealthCheck {
   }
 
   async handle(): Promise<string> {
-    const names = this.#connections.names();
+    const names = this.#connections.used();
     const failed: string[] = [];
     const errors: unknown[] = [];
     await Promise.all(

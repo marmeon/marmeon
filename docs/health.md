@@ -98,7 +98,7 @@ every instance takes every instance out of the load balancer at once, which turn
 
 | Check | Package | What it does | Its note |
 | --- | --- | --- | --- |
-| `database` | `@marmeon/database` | `select 1` on every configured connection, through the pools requests use. | The connections' names. |
+| `database` | `@marmeon/database` | `select 1` on every connection the app uses, through the pools requests use: `default`, the ones the cache, the sessions, the queue and notifications keep their tables on, and any other a query used. A connection nothing uses is never opened. | The connections' names. |
 | `redis` | `@marmeon/redis` | `PING` on every Redis connection a driver uses. A configured connection nothing uses is not checked. | The connections, or `no connection in use`. |
 | `cache` | `@marmeon/cache` | Adds a key and removes it again, through the configured store. | The driver. |
 | `queue` | `@marmeon/queue` | Reads the size of the default connection's default queue. | The connection and how many jobs wait. |
