@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkSource, DOC_TEXT_RULES, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME, OLD_TOKEN_PREFIX, oldTokenPrefixHits, textRuleHits } from './check-source.ts';
+import { checkSource, DOC_TEXT_RULES, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME, OLD_TOKEN_PREFIX, oldTokenPrefixHits, runtimeStringHits, textRuleHits, textRuleWhere } from './check-source.ts';
 import { parts } from './ci.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
@@ -222,8 +222,106 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     ], marker)).toEqual(['docs/routing.md:2: <!-- docs:pending -->', 'docs/middleware.md:2: <!-- docs:pending -->']);
   });
 
-  it('names each rule in the problems of check:source', () => {
-    expect(DOC_TEXT_RULES.map((entry) => entry.what)).toEqual(['a decision number', 'a wave reference', 'the pending marker']);
+  it('reads what every new app copies too — the starter\'s template and the packages\' stubs — but not the code that copies it', () => {
+    const files = [
+      { path: 'packages/create-marmeon/template/base/.env.example', text: '# Behind a proxy, X-Forwarded-* count (E162)\n# since Wave 10' },
+      { path: 'packages/create-marmeon/template/kit/bootstrap/client.tsx', text: '// the dialog asks (E64)' },
+      { path: 'packages/auth/stubs/react/modules/auth/routes.ts', text: '// Private registration (E146): one answer (W9 step 11)' },
+      { path: 'packages/queue/stubs/migrations/create_jobs_table.ts', text: '// the fair claim (E199) walks this index' },
+      { path: 'packages/create-marmeon/src/main.ts', text: '// the template (E167), W10' },
+      { path: 'packages/auth/src/make-auth.ts', text: '// the stubs (E30), W2' },
+    ];
+    expect(textRuleHits(files, decisions)).toEqual([
+      'packages/create-marmeon/template/base/.env.example:1: # Behind a proxy, X-Forwarded-* count (E162)',
+      'packages/create-marmeon/template/kit/bootstrap/client.tsx:1: // the dialog asks (E64)',
+      'packages/auth/stubs/react/modules/auth/routes.ts:1: // Private registration (E146): one answer (W9 step 11)',
+      'packages/queue/stubs/migrations/create_jobs_table.ts:1: // the fair claim (E199) walks this index',
+    ]);
+    expect(textRuleHits(files, waves)).toEqual([
+      'packages/create-marmeon/template/base/.env.example:2: # since Wave 10',
+      'packages/auth/stubs/react/modules/auth/routes.ts:1: // Private registration (E146): one answer (W9 step 11)',
+    ]);
+  });
+
+  it('finds a personal date of the plan in what a new app copies — not a cookie\'s Max-Age, a version or an address', () => {
+    const dates = rule('a personal date');
+    expect(textRuleHits([
+      { path: 'packages/auth/stubs/react/modules/auth/migrations/0001_create_users.ts', text: ' * set once (Max 07.10.) — never cleared' },
+      { path: 'packages/auth/stubs/react/modules/auth/prune.test.ts', text: "it('keeps it for good (Max, 07.10.)', async () => {" },
+      { path: 'packages/create-marmeon/template/base/.env.example', text: '# decided on 09.10. by the team' },
+      { path: 'packages/create-marmeon/template/base/config/session.ts', text: "// Max-Age=0 ends it; max 255; Marmeon 0.2.0; 127.0.0.1 or 10.0.0.0/8" },
+      { path: 'packages/create-marmeon/src/main.ts', text: '// Max 07.10.' },
+    ], dates)).toEqual([
+      'packages/auth/stubs/react/modules/auth/migrations/0001_create_users.ts:1: * set once (Max 07.10.) — never cleared',
+      "packages/auth/stubs/react/modules/auth/prune.test.ts:1: it('keeps it for good (Max, 07.10.)', async () => {",
+      'packages/create-marmeon/template/base/.env.example:1: # decided on 09.10. by the team',
+    ]);
+  });
+
+  it('finds a comparison with another framework in the docs, the package cards and what a new app copies', () => {
+    const frameworks = rule('a comparison with another framework');
+    expect(textRuleHits([
+      { path: 'docs/authentication.md', text: 'Like Laravel Breeze, the module is yours.' },
+      { path: 'packages/validation/README.md', text: "Inertia's partial reloads" },
+      { path: 'packages/auth/stubs/react/modules/auth/controllers/LoginController.ts', text: "/** (Laravel Breeze's default). */" },
+      { path: 'packages/create-marmeon/template/base/.env.example', text: "# like Laravel's starter kits" },
+      { path: 'docs/routing.md', text: 'rails of a track, a breeze of air, laravel in lower case' },
+      { path: 'packages/create-marmeon/src/main.ts', text: '// like create-nuxt and Laravel' },
+    ], frameworks)).toEqual([
+      'docs/authentication.md:1: Like Laravel Breeze, the module is yours.',
+      "packages/validation/README.md:1: Inertia's partial reloads",
+      "packages/auth/stubs/react/modules/auth/controllers/LoginController.ts:1: /** (Laravel Breeze's default). */",
+      "packages/create-marmeon/template/base/.env.example:1: # like Laravel's starter kits",
+    ]);
+  });
+
+  it('names each rule in the problems of check:source — and where it was found', () => {
+    expect(DOC_TEXT_RULES.map((entry) => entry.what)).toEqual([
+      'a decision number',
+      'a wave reference',
+      'the pending marker',
+      'a personal date',
+      'a comparison with another framework',
+    ]);
+    expect(textRuleWhere('docs/queues.md')).toBe('in the docs');
+    expect(textRuleWhere('packages/queue/README.md')).toBe('in the docs');
+    expect(textRuleWhere('packages/auth/stubs/react/modules/auth/routes.ts')).toBe('in what every new app copies');
+    expect(textRuleWhere('packages/create-marmeon/template/base/.env.example')).toBe('in what every new app copies');
+    expect(textRuleWhere('packages/session/stubs/migrations/create_sessions_table.ts')).toBe('in what every new app copies');
+  });
+});
+
+describe("check:source — the framework's messages speak to app developers (rule 6)", () => {
+  it('finds a decision number, a wave reference or another framework in a string of a package\'s code — the text an app sees', () => {
+    const text = [
+      "throw new Error('An app in the build phase is never booted (E187).');",
+      'const hint = `read-only (W6.9) — ${what}`;',
+      "const a = 'Laravel\\'s rules, typed';",
+      'const view = <p>Development only (E115)</p>;',
+      'const b = "fine (W10.4)";',
+    ].join('\n');
+    expect(runtimeStringHits([{ path: 'packages/core/src/application.tsx', text }])).toEqual([
+      "packages/core/src/application.tsx:1: a decision number: 'An app in the build phase is never booted (E187).'",
+      'packages/core/src/application.tsx:2: a wave reference: `read-only (W6.9) — ${',
+      "packages/core/src/application.tsx:3: a comparison with another framework: 'Laravel\\'s rules, typed'",
+      'packages/core/src/application.tsx:4: a decision number: Development only (E115)',
+      'packages/core/src/application.tsx:5: a wave reference: "fine (W10.4)"',
+    ]);
+  });
+
+  it('leaves comments, regular expressions, names and the code of tests, fixtures, scripts and apps alone', () => {
+    const code = [
+      '// E187: the build phase (W10 step 9) — Laravel did it so',
+      '/** (E108) */ const E108 = /\\bE\\d{2,3}\\b/;',
+      "const fine = 'E2E, E.164, #E1234, 0xE12 and W3C';",
+    ].join('\n');
+    expect(runtimeStringHits([
+      { path: 'packages/core/src/a.ts', text: code },
+      { path: 'packages/core/src/a.test.ts', text: "it('builds (E187)', () => {});" },
+      { path: 'packages/core/src/__fixtures__/b.ts', text: "export const b = 'E187';" },
+      { path: 'scripts/check-source.ts', text: "const w = 'W8';" },
+      { path: 'apps/web-app/modules/lab/a.ts', text: "const e = '(E62)';" },
+    ])).toEqual([]);
   });
 });
 

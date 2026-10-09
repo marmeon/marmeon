@@ -3,8 +3,8 @@ import { useState } from 'react';
 
 /**
  * Navigation and flash messages around the auth pages: `Page.layout = AppLayout`. It stays mounted while
- * you navigate between pages that use it (E35). Make it the app's default with `createMarmeonApp({ layout })`. Its look:
- * `modules/auth/auth.css` (classes, no inline styles — a strict `style-src` blocks none of it, E202).
+ * you navigate between pages that use it. Make it the app's default with `createMarmeonApp({ layout })`. Its look:
+ * `modules/auth/auth.css` (classes, no inline styles — a strict `style-src` blocks none of it).
  */
 export function AppLayout({ children }: LayoutProps) {
   // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.
@@ -32,7 +32,7 @@ export function AppLayout({ children }: LayoutProps) {
 }
 
 /**
- * Every `toast` flash message (E60), once — from a redirect's page, an action's answer, a layer's close — in a live region,
+ * Every `toast` flash message, once — from a redirect's page, an action's answer, a layer's close — in a live region,
  * until it is dismissed. Without JavaScript, the page's messages show in a `<noscript>` (the server renders it).
  */
 function Toasts() {

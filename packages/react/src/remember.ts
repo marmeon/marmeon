@@ -11,7 +11,7 @@ type IsPassword<K extends string> = Lowercase<K> extends `${string}password${str
 /** The key of remembered state: anything — but a name that looks sensitive needs `{ sensitive: true }` (and a password never). */
 export type RememberKey<K extends string> =
   IsPassword<K> extends true
-    ? `'${K}' looks like a password — passwords are never remembered (E63): they stay in the field until the page is left`
+    ? `'${K}' looks like a password — passwords are never remembered: they stay in the field until the page is left`
     : LooksSensitive<K> extends true
       ? `'${K}' looks sensitive (a token, a secret, a card) — remembered state leaves it out unless you say so: useRemember('${K}', initial, { sensitive: true })`
       : K;

@@ -149,7 +149,7 @@ export const DevtoolsConfig = defineConfig('devtools', {
   resolve: (env) => {
     if (env.DEVTOOLS_ENABLED === 'true' && environment.isProtected(env)) {
       throw new DevtoolsConfigError(
-        `DEVTOOLS_ENABLED=true with ${environment.describe(env)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV (E115, E139). ` +
+        `DEVTOOLS_ENABLED=true with ${environment.describe(env)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV. ` +
           'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @marmeon/devtools as a dev dependency.',
       );
     }

@@ -25,17 +25,26 @@
  *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end) — but the rename hint's way back
  *      (`AUTH_TOKEN_PREFIX=…` in `UPGRADING.md`). A forgotten copy in a test or a README would teach the old default.
  *
- *   5. **The docs speak to their readers** (W11 step 10): the pages under `docs/`, the packages' READMEs (their npm cards), the root
- *      `README.md`, `CONTRIBUTING.md` and `SECURITY.md` carry no decision number (`E` and two or three digits — a hex value, an
+ *   5. **The docs speak to their readers** (W11 step 10, E214): the pages under `docs/`, the packages' READMEs (their npm cards), the
+ *      root `README.md`, `CONTRIBUTING.md` and `SECURITY.md` carry no decision number (`E` and two or three digits — a hex value, an
  *      exponent, `E2E` or `E.164` is none); the pages and the cards no wave reference (`W9`, `W10.4`, `Wave 9`); and no page under
- *      `docs/` the pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline).
+ *      `docs/` the pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline). What
+ *      every new app copies — the starter's template and the packages' stubs — carries no decision number, no wave reference and
+ *      no personal date ("Max 07.10."); the pages, the cards and those copies no comparison with another framework.
  *      `UPGRADING.md` is the record of changes, exempt. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and the files it
- *      reads — a rule for more files (the starter's template, the stubs) adds to `files`.
+ *      reads.
+ *
+ *   6. **The framework's messages speak to app developers** (W11 step 10, E214): the strings of a package's code
+ *      (`packages/<name>/src/`, tests, type tests and fixtures aside) — errors, warnings, solutions, command descriptions and
+ *      output, the files `make:*` writes, the devtools' pages — carry no decision number, no wave reference and no other framework,
+ *      as rule 5's patterns find them. Only strings count (read with oxc-parser): comments, names and regular expressions are the
+ *      maintainers' and keep their decision numbers.
  *
  * Later rules join this script (one script, several rules, each with its test and Gegenprobe).
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -188,6 +197,12 @@ const DOCS_PAGES = /^docs\/[^/]+\.md$/;
 const PACKAGE_CARDS = /^packages\/[^/]+\/README\.md$/;
 /** The root README and the policies — `UPGRADING.md`, the record of changes, is exempt. */
 const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY)\.md$/;
+/**
+ * What every new app copies and keeps: the starter's template (`create-marmeon`) and the packages' stubs (`make:auth`'s module,
+ * the migrations of `make:queue-table`, `make:session-table`, …) — every comment of them lands in an app, so it speaks to that
+ * app's developers. The code that copies them (`packages/<name>/src/`) is the maintainers' and keeps its decision numbers.
+ */
+const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
 
 /** Rule 5: the docs speak to their readers — no decision numbers, no wave references, no page still to be written. */
 export const DOC_TEXT_RULES: readonly TextRule[] = [
@@ -195,13 +210,13 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
     what: 'a decision number',
     // A word of its own: `0xE12`, `#E1234`, `1E10`, `E2E` and `E.164` are none.
     pattern: /\bE\d{2,3}\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],
     why: 'say what was decided, not its number — the decisions are the maintainers\' record',
   },
   {
     what: 'a wave reference',
     pattern: /\b(?:W\d+(?:\.\d+)?|[Ww]ave \d+)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS],
+    files: [DOCS_PAGES, PACKAGE_CARDS, APP_COPIES],
     why: 'the docs describe the framework as it is, not when it changed — UPGRADING.md says that, by version',
   },
   {
@@ -210,7 +225,25 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
     files: [DOCS_PAGES],
     why: 'every page is written — write it, or take it out of apps/docs/docs.config.ts and docs/',
   },
+  {
+    what: 'a personal date',
+    // Who decided and when ("Max 07.10."): a name of its own (not `Max-Age`) or a day and a month with their dots.
+    pattern: /\bMax\b(?![-\w])|(?<![\d.])\d{2}\.\d{2}\.(?!\d)/,
+    files: [APP_COPIES],
+    why: 'a new app keeps the reason, not who decided it when — the maintainers\' record has that',
+  },
+  {
+    what: 'a comparison with another framework',
+    pattern: /\b(?:Laravel|Breeze|Inertia|Rails|Django|Symfony|AdonisJS|NestJS|Next\.js|Nuxt)\b/,
+    files: [DOCS_PAGES, PACKAGE_CARDS, APP_COPIES],
+    why: 'describe Marmeon as it is — a reader may know no other framework',
+  },
 ];
+
+/** Where a hit of rule 5 stands, for its message: the docs, or what every new app copies. */
+export function textRuleWhere(path: string): string {
+  return APP_COPIES.test(path) ? 'in what every new app copies' : 'in the docs';
+}
 
 /** Rule 5, one part: every line of the files `rule` reads that matches its pattern — `path:line: text`. */
 export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): string[] {
@@ -220,6 +253,52 @@ export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): strin
     text.split('\n').forEach((line, index) => {
       if (rule.pattern.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
     });
+  }
+  return hits;
+}
+
+/** A package's code, as it runs in an app: `packages/<name>/src/`, its tests, type tests and fixtures aside. */
+const RUNTIME_CODE = /^packages\/[^/]+\/src\/(?!.*__fixtures__\/).+(?<!\.test|\.type-test)\.tsx?$/;
+/** What rule 6 looks for in the strings of that code: rule 5's parts that hold for every text an app developer reads. */
+const RUNTIME_TEXT_RULES = DOC_TEXT_RULES.filter((rule) => ['a decision number', 'a wave reference', 'a comparison with another framework'].includes(rule.what));
+
+/** What rule 6 uses of oxc-parser: an ESTree program, and the errors of a file it cannot read. */
+interface OxcParser {
+  parseSync(filename: string, text: string): { program: unknown; errors: readonly { message: string }[] };
+}
+/** oxc-parser — the parser of `@marmeon/core` (this script runs from the repository's root, which does not depend on it). */
+const oxc = (): OxcParser => createRequire(join(root, 'packages/core/package.json'))('oxc-parser') as OxcParser;
+
+/**
+ * Rule 6: the strings of a package's code — messages, warnings, solutions, command descriptions and output, what `make:*`
+ * writes, the devtools' pages — carry no decision number, no wave reference and no other framework: every app shows them. A
+ * string literal, a template's text and JSX text count; comments, names and regular expressions are the maintainers' and do not.
+ * `path:line: what: text`.
+ */
+export function runtimeStringHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!RUNTIME_CODE.test(path) || !RUNTIME_TEXT_RULES.some((rule) => rule.pattern.test(text))) continue;
+    const { program, errors } = oxc().parseSync(path, text);
+    if (errors.length > 0) throw new Error(`${path}: oxc-parser cannot read it: ${errors[0]!.message}`);
+    const lineStarts = [0, ...[...text.matchAll(/\n/g)].map((match) => match.index + 1)];
+    const lineOf = (offset: number) => lineStarts.findLastIndex((start) => start <= offset) + 1;
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (node === null || typeof node !== 'object') return;
+      const { type, start, end, value } = node as { type?: string; start?: number; end?: number; value?: unknown };
+      const isText = (type === 'Literal' && typeof value === 'string') || type === 'TemplateElement' || type === 'JSXText';
+      if (isText && start !== undefined && end !== undefined) {
+        text.slice(start, end).split('\n').forEach((line, index) => {
+          for (const rule of RUNTIME_TEXT_RULES) {
+            if (rule.pattern.test(line)) hits.push(`${path}:${lineOf(start) + index}: ${rule.what}: ${line.trim().slice(0, 160)}`);
+          }
+        });
+        return;
+      }
+      for (const [key, child] of Object.entries(node)) if (key !== 'parent') visit(child);
+    };
+    visit(program);
   }
   return hits;
 }
@@ -252,7 +331,8 @@ export function checkSource(repository: string = root): string[] {
       (hit) => `NODE_ENV checked positively (E201 — staging is not development): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
     ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (E207 — API tokens start with marmeon_): ${hit}`),
-    ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} in the docs (${rule.why}): ${hit}`)),
+    ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
+    ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
   ];
 }
 
@@ -263,6 +343,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies name no decision number, no wave and no pending page.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies name no decision number, no wave and no pending page; the starter's template and the packages' stubs no decision number, wave or personal date; neither they nor the docs compare Marmeon with another framework; no string of a package's code names a decision, a wave or another framework.`);
   }
 }

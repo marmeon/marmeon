@@ -13,7 +13,7 @@ export const SESSIONS_UPGRADE_MIGRATION = new URL('../../stubs/migrations/upgrad
  */
 export class MakeSessionTableCommand {
   static command = 'make:session-table';
-  static description = 'Create the migration for the database session driver (sessions) — --upgrade for a table made before W8';
+  static description = 'Create the migration for the database session driver (sessions) — --upgrade for a table made before Marmeon 0.1.0';
   static usage = '[--module=system] [--upgrade]';
   static options = { module: { type: 'string', short: 'm' }, upgrade: { type: 'boolean' } } as const;
 

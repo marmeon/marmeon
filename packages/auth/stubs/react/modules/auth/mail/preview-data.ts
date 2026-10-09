@@ -6,7 +6,7 @@ import { UserFactory } from '../factories/UserFactory.ts';
 import type { User } from '../users.ts';
 
 /**
- * Sample data for the mail previews (`/_marmeon/mail`, development only, E106): a user from the factory — made, never
+ * Sample data for the mail previews (`/_marmeon/mail`, development only): a user from the factory — made, never
  * stored —, the translator of the preview's `?locale=`, and links from APP_URL.
  */
 export function previewData({ make, locale }: MailPreviewContext) {

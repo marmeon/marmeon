@@ -211,8 +211,14 @@ checked over every file of the repository — tracked, or new and not ignored. E
    and `SECURITY.md` name no decision number (an `E` and two or three digits as a word of its own — a hex value, an exponent or
    `E2E` is none); the pages and the READMEs no wave of the maintainers' plan (a `W` and a number, or "wave" and a number); and no
    page under `docs/` carries the placeholder marker as a line of its own ([Writing documentation](#writing-documentation)) —
-   every page is written. `UPGRADING.md`, the record of changes, is exempt. Each part is an entry of `DOC_TEXT_RULES` with its
-   pattern and the files it reads.
+   every page is written. What every new app copies, the starter's template (`packages/create-marmeon/template/`) and the
+   packages' stubs (`packages/<name>/stubs/`: the `make:auth` module, the migrations of `make:*-table`), carries no decision number, no wave and no personal date of the plan ("Max 07.10.");
+   the pages, the READMEs and those copies compare Marmeon with no other framework. `UPGRADING.md`, the record of changes, is
+   exempt. Each part is an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
+6. **The framework's messages speak to app developers**: no string of a package's code (`packages/<name>/src/`, tests and
+   fixtures aside) names a decision number, a wave or another framework — errors, warnings, solutions, command descriptions and
+   output, the files the `make:*` generators write and the devtools' pages reach every app. Only strings count, read with
+   oxc-parser: comments, names and regular expressions are for maintainers and may keep their decision numbers.
 
 A new rule joins the same script, with its test and its Gegenprobe.
 

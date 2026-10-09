@@ -51,7 +51,7 @@ export default defineGegenproben({
     {
       id: 'G1b',
       title: 'the decision-number rule reads no file: its unit test is red',
-      patch: [{ file: 'scripts/check-source.ts', find: '    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS],', replace: '    files: [],' }],
+      patch: [{ file: 'scripts/check-source.ts', find: '    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],', replace: '    files: [],' }],
       run: ci('finds a decision number in the docs'),
       // Vitest shortens the lists: nothing found where five hits are expected.
       expect: /expected \[\] to deeply equal \[ …\(5\) \]/,
@@ -91,7 +91,7 @@ export default defineGegenproben({
     {
       id: 'G6',
       title: 'a docs page links to a package README: no page answers it',
-      patch: [{ file: 'docs/queues.md', find: '[transactions](transactions.md)', replace: '[transactions](../packages/queue/README.md)' }],
+      patch: [{ file: 'docs/queues.md', find: '[transactions](transactions.md#what-joins-a-transaction)', replace: '[transactions](../packages/queue/README.md)' }],
       run: LINKS,
       expect: /\/docs\/queues: \/packages\/queue\/README\.md — no such page/,
     },

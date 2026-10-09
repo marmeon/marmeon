@@ -106,7 +106,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', ()
       connections.transaction(async () => {
         await expect(limiter.hit('login', 60)).rejects.toThrow(InfrastructureTransactionError);
         await expect(limiter.hit('login', 60)).rejects.toThrow(
-          'The cache (CACHE_DRIVER=database — also rate limits and locks) cannot work inside the open transaction on the database connection "default" (E108): it is a SQLite file',
+          'The cache (CACHE_DRIVER=database — also rate limits and locks) cannot work inside the open transaction on the database connection "default": it is a SQLite file',
         );
         await expect(limiter.hit('login', 60)).rejects.toThrow(
           "Give the cache its own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, CACHE_CONNECTION=system, and `marmeon migrate` (the migration of `marmeon make:cache-table` follows CACHE_CONNECTION) — or use Redis (CACHE_DRIVER=redis).",

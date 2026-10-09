@@ -34,9 +34,9 @@ export default defineRoutes((Route) => {
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.post('/login', LoginController).name('auth.login.store');
   guests.get('/register', ShowRegisterController).name('auth.register');
-  // A few sign-ups per minute and address (E100) — live validation of the form does not count.
+  // A few sign-ups per minute and address — live validation of the form does not count.
   guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
-  // Private registration (E146, the default): every sign-up ends here — a new address and a known one alike (404 with
+  // Private registration (the default): every sign-up ends here — a new address and a known one alike (404 with
   // AUTH_PRIVATE_REGISTRATION=false: a sign-up signs in then).
   guests.get('/register/sent', ShowRegistrationSentController).name('auth.register.sent');
   guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
@@ -46,9 +46,9 @@ export default defineRoutes((Route) => {
 
   const signedIn = Route.middleware(authenticate());
   signedIn.post('/logout', LogoutController).name('auth.logout');
-  // Private registration (E146, the default): the app is for confirmed addresses only — whoever signed up with somebody else's
+  // Private registration (the default): the app is for confirmed addresses only — whoever signed up with somebody else's
   // address (it was free then) signs in, but sees nothing but the notice until the link from that inbox is clicked while signed
-  // in. `verified()` then; with AUTH_PRIVATE_REGISTRATION=false (E193) everyone signed in passes (middleware/ConfirmedAddress.ts).
+  // in. `verified()` then; with AUTH_PRIVATE_REGISTRATION=false everyone signed in passes (middleware/ConfirmedAddress.ts).
   const confirmedAddress = signedIn.middleware(ConfirmedAddress);
   confirmedAddress.get('/dashboard', ShowDashboardController).name('dashboard');
   confirmedAddress.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
@@ -56,7 +56,7 @@ export default defineRoutes((Route) => {
   // "Sudo mode": the security page asks for the password again unless it was typed within 15 minutes.
   confirmedAddress.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
   // A new hash in the database and its fingerprint in the session must stay a pair: one of these requests per session at a
-  // time (block(), E145) — two at once could leave the session with the other's fingerprint, and sign it out.
+  // time (block()) — two at once could leave the session with the other's fingerprint, and sign it out.
   confirmedAddress.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
   confirmedAddress.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();
   // A new address is pending until the link sent to it is clicked — the same answer for every address; a few requests a minute

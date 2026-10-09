@@ -132,7 +132,7 @@ export function overviewPage(frame: Frame, data: OverviewData): string {
   return layout(
     { ...frame, title: 'Overview', current: 'overview' },
     html`<h1>Overview</h1>
-<p class="sub">What the app did lately — every process of it (server, worker, scheduler) writes here. Development only (E115); everything shown is redacted (E125).</p>
+<p class="sub">What the app did lately — every process of it (server, worker, scheduler) writes here. Development only; everything shown is redacted.</p>
 ${data.warnings.map((warning) => html`<div class="callout warn" role="note"><p>${warning}</p></div>`)}
 <section><span class="stat"><b>${data.usage.entries}</b>entries</span><span class="stat"><b>${megabytes(data.usage.bytes)}</b>${data.maxBytes ? `of ${megabytes(data.maxBytes)}` : 'stored'}</span><span class="stat"><b>${data.usage.files}</b>files</span>${queueSummary}</section>
 ${section('Latest requests', html`${entryTable('request', data.requests, { tail: tailUrl('request', {}) })}<p class="pager"><a href="${BASE}/requests">All requests →</a></p>`)}
@@ -365,7 +365,7 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
     case 'query':
       return section(
         'Statement',
-        html`<pre class="block">${entry.content.sql}</pre><h3>Parameters</h3>${entry.content.sensitive ? html`<p>${badge('secret columns', 'info')} The statement touches a table with secret columns — no parameter is kept (E125).</p>` : json(entry.content.parameters)}${keyValues([
+        html`<pre class="block">${entry.content.sql}</pre><h3>Parameters</h3>${entry.content.sensitive ? html`<p>${badge('secret columns', 'info')} The statement touches a table with secret columns — no parameter is kept.</p>` : json(entry.content.parameters)}${keyValues([
           ['Duration', duration(entry.content.durationMs)],
           ['Connection', `${entry.content.connection} (${entry.content.driver})`],
           ['Error', entry.content.error ? `${entry.content.error.class}: ${entry.content.error.message}` : undefined],
@@ -404,7 +404,7 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
         entry.content.html
           ? section(
               'HTML',
-              html`<p class="muted">In a sandboxed frame: no script of the mail runs, it cannot reach this page (links with tokens are masked, E125).</p><iframe class="mail" sandbox src="${BASE}/mails/${encodeURIComponent(entry.id)}/html" title="${entry.content.subject ?? 'The mail'}" referrerpolicy="no-referrer"></iframe>`,
+              html`<p class="muted">In a sandboxed frame: no script of the mail runs, it cannot reach this page (links with tokens are masked).</p><iframe class="mail" sandbox src="${BASE}/mails/${encodeURIComponent(entry.id)}/html" title="${entry.content.subject ?? 'The mail'}" referrerpolicy="no-referrer"></iframe>`,
             )
           : ''
       }${entry.content.text ? section('Text', html`<pre class="block">${entry.content.text}</pre>`) : ''}`;

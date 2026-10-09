@@ -1,7 +1,7 @@
 import { ConfirmDialog, useTranslation, type ConfirmProps } from '@marmeon/react';
 
 /**
- * How the app asks (E64): a link's, an action's or a form's `confirm`, and the question before unsaved changes are left — the
+ * How the app asks: a link's, an action's or a form's `confirm`, and the question before unsaved changes are left — the
  * framework's accessible dialog (a native modal `<dialog>`, the safe choice focused, type-to-confirm) with the app's words in
  * the page's language (`lang/en.ts`, `lang/de.ts`). `createMarmeonApp({ confirm: Confirm })` in `bootstrap/client.tsx`.
  */

@@ -179,7 +179,7 @@ describe('the queue commands', () => {
 
   it("the apps' and the starter's jobs tables are the stub's: made before Wave 10, then the fair claim's index in a migration of its own (E199)", () => {
     const stub = readFileSync(new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url), 'utf8');
-    const index = "      // A worker without --queue claims the oldest due job of every queue in one statement (E199) — this index serves it.\n      table.index(['reserved_at', 'available_at', 'id']);\n";
+    const index = "      // A worker without --queue claims the oldest due job of every queue in one statement — this index serves it.\n      table.index(['reserved_at', 'available_at', 'id']);\n";
     expect(stub, 'make:queue-table writes a new table with the index').toContain(index);
     const repo = new URL('../../../../', import.meta.url);
     // The reference apps show the way an older app goes (docs/deployment.md#the-queue-index-of-an-older-app): the migration that

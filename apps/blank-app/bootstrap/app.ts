@@ -11,7 +11,7 @@ export default defineApplication({
   config: [AppConfig],
   modules: [system],
   // Every response: the security headers (HSTS when you turn it on); every document: a strict Content-Security-Policy with a
-  // nonce per response (E147) — add directives for what your pages load from elsewhere.
+  // nonce per response — add directives for what your pages load from elsewhere.
   middleware: {
     global: [SecurityHeaders, contentSecurityPolicy()],
   },

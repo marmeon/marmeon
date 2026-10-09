@@ -207,7 +207,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', 
     await connections.transaction(async () => {
       await expect(store.write('a'.repeat(64), DATA, NEW)).rejects.toThrow(InfrastructureTransactionError);
       await expect(store.write('a'.repeat(64), DATA, { ...NEW, expectedVersion: 1 })).rejects.toThrow(
-        'The session store (SESSION_DRIVER=database) cannot work inside the open transaction on the database connection "default" (E108)',
+        'The session store (SESSION_DRIVER=database) cannot work inside the open transaction on the database connection "default"',
       );
     });
     await store.write('a'.repeat(64), DATA, NEW); // outside: the shared file works

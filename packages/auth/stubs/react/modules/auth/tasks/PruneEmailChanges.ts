@@ -2,7 +2,7 @@ import { Clock, Logger } from '@marmeon/core';
 import { UserRepository } from '../UserRepository.ts';
 
 /**
- * Pending changes of address (private registration, E146) that nobody confirmed in time: their address and token hash are
+ * Pending changes of address (private registration) that nobody confirmed in time: their address and token hash are
  * cleared — an expired link never worked, this only tidies the rows (the scheduler runs it nightly, `s.call(PruneEmailChanges)`).
  */
 export class PruneEmailChanges {

@@ -538,13 +538,13 @@ export function createHttpKernel(
               ? `an island request (${request.method} ${pathname})`
               : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
       const rule = live
-        ? 'a live validation is read-only (E62) — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
+        ? 'a live validation is read-only — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
         : epoch
-          ? "the session's epoch is read-only (W8 step 8) — a tab asks it when it becomes visible: no session, cookies or flash data, no work after the response."
+          ? "the session's epoch is read-only — a tab asks it when it becomes visible: no session, cookies or flash data, no work after the response."
           : upload
-          ? 'an upload is read-only (W6.9) — it stores a file beside the page: no session, cookies or flash data, no work after the response.'
+          ? 'an upload is read-only — it stores a file beside the page: no session, cookies or flash data, no work after the response.'
           : stream
-            ? 'an event stream is read-only (W6.10) — it stays open beside the page and only listens: no session, cookies or flash data, no work after the response.'
+            ? 'an event stream is read-only — it stays open beside the page and only listens: no session, cookies or flash data, no work after the response.'
             : undefined;
       readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message), ...(rule ? { rule } : {}) });
       state.cookies.lock((what) => readOnly.permit(what));

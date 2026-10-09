@@ -8,9 +8,9 @@ import { AccountExistsMail } from '../mail/AccountExistsMail.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 /**
- * Private registration (E146): someone signed up with the address of an existing account. The request only queues this job —
+ * Private registration: someone signed up with the address of an existing account. The request only queues this job —
  * as a new account's request queues its verification mail — so both answers take the same time; here the mail is composed in
- * the account's language, with links from APP_URL. The address is a personal datum: the payload is encrypted (E105).
+ * the account's language, with links from APP_URL. The address is a personal datum: the payload is encrypted.
  */
 export class SendAccountExistsMailJob {
   static readonly job = 'auth.send-account-exists-mail';

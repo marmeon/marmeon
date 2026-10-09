@@ -91,7 +91,7 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
   const label = `${listener.name} (static queue)`;
   if (typeof listener.prototype?.handle !== 'function') throw new QueueSetupError(`${label} needs a handle(payload) method.`);
   for (const key of Object.keys(options)) {
-    if (key === 'afterCommit') throw new QueueSetupError(`${label}: afterCommit is always on: queued listeners join the transaction (E107/E109) — remove it.`);
+    if (key === 'afterCommit') throw new QueueSetupError(`${label}: afterCommit is always on: queued listeners join the transaction — remove it.`);
     if (!['queue', 'connection', 'delay', 'tries', 'backoff'].includes(key)) {
       throw new QueueSetupError(`${label}: unknown setting "${key}" — static queue takes queue, connection, delay, tries and backoff.`);
     }

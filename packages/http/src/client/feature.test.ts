@@ -195,7 +195,7 @@ describe('the history writer — positions only, never props (E36)', () => {
   it('counter-check: refuses props in development — with what to do instead', () => {
     const writer = new HistoryWriter(new FakeWindow(`${ORIGIN}/a`));
     expect(() => writer.push(state({ props: { email: 'ada@example.com' } }), '/a')).toThrow(
-      '[marmeon] A history entry holds where it is, never what it showed (E36): "props" is no field of it. Keep what a page showed in memory — a slot of the feature (host.entry, host.document) — and register a position a feature needs with host.history.field().',
+      '[marmeon] A history entry holds where it is, never what it showed: "props" is no field of it. Keep what a page showed in memory — a slot of the feature (host.entry, host.document) — and register a position a feature needs with host.history.field().',
     );
     expect(() => writer.replace(state({ draft: 'secret' }), '/a')).toThrow('"draft" is no field of it');
   });

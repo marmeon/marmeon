@@ -11,7 +11,7 @@ declare module '@marmeon/http/page' {
   }
 
   /**
-   * Flash messages (E60): `redirect().flash('toast', { kind: 'success', message })` in a controller, shown once as a toast by
+   * Flash messages: `redirect().flash('toast', { kind: 'success', message })` in a controller, shown once as a toast by
    * the layout (`useFlash('toast', …)`). Not a shared prop: the protocol carries them, exactly once.
    */
   interface FlashData {

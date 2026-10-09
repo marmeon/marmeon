@@ -189,7 +189,7 @@ describe('createHttpKernel — live validation (E62)', async () => {
   it('… and throw in development, naming the rule', async () => {
     const response = await post('/tracked', { name: 'Ada' }, live('name'), strict);
     expect(response.status).toBe(500);
-    expect(((await response.json()) as { message: string }).message).toContain("cookies.set('tracked') in a live validation (POST /tracked): a live validation is read-only (E62)");
+    expect(((await response.json()) as { message: string }).message).toContain("cookies.set('tracked') in a live validation (POST /tracked): a live validation is read-only");
   });
 
   it('a redirect of the route (middleware sending a guest away) is reported, not followed — and is no result', async () => {

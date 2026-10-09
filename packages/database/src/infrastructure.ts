@@ -26,7 +26,7 @@ export class InfrastructureTransactionError extends TransactionError {
 
   constructor(connection: string, usage: InfrastructureUsage, isolated: boolean) {
     super(
-      `${usage.system} cannot work inside the open transaction on the database connection "${connection}" (E108): ` +
+      `${usage.system} cannot work inside the open transaction on the database connection "${connection}": ` +
         (isolated
           ? "in a test, the connection is isolated — one physical connection, which that transaction holds — "
           : 'it is a SQLite file, and that transaction holds its only connection — ') +
@@ -120,7 +120,7 @@ export class InfrastructureDriver implements Driver {
 
   #noTransactions(): TransactionError {
     return new TransactionError(
-      `${this.#usage.system} runs single statements on its own connection (E108) — it has no transactions. Make each operation one statement.`,
+      `${this.#usage.system} runs single statements on its own connection — it has no transactions. Make each operation one statement.`,
     );
   }
 }

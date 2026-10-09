@@ -13,7 +13,7 @@ import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
 export const UpdateEmailRequest = defineRequest({
-  // Nothing here asks the database — whether an address has an account is never told by the form (E146).
+  // Nothing here asks the database — whether an address has an account is never told by the form.
   schema: r.object({ email: r.string().trim().lowercase().required().max(255).email() }),
   messages: { 'email.required': 'auth.validation.email_any', 'email.email': 'auth.validation.email_invalid' },
   authorize: (_ctx: HttpContext<Authenticated>) => true,
@@ -21,12 +21,12 @@ export const UpdateEmailRequest = defineRequest({
 
 /**
  * A new address — on the security page, behind confirmedPassword(): a hijacked session must not take over the account by
- * changing the address and then resetting the password. Private registration (E146, the default): the change is pending — the
+ * changing the address and then resetting the password. Private registration (the default): the change is pending — the
  * new address waits beside the old one, and a link goes to it; the account's address changes only once that link is clicked
  * (signed in). A free address and one another account has get the same answer in the same time: this request does the same
  * either way — one write, one job. The worker decides: the link to a free address, a note to the owner of a taken one.
  *
- * With `AUTH_PRIVATE_REGISTRATION=false` (E193) the address changes at once, unverified until confirmed, the old one is told —
+ * With `AUTH_PRIVATE_REGISTRATION=false` the address changes at once, unverified until confirmed, the old one is told —
  * and "taken" is a field error.
  */
 export class UpdateEmailController extends Controller {
@@ -75,7 +75,7 @@ export class UpdateEmailController extends Controller {
     }
     const { token, hash } = newEmailChangeToken();
     const expiresAt = new Date(this.#clock.now() + EMAIL_CHANGE_MINUTES * 60_000);
-    // One transaction (E107): the pending change and its job, or neither. The job is composed by a worker, never here — a mail
+    // One transaction: the pending change and its job, or neither. The job is composed by a worker, never here — a mail
     // rendered for one kind of address only would show in the time.
     await this.#connections.transaction(async () => {
       await this.#users.requestEmailChange(ctx.user.id, { email, tokenHash: hash, expiresAt });

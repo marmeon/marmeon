@@ -14,8 +14,8 @@ type Sql = (typeof import('@marmeon/database'))['sql'];
 
 /** What a table without the `version` column (made before W8 step 7) needs. */
 const UPGRADE =
-  'The sessions table has no version column: it was made before session keys were hashed (E144) and writes compare versions ' +
-  '(E145). Run `marmeon make:session-table --upgrade` and `marmeon migrate` — every user is signed out once.';
+  'The sessions table has no version column: it was made before session keys were hashed and before writes compared versions. ' +
+  'Run `marmeon make:session-table --upgrade` and `marmeon migrate` — every user is signed out once.';
 
 /**
  * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the

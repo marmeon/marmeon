@@ -193,7 +193,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
 
 /** What `.live()` on an object, a list or a union says — at run time, and as the type `ObjectRule#live`'s `this` must have. */
 export const LIVE_ON_CONTAINER =
-  '.live() goes on the field whose being taken is no secret — r.object({ slug: r.string().unique(Teams, \'slug\').live() }) — never on an object, a list or a union: it would open every rule inside (E197).';
+  '.live() goes on the field whose being taken is no secret — r.object({ slug: r.string().unique(Teams, \'slug\').live() }) — never on an object, a list or a union: it would open every rule inside.';
 
 
 function build(definition: RuleDefinition, context: BuildContext): Engine {

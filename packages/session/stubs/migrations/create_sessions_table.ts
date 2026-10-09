@@ -6,7 +6,7 @@ import { sessionTableConnection } from '@marmeon/session';
 // SESSION_ENCRYPT; secret: never part of a `selectAll()`, it holds the CSRF token), the signed-in user's id (null for guests),
 // the time of the last write in epoch milliseconds and a version every write compares and raises. Expired rows go with
 // `marmeon session:prune` (or the lottery). It lives on the sessions' connection (SESSION_CONNECTION) — with SQLite best a file
-// of its own (E108).
+// of its own.
 export default defineMigration({
   connection: sessionTableConnection,
   up: async (schema) => {

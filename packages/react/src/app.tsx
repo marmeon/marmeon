@@ -305,7 +305,7 @@ function pagePatches(navigator: Navigator | null): PatchTarget {
 }
 
 /** What `progress` took before E82 (`{ delay }`, `false`), as a type error that says what to write now. */
-type ProgressHint = "progress takes an indicator since E82 — progress: progressBar({ delay: 250 }), import { progressBar } from '@marmeon/react'; leave it out for none";
+type ProgressHint = "progress takes an indicator — progress: progressBar({ delay: 250 }), import { progressBar } from '@marmeon/react'; leave it out for none";
 type ProgressBefore = { readonly delay?: ProgressHint; readonly color?: ProgressHint };
 
 /**
@@ -317,7 +317,7 @@ export function progressIndicator(progress: MarmeonAppProps['progress'] | unknow
   if (typeof progress === 'function') return progress as ProgressIndicator;
   throw new TypeError(
     (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
-      ? `[marmeon:R16] progress takes an indicator since E82: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'. Leave it out for no progress bar.`
+      ? `[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'. Leave it out for no progress bar.`
       : '[marmeon:R16]',
   );
 }

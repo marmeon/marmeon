@@ -312,7 +312,7 @@ const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controll
 import { rules as r } from '@marmeon/validation';
 
 export const ${subject}Request = defineRequest({
-  // Laravel's rules, typed (@marmeon/validation) — messages in the request's language.
+  // The rules of @marmeon/validation, typed — messages in the request's language.
   schema: r.object({
     name: r.string().trim().required().max(255),
   }),
@@ -325,7 +325,7 @@ export class ${name} extends Controller {
   static request = ${subject}Request;
 
   handle(ctx: ContextOf<typeof ${subject}Request>) {
-    // A flash message (E60): shown once by the page the user sees next — \`useFlash('toast', …)\` in the layout.
+    // A flash message: shown once by the page the user sees next — \`useFlash('toast', …)\` in the layout.
     return this.back().flash('toast', { kind: 'success', message: \`Saved \${ctx.body.name}.\` });
   }
 }
@@ -386,7 +386,7 @@ const NOTIFICATION = (name: string, notification: string) => `import type { Data
 import { rules as r } from '@marmeon/validation';
 
 /**
- * A notification (E92): sent to recipients as data — \`notifications.send({ type: 'user', id }, ${name}, { id })\` —
+ * A notification: sent to recipients as data — \`notifications.send({ type: 'user', id }, ${name}, { id })\` —
  * and delivered by a worker through the channels \`via()\` returns, in the recipient's language. Dependencies go into
  * the constructor (injected per delivery), the data into the schema — JSON, checked when sent and before delivery.
  * Pass IDs, not records. \`implements Notification<'user'>\` checks \`via()\` against a kind of recipient where it is written.

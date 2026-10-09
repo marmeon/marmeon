@@ -124,7 +124,7 @@ export class Application {
 
   /** Boot phase: runs once every provider has registered. */
   async boot(): Promise<void> {
-    if (this.phase === 'build') throw new Error('An app in the build phase is never booted (E187): createApplication({ phase: \'build\' }) registers its providers only.');
+    if (this.phase === 'build') throw new Error('An app in the build phase is never booted: createApplication({ phase: \'build\' }) registers its providers only.');
     for (const provider of this.#providers) await provider.boot?.(this);
   }
 
@@ -285,7 +285,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
 /** Reading configuration the build phase left out (E187): which variables, and why the build does not have them. */
 function unavailableWhileBuilding(definition: ConfigDefinition<unknown>, issues: readonly string[]): ConfigError {
   const error = new ConfigError(
-    `The configuration "${definition.name}" is not available while building — the build boots the app without runtime secrets (E187):\n${issues.join('\n')}\n` +
+    `The configuration "${definition.name}" is not available while building — the build boots the app without runtime secrets:\n${issues.join('\n')}\n` +
       'Read it when the app runs (in boot(), a request, a job, a command) — not while a provider registers or the build runs.',
   );
   error.stack = `${error.name}: ${error.message}`;

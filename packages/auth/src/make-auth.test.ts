@@ -63,7 +63,7 @@ describe('make:auth', () => {
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
     expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
-    expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out (E209).');
+    expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
   });
 
   it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app, W7.6)', async () => {
@@ -78,7 +78,7 @@ describe('make:auth', () => {
     expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
     expect(without.lines).toContain("Lint: marmeon make:lint-config writes the app's preset (views import controllers only with import type).");
     expect(without.lines).toContain('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -D @marmeon/devtools');
-    expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page, E147).");
+    expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page).");
     writeFileSync(join(root, '.oxlintrc.json'), '{}\n');
     pkg.devDependencies['@marmeon/devtools'] = 'workspace:*';
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
@@ -235,15 +235,15 @@ describe('make:auth', () => {
       expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
       // Both values of the switch (E193): the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
       const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
-      expect(ran('registration', 'private registration (E146) — the default')).toBe(6);
-      expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(4);
-      expect(ran('email-change', 'changing the address (private registration, E146) — the default')).toBe(7); // W9 step 9
-      expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(2);
+      expect(ran('registration', 'private registration — the default')).toBe(6);
+      expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(4);
+      expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(7); // W9 step 9
+      expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(2);
       // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS (E203) by the command, in both behaviours — the module schedules no
       // deletion (E209: the app turns it on).
-      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed (E203) — the default')).toBe(6);
+      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed — the default')).toBe(6);
       // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became (W10 step 9b).
-      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(3);
+      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false')).toBe(3);
       expect(tests.code).toBe(0);
 
       // A stale bootstrap/routes.ts fails the CI check.

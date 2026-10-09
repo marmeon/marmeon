@@ -1,6 +1,6 @@
 import { defineMigration } from '@marmeon/database';
 
-// API tokens (E27): the secret only as SHA-256, abilities as JSON.
+// API tokens: the secret only as SHA-256, abilities as JSON.
 export default defineMigration({
   up: (schema) =>
     schema.create('personal_access_tokens', (table) => {

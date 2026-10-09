@@ -125,13 +125,13 @@ describe('createApplication({ phase: "build" }) (E187)', () => {
     expect(calls, 'a provider booted in the build phase').toEqual([]);
     await app.shutdown();
     expect(calls).toEqual([]);
-    await expect(app.boot()).rejects.toThrow('An app in the build phase is never booted (E187)');
+    await expect(app.boot()).rejects.toThrow('An app in the build phase is never booted: ');
   });
 
   it('leaves out the configuration that does not validate — reading it says why; the rest is there', async () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production', PORT: '8080' }, phase: 'build', config: [Secret, Plain] });
     expect(app.container.make(Plain)).toEqual({ port: '8080' });
-    expect(() => app.container.make(Secret)).toThrow(/^The configuration "secret" is not available while building — the build boots the app without runtime secrets \(E187\):\n {2}• secret: APP_KEY — .+\nRead it when the app runs/);
+    expect(() => app.container.make(Secret)).toThrow(/^The configuration "secret" is not available while building — the build boots the app without runtime secrets:\n {2}• secret: APP_KEY — .+\nRead it when the app runs/);
     expect(() => app.container.make(Secret)).toThrow(ConfigError);
   });
 

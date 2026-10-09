@@ -36,7 +36,7 @@ export class BuildCommand {
       output.success(`Precomputed the injection lists of ${injections.modules} module${injections.modules === 1 ? '' : 's'} → ${relative(root, injections.path)}`);
     }
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('route:types')) !== 0) {
-      output.error('Not built: marmeon route:types failed (it registers the app without booting it, E187 — see its error above).');
+      output.error('Not built: marmeon route:types failed (it registers the app without booting it — see its error above).');
       return 1;
     }
     if (options['no-typecheck'] !== true) {

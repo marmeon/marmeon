@@ -1,7 +1,7 @@
 import { editableResponse, type HttpContext, type Next } from '@marmeon/http';
 
 /**
- * `Strict-Transport-Security` (E162): browsers then refuse plain HTTP for this host for `max-age` seconds — turn it on once the
+ * `Strict-Transport-Security`: browsers then refuse plain HTTP for this host for `max-age` seconds — turn it on once the
  * site answers over HTTPS only (with `includeSubDomains`: every subdomain too), e.g. `'max-age=31536000; includeSubDomains'`.
  * Sent only on HTTPS responses (behind a proxy: `TRUSTED_PROXIES` and its `X-Forwarded-Proto`).
  */

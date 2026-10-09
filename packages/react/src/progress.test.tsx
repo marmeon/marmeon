@@ -89,7 +89,7 @@ describe('the progress bar is opt-in (E82)', () => {
   it('what progress took before E82 says what to import instead', () => {
     // @ts-expect-error — progress takes an indicator: progressBar({ delay: 250 })
     const before: Parameters<typeof MarmeonApp>[0]['progress'] = { delay: 250 };
-    expect(() => progressIndicator(before)).toThrow("[marmeon:R16] progress takes an indicator since E82: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'.");
+    expect(() => progressIndicator(before)).toThrow("[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'.");
     // @ts-expect-error — `false` is gone too: leave progress out for none
     const off: Parameters<typeof MarmeonApp>[0]['progress'] = false;
     expect(() => progressIndicator(off)).toThrow('[marmeon:R16]');

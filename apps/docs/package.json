@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The documentation of Marmeon — its pages under docs/ as a normal Marmeon app (E114, E133: no static export). Not published; deployed as an image (apps/docs/Dockerfile, E142).",
+  "description": "The documentation of Marmeon — its pages under docs/ as a normal Marmeon app, no static export. Not published; deployed as an image (apps/docs/Dockerfile).",
   "imports": {
     "#modules/*": "./modules/*/index.ts"
   },

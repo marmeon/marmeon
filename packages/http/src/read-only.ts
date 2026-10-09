@@ -16,7 +16,7 @@ export interface ReadOnlyOptions {
 }
 
 const ISLAND_RULE =
-  'an island is read-only (E52) — it cannot change the session, cookies or flash data, nor defer work after the response. Do that in the page or an action, not in an island.';
+  'an island is read-only — it cannot change the session, cookies or flash data, nor defer work after the response. Do that in the page or an action, not in an island.';
 
 /**
  * Whether the current request may leave anything behind — per request (scoped). An island's request is read-only (E52):

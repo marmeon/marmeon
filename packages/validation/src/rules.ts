@@ -24,7 +24,7 @@ export type CheckQueryFields<S extends Shape> = {
     ? [Extract<Exclude<InputOf<S[K]>, undefined>, string | readonly string[]>] extends [never]
       ? `Query field '${K & string}' is read from the URL as text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.in([…]), r.array(…)`
       : S[K]
-    : `Query field '${K & string}' needs .default(…) — a query is parsed field by field and never answers 422 (E56); .optional() leaves it undefined`;
+    : `Query field '${K & string}' needs .default(…) — a query is parsed field by field and never answers 422; .optional() leaves it undefined`;
 };
 
 /** `S` when every field can be read from the environment (strings) — the message the compiler shows otherwise. */

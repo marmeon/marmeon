@@ -5,7 +5,7 @@ import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 
 /**
- * Private registration (E146): to the new address of a pending change — the link that makes it the account's (signed, for this
+ * Private registration: to the new address of a pending change — the link that makes it the account's (signed, for this
  * account and request, 60 minutes, while signed in). In the user's language.
  */
 export class ConfirmNewEmailMail implements Mailable {

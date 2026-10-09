@@ -5,7 +5,7 @@ import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 
 /**
- * Private registration (E146): someone asked to change the address of their account to this account's — instead of telling them
+ * Private registration: someone asked to change the address of their account to this account's — instead of telling them
  * "taken", the owner learns it here. Nothing changed for anybody. In the owner's language.
  */
 export class EmailInUseMail implements Mailable {

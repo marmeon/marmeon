@@ -152,7 +152,7 @@ describe('the devtools', () => {
     expect((await app.get(`/_marmeon/devtools/mails/${mail.id}/html`).assertOk()).body).toMatch(/signature=\[redacted\]/);
 
     const overview = (await app.get('/_marmeon/devtools').assertOk()).body;
-    expect(overview).toContain('Scheduler (E123): onOneServer()');
+    expect(overview).toContain('Scheduler: onOneServer()');
     expect(overview).toContain('CACHE_DRIVER=memory');
     expect((await app.get('/_marmeon/devtools/schedule').assertOk()).body).toContain('marmeon schedule:test session:prune');
     await app.get('/_marmeon/devtools/queue').assertOk();

@@ -217,7 +217,7 @@ describe('health endpoints (E126)', () => {
 
     const clash = await boot({ routes: ownUp });
     expect(() => createHttpKernel(clash.application)).toThrow(
-      'The route "status" (GET /up) is where the health check answers (E126) — it would never be reached. Give the route another path, or move the health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off).',
+      'The route "status" (GET /up) is where the health check answers — it would never be reached. Give the route another path, or move the health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off).',
     );
     await clash.application.shutdown();
 

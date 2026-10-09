@@ -58,7 +58,7 @@ describe.each(drivers)('connections.infrastructure() on %s — outside of transa
 
   it('runs single statements only — no transactions of its own', async () => {
     await expect(connections.infrastructure('default', USAGE).transaction().execute(async () => {})).rejects.toThrow(
-      'The counter runs single statements on its own connection (E108) — it has no transactions.',
+      'The counter runs single statements on its own connection — it has no transactions.',
     );
   });
 
@@ -91,7 +91,7 @@ describe('connections.infrastructure() on SQLite', () => {
         connections.transaction(async () => {
           await expect(hit(infrastructure)).rejects.toThrow(InfrastructureTransactionError);
           await expect(hit(infrastructure)).rejects.toThrow(
-            'The counter cannot work inside the open transaction on the database connection "default" (E108): it is a SQLite file, and that transaction holds its only connection — ' +
+            'The counter cannot work inside the open transaction on the database connection "default": it is a SQLite file, and that transaction holds its only connection — ' +
               'its writes would either join the transaction (and be rolled back with it) or wait for it forever. ' +
               'Give the counter its own SQLite file (COUNTER_CONNECTION) or use Redis. Outside of transactions the shared connection works.',
           );
@@ -149,7 +149,7 @@ describe('connections.infrastructure() on SQLite', () => {
     await within(
       connections.transaction(async () => {
         await hit(connections.get(), 'in the transaction'); // it holds the file's write lock now
-        await expect(hit(infrastructure)).rejects.toThrow('The counter cannot work inside the open transaction on the database connection "default" (E108)');
+        await expect(hit(infrastructure)).rejects.toThrow('The counter cannot work inside the open transaction on the database connection "default"');
       }),
     );
   });
@@ -246,7 +246,7 @@ describe.runIf(PGSQL_URL)('connections.infrastructure() on Postgres', () => {
       await within(
         connections.transaction(async () => {
           await expect(hit(infrastructure)).rejects.toThrow(
-            'The counter cannot work inside the open transaction on the database connection "default" (E108): in a test, the connection is isolated',
+            'The counter cannot work inside the open transaction on the database connection "default": in a test, the connection is isolated',
           );
         }),
       );

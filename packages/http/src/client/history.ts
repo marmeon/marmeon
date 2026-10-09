@@ -169,7 +169,7 @@ export class HistoryWriter {
       // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the message.
       else if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
         throw new Error(
-          `[marmeon] A history entry holds where it is, never what it showed (E36): "${name}" is ${this.#fields.has(name) ? 'not a position' : 'no field of it'}. ` +
+          `[marmeon] A history entry holds where it is, never what it showed: "${name}" is ${this.#fields.has(name) ? 'not a position' : 'no field of it'}. ` +
             'Keep what a page showed in memory — a slot of the feature (host.entry, host.document) — and register a position a feature needs with host.history.field().',
         );
       }

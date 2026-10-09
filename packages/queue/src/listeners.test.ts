@@ -200,7 +200,7 @@ describe('queued listeners (E86)', () => {
     await expect(fails([listen(OrderShipped, BadTries as never)])).rejects.toThrow(QueueSetupError);
     await expect(fails([listen(OrderShipped, Typo as never)])).rejects.toThrow('Typo (static queue): unknown setting "aftercommit"');
     await expect(fails([listen(OrderShipped, StillAfterCommit as never)])).rejects.toThrow(
-      'StillAfterCommit (static queue): afterCommit is always on: queued listeners join the transaction (E107/E109) — remove it.',
+      'StillAfterCommit (static queue): afterCommit is always on: queued listeners join the transaction — remove it.',
     );
   });
 });

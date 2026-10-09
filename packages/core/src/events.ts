@@ -105,7 +105,7 @@ type HandleParameter<L> = L extends new (...args: any[]) => { readonly handle: (
 type ListenerFor<E extends EventClass, L> = L extends { readonly queue: unknown } ? QueuedListenerFor<E, L> : ListenerLike<InstanceType<E>>;
 
 type QueuedListenerFor<E extends EventClass, L> = L extends { readonly queue: { readonly afterCommit: unknown } }
-  ? { readonly queue: { readonly afterCommit: 'afterCommit is always on: queued listeners join the transaction (E107/E109) — remove it' } }
+  ? { readonly queue: { readonly afterCommit: 'afterCommit is always on: queued listeners join the transaction — remove it' } }
   : E extends QueueableEvent
   ? IsJson<EventPayload<E>> extends false
     ? { readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E> }

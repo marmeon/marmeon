@@ -28,7 +28,7 @@ const linkIn = <M extends Mailable>(Mail: abstract new (...args: any[]) => M, pa
 describe('signing in and out', () => {
   it('signs in with e-mail and password in a new session', async () => {
     const ada = await app.factory(UserFactory).create();
-    // A guest's login page keeps no session (E143); a failed sign-in does — its errors wait for the page.
+    // A guest's login page keeps no session; a failed sign-in does — its errors wait for the page.
     expect((await app.get('/login')).headers.getSetCookie()).toEqual([]);
     const planted = await app.post('/login', credentials(ada, 'wrong'));
     const login = await app.withCookie('marmeon_session', planted.cookie('marmeon_session')!).post('/login', credentials(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
@@ -76,7 +76,7 @@ describe('password reset', () => {
     const ada = await app.factory(UserFactory).create();
     const known = await app.post('/forgot-password', { form: { email: ada.email } });
     const unknown = await app.post('/forgot-password', { form: { email: 'nobody@example.com' } });
-    // The same toast either way — waiting for the page the redirect leads to (E60).
+    // The same toast either way — waiting for the page the redirect leads to.
     expect(unknown.flashed().map((message) => message.data)).toEqual(known.flashed().map((message) => message.data));
     expect(known.flashed()).toHaveLength(1);
     // The request only queues a job, whatever the address; the job makes the token and queues the mail.
@@ -136,7 +136,7 @@ describe('API tokens', () => {
 });
 
 describe('the pages, rendered on the server', () => {
-  it('carry no style attribute — the layouts name classes of auth.css (a strict style-src blocks inline styles, E202)', async () => {
+  it('carry no style attribute — the layouts name classes of auth.css (a strict style-src blocks inline styles)', async () => {
     // This test's app renders through the app's Vite setup (one open app at a time).
     await app.close();
     app = await createTestApp(application, { database: 'refresh', ssr: true });

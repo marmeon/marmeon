@@ -93,7 +93,7 @@ export function checkHealthPaths(health: HealthEndpoints, routes: readonly Route
     if (route.path !== health.path && route.path !== health.readyPath) continue;
     const name = route.routeName === undefined ? '' : ` "${route.routeName}"`;
     throw new Error(
-      `The route${name} (${route.methods.join('|')} ${route.path}) is where the health check answers (E126) — it would never be reached. ` +
+      `The route${name} (${route.methods.join('|')} ${route.path}) is where the health check answers — it would never be reached. ` +
         `Give the route another path, or move the health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off).`,
     );
   }

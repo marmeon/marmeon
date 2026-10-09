@@ -5,7 +5,7 @@ import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
 
 /**
- * Private registration (E146): someone signed up with the address of this account — instead of telling the form "taken", the
+ * Private registration: someone signed up with the address of this account — instead of telling the form "taken", the
  * owner learns it here. In the user's language.
  */
 export class AccountExistsMail implements Mailable {

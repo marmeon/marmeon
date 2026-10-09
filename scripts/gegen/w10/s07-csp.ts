@@ -128,7 +128,7 @@ export default defineGegenproben({
       patch: [
         {
           file: 'packages/create-marmeon/template/kit/bootstrap/client.tsx',
-          find: "import '@marmeon/react/styles.css'; // the framework's look: layers, dialogs, the error page (E202 — a stylesheet, no inline style)\n",
+          find: "import '@marmeon/react/styles.css'; // the framework's look: layers, dialogs, the error page (a stylesheet, no inline style)\n",
           replace: '',
         },
       ],

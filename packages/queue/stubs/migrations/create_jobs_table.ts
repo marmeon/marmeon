@@ -14,7 +14,7 @@ export default defineMigration({
       table.bigInteger('available_at');
       table.bigInteger('created_at');
       table.index(['queue', 'reserved_at', 'available_at']);
-      // A worker without --queue claims the oldest due job of every queue in one statement (E199) — this index serves it.
+      // A worker without --queue claims the oldest due job of every queue in one statement — this index serves it.
       table.index(['reserved_at', 'available_at', 'id']);
     });
     await schema.create('failed_jobs', (table) => {

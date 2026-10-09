@@ -177,7 +177,7 @@ export function formatValue(value: unknown, colors: boolean): string | undefined
 /** What to add to an error in the sandbox — the infrastructure on the app's SQLite file cannot write inside it (E108). */
 export function sandboxHint(session: TinkerSession, error: unknown): string | undefined {
   if (!session.sandbox || !(error instanceof Error) || error.name !== 'InfrastructureTransactionError') return undefined;
-  return 'In --sandbox the whole session runs in one transaction on the default connection, so the cache, its locks and the sessions on that SQLite file cannot write (E108). Give them a file of their own (CACHE_CONNECTION, SESSION_CONNECTION) or Redis — or leave out --sandbox.';
+  return 'In --sandbox the whole session runs in one transaction on the default connection, so the cache, its locks and the sessions on that SQLite file cannot write. Give them a file of their own (CACHE_CONNECTION, SESSION_CONNECTION) or Redis — or leave out --sandbox.';
 }
 
 /**

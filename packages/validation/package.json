@@ -1,7 +1,7 @@
 {
   "name": "@marmeon/validation",
   "version": "0.1.0",
-  "description": "Validation rules for Marmeon apps, Laravel's names typed: Standard Schema objects with messages in the request's language, database rules that never run live, query and .env rules.",
+  "description": "Validation rules for Marmeon apps, typed: Standard Schema objects with messages in the request's language, database rules that never run live, query and .env rules.",
   "keywords": [
     "marmeon",
     "validation",

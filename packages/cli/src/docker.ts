@@ -45,13 +45,13 @@ export function dockerfile(app: DockerApp): string {
   // leaves them in node_modules/.pnpm.
   const prune = pnpm ? 'rm -rf node_modules \\\n && pnpm install --prod --frozen-lockfile --prefer-offline --store-dir /pnpm/store' : 'npm prune --omit=dev --no-audit --no-fund';
   return `# syntax=docker/dockerfile:1
-# Written by \`marmeon make:docker\` (E141) — yours from now on. One image for every role: \`start\` (the web server, the default),
-# \`queue:work\` and \`schedule:work\` — compose.production.yaml runs each in a container of its own (E140).
+# Written by \`marmeon make:docker\` — yours from now on. One image for every role: \`start\` (the web server, the default),
+# \`queue:work\` and \`schedule:work\` — compose.production.yaml runs each in a container of its own.
 #
 #   docker build -t ${app.name} .
 #   docker run -p 3000:3000 --env-file .env.production -v ${app.name}-storage:/app/storage ${app.name}
 #
-# The app stays TypeScript (E138): Node runs its .ts files; \`marmeon build\` adds the bundles, the injection lists and the
+# The app stays TypeScript: Node runs its .ts files; \`marmeon build\` adds the bundles, the injection lists and the
 # discovery manifest. Configuration and secrets (APP_KEY, APP_URL, DB_*, MAIL_*) come from the environment when the container
 # runs — never from a file in the image: .dockerignore keeps every .env* out of the build.
 
@@ -64,17 +64,17 @@ ${pnpm ? `# pnpm as the app pins it ("packageManager" in package.json) — Node 
 COPY ${manifests} ./
 ${app.localPackages.map((dir) => `COPY ${dir} ./${dir}\n`).join('')}RUN ${cache} ${install}
 COPY . .
-# \`marmeon build\` needs no .env and no secret (E187): it registers the app's providers without booting them (the route types) —
+# \`marmeon build\` needs no .env and no secret: it registers the app's providers without booting them (the route types) —
 # no APP_KEY, no database, nothing that could end up in the image.
 RUN NODE_ENV=production node_modules/.bin/marmeon build
-# Production dependencies only — marmeon is one (E159); typescript, vite and vitest leave. Then the discovery manifest of exactly
-# these packages (E160): the start rewrites nothing, and the app's files may be read-only.
+# Production dependencies only — marmeon is one; typescript, vite and vitest leave. Then the discovery manifest of exactly
+# these packages: the start rewrites nothing, and the app's files may be read-only.
 RUN ${cache} ${prune} \\
  && node_modules/.bin/marmeon discover
 
 # ── Run: Node and the app, nothing to build with ───────────────────────────────────────────────────────────────────────
 FROM \${NODE_IMAGE}
-# tini as PID 1 (E187): Node as PID 1 reaps no orphaned process (they stay zombies), and the kernel drops a signal to PID 1 that
+# tini as PID 1: Node as PID 1 reaps no orphaned process (they stay zombies), and the kernel drops a signal to PID 1 that
 # has no handler yet — tini passes SIGTERM on to marmeon and ends with its exit code (0 after the drain, 70 for a stuck job).
 RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 PATH=/app/node_modules/.bin:$PATH
@@ -87,11 +87,11 @@ RUN mkdir -p storage/app/private storage/app/public storage/framework/cache stor
  && chown -R node:node storage
 USER node
 EXPOSE 3000
-# Liveness (/up, E126) with Node's fetch — the image has no curl; it follows PORT and HEALTH_PATH (with HEALTH_PATH=off, drop
+# Liveness (/up) with Node's fetch — the image has no curl; it follows PORT and HEALTH_PATH (with HEALTH_PATH=off, drop
 # it). The worker and scheduler containers turn it off (compose).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \\
   CMD ["node", "-e", ${JSON.stringify(HEALTHCHECK_SCRIPT)}]
-# marmeon is the process — one Node (E159) — under tini, which only passes signals on and reaps orphans.
+# marmeon is the process — one Node — under tini, which only passes signals on and reaps orphans.
 ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]
 CMD ["start"]
 `;
@@ -100,7 +100,7 @@ CMD ["start"]
 export function dockerignore(): string {
   return `# Written by \`marmeon make:docker\` — what never enters the build context, and so never the image.
 # Every .env file: the image gets its configuration from the environment when it runs (a developer's .env on a server would
-# switch on the development tools, E170) — and \`marmeon build\` needs none (E187).
+# switch on the development tools) — and \`marmeon build\` needs none.
 .env*
 # Installed and built inside the image.
 node_modules
@@ -133,14 +133,14 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     '    environment:',
     ...(proxied
       ? [
-          `      # Only ${proxy === 'caddy' ? 'Caddy' : 'nginx'} reaches this container (it publishes no port), so its X-Forwarded-* count (E162). Publish a port and`,
+          `      # Only ${proxy === 'caddy' ? 'Caddy' : 'nginx'} reaches this container (it publishes no port), so its X-Forwarded-* count. Publish a port and`,
           "      # this would trust anyone: name the proxy's address or network instead.",
           "      TRUSTED_PROXIES: '*'",
         ]
       : proxy
         ? ["      # The proxy on this host connects through Docker's port forwarding: its address as the container sees it, e.g.", "      # TRUSTED_PROXIES: 172.17.0.1"]
         : []),
-    '      # Behind a load balancer that learns from /up/ready that a container stops: answer a few more seconds (E163).',
+    '      # Behind a load balancer that learns from /up/ready that a container stops: answer a few more seconds.',
     "      SHUTDOWN_DELAY: '0'",
     '    # SIGTERM → SHUTDOWN_DELAY → drain (at most 10 s) — before Docker sends SIGKILL.',
     '    stop_grace_period: 20s',
@@ -150,8 +150,8 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     '',
     '  worker:',
     '    <<: *app',
-    '    # A job past its timeout ends the worker with exit code 70 (E83) — the restart policy brings a fresh one.',
-    '    # Every queue, fairly (E199). For a priority, add a second worker with --queue=mail.',
+    '    # A job past its timeout ends the worker with exit code 70 — the restart policy brings a fresh one.',
+    '    # Every queue, fairly. For a priority, add a second worker with --queue=mail.',
     "    command: ['queue:work']",
     '    healthcheck:',
     '      disable: true',
@@ -204,7 +204,7 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     );
   }
   const volumes = ['  storage:', ...(proxied && proxy === 'caddy' ? ['  caddy_data:', '  caddy_config:'] : [])];
-  return `# Written by \`marmeon make:docker\` — one image, a role per container (E140): the web server, the queue worker, the scheduler.
+  return `# Written by \`marmeon make:docker\` — one image, a role per container: the web server, the queue worker, the scheduler.
 #
 #   docker compose -f compose.production.yaml up -d --build
 #
@@ -216,7 +216,7 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
 x-app: &app
   build: .
   image: ${app.name}
-  # No \`init: true\`: the image's PID 1 is tini (E187) — it passes signals on and reaps orphans.
+  # No \`init: true\`: the image's PID 1 is tini — it passes signals on and reaps orphans.
   restart: unless-stopped
   env_file: .env.production
   volumes:
@@ -234,11 +234,11 @@ ${volumes.join('\n')}
 export function caddyfile({ systemd = false }: DockerOptions): string {
   const upstream = systemd ? '127.0.0.1:3000' : 'web:3000';
   return `# Written by \`marmeon make:docker --caddy\`. Caddy fetches the certificate for {$APP_DOMAIN} and speaks HTTP/1.1, HTTP/2 and
-# HTTP/3: a browser opens at most 6 HTTP/1.1 connections per host, so live streams (SSE, E104) in more tabs need HTTP/2.
-# It sets X-Forwarded-For/-Proto/-Host itself (and drops a client's), which the app trusts from TRUSTED_PROXIES (E162).
+# HTTP/3: a browser opens at most 6 HTTP/1.1 connections per host, so live streams (SSE) in more tabs need HTTP/2.
+# It sets X-Forwarded-For/-Proto/-Host itself (and drops a client's), which the app trusts from TRUSTED_PROXIES.
 # Trying it locally: APP_DOMAIN=localhost and a \`tls internal\` line in the block.
 {$APP_DOMAIN} {
-	# No \`encode\`: the assets arrive compressed (marmeon build writes .br/.gz, E162), and documents stay uncompressed — a
+	# No \`encode\`: the assets arrive compressed (marmeon build writes .br/.gz), and documents stay uncompressed — a
 	# compressed page that carries a secret (the CSRF token) is what BREACH reads.
 	reverse_proxy ${upstream} {
 		# Live streams: Caddy flushes text/event-stream by itself. On a config reload it ends them after this long (the tabs
@@ -271,7 +271,7 @@ server {
 server {
 	listen 443 ssl;
 	listen [::]:443 ssl;
-	# A browser opens at most 6 HTTP/1.1 connections per host — live streams (SSE, E104) in more tabs need HTTP/2.
+	# A browser opens at most 6 HTTP/1.1 connections per host — live streams (SSE) in more tabs need HTTP/2.
 	http2 on;
 	server_name example.com;
 	ssl_certificate ${systemd ? '/etc/letsencrypt/live/example.com/fullchain.pem' : '/etc/nginx/certs/fullchain.pem'};
@@ -279,7 +279,7 @@ server {
 	# MAX_BODY_SIZE of the app (default 8m).
 	client_max_body_size 8m;
 	# No gzip for documents: a compressed page that carries a secret (the CSRF token) is what BREACH reads. The assets arrive
-	# compressed already (marmeon build writes .br/.gz, E162).
+	# compressed already (marmeon build writes .br/.gz).
 	gzip off;
 
 	location / {
@@ -287,8 +287,8 @@ server {
 		proxy_http_version 1.1;
 		proxy_set_header Connection "";
 		proxy_set_header Host $host;
-		# Set by nginx (E162), never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
-		# sees (with TRUSTED_PROXIES: '*' the app takes the right-most entry anyway, E172). Behind another proxy (a CDN), append
+		# Set by nginx, never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
+		# sees (with TRUSTED_PROXIES: '*' the app takes the right-most entry anyway). Behind another proxy (a CDN), append
 		# ($proxy_add_x_forwarded_for) and name both proxies' ranges in TRUSTED_PROXIES instead of '*'.
 		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
@@ -321,7 +321,7 @@ Environment=NODE_ENV=production
 ${extra.join('\n')}${extra.length ? '\n' : ''}ExecStart=/srv/${app.name}/node_modules/.bin/marmeon ${command}
 Restart=always
 RestartSec=1
-# SIGTERM to the one Node process (E159), then SIGKILL after:
+# SIGTERM to the one Node process, then SIGKILL after:
 KillSignal=SIGTERM
 TimeoutStopSec=${stop}
 NoNewPrivileges=yes
@@ -335,13 +335,13 @@ WantedBy=multi-user.target
 `;
   return {
     web: unit('web', 'web server', 'web server (marmeon start)', 'start', 30, [
-      '# Only the proxy on this machine connects: listen on loopback, trust its X-Forwarded-* (E162).',
+      '# Only the proxy on this machine connects: listen on loopback, trust its X-Forwarded-*.',
       'Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1',
-      '# SIGTERM → SHUTDOWN_DELAY (E163) → drain (at most 10 s): TimeoutStopSec covers both.',
+      '# SIGTERM → SHUTDOWN_DELAY → drain (at most 10 s): TimeoutStopSec covers both.',
     ]),
     worker: unit('worker', 'queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 30, [
-      '# Every queue, fairly (E199). For a priority, a second unit with --queue=mail.',
-      '# A job past its timeout ends the worker with exit code 70 (E83): Restart=always brings a fresh one. On SIGTERM the running',
+      '# Every queue, fairly. For a priority, a second unit with --queue=mail.',
+      '# A job past its timeout ends the worker with exit code 70: Restart=always brings a fresh one. On SIGTERM the running',
       '# job gets --stop-timeout (10 s): TimeoutStopSec must be longer — raise both together for long jobs.',
     ]),
     scheduler: unit('scheduler', 'scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 30),

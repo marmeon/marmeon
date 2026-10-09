@@ -1,7 +1,7 @@
 import { Head, Link, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
-/** After a sign-up (E146): the same for every address — what happens next is in the mail. */
+/** After a sign-up: the same for every address — what happens next is in the mail. */
 export default function RegistrationSent() {
   const t = useTranslation('auth');
   return (

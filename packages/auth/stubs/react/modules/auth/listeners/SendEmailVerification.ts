@@ -4,8 +4,8 @@ import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
 /**
- * New accounts get the verification mail — a queued listener (E86): the registration only queues it, as part of its
- * transaction (E107, E109 — never for an account that is rolled back), and a worker composes the mail. An SMTP failure
+ * New accounts get the verification mail — a queued listener: the registration only queues it, as part of its
+ * transaction (never for an account that is rolled back), and a worker composes the mail. An SMTP failure
  * never fails the registration: the mail retries in the queue.
  */
 export class SendEmailVerification {

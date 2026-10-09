@@ -83,7 +83,7 @@ export class StartSession {
         // keeps the one the sign-out sent.
         if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
         else if (this.#session.abandoned) {
-          this.#logger.warn('The session was not saved: other requests of the same session wrote it on every attempt (E145) — Route.block() serialises such a route', {
+          this.#logger.warn('The session was not saved: other requests of the same session wrote it on every attempt — Route.block() serialises such a route', {
             route: ctx.route?.routeName ?? ctx.route?.path,
           });
         }

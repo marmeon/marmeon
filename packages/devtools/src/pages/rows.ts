@@ -49,7 +49,7 @@ function cells(entry: AnyEntry, link: string): Html {
     }
     case 'query': {
       const c = entry.content;
-      return html`<td><a class="row sql" href="${link}">${c.sql}</a></td><td class="num">${duration(c.durationMs)}</td><td>${c.slow ? badge('slow', 'warn') : ''}${c.sensitive ? badge('secret columns', 'info', 'Parameters hidden (E125)') : ''}${c.error ? badge('failed', 'bad') : ''}</td><td>${origin(entry)}</td>`;
+      return html`<td><a class="row sql" href="${link}">${c.sql}</a></td><td class="num">${duration(c.durationMs)}</td><td>${c.slow ? badge('slow', 'warn') : ''}${c.sensitive ? badge('secret columns', 'info', 'Parameters hidden') : ''}${c.error ? badge('failed', 'bad') : ''}</td><td>${origin(entry)}</td>`;
     }
     case 'job': {
       const c = entry.content;
@@ -154,7 +154,7 @@ export function requestBadges(content: RequestContent): Html {
   const badges: Html[] = [];
   if (content.region) badges.push(badge(content.region, 'info'));
   if (content.inProcess) badges.push(badge('in-process', '', 'Resolved in-process while its page rendered'));
-  if (headers['x-marmeon-validate']) badges.push(badge('live validation', '', 'Checks fields, changes nothing (E62)'));
+  if (headers['x-marmeon-validate']) badges.push(badge('live validation', '', 'Checks fields, changes nothing'));
   else if (headers['x-marmeon-action']) badges.push(badge('action'));
   else if (headers['x-marmeon-partial-data'] || headers['x-marmeon-partial-except']) badges.push(badge('partial'));
   else if (headers['x-marmeon'] && !content.region) badges.push(badge('visit'));

@@ -158,8 +158,8 @@ class DevtoolsPages {
       this.#store.usage(),
     ]);
     const warnings = [
-      ...(schedule.available && schedule.warning ? [`Scheduler (E123): ${schedule.warning}`] : []),
-      ...this.#app.container.warnings.map((warning) => `Injection (E128): ${warning.message}`),
+      ...(schedule.available && schedule.warning ? [`Scheduler: ${schedule.warning}`] : []),
+      ...this.#app.container.warnings.map((warning) => `Injection: ${warning.message}`),
       ...(this.#maxBytes && usage.bytes > this.#maxBytes * 0.8 ? [`The devtools' files hold ${Math.round((usage.bytes / this.#maxBytes) * 100)} % of their limit — the oldest go first (marmeon devtools:clear empties them).`] : []),
     ];
     return htmlResponse(

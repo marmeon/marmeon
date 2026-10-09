@@ -1,6 +1,6 @@
 /*
  * The auth module's look — `marmeon make:auth` imports it in bootstrap/client.tsx. The views name classes, never `style` props:
- * a `style` attribute in the server's markup is what a strict `style-src` blocks (E202). Yours to change.
+ * a `style` attribute in the server's markup is what a strict `style-src` blocks. Yours to change.
  */
 
 /* AppLayout: the header — home link left, the account's links right. */

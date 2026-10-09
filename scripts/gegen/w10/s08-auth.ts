@@ -58,7 +58,7 @@ export default defineGegenproben({
         },
       ],
       run: { vitest: 'packages/auth/src/make-auth.test.ts', name: 'working auth area', timeout: 15 * 60_000 },
-      expect: /generated tests failed: .*modules\/auth\/prune-unverified\.test\.ts > pruning accounts whose address was never confirmed \(E203\) — the default > deletes one older than 7 days/,
+      expect: /generated tests failed: .*modules\/auth\/prune-unverified\.test\.ts > pruning accounts whose address was never confirmed — the default > deletes one older than 7 days/,
     },
     {
       id: 'G2',

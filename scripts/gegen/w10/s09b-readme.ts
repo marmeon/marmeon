@@ -111,7 +111,7 @@ export default defineGegenproben({
       title: 'the stub\'s changeEmail without the coalesce: the generated app\'s test fails — the make:auth fixture names it',
       patch: [{ file: 'packages/auth/stubs/react/modules/auth/UserRepository.ts', find: COALESCE, replace: '' }],
       run: { vitest: 'packages/auth/src/make-auth.test.ts', name: 'working auth area', timeout: 15 * 60_000 },
-      expect: /generated tests failed: modules\/auth\/prune-unverified\.test\.ts > pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false \(E193\) > an account confirmed by email_verified_at alone/,
+      expect: /generated tests failed: modules\/auth\/prune-unverified\.test\.ts > pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false > an account confirmed by email_verified_at alone/,
     },
     // --- E125: errors logged as text -----------------------------------------------------------------------------------------------
     {

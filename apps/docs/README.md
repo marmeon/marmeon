@@ -13,12 +13,17 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
 
 - **`docs.config.ts`** lists the sections and their pages, in reading order: a slug (`/docs/<slug>`), the label in the
   navigation, and the file — `docs/<slug>.md`, or a policy at the root via `file`. Previous and next lead through every page of
-  every section in this order. The package READMEs are short cards for npm that link here.
+  every section in this order. There are no package pages: the package READMEs are short cards for npm that link here, and
+  `/packages/…` is a 404.
 - **The boot checks** stop the start (`DocsError`, every problem listed) when a slug is not lower-case words with dashes or is
-  listed twice, when a file is listed twice, lies elsewhere or is gone, and when a `docs/*.md` has no entry in a section.
+  listed twice, when a file is listed twice, lies elsewhere or is gone, when a page names the root `README.md`, and when a
+  `docs/*.md` has no entry in a section.
   `UPGRADING.md` is marked `changes: true`: its sections come after every other hit of the search.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; no `docs/*.md` carries it any more, and `pnpm check:source` refuses it.
+- **The text speaks to app developers.** `pnpm check:source` (rule 5) refuses decision numbers in the pages, the package
+  READMEs and the root's README, CONTRIBUTING and SECURITY, and wave references in the pages and the READMEs; `UPGRADING.md` is
+  exempt. The same rule reads the starter's template and the packages' stubs, which every new app copies.
 - **The start page** (`/`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
@@ -40,10 +45,12 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/docs/Caddyfile`). `pnpm docs:check` and `pnpm docs:image` check `nosniff`
   on the pages they fetch.
-- **Tests:** `modules/docs/links.test.ts` renders every page on the server and checks every link and anchor and that no page
-  runs an inline script — and that every `docs/<page>.md#<anchor>` the framework's code, the stubs, the starter's template and
-  the apps name leads to a page and its anchor (a path to a package README fails); `docs.test.ts` the sections and their pages, previous and next, the start page, the search, caching, the
-  policy and the headers, cookies, the 404 and the boot checks.
+- **Tests:** `modules/docs/links.test.ts` renders every page on the server and checks every link and anchor, that no page
+  runs an inline script, and that a page names only files that exist (a link to a README is "no such page", a link to a
+  directory fails) — and that every `docs/<page>.md#<anchor>` the framework's code, the stubs, the starter's template and the
+  apps name leads to a page and its anchor (a path to a package README fails, and so does an anchor GitHub cannot make).
+  `docs.test.ts` checks the sections and their pages, previous and next, the start page, the search, caching, the policy and
+  the headers, cookies, the 404 (also for `/packages/…`) and the boot checks.
 
 Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image),
 `DOCS_CACHE_MAX_AGE` (300 s), `DOCS_SEARCH_PER_MINUTE` (120).

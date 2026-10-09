@@ -16,7 +16,7 @@ export default function Login({ appName, old }: Props) {
     <main>
       <Head title={t('login.title')} />
       <h1>{t('login.heading', { app: appName })}</h1>
-      {/* Works without JavaScript too: a plain form post — the browser's Fetch Metadata and Origin vouch for it (E143). */}
+      {/* Works without JavaScript too: a plain form post — the browser's Fetch Metadata and Origin vouch for it. */}
       <form
         method="post"
         action={route('auth.login.store')}
