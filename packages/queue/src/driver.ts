@@ -17,6 +17,15 @@ export interface ReservedJob extends QueuedJob {
   readonly reservedAt: number;
 }
 
+/** How {@link QueueDriver.release} puts a job back. */
+export interface ReleaseOptions {
+  /**
+   * Give the attempt back: the next claim is this attempt again — and carries the same claim token (`attempts`). Safe because a
+   * worker never touches a claim it released, and an older, expired claim has a lower count than any claim after it.
+   */
+  readonly refund?: boolean;
+}
+
 /** A job to queue: what `push` takes, and what `ack` queues together with the acknowledgement (the next job of a chain). */
 export interface QueuedPush {
   readonly queue: string;
@@ -59,8 +68,11 @@ export interface QueueDriver {
    * nothing — the worker that holds the job now hands the chain on.
    */
   ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
-  /** Back to the queue, available again in `delay` seconds; the attempt stays counted. */
-  release(job: ReservedJob, delay: number): Promise<boolean>;
+  /**
+   * Back to the queue, available again in `delay` seconds; the attempt stays counted — unless `refund`: then it is given back,
+   * because the job never ran (`job.once` found its key busy in another attempt).
+   */
+  release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
   /** Leaves the queue for good — the worker has recorded it in the failed jobs first. */
   fail(job: ReservedJob): Promise<boolean>;
   /** Jobs waiting, delayed or running on `queue`. */

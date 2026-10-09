@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
+import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
 
 interface Entry {
   readonly id: string;
@@ -67,9 +67,10 @@ export class MemoryQueueDriver implements QueueDriver {
     return true;
   }
 
-  async release(job: ReservedJob, delay: number): Promise<boolean> {
+  async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
     const entry = this.#claimed(job);
     if (!entry) return false;
+    if (options.refund) entry.attempts -= 1;
     entry.reservedAt = undefined;
     entry.availableAt = this.#clock.now() + delay * 1000;
     return true;

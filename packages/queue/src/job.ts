@@ -42,9 +42,9 @@ export interface JobContext {
    *
    * **Honest about the gap:** the marker is written after `fn` — a worker that dies between the two (after the mail
    * went out, before the marker) runs `fn` again on the next attempt. `once` makes repeats rare, not impossible:
-   * delivery stays at-least-once. While one attempt runs `fn` for a key, another with the same key fails its attempt
-   * (and retries) instead of running it alongside. Needs a cache (@marmeon/cache) — `database` or `redis` when
-   * workers run on several machines.
+   * delivery stays at-least-once. While one attempt runs `fn` for a key, another with the same key goes back to the queue
+   * for 5 seconds instead of running it alongside — without using up a try, also of a job with one. Needs a cache
+   * (@marmeon/cache) — `database` or `redis` when workers run on several machines.
    */
   once(key: string, fn: () => unknown, options?: { readonly for?: number }): Promise<boolean>;
 }

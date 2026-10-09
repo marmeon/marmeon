@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
-import type { QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
+import type { QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
 
 /**
  * Moves the due members of the sorted set `from` (score ≤ now) to the end of the list `to` — delayed jobs whose time has
@@ -90,11 +90,12 @@ for i = 1, count do
 end
 return 1`,
     ),
-    // KEYS: reserved, delayed. ARGV: member, available at. Back to the queue — only for this claim; the attempt stays counted.
+    // KEYS: reserved, delayed. ARGV: the claimed member, available at, the member to queue (the same, or with the attempt given
+    // back). Back to the queue — only for this claim.
     release: defineRedisScript(
       'queue.release',
       `if redis.call('zrem', KEYS[1], ARGV[1]) == 0 then return 0 end
-redis.call('zadd', KEYS[2], ARGV[2], ARGV[1])
+redis.call('zadd', KEYS[2], ARGV[2], ARGV[3])
 return 1`,
     ),
     // KEYS: list, delayed, reserved.
@@ -213,10 +214,11 @@ export class RedisQueueDriver implements QueueDriver {
     return Number(await redis.run(ack, keys, args)) === 1;
   }
 
-  async release(job: ReservedJob, delay: number): Promise<boolean> {
+  async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
     const [redis, { release }] = await Promise.all([this.#connection(), loadScripts()]);
     const keys = this.#keys(redis, job.queue);
-    return Number(await redis.run(release, [keys.reserved, keys.delayed], [member(job), this.#clock.now() + Math.round(delay * 1000)])) === 1;
+    const back = options.refund ? `${job.id}:${job.attempts - 1}:${job.payload}` : member(job);
+    return Number(await redis.run(release, [keys.reserved, keys.delayed], [member(job), this.#clock.now() + Math.round(delay * 1000), back])) === 1;
   }
 
   async fail(job: ReservedJob): Promise<boolean> {

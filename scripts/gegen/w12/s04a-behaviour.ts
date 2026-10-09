@@ -20,6 +20,9 @@ import { defineGegenproben } from '../define.ts';
  *   do not compile without a cast).
  * - **An export goes on after the last row it wrote** (G13) — by OFFSET again, two rows of the first batch deleted meanwhile push
  *   "Bulk 0500" out of the file.
+ * - **`job.once` on a busy key releases the attempt and gives it back** — two measures: the worker treats the busy key as an error
+ *   again (G14: a job with one try fails); it releases without giving the attempt back (G14b: the next claim is attempt 2 of 1 and
+ *   fails as "attempted without finishing"). Run on SQLite; `pnpm test:pgsql` / `test:redis` run the same test on the other drivers.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -128,6 +131,20 @@ export default defineGegenproben({
       ],
       run: { vitest: 'packages/table/src/table.test.ts', name: 'not at an offset' },
       expect: /\{"missing":\["Bulk 0500"\],"twice":\[\]\}: expected/,
+    },
+    {
+      id: 'G14',
+      title: 'a busy job.once key is an error again: a job with one try fails instead of running later',
+      patch: [{ file: 'packages/queue/src/worker.ts', find: '        if (settled.error instanceof JobOnceBusyError) {', replace: '        if (settled.error instanceof Error && false) {' }],
+      run: { vitest: 'packages/queue/src/reliability.test.ts', name: 'without using up a try' },
+      expect: /\["JobFailed:\{\\"attempt\\":1\}"\]: expected/,
+    },
+    {
+      id: 'G14b',
+      title: 'the busy attempt is released but counted: its next claim is attempt 2 of 1 and fails',
+      patch: [{ file: 'packages/queue/src/worker.ts', find: 'release(reserved, ONCE_BUSY_DELAY, { refund: true });', replace: 'release(reserved, ONCE_BUSY_DELAY, { refund: false });' }],
+      run: { vitest: 'packages/queue/src/reliability.test.ts', name: 'without using up a try' },
+      expect: /test\.once has been attempted 1 times without finishing .*it may run 1.*: expected/,
     },
   ],
 });

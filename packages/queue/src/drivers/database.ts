@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { Kysely } from '@marmeon/database';
-import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
+import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
 
 /** The tables `marmeon make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
 export const JOBS_TABLE = 'jobs';
@@ -159,9 +159,11 @@ export class DatabaseQueueDriver implements QueueDriver {
     return connection.db.transaction().execute((trx) => handOff(trx));
   }
 
-  async release(job: ReservedJob, delay: number): Promise<boolean> {
+  async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint)
+    const attempts = options.refund ? job.attempts - 1 : job.attempts;
+    const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint),
+      attempts = cast(${attempts} as integer)
       where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
     return result.numAffectedRows === 1n;
   }

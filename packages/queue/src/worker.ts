@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { describeError, outsideTransaction, redactText, type Clock, type Logger } from '@marmeon/core';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
-import { releaseUnique } from './locks.ts';
+import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
 import { timeoutOf } from './registry.ts';
 import { nextInChain, parseRecord, type JobRunner, type Prepared, type Requested } from './runner.ts';
 
@@ -173,6 +173,13 @@ export class Worker {
         await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: 0, reason: 'stopping', ms }));
         return 'interrupted';
       case 'error':
+        // `job.once` on a key another attempt runs right now: this attempt never got to it — back to the queue, the attempt given back.
+        if (settled.error instanceof JobOnceBusyError) {
+          await this.#deps.driver.release(reserved, ONCE_BUSY_DELAY, { refund: true });
+          logger.info(`Released ${record.job}: ${settled.error.message}`, context);
+          await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: ONCE_BUSY_DELAY, reason: 'busy', ms }));
+          return 'released';
+        }
         return this.#retryOrFail(reserved, record, settled.error, ms, 'error');
       case 'done':
         break;

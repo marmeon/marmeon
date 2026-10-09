@@ -81,6 +81,25 @@ class MailJob {
   }
 }
 
+/** Sends a "mail" through job.once — with the default of one try. */
+class OnceJob {
+  static readonly job = 'test.once';
+  static readonly schema = v.object({ n: v.number() });
+
+  readonly #seen: Seen;
+
+  constructor(seen: Seen) {
+    this.#seen = seen;
+  }
+
+  async handle(payload: JobPayload<typeof OnceJob>, job: JobContext): Promise<void> {
+    await job.once(`test-once:${payload.n}`, () => {
+      this.#seen.mails++;
+      this.#seen.entries.push({ n: payload.n, attempt: job.attempt, note: 'sent' });
+    });
+  }
+}
+
 /** Guarded by withoutOverlapping on its key. */
 class GuardedJob {
   static readonly job = 'test.guarded';
@@ -129,7 +148,7 @@ async function withApp(kind: SharedTarget['kind'], test: (app: TestApp) => Promi
     discover: false,
     env: { ...targetEnv(target), ...cacheFor(target), ...env },
     providers: [DatabaseServiceProvider, RedisServiceProvider, CacheServiceProvider, QueueServiceProvider],
-    modules: [{ name: 'test', jobs: [NoteJob, MailJob, GuardedJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
+    modules: [{ name: 'test', jobs: [NoteJob, MailJob, OnceJob, GuardedJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
     override: (container) => {
       container.instance(Seen, seen);
       container.instance(Logger, silent);
@@ -330,6 +349,30 @@ describe.each(processKinds)('job.once, withoutOverlapping and job events on %s',
       await app.queue.dispatch(MailJob, { n: 1, once: true });
       await app.work();
       expect(app.seen.mails).toBe(3);
+    });
+  });
+
+  it('job.once on a key another attempt runs right now: released without using up a try — it runs once the key is free', async () => {
+    await withApp(kind, async (app) => {
+      // Another attempt is sending this mail right now (a claim that expired while its worker still ran).
+      const held = app.container.make(Cache).lock('queue:once-lock:test-once:1', 60);
+      expect(await held.get()).toBe(true);
+      await app.queue.dispatch(OnceJob, { n: 1 });
+      await app.work();
+      const outcome = (event: JobEvent) => `${event.constructor.name}:${JSON.stringify({ attempt: (event as JobReleased).attempt, reason: (event as JobReleased).reason, delay: (event as JobReleased).delay })}`;
+      const after = app.seen.events.filter((event) => event instanceof JobReleased || event instanceof JobFailed).map(outcome);
+      // With one try, a failed attempt would be the end: the job is released instead, and the attempt is given back.
+      expect(after, JSON.stringify(after)).toEqual(['JobReleased:{"attempt":1,"reason":"busy","delay":5}']);
+      expect(app.seen.mails).toBe(0);
+      expect(await app.queue.size()).toBe(1);
+      await held.release();
+      app.clock.travel({ seconds: 5 });
+      await app.work();
+      // Its try is still there: attempt 1 again, the mail sent once, nothing failed.
+      const failed = app.seen.events.flatMap((event) => (event instanceof JobFailed ? [event.error.message] : []));
+      expect(failed, JSON.stringify(failed)).toEqual([]);
+      expect(app.seen.entries).toEqual([{ n: 1, attempt: 1, note: 'sent' }]);
+      expect(await app.queue.size()).toBe(0);
     });
   });
 

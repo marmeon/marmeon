@@ -73,6 +73,20 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
+  it('releases a job back with its attempt given back (refund) — the next claim is the same attempt', async () => {
+    await withQueue(kind, async ({ driver, clock }) => {
+      clock.freeze();
+      await driver.push('default', 'a', 0);
+      const job = (await driver.reserve(['default']))!;
+      expect(await driver.release(job, 5, { refund: true })).toBe(true);
+      clock.travel({ seconds: 5 });
+      const again = (await driver.reserve(['default']))!;
+      expect(again.attempts).toBe(1);
+      expect(await driver.ack(again)).toBe(true);
+      expect(await driver.size('default')).toBe(0);
+    });
+  });
+
   it('hands a claimed job out again after retryAfter (its worker died) — and the old claim can no longer touch it', async () => {
     await withQueue(
       kind,

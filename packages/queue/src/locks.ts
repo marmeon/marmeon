@@ -47,7 +47,13 @@ export async function releaseUnique(cache: CacheSource, record: JobRecord | unde
   await uniqueLock(await cache(), record as JobRecord & { unique: UniqueRecord }).release();
 }
 
-/** Thrown when another attempt runs `job.once(key)` right now — this attempt fails and retries later. */
+/** Seconds until an attempt that found its `job.once` key busy runs again. */
+export const ONCE_BUSY_DELAY = 5;
+
+/**
+ * Thrown when another attempt runs `job.once(key)` right now — the worker puts this attempt back for {@link ONCE_BUSY_DELAY}
+ * seconds without counting it: it never got to run `fn`.
+ */
 export class JobOnceBusyError extends Error {
   override name = 'JobOnceBusyError';
 }
@@ -62,7 +68,7 @@ export async function runOnce(cache: CacheSource, key: string, fn: () => unknown
   if (await store.has(marker)) return false;
   // Two attempts with the same key at once (a claim that expired while its worker still ran): only one runs `fn`.
   const lock = store.lock(`queue:once-lock:${key}`, options.lockSeconds);
-  if (!(await lock.get())) throw new JobOnceBusyError(`job.once('${key}') is running in another attempt right now — this attempt retries later.`);
+  if (!(await lock.get())) throw new JobOnceBusyError(`job.once('${key}') is running in another attempt right now — this attempt runs again in ${ONCE_BUSY_DELAY}s, without using up a try.`);
   try {
     if (await store.has(marker)) return false;
     await fn();

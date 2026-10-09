@@ -87,7 +87,8 @@ The queue gives you two tools for that:
   `once()` resolves `false`. Put an id into the key: `` `welcome-mail:${user.id}` ``.
 
 `once()` makes repeats rare, not impossible: a worker that dies after `fn` and before the marker runs `fn` again. While one attempt
-runs `fn` for a key, another attempt with the same key fails instead of running it alongside, and retries if it has tries left.
+runs `fn` for a key, another attempt with the same key does not run it alongside. That attempt goes back to the queue for five
+seconds and does not count, so it runs again also when the job has only one try.
 `once()` needs `@marmeon/cache`, and with workers on several machines a cache they share: `database` or `redis`.
 
 ### Inside a transaction
@@ -464,6 +465,7 @@ Every step of a job is an event of the app's event dispatcher:
 | `job` | The job or a middleware asked for it, with `job.release()` or `withoutOverlapping()`. |
 | `unknown` | The worker has no class for the job's name, as during a rolling deploy. |
 | `stopping` | The worker stops, and the running job goes back for another worker. |
+| `busy` | `job.once()` found its key running in another attempt. The attempt is given back, so it does not use up a try. |
 
 So a flaky job that succeeds on its second try sends `JobReleased` with `reason: 'error'` and then `JobProcessed`, never
 `JobFailed`. Count retries on `JobReleased`, and alert on `JobFailed`.

@@ -69,8 +69,11 @@ export class JobReleased extends JobEvent {
   readonly #event = true;
   readonly attempt: number;
   readonly delay: number;
-  /** `error`: the attempt failed and the job retries; `job`: the job (or a middleware) asked for it; `unknown`: no class for this name here; `stopping`: the worker stops. */
-  readonly reason: 'error' | 'job' | 'unknown' | 'stopping';
+  /**
+   * `error`: the attempt failed and the job retries; `job`: the job (or a middleware) asked for it; `unknown`: no class for this name
+   * here; `stopping`: the worker stops; `busy`: `job.once` found its key running in another attempt — this attempt is given back.
+   */
+  readonly reason: 'error' | 'job' | 'unknown' | 'stopping' | 'busy';
   readonly ms: number | undefined;
 
   constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number; delay: number; reason: JobReleased['reason']; ms?: number }) {

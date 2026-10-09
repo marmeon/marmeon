@@ -16,7 +16,7 @@ export { QueueConfig } from './config.ts';
 export { QueueHealthCheck } from './health.ts';
 export { checkTimeouts, QueueConnections } from './connections.ts';
 export { backoffDelay } from './driver.ts';
-export type { FailedJob, FailedJobStore, JobRecord, QueueCounts, QueueDriver, QueuedJob, QueuedPush, ReservedJob, UniqueRecord } from './driver.ts';
+export type { FailedJob, FailedJobStore, JobRecord, QueueCounts, QueueDriver, QueuedJob, QueuedPush, ReleaseOptions, ReservedJob, UniqueRecord } from './driver.ts';
 export { DatabaseFailedJobStore, DatabaseQueueDriver, FAILED_JOBS_TABLE, JOBS_TABLE } from './drivers/database.ts';
 export type { DatabaseQueueConnection } from './drivers/database.ts';
 export { MemoryFailedJobStore, MemoryQueueDriver, NullFailedJobStore } from './drivers/memory.ts';
