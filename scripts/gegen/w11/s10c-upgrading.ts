@@ -135,7 +135,7 @@ export default defineGegenproben({
       title: 'the cards and the README out of the scan again: the count of named pages falls below its floor',
       patch: [{ file: 'apps/docs/modules/docs/links.test.ts', find: WANTED, replace: "/^(?:packages\\/auth\\/stubs|packages\\/create-marmeon\\/template|apps\\/web-app|apps\\/blank-app)\\//.test(path);" }],
       run: NAMED,
-      expect: /expected 34 to be greater than 165/,
+      expect: /expected 31 to be greater than 163/,
     },
     {
       id: 'C2',

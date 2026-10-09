@@ -122,9 +122,9 @@ describe('the docs the framework names', () => {
       });
     }
     expect(problems, problems.join('\n')).toEqual([]);
-    // The pages named (measured 185: 34 by the solutions, messages and comments, the rest by the cards and the root README's links).
+    // The pages named (measured 182: 31 by the solutions, messages and comments, the rest by the cards and the root README's links).
     // The threshold is that − 10 %: a scan that reads no file, or not the cards, would pass with too little found.
-    expect(named).toBeGreaterThan(165);
+    expect(named).toBeGreaterThan(163);
   });
 });
 

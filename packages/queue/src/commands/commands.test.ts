@@ -177,22 +177,19 @@ describe('the queue commands', () => {
     expect(flushed.lines).toEqual(['✓ Deleted 1 failed job.']);
   });
 
-  it("the apps' and the starter's jobs tables are the stub's: made before Wave 10, then the fair claim's index in a migration of its own (E199)", () => {
+  it("the apps' and the starter's jobs tables are the stub's: made with the fair claim's index, no migration adds it later (E199, E216)", () => {
     const stub = readFileSync(new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url), 'utf8');
     const index = "      // A worker without --queue claims the oldest due job of every queue in one statement — this index serves it.\n      table.index(['reserved_at', 'available_at', 'id']);\n";
     expect(stub, 'make:queue-table writes a new table with the index').toContain(index);
     const repo = new URL('../../../../', import.meta.url);
-    // The reference apps show the way an older app goes (docs/deployment.md#the-queue-index-of-an-older-app): the migration that
-    // ran stays as it was, the index comes with its own.
+    // No release came before the index: the table is made with it, the way make:queue-table writes it.
     for (const [dir, created] of [
       ['apps/web-app/modules/system/migrations/', '2026_10_02_211222_create_jobs_table.ts'],
       ['apps/blank-app/modules/system/migrations/', '2026_10_03_002234_create_jobs_table.ts'],
       ['packages/create-marmeon/template/base/modules/system/migrations/', '2026_10_03_002234_create_jobs_table.ts'],
     ] as const) {
-      expect(readFileSync(new URL(dir + created, repo), 'utf8'), dir).toBe(stub.replace(index, ''));
-      const added = readFileSync(new URL(`${dir}2026_10_08_090000_add_fair_claim_index_to_jobs_table.ts`, repo), 'utf8');
-      expect(added, dir).toContain("up: (schema) => schema.alter('jobs', (table) => table.index(['reserved_at', 'available_at', 'id'])),");
-      expect(added, dir).toContain("table.dropIndex('jobs_reserved_at_available_at_id_index')");
+      expect(readFileSync(new URL(dir + created, repo), 'utf8'), dir).toBe(stub);
+      expect(readdirSync(new URL(dir, repo)).filter((file) => /jobs_table/.test(file)), dir).toEqual([created]);
     }
   });
 

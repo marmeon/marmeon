@@ -12,7 +12,8 @@ import { defineGegenproben } from '../define.ts';
  * overrides it is red), and the launcher asks the rule (G6c, pack:smoke). A handler's ValidationError gets the request's labels (G7
  * the router, G7b the lab's race). A default sort on a hidden column is refused (G8). check:source covers apps and the template (G9)
  * and Vite's DEV (G9b), and the old token prefix (G10 the default, G10b the rule). A deleted account's data export goes (G11). The
- * reference apps carry the fair claim's index in a migration of their own (G12).
+ * reference apps carry the fair claim's index (G12) — since W11 step 12 (E216) in the migration that creates their jobs table, as
+ * make:queue-table writes it: no release came before the index, so no migration adds it later.
  */
 const OLD_PREFIX = `${['b', 'c'].join('')}_`;
 const REQUEST = 'packages/router/src/request-definition.ts';
@@ -223,16 +224,16 @@ export default defineGegenproben({
     // --- the fair claim's index in the reference apps ------------------------------------------------------------------------------
     {
       id: 'G12',
-      title: 'the web app\'s index migration without the index: the reference app no longer shows the way an older app goes',
+      title: 'the web app\'s jobs table without the fair claim\'s index: its workers would sort every due job',
       patch: [
         {
-          file: 'apps/web-app/modules/system/migrations/2026_10_08_090000_add_fair_claim_index_to_jobs_table.ts',
-          find: "table.index(['reserved_at', 'available_at', 'id'])",
-          replace: "table.index(['reserved_at', 'available_at'])",
+          file: 'apps/web-app/modules/system/migrations/2026_10_02_211222_create_jobs_table.ts',
+          find: "      table.index(['reserved_at', 'available_at', 'id']);\n",
+          replace: '',
         },
       ],
       run: { vitest: 'packages/queue/src/commands/commands.test.ts', name: "jobs tables are the stub's" },
-      expect: /apps\/web-app\/modules\/system\/migrations\/: expected .* to contain/,
+      expect: /apps\/web-app\/modules\/system\/migrations\/: expected .* to be/,
     },
   ],
 });
