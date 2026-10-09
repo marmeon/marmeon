@@ -178,7 +178,8 @@ Both options lock in the app's [cache](cache.md). With more than one scheduler, 
 
 ```text
 onOneServer()/withoutOverlapping() lock in CACHE_DRIVER=file: locks only hold on this machine. With more than one
-scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis. Tasks: session:prune, cache:prune
+scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis. Tasks: session:prune,
+cache:prune, queue:prune-failed --hours=168
 ```
 
 Two schedulers on one machine share a `file` cache, so a task with `onOneServer()` still runs once. With `memory` each process has
@@ -187,8 +188,11 @@ locks of its own, and a second scheduler runs everything again.
 ## Missed runs
 
 A scheduler that was down, during a deploy or on a machine that slept, runs a task it missed **once** when it is back, however
-often the task was due meanwhile. It looks back at most 7 days. `catchUp('skip')` waits for the next due time instead. The
-scheduler keeps the time of its last tick in the cache.
+often the task was due meanwhile. It looks back at most 7 days. `catchUp('skip')` waits for the next due time instead.
+
+The scheduler keeps the time of its last tick in the cache: one for the tasks with `onOneServer()`, which any server's tick
+updates, and one per host name for the others. So nothing is caught up after `cache:clear`, and a task without `onOneServer()`
+catches up nothing in a container that starts with a new host name.
 
 ## Running the scheduler
 
@@ -199,8 +203,8 @@ pnpm marmeon schedule:work
 ```
 
 Its first line names its tasks and the environment it assumed, such as `Running the schedule every minute: 3 tasks (session:prune,
-cache:prune, queue:prune-failed) — in production (protected)`. On `SIGTERM` or `SIGINT` it starts no new run, gives the runs still
-going `--stop-timeout` seconds, 30 by default, then ends and frees their locks.
+cache:prune, queue:prune-failed --hours=168) — in production (protected)`. On `SIGTERM` or `SIGINT` it starts no new run, gives
+the runs still going `--stop-timeout` seconds, 30 by default, then ends and frees their locks.
 
 | Command | What it does |
 | --- | --- |
@@ -249,7 +253,10 @@ The framework's tables grow until something prunes them. Schedule these commands
 | `uploads:prune` | Uploads that were never used, or used up. | [File storage](storage.md#the-uploads-table) |
 | `auth:prune-tokens` | Expired reset, remember-me and API tokens. | [Starter kit](starter-kit.md) |
 
-The starter kit's auth module schedules `auth:prune-tokens` at 03:10.
+The starter kit's auth module schedules `auth:prune-tokens` and its own `PruneEmailChanges` task, which clears the changes of
+address nobody confirmed in time, at 03:10. Its schedule also holds `auth:prune-unverified`, which deletes accounts whose address
+was never confirmed, as a line that is commented out: deleting accounts is your app's decision, so turn it on deliberately. The
+[starter kit](starter-kit.md#accounts-nobody-confirmed) page explains it.
 
 ## Events
 
@@ -260,7 +267,7 @@ Every run says what became of it through the app's event dispatcher:
 | `ScheduledTaskStarting` | The run passed its filters and locks and starts. | none |
 | `ScheduledTaskFinished` | The run ended. | `ms` |
 | `ScheduledTaskFailed` | The run threw, or its command ended with another exit code than 0. | `error`, `ms` |
-| `ScheduledTaskSkipped` | The task was due and did not run. | `skipped`: `filter`, `other-server`, `overlapping` or `job-waiting` |
+| `ScheduledTaskSkipped` | The task was due and did not run. With `job-waiting` it comes after `ScheduledTaskStarting`, because the queue says no only when the task tries to queue its job. | `skipped`: `filter`, `other-server`, `overlapping` or `job-waiting` |
 
 `reason` says why it ran: `due`, `catch-up` or `test`. All of them extend `ScheduledTaskEvent`. A listener runs in the scheduler's
 process, and its error is logged and changes nothing about the run. This one raises an alert for every failed task:

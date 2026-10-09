@@ -82,7 +82,8 @@ export class AuditServiceProvider implements ServiceProvider {
 }
 ```
 
-- **`register()`** binds only. Another package's services may not be bound yet.
+- **`register()`** binds only, because another package's services may not be bound yet. The one exception is the `Router`, to
+  load named routes, as [routes](#routes) explains.
 - **`boot()`** runs once every provider of the app has registered, and may resolve anything.
 - **`shutdown()`** runs when the app stops, in reverse order, while the services the provider depends on still exist.
 - **`static health`** lists checks for `/up/ready`, which the [health](health.md) page covers, and `static solutions` lists
@@ -116,9 +117,9 @@ needs one there throws. The [configuration](configuration.md#configuration-and-t
 
 The app builds a package's classes through the container like its own. Their constructors list what they need, and the lists of
 what to inject come from the build: `marmeon package:build` writes them into the compiled files. Without it, the app derives them
-at start from the `.d.ts` files, for the classes the package's entry exports. Every parameter must be a class or a token, as the
-[service container](container.md#constructor-injection) page explains. A class in a `browser` glob gets no list, so no injection
-code reaches a client bundle.
+at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export. Every parameter
+must be a class or a token, as the [service container](container.md#constructor-injection) page explains. A class in a `browser`
+glob gets no list, so no injection code reaches a client bundle.
 
 ## Commands
 
@@ -257,9 +258,11 @@ pnpm marmeon package:build --clean
 ```
 
 It runs `tsc -b` for each directory you name, or the current one, and writes the injection lists into the compiled files. Each
-directory needs a `tsconfig.json` and TypeScript installed. `--clean` empties `dist/` and the build info first, because `tsc -b`
-never deletes what a removed source left behind. A package inside your own monorepo, whose entry is TypeScript, runs from its
-sources there, and the app derives its lists while it loads them.
+directory needs a `tsconfig.json` and TypeScript installed. A directory without a `tsconfig.json` is skipped without a word: the
+command still ends with exit code 0, and with `Built 0 package(s)` when it built nothing, so check that line in a publish script.
+`--clean` empties `dist/` and the build info first, because `tsc -b` never deletes what a removed source left behind. A package
+inside your own monorepo, whose entry is TypeScript, runs from its sources there, and the app derives its lists while it loads
+them.
 
 ## Dependencies of drivers
 
@@ -274,6 +277,10 @@ rule, and a package of yours should too:
    with it, not the first request.
 3. A library whose instance or types the app must **share** stays a **peer dependency**: React, Vite, the OpenTelemetry API. A
    dependency would install a second copy, and the two would not see each other.
+
+The framework packages you build on are a different case. List them as `dependencies` with a caret range of the version the app
+uses, as the framework's own packages list each other, so the package manager resolves them to the app's one copy. A range the
+app's version does not satisfy installs a second copy, whose `Router` and container tokens the app never sees.
 
 The framework's packages are coupled the same way: an optional peer dependency on another framework package, such as
 `@marmeon/redis` for a Redis cache, with a start that fails and names the package when the configuration needs it.

@@ -260,7 +260,9 @@ for every queue the list does not name, taken fairly at its place: the second wo
 one with `--queue=mail`.
 
 A worker with a list and no `*` looks at the other queues once a minute while it is idle. Jobs that are ready on a queue it does not
-take, at two looks in a row, are named once in a warning, so they do not wait without a word.
+take, at two looks in a row, are named once in a warning, so they do not wait without a word. Code that runs a `Worker` of
+`@marmeon/queue` itself sets the interval with `watchOtherQueues` in `worker.run({ … })`, in seconds, or turns the look off with
+`false`.
 
 ### Timeouts and `retryAfter`
 
@@ -278,8 +280,9 @@ must be longer than every job's `timeout` plus `--stop-timeout`, or a second wor
 ### Stopping a worker
 
 On `SIGTERM` or `SIGINT` a worker takes no new job. The running job gets `--stop-timeout` seconds to finish, then it goes back to
-the queue for another worker, and the worker ends with exit code 0. A second signal does not cut this short. Give the supervisor a
-longer grace period than `--stop-timeout`, and raise both together for long jobs.
+the queue for another worker, and the worker ends with exit code 0. A second signal does not cut this short. A shutdown that hangs
+anyway ends the process with exit code 1, `--stop-timeout` plus ten seconds after the signal. Give the supervisor a longer grace
+period than `--stop-timeout`, and raise both together for long jobs.
 
 `marmeon make:docker` writes the worker as a container and as a systemd unit that restart it whenever it ends. The
 [deployment](deployment.md#roles-and-processes) page covers the roles. In development `marmeon dev` runs the worker for you, on
@@ -402,9 +405,9 @@ share: `CACHE_DRIVER=database` or `redis`. `bulk()` and `chain()` take no unique
 await this.#queue.chain([[ImportProfileJob, { id }], [RebuildStatsJob, { userId }]]);
 ```
 
-The first job runs now. Each next one is queued only once the one before succeeded, in the same step that marks it done. A job that
-fails for good or discards itself ends the chain. Every payload is checked when the chain is dispatched, and `chain()` resolves with
-the ids of all of them.
+The first job is queued now. Each next one is queued only once the one before succeeded, in the same step that marks it done. A
+job that fails for good or discards itself ends the chain. Every payload is checked when the chain is dispatched, and `chain()`
+resolves with the ids of all of them.
 
 ## Job middleware
 
@@ -452,8 +455,20 @@ Every step of a job is an event of the app's event dispatcher:
 | `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction. | `delay` |
 | `JobProcessing` | An attempt starts. | `attempt` |
 | `JobProcessed` | An attempt ran to its end. | `attempt`, `ms`, `discarded` |
-| `JobReleased` | The job went back to the queue. | `attempt`, `delay`, `reason`, `ms` |
-| `JobFailed` | An attempt failed. | `attempt`, `error` |
+| `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delay` seconds. | `attempt`, `delay`, `reason`, `ms` |
+| `JobFailed` | The job failed for good and is in the failed jobs now. The rest of its chain is dropped. | `attempt`, `error` |
+
+`reason` says why a job went back:
+
+| `reason` | Why |
+| --- | --- |
+| `error` | The attempt threw, and the job has tries left. |
+| `job` | The job or a middleware asked for it, with `job.release()` or `withoutOverlapping()`. |
+| `unknown` | The worker has no class for the job's name, as during a rolling deploy. |
+| `stopping` | The worker stops, and the running job goes back for another worker. |
+
+So a flaky job that succeeds on its second try sends `JobReleased` with `reason: 'error'` and then `JobProcessed`, never
+`JobFailed`. Count retries on `JobReleased`, and alert on `JobFailed`.
 
 All of them extend `JobEvent`, so `listen(JobEvent, …)` hears every one. A listener runs where the event happens, in the worker or in
 the process that dispatched. Its error is logged and changes nothing about the job. Job events cannot have queued listeners, because

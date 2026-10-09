@@ -2,9 +2,10 @@
 
 ## Introduction
 
-A rate limit caps how often something may happen in a window of time: ten registrations a minute from one address, five password
-guesses a minute for one account. It slows down scripts that guess passwords, create accounts or read a whole table, and it keeps
-one client from using up what everyone shares. The limits count in the app's [cache](cache.md), so every new app has them.
+A rate limit caps how often something may happen in a window of time: ten registrations a minute from one client address, five
+password guesses a minute for one e-mail address from one client. It slows down scripts that guess passwords, create accounts or
+read a whole table, and it keeps one client from using up what everyone shares. The limits count in the app's [cache](cache.md),
+so every new app has them.
 
 You define a named limiter once, in a service provider's `boot()`, and put it on routes with `throttle()`:
 
@@ -143,8 +144,9 @@ export class SystemServiceProvider implements ServiceProvider {
 
 ## Counting by hand
 
-Some limits cannot be middleware, because their key comes from validated input. A sign-in counts per address and client, and the
-address is known only once the controller has validated the form. Inject the `RateLimiter` and count in the controller:
+Some limits cannot be middleware, because their key comes from validated input. A sign-in counts per e-mail address and client
+address together, and the e-mail address is known only once the controller has validated the form. Inject the `RateLimiter` and
+count in the controller:
 
 ```ts title="modules/auth/controllers/LoginController.ts"
 import { Auth } from '@marmeon/auth';
@@ -185,7 +187,8 @@ export class LoginController extends Controller {
 ```
 
 The attempt is counted **before** the password is checked, and a right password clears the count. Counting only after a failure
-would let every guess that is sent at the same moment through.
+would let every guess that is sent at the same moment through. The key joins the e-mail address and the client address, so guesses
+at many accounts from one client share no count, and one account guessed from many clients is not limited as a whole.
 
 | Method | What it does |
 | --- | --- |
@@ -204,8 +207,10 @@ would let every guess that is sent at the same moment through.
 
 The counts are entries of the app's cache, under `limiter:` and the key. They follow the cache's driver:
 
-- With more than one server, the cache must be one they share, `database` or `redis`. With `file` each machine counts on its own,
-  and with `memory` each process.
+- `CACHE_DRIVER` is `file` by default, so a new app counts per machine. With more than one server, the cache must be one they
+  share, `database` or `redis`. With `file` each machine counts on its own, and with `memory` each process.
+- The key is stored as it is: a key with an e-mail address, such as `limiter:login:ada@example.com|203.0.113.7`, puts personal data
+  into the cache until its window ends.
 - `cache:clear` empties the counts with everything else, and every window starts again.
 - A limit on the `database` driver counts on the cache's own connection, so a count survives a rollback of the request's
   transaction.

@@ -66,8 +66,8 @@ says `created_at`.
 | Method | What it does |
 | --- | --- |
 | `.sortable()` | The table may sort by it. |
-| `.searchable()` | The search looks into it: case-insensitive, with `LIKE`'s wildcards taken literally. |
-| `.label(text)` | Its heading. Without it, the app labels the column by its alias, in its own translations. |
+| `.searchable()` | The search looks into it while the user can see it: case-insensitive, with `LIKE`'s wildcards taken literally. |
+| `.label(text)` | Its heading in the props and in the CSV. Without it, the props carry `label: null`, the page labels the column through `useTable()`'s `labels`, and the CSV heading is the alias. |
 | `.visible(Policy, 'ability')` | Only users the policy allows see it. Asked once per request, without a row. |
 | `.visible((ctx, resolve) => …)` | The same with a function of your own. |
 
@@ -106,7 +106,8 @@ counting every row. The [pagination](pagination.md) page explains both.
 
 ### Who may see the table
 
-`authorize` decides whether the user may see the table at all. It is asked on the page and in every endpoint:
+`authorize` decides whether the user may see the table at all. It is asked on the page and in every endpoint. `can()` of
+`@marmeon/auth` takes a policy and one of its abilities, here an ability `viewAny` that you add to the policy:
 
 ```ts
 authorize: can(MemberPolicy, 'viewAny'),
@@ -219,7 +220,11 @@ does not. Each of these is a **400**:
 - a filter that does not exist, `?filter[password]=x`, or a value its filter does not offer,
 - a page size that is not in `perPage`, `?per_page=10000`, or a page that is no whole number,
 - a repeated key, or a search longer than 100 characters,
-- sorting or searching by a column the user cannot see, or a filter the user cannot see.
+- sorting by a column the user cannot see, or a filter the user cannot see,
+- a search when no column the user can see is searchable.
+
+The search never looks into a column the user cannot see. It leaves such a column out without an error, so a search finds nothing
+in a hidden column and tells nothing about it.
 
 Nothing from the URL reaches `ORDER BY` or `WHERE` that the definition did not name. A sort or a filter is an alias that is looked
 up, and only its column goes into the query.
@@ -296,7 +301,7 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | Attack | What stops it |
 | --- | --- |
 | A hidden column read anyway, in the props, the devtools' query log, a cursor or the CSV | Two measures: the **projection** selects only the visible columns and the key, so the column is not in the SQL, and the **props** pick only the visible columns by name, even when the base query selects more. |
-| Sorting by a column you may not see: the order alone tells its values | The **allowlist**: a sort, a filter, a search or a page size the definition does not offer is a 400, never a fallback. Sorting, filtering or searching by a hidden column is a 400 too. |
+| Sorting by a column you may not see: the order alone tells its values | The **allowlist**: a sort, a filter, a search or a page size the definition does not offer is a 400, never a fallback. Sorting or filtering by a hidden column is a 400 too, and the search never looks into one. |
 | Another tenant's rows | The **base query**: a row action looks its row up there, a bulk action intersects with it, an export reads from it. |
 | An endpoint without the page's protection | `tableRoutes()` runs on the **page's registrar**, with its middleware. A registrar without what the base query needs does not compile. |
 | Keys of rows you may not touch, in a bulk action's body | **Keys ∩ base query ∩ policy per row**: what is left out is counted, never acted on. |
@@ -382,8 +387,11 @@ cannot see leaves no empty cell.
 - **Sorting, filtering, searching and paging** are visits of the page's URL with the props' keys and the columns' aliases:
   `table.sort('joined')`, `table.filter('locale', 'de')`, `table.filterBy({ … })`, `table.setSearch('ada')`, `table.goTo(2)`,
   `table.perPage(25)` and `table.next()` for a cursor. Only the table's prop reloads, and the server parses the state again.
-  Asking for something the props do not offer throws before a request goes out. The search waits 300 milliseconds after the last
-  keystroke and adds one history entry. Sort links are real links: without JavaScript, or opened in a new tab, they work.
+  Asking for something the props do not offer throws before a request goes out, with an error code from `[marmeon:C9]` to
+  `[marmeon:C12]`. Sorting, filtering and paging add a history entry. The search waits 300 milliseconds after the last keystroke
+  and replaces the current history entry instead of adding one, so Back after a search leaves the page. Sort links are real
+  links: without JavaScript, or opened in a new tab, they work. `table.page.type` is `offset` or `cursor`, so a page knows which
+  pagination to render.
 - **The selection** lives with the history entry, in memory, never in `history.state` or the browser's storage. A new sort, filter
   or page starts with nothing selected, and Back brings the old selection back. Leaving the document, by signing out or after a new
   build, forgets it. `table.selectMatching()` selects every matching row, not only those on screen.

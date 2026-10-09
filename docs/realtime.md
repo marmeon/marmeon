@@ -144,8 +144,8 @@ channel goes into pages only, never into an island or a layer, which show no lay
 - **Gathered.** A tab collects hints until 250 milliseconds pass without one, at most 2 seconds after the first, and then makes
   **one** partial reload per page, island or layer.
 
-With Redis down, `refresh()` logs the lost hint and does not retry it. The change itself is committed, and tabs that connect again
-later catch up.
+With Redis down, `refresh()` logs the lost hint and does not retry it. The change itself is committed. New streams answer `503`
+with `Retry-After: 5` meanwhile, and tabs that connect again later catch up.
 
 ## Why hints, not data
 
@@ -154,6 +154,8 @@ later catch up.
 - **Signed subscriptions.** `.live()` puts each channel into the page with a token: an HMAC over the channel and the session,
   keyed from `APP_KEY`, so whoever may see the page may hear its hints. The stream refuses a channel that was rewritten, such as
   `users.1` to `users.2`, and a token of another session or of one that ended, with a 403. A stream without a session gets a 401.
+  The tokens travel in the stream's URL, because `EventSource` sends no headers of its own, so they show in a proxy's access log.
+  They are bound to the session and open nothing without its cookie.
 - **Sessions.** A page that signs a channel keeps the session it was signed for, also a guest's. An island cannot start a session,
   so a guest without one gets the island without its subscription, and no error. A route without a session, such as one of the
   `api` group, cannot sign a channel and throws.
@@ -220,7 +222,8 @@ counts are each process's own: with four processes, a session may hold 16 stream
 
 `LIVE_DRIVER=memory` reaches the streams of its own process only. Use `LIVE_DRIVER=redis` as soon as there is more than one:
 
-- **`marmeon start --workers`** fails at the start with `memory`: a hint would reach the tabs of one server only.
+- **`marmeon start --workers`** fails at the start with `memory`, with a `LiveSetupError`: "memory pub/sub never reaches the
+  other workers — use LIVE_DRIVER=redis". A hint would reach the tabs of one server only.
 - **Queue workers and the scheduler** send hints too, such as a queued notification. They publish, and the web processes deliver.
   That works only through Redis.
 - **Several containers or machines** need it for the same reason.
@@ -231,7 +234,8 @@ counts are each process's own: with four processes, a session may hold 16 stream
 
 Every hint carries its channel's sequence number. When a stream opens it says each channel's number, and the tab compares. A
 channel that moved while the tab was away reloads **once**, however many hints it missed: after a broken connection, a frozen tab
-or a restart of the server. Sequence numbers live a day after a channel's last hint, so a tab away longer reloads once anyway.
+or a restart of the server. Sequence numbers live a day after a channel's last hint, so a tab away longer reloads once anyway. The
+`memory` driver also forgets the channels hinted longest ago beyond 10 000, and counts on above every number it forgot.
 
 A number that starts again, because its Redis key expired or was flushed, never silences a stream: an open stream delivers every
 hint whatever its number, and a reconnect that finds another number than it knew reloads that channel once. When the server stops,
