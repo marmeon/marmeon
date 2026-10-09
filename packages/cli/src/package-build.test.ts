@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PackageBuildCommand } from './commands/package-build.ts';
@@ -56,6 +56,19 @@ describe('marmeon package:build --clean (E156)', () => {
     expect(build(dir, { clean: true })).toBe(0);
     expect(existsSync(join(dir, 'dist/orphan.js'))).toBe(false);
     expect(existsSync(join(dir, 'dist/kept.js'))).toBe(true);
+  });
+
+  it('fails for a directory without a tsconfig.json — before building any, never "Built 0 package(s)"', () => {
+    const empty = realpathSync(tempDir('marmeon-package-build-empty-'));
+    try {
+      const errors: string[] = [];
+      const output = { ...silent, error: (text: string) => void errors.push(text) };
+      const code = new PackageBuildCommand().handle({ args: [dir, empty], options: {}, output: output as never, root: dir, spawn: async () => 0 });
+      expect([code, errors]).toEqual([1, [`${relative(dir, empty)} has no tsconfig.json — nothing to build there. Name the directories of your packages.`]]);
+      expect(existsSync(join(dir, 'dist/kept.js')), 'a package was built before the error').toBe(false);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 
   it('refuses an outDir that is not inside the package', () => {

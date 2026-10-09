@@ -25,6 +25,7 @@ import { defineGegenproben } from '../define.ts';
  *   fails as "attempted without finishing"). Run on SQLite; `pnpm test:pgsql` / `test:redis` run the same test on the other drivers.
  * - **`make:controller --request --view` on a writing name is refused** (G15) — without the check it writes a page its redirecting
  *   controller never renders.
+ * - **`package:build` fails for a directory without a `tsconfig.json`** (G16) — skipped again, the command ends with exit 0.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -154,6 +155,19 @@ export default defineGegenproben({
       patch: [{ file: 'packages/cli/src/commands/make.ts', find: '    if (withView && input.options.request === true && !reads) {', replace: '    if (false) {' }],
       run: { vitest: 'packages/cli/src/cli.test.ts', name: 'scaffolds a module, controller with view' },
       expect: /expected \[ \+0, '' \] to deeply equal \[ 1, …\(1\) \]/,
+    },
+    {
+      id: 'G16',
+      title: 'package:build skips a directory without a tsconfig.json again: exit 0, nothing said',
+      patch: [
+        {
+          file: 'packages/cli/src/commands/package-build.ts',
+          find: "    const directories = (args.length ? args : ['.']).map((dir) => resolve(root, dir));",
+          replace: "    const directories = (args.length ? args : ['.']).map((dir) => resolve(root, dir)).filter((dir) => existsSync(join(dir, 'tsconfig.json')));",
+        },
+      ],
+      run: { vitest: 'packages/cli/src/package-build.test.ts', name: 'fails for a directory without a tsconfig.json' },
+      expect: /expected \[ \+0, \[\] \] to deeply equal \[ 1, …\(1\) \]/,
     },
   ],
 });

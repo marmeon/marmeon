@@ -260,8 +260,8 @@ pnpm marmeon package:build --clean
 ```
 
 It runs `tsc -b` for each directory you name, or the current one, and writes the injection lists into the compiled files. Each
-directory needs a `tsconfig.json` and TypeScript installed. A directory without a `tsconfig.json` is skipped without a word: the
-command still ends with exit code 0, and with `Built 0 package(s)` when it built nothing, so check that line in a publish script.
+directory needs a `tsconfig.json` and TypeScript installed. A directory without a `tsconfig.json` stops the command before it builds
+anything, with exit code 1 and the directory's name.
 `--clean` empties `dist/` and the build info first, because `tsc -b` never deletes what a removed source left behind. A package
 inside your own monorepo, whose entry is TypeScript, runs from its sources there, and the app derives its lists while it loads
 them.

@@ -22,7 +22,13 @@ export class PackageBuildCommand {
   static boots = false;
 
   handle({ args, options, output, root }: CommandInput): number {
-    const directories = (args.length ? args : ['.']).map((dir) => resolve(root, dir)).filter((dir) => existsSync(join(dir, 'tsconfig.json')));
+    const directories = (args.length ? args : ['.']).map((dir) => resolve(root, dir));
+    // A directory without a tsconfig.json is no package to build — said before any build, never "Built 0 package(s)".
+    const missing = directories.find((dir) => !existsSync(join(dir, 'tsconfig.json')));
+    if (missing) {
+      output.error(`${relative(root, missing) || '.'} has no tsconfig.json — nothing to build there. Name the directories of your packages.`);
+      return 1;
+    }
 
     // All of them before any build: `tsc -b` builds a package's references too, which must not be cleaned afterwards.
     if (options.clean === true) for (const dir of directories) clean(dir);
