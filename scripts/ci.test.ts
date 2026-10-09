@@ -41,16 +41,17 @@ describe('check:source — the old name is gone (E196)', () => {
     ]);
   });
 
-  it('allows the company name everywhere and the rename hint only in README.md — the upgrade guide starts with the first release', () => {
+  it('allows the old name only as the company name — no rename hint, not even in README.md or UPGRADING.md', () => {
     const hint = `Marmeon was called ${old}Core up to 0.1.0.`;
-    expect(oldNameHits([
-      { path: 'packages/core/LICENSE', text: `MIT License\n\nCopyright (c) 2026 ${old}Code\n` },
+    expect(oldNameHits([{ path: 'packages/core/LICENSE', text: `MIT License\n\nCopyright (c) 2026 ${old}Code\n` }])).toEqual([]);
+    const hits = oldNameHits([
       { path: 'README.md', text: hint },
-    ])).toEqual([]);
-    expect(oldNameHits([{ path: 'docs/versioning.md', text: hint }])).toEqual([`docs/versioning.md:1: ${hint}`]);
-    expect(oldNameHits([{ path: 'UPGRADING.md', text: `**${hint}**` }])).toEqual([`UPGRADING.md:1: **${hint}**`]);
-    // An allowed phrase does not cover another mention on its line.
-    expect(oldNameHits([{ path: 'README.md', text: `${hint} Run ${lower} dev.` }])).toHaveLength(1);
+      { path: 'UPGRADING.md', text: `**${hint}**` },
+      { path: 'docs/versioning.md', text: hint },
+    ]);
+    // The hits as the message too: Vitest shortens the list in its own, and a Gegenprobe reads which file went missing.
+    expect(hits, `found: ${hits.join(' | ') || 'nothing'}`).toEqual([`README.md:1: ${hint}`, `UPGRADING.md:1: **${hint}**`, `docs/versioning.md:1: ${hint}`]);
+    // The company name does not cover another mention on its line.
     expect(oldNameHits([{ path: 'LICENSE', text: `${old}Code and ${old}Core` }])).toHaveLength(1);
   });
 });

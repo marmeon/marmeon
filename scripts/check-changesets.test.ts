@@ -39,6 +39,15 @@ const anchors = {
   '0.2.0': ['medium-a-change-of-020'],
 } as const satisfies typeof UPGRADING_ANCHORS;
 
+/**
+ * The problems found against those wanted — both in the message: Vitest shortens the lists in its own ("[ Array(1) ]"), and a
+ * Gegenprobe that takes a rule out reads which problem went missing.
+ */
+function expectProblems(problems: readonly string[], wanted: readonly string[]): void {
+  const list = (items: readonly string[]) => (items.length === 0 ? 'nothing' : items.join(' | '));
+  expect(problems, `found: ${list(problems)} — wanted: ${list(wanted)}`).toEqual(wanted);
+}
+
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
@@ -50,17 +59,17 @@ describe('checkUpgrading — before the first release', () => {
   });
 
   it('asks for no entry while the page has no release section and the list is empty', () => {
-    expect(checkUpgrading(repositoryWith(unreleased), {})).toEqual([]);
+    expectProblems(checkUpgrading(repositoryWith(unreleased), {}), []);
   });
 
   it('names an entry that stands under no release', () => {
-    expect(checkUpgrading(repositoryWith(`${unreleased}\n${entry('Low: a change before any release')}`), {})).toEqual([
+    expectProblems(checkUpgrading(repositoryWith(`${unreleased}\n${entry('Low: a change before any release')}`), {}), [
       'UPGRADING.md: #low-a-change-before-any-release stands under no release — an entry goes under its "## Upgrading to <version> from <version>"',
     ]);
   });
 
   it('still refuses a placeholder', () => {
-    expect(checkUpgrading(repositoryWith(`${unreleased}\n<!-- the entries of 0.2.0 -->\n`), {})).toEqual(['UPGRADING.md still has a placeholder or a comment']);
+    expectProblems(checkUpgrading(repositoryWith(`${unreleased}\n<!-- the entries of 0.2.0 -->\n`), {}), ['UPGRADING.md still has a placeholder or a comment']);
   });
 });
 
@@ -72,24 +81,24 @@ describe('checkUpgrading — from the first release on', () => {
   });
 
   it('switches on with the first release section: one the list does not know is named', () => {
-    expect(checkUpgrading(repositoryWith(released()), { '0.2.0': anchors['0.2.0'] })).toEqual([
+    expectProblems(checkUpgrading(repositoryWith(released()), { '0.2.0': anchors['0.2.0'] }), [
       'UPGRADING.md has the section of 0.3.0, and scripts/check-changesets.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["0.3.0"]',
     ]);
   });
 
   it('names an entry that is missing, by its release', () => {
-    expect(checkUpgrading(repositoryWith(released(entry('Low: a change of 0.3.0, reworded'))), anchors)).toEqual([
+    expectProblems(checkUpgrading(repositoryWith(released(entry('Low: a change of 0.3.0, reworded'))), anchors), [
       'UPGRADING.md lacks an entry of 0.3.0: #low-a-change-of-030',
     ]);
   });
 
   it('names an entry that moved into another release', () => {
     const moved = released('').replace('## Upgrading to 0.2.0 from 0.1.0\n', `## Upgrading to 0.2.0 from 0.1.0\n\n${entry('Low: a change of 0.3.0')}`);
-    expect(checkUpgrading(repositoryWith(moved), anchors)).toEqual(['UPGRADING.md: #low-a-change-of-030 (an entry of 0.3.0) is under 0.2.0']);
+    expectProblems(checkUpgrading(repositoryWith(moved), anchors), ['UPGRADING.md: #low-a-change-of-030 (an entry of 0.3.0) is under 0.2.0']);
   });
 
   it('names a listed release whose section is gone', () => {
-    expect(checkUpgrading(repositoryWith(unreleased), { '0.2.0': ['medium-a-change-of-020'] })).toEqual([
+    expectProblems(checkUpgrading(repositoryWith(unreleased), { '0.2.0': ['medium-a-change-of-020'] }), [
       'UPGRADING.md has no section "## Upgrading to 0.2.0 from …", which scripts/check-changesets.ts lists',
       'UPGRADING.md lacks an entry of 0.2.0: #medium-a-change-of-020',
     ]);
@@ -97,7 +106,7 @@ describe('checkUpgrading — from the first release on', () => {
 
   it('names an entry without its impact or its likelihood', () => {
     const vague = released().replace(entry('Medium: a change of 0.2.0'), '#### A change of 0.2.0\n\nWhat changed.\n');
-    expect(checkUpgrading(repositoryWith(vague), { ...anchors, '0.2.0': ['a-change-of-020'] })).toEqual([
+    expectProblems(checkUpgrading(repositoryWith(vague), { ...anchors, '0.2.0': ['a-change-of-020'] }), [
       'UPGRADING.md: "#### A change of 0.2.0" — an entry starts with its impact (High:, Medium:, Low:)',
       'UPGRADING.md: #a-change-of-020 does not say its likelihood of impact',
     ]);

@@ -405,6 +405,25 @@ What you give up, and what to watch:
 - A rule of ours inside another library's schema runs without the request. A database rule there throws, on submit too, and an
   async `custom()` that runs in a live validation has its error dropped. Put the whole object into `rules` instead.
 
+### Coming from Valibot
+
+A Valibot schema works as it is, since it is a Standard Schema too. To move it into `rules`, these are the common pieces:
+
+| Valibot | Rules |
+| --- | --- |
+| `v.object({ … })`, `v.array(item)` | `r.object({ … })`, `r.array(item)` |
+| `v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(255))` | `r.string().trim().required().max(255)` |
+| `v.pipe(v.string(), v.email())` | `r.email()` |
+| `v.optional(v.string())` | `r.string().optional()` |
+| `v.nullable(v.pipe(v.string(), v.url()))` | `r.url().nullable()` |
+| `v.optional(v.number(), 1)` | `r.number().default(1)` |
+| `v.picklist(['title', '-title'])` | `r.in(['title', '-title'])` |
+| `v.pipe(v.string(), v.transform(Number), v.integer())` | `r.integer()`, which takes `'42'` and `42` |
+| `v.pipe(v.string(), v.check(isSlug, 'notes.validation.slug'))` | `r.string().custom(isSlug, 'notes.validation.slug')` |
+| `v.forward(v.partialCheck(…, (input) => input.password === input.password_confirmation), ['password_confirmation'])` | `r.object({ … }).confirmed('password')` |
+
+A message that used Valibot's `{requirement}` takes the rule's own placeholder, such as `{min}` or `{max}`.
+
 ## Type errors you will meet
 
 The compiler refuses what cannot work, and its messages say what to do. TypeScript names the type first and the message on the

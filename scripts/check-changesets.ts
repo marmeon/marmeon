@@ -14,6 +14,9 @@
  *      From the first release on, every release's section (`## Upgrading to 0.2.0 from 0.1.0`, steps as `###` inside it) has its
  *      entries listed in {@link UPGRADING_ANCHORS}, and every listed entry stands under its release — each with an impact and its
  *      likelihood, and no placeholder left. The first section switches the requirement on: it is refused until its entries are listed.
+ *      A release's section must be headed exactly `## Upgrading to <version> from <version>` (level 2, the version as x.y.z): under
+ *      any other heading the check sees no release — entries there are refused as standing under no release, and a section
+ *      without entries goes unnoticed.
  *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode", E153), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
  *      private vulnerability reporting, the deprecation policy in the root README.
  * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).

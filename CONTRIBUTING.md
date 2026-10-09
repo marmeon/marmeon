@@ -192,9 +192,9 @@ A part of `pnpm run ci` (`scripts/check-source.ts`, its tests in `scripts/ci.tes
 checked over every file of the repository — tracked, or new and not ignored. Exit 1 lists every hit as `path:line: text`.
 
 1. **The old name is gone**: no file and no path says the framework's name from before 0.1.0, in any letter case.
-   Allowed are the company name (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`) and
-   the one rename hint in `README.md`. Code that must spell the old name — a test, a Gegenprobe — builds it from
-   parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
+   Allowed is the company name only (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`):
+   nothing was released under the old name, so there is no rename hint. Code that must spell the old name — a test, a
+   Gegenprobe — builds it from parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
 2. **No app installs a validation engine**: apps, the starter's template, the `make:auth` stubs, scripts and what the `make:*`
    generators write validate with `rules` of `@marmeon/validation` — no file outside a package's `src/` imports Valibot (in code or in
    a generator's template text), and no `package.json` of an app or of the template lists it. Inside `packages/<name>/src/` Valibot
@@ -347,7 +347,9 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
 - **The upgrade guide** starts with the first release. Until then `UPGRADING.md` is a short page without entries, and
   `check-changesets` refuses an entry that stands under no release. The first `## Upgrading to <version> from <version>` section
   switches the requirement on: `check-changesets` refuses it until `UPGRADING_ANCHORS` lists its entries under that version, and
-  from then on every listed entry must stand under its release, with its impact and its likelihood.
+  from then on every listed entry must stand under its release, with its impact and its likelihood. Head a release's section
+  exactly so — level 2, the version as x.y.z, steps as `###` inside it: under any other heading the check sees no release, so an
+  entry there is refused as standing under no release and a section without entries goes unnoticed.
 - **How a release happens** (`.github/workflows/release.yml`): on every push to `main`, the Changesets action opens or updates
   the *Version packages* pull request (`changeset version`: the versions, the changelogs). Merging it runs the checks again and
   **stages** every package that is not on npm yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the

@@ -101,7 +101,7 @@ export default defineGegenproben({
       title: 'the root README links an anchor its page does not have: the anchor check names it',
       patch: [{ file: 'README.md', find: '(docs/installation.md#the-first-day-after-a-release)', replace: '(docs/installation.md#the-first-day)' }],
       run: NAMED,
-      expect: /README\.md:59: docs\/installation\.md#the-first-day — no #the-first-day on that page/,
+      expect: /README\.md:58: docs\/installation\.md#the-first-day — no #the-first-day on that page/,
     },
     {
       id: 'C1c',

@@ -3,10 +3,9 @@
  *
  *   1. **The old name is gone** (E195, E196): no file of the repository — tracked, or new and not ignored — and no path says the
  *      framework's name from before 0.1.0, in any case. Allowed: the company name (`LICENSE` holder, E153 — every copy, the policies
- *      that name it, `check-changesets`' licence rule) and the one rename hint ("Marmeon was called … up to 0.1.0") in `README.md`
- *      (the upgrade guide starts with the first release, E216). A half-renamed repository does not always show: the temp hygiene,
- *      for one, finds leftovers by their prefix only — a helper with the old prefix and a hygiene with the new one would agree on
- *      nothing and stay green.
+ *      that name it, `check-changesets`' licence rule) — no rename hint: nothing was released under the old name (E216). A
+ *      half-renamed repository does not always show: the temp hygiene, for one, finds leftovers by their prefix only — a helper
+ *      with the old prefix and a hygiene with the new one would agree on nothing and stay green.
  *
  *   2. **No app installs a validation engine** (E197, W10 step 4): apps, the starter's template, the `make:auth` stubs and what a
  *      script or a generator writes into an app validate with `rules` of @marmeon/validation — no file outside `packages/<name>/src/`
@@ -63,12 +62,10 @@ interface Allowance {
   readonly files?: readonly string[];
 }
 
-/** What may still say the old name — each a whole phrase, never the word alone. */
+/** What may still say the old name — a whole phrase, never the word alone. No rename hint: nothing was released under the old name (E216). */
 export const ALLOWED: readonly Allowance[] = [
   // The company (E153): the LICENSE holder and every place that names it.
   { pattern: new RegExp(`\\b${OLD_NAME}Code\\b`, 'g') },
-  // The one rename hint (E196): no entry per name, only this sentence — in the README; the upgrade guide starts with the first release (E216).
-  { pattern: new RegExp(`Marmeon was called ${OLD_NAME}Core up to 0\\.1\\.0`, 'g'), files: ['README.md'] },
 ];
 
 export interface SourceFile {
@@ -349,6 +346,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies (the upgrade guide among them) name no decision number and compare Marmeon with no other framework; the docs, the cards and the upgrade guide name no wave, no page is pending; the starter's template and the packages' stubs name no decision number, wave, personal date or other framework; no string of a package's code or launchers names a decision, a wave or another framework.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies (the upgrade guide among them) name no decision number and compare Marmeon with no other framework; the docs, the cards and the upgrade guide name no wave, no page is pending; the starter's template and the packages' stubs name no decision number, wave, personal date or other framework; no string of a package's code or launchers names a decision, a wave or another framework.`);
   }
 }

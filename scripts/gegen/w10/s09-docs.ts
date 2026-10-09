@@ -62,8 +62,7 @@ export default defineGegenproben({
         },
       ],
       run: { vitest: 'scripts/check-changesets.test.ts', name: 'names an entry that is missing, by its release' },
-      // Vitest shortens the list: nothing found where the missing entry of 0.3.0 is expected.
-      expect: /expected \[\] to deeply equal \[ Array\(1\) \]/,
+      expect: /found: nothing — wanted: UPGRADING\.md lacks an entry of 0\.3\.0: #low-a-change-of-030/,
     },
   ],
 });

@@ -10,8 +10,8 @@ import { defineGegenproben } from '../define.ts';
  * - **The first release section switches the requirement on** — a `## Upgrading to …` section whose entries `UPGRADING_ANCHORS`
  *   does not list is refused (R2); the switch taken out, its unit test is red (R2b). That a listed entry must stand under its release
  *   is W10.9's G3.
- * - **The rename hint lives in the README only** (`check:source` rule 1) — the hint back in the upgrade guide is named (R3); the
- *   guide back in the hint's allowance, the unit test is red (R3b).
+ * - **No rename hint** (`check:source` rule 1 allows the company name only: nothing was released under the old name) — the hint
+ *   back in the README is named (R3); the hint's allowance back for the README, the unit test is red (R3b).
  * - **No way back to the old token prefix** (`check:source` rule 4) — the way back in the upgrade guide is named (R4); the guide
  *   back in the prefix's allowance, the unit test is red (R4b).
  * - **The record of changes comes last in the search** — the guide's flag ignored by the sort, the search test is red: "likely"
@@ -24,6 +24,8 @@ const CHANGESETS = { command: ['node', 'scripts/check-changesets.ts'] } as const
 const ci = (name: string) => ({ vitest: 'scripts/ci.test.ts', name }) as const;
 const changesets = (name: string) => ({ vitest: 'scripts/check-changesets.test.ts', name }) as const;
 const CHECK = 'scripts/check-changesets.ts';
+/** The README's status line: the rename hint stood after it. */
+const STATUS = 'Status: 0.1.0 — prepared, not published yet. MIT licence (`LICENSE`, copyright BespokeCode). Node 26.10 or newer, pnpm 12.\n';
 /** The guide's first line: what the cases add follows the title. */
 const TITLE = '# Upgrading\n\nMarmeon has had no release yet';
 
@@ -55,7 +57,7 @@ export default defineGegenproben({
         },
       ],
       run: changesets('names an entry that stands under no release'),
-      expect: /expected \[\] to deeply equal \[ Array\(1\) \]/,
+      expect: /found: nothing — wanted: UPGRADING\.md: #low-a-change-before-any-release stands under no release/,
     },
     // --- The first release section switches the requirement on --------------------------------------------------------------------
     {
@@ -76,22 +78,28 @@ export default defineGegenproben({
       title: 'the release check without the switch: a release section nobody lists passes, its unit test is red',
       patch: [{ file: CHECK, find: '    if (!(version in anchors)) {\n', replace: '    if (version === undefined) {\n' }],
       run: changesets('switches on with the first release section'),
-      expect: /expected \[\] to deeply equal \[ Array\(1\) \]/,
+      expect: /found: nothing — wanted: UPGRADING\.md has the section of 0\.3\.0, and scripts\/check-changesets\.ts lists none of its entries/,
     },
-    // --- The rename hint lives in the README only ----------------------------------------------------------------------------------
+    // --- No rename hint ------------------------------------------------------------------------------------------------------------
     {
       id: 'R3',
-      title: 'the rename hint back in the upgrade guide: check:source names it',
-      patch: [{ file: 'UPGRADING.md', find: TITLE, replace: `# Upgrading\n\nMarmeon was called ${OLD_NAME}Core up to 0.1.0.\n\nMarmeon has had no release yet` }],
+      title: 'the rename hint back in the README: check:source names it',
+      patch: [{ file: 'README.md', find: STATUS, replace: `${STATUS}Marmeon was called ${OLD_NAME}Core up to 0.1.0.\n` }],
       run: SOURCE,
-      expect: new RegExp(`UPGRADING\\.md:3: Marmeon was called ${OLD_NAME}Core up to 0\\.1\\.0\\.`),
+      expect: new RegExp(`README\\.md:31: Marmeon was called ${OLD_NAME}Core up to 0\\.1\\.0\\.`),
     },
     {
       id: 'R3b',
-      title: 'the upgrade guide back in the rename hint\'s allowance: its unit test is red',
-      patch: [{ file: 'scripts/check-source.ts', find: "'g'), files: ['README.md'] },", replace: "'g'), files: ['README.md', 'UPGRADING.md'] }," }],
-      run: ci('allows the company name everywhere and the rename hint only in README.md'),
-      expect: /expected \[\] to deeply equal \[ Array\(1\) \]/,
+      title: 'the rename hint\'s allowance back for the README: its unit test is red',
+      patch: [
+        {
+          file: 'scripts/check-source.ts',
+          find: "  { pattern: new RegExp(`\\\\b${OLD_NAME}Code\\\\b`, 'g') },\n",
+          replace: "  { pattern: new RegExp(`\\\\b${OLD_NAME}Code\\\\b`, 'g') },\n  { pattern: new RegExp(`Marmeon was called ${OLD_NAME}Core up to 0\\\\.1\\\\.0`, 'g'), files: ['README.md'] },\n",
+        },
+      ],
+      run: ci('allows the old name only as the company name'),
+      expect: /found: UPGRADING\.md:1: \*\*Marmeon was called .* \| docs\/versioning\.md:1: Marmeon was called/,
     },
     // --- No way back to the old token prefix ---------------------------------------------------------------------------------------
     {
