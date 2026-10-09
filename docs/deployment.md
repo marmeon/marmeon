@@ -101,8 +101,8 @@ schedulers, a task marked `onOneServer()` runs on one of them only, as long as t
 
 A worker without `--queue` takes every queue, fairly, so a full `default` queue never holds the auth module's mails back.
 `--queue=mail,default` narrows a worker to these queues in strict order, and `*` in the list stands for every queue it does not
-name. The [queues](queues.md) page explains the order. An app whose `jobs` table is older than that fair order adds an index
-first ([the migration](#the-queue-index-of-an-older-app)), or each idle worker sorts every waiting job.
+name. The [queues](queues.md#which-queues-a-worker-takes) page explains the order. An app whose `jobs` table is older than that
+fair order adds an index first ([the migration](#the-queue-index-of-an-older-app)), or each idle worker sorts every waiting job.
 
 ### Several processes on one machine
 
@@ -150,8 +150,8 @@ needs nothing. A new app and `make:queue-table` have the index already.
 | Option | Adds |
 | --- | --- |
 | none | `Dockerfile`, `.dockerignore` and `compose.production.yaml` with the web, worker and scheduler services. |
-| `--caddy` | A Caddy service in front, with its `deploy/Caddyfile`. |
-| `--nginx` | An nginx service and its `deploy/nginx.conf` instead. You provide the certificates, see [nginx](#nginx). |
+| `--caddy` | A Caddy service in front, with its `deploy/Caddyfile`. With `--systemd`, the `deploy/Caddyfile` only, for a Caddy on the host. |
+| `--nginx` | An nginx service and its `deploy/nginx.conf` instead. With `--systemd`, the `deploy/nginx.conf` only, for an nginx on the host. You provide the certificates, see [nginx](#nginx). |
 | `--systemd` | Units for the three roles in `deploy/systemd/`, for running without Docker. A proxy is then for the host. |
 | `--force` | Overwrites files that exist. Without it, the command stops. |
 
@@ -198,7 +198,7 @@ A new app needs nothing more for SQLite, files, the database queue and the log m
 | An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` |
 | Direct uploads to S3 | also `pnpm add @aws-sdk/s3-presigned-post@^3` |
 | MJML mail templates | `pnpm add mjml@^5`. A new app has it. |
-| OpenTelemetry | `pnpm add @opentelemetry/api@^1` and an SDK. See [observability](observability.md). |
+| OpenTelemetry | `pnpm add @opentelemetry/api@^1` and an SDK. See [observability](observability.md#installation). |
 
 Install drivers as `dependencies`, not `devDependencies`: the image's production install keeps only those. Where a driver is
 surely needed, the start fails and names the command, such as a Redis driver without `@marmeon/redis` or a default disk on S3
@@ -238,7 +238,7 @@ on every interface: no `HOST`, `0.0.0.0` or `::`. With `HOST=127.0.0.1`, a port 
 Generate a new key, move the current one into `APP_PREVIOUS_KEYS`, and deploy every instance with both. Sessions, encrypted
 cookies and signed links made with the old key keep working. Remove the old key once the longest session or signed link has
 expired. Replacing the key without this step signs everybody out and breaks every signed link. The
-[encryption](encryption.md) page explains the keys.
+[encryption](encryption.md#rotating-the-key) page explains the keys.
 
 ### Mail
 
@@ -306,9 +306,9 @@ outage must not get healthy processes restarted. The image's `HEALTHCHECK` uses 
 runs every health check of the app and its packages, such as the database and Redis, and answers `200` or `503`.
 
 `HEALTH_PATH` moves both, and `HEALTH_PATH=off` turns them off. The image's `HEALTHCHECK` follows `PORT` and `HEALTH_PATH`. With
-`HEALTH_PATH=off`, remove the `HEALTHCHECK` line from the Dockerfile, or Docker marks the web container unhealthy although the
-app runs. Worker and scheduler containers have no HTTP server, so the Compose file turns their health check off. The [health
-checks](health.md) page explains both endpoints and your own checks.
+`HEALTH_PATH=off`, remove the `HEALTHCHECK` instruction, both of its lines, from the Dockerfile, or Docker marks the web container
+unhealthy although the app runs. Worker and scheduler containers have no HTTP server, so the Compose file turns their health check
+off. The [health checks](health.md) page explains both endpoints and your own checks.
 
 ## Proxies and HTTP/2
 
@@ -319,7 +319,7 @@ its tabs, so a seventh tab with a stream would hang every further request. The c
 while its tab is visible. Over HTTP/2 every tab keeps its stream.
 
 Terminate TLS with HTTP/2 at the proxy. The app itself speaks HTTP/1.1 to the proxy, which is fine. The
-[real-time updates](realtime.md) page covers the streams.
+[real-time updates](realtime.md#behind-a-proxy) page covers the streams.
 
 ### Caddy
 
@@ -380,10 +380,10 @@ leaks the secret byte by byte. Leave the proxy's compression off for them too. T
 
 ## Traces
 
-With [OpenTelemetry](observability.md), every request from outside starts a trace of its own, and a caller's `traceparent`
-header becomes a link of it. Anyone can send that header, so taking it as the parent would let a client choose the trace its
-requests land in. Set `OTEL_TRUST_TRACEPARENT=true` only behind an edge that sets or strips the header itself, such as an API
-gateway or a service mesh. A trusted proxy is no such edge by itself: Caddy and nginx pass the header on.
+With [OpenTelemetry](observability.md#a-callers-traceparent), every request from outside starts a trace of its own, and a caller's
+`traceparent` header becomes a link of it. Anyone can send that header, so taking it as the parent would let a client choose the
+trace its requests land in. Set `OTEL_TRUST_TRACEPARENT=true` only behind an edge that sets or strips the header itself, such as
+an API gateway or a service mesh. A trusted proxy is no such edge by itself: Caddy and nginx pass the header on.
 
 ## More than one instance
 
@@ -453,4 +453,4 @@ A single server with Docker Compose is enough for many apps. A few things matter
   of SQLite.
 - `storage/` on a volume.
 
-The [security](security.md) page has the rest of the list.
+The [security](security.md#your-checklist) page has the rest of the list.

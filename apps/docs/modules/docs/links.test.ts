@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -90,8 +90,10 @@ describe('every page', () => {
     expect(internal).toBeGreaterThan(7_560);
   });
 
-  it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link: E10)', () => {
-    const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.filter((file) => !existsSync(join(repo, file))).map((file) => `${page.file}: ${file}`));
+  it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link: E10) — no directory', () => {
+    // A directory is no file to name: a link to `../packages/queue/` would stay code text that says nothing — link the docs page.
+    const what = (file: string) => (!existsSync(join(repo, file)) ? 'no such file' : statSync(join(repo, file)).isFile() ? undefined : 'a directory, not a file');
+    const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.flatMap((file) => (what(file) ? [`${page.file}: ${file} — ${what(file)}`] : [])));
     expect(missing, missing.join('\n')).toEqual([]);
   });
 });
@@ -106,10 +108,13 @@ describe('the docs the framework names', () => {
       text.split('\n').forEach((line, index) => {
         const at = `${path}:${index + 1}`;
         for (const [readme] of line.matchAll(README_PATH)) problems.push(`${at}: ${readme} names a README — the docs live in docs/`);
-        for (const [, file = '', anchor] of line.matchAll(DOCS_PATH)) {
+        for (const [, file = '', hash] of line.matchAll(DOCS_PATH)) {
           named++;
+          // What follows `#` up to the end of the reference, a sentence's last full stop or colon aside.
+          const anchor = hash?.replace(/[.:!?]+$/, '');
           const anchors = anchorsOf.get(file);
           if (!anchors) problems.push(`${at}: ${file} — no such page of the docs`);
+          else if (anchor !== undefined && !SLUG.test(anchor)) problems.push(`${at}: ${file}#${anchor} — no anchor GitHub makes (lower-case letters, digits, - and _)`);
           else if (anchor !== undefined && !anchors.has(anchor)) problems.push(`${at}: ${file}#${anchor} — no #${anchor} on that page`);
         }
       });
@@ -120,8 +125,14 @@ describe('the docs the framework names', () => {
   });
 });
 
-/** A docs page as code names it: `docs/<slug>.md`, maybe with its anchor (GitHub's anchors keep `_`: `#the-environment-node_env`). */
-const DOCS_PATH = /\b(docs\/[a-z0-9-]+\.md)(?:#([a-z0-9_-]+))?/g;
+/**
+ * A docs page as code names it: `docs/<slug>.md`, maybe with `#` and its anchor. `docs/` is flat — every page is `docs/<slug>.md`,
+ * none in a folder — so the path has no `/` after `docs/`. The anchor is everything after `#` up to a space, a quote, a bracket or
+ * a comma, so an anchor GitHub cannot make (`#Foo`, `#a.b`, `#${name}`) is caught whole and refused, never cut to a valid prefix.
+ */
+const DOCS_PATH = /\b(docs\/[a-z0-9-]+\.md)(?:#([^\s`'"()[\]<>,;]*))?/g;
+/** An anchor as GitHub makes it from an English heading: lower-case letters, digits, `-` and `_` (`#the-environment-node_env`). */
+const SLUG = /^[a-z0-9_-]+$/;
 /** A package's README — an npm card, never the place a message or a comment sends anyone to. */
 const README_PATH = /packages\/[a-z-]+\/README\.md/g;
 

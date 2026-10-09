@@ -97,8 +97,8 @@ it leaves would tell that column's values.
 ### Sorting and pages
 
 `defaultSort` is the sort without a `?sort=`: an alias, with `-` in front for descending. Without it, the table sorts by its first
-sortable column that everyone sees. The key always breaks ties. A default sort by a column with `.visible(…)` is refused, as a compile
-error and when `defineTable()` runs, because it would answer 400 to everyone who may not see the column.
+sortable column that everyone sees. The key always breaks ties. A default sort by a column with `.visible(…)` is refused, as a
+compile error and when `defineTable()` runs, because it would answer 400 to everyone who may not see the column.
 
 `pagination` pages by number with a total, by default. `perPage` lists the page sizes `?per_page=` allows, and the first one is the
 default: `[25, 50, 100]` unless you say otherwise. `{ cursor: true }` pages by an encrypted cursor instead, for "load more", without
@@ -119,7 +119,8 @@ check says so here.
 ### More than one table on a page
 
 `prefix: 'teams'` puts a prefix before the table's keys in the URL: `teams_sort`, `teams_filter[role]`. Spread both tables' query
-schemas into the page's request: `defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
+schemas into the page's request:
+`defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
 
 ## The controller and the routes
 
@@ -173,10 +174,10 @@ export default defineRoutes((Route) => {
 | `POST /members/_tables/members/bulk/:tableBulk` | `{ keys: [...] }` or `{ all: true, query }` | `{ done, skipped, missing, data? }` |
 | `GET /members/_tables/members/export/:tableExport` | none: the table's state in the query | a CSV file |
 
-The endpoints are ordinary routes of the page's group, with its middleware, its route bindings, the session and CSRF protection for
-the posts. A guest or an unconfirmed account never reaches them. A registrar that lacks what the base query needs, such as `ctx.user`
-without `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs. Throttle them: an export
-reads the whole filtered table. The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
+The endpoints are ordinary routes of the page's group, with its middleware, its route bindings, the session and CSRF protection
+for the posts. A guest or an unconfirmed account never reaches them. A registrar that lacks what the base query needs, such as
+`ctx.user` without `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs. Throttle
+them: an export reads the whole filtered table. The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
 
 ## What the browser gets
 
@@ -310,7 +311,7 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | An export as a denial of service | **`max`** before the first byte, an `authorize` of its own, and a `throttle()` on the table's routes. |
 | A key of the wrong type, such as text for an integer column | **Key types**: every key is parsed by its type before any query, and one that does not parse is no row. |
 
-The [security](security.md) page puts the table's model next to the app's other defaults.
+The [security](security.md#tables-and-exports) page puts the table's model next to the app's other defaults.
 
 ## In the browser
 
@@ -389,7 +390,8 @@ cannot see leaves no empty cell.
   `table.perPage(25)` and `table.next()` for a cursor. Only the table's prop reloads, and the server parses the state again.
   Asking for something the props do not offer throws before a request goes out, with an error code from `[marmeon:C9]` to
   `[marmeon:C12]`. Sorting, filtering and paging add a history entry. The search waits 300 milliseconds after the last keystroke
-  and replaces the current history entry instead of adding one, so Back after a search leaves the page. Sort links are real
+  and replaces the current history entry instead of adding one. Back after a search therefore returns to the entry before it: an
+  earlier sort, filter or page, or the page you came from when the search was the table's first change. Sort links are real
   links: without JavaScript, or opened in a new tab, they work. `table.page.type` is `offset` or `cursor`, so a page knows which
   pagination to render.
 - **The selection** lives with the history entry, in memory, never in `history.state` or the browser's storage. A new sort, filter
@@ -481,5 +483,5 @@ it('a member who is no administrator can neither sort by e-mail nor export', asy
 });
 ```
 
-`app.actingAs(user).acting().post(url, { json: { key } })` sends a row action as `useTable()` would. The [HTTP tests](http-tests.md)
-page covers requests in tests.
+`app.actingAs(user).acting().post(url, { json: { key } })` sends a row action as `useTable()` would. The [HTTP
+tests](http-tests.md#making-requests) page covers requests in tests.

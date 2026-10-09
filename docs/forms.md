@@ -106,8 +106,8 @@ void form.submit({
 `onError` gets the first message per field. `onFinish` runs after every submit, whether it succeeded, failed or was cancelled.
 After a successful submit, what was sent becomes where the form starts, so it is no longer dirty.
 
-A validation error on the server sends the browser back with the errors and the input, which the [validation](validation.md)
-page explains. The first message of each field lands in `form.errors`.
+A validation error on the server sends the browser back with the errors and the input, which the
+[validation](validation.md#from-schema-to-handler) page explains. The first message of each field lands in `form.errors`.
 
 A request that fails, because the server cannot be reached or answers with a server error, leaves the page and everything typed
 in place. The app shows the failure over the page, which the [error handling](errors.md#errors-in-the-browser) page describes, and
@@ -248,15 +248,15 @@ controller takes a key: `useForm<StoreNoteController>(initial, { remember: 'new-
 </Form>
 ```
 
-With `prompt`, the answer is yes only when the user types exactly that text. A no sends nothing. The [dialogs](dialogs.md) page
-shows the dialog that asks and how to word it in your app's language. A `useForm()` form asks with the `confirm` option of
-`submit()`.
+With `prompt`, the answer is yes only when the user types exactly that text. A no sends nothing. The
+[dialogs](dialogs.md#asking-the-user) page shows the dialog that asks and how to word it in your app's language. A `useForm()`
+form asks with the `confirm` option of `submit()`.
 
 ## Uploads
 
 A file field uploads the chosen file at once, before the form is sent. Write a form with an upload field with `useForm()`:
-`<Form>` cannot bind `<FileInput>`, and a file it posts with its fields is refused. The form then sends a token in its place. The route's
-schema marks the field with `upload()`:
+`<Form>` cannot bind `<FileInput>`, and a file it posts with its fields is refused. The form then sends a token in its place. The
+route's schema marks the field with `upload()`:
 
 ```ts title="modules/notes/controllers/UpdateCoverController.ts"
 import { can } from '@marmeon/auth';
@@ -320,10 +320,11 @@ chosen image, an `error` and `cancel()`. The upload's target comes from the form
 decide who may upload, and the `upload()` rule sets the limit. On submit, the server checks the file again by its size and by its
 first bytes. The [requests](requests.md#files) page covers the server's side.
 
-`useUpload(form.field('cover'))` returns a function that uploads a `File` you have, for a drop zone or a cropped image. Uploads need
-JavaScript, because the upload field accepts only the token of a file uploaded ahead. The upload code loads when the first `<FileInput>` renders.
+`useUpload(form.field('cover'))` returns a function that uploads a `File` you have, for a drop zone or a cropped image. Uploads
+need JavaScript, because the upload field accepts only the token of a file uploaded ahead. The upload code loads when the first
+`<FileInput>` renders.
 
 ## Testing
 
 A form test sends the request the form would send and checks the redirect, the errors and the database. The
-[HTTP tests](http-tests.md) page covers it.
+[HTTP tests](http-tests.md#assertions) page covers it.

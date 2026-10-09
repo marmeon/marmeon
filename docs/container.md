@@ -44,8 +44,8 @@ what to pass. Building the class then fails, and the error says why:
 [ShowNoteController] needs 2 constructor argument(s) but has no injection list. Cannot inject modules/notes/controllers/ShowNoteController.ts:9 — ShowNoteController, parameter "notes: NoteRepository": "NoteRepository" is imported with "import type", so it does not exist at runtime. Import its token as a value: import { NoteRepository } from '…'.
 ```
 
-A parameter of type `string`, `number` or a union cannot be injected either. Put such values into a [config definition](configuration.md)
-and inject that, or wrap them in a token.
+A parameter of type `string`, `number` or a union cannot be injected either. Put such values into a [config
+definition](configuration.md#defining-configuration) and inject that, or wrap them in a token.
 
 ### Where the lists come from
 
@@ -103,7 +103,7 @@ You rarely need it. It makes the choice explicit where a parameter has a default
 
 ## Binding services
 
-A [service provider](providers.md) binds services in its `register()` method:
+A [service provider](providers.md#register-and-boot) binds services in its `register()` method:
 
 ```ts title="modules/notes/NotesServiceProvider.ts"
 import type { Container, ServiceProvider } from '@marmeon/core';

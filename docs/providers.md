@@ -111,9 +111,9 @@ A provider class can carry three static lists. The app reads them before any pro
 
 | Static | What it is |
 | --- | --- |
-| `static config = [NotesConfig]` | The [config definitions](configuration.md) the provider needs. They are checked with the app's own. |
+| `static config = [NotesConfig]` | The [config definitions](configuration.md#defining-configuration) the provider needs. They are checked with the app's own. |
 | `static health = [SearchIndexReady]` | Checks for `/up/ready`. See [health checks](health.md). |
-| `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md). |
+| `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md#solutions). |
 
 A package uses these lists, because it has no module definition of its own. In an app, a module lists its configuration and its
 health checks in its definition instead.

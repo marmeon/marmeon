@@ -62,7 +62,7 @@ gets a fresh value each time, such as the current time.
 
 Hashing a password is slow on purpose, and `count(50)` would hash fifty times. So the starter kit's factory stores one hash,
 made once with the low costs of `.env.test`, and every factory user signs in with the password `password`. A seeder hashes with
-the app's configured costs instead, as the next section shows. The [hashing](hashing.md) page explains the costs.
+the app's configured costs instead, as the next section shows. The [hashing](hashing.md#configuration) page explains the costs.
 
 ## Using factories
 

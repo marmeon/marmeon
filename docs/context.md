@@ -69,7 +69,7 @@ export class SystemServiceProvider implements ServiceProvider {
 ```
 
 `add()` returns a function that removes the source again. The OpenTelemetry package uses the same mechanism to add the active
-span's ids. The [logging](logging.md) page explains the log entries.
+span's ids. The [logging](logging.md#the-log-context) page explains the log entries.
 
 ## The clock
 

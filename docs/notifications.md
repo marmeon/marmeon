@@ -69,6 +69,27 @@ await this.#notifications.send({ type: 'user', id: user.id }, NewSignInNotificat
 pnpm marmeon make:notification NoteShared --module=notes
 ```
 
+This one tells a user that a note was shared with them. The data is the note's id:
+
+```ts title="modules/notes/notifications/NoteSharedNotification.ts"
+import type { DatabaseInput, Notification, NotificationData } from '@marmeon/notifications';
+import { rules as r } from '@marmeon/validation';
+
+export class NoteSharedNotification implements Notification<'user'> {
+  static readonly notification = 'notes.note-shared';
+  static readonly schema = r.object({ noteId: r.integer() });
+  static readonly database = r.object({ noteId: r.integer() });
+
+  via() {
+    return ['database'] as const;
+  }
+
+  toDatabase(data: NotificationData<typeof NoteSharedNotification>): DatabaseInput<typeof NoteSharedNotification> {
+    return { noteId: data.noteId };
+  }
+}
+```
+
 - **`static notification`** is the stable name that the queue and the table store. Never the class name: renaming the class must
   not break what waits in the queue or lies in the table.
 - **`static schema`** describes the data a notification is sent with, as JSON: ids, not records. The data is checked when it is
@@ -200,7 +221,7 @@ row or another channel. The channel needs `@marmeon/mail` and a queue. The [mail
 
 With `@marmeon/live` installed, `via()` may return `'live'`. Once the delivery committed, the recipient's open tabs hear a hint
 on `notificationsChannel(recipient)`, and what follows that channel, such as a bell, reloads. A hint from a worker reaches the
-web servers only with `LIVE_DRIVER=redis`. The [real-time updates](realtime.md) page explains hints.
+web servers only with `LIVE_DRIVER=redis`. The [real-time updates](realtime.md#sending-hints) page explains hints.
 
 ### A channel of your own
 
@@ -304,7 +325,8 @@ export const schedule = defineSchedule((s) => {
 ## Testing
 
 A test app replaces `Notifications` with a fake. A send is checked as for real and recorded, and `deliver()` delivers what was
-recorded, the rows and the queued mails included:
+recorded, the rows and the queued mails included. The test below posts to a share route of the notes module, whose controller
+sends `NoteSharedNotification` with the note's id to the user with the posted address:
 
 ```ts title="modules/notes/share-notification.test.ts"
 import { Inbox } from '@marmeon/notifications';
@@ -328,4 +350,4 @@ it('notifies the person a note is shared with', async () => {
 ```
 
 `assertSentTimes`, `assertNotSent` and `assertNothingSent` check the rest. `createTestApp(app, { notifications: 'real' })` keeps the
-real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md) page covers every fake.
+real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md#notifications) page covers every fake.

@@ -199,7 +199,7 @@ just confirmed for [sudo mode](#sudo-mode).
 
 The limit is counted before the password is checked, in one atomic step: guesses sent at the same moment cannot all slip under
 it. Five failed attempts a minute for one address from one client lock it for the rest of the minute. The
-[rate limiting](rate-limiting.md) page covers limiters.
+[rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
 `login(user)` signs a user in without a password, for example right after a registration. Both methods do the same to the
 session:
@@ -504,4 +504,5 @@ it('shows the notes to signed-in users only', async () => {
 ```
 
 `UserFactory` makes users with a confirmed address. `actingAs()` needs a session driver on the server; a new app's `.env.test`
-sets `SESSION_DRIVER=memory`. The [HTTP tests](http-tests.md) page shows the assertions for sessions, sign-in and sign-out.
+sets `SESSION_DRIVER=memory`. The [HTTP tests](http-tests.md#sessions-and-signing-in) page shows the assertions for sessions,
+sign-in and sign-out.

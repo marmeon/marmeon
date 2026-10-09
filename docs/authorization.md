@@ -291,5 +291,5 @@ it('lets only the author edit a note', async () => {
 });
 ```
 
-A policy is a plain class, so a unit test can also build it with `new` and call its methods. The [HTTP tests](http-tests.md) page
-covers the assertions.
+A policy is a plain class, so a unit test can also build it with `new` and call its methods. The [HTTP
+tests](http-tests.md#assertions) page covers the assertions.

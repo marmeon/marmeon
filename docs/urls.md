@@ -27,8 +27,8 @@ In the browser, `<Link route="notes.show" params={{ note: 7 }}>` and `useRoute()
 
 ### On the server
 
-`router.url(name, params, query)` fills the route's path with `params` and appends `query`. Inside a controller, a redirect takes the
-same arguments: `this.redirect().route('notes.show', { note: id })`.
+`router.url(name, params, query)` fills the route's path with `params` and appends `query`. Inside a controller, a redirect takes
+the same arguments: `this.redirect().route('notes.show', { note: id })`.
 
 - **Parameters** fill the path's `:name` segments, percent-encoded. A parameter the path does not take goes into the query
   string.
@@ -46,10 +46,10 @@ and a missing parameter throws `Missing required parameter [note] for route [not
 ### Absolute URLs
 
 `router.url()` returns a path, which is what links and redirects need. A link that leaves the app, say in a mail, needs your
-app's address in front of it. The starter's `AppConfig` holds `APP_URL`, and the same `NoteLinks` class, extended, puts it in
-front:
+app's address in front of it. The starter's `AppConfig` holds `APP_URL`. The same `NoteLinks` class, now with `AppConfig` and an
+`absolute()` method beside `show()`, puts it in front:
 
-```ts title="modules/notes/NoteLinks.ts"
+```ts
 import { Router } from '@marmeon/http';
 import { AppConfig } from '../../config/app.ts';
 
@@ -146,7 +146,7 @@ The message names the routes that fit and suggests the literals. Write each name
 `router.url()`.
 
 A route the manifest lacks at run time throws `[marmeon:C2]`, followed in development by the reason. The
-[error handling](errors.md) page lists these codes.
+[error handling](errors.md#error-codes) page lists these codes.
 
 ## Signed URLs
 

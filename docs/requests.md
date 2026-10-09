@@ -151,8 +151,8 @@ a 302 to the same path with only the valid fields that differ from their default
 Requests of other methods always fall back.
 
 The page gets the parsed query and its defaults with it, so the browser never parses a URL itself. `<Link query>` and
-`useQueryState()` are typed by the same schema, and the [navigation](navigation.md) page shows them. A
-[data table](tables.md) is stricter on purpose: an unknown sort or filter there answers 400.
+`useQueryState()` are typed by the same schema, and the [pagination](pagination.md#searching-and-sorting) page shows them. A
+[data table](tables.md#the-url-is-strict) is stricter on purpose: an unknown sort or filter there answers 400.
 
 ## Files
 
@@ -193,9 +193,9 @@ export class AttachFileController extends Controller {
 ```
 
 `store()` uses the upload once and moves it to its place, under a random name. Whoever may send the form may upload its files: the
-route's middleware and `authorize` decide both. An upload belongs to the session it was made in. The
-[file storage](storage.md) page explains disks, the uploads table and its clean-up, and the [forms](forms.md) page shows the
-browser's side.
+route's middleware and `authorize` decide both. An upload belongs to the session it was made in. The [file
+storage](storage.md#uploads) page explains disks, the uploads table and its clean-up, and the [forms](forms.md#uploads) page shows
+the browser's side.
 
 ## Cookies
 
@@ -260,7 +260,7 @@ the login page, and invalid input gets a 422 with the errors instead of a redire
 
 `ctx.nonce()` returns the nonce of the response's Content-Security-Policy, the same value for the whole response. Pages rendered
 from `index.html` carry it already, so you need it only for HTML your controller writes itself:
-`<script nonce="${ctx.nonce()}">`. The [Content Security Policy](csp.md) page explains the policy.
+`<script nonce="${ctx.nonce()}">`. The [Content Security Policy](csp.md#the-nonce) page explains the policy.
 
 ## Configuration
 

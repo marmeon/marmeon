@@ -49,15 +49,15 @@ reload, and the server renders the edited page on the next request without a res
 
 Before you change `server` in `vite.config.ts`, know what the app relies on:
 
-- **Host names.** Vite answers only the host names it allows, and refuses others with a 403, which protects against DNS
-  rebinding. `localhost` and IP addresses are allowed. When `APP_URL` uses another name, such as `http://notes.test`, add it:
-  `server: { allowedHosts: ['notes.test'] }`. `allowedHosts: true` turns the check off, and so does `server.https`. Use either only on a
-  network you trust, because then any page the browser visits can reach the dev server under a name of its own. The framework's
-  own development routes keep their own check either way.
+- **Host names.** Vite answers only the host names it allows, and refuses others with a 403, which protects against DNS rebinding.
+  `localhost` and IP addresses are allowed. When `APP_URL` uses another name, such as `http://notes.test`, add it:
+  `server: { allowedHosts: ['notes.test'] }`. `allowedHosts: true` turns the check off, and so does `server.https`. Use either
+  only on a network you trust, because then any page the browser visits can reach the dev server under a name of its own. The
+  framework's own development routes keep their own check either way.
 - **Other origins.** The server answers no other origin, so a page on another site cannot read the app's development answers.
 - **Styles and the policy.** The `<style>` elements Vite adds in development carry the response's CSP nonce. A
-  Content-Security-Policy with `styleSrc: ["'self'", NONCE]` therefore holds in development too. The [styling](styling.md) page
-  explains the policy.
+  Content-Security-Policy with `styleSrc: ["'self'", NONCE]` therefore holds in development too. The
+  [styling](styling.md#a-strict-policy-for-styles) page explains the policy.
 
 ## Building
 
@@ -91,8 +91,8 @@ export const resolvePage = resolveModulePages(pages);
 ```
 
 Vite keeps them current when you add or remove a page or a language file. The browser loads only the language files of the page's
-locale. The route manifest holds only the routes your client code names. The [URL generation](urls.md#which-routes-the-browser-knows)
-page explains which those are.
+locale. The route manifest holds only the routes your client code names. The [URL
+generation](urls.md#which-routes-the-browser-knows) page explains which those are.
 
 ## Options
 
@@ -153,7 +153,7 @@ export default defineConfig({
 ```
 
 The check reads the source while building and adds no code to any chunk. The lint preset, which `marmeon make:lint-config`
-writes, flags the common case in the editor already. The [console](console.md) page lists the command.
+writes, flags the common case in the editor already. The [console](console.md#lint) page lists the command.
 
 ## Tests
 

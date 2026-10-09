@@ -227,9 +227,10 @@ A view chooses its look with a static `layer`: `'modal'`, the default, `'slideov
 Edit.layer = 'slideover';
 ```
 
-The frame's look comes from `@marmeon/react/styles.css`, which the [styling](styling.md) page lists. `LayerDialog` also takes a
-`style` prop, for a value such as a CSS variable. It applies that prop in the browser after the dialog has mounted, so the
-server's markup carries no `style` attribute, and a layer opened by a deep link shows without it until the page has hydrated.
+The frame's look comes from `@marmeon/react/styles.css`, which the [styling](styling.md#the-frameworks-look) page lists.
+`LayerDialog` also takes a `style` prop, for a value such as a CSS variable. It applies that prop in the browser after the dialog
+has mounted, so the server's markup carries no `style` attribute, and a layer opened by a deep link shows without it until the
+page has hydrated.
 
 ## Asking the user
 

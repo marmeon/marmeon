@@ -72,8 +72,9 @@ an island, an action and an API answer make no nonce at all.
 ## Adding directives
 
 `contentSecurityPolicy(options)` takes the directives camel-cased. A new directive joins the defaults. A directive you name
-replaces the default of the same name, so a `scriptSrc` of your own must list `NONCE` and `"'strict-dynamic'"` again. Without them, the
-scripts the server allows by their nonce, such as the ones React streams into a page, are blocked. `false` leaves a default out:
+replaces the default of the same name, so a `scriptSrc` of your own must list `NONCE` and `"'strict-dynamic'"` again. Without
+them, the scripts the server allows by their nonce, such as the ones React streams into a page, are blocked. `false` leaves a
+default out:
 
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';

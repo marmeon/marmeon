@@ -54,7 +54,7 @@ A new app's `.env.test` sets `CACHE_DRIVER=memory`.
 
 The `database` driver needs `@marmeon/database` and the `redis` driver `@marmeon/redis`, which brings the Redis client. Without
 the package the app fails at the start and names it: `CACHE_DRIVER=redis needs @marmeon/redis, which is not installed in this
-app: pnpm add @marmeon/redis`. The [Redis](redis.md) page covers its connection.
+app: pnpm add @marmeon/redis`. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
 The `database` driver needs its tables once:
 
@@ -81,7 +81,7 @@ processes until the commit. So the cache writes on a connection of its own:
 A SQLite file has one writer. A second connection to the app's file would wait for the open transaction, forever if the
 transaction waits for the cache. So on SQLite give the cache its own file: a second connection in `config/database.ts`, such as
 `system` for `storage/system.sqlite`, and `CACHE_CONNECTION=system`. Outside a transaction, the normal case, the app's own file
-works too. The [database](database.md) page shows how to define a connection.
+works too. The [database](database.md#more-connections) page shows how to define a connection.
 
 ## Using the cache
 
@@ -152,7 +152,7 @@ Each lock object has a random owner token. `cache.lock(name, seconds, owner)` ma
 release a lock that a request took, given the lock's `owner`. The number of seconds must be positive.
 
 A lock taken for work inside a transaction must go when the transaction rolls back. `afterRollback(() => lock.release())` of
-`@marmeon/database` does that, and the [transactions](transactions.md) page explains it.
+`@marmeon/database` does that, and the [transactions](transactions.md#after-a-rollback) page explains it.
 
 > [!WARNING]
 > The `file` driver locks only one machine, and `memory` only one process. With several servers, or a worker on another machine,
@@ -164,11 +164,11 @@ The framework keeps its own counters and locks in the same cache:
 
 | What | Keys | Read more |
 | --- | --- | --- |
-| Rate limits | The counters of `throttle()` and the `RateLimiter`. | [Rate limiting](rate-limiting.md) |
+| Rate limits | The counters of `throttle()` and the `RateLimiter`. | [Rate limiting](rate-limiting.md#where-the-counts-live) |
 | Live validations | Their own limit, 30 a minute per route and address. | [Validation](validation.md#live-validation) |
-| Unique jobs, `withoutOverlapping` and `job.once` | `queue:unique:…`, `queue:overlap:…`, `queue:once:…` | [Queues](queues.md) |
+| Unique jobs, `withoutOverlapping` and `job.once` | `queue:unique:…`, `queue:overlap:…`, `queue:once:…` | [Queues](queues.md#unique-jobs) |
 | Routes that `block()` | `session:<key>`, the session's store key, never its id. | [Session](session.md#requests-that-must-not-overlap) |
-| `onOneServer()`, `withoutOverlapping()` and missed runs of the scheduler | `schedule:…` | [Task scheduling](scheduling.md) |
+| `onOneServer()`, `withoutOverlapping()` and missed runs of the scheduler | `schedule:…` | [Task scheduling](scheduling.md#several-servers-and-long-runs) |
 
 So the warning above holds for all of them: with more than one server, the cache must be one they share.
 
@@ -177,7 +177,7 @@ So the warning above holds for all of them: with more than one server, the cache
 The `memory`, `file` and `database` stores keep an expired entry until it is read or overwritten. `cache:prune` deletes expired
 entries and locks, and never touches one that is still valid. Redis expires keys by itself, and the command says so. Schedule it
 in a module's schedule, which counts once the module lists it as `schedule` in its definition, as the
-[task scheduling](scheduling.md) page shows:
+[task scheduling](scheduling.md#defining-tasks) page shows:
 
 ```ts title="modules/system/schedule.ts"
 import { defineSchedule } from '@marmeon/scheduler';

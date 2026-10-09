@@ -100,7 +100,7 @@ const attributes = app.factory(NoteFactory).make();
 `create()` then resolves with an array. `state(name)` applies a named state, and `state({ … })` a set of attributes. `make()`
 returns the attributes without inserting anything. `factory(UserFactory)` in a definition creates the related row first and puts
 its id in the column, with `create()`. `make()` creates no related row and leaves that column as the pending factory. The
-[seeding](seeding.md) page explains how to write factories.
+[seeding](seeding.md#defining-factories) page explains how to write factories.
 
 The starter kit's `UserFactory` makes users with a confirmed address and the password `password`. Its `unverified` state makes a
 user who has not confirmed the address yet.
@@ -123,7 +123,7 @@ it('greets the seeded user', async () => {
 ```
 
 Seeding runs for every test, so keep the seeders small, or create what a test needs with factories instead. The
-[seeding](seeding.md) page covers seeders.
+[seeding](seeding.md#writing-seeders) page covers seeders.
 
 ## Database assertions
 
@@ -160,8 +160,8 @@ connection that never joins the app's transactions. In a test that connection is
 
 On Postgres in production, the same code inside a transaction works, because the stores have a pool of their own there. A test
 that hits the error shows code that would fail on SQLite. A new app's `.env.test` keeps sessions and the cache in memory, so the
-error only comes up in a test that switches them to the database. The [database](database.md) page explains infrastructure
-connections.
+error only comes up in a test that switches them to the database. The [database](database.md#infrastructure-connections) page
+explains infrastructure connections.
 
 ## Running the tests on Postgres
 
@@ -176,5 +176,5 @@ that race for the same row, so run the suite on the database you deploy to befor
 
 > [!WARNING]
 > The test run drops and creates databases on the server in `DB_URL`, and a `DB_URL` in the shell wins over `.env.test`. Point it
-> at a development server only, never at one that holds real data. The [database](database.md) page
+> at a development server only, never at one that holds real data. The [database](database.md#configuration) page
 covers the connection settings.

@@ -137,4 +137,4 @@ every signed link, and turns every encrypted job still waiting into a failure:
 Tests need a key like any other environment. A new app keeps a fixed one in `.env.test`. The test client encrypts and decrypts
 cookies as the app does: `withCookie(name, value)` sends a value encrypted for that cookie, and `withUnencryptedCookie(name, value)`
 sends it as it is, to prove that a forged value is ignored. `response.cookie(name)` and `assertCookie(name, value)` see the
-decrypted value. The [HTTP tests](http-tests.md) page covers cookies in tests.
+decrypted value. The [HTTP tests](http-tests.md#cookies) page covers cookies in tests.

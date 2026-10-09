@@ -27,7 +27,7 @@ it('creates a note and shows it', async () => {
 });
 ```
 
-The [getting started](testing.md) page explains `createTestApp()` and the test environment.
+The [getting started](testing.md#creating-the-test-app) page explains `createTestApp()` and the test environment.
 
 ## Making requests
 
@@ -44,8 +44,8 @@ options)` sends any other method. The options say what the request carries:
 
 A request without an `Accept` header is answered like a browser's page load: a page answers with its HTML document. An error,
 though, gets the error page only when the request accepts `text/html` or is a client-side visit, and JSON otherwise. Send
-`headers: { accept: 'text/html' }` to get exactly what a browser gets. The [testing pages](testing-pages.md) page shows how to ask
-for the page object instead.
+`headers: { accept: 'text/html' }` to get exactly what a browser gets. The [testing pages](testing-pages.md#asserting-a-page) page
+shows how to ask for the page object instead.
 
 A request does not run until you `await` it. The assertions chained onto it run then, in order, and the awaited value is the
 response. Every request also waits for the work the app does after its response, such as `terminate` hooks and
@@ -173,8 +173,8 @@ await app.actingAs(ada).validating('title').post('/notes', { json: { title: '' }
 await app.actingAs(ada).validating('title').post('/notes', { json: { title: 'Groceries' } }).assertLiveValid('title');
 ```
 
-`assertLiveValid(...fields)` checks the `204` and that the app checked those fields. The [validation](validation.md) page explains
-live validation.
+`assertLiveValid(...fields)` checks the `204` and that the app checked those fields. The
+[validation](validation.md#live-validation) page explains live validation.
 
 ## Uploads
 
@@ -209,7 +209,7 @@ Argument of type '"title"' is not assignable to parameter of type '"'title' is n
 ```
 
 A target the route refuses fails the call with the response's status: `404` without an `upload()` rule, `403` when authorization
-fails, `422` for a file that is too large. Uploads land on the [storage fake](fakes.md). The [forms](forms.md#uploads) page
+fails, `422` for a file that is too large. Uploads land on the [storage fake](fakes.md#storage). The [forms](forms.md#uploads) page
 explains uploads.
 
 ## Assertions

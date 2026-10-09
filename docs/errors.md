@@ -290,5 +290,5 @@ it('answers 410 for an archived note', async () => {
 });
 ```
 
-`assertNotFound()`, `assertForbidden()` and `assertUnprocessable()` check the common statuses. The [HTTP tests](http-tests.md) page
-covers every assertion.
+`assertNotFound()`, `assertForbidden()` and `assertUnprocessable()` check the common statuses. The [HTTP
+tests](http-tests.md#status) page covers every assertion.

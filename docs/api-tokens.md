@@ -89,7 +89,8 @@ session as flash data, and so write it into the session store.
 
 ## The token format
 
-A token reads `marmeon_12|` followed by 40 random letters and digits and a checksum of 8 hexadecimal characters. Each part has a purpose:
+A token reads `marmeon_12|` followed by 40 random letters and digits and a checksum of 8 hexadecimal characters. Each part has a
+purpose:
 
 - **The prefix**, `AUTH_TOKEN_PREFIX`, lets secret scanners recognize a leaked token, for example in a public repository. It may
   hold lower-case letters, digits and `_`, at most 16 of them.
@@ -152,8 +153,8 @@ export default defineRoutes((Route) => {
 A token without one of them gets `403 {"message":"This token may not: notes:write."}`. A token with `*` may do everything.
 `tokenCan(ctx.token, 'notes:write')` asks the same in code.
 
-The starter kit's tokens page offers the abilities listed in `TOKEN_ABILITIES` of `modules/auth/abilities.ts`, `users:read` at first.
-Add yours there, with a description in the module's language file, so users can grant them:
+The starter kit's tokens page offers the abilities listed in `TOKEN_ABILITIES` of `modules/auth/abilities.ts`, `users:read` at
+first. Add yours there, with a description in the module's language file, so users can grant them:
 
 ```ts title="modules/auth/abilities.ts"
 export const TOKEN_ABILITIES = ['users:read', 'notes:read', 'notes:write'] as const;
@@ -225,4 +226,4 @@ it('lists the notes for a token that may read them', async () => {
 });
 ```
 
-The [HTTP tests](http-tests.md) page covers the other assertions.
+The [HTTP tests](http-tests.md#assertions) page covers the other assertions.

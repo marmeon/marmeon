@@ -102,7 +102,7 @@ By default you get the starter kit. It is a complete app with accounts:
 - **Tests** for all of the above.
 
 The starter kit's registration is private: it never tells anyone whether an address already has an account. The
-[starter kit](starter-kit.md) page explains what that means and how to turn it off.
+[starter kit](starter-kit.md#private-registration) page explains what that means and how to turn it off.
 
 ### A blank app
 
@@ -129,7 +129,8 @@ and git ignores it. `.env.example` lists the common settings with a comment and 
 with, and it has a test key of its own.
 
 `NODE_ENV=development` in `.env` makes every `marmeon` command on this machine run in development: the server, `migrate`, the
-queue worker. The [configuration](configuration.md) page explains how `NODE_ENV` and the other variables are resolved.
+queue worker. The [configuration](configuration.md#the-environment-node_env) page explains how `NODE_ENV` and the other variables
+are resolved.
 
 > [!WARNING]
 > `.env` belongs to this machine. Never deploy it. On a server, set `NODE_ENV=production`, `APP_KEY`, `APP_URL` and the rest in
@@ -162,8 +163,8 @@ pnpm dev
 - **A queue worker**, which runs the queued jobs. The starter kit sends its mails through the queue.
 - **The scheduler**, when a module has scheduled tasks. The starter kit's auth module prunes expired tokens at night.
 
-`marmeon dev` runs in development unless your shell exports another `NODE_ENV`. Then it says so and serves the build instead,
-without Vite, the devtools, the worker and the scheduler.
+`marmeon dev` runs in development unless your shell or the app's `.env` sets another `NODE_ENV`. Then it says so and serves the
+build instead, without Vite, the devtools, the worker and the scheduler.
 
 In development, a failing page shows the development error page: the code that threw, the request's queries and suggested
 solutions. The devtools record requests, queries, jobs and mails at http://localhost:3000/_marmeon/devtools, and a small panel at
@@ -191,7 +192,7 @@ pnpm lint
 
 `pnpm test` runs Vitest over `modules/**/*.test.ts`, on an in-memory SQLite database with the settings of `.env.test`. `pnpm lint`
 runs oxlint with the app's preset. The preset keeps views from importing server code by value, which would bundle it into the
-browser. The [testing](testing.md) page explains how a test boots the app.
+browser. The [testing](testing.md#creating-the-test-app) page explains how a test boots the app.
 
 With npm, the scripts are `npm run dev`, `npm test` and `npm run lint`. The `marmeon` command itself runs as
 `pnpm marmeon <command>` or `npx marmeon <command>`.

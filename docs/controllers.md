@@ -148,8 +148,8 @@ Authenticated)`.
 | `messages`, `attributes` | Your own words for the framework's validation messages, and for the fields' names. |
 | `live` | Lets a live validation run a schema of another library. |
 
-The [validation](validation.md) page covers the rules and messages, and the [requests](requests.md) page covers query schemas. A
-`GET` route refuses a controller whose request has a body schema, since a `GET` has no body.
+The [validation](validation.md) page covers the rules and messages, and the [requests](requests.md#query-schemas) page covers
+query schemas. A `GET` route refuses a controller whose request has a body schema, since a `GET` has no body.
 
 ### The order of a request
 
@@ -181,7 +181,8 @@ export class NotePolicy {
 ```
 
 A refusal answers 403, "This action is unauthorized.", in the request's language. A policy that refuses with `deny('reason')`
-shows its own reason instead. A policy's `denyAsNotFound()` answers 404, so the record's existence stays hidden. The [authorization](authorization.md) page explains policies and the gate.
+shows its own reason instead. A policy's `denyAsNotFound()` answers 404, so the record's existence stays hidden. The
+[authorization](authorization.md) page explains policies and the gate.
 
 ### Types for the browser
 

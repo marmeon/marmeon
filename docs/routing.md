@@ -75,7 +75,8 @@ export default defineRoutes((Route) => {
 `POST`, `PUT`, `PATCH`, `DELETE` and `OPTIONS`.
 
 A plain HTML form can only send `GET` and `POST`. For a `PUT`, `PATCH` or `DELETE` route it posts a `_method` field, and the
-request is routed as that method. The `<Form>` component writes the field for you. The [forms](forms.md) page shows it.
+request is routed as that method. The `<Form>` component writes the field for you. The [forms](forms.md#without-javascript) page
+shows it.
 
 A `GET` request has no body, so a `get` route refuses a controller whose request validates one. The compiler says why:
 
@@ -83,9 +84,9 @@ A `GET` request has no body, so a `get` route refuses a controller whose request
 a GET request has no body — validate its URL with `query` (defineRequest({ query }))
 ```
 
-Validate the query string instead. The [requests](requests.md) page explains query schemas. The other way round, a route of any
-other method refuses a controller that answers with an island, because an island only reads. The
-[deferred props](deferred-props.md) page explains islands.
+Validate the query string instead. The [requests](requests.md#query-schemas) page explains query schemas. The other way round, a
+route of any other method refuses a controller that answers with an island, because an island only reads. The [deferred
+props](deferred-props.md#islands) page explains islands.
 
 ### Closures
 
@@ -216,9 +217,9 @@ export class NoteLinks {
 }
 ```
 
-The third argument is the query string. A parameter the path does not take goes into the query string as well. In the
-browser, `<Link route="notes.show" params={{ note: 7 }}>` and `useRoute()` build the same URLs. The [URL generation](urls.md)
-page covers signed URLs and the details.
+The third argument is the query string. A parameter the path does not take goes into the query string as well. In the browser,
+`<Link route="notes.show" params={{ note: 7 }}>` and `useRoute()` build the same URLs. The [URL
+generation](urls.md#in-the-browser) page covers signed URLs and the details.
 
 ### Typed route names
 
@@ -264,7 +265,8 @@ client code is a compile error:
 ```
 
 `Route.internal()` on a registrar makes every route registered through it internal. API routes stay on the server too, and
-`clientRoutes.except` in `defineApplication()` keeps more names out by pattern. The [URL generation](urls.md) page explains both.
+`clientRoutes.except` in `defineApplication()` keeps more names out by pattern. The [URL
+generation](urls.md#which-routes-the-browser-knows) page explains both.
 
 ## Route groups
 
@@ -376,8 +378,8 @@ Route.bind('note') needs a :note parameter in the path
 
 > [!WARNING]
 > A binding finds the record. It does not decide who may see it. Add a policy to the controller's request, such as
-> `authorize: can(NotePolicy, 'view', 'note')`, or the note of any user is one id away. The [authorization](authorization.md)
-> page explains policies.
+> `authorize: can(NotePolicy, 'view', 'note')`, or the note of any user is one id away. The
+> [authorization](authorization.md#authorizing-requests) page explains policies.
 
 ### Binding a repository
 
@@ -496,7 +498,8 @@ export default defineRoutes((Route) => {
 ```
 
 A second request waits up to 10 seconds for the first one, then answers `423`. `.block(lockSeconds, waitSeconds)` changes both
-times. The lock needs the cache's atomic locks. The [session](session.md) page explains when a route needs it.
+times. The lock needs the cache's atomic locks. The [session](session.md#requests-that-must-not-overlap) page explains when a
+route needs it.
 
 ## When no route matches
 
@@ -509,7 +512,7 @@ in the visitor's language:
 ```
 
 There is no fallback route. A controller answers 404 itself with `abort(404)`, and a binding does when it finds nothing. The
-[error handling](errors.md) page shows how to change the error page.
+[error handling](errors.md#your-own-error-page) page shows how to change the error page.
 
 ## Development-only routes
 
@@ -544,7 +547,7 @@ development server as if it were its own. A request for a host the guard does no
 > environment, the guard above answers the loopback names alone.
 
 `devOnly()` also wraps a closure directly: `Route.get('/_playground/ping', devOnly(hosts, () => new Response('pong')))`. The
-[security](security.md) page lists every protection that depends on `NODE_ENV`.
+[security](security.md#the-environment-decides-and-fails-closed) page lists every protection that depends on `NODE_ENV`.
 
 ## Listing routes
 

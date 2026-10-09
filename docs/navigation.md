@@ -91,7 +91,7 @@ is under way gets `data-pending`.
 | `preserveState` | Keeps the page's component state when the same page comes back. |
 | `preserveUrl` | Keeps the address bar's URL, for "load more". |
 | `async` | Runs in the background: no progress bar, and it cancels no other visit. |
-| `only`, `except`, `reset` | A partial reload of the page on screen. See [deferred props](deferred-props.md). |
+| `only`, `except`, `reset` | A partial reload of the page on screen. See [deferred props](deferred-props.md#partial-reloads). |
 | `prefetch`, `cacheFor` | Fetches the page ahead. See [prefetching](#prefetching). |
 | `instant` | Shows the target's placeholder at once. See [instant visits](#instant-visits). |
 | `layer` | Opens the page as a dialog over this one. See [dialogs](dialogs.md). |
@@ -263,7 +263,7 @@ reload or a session restore for example, asks the server again, through the rout
 So what a user saw never lands on disk: not in the history's state, not in the browser's storage. The pages of a signed-in user go
 out with `Cache-Control: no-store`, so the browser's cache does not keep them either. A route that sets its own `Cache-Control`
 keeps that header, and then the browser may keep the page. When the user signs out in another tab, every
-tab lets go of what it kept. The [client features](client-features.md) page explains how.
+tab lets go of what it kept. The [client features](client-features.md#every-feature-forgets-on-sign-out) page explains how.
 
 Where the browser has the Navigation API, `history.state` is `null`. Read the URL from `location` or from `usePage().url`, and
 keep state of your own with `useRemember()`. When another script, such as an analytics snippet, calls `history.replaceState()`,
@@ -302,7 +302,7 @@ const [tab, setTab] = useRemember('note-tab', 'body');
 The value belongs to the history entry, in memory only. A reload, signing in or out, a new build and a language switch start
 over. A key named like a password is a compile error, and so is one named like a token, a secret or a card, unless you pass
 `{ sensitive: true }`. Inside a remembered value, fields named like a password, a token, a secret or a card are left out at any
-depth, and so are files. A form can remember its input the same way, which the [forms](forms.md) page shows.
+depth, and so are files. A form can remember its input the same way, which the [forms](forms.md#remembering-input) page shows.
 
 ### The Navigation API and the fallback
 
@@ -409,8 +409,8 @@ html:active-view-transition-type(back)::view-transition-new(root) { animation-na
 
 The keyframes are yours, and the framework ships none. Name the elements that should move in the stylesheet, with
 `view-transition-name`. Never set the name in a `style` attribute, because a strict Content-Security-Policy blocks it. The
-[styling](styling.md) page explains why. A name per element, such as one per row of a list, is set through the CSSOM, which the
-policy allows: `element.style.viewTransitionName = 'note-7'`.
+[styling](styling.md#no-style-attributes) page explains why. A name per element, such as one per row of a list, is set through the
+CSSOM, which the policy allows: `element.style.viewTransitionName = 'note-7'`.
 
 ### React's `<ViewTransition>`
 

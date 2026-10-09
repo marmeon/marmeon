@@ -154,7 +154,7 @@ may live in the same one.
 
 The readiness check, `/up/ready`, sends `PING` to every Redis connection the app uses: one that a driver or your code asked for. A
 configured connection that nothing uses is not checked, since `REDIS_URL` has a default and an app on the database drivers never
-talks to it. The [health checks](health.md) page explains readiness.
+talks to it. The [health checks](health.md#liveness-and-readiness) page explains readiness.
 
 ## Time
 

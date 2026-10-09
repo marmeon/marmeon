@@ -270,4 +270,4 @@ With `createTestApp(application, { database: 'refresh' })`, every test runs insi
 test ends. Your transactions become savepoints in it and work as they do in the app. Transactions that run at the same time take
 turns on the test's one connection. Like the app's own SQLite file, that one connection makes the database cache, sessions and
 uploads throw `InfrastructureTransactionError` inside a transaction, and `outsideTransaction()` throw a `TransactionError`. The
-[database testing](database-testing.md) page explains it.
+[database testing](database-testing.md#how-the-database-is-reset) page explains it.

@@ -58,7 +58,7 @@ import { Head, Link } from '@marmeon/react';                                    
 ```
 
 A value import of a controller, a repository, a job or another server module fails the build and shows an error in development.
-The [asset bundling](vite.md) page lists what counts as a server module.
+The [asset bundling](vite.md#server-code-in-the-browser) page lists what counts as a server module.
 
 ## Layouts
 
@@ -93,9 +93,10 @@ import { AppLayout } from '../layouts/AppLayout.tsx';
 export const layout: DefaultLayout = () => AppLayout;
 ```
 
-`bootstrap/client.tsx` passes it as `createMarmeonApp({ layout })` and `bootstrap/ssr.tsx` as `createSsrRenderer(resolvePage, {
-layout })`. The function gets the page's name, so it can choose by module: `(name) => (name.startsWith('auth/') ? null : AppLayout)`.
-`null` means no layout. A new app has no default layout: the starter kit's pages set their own.
+`bootstrap/client.tsx` passes it as `createMarmeonApp({ layout })` and `bootstrap/ssr.tsx` as
+`createSsrRenderer(resolvePage, { layout })`. The function gets the page's name, so it can choose by module:
+`(name) => (name.startsWith('auth/') ? null : AppLayout)`. `null` means no layout. A new app has no default layout: the starter
+kit's pages set their own.
 
 ### A page's own layouts
 
@@ -307,10 +308,10 @@ export const render = createSsrRenderer(resolvePage, { title, routes, layout, me
 | `title` | yes | yes | The [title template](#the-document-head). |
 | `messages` | yes | yes | The language files. Only the page's locale is loaded. |
 | `layer` | yes | yes | The frame around every [dialog](dialogs.md). Default `LayerDialog`. |
-| `progress` | yes | | An indicator of visits under way. None by default. See [navigation](navigation.md). |
+| `progress` | yes | | An indicator of visits under way. None by default. See [navigation](navigation.md#showing-that-a-visit-runs). |
 | `confirm` | yes | | The dialog that asks before a link, an action or a form goes ahead. Default: the browser's `confirm()`. |
-| `tabSync` | yes | | `false` turns tab sync off. See [client features](client-features.md). |
-| `viewTransition` | yes | | Animates every page change. See [navigation](navigation.md). |
+| `tabSync` | yes | | `false` turns tab sync off. See [client features](client-features.md#turning-it-off). |
+| `viewTransition` | yes | | Animates every page change. See [navigation](navigation.md#view-transitions). |
 | `rootId` | yes | | The element the server rendered into. Default `app`. |
 | `onRecoverableError` | yes | | Errors React recovered from while hydrating. Default: the console, and in development a notice on the page. |
 

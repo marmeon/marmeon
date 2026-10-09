@@ -242,6 +242,11 @@ function checkPages(source: string, sections: readonly DocsSection[]): string[] 
       problems.push(`The page '${entry.slug}' names ${file} — a page's file is docs/<slug>.md or a Markdown file at the root.`);
       continue;
     }
+    if (file === 'README.md') {
+      // A link to the root README stays code text (`pageOf` knows no README): as a page, its links and the start page would disagree.
+      problems.push(`The page '${entry.slug}' names README.md — the root README is no page of the docs (the start page is the app's own).`);
+      continue;
+    }
     if (files.has(file)) {
       problems.push(`${file} is listed twice in docs.config.ts.`);
       continue;

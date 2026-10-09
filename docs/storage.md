@@ -277,4 +277,4 @@ it('writes the notes to the private disk', async () => {
 ```
 
 `assertMissing(key)` and a check of the file's bytes complete the assertions, and `app.upload()` sends an upload through the real
-target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md) page covers them.
+target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md#storage) page covers them.

@@ -228,7 +228,7 @@ counts are each process's own: with four processes, a session may hold 16 stream
   That works only through Redis.
 - **Several containers or machines** need it for the same reason.
 
-`@marmeon/redis` brings the Redis client, and the [Redis](redis.md) page covers its connection.
+`@marmeon/redis` brings the Redis client, and the [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
 ## Catching up
 
@@ -286,4 +286,4 @@ it('a link added in one tab reloads the profile in another', async () => {
 });
 ```
 
-The [fakes](fakes.md) page lists the other assertions.
+The [fakes](fakes.md#live-updates) page lists the other assertions.

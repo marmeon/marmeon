@@ -45,8 +45,8 @@ The app lists its modules in `bootstrap/app.ts`. A module that is not listed is 
 | `root` | The app's root folder, with `package.json`, `.env` and `index.html`. A new app sets it from `import.meta.dirname`. |
 | `modules` | The feature modules, in the order they register and boot. |
 | `config` | App-level config definitions. See [configuration](configuration.md). |
-| `middleware` | The app's middleware: `global` for every request, `web` and `api` for the routes of each group. See [middleware](middleware.md). |
-| `clientRoutes` | Which named routes the browser may learn: `include` and `except`, by pattern. See [URL generation](urls.md). |
+| `middleware` | The app's middleware: `global` for every request, `web` and `api` for the routes of each group. See [middleware](middleware.md#registering-middleware). |
+| `clientRoutes` | Which named routes the browser may learn: `include` and `except`, by pattern. See [URL generation](urls.md#which-routes-the-browser-knows). |
 | `providers` | App-level service providers. They boot after the packages' and before the modules'. |
 | `listeners` | App-level event listeners: `listen(Event, Listener)`. |
 | `health` | App-level checks for `/up/ready`. See [health checks](health.md). |
@@ -54,10 +54,10 @@ The app lists its modules in `bootstrap/app.ts`. A module that is not listed is 
 | `env` | The environment to check the configuration against, instead of `.env` and the real environment. For tests and scripts. |
 | `override` | A function that replaces bindings after every provider registered and before any boots. For tests. |
 
-`createApplication(definition)` boots an app from its definition and returns it. The `marmeon` command and `createTestApp()`
-call it for you. `app.shutdown()` stops the app again: every provider's `shutdown()` runs and closes its pools and connections.
-Code that needs the booted app outside of a request, such as a maintenance script, belongs in a [console command](console.md):
-`marmeon` boots the app for it and shuts it down afterwards.
+`createApplication(definition)` boots an app from its definition and returns it. The `marmeon` command and `createTestApp()` call
+it for you. `app.shutdown()` stops the app again: every provider's `shutdown()` runs and closes its pools and connections. Code
+that needs the booted app outside of a request, such as a maintenance script, belongs in a [console
+command](console.md#writing-commands): `marmeon` boots the app for it and shuts it down afterwards.
 
 ## Defining a module
 
@@ -71,16 +71,16 @@ its own:
 | `config` | Its [config definitions](configuration.md). | core |
 | `listeners` | Its [event listeners](events.md): `listen(Event, Listener)`. | core |
 | `health` | Its [health checks](health.md). | core |
-| `routes` | Its route file, loaded into the `web` group. See [routing](routing.md). | `@marmeon/http` |
+| `routes` | Its route file, loaded into the `web` group. See [routing](routing.md#route-files). | `@marmeon/http` |
 | `apiRoutes` | Its route file for the `api` group, under `/api`. | `@marmeon/http` |
 | `commands` | Its [console commands](console.md). | `marmeon` |
 | `migrations` | The folder of its [migrations](migrations.md): `new URL('./migrations/', import.meta.url)`. | `@marmeon/database` |
 | `seeders` | Its [seeders](seeding.md). | `@marmeon/database` |
-| `exposes` | The tables other modules may read and join. See [repositories](queries.md). | `@marmeon/database` |
+| `exposes` | The tables other modules may read and join. See [repositories](queries.md#module-boundaries). | `@marmeon/database` |
 | `jobs` | Its [queued jobs](queues.md). A worker runs only registered jobs. | `@marmeon/queue` |
 | `notifications`, `recipients` | Its [notifications](notifications.md) and who may receive them. | `@marmeon/notifications` |
 | `schedule` | Its [scheduled work](scheduling.md). | `@marmeon/scheduler` |
-| `csrfExcept` | Paths that skip the [CSRF check](csrf.md). | `@marmeon/session` |
+| `csrfExcept` | Paths that skip the [CSRF check](csrf.md#excluding-paths). | `@marmeon/session` |
 
 Controllers, views and other classes need no list: a route names its controller, and the container builds it when a request
 needs it.
@@ -172,7 +172,7 @@ of an image, and the warning goes away.
 
 `defineApplication({ discover: false })` registers none of the installed packages. The app then lists every provider it needs
 in `providers`, in the right order. This is for tests and special setups. A normal app keeps discovery on. The
-[package development](package-development.md) page explains how a package of your own opts in.
+[package development](package-development.md#the-marmeon-field) page explains how a package of your own opts in.
 
 ## Testing
 
@@ -189,4 +189,4 @@ it('loads the notes module', async () => {
 });
 ```
 
-The [testing](testing.md) page explains how a test boots the app.
+The [testing](testing.md#creating-the-test-app) page explains how a test boots the app.

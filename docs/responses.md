@@ -43,8 +43,8 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 }
 ```
 
-Props travel as JSON, and the view's types say so: a `Date` prop arrives as a string, a `Map` as an empty object, and a field
-that is `undefined` not at all. Send only what the page shows. Every prop reaches the browser, so a column such as a password hash must
+Props travel as JSON, and the view's types say so: a `Date` prop arrives as a string, a `Map` as an empty object, and a field that
+is `undefined` not at all. Send only what the page shows. Every prop reaches the browser, so a column such as a password hash must
 never be in it.
 
 The status defaults to 200. `this.view('notes/Gone', { id }, 410)` sends another. The [pages](pages.md) page covers views, layouts
@@ -354,7 +354,7 @@ is a 404. The route's middleware and policy decide who may download: check them 
 
 A file the browser should fetch later, say from a mail, gets a signed link instead:
 `await this.#storage.disk('local').temporaryUrl(key, { expiresIn: { minutes: 5 } })`. Redirect to it, or send it along. The
-[file storage](storage.md) page covers disks and their URLs.
+[file storage](storage.md#public-and-private-files) page covers disks and their URLs.
 
 ## Testing
 

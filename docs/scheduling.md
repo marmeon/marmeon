@@ -313,4 +313,5 @@ it('prunes failed jobs at night, Berlin time', async () => {
 ```
 
 `due(time)` lists the tasks due then, `run(time)` moves the clock there and runs them, `runTask(name)` runs one, and `tasks` lists
-every name. The [fakes](fakes.md) page covers the clock.
+every name. The [fakes](fakes.md#the-schedule) page covers the schedule's fake, and the
+[time](time.md#the-schedule-and-the-clock) page the clock.

@@ -173,4 +173,4 @@ it('logs one line per request', async () => {
 
 A stream of your own always gets JSON, whatever `format` says. Without the `Application`, the entries carry no fields of the app's
 log context sources. To assert on entries without parsing lines, listen on the `log` channel instead, which the
-[observability](observability.md) page explains.
+[observability](observability.md#the-log-channel) page explains.

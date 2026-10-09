@@ -75,9 +75,9 @@ that throws is reported as a process warning, and the operation goes on. A subsc
 
 ### Queries and secret columns
 
-`secret` is `true` when a statement touches a table with [secret columns](migrations.md). Its parameters may hold a password hash
-or a token, so whatever records queries shows none of them. The devtools record such a statement without parameters, and
-OpenTelemetry never records parameters at all.
+`secret` is `true` when a statement touches a table with [secret columns](migrations.md#secret-columns). Its parameters may hold a
+password hash or a token, so whatever records queries shows none of them. The devtools record such a statement without parameters,
+and OpenTelemetry never records parameters at all.
 
 `Connections` of `@marmeon/database` has a plain listener for code that counts queries itself, such as a test:
 `connections.onQuery(listener)` hears every statement of every connection with its `connection`, `sql`, `parameters`,
@@ -178,7 +178,7 @@ OTEL_SERVICE_NAME=notes OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 NODE_O
 
 `marmeon start`, `queue:work` and `schedule:work` each run in one Node process, which reads `NODE_OPTIONS`. With the files of
 `make:docker`, put the three variables into `.env.production`, which every container reads. The
-[deployment](deployment.md) page covers that file.
+[deployment](deployment.md#no-env-in-the-image) page covers that file.
 
 - **The context manager** makes spans nest, so a query is the child of its request. Without it spans are recorded flat, and the
   start warns.
@@ -223,7 +223,8 @@ dashboards and alerts on these names:
 | Server rendering | `marmeon.view`, `marmeon.ssr.complete`, `marmeon.ssr.streamed`. |
 
 A failed operation marks its span as failed, with `error.type` set to the error's class and an `exception` event whose message
-and stack are redacted. A request that ends in a `5xx` without an exception gets the status code as its `error.type`.
+and stack are redacted. A request that ends in a `5xx` without an exception gets the status code as its `error.type`. A job or a
+scheduled task that failed without throwing gets the error status only.
 
 An island or a layer's base that the server resolves for a page is an internal child of the page's request. A statement outside
 every span, such as one of a command or a health check, is no trace of its own. `/up` and `/up/ready` are never traced, since they

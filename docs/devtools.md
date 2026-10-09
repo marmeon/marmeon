@@ -72,7 +72,7 @@ shape of a text:
 
 - the values of keys that look like secrets, at any depth, for example `password`, `token`, `secret`, `cookie`, `authorization`,
   `api_key`, `remember`, `signature`, `_token`, `set-cookie` and the session cookie's name;
-- no parameter at all of a statement that touches a table with [secret columns](migrations.md);
+- no parameter at all of a statement that touches a table with [secret columns](migrations.md#secret-columns);
 - password hashes and API tokens anywhere in text, token-like path segments such as `/reset-password/<token>`, and `signature=`
   in links;
 - an encrypted job payload as `[encrypted]`, and files and bytes by their size;

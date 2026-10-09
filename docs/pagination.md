@@ -74,7 +74,7 @@ The rules of every query schema hold here as well, and the [requests](requests.m
   beside it. `<Pagination>`, `<Link query>` and `useQueryState()` build their URLs from these, and leave the defaults out:
   `?page=1` is no page's URL.
 
-A [data table](tables.md) is stricter on purpose: an unknown sort or filter there answers 400.
+A [data table](tables.md#the-url-is-strict) is stricter on purpose: an unknown sort or filter there answers 400.
 
 ## Pages by number
 

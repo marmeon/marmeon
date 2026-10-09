@@ -179,7 +179,7 @@ await app.actingAs(ada).acting().post('/notes', { json: { title: 'Groceries' } }
 ```
 
 `assertActionRedirect(url)` passes for that `204`, and with `url` when it leads there. The [actions](actions.md) page covers
-actions.
+actions. The mails, jobs and live hints an action leaves behind land on the [fakes](fakes.md), where the test checks them.
 
 ## Server rendering
 

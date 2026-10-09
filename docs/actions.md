@@ -186,8 +186,8 @@ them. Without options, every prop reloads. `islands: ['notes.recent']` reloads t
 `only` or `except` it reloads only them.
 
 What a reload brings replaces what the page has, also a list that was merged with "load more": a deleted row is gone, and the list
-starts over at its first page. `router.reloading({ only: ['notes'], reset: [] })` merges instead. The [deferred props](deferred-props.md#merged-props) page explains
-merged props.
+starts over at its first page. `router.reloading({ only: ['notes'], reset: [] })` merges instead. The [deferred
+props](deferred-props.md#merged-props) page explains merged props.
 
 ## Ghost rows
 
@@ -206,8 +206,9 @@ reloads have landed, so its row never blinks out before the real one is there. N
 
 ## In a dialog or an island
 
-Inside a [dialog](dialogs.md), `useRouter()` belongs to the dialog: `router.optimistic()` patches the dialog's props, and
-`router.reloading()` reloads them. Inside an island, `useIsland()` has `optimistic()` and `reloading()` for the island's props:
+Inside a [dialog](dialogs.md#inside-a-layer), `useRouter()` belongs to the dialog: `router.optimistic()` patches the dialog's
+props, and `router.reloading()` reloads them. Inside an island, `useIsland()` has `optimistic()` and `reloading()` for the
+island's props:
 
 ```tsx
 const island = useIsland<ShowRecentNotesController>();
@@ -221,4 +222,4 @@ An action writes no history entry and leaves the URL alone. Its answer is never 
 visit events. It cannot run while a page renders on the server: `submit()` there throws.
 
 Other tabs that show the same list do not learn about the change by themselves. A live update after the write reloads the list
-there, which the [real time](realtime.md) page shows.
+there, which the [real time](realtime.md#sending-hints) page shows.

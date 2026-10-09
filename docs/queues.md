@@ -99,10 +99,10 @@ A dispatch inside `connections.transaction()` belongs to the transaction. You wr
 | `database`, on the same database connection | The job is a row written in the transaction: there with the commit, gone with a rollback. |
 | `redis`, `sync`, or `database` on another connection | Held until the outermost commit, dropped on a rollback. A `sync` job then runs after the commit, outside the transaction, and its error is thrown by the `transaction()` call. |
 
-So a registration that rolls back sends no welcome mail, and a worker never reads an account that is not committed yet. A
-worker runs every job **outside** any transaction, and so do the `sync` connection and the test fake. For a transaction you
-start yourself with Kysely, `queue.using(trx).dispatch(…)` writes through it. The [transactions](transactions.md) page explains
-the transaction context.
+So a registration that rolls back sends no welcome mail, and a worker never reads an account that is not committed yet. A worker
+runs every job **outside** any transaction, and so do the `sync` connection and the test fake. For a transaction you start
+yourself with Kysely, `queue.using(trx).dispatch(…)` writes through it. The
+[transactions](transactions.md#what-joins-a-transaction) page explains the transaction context.
 
 ### Secrets in payloads
 
@@ -316,7 +316,7 @@ start, with what to do.
 | `sync` | Nowhere: `handle()` runs at the dispatch, in a scope of its own, and its error is the dispatch's. | Scripts, and tests that want the work done at once. |
 
 Exactly one worker claims a job, also with many workers on Postgres or Redis. The `redis` driver needs `@marmeon/redis`, which
-brings the Redis client. The [Redis](redis.md) page covers its connection.
+brings the Redis client. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
 The `database` driver needs its tables, `jobs` and `failed_jobs`. A new app has them. Otherwise write the migration and run it:
 
@@ -470,9 +470,9 @@ Every step of a job is an event of the app's event dispatcher:
 So a flaky job that succeeds on its second try sends `JobReleased` with `reason: 'error'` and then `JobProcessed`, never
 `JobFailed`. Count retries on `JobReleased`, and alert on `JobFailed`.
 
-All of them extend `JobEvent`, so `listen(JobEvent, …)` hears every one. A listener runs where the event happens, in the worker or in
-the process that dispatched. Its error is logged and changes nothing about the job. Job events cannot have queued listeners, because
-such a listener would queue a job whose events queue the next. This listener raises an alert for every failed job:
+All of them extend `JobEvent`, so `listen(JobEvent, …)` hears every one. A listener runs where the event happens, in the worker or
+in the process that dispatched. Its error is logged and changes nothing about the job. Job events cannot have queued listeners,
+because such a listener would queue a job whose events queue the next. This listener raises an alert for every failed job:
 
 ```ts title="modules/system/listeners/AlertOnFailedJob.ts"
 import { Logger, redactText } from '@marmeon/core';
@@ -492,9 +492,9 @@ export class AlertOnFailedJob {
 ```
 
 The module registers it with `listeners: [listen(JobFailed, AlertOnFailedJob)]`. The error is the one the job threw, so redact it
-before you log it. A job dispatched in a request remembers that request's id, and the [observability](observability.md) page shows
-how traces follow a request into its jobs. The queue's driver is one of the checks of `/up/ready`, which the [health](health.md) page
-covers.
+before you log it. A job dispatched in a request remembers that request's id, and the
+[observability](observability.md#following-a-request) page shows how traces follow a request into its jobs. The queue's driver is
+one of the checks of `/up/ready`, which the [health](health.md#the-checks-of-the-packages) page covers.
 
 ## Testing
 
@@ -522,5 +522,5 @@ it('queues the welcome mail and sends it when the job runs', async () => {
 });
 ```
 
-`createTestApp(application, { queue: 'real' })` keeps the configured queue instead. The [fakes](fakes.md) page lists every
+`createTestApp(application, { queue: 'real' })` keeps the configured queue instead. The [fakes](fakes.md#queue) page lists every
 assertion of the fake.

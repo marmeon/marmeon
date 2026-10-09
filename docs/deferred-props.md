@@ -299,18 +299,19 @@ request. Islands with `load="visible"` always load in the browser.
 
 > [!WARNING]
 > An island's request only reads, and so does a deferred prop streamed with the first page. Neither may write the session, set a
-> cookie or queue work after the response, and neither takes a flash message. In development and in tests such a write throws a
+> cookie or queue work after the response, and neither takes a flash message: the page itself takes its flash messages as usual,
+> also when its deferred props stream with it. In development and in tests such a write throws a
 > `ReadOnlyViolation`. In production it is dropped and logged. An island's request is read-only wherever it runs. A deferred group
 > that the browser loads later is an ordinary request of the page's route, so a deferred prop that writes works after a visit
 > inside the app and loses the write on a first visit. Keep writes in the page's controller or in an action.
 
-The island lives with the page's history entry: Back and Forward show it again from memory, and a static `revalidateOnBack` on its view reloads it in the
-background, as for a page.
+The island lives with the page's history entry: Back and Forward show it again from memory, and a static `revalidateOnBack` on its
+view reloads it in the background, as for a page.
 
-When an island's route redirects or answers 401 or 403, the island shows `unauthorized`, and the page never navigates. When it fails,
-it shows `error`, and the rest of the page stays as it is.
+When an island's route redirects or answers 401 or 403, the island shows `unauthorized`, and the page never navigates. When it
+fails, it shows `error`, and the rest of the page stays as it is.
 
 ## Props that follow changes elsewhere
 
 A page, a layer or an island can follow a live channel and reload props when the server says something changed. The
-[real time](realtime.md) page covers it, and `useLiveUpdates()` for a page with unsaved changes.
+[real time](realtime.md#following-a-channel) page covers it, and `useLiveUpdates()` for a page with unsaved changes.

@@ -130,9 +130,9 @@ value `marmeon build` ran under, and server rendering reads it when it runs.
 
 ### Reading variables
 
-`r.env({ … })` of [validation](validation.md) is the schema of a definition. Every variable is a string, and the rules read
-numbers, booleans and lists from their spelling. A default goes into the schema, and `resolve` turns the checked values into
-the shape your code wants:
+`r.env({ … })` of [validation](validation.md#queries-and-environment-variables) is the schema of a definition. Every variable is a
+string, and the rules read numbers, booleans and lists from their spelling. A default goes into the schema, and `resolve` turns
+the checked values into the shape your code wants:
 
 ```ts title="modules/notes/config.ts"
 import { defineConfig, type ConfigOf } from '@marmeon/core';
@@ -168,8 +168,8 @@ A definition counts once it is listed, and it is checked once, however often it 
 | Where | For |
 | --- | --- |
 | `defineApplication({ config: [AppConfig] })` in `bootstrap/app.ts` | The app's own settings. |
-| `defineModule({ config: [NotesConfig] })` in a module's `index.ts` | A module's settings. See [modules](modules.md). |
-| `static config = [LogConfig]` on a service provider | A package's settings. See [service providers](providers.md). |
+| `defineModule({ config: [NotesConfig] })` in a module's `index.ts` | A module's settings. See [modules](modules.md#defining-a-module). |
+| `static config = [LogConfig]` on a service provider | A package's settings. See [service providers](providers.md#what-a-provider-brings-besides-code). |
 
 ### Using configuration
 
@@ -194,7 +194,7 @@ export class ListNotesController extends Controller {
 ```
 
 Import the definition as a value, not with `import type`. Its name is both the type and the token the container resolves, and
-a type-only import does not exist when the app runs. The [service container](container.md) page explains why.
+a type-only import does not exist when the app runs. The [service container](container.md#constructor-injection) page explains why.
 
 ## When a value is wrong
 
@@ -219,8 +219,8 @@ boots none of them. A definition that does not validate without `.env`, such as 
 instead of failing the build. So no secret can end up in what the build writes.
 
 Reading such a definition while the build runs throws an error that names its variables. Read configuration in a provider's
-`boot()`, in a request, a job or a command, never in a provider's `register()`. The [service providers](providers.md) page
-explains the two phases.
+`boot()`, in a request, a job or a command, never in a provider's `register()`. The [service
+providers](providers.md#register-and-boot) page explains the two phases.
 
 Nothing of the configuration is cached. Every start reads the environment and `.env` again, so a changed variable needs a
 restart, not a new build.
@@ -263,4 +263,4 @@ it('reads NOTES_SHARING', async () => {
 });
 ```
 
-The [testing](testing.md) page explains how a test boots the app.
+The [testing](testing.md#creating-the-test-app) page explains how a test boots the app.

@@ -55,7 +55,7 @@ and signs out the other devices. The tokens page creates and revokes API tokens.
 module leaves it free.
 
 The routes are an ordinary route file, so you change a path, add a page or remove one in `modules/auth/routes.ts`. The
-[routing](routing.md) page explains route files.
+[routing](routing.md#route-files) page explains route files.
 
 ## Private registration
 
@@ -161,7 +161,7 @@ export const schedule = defineSchedule((s) => {
 | `AUTH_PRIVATE_REGISTRATION` | `true` | `false` makes the registration and the change of address say "taken", and signs a new account in at once. |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days an account may stay without a confirmed address before `auth:prune-unverified` deletes it. `0`: the command deletes none. |
 
-The [authentication](authentication.md) page lists the other `AUTH_*` variables, such as how long "remember me" lasts.
+The [authentication](authentication.md#configuration) page lists the other `AUTH_*` variables, such as how long "remember me" lasts.
 
 ## Adding the module to an existing app
 
@@ -190,4 +190,4 @@ pnpm test
 ```
 
 `UserFactory` makes users in your own tests, with the password `password`, and `#modules/auth` exports it. The
-[HTTP tests](http-tests.md) page shows how to act as a signed-in user.
+[HTTP tests](http-tests.md#sessions-and-signing-in) page shows how to act as a signed-in user.

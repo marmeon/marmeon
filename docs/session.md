@@ -67,7 +67,8 @@ this.#session.flash('importedCount', 12);
 
 `keep(...keys)` keeps flash data for one more request, and `reflash()` keeps all of it. A redirect flashes data with
 `.with(key, value)`, and the next request reads it with `get()`. A message to show the user once, such as "Note saved.", is a
-flash message: `.flash(key, data)` on a redirect, a page or JSON. The [responses](responses.md) page explains both.
+flash message: `.flash(key, data)` on a redirect, a page or JSON. The [responses](responses.md#flash-data-and-flash-messages) page
+explains both.
 
 A failed form flashes its errors and its input. The session's `ShareErrorsFromSession` middleware then shares the errors as the
 `errors` prop with every page of the `web` group, `{}` when there are none, so a form shows them next to its fields. `old(key)`
@@ -90,10 +91,11 @@ privileges change in another way.
 
 ## When a session is kept
 
-A request without a session cookie starts a new session. It is saved, and its cookie sent, only once something is written into
-it: data, flash data, the errors of a failed form, a sign-in. A guest's page keeps no session, and neither do health checks, bots,
+A request without a session cookie starts a new session. It is saved, and its cookie sent, only once something is written into it:
+data, flash data, the errors of a failed form, a sign-in. A guest's page keeps no session, and neither do health checks, bots,
 prefetches or JSON endpoints that never touch it. So a visitor who only reads leaves nothing behind: no file, no row, no cookie.
-Their forms still pass the CSRF check by the browser's word, which the [CSRF protection](csrf.md) page explains.
+Their forms still pass the CSRF check by the browser's word, which the [CSRF protection](csrf.md#how-a-request-is-checked) page
+explains.
 
 A session that came from its store is always written back. To keep a new session with nothing in it, call `persist()`. A guest's
 page with an upload field does so in its controller, since an upload belongs to a session. `token()` keeps it as well, since the
@@ -232,8 +234,8 @@ A request that started before a sign-out finishes after it, with the session as 
 `database`, `redis` and `memory` drivers, it cannot bring that session back. Its write finds the session destroyed, saves
 nothing and sends no cookie, so the browser keeps the cookie of the sign-out.
 
-`UserSessions` ends every session of one user at once, which deleting an account needs. The [authentication](authentication.md)
-page covers it.
+`UserSessions` ends every session of one user at once, which deleting an account needs. The
+[authentication](authentication.md#ending-every-session-of-a-user) page covers it.
 
 ### When a session ends
 
@@ -306,4 +308,4 @@ it('remembers the notes a visitor opened', async () => {
 ```
 
 `assertSessionMissing(key)` checks that a key is gone. The `cookie` driver has no session helpers in tests. The
-[HTTP tests](http-tests.md) page covers sessions, signing in and flash messages.
+[HTTP tests](http-tests.md#sessions-and-signing-in) page covers sessions, signing in and flash messages.

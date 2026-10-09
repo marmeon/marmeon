@@ -35,8 +35,9 @@ Before the first request, `marmeon start` or `marmeon dev` prepares the process 
 7. **Listen.** The server builds its kernel from the routes and listens. The start line names the environment and the number of
    routes and modules.
 
-Steps 3 to 6 are `createApplication()`, the same function every test calls through `createTestApp()`. The
-[service providers](providers.md) page explains the two phases, and the [modules](modules.md) page the definition they read.
+Steps 3 to 6 are `createApplication()`, the same function every test calls through `createTestApp()`. The [service
+providers](providers.md#register-and-boot) page explains the two phases, and the [modules](modules.md) page the definition they
+read.
 
 ## A request on the server
 
@@ -86,7 +87,7 @@ registered it in. Each package adds its part when the app has it installed, and 
 | 9 | Your own | The `web` middleware of `bootstrap/app.ts`. |
 
 The `api` group has no middleware of its own: no cookies and no session. `pnpm marmeon route:list` shows the exact list of every
-route. The [middleware](middleware.md) page explains the groups.
+route. The [middleware](middleware.md#for-every-request-or-every-route-of-a-group) page explains the groups.
 
 ## From the controller to the browser
 
@@ -146,7 +147,7 @@ dropped and logged.
 
 Not every unit of work is a request. A queue worker runs each attempt of a job in a container scope of its own, the scheduler
 each task, and the `marmeon` command each command. Each of these processes boots the same app with the same providers. The
-[context](context.md) page shows how code finds out which unit of work it runs in.
+[context](context.md#the-current-unit-of-work) page shows how code finds out which unit of work it runs in.
 
 ## Stopping
 

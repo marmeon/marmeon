@@ -23,9 +23,11 @@ const element = (t: string, a?: Record<string, string> | null): Building => (a ?
 const markdown = new MarkdownIt('commonmark', { html: false, linkify: false, typographer: false }).enable(['table', 'strikethrough']);
 
 /**
- * The mark of a page still to be written: a line of its own (a paragraph, outside code), by convention the file's second. The
- * page is `pending` — the navigation says "draft" — and the line is taken out before the page is built: with `html: false` it
- * would show as text.
+ * The mark of a page still to be written: a paragraph that holds nothing else, outside code — blank lines (or a block's edge)
+ * around it, since a line that continues a paragraph is that paragraph's text. A quote's or a loose list's paragraph counts too;
+ * a tight list's item does not (markdown-it hides its paragraph). By convention the file's second line. The page is `pending`
+ * — the navigation says "draft" — and the paragraph is taken out before the page is built: with `html: false` it would show as
+ * text. `check:source` refuses the marker as a line of its own in `docs/` (rule 5), since every page is written.
  */
 export const PENDING_MARKER = '<!-- docs:pending -->';
 

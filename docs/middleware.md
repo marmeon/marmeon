@@ -296,8 +296,8 @@ export class CountResponses {
 ```
 
 An error in `terminate` is logged and never reaches the client. The hook runs outside any open database transaction. For work a
-controller wants to do after its response, such as sending a mail, the [controllers](controllers.md) page shows
-`AfterResponse`.
+controller wants to do after its response, such as sending a mail, the [controllers](controllers.md#work-after-the-response) page
+shows `AfterResponse`.
 
 ## Middleware of the framework
 

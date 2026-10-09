@@ -146,7 +146,7 @@ Queue a mail whenever a request sends it:
   again.
 
 `queue()` needs `@marmeon/queue`, which every new app has, and a worker that takes the mail's queue. `queue:work` without
-`--queue` takes every queue. The [queues](queues.md) page covers workers.
+`--queue` takes every queue. The [queues](queues.md#running-workers) page covers workers.
 
 A token that must stay the same over the mail's retries, such as a password reset token, is made before the mail is queued. The
 starter kit queues a job that makes the token and then queues the mail, so the request's answer takes the same time whether the
@@ -213,7 +213,8 @@ export class NoteReminderMail implements Mailable {
   break in a value that must be one line, such as the uid, an address or a link, is refused, so no value adds a property to the
   calendar entry.
 - **`diskAttachment(disk, key, { filename }?)`** of `@marmeon/storage` reads a file of a disk as an attachment:
-  `await diskAttachment(this.#storage.disk('local'), 'agendas/7.pdf')`. The [file storage](storage.md) page covers disks.
+  `await diskAttachment(this.#storage.disk('local'), 'agendas/7.pdf')`. The [file storage](storage.md#using-a-disk) page covers
+  disks.
 
 ## Previews
 
@@ -246,8 +247,8 @@ is shown in a sandboxed frame, and no script of a template runs. The [devtools](
 
 ## Observation
 
-In development the [devtools](devtools.md) record every mail that is sent or queued, with its secrets redacted. The
-OpenTelemetry package counts a mail's recipients, never their addresses, as the [observability](observability.md) page explains.
+In development the [devtools](devtools.md) record every mail that is sent or queued, with its secrets redacted. The OpenTelemetry
+package counts a mail's recipients, never their addresses, as the [observability](observability.md#what-it-records) page explains.
 
 ## Testing
 
@@ -274,5 +275,5 @@ it('mails the person a note is shared with', async () => {
 ```
 
 `assertSent` on a queued mail fails and says the mail was queued. `assertQueuedCount`, `assertNotQueued`, `assertSentCount` and
-`assertNotSent` check the rest. The fake does not put queued mails on the queue. The [fakes](fakes.md) page covers every
+`assertNotSent` check the rest. The fake does not put queued mails on the queue. The [fakes](fakes.md#mail) page covers every
 assertion.

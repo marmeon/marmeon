@@ -244,8 +244,8 @@ messages: { 'name.min': 'auth.validation.name_min', 'password_confirmation.confi
 ## Live validation
 
 A form can check a field while the user types, against the same schema that checks the submit. `useForm(…, { validate: true })`
-and `<Form validate>` do it, and the [forms](forms.md) page shows the browser's side. The request is the form's own: the same
-method, URL and body, plus a header that names the fields, `x-marmeon-validate: title,slug`.
+and `<Form validate>` do it, and the [forms](forms.md#validating-while-typing) page shows the browser's side. The request is the
+form's own: the same method, URL and body, plus a header that names the fields, `x-marmeon-validate: title,slug`.
 
 The route runs as far as its validation: the middleware, including CSRF, authentication and rate limits, the bindings,
 `authorize` and the schema. The controller is never built. The answer is a 204, or a 422 with the errors of the named fields only,
@@ -257,7 +257,7 @@ filled in yet, and so are errors of the body as a whole.
 - A live validation is read-only: it writes no session, sets no cookie and does no work after its response.
 - Live validations have a rate limit of their own, from the cache package that every new app has: 30 a minute per route and
   address. A `throttle()` on the route holds them to
-  its limit without counting them. The [rate limiting](rate-limiting.md) page shows how to change it.
+  its limit without counting them. The [rate limiting](rate-limiting.md#live-validations) page shows how to change it.
 - Password fields and files are never sent.
 
 ## Database rules, and why they never run live
@@ -317,7 +317,7 @@ message before the insert, and the index is what holds.
 > [!WARNING]
 > An account's address is no slug: "taken" tells who has an account. Use a `unique` on an address only with
 > `AUTH_PRIVATE_REGISTRATION=false`. Otherwise do what the starter kit does: the same answer for a free and a taken address, and a
-> mail to the owner. The [security](security.md) page explains why.
+> mail to the owner. The [security](security.md#private-registration) page explains why.
 
 ## Rules of your own
 
@@ -378,7 +378,7 @@ query: r.query({
 ```
 
 The [requests](requests.md#query-schemas) page explains how a query is parsed, and the [pagination](pagination.md) page builds a
-list on it. A [data table's](tables.md) query is stricter on purpose: it answers 400.
+list on it. A [data table's](tables.md#the-url-is-strict) query is stricter on purpose: it answers 400.
 
 `r.env({ … })` is the `env` of a `defineConfig()`. Every variable is a string, read like a query, with `r.port()` and
 `r.list(rule)` for `ADMINS=ada@example.com, alan@example.com`, and an empty variable is missing. A wrong value stops the start and

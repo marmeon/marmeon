@@ -226,7 +226,8 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     expect((await ssr.navigating().get('/docs/csp').assertOk()).headers.get('content-security-policy')).toBeNull();
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
     expect((await dev.get('/', document).assertOk()).headers.get('content-security-policy')).toMatch(/^script-src 'nonce-[\w+/=-]+' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'$/);
-  });
+    // Two more apps, each rendering every page with Shiki when it boots: about 3.3 s alone, over Vitest's 5 s beside the other suites.
+  }, 30_000);
 
   it('never marks an answer with a cookie public (a cache would hand the cookie to everyone)', async () => {
     const config = app.make(DocsConfig);
@@ -277,13 +278,14 @@ describe('the repository and docs.config.ts', () => {
     }
   }, ciTimeout);
 
-  it('stops the start for a slug that is no lower-case words with dashes, a slug or a file listed twice, and a file of the wrong place', async () => {
+  it('stops the start for a slug that is no lower-case words with dashes, a slug or a file listed twice, a file of the wrong place and the root README', async () => {
     const extra: DocsPageEntry[] = [
       { slug: 'Routing_Guide', label: 'Routing guide' },
       { slug: 'routing', label: 'Routing again' },
       { slug: 'upgrade', label: 'Upgrade', file: 'UPGRADING.md' },
       { slug: 'notes', label: 'Notes', file: 'packages/core/README.md' },
       { slug: 'other', label: 'Other', file: 'docs/routing.md' },
+      { slug: 'readme', label: 'Readme', file: 'README.md' },
     ];
     const docs = { sections: [...docsConfig.sections, { title: 'More', pages: extra }] };
     const error = await new DocsRepository({ source: repo, docs }).load().catch((e: unknown) => e);
@@ -294,6 +296,7 @@ describe('the repository and docs.config.ts', () => {
       'UPGRADING.md is listed twice in docs.config.ts.',
       "The page 'notes' names packages/core/README.md — a page's file is docs/<slug>.md or a Markdown file at the root.",
       "The page 'other' names docs/routing.md — a page's file is docs/<slug>.md or a Markdown file at the root.",
+      "The page 'readme' names README.md — the root README is no page of the docs (the start page is the app's own).",
     ]);
   }, ciTimeout);
 

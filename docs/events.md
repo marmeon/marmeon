@@ -103,7 +103,7 @@ stops there and the error reaches the caller, in a request the exception handler
 For all or nothing, dispatch inside a transaction. The listeners that run during the dispatch join it, and a rollback takes back
 what they wrote. The starter kit deletes an account this way: its `AccountDeletion` dispatches `AccountDeleted` inside the
 deletion's transaction, once per account, and other modules listen to clear what belongs to the account. The
-[transactions](transactions.md) page explains what joins a transaction.
+[transactions](transactions.md#what-joins-a-transaction) page explains what joins a transaction.
 
 The dispatcher belongs to the container that asked for it. In a request, the listeners are built in the request's scope and may
 use its services, such as the request's `Translator`.
@@ -195,7 +195,7 @@ The framework's packages dispatch events of their own, classes like any other:
 
 `Login` and `Registered` can be queued: a queued listener gets `{ userId }`, and of `Login` also how and when the user signed in,
 their address and browser. `Failed` carries what was typed as the identifier, never the password, for an audit log. The
-[authentication](authentication.md) page describes each.
+[authentication](authentication.md#events) page describes each.
 
 The events of the queue and the scheduler cannot be queued, since a queued listener of a job event would queue the next job. Their
 listeners run where the event happens: in the worker, in the process that queued the job, or in the scheduler. An error of one is
@@ -245,4 +245,4 @@ it('publishes a note', async () => {
 
 A held-back event is recorded and nothing else: its listeners neither run nor are queued. `assertDispatchedTimes(Event, n)`,
 `assertNotDispatched(Event)`, `assertNothingDispatched()` and `dispatched(Event)` check the rest. A match is a part of the event,
-`{ note: … }`, or a function. The [fakes](fakes.md) page shows every fake of a test app.
+`{ note: … }`, or a function. The [fakes](fakes.md#events) page shows every fake of a test app.

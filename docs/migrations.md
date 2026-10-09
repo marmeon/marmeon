@@ -280,7 +280,7 @@ const row = await this.query().where('email', '=', email).selectAll().select((eb
 
 `secret` comes from `@marmeon/database`. Raw SQL is not checked, so `` sql`select * from users` `` returns the hash. Statements on
 a table with secret columns are marked as such for whatever records queries, which then leaves their parameters out. The
-[observability](observability.md) page explains it.
+[observability](observability.md#queries-and-secret-columns) page explains it.
 
 ## Migrations on another connection
 

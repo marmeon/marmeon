@@ -72,12 +72,13 @@ export default defineApplication({
 });
 ```
 
-The [modules](modules.md) page lists every option of `defineApplication()`.
+The [modules](modules.md#the-application) page lists every option of `defineApplication()`.
 
 ### `config/`
 
 `config/app.ts` holds the app's own settings: `APP_NAME` and `APP_URL`. Settings that belong to a feature live in its module
-instead, and each installed package brings its own. The [configuration](configuration.md) page explains config definitions.
+instead, and each installed package brings its own. The [configuration](configuration.md#defining-configuration) page explains
+config definitions.
 
 ### `lang/`
 

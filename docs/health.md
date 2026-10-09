@@ -88,7 +88,8 @@ export default defineModule({
 });
 ```
 
-A package lists its checks as `static health` on its provider. The [package development](package-development.md) page shows it.
+A package lists its checks as `static health` on its provider. The [package
+development](package-development.md#the-service-provider) page shows it.
 
 Keep a check cheap and about this instance: can it reach what it needs right now. A check of another service that is down for
 every instance takes every instance out of the load balancer at once, which turns a partial outage into a full one.

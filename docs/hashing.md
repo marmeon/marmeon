@@ -102,7 +102,8 @@ export const ResetPasswordRequest = defineRequest({
 });
 ```
 
-- **Long enough:** at least `min` characters, 8 by default, counted in code points after NFKC: a plain emoji is one, a flag or an emoji with a skin tone is two or more.
+- **Long enough:** at least `min` characters, 8 by default, counted in code points after NFKC: a plain emoji is one, a flag or an
+  emoji with a skin tone is two or more.
 - **Short enough:** at most 4096 bytes, the hasher's limit.
 - **Nothing else.** No rules about digits or symbols: NIST advises against them, because they make passwords harder to remember
   and no harder to guess.
@@ -114,8 +115,8 @@ explains `confirmed()` and its message.
 ## Where the hash lives
 
 The hash is a secret column of the users table, so `Row<'users'>` and every query that selects all columns leave it out. Only the
-`UserProvider` reads it, and hands it next to the user as `Credentials`, never inside it. The session keeps only a fingerprint of the
-hash, which the [authentication](authentication.md#ending-every-session-of-a-user) page explains.
+`UserProvider` reads it, and hands it next to the user as `Credentials`, never inside it. The session keeps only a fingerprint of
+the hash, which the [authentication](authentication.md#ending-every-session-of-a-user) page explains.
 
 ## Configuration
 

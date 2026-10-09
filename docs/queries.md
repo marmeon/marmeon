@@ -118,10 +118,10 @@ static table = '…' as const;`. Other statics change its behaviour:
 | `routeKey` | `id` | The column a route parameter is looked up in. |
 | `routeKeyPattern` | digits for `id` | What a route parameter must look like before it is looked up. |
 
-A repository is an ordinary class, built by the [container](container.md). It holds nothing but its connection, so register it
-once in your module's provider: `container.singleton(NoteRepository)`. Its constructor takes `Connections` and nothing else, which
-is what lets [`using(trx)`](transactions.md#transactions-you-control-yourself) rebuild it for another transaction. Give other
-dependencies to the service that uses the repository.
+A repository is an ordinary class, built by the [container](container.md#binding-services). It holds nothing but its connection,
+so register it once in your module's provider: `container.singleton(NoteRepository)`. Its constructor takes `Connections` and
+nothing else, which is what lets [`using(trx)`](transactions.md#transactions-you-control-yourself) rebuild it for another
+transaction. Give other dependencies to the service that uses the repository.
 
 ### Reading
 

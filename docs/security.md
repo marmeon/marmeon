@@ -91,7 +91,7 @@ The [CSRF protection](csrf.md) page explains every stage.
 `APP_KEY` encrypts cookies, encrypted jobs and sealed sessions, and the keys that sign URLs, live channels and uploads are derived
 from it. Anyone who has it can read and forge all of them. Generate it once per environment with `marmeon key:generate`, keep it
 out of the repository and out of the image, and rotate it with `APP_PREVIOUS_KEYS`, so that old cookies and signed links stay valid
-until they expire. The [encryption](encryption.md) page explains the key and its rotation.
+until they expire. The [encryption](encryption.md#rotating-the-key) page explains the key and its rotation.
 
 ## Pages and scripts
 
@@ -121,7 +121,7 @@ until they expire. The [encryption](encryption.md) page explains the key and its
 - **Rate limits.** The starter kit limits the sign-in per address and client together, the registration per client, reset mails
   per client and per address, and a signed-in user's password checks per user: the confirmation, the password change and "sign
   out other devices". The password change and "sign out other devices" run one at a time per session. The
-  [rate limiting](rate-limiting.md) page covers limiters.
+  [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 - **A sign-in tells nothing.** An unknown address and a wrong password get the same answer in the same time. The
   [authentication](authentication.md#signing-in) page explains how.
 - **Validation never tells whether a record exists while a field is typed.** The `unique` and `exists` rules and an async
@@ -135,8 +135,8 @@ until they expire. The [encryption](encryption.md) page explains the key and its
   a local relay only. The [mail](mail.md#smtp-and-tls) page has the settings.
 - **Policies decide what a user may do,** on every request. The gate asks the session's user, so on routes of the `api` group a
   policy refuses every request. Authorize those with the token's abilities and an ownership check: compare `ctx.user` with the
-  record in the controller, or look the record up among the user's own. An ability only says what kind of action a token may do, never on
-  whose record, so it alone leaves every user's records one id away. The
+  record in the controller, or look the record up among the user's own. An ability only says what kind of action a token may do,
+  never on whose record, so it alone leaves every user's records one id away. The
   [authorization](authorization.md#policies-and-api-tokens) page shows it.
 
 ### Private registration
@@ -166,10 +166,11 @@ or at least revoke unknown tokens on the tokens page after such a takeover.
 
 `auth:prune-unverified` deletes accounts whose address was never confirmed, `AUTH_UNVERIFIED_DAYS` days after the sign-up, 7 by
 default. An account confirmed once is never deleted. The command runs only when your app turns its line on in
-`modules/auth/schedule.ts`, because deleting accounts is your app's decision. Once it runs, whoever registered with somebody else's
-address stops holding it, and nothing of an unfinished sign-up stays: the account, its tokens and what other modules keep go,
-and its sessions end. With open registration, such an account was signed in and may have used the app before it goes. Without the line, these
-accounts stay: decide it for your app. The [email verification](verification.md#unconfirmed-accounts) page explains the rules.
+`modules/auth/schedule.ts`, because deleting accounts is your app's decision. Once it runs, whoever registered with somebody
+else's address stops holding it, and nothing of an unfinished sign-up stays: the account, its tokens and what other modules keep
+go, and its sessions end. With open registration, such an account was signed in and may have used the app before it goes. Without
+the line, these accounts stay: decide it for your app. The [email verification](verification.md#unconfirmed-accounts) page
+explains the rules.
 
 ## Tables and exports
 
@@ -191,8 +192,9 @@ and what stops each:
   first byte. Rate-limit it as well: it reads the whole filtered table.
 - **Keys are parsed by their declared type** before any query, so text never reaches an integer column.
 
-The cursors of `cursorPaginate()` and of cursor tables are encrypted with the app key: a hidden sort column's value never shows in a
-URL, and a changed or made-up cursor is a 400. The [tables](tables.md) and [pagination](pagination.md) pages explain both.
+The cursors of `cursorPaginate()` and of cursor tables are encrypted with the app key: a hidden sort column's value never shows in
+a URL, and a changed or made-up cursor is a 400. The [tables](tables.md#the-security-model) and
+[pagination](pagination.md#cursors) pages explain both.
 
 ## Live updates
 
@@ -201,7 +203,7 @@ hint can never show what the user may not see. A subscription is signed for its 
 token answers 403. Limits keep one user from exhausting a process: at most 16 streams per session
 (`LIVE_MAX_STREAMS_PER_SESSION`, beyond it 429 and a warning in the log), 1000 per process (`LIVE_MAX_STREAMS`, beyond it 503) and
 20 channels per stream. The limit per session counts by session, not by address; a flood of fresh sessions meets the limit per
-process, so limit connections at the proxy as well. The [real-time updates](realtime.md) page explains them.
+process, so limit connections at the proxy as well. The [real-time updates](realtime.md#limits) page explains them.
 
 ## Logs and recordings
 
@@ -220,7 +222,7 @@ With `@marmeon/otel`, a request from outside starts a trace of its own, and an i
 caller's span. A client cannot put its requests into a trace it chose, nor switch their recording on or off with the sampled flag,
 and its baggage is dropped. `OTEL_TRUST_TRACEPARENT=true` continues the caller's trace: set it only behind an edge that sets or
 strips the header, such as a gateway, an ingress or a mesh. `TRUSTED_PROXIES` is no reason, since a proxy usually passes the
-client's header on unchanged. The [observability](observability.md) page covers tracing.
+client's header on unchanged. The [observability](observability.md#a-callers-traceparent) page covers tracing.
 
 ## Your checklist
 
@@ -240,4 +242,4 @@ client's header on unchanged. The [observability](observability.md) page covers 
 - Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the
   table's routes.
 - Update the framework's packages together and read [UPGRADING.md](../UPGRADING.md). Security fixes go to the latest minor
-  version, as the [releases](releases.md) page explains.
+  version, as the [releases](releases.md#node-and-security-fixes) page explains.

@@ -84,7 +84,7 @@ start`, and `marmeon dev` refuses it.
 | `tinker [--sandbox] [--execute "<code>"] [--no-history]` | A REPL with the booted app. See [tinker](#tinker). |
 | `make:lint-config [--boundaries] [--force]` | Writes the lint preset. See [lint](#lint). |
 | `make:docker [--caddy \| --nginx] [--systemd] [--force]` | Writes the files for a production image. See [deployment](deployment.md#the-docker-image). |
-| `package:build [dirs…] [--clean]` | Builds framework packages for publishing. See [package development](package-development.md). |
+| `package:build [dirs…] [--clean]` | Builds framework packages for publishing. See [package development](package-development.md#building-and-publishing). |
 
 `key:generate` copies `.env.example` to `.env` when there is no `.env` yet, then writes a new key. `--show` only prints a key. An
 app that has a key keeps it unless you pass `--force`, which moves the old key to the front of `APP_PREVIOUS_KEYS`: sessions,
@@ -99,13 +99,13 @@ app, and never overwrite a file unless you pass `--force`:
 | Command | Writes |
 | --- | --- |
 | `make:module <name>` | `modules/<name>/index.ts` and `routes.ts`. Then add the module to `bootstrap/app.ts`. |
-| `make:controller <Name> --module=<m> [--view] [--request]` | A controller. `--view` adds its page, `--request` a query or body schema. See [controllers](controllers.md). |
+| `make:controller <Name> --module=<m> [--view] [--request]` | A controller. `--view` adds its page, `--request` a query or body schema. See [controllers](controllers.md#creating-a-controller). |
 | `make:event <Name> --module=<m>` | An event class in `events/`. See [events](events.md#defining-events). |
 | `make:listener <Name> --event=<Event> --module=<m>` | A listener in `listeners/`. |
-| `make:job <Name> --module=<m>` | A queued job in `jobs/`. See [queues](queues.md). |
+| `make:job <Name> --module=<m>` | A queued job in `jobs/`. See [queues](queues.md#generating-a-job). |
 | `make:notification <Name> --module=<m>` | A notification in `notifications/`. See [notifications](notifications.md#defining-notifications). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
-| `make:migration <snake_case_name> --module=<m>` | A timestamped migration in `migrations/`. See [migrations](migrations.md). |
+| `make:migration <snake_case_name> --module=<m>` | A timestamped migration in `migrations/`. See [migrations](migrations.md#generating-migrations). |
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 
@@ -115,9 +115,9 @@ The installed packages add their commands when the app boots:
 
 | Package | Commands |
 | --- | --- |
-| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `db:seed`, `db:show`, `db:types`. See [migrations](migrations.md) and [seeding](seeding.md). |
+| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `db:seed`, `db:show`, `db:types`. See [migrations](migrations.md#running-migrations) and [seeding](seeding.md#running-seeders). |
 | `@marmeon/queue` | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table`. See [queues](queues.md). |
-| `@marmeon/scheduler` | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test`. See [task scheduling](scheduling.md). |
+| `@marmeon/scheduler` | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test`. See [task scheduling](scheduling.md#running-the-scheduler). |
 | `@marmeon/cache` | `cache:prune`, `cache:clear`, `make:cache-table`. See [cache](cache.md#expired-entries-and-clearing). |
 | `@marmeon/session` | `session:prune`, `make:session-table`. See [session](session.md#expiry-and-clean-up). |
 | `@marmeon/storage` | `uploads:prune`, `make:uploads-table`. See [file storage](storage.md#the-uploads-table). |
@@ -195,7 +195,7 @@ speaks `APP_LOCALE`. The app shuts down after the command, so open connections n
 throws prints its message and the first lines of its stack, and the exit code is 1.
 
 The scheduler runs a command as a task: `s.command('notes:prune-archived', ['--days=60']).daily()`. Each run again gets a scope of
-its own. The [task scheduling](scheduling.md) page covers the schedule.
+its own. The [task scheduling](scheduling.md#commands) page covers the schedule.
 
 ## Tinker
 

@@ -193,9 +193,9 @@ that creates the table. The [migrations](migrations.md) page explains both comma
 ## Readiness
 
 The app's readiness check, `/up/ready`, sends `select 1` to every configured connection. One that does not answer makes the
-instance "not ready" and is named in the answer. The [health checks](health.md) page explains readiness.
+instance "not ready" and is named in the answer. The [health checks](health.md#liveness-and-readiness) page explains readiness.
 
 ## Testing
 
 `createTestApp(application, { database: 'refresh' })` of `@marmeon/testing` gives each test a real database, migrated once and
-rolled back after every test. The [database testing](database-testing.md) page explains it.
+rolled back after every test. The [database testing](database-testing.md#how-the-database-is-reset) page explains it.

@@ -190,8 +190,8 @@ The change page sits behind `confirmedPassword()` and allows six requests a minu
 pending address signs nobody in and gets no reset link. Typing the account's own address again drops a pending change, and the
 scheduler clears expired ones every night.
 
-With `AUTH_PRIVATE_REGISTRATION=false`, the address changes at once, unconfirmed, and a confirmation link goes to it. A taken address
-is a field error, and the old address gets a note about the change.
+With `AUTH_PRIVATE_REGISTRATION=false`, the address changes at once, unconfirmed, and a confirmation link goes to it. A taken
+address is a field error, and the old address gets a note about the change.
 
 ## Unconfirmed accounts
 
