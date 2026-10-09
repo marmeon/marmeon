@@ -386,7 +386,7 @@ describe('no injection metadata in the browser (E76)', () => {
 
 describe('a production bundle says codes, not explanations (E80)', () => {
   // A few of the explanations the development build throws or warns: none may ship. A production error is its code
-  // and a name (`[marmeon:R2] users/Show`); packages/http/README.md ("Error codes") says what each code means.
+  // and a name (`[marmeon:R2] users/Show`); docs/errors.md ("Error codes") says what each code means.
   const EXPLANATIONS = [
     'the browser has no route manifest',
     'is not defined in the browser',
@@ -414,14 +414,14 @@ describe('a production bundle says codes, not explanations (E80)', () => {
     for (const code of ['C1', 'C2', 'R1', 'R2', 'R9', 'R10', 'R12']) expect(codes, code).toContain(`[marmeon:${code}]`);
   });
 
-  it('every code is in the README once, and every code there is thrown', () => {
+  it('every code is in the docs once (docs/errors.md), and every code there is thrown', () => {
     const sources = (dir: string) =>
       readdirSync(join(PACKAGES, dir), { recursive: true, encoding: 'utf8' })
         .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$|__fixtures__|test-window/.test(file))
         .map((file) => readFileSync(join(PACKAGES, dir, file), 'utf8'));
     const used = sorted([...sources('http/src/client'), ...sources('react/src'), ...sources('table/src/client')].flatMap((text) => [...text.matchAll(/\[marmeon:([CR]\d+)\]/g)].map((match) => match[1]!)));
-    const rows = [...readFileSync(join(PACKAGES, 'http/README.md'), 'utf8').matchAll(/^\| ([CR]\d+) \|/gm)].map((match) => match[1]!);
-    expect(rows.length, 'a code listed twice in packages/http/README.md').toBe(new Set(rows).size);
+    const rows = [...readFileSync(join(PACKAGES, '../docs/errors.md'), 'utf8').matchAll(/^\| ([CR]\d+) \|/gm)].map((match) => match[1]!);
+    expect(rows.length, 'a code listed twice in docs/errors.md').toBe(new Set(rows).size);
     expect(sorted(rows)).toEqual(used);
   });
 });

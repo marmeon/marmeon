@@ -2,7 +2,7 @@
 
 The app every framework feature is shown and tested in (`modules/auth`, `modules/user-profile`, `modules/dashboard`,
 `modules/members`, `modules/notifications`, `modules/locale`, `modules/lab`, `modules/system`). `/members` is a server-driven table
-([@marmeon/table](../../packages/table/README.md)): Ada (an administrator, `DASHBOARD_ADMINS`) sees the e-mail column, removes
+([@marmeon/table](../../docs/tables.md)): Ada (an administrator, `DASHBOARD_ADMINS`) sees the e-mail column, removes
 profile links (one member or many) and downloads the list as CSV; Alan and Grace see the table without them.
 
 ```bash
@@ -35,7 +35,7 @@ What the starter kit has, and a little more — each part tested here:
   switch the cache only (`clear({ siteData: ['cache'] })`). `modules/auth/tab-sync.test.ts` drives two tabs against the app.
 
 `pnpm bench login` and `pnpm bench people` (from the repository's root) measure this app's request path in-process — the
-numbers are in [@marmeon/server](../../packages/server/README.md#the-request-path-e136-e154).
+numbers are in [the contribution guide](../../CONTRIBUTING.md#benchmarks).
 
 ## Demo users
 
@@ -67,7 +67,7 @@ private disk takes files (`modules/system/health/StorageWritable.ts`) — with e
 curl -s localhost:3000/up/ready   # {"status":"ok","checks":[{"name":"database","status":"ok","ms":0.4,"note":"default, system"},…]}
 ```
 
-Traces go to any OpenTelemetry backend when the SDK is started first (`bootstrap/telemetry.ts`, packages/otel/README.md) — e.g.
+Traces go to any OpenTelemetry backend when the SDK is started first (`bootstrap/telemetry.ts`, docs/observability.md) — e.g.
 a local Jaeger (`docker run -p 16686:16686 -p 4318:4318 jaegertracing/jaeger`):
 
 ```bash
@@ -81,7 +81,7 @@ welcome job in the same trace, its mail, and the trace id in the log line.
 
 Under `marmeon dev` (`NODE_ENV=development`) the devtools record what the server, the worker and the scheduler do — requests
 with their queries, jobs, mails, log entries, exceptions, events — redacted, into `storage/framework/devtools/` (NDJSON,
-50 MB / 24 h; `config/devtools.ts`, packages/devtools/README.md). `@marmeon/devtools` is a dev dependency: production
+50 MB / 24 h; `config/devtools.ts`, docs/devtools.md). `@marmeon/devtools` is a dev dependency: production
 records nothing (and does not have the package). `marmeon devtools:clear` empties the directory; `devtools:prune` runs hourly in
 development (`modules/system/schedule.ts`).
 

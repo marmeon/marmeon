@@ -22,9 +22,9 @@ What happens then:
 
 ## Supported versions
 
-Marmeon is in 0.x ([versions and deprecations](README.md#versions-and-deprecations)): security fixes are released for the
+Marmeon is in 0.x ([release policy](docs/releases.md#what-a-version-promises)): security fixes are released for the
 **latest minor version** only — upgrade along [UPGRADING.md](UPGRADING.md). How long a major version receives security fixes is
-set with 1.0 ([versions and deprecations](docs/releases.md)).
+set with 1.0 ([release policy](docs/releases.md#from-10-on)).
 
 | Version | Security fixes |
 |---|---|
@@ -37,7 +37,6 @@ The packages of this repository (`@marmeon/*`, `marmeon`, `create-marmeon`) and 
 the starter kit). The demo apps under `apps/` are examples, not products — a flaw there is welcome as a normal issue unless it
 lies in framework code they show.
 
-What an app protects by itself and what it leaves to you is summed up in [docs/security.md](docs/security.md); the details are
-documented with the packages — sessions, CSRF and cookies in
-[@marmeon/session](packages/session/README.md), the Content-Security-Policy in [@marmeon/http](packages/http/README.md),
-authentication in [@marmeon/auth](packages/auth/README.md), the production setup in [docs/deployment.md](docs/deployment.md).
+What an app protects by itself and what it leaves to you is summed up in [Security](docs/security.md); the details are on their
+pages — [sessions](docs/session.md), [CSRF protection](docs/csrf.md), the [Content-Security-Policy](docs/csp.md),
+[authentication](docs/authentication.md) and the production setup in [deployment](docs/deployment.md).

@@ -41,13 +41,12 @@ const SECTIONS = [
 const results = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResult[] }).results;
 
 describe('the search (a server route, E133)', () => {
-  it('finds onOneServer() on the scheduler page and TracingChannel on core’s — anchors into the section', async () => {
-    const scheduler = results(await app.navigating().get('/search?q=onOneServer').assertOk().assertPage('docs/Search'));
-    expect(scheduler[0]!.href).toMatch(/^\/packages\/scheduler(#|$)/);
-    expect(scheduler.some((result) => result.href.startsWith('/packages/scheduler'))).toBe(true);
-    const core = results(await app.navigating().get('/search?q=TracingChannel').assertOk());
-    expect(core[0]!.href).toMatch(/^\/packages\/core#/);
-    expect(core[0]!.excerpt.toLowerCase()).toContain('tracingchannel');
+  it('finds onOneServer() on the scheduling page and "missed runs" under its heading — anchors into the section', async () => {
+    const hits = results(await app.navigating().get('/search?q=onOneServer').assertOk().assertPage('docs/Search'));
+    const scheduling = hits.find((result) => result.href.startsWith('/docs/scheduling#'));
+    expect(scheduling?.excerpt.toLowerCase()).toContain('ononeserver');
+    const missed = results(await app.navigating().get('/search?q=missed%20runs').assertOk());
+    expect(missed[0]!.href).toBe('/docs/scheduling#missed-runs');
   });
 
   it('takes all words, case-insensitively, at most 20 hits', async () => {

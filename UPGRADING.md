@@ -499,7 +499,7 @@ islands and a layer's base, session garbage collection, the live backend and the
 error's message into the log line itself — so `postgres://app:secret@db` or `token=…` in a message reached the log in clear. Each of
 them goes through `redactText()` now (`postgres://app:***@db`, `token=[redacted]`, token-like path segments, API tokens); so do an
 island's path and a listener failure's message. The way back: none needed — your own log calls: pass the error itself or
-`redactText(String(error))` ([log](packages/log/README.md#redaction)).
+`redactText(String(error))` ([log](docs/logging.md#keeping-secrets-out-of-the-log)).
 
 ### Wave 9 — client and navigation
 
@@ -556,7 +556,7 @@ backend every worker of the cluster has its own pub/sub and its own sequences: a
 sent it, and a tab that reconnected to another worker compared its sequences with another counter — live updates went missing
 without a sound. Now a worker does not start with `LIVE_DRIVER=memory` (`LiveSetupError`: "memory pub/sub never reaches the other
 workers — use LIVE_DRIVER=redis …"), and the cluster stops with the worker's code. Set `LIVE_DRIVER=redis` (with
-[@marmeon/redis](packages/redis/README.md)) — the web app's `.env.example` does — or start one process without `--workers`.
+[@marmeon/redis](docs/redis.md)) — the web app's `.env.example` does — or start one process without `--workers`.
 One process with `memory` (`marmeon start`, `marmeon dev`) is unchanged.
 
 #### Medium: the navigator uses the Navigation API — `history.state` is null, its `navigate` events are visible
@@ -848,7 +848,7 @@ own. The first day after a release pnpm may hold the new versions back (`minimum
 production install (`pnpm install --prod`, a Docker image) leaves dev dependencies out — there was no `node_modules/.bin/marmeon`
 (E159). Move it: `pnpm add marmeon` (pnpm moves it from `devDependencies` to `dependencies`). The same holds for what
 `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` loads in production — the OpenTelemetry SDK packages of
-[@marmeon/otel](packages/otel/README.md) belong in `dependencies`. `marmeon make:auth` names a runtime package it finds only
+[@marmeon/otel](docs/observability.md#installation) belong in `dependencies`. `marmeon make:auth` names a runtime package it finds only
 among the dev dependencies.
 
 #### High: session keys are hashed — every user is signed out once; a `database` sessions table needs its upgrade migration
@@ -883,7 +883,7 @@ itself) `marmeon migrate` asks for `--force` and writes no table types — put `
 entry) or the shell.
 The development tools still run with `NODE_ENV=development` only (E115). To keep pretty logs in staging: `LOG_FORMAT=pretty`.
 Code of your own checks `environment.isProtected()` / `environment.isDevelopment()` from `@marmeon/core`
-([The environment](packages/core/README.md#the-environment-node_env)) instead of comparing with `'production'`.
+([The environment](docs/configuration.md#the-environment-node_env)) instead of comparing with `'production'`.
 
 #### Medium: `NODE_ENV` falls back to the app's `.env`
 
@@ -931,12 +931,12 @@ trusted peer `X-Forwarded-Proto` (`http`/`https`) and `X-Forwarded-Host` replace
 CSRF origin check, an island's origin and the asset version's reload URL see the address the client used. An entry that is no
 address, range or `*` (`proxy.internal`) fails the start: `server: TRUSTED_PROXIES — Expected addresses or ranges like
 10.0.0.0/8, or *: proxy.internal is not one`. Without `TRUSTED_PROXIES` nothing changes: every `X-Forwarded-*` is ignored. Make
-sure the proxy **sets** these headers ([Behind a proxy](packages/server/README.md#behind-a-proxy-e162)).
+sure the proxy **sets** these headers ([Behind a proxy](docs/deployment.md#trusted-proxies)).
 
 #### Medium: CSRF — the browser's word first; a request from another site is 403, not 419
 
 *Likelihood of impact: medium — apps with clients that post to `web` routes without a browser, tests with `csrf: true`, and code
-that looks for 419.* `VerifyCsrfToken` decides in stages now (E143, Laravel 13's model, [CSRF protection](packages/session/README.md#csrf-protection)):
+that looks for 419.* `VerifyCsrfToken` decides in stages now (E143, Laravel 13's model, [CSRF protection](docs/csrf.md#how-a-request-is-checked)):
 `Sec-Fetch-Site: same-origin` passes without a token; `same-site`/`cross-site` is refused with **403** unless its `Origin` is in
 `CSRF_TRUSTED_ORIGINS`; without Fetch Metadata the `Origin` decides (the app's own — the one the request reaches it at, or
 `APP_URL`'s — passes, any other is 403); only a request with neither header needs the session's token (419 without it, as
@@ -973,7 +973,7 @@ data, the errors of a failed form, `session.put()`.
 loaded session was written back whole (`writeIfExists`) and the later of two requests won with its copy — a flash message one
 request showed could come back with a prefetch's copy (W5b.7), messages of parallel requests were lost. Now every write compares
 the version it read (E145): on a conflict the session is read again and this request's changes are applied — what it changed wins
-key by key, flash messages are merged by id ([Hashed keys, versions and encryption](packages/session/README.md#hashed-keys-versions-and-encryption-e144-e145)).
+key by key, flash messages are merged by id ([Hashed keys, versions and encryption](docs/session.md#how-sessions-are-stored)).
 A request whose session keeps being written by others for 2 s saves nothing and logs a warning; read-modify-write
 routes declare `block()` (next entries). **The store contract changed** — before → after:
 
@@ -985,7 +985,7 @@ writeIfExists(id, data, lifetime): Promise<boolean>                    Promise<'
 
 `key` is the SHA-256 of the session id (hex), `data` text the store keeps as it is (JSON, or ciphertext with `SESSION_ENCRYPT`);
 `expectedVersion: undefined` writes a new key, a number writes over that version — in one atomic step
-([Your own store](packages/session/README.md#your-own-store)). `Session`'s constructor takes the `SessionCodec` as a third
+([Your own store](docs/session.md#a-store-of-your-own)). `Session`'s constructor takes the `SessionCodec` as a third
 argument (the container passes it); code that builds a `Session` by hand passes `plainSessionCodec`. Test code that read a store
 by the session id reads `store.read(sessionKey(id))` and parses `data`.
 
@@ -999,7 +999,7 @@ first page: every page object carries the session's epoch (`PageObject.epoch`, o
 back/forward cache — asks `GET /_marmeon/session`; if the epoch there is new, it lets go of everything and loads again. With
 unsaved changes on screen it asks first (a `leave` question with `reason: 'session'` — word it in your confirm dialog; the
 default text is English). Back/Forward to an entry of an older epoch loads it from the server
-([Tab sync](packages/http/README.md#tab-sync-w8-step-8)).
+([Tab sync](docs/client-features.md#tab-sync)).
 
 - The old behaviour: `createMarmeonApp({ …, tabSync: false })` — then the risk E66 is back: a tab shows what it kept after a
   sign-out elsewhere until its next request.
@@ -1034,7 +1034,7 @@ off signs everybody out once. The `cookie` driver's data is a cookie and encrypt
 
 *Likelihood of impact: low — new.* `RouteDefinition.block(lockSeconds = 10, waitSeconds = lockSeconds)` (Laravel's, E145) takes an
 atomic lock on the session — through `@marmeon/cache`, which the app then needs — before `StartSession` reads it and frees it
-after saving; a request that waits longer gets 423 ([Blocking routes](packages/session/README.md#blocking-routes-block)). The web app
+after saving; a request that waits longer gets 423 ([Blocking routes](docs/session.md#requests-that-must-not-overlap)). The web app
 and `make:auth` (both variants) block `PUT /settings/password` and `POST /settings/devices/logout`: a password hash and its
 fingerprint in the session must stay a pair. Apps generated before can add `.block()` to those two routes.
 
@@ -1062,7 +1062,7 @@ injectable wherever a service needs to know who sent the request.
 *Likelihood of impact: low — new; existing modules belong to their app.* `make:auth` writes forms without a `_token` field (no
 `csrfToken` props, no `Session` in the page controllers — Fetch Metadata and `Origin` vouch for a plain post), its registration tests in `registration.test.ts`,
 and with `--private-registration` the variant that never tells whether an address has an account (E146,
-[Private registration](packages/auth/README.md#private-registration-e146-e193)): the same answer in the same time
+[Private registration](docs/starter-kit.md#private-registration)): the same answer in the same time
 for new and known addresses, `AccountExistsMail` to the owner, no live check of the address, a confirmed address before the app
 opens. A module generated before can take the views over by hand; the registration is the app's choice.
 
@@ -1144,7 +1144,7 @@ app's `.gitignore`.
 
 *Likelihood of impact: low — apps that turn it on, and apps with their own `index.html` tags.* New: `contentSecurityPolicy()` from
 `@marmeon/http` (E147) — `script-src 'nonce-…' 'strict-dynamic'; object-src 'none'; base-uri 'self'` on every HTML response,
-directives added or left out per app ([Content-Security-Policy](packages/http/README.md#content-security-policy-e147)). The blank
+directives added or left out per app ([Content-Security-Policy](docs/csp.md)). The blank
 app (the base of `create-marmeon`) registers it next to its new `middleware/SecurityHeaders.ts` (with an HSTS switch, off by
 default). For every app: `marmeon()` sets Vite's `html.cspNonce` to `__marmeon_csp_nonce__` (`CSP_NONCE_PLACEHOLDER`) — a value
 of your own in `vite.config.ts` is replaced; the built `index.html` carries `nonce="__marmeon_csp_nonce__"` on its tags and a
@@ -1189,10 +1189,10 @@ listens instead of ending the process.
 
 *Likelihood of impact: low — nothing to do; new.* `marmeon start --workers=N` runs N servers on one port with `node:cluster` (E140)
 — the primary passes signals on, each worker drains, the exit code is 0 when all ended with 0
-([Several processes](packages/cli/README.md#several-processes---workers-e140)). `marmeon make:docker [--caddy|--nginx]
+([Several processes](docs/deployment.md#several-processes-on-one-machine)). `marmeon make:docker [--caddy|--nginx]
 [--systemd]` writes a Dockerfile (`node:26-slim`, non-root, health check, `marmeon` as the process), `.dockerignore`,
 `compose.production.yaml` with one role per container and, on request, a proxy configuration and systemd units (E141,
-[Production files](packages/cli/README.md#production-files-makedocker-e141)). The deployment guide is `docs/deployment.md`.
+[Production files](docs/deployment.md#the-docker-image)). The deployment guide is `docs/deployment.md`.
 
 #### Low: a flash message stays with the tab that flashed it
 
@@ -1208,7 +1208,7 @@ string)`; `PageSession` implementations add `generation()` (the session's part o
 *Likelihood of impact: low — middleware that keeps a reference to a response after handing it on.* The framework's middleware (the
 cookies, `SetLocale`, the CSP, `NoStoreWhenSignedIn`, `throttle`, `cacheControl`, the kernel's request id) used to copy every
 response before adding a header; a page was copied four or five times (W8 step 9). They now go through `editableResponse(response)`
-([@marmeon/router](packages/router/README.md#adding-headers-to-the-response--editableresponse), also exported by
+([@marmeon/router](docs/middleware.md#changing-the-response), also exported by
 @marmeon/http): a response the framework made for this request is changed in place, any other — one your action or middleware
 returns — is copied once and then owned. Your own responses are never changed in place, as before. What changes: a middleware
 that holds on to the response its `next()` returned and reads it again after returning sees the headers outer middleware added.
@@ -1239,7 +1239,7 @@ code and keeps its route. To have the old behaviour in a new module: `guests.get
 #### Low: `create-marmeon` — the blank app is its `--minimal` output, with the devtools, a test and `pnpm test`
 
 *Likelihood of impact: low — apps copied from `apps/blank-app` before.* New apps start with `pnpm create marmeon my-app`
-([create-marmeon](packages/create-marmeon/README.md)): the starter kit (`make:auth`, a home page, the devtools, oxlint,
+([create-marmeon](docs/installation.md)): the starter kit (`make:auth`, a home page, the devtools, oxlint,
 Vitest) by default, the blank app with `--minimal` (E150, E167). The blank app is that output: it has `@marmeon/devtools` as a
 dev dependency (development only, absent from production installs), a first test (`modules/system/system.test.ts`, `GET /up`),
 a `test` script (`vitest run`) and `engines.node`. In an older copy: `pnpm add -D @marmeon/devtools` for the devtools, the
@@ -1300,7 +1300,7 @@ very file found stale, and a holder removes only its own. The guard is `withFile
 a word. Now an idle worker looks at the other queues once a minute and names, once, a queue that had jobs ready at two looks in a
 row with none of them running: `Jobs are waiting on the "mail" queue …, which this worker does not take (it takes default)`.
 Start production workers with every queue the app uses, in priority order — `--queue=mail,default` (the `make:docker` templates
-do) — or `--queue=*`. `Worker#run({ watchOtherQueues: false })` turns the look off ([Which queues a worker takes](packages/queue/README.md#which-queues-a-worker-takes)).
+do) — or `--queue=*`. `Worker#run({ watchOtherQueues: false })` turns the look off ([Which queues a worker takes](docs/queues.md#which-queues-a-worker-takes)).
 
 #### Low: `PORT=0` asks the system for a free port
 
@@ -1366,7 +1366,7 @@ health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off)"). Move your route, or t
 *Likelihood of impact: medium — apps whose layouts read `auth`, `locales` or other shared props.* A path without a route (the
 404 page, a framework endpoint) runs through no middleware group: no session, no shared props. `SharedProps` are typed as
 optional now, and a layout that reads `page.props.auth.user` must accept `auth` being `undefined` — `page.props.auth?.user`
-(the pattern is in [@marmeon/react](packages/react/README.md)). The generated auth module (`make:auth`) does so. Before →
+(the pattern is in [@marmeon/react](docs/pages.md#shared-props)). The generated auth module (`make:auth`) does so. Before →
 after: `const { user } = usePage().props.auth` → `const user = usePage().props.auth?.user ?? null`.
 
 #### Medium: discovery follows pnpm — an app discovers only what it installs
@@ -1523,7 +1523,7 @@ listeners join the transaction (E107/E109) — remove it") and a boot error. Rem
 
 *Likelihood of impact: low — apps with a store of their own.* A `CacheStore` implements `add`, `increment`, `lock`, `unlock`,
 `forceUnlock` and `lockOwner` (and optionally `prune`). A `SessionStore` implemented `writeIfExists` in Wave 6 — since Wave 8 its
-`write` compares versions instead (the Wave 8 entry above, [Your own store](packages/session/README.md#your-own-store)).
+`write` compares versions instead (the Wave 8 entry above, [Your own store](docs/session.md#a-store-of-your-own)).
 
 #### Low: constructors that take a `Clock` take it as a required parameter
 

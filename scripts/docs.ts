@@ -7,7 +7,7 @@
  *
  * The smoke test asks the running production build what the acceptance asks: the start page, every page of the docs'
  * sections (`/docs/<slug>`: `docs/*.md`, `UPGRADING.md`, …) and every package page (200, server-rendered, the static `'self'`
- * Content-Security-Policy without a nonce), the search (`onOneServer` → the scheduler, `TracingChannel` → core,
+ * Content-Security-Policy without a nonce), the search (`onOneServer` → the scheduling page, `afterRollback` → transactions,
  * `SHUTDOWN_DELAY` → the deployment page), `/up`, no `Set-Cookie` on any public page, caching headers (`public`, `ETag`,
  * `Vary`, `304`), an unknown package and page (404) and a 10 000-character query (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
  */
@@ -134,8 +134,8 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     expect(visit.body.includes(`"href":"${page}`), `/search?q=${q} as a visit: no result on ${page}`);
     return response;
   };
-  await search('onOneServer', '/packages/scheduler');
-  await search('TracingChannel', '/packages/core');
+  await search('onOneServer', '/docs/scheduling');
+  await search('afterRollback', '/docs/transactions');
   await search('SHUTDOWN_DELAY', '/docs/deployment');
 
   const missing = await get('/packages/no-such-package');
