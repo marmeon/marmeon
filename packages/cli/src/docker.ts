@@ -31,9 +31,12 @@ export interface DockerOptions {
   readonly systemd?: boolean;
 }
 
-/** The health check of the image (E126): Node's `fetch` — no curl in a slim image — on `/up`, 200 or it fails. */
+/**
+ * The health check of the image (E126): Node's `fetch` — no curl in a slim image — on `/up`, 200 or it fails. It follows `PORT` and
+ * `HEALTH_PATH` like the server (an empty one counts as missing); `HEALTH_PATH=off` turns the server's endpoints off, so it checks nothing.
+ */
 export const HEALTHCHECK_SCRIPT =
-  "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+(process.env.HEALTH_PATH||'/up')).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))";
+  "const p=process.env.HEALTH_PATH||'/up';p==='off'?process.exit(0):fetch('http://127.0.0.1:'+(process.env.PORT||3000)+p).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))";
 
 export function dockerfile(app: DockerApp): string {
   const pnpm = app.packageManager === 'pnpm';
@@ -87,8 +90,8 @@ RUN mkdir -p storage/app/private storage/app/public storage/framework/cache stor
  && chown -R node:node storage
 USER node
 EXPOSE 3000
-# Liveness (/up) with Node's fetch — the image has no curl; it follows PORT and HEALTH_PATH (with HEALTH_PATH=off, drop
-# it). The worker and scheduler containers turn it off (compose).
+# Liveness (/up) with Node's fetch — the image has no curl; it follows PORT and HEALTH_PATH (HEALTH_PATH=off: no check).
+# The worker and scheduler containers turn it off (compose).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \\
   CMD ["node", "-e", ${JSON.stringify(HEALTHCHECK_SCRIPT)}]
 # marmeon is the process — one Node — under tini, which only passes signals on and reaps orphans.

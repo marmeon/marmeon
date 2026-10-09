@@ -287,8 +287,8 @@ outage must not get healthy processes restarted. The image's `HEALTHCHECK` uses 
 runs every health check of the app and its packages, such as the database and Redis, and answers `200` or `503`.
 
 `HEALTH_PATH` moves both, and `HEALTH_PATH=off` turns them off. The image's `HEALTHCHECK` follows `PORT` and `HEALTH_PATH`. With
-`HEALTH_PATH=off`, remove the `HEALTHCHECK` instruction, both of its lines, from the Dockerfile, or Docker marks the web container
-unhealthy although the app runs. Worker and scheduler containers have no HTTP server, so the Compose file turns their health check
+`HEALTH_PATH=off`, it checks nothing and the web container counts as healthy; your orchestrator then needs another way to see the
+app. Worker and scheduler containers have no HTTP server, so the Compose file turns their health check
 off. The [health checks](health.md) page explains both endpoints and your own checks.
 
 ## Proxies and HTTP/2

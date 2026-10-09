@@ -148,7 +148,7 @@ its probes. The [deployment](deployment.md#health-checks) page shows the image's
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `HEALTH_PATH` | `/up` | Where liveness answers. Readiness answers below it: `HEALTH_PATH=/healthz` gives `/healthz` and `/healthz/ready`. `off` turns both off. |
+| `HEALTH_PATH` | `/up` | Where liveness answers. Readiness answers below it: `HEALTH_PATH=/healthz` gives `/healthz` and `/healthz/ready`. `off` turns both off, and the image's `HEALTHCHECK` then checks nothing. |
 | `SHUTDOWN_DELAY` | `0` | Seconds the server keeps answering after `SIGTERM`, while readiness already fails. At most 300. |
 
 A route of the app on one of the two paths could never be reached, so it stops the start:

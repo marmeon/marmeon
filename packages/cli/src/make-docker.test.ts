@@ -196,6 +196,16 @@ describe('the health check of the image', () => {
     }
   });
 
+  it('checks nothing with HEALTH_PATH=off: no server answers there, the container stays healthy', async () => {
+    const server = await serve(200);
+    const port = (server.address() as AddressInfo).port;
+    server.close();
+    await once(server, 'close');
+    expect(await check(port, { HEALTH_PATH: 'off' })).toBe(0);
+    // An empty HEALTH_PATH counts as missing: /up as without it.
+    expect(await check(port, { HEALTH_PATH: '' })).toBe(1);
+  });
+
   it('is the command in the Dockerfile', () => {
     const root = pnpmApp();
     makeDocker(root);
