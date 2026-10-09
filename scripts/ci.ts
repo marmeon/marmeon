@@ -63,7 +63,7 @@ export const parts: readonly Part[] = [
   // Caddy over HTTP/2 (deploy/docs). Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
   // The release rules (E152, E153, E157, E168): one fixed group and one version, no `major` changeset below 1.0.0,
-  // release.yml (staged publishing with OIDC), npm-trust.sh, every UPGRADING.md entry (the 22 Wave 7 hints), LICENSE and policies.
+  // release.yml (staged publishing with OIDC), npm-trust.sh, UPGRADING.md (its entries from the first release on), LICENSE and policies.
   { name: 'check-changesets', command: pnpm('check-changesets') },
 ];
 

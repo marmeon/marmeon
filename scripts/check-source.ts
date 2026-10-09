@@ -4,8 +4,9 @@
  *   1. **The old name is gone** (E195, E196): no file of the repository — tracked, or new and not ignored — and no path says the
  *      framework's name from before 0.1.0, in any case. Allowed: the company name (`LICENSE` holder, E153 — every copy, the policies
  *      that name it, `check-changesets`' licence rule) and the one rename hint ("Marmeon was called … up to 0.1.0") in `README.md`
- *      and `UPGRADING.md`. A half-renamed repository does not always show: the temp hygiene, for one, finds leftovers by their
- *      prefix only — a helper with the old prefix and a hygiene with the new one would agree on nothing and stay green.
+ *      (the upgrade guide starts with the first release, E216). A half-renamed repository does not always show: the temp hygiene,
+ *      for one, finds leftovers by their prefix only — a helper with the old prefix and a hygiene with the new one would agree on
+ *      nothing and stay green.
  *
  *   2. **No app installs a validation engine** (E197, W10 step 4): apps, the starter's template, the `make:auth` stubs and what a
  *      script or a generator writes into an app validate with `rules` of @marmeon/validation — no file outside `packages/<name>/src/`
@@ -22,8 +23,8 @@
  *      code `environment.isDevelopment()` / `environment.isProtected()` of @marmeon/core.
  *
  *   4. **The old default prefix of API tokens is gone** (E207, W10 step 9b): `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says
- *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end) — but the rename hint's way back
- *      (`AUTH_TOKEN_PREFIX=…` in `UPGRADING.md`). A forgotten copy in a test or a README would teach the old default.
+ *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end), not even as a way back in
+ *      `UPGRADING.md`: no release handed out a token with it (E216). A forgotten copy in a test or a README would teach the old default.
  *
  *   5. **The docs speak to their readers** (W11 step 10, E214, E215): the pages under `docs/`, the packages' READMEs (their npm
  *      cards), the root `README.md` and the policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) carry no
@@ -66,8 +67,8 @@ interface Allowance {
 export const ALLOWED: readonly Allowance[] = [
   // The company (E153): the LICENSE holder and every place that names it.
   { pattern: new RegExp(`\\b${OLD_NAME}Code\\b`, 'g') },
-  // The one rename hint (E196): no entry per name, only this sentence.
-  { pattern: new RegExp(`Marmeon was called ${OLD_NAME}Core up to 0\\.1\\.0`, 'g'), files: ['README.md', 'UPGRADING.md'] },
+  // The one rename hint (E196): no entry per name, only this sentence — in the README; the upgrade guide starts with the first release (E216).
+  { pattern: new RegExp(`Marmeon was called ${OLD_NAME}Core up to 0\\.1\\.0`, 'g'), files: ['README.md'] },
 ];
 
 export interface SourceFile {
@@ -95,8 +96,8 @@ export function oldNameHits(files: Iterable<SourceFile>): string[] {
 /** The old default prefix of API tokens (E207), spelled in parts: this file passes its own rule. */
 export const OLD_TOKEN_PREFIX = `${['b', 'c'].join('')}_`;
 const OLD_PREFIX = new RegExp(`(?<![\\w-])${OLD_TOKEN_PREFIX}(?=[\\d|'"\`\\s]|$)`, 'm');
-/** Where the old prefix may stand: the way back of the rename hint. */
-const OLD_PREFIX_ALLOWED: readonly Allowance[] = [{ pattern: new RegExp(`AUTH_TOKEN_PREFIX=${OLD_TOKEN_PREFIX}`, 'g'), files: ['UPGRADING.md'] }];
+/** Where the old prefix may stand: nowhere — no release handed out a token with it, so there is no way back to give (E216). */
+const OLD_PREFIX_ALLOWED: readonly Allowance[] = [];
 
 /** Rule 4: every line that says the old token prefix outside its allowance — `path:line: text`. */
 export function oldTokenPrefixHits(files: Iterable<SourceFile>): string[] {

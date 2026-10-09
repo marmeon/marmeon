@@ -154,8 +154,7 @@ pnpm marmeon migrate
 ```
 
 The migration goes into the `system` module, or the module that `--module=<name>` names. It creates the table on the connection
-`SESSION_CONNECTION` names. A table made by an earlier version of the framework lacks the `version` column, and the store says so:
-`make:session-table --upgrade` writes the migration that makes it anew, which signs everybody out once.
+`SESSION_CONNECTION` names.
 
 The store writes through a connection of its own, never inside your app's transactions, so a session written while a transaction
 is open survives its rollback. On Postgres it opens a small pool of its own. On SQLite, give the sessions a file of their own: the

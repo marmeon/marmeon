@@ -7,9 +7,13 @@ import { defineGegenproben } from '../define.ts';
  *
  * - **The guides list** — a `docs/*.md` without its entry stops the docs app's start (G1: the new validation guide unlisted).
  * - **The link check** (`links.test.ts`) — a broken anchor anywhere is red: from the new guide into another page (G2), inside a guide
- *   (G2b: the deployment guide's link to its own queue-index section), in UPGRADING.md's new Wave 10 overview (G2c). The link test
- *   reads what the page tests rendered before it — the run filters on its describe ('every page'), never on the test alone (W9).
- * - **The entries' anchors** (`UPGRADING_ANCHORS` of `check-changesets`) — a reworded Wave 10 heading loses its anchor (G3).
+ *   (G2b: the deployment guide's link to one of its own sections). The link test reads what the page tests rendered before it — the
+ *   run filters on its describe ('every page'), never on the test alone (W9).
+ * - **The entries' anchors** (`UPGRADING_ANCHORS` of `check-changesets`) — a reworded entry loses its anchor (G3).
+ *
+ * W11 step 12 (E216): UPGRADING.md holds no entry until the first release. G2c (a link in its Wave 10 overview) is retired — the
+ * overview is gone; G2b links the section on several machines, since the queue-index section went with the "older app"; G3 takes
+ * the missing-entry check out of `check-changesets` and runs its unit test, which builds a guide with releases of its own.
  *
  * Since the docs have sections, the guides are pages of them (`/docs/<slug>`): the anchors and reasons moved with them, the measures are
  * the same. The validation page links no README any more and the READMEs are no pages (W11 step 10): G2 patches its link into the
@@ -40,26 +44,26 @@ export default defineGegenproben({
     },
     {
       id: 'G2b',
-      title: 'the deployment guide links to its own queue-index section under another anchor (a reworded heading)',
-      patch: [{ file: 'docs/deployment.md', find: '([the migration](#the-queue-index-of-an-older-app))', replace: '([the migration](#the-queue-index))' }],
+      title: 'the deployment guide links to one of its own sections under another anchor (a reworded heading)',
+      patch: [{ file: 'docs/deployment.md', find: '[more than one instance](#more-than-one-instance)', replace: '[more than one instance](#several-instances)' }],
       run: LINKS,
-      expect: /\/docs\/deployment: #the-queue-index — no #the-queue-index on \/docs\/deployment/,
+      expect: /\/docs\/deployment: #several-instances — no #several-instances on \/docs\/deployment/,
     },
-    {
-      id: 'G2c',
-      title: 'UPGRADING.md’s overview of Wave 10 links to an entry under another anchor',
-      patch: [{ file: 'UPGRADING.md', find: '[`uploads:prune --force`](#low-uploadsprune---hours-below-uploads_lifetime-needs---force)', replace: '[`uploads:prune --force`](#low-uploadsprune-needs-force)' }],
-      run: LINKS,
-      expect: /\/docs\/upgrading: #low-uploadsprune-needs-force — no #low-uploadsprune-needs-force on \/docs\/upgrading/,
-    },
+    // G2c retired (W11 step 12, E216): UPGRADING.md has no Wave 10 overview — it holds no entry before the first release.
     // --- The entries' anchors -----------------------------------------------------------------------------------------------------
     {
       id: 'G3',
-      title: 'a Wave 10 entry reworded while ordering UPGRADING.md: its anchor is gone, the release check names it',
-      patch: [{ file: 'UPGRADING.md', find: '#### Low: `uploads:prune --hours` below `UPLOADS_LIFETIME` needs `--force`\n', replace: '#### Low: `uploads:prune --hours` below the lifetime needs `--force`\n' }],
-      run: { command: ['node', 'scripts/check-changesets.ts'] },
-      // Since W11 step 10c (E215) the entries of 0.2.0 are one list, under the release's own heading.
-      expect: /UPGRADING\.md lacks an entry of "Upgrading to 0\.2\.0": #low-uploadsprune---hours-below-uploads_lifetime-needs---force/,
+      title: 'the release check without its missing-entry rule: a reworded entry of a release loses its anchor, and nobody notices',
+      patch: [
+        {
+          file: 'scripts/check-changesets.ts',
+          find: "      if (!entry) problems.push(`UPGRADING.md lacks an entry of ${version}: #${anchor}`);\n",
+          replace: '      if (!entry) void anchor;\n',
+        },
+      ],
+      run: { vitest: 'scripts/check-changesets.test.ts', name: 'names an entry that is missing, by its release' },
+      // Vitest shortens the list: nothing found where the missing entry of 0.3.0 is expected.
+      expect: /expected \[\] to deeply equal \[ Array\(1\) \]/,
     },
   ],
 });

@@ -102,8 +102,7 @@ this query has no page — spread pageQuery() into the route's query schema: r.q
 ```
 
 You can also pass `{ page, perPage }` yourself, from a job or a command. Values you write out are not checked like a query: a page
-below 1 or a size that is not a whole number throws a `RangeError`. `paginationFrom()` still reads a page from search parameters,
-but it is deprecated: use `pageQuery()` and the parsed query.
+below 1 or a size that is not a whole number throws a `RangeError`.
 
 ## Links to the pages
 

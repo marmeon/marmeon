@@ -405,31 +405,6 @@ What you give up, and what to watch:
 - A rule of ours inside another library's schema runs without the request. A database rule there throws, on submit too, and an
   async `custom()` that runs in a live validation has its error dropped. Put the whole object into `rules` instead.
 
-### Moving a schema over from Valibot
-
-A Valibot schema keeps working, since it is a Standard Schema too. The framework's helpers, `password()`, `pageQuery()`, `upload()`
-and a table's query, are rules, so they no longer fit into a `v.object()`. These are the common Valibot pieces as rules:
-
-| Valibot | Rules |
-| --- | --- |
-| `v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(255))` | `r.string().trim().required().max(255)` |
-| `v.pipe(v.string(), v.email())` | `r.email()` |
-| `v.optional(v.string())` | `r.string().optional()` |
-| `v.nullish(v.pipe(v.string(), v.url()))` | `r.url().nullable()` |
-| `v.optional(v.number(), 1)` | `r.number().default(1)` |
-| `v.picklist(['title', '-title'])` | `r.in(['title', '-title'])` |
-| `v.pipe(v.string(), v.transform(Number), v.integer())` | `r.integer()`, which takes `'42'` and `42` |
-| `v.pipe(v.string(), v.check(isSlug, 'notes.validation.slug'))` | `r.string().custom(isSlug, 'notes.validation.slug')` |
-| `confirmed(v.object({ password: password(), password_confirmation: v.string() }))` | `r.object({ password: password(), password_confirmation: r.string() }).confirmed('password')` |
-| `v.object({ ...pageQuery({ perPage: [25, 50] }), … })` | `r.query({ ...pageQuery({ perPage: [25, 50] }), … })` |
-| `v.object({ avatar: v.nullish(upload({ maxBytes })) })` | `r.object({ avatar: upload({ maxBytes }).nullable() })` |
-| `env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })` | `env: r.env({ APP_URL: r.url() })` |
-| `schema: (resolve) => v.objectAsync({ … checkAsync … })` | `r.object({ … })` with `unique()`, `exists()` or an async `custom()`, no factory |
-
-A message in your language files that used Valibot's `{requirement}` gets the rule's own placeholder, `{min}` or `{max}`. Keys
-you passed to each `v.nonEmpty(trans(…))` move into the request's `messages`, as `'name.required': …`, or go: the framework has
-English and German texts for every rule. The [upgrade guide](../UPGRADING.md) lists every change of the framework's helpers.
-
 ## Type errors you will meet
 
 The compiler refuses what cannot work, and its messages say what to do. TypeScript names the type first and the message on the

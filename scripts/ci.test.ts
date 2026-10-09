@@ -41,14 +41,14 @@ describe('check:source — the old name is gone (E196)', () => {
     ]);
   });
 
-  it('allows the company name everywhere and the rename hint only in README.md and UPGRADING.md', () => {
-    const hint = `Marmeon was called ${old}Core up to 0.1.0 (never published).`;
+  it('allows the company name everywhere and the rename hint only in README.md — the upgrade guide starts with the first release', () => {
+    const hint = `Marmeon was called ${old}Core up to 0.1.0.`;
     expect(oldNameHits([
       { path: 'packages/core/LICENSE', text: `MIT License\n\nCopyright (c) 2026 ${old}Code\n` },
       { path: 'README.md', text: hint },
-      { path: 'UPGRADING.md', text: `**${hint}**` },
     ])).toEqual([]);
     expect(oldNameHits([{ path: 'docs/versioning.md', text: hint }])).toEqual([`docs/versioning.md:1: ${hint}`]);
+    expect(oldNameHits([{ path: 'UPGRADING.md', text: `**${hint}**` }])).toEqual([`UPGRADING.md:1: **${hint}**`]);
     // An allowed phrase does not cover another mention on its line.
     expect(oldNameHits([{ path: 'README.md', text: `${hint} Run ${lower} dev.` }])).toHaveLength(1);
     expect(oldNameHits([{ path: 'LICENSE', text: `${old}Code and ${old}Core` }])).toHaveLength(1);
@@ -162,9 +162,11 @@ describe('check:source — the old token prefix is gone (E207)', () => {
     ]);
   });
 
-  it('allows the way back of the rename hint in UPGRADING.md only', () => {
-    expect(oldTokenPrefixHits([{ path: 'UPGRADING.md', text: `The way back: \`AUTH_TOKEN_PREFIX=${old}\`.` }])).toEqual([]);
-    expect(oldTokenPrefixHits([{ path: 'README.md', text: `AUTH_TOKEN_PREFIX=${old}` }])).toHaveLength(1);
+  it('allows it nowhere — no release handed out a token with it, so the upgrade guide has no way back to it either', () => {
+    expect(oldTokenPrefixHits([
+      { path: 'UPGRADING.md', text: `The way back: \`AUTH_TOKEN_PREFIX=${old}\`.` },
+      { path: 'README.md', text: `AUTH_TOKEN_PREFIX=${old}` },
+    ])).toEqual([`UPGRADING.md:1: The way back: \`AUTH_TOKEN_PREFIX=${old}\`.`, `README.md:1: AUTH_TOKEN_PREFIX=${old}`]);
   });
 });
 

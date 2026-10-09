@@ -85,10 +85,10 @@ describe('every page', () => {
     }
     // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
     expect(broken, broken.join('\n')).toEqual([]);
-    // Measured 8 403 (the start page and the 73 pages of the docs; the header's and the navigation's 70-odd links on each page count
+    // Measured 8 161 (the start page and the 73 pages of the docs; the header's and the navigation's 70-odd links on each page count
     // too). The threshold is that − 10 %: it shows a renderer or a layout that drops the navigation or the content's links on every
     // page — not one page that lost its links (a few dozen of eight thousand), which only the per-link check above can see.
-    expect(internal).toBeGreaterThan(7_560);
+    expect(internal).toBeGreaterThan(7_340);
   });
 
   it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link: E10) — no directory', () => {

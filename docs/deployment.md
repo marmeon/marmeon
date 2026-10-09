@@ -101,8 +101,7 @@ schedulers, a task marked `onOneServer()` runs on one of them only, as long as t
 
 A worker without `--queue` takes every queue, fairly, so a full `default` queue never holds the auth module's mails back.
 `--queue=mail,default` narrows a worker to these queues in strict order, and `*` in the list stands for every queue it does not
-name. The [queues](queues.md#which-queues-a-worker-takes) page explains the order. An app whose `jobs` table is older than that
-fair order adds an index first ([the migration](#the-queue-index-of-an-older-app)), or each idle worker sorts every waiting job.
+name. The [queues](queues.md#which-queues-a-worker-takes) page explains the order.
 
 ### Several processes on one machine
 
@@ -119,29 +118,6 @@ ends before it listened, such as on a taken port, stops all of them with its exi
 The servers share nothing in memory, so they need the same shared drivers as [more than one instance](#more-than-one-instance).
 Live updates need `LIVE_DRIVER=redis`: with `memory` the start fails. The warnings of the start are said once, by the process you
 started.
-
-### The queue index of an older app
-
-A worker without `--queue` walks the `jobs` table along an index on `reserved_at`, `available_at` and `id`. An app made before
-that index existed lacks it, because migrations that ran once never run again. Add it in the module that owns the table:
-
-```sh
-pnpm marmeon make:migration add_fair_claim_index_to_jobs_table --module=system
-```
-
-The command names the file after the current time. Replace its body with this one, which is the migration a new app has:
-
-```ts title="modules/system/migrations/2026_10_08_090000_add_fair_claim_index_to_jobs_table.ts"
-import { defineMigration } from '@marmeon/database';
-
-export default defineMigration({
-  up: (schema) => schema.alter('jobs', (table) => table.index(['reserved_at', 'available_at', 'id'])),
-  down: (schema) => schema.alter('jobs', (table) => table.dropIndex('jobs_reserved_at_available_at_id_index')),
-});
-```
-
-Deploy it like any migration, before or with the new workers. Until then they work, only slower on a long queue. A Redis queue
-needs nothing. A new app and `make:queue-table` have the index already.
 
 ## The Docker image
 
@@ -443,8 +419,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - `HOST` set. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
 - `MAIL_MAILER=smtp`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
-- A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`. An
-  older app's `jobs` table has [the index](#the-queue-index-of-an-older-app).
+- A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.
 - The drivers the settings name are installed as `dependencies`.
 - Staging is not public and holds no real data, because it shows server errors.
 - HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`.

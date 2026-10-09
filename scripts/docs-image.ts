@@ -270,14 +270,14 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/docs/deployment`) {
         problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/docs/deployment (TRUSTED_PROXIES)`);
       }
-      const compressed = curl(`${base}/docs/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
-      const plain = curl(`${base}/docs/upgrading`, { accept: 'text/html' });
+      const compressed = curl(`${base}/docs/validation`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
+      const plain = curl(`${base}/docs/validation`, { accept: 'text/html' });
       if (!/zstd|gzip/.test(compressed.headers.get('content-encoding') ?? '') || compressed.length >= plain.length / 2) {
-        problems.push(`/docs/upgrading: Content-Encoding "${compressed.headers.get('content-encoding')}", ${compressed.length} of ${plain.length} bytes`);
+        problems.push(`/docs/validation: Content-Encoding "${compressed.headers.get('content-encoding')}", ${compressed.length} of ${plain.length} bytes`);
       }
       const etag = compressed.headers.get('etag');
-      const again = etag ? curl(`${base}/docs/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip', 'if-none-match': etag }) : undefined;
-      if (again?.status !== 304) problems.push(`/docs/upgrading revalidated with ${etag}: ${again?.status}, expected 304`);
+      const again = etag ? curl(`${base}/docs/validation`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip', 'if-none-match': etag }) : undefined;
+      if (again?.status !== 304) problems.push(`/docs/validation revalidated with ${etag}: ${again?.status}, expected 304`);
       if (problems.length > 0) throw new SmokeError(`behind Caddy:\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n${compose(['logs', '--tail', '40'], 'any').output}`);
     });
     const size = Number(docker(['image', 'inspect', '-f', '{{.Size}}', image]).output.trim());

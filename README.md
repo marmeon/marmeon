@@ -28,7 +28,7 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 ```
 
 Status: 0.1.0 — prepared, not published yet. MIT licence (`LICENSE`, copyright BespokeCode). Node 26.10 or newer, pnpm 12.
-Marmeon was called BespokeCore up to 0.1.0 ([UPGRADING.md](UPGRADING.md)).
+Marmeon was called BespokeCore up to 0.1.0.
 
 ## Principles
 
@@ -67,7 +67,7 @@ The documentation lives in [`docs/`](docs/) — and, once it is online, as a Mar
 [Installation](docs/installation.md), [Directory Structure](docs/structure.md) and [Routing](docs/routing.md); the
 [Packages](docs/packages.md) page says what each package brings. The [Security](docs/security.md) page sums up what an app
 protects by itself and what it leaves to you, and the [Upgrade Guide](UPGRADING.md) lists every change from one version to the
-next.
+next, from the first release on.
 
 ## Versions and deprecations
 

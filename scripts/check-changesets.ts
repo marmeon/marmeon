@@ -5,15 +5,15 @@
  *      (`@marmeon/*`, `marmeon`, `create-marmeon`) and no private one; public access, `main`, private packages unversioned.
  *   2. **One version** — every published package has the same version (lockstep: the exact peers name it).
  *   3. **The changesets** — each names known, published packages with `patch`, `minor` or `major`; **no `major` below 1.0.0**:
- *      in 0.x a breaking change is a `minor` (with its UPGRADING.md entry) — Changesets would jump to 1.0.0.
+ *      in 0.x a breaking change is a `minor` (with its UPGRADING.md entry once there was a release) — Changesets would jump to 1.0.0.
  *   4. **The release workflow** — `.github/workflows/release.yml`: read-only by default, `id-token: write` only in the job that
  *      stages the packages, staged with pnpm (`pnpm stage publish` through `release:stage`) after `pack:check`, never `npm publish`,
  *      a plain `pnpm publish` or an npm token; the version pull request through Changesets; a GitHub-hosted runner.
  *   5. **`scripts/npm-trust.sh`** names every package (`node scripts/npm-trust.ts` writes it) and allows staged publishing only.
- *   6. **`UPGRADING.md`** has every entry of the list below, under its section — the entries of 0.2.0, and of 0.1.0 those of its
- *      three development steps (ship-ready; devtools and observability, with the 22 hints of their acceptance; background
- *      services) —, each with an impact and its likelihood, and no placeholder left. A section is the heading an entry stands
- *      under: the release's own (`## Upgrading to 0.2.0 …`) or one of its steps (`### Ship-ready: …`).
+ *   6. **`UPGRADING.md`** — before the first release (E216) a short page without entries: an entry needs a release to stand under.
+ *      From the first release on, every release's section (`## Upgrading to 0.2.0 from 0.1.0`, steps as `###` inside it) has its
+ *      entries listed in {@link UPGRADING_ANCHORS}, and every listed entry stands under its release — each with an impact and its
+ *      likelihood, and no placeholder left. The first section switches the requirement on: it is refused until its entries are listed.
  *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode", E153), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
  *      private vulnerability reporting, the deprecation policy in the root README.
  * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).
@@ -28,160 +28,17 @@ import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 /**
- * The sections of UPGRADING.md whose entries it must keep: the start of the heading an entry stands under — a release
- * (`## Upgrading to 0.2.0 from 0.1.0`) or one of its steps (`### Ship-ready: …`). Entries come by impact, so a section's list
- * follows the release's history, not the file's order.
+ * The entries UPGRADING.md must keep, by release — the version of its section (`## Upgrading to 0.2.0 from 0.1.0` → `'0.2.0'`) to
+ * GitHub's anchors of its entries (`#### Medium: …`). A reworded heading changes its anchor: update it here.
+ *
+ * Empty until the first release (E216): there is nothing to upgrade from, and the page says so. The requirement switches on by
+ * itself — the first `## Upgrading to …` section of UPGRADING.md is refused until its entries are listed here, and from then on every
+ * listed entry must stand under its release.
  */
-export type UpgradingSection = 'Upgrading to 0.2.0' | 'Ship-ready' | 'Devtools and observability' | 'Background services';
+export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {};
 
-/** The entries UPGRADING.md must keep, by section — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
-export const UPGRADING_ANCHORS: Readonly<Record<UpgradingSection, readonly string[]>> = {
-  // 0.2.0: what Wave 10 and Wave 9 changed, one list since E215.
-  'Upgrading to 0.2.0': [
-    'medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone', // W10.4, E197
-    'medium-an-empty-string-by-type--rstring-keeps-it-an-empty-number-address-or-choice-is-missing', // W10.9c+, E208
-    'medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order', // W10.5, E199
-    'medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount', // W10.7, E202
-    'medium-makeauth-brings-authprune-unverified--accounts-without-a-confirmed-address-go-after-auth_unverified_days-once-the-app-schedules-it', // W10.8, E203, E209
-    'low-marmeonvalidation--rules-typed-standard-schema-stays-the-contract', // W10.3, E197
-    'low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it', // W10.9b, E206
-    'low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field', // W10.9b, E197
-    'low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes', // W10.9b
-    'low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major', // W10.2, E198
-    'low-uploadsprune---hours-below-uploads_lifetime-needs---force', // W10.8, E204
-    'low-what-a-failure-shows-loads-when-it-happens--the-dialog-of-a-5xx-and-the-error-pages-are-a-chunk-of-their-own', // W10.7, E202
-    'low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none', // W10.8, E203
-    'low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone', // W10.9b, E203
-    'low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions', // W10.8, E204
-    'low-a-tables-default-sort-is-a-column-everyone-sees--defaultsort-refuses-one-with-visible', // W10.9b
-    'low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings', // W10.6, E201
-    'low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev', // W10.6, E200
-    'low-development-routes-answer-404-outside-development--whatever-their-host', // W10.9b, E115/E200
-    'low-marmeon-build-builds-for-production-next-to-a-development-env', // W10.9b, E170/E201
-    'low-marmeon-dev-stops-its-queue-worker-and-scheduler--on-sigterm-on-every-restart-and-when-the-server-dies', // W10.9c+, finding D
-    'low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace', // W10.8, E205
-    'low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments', // W10.8, E204
-    'low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token', // W10.9b, E125
-    'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187
-    'low-the-image-runs-marmeon-under-tini--rebuild-it',
-    'low-pnpm-1291',
-    'low-a-new-apps-title-is-its-name-not-marmeon',
-    'medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone', // W9.3, E183
-    'medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated',
-    'medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels',
-    'low-a-list-in-a-gets-data-is-the-key-repeated',
-    'low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up',
-    'low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400',
-    'medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429', // W9.4, E182
-    'medium-a-cluster-marmeon-start-with-workers-needs-live_driverredis',
-    'low-the-server-keeps-idle-connections-65-s-keep_alive_timeout',
-    'medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible', // W9.7, E184
-    'low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key',
-    'low-userouter-loads-the-pages-optimistic-patches-on-first-use',
-    'low-the-starter-kit-asks-in-the-pages-language--its-own-confirm',
-    'low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition', // W9.8, E185
-    'medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns', // W9.9, E187
-    'medium-the-registration-of-makeauth-is-private-by-default--auth_private_registrationfalse-turns-it-off', // E193
-    'low-the-start-warns-when-another-program-holds-127001-at-its-port--and-a-taken-port-fails-startserver', // W9.10b
-    'low-queries-on-a-shared-connection-take-turns--a-transactions-a-tests-pinned-one',
-    'low-a-tables-filter-on-a-hidden-column-is-hidden-with-it',
-    'low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty',
-    'low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again',
-    'low-marmeon-dev-answers-other-origins-without-cors-headers',
-    'low-an-s3-temporary-url-names-the-content-type-by-the-file-name',
-    'low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start',
-    'low-verified-treats-a-user-without-email_verified_at-as-unverified',
-    'medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls', // E192
-  ],
-  // 0.1.0 from the development snapshots: Wave 8.
-  'Ship-ready': [
-    'high-marmeon-is-a-dependency-of-the-app',
-    'high-session-keys-are-hashed--every-user-is-signed-out-once-a-database-sessions-table-needs-its-upgrade-migration',
-    'medium-protections-apply-to-every-node_env-but-development-and-test--staging-and-a-missing-node_env-included',
-    'medium-node_env-falls-back-to-the-apps-env', // E170
-    'medium-marmeon-start-respects-node_env',
-    'medium-migrate-writes-the-table-types-with-node_envdevelopment-only',
-    'medium-cookies-are-secure-when-app_url-is-https--every-cookie-of-the-request',
-    'medium-behind-trusted_proxies-x-forwarded-proto-and--host-set-the-requests-url-ranges-are-allowed-typos-fail-the-start',
-    'medium-csrf--the-browsers-word-first-a-request-from-another-site-is-403-not-419',
-    'medium-a-guests-page-starts-no-session--pagecsrf-and-xsrf-token-only-with-a-session',
-    'medium-a-session-written-by-two-requests-at-once-is-merged-not-overwritten--and-custom-stores-compare-versions',
-    'medium-the-tabs-of-a-browser-follow-each-others-sign-in-sign-out-and-language--createmarmeonapp-loads-tab-sync',
-    'medium-signing-out-clears-the-sites-storage-too--clear-site-data-cache-storage-clear-sitecache--is-clear-sitedata-',
-    'low-session_encrypt-encrypts-the-session-data-in-its-store',
-    'low-routeblock-runs-a-routes-requests-one-at-a-time-per-session',
-    'low-marmeon-keygenerate---force-keeps-the-old-key-in-app_previous_keys',
-    'low-csrf_trusted_origins-lists-origins--the-scheme-counts',
-    'low-the-login-event-carries-the-requests-address-and-browser-by-itself--requestinfo',
-    'low-marmeon-makeauth---private-registration-the-generated-forms-carry-no-_token',
-    'low-one-process-for-marmeon-start-and-every-command',
-    'low-one-discovery-manifest-per-condition-set-relative-paths-written-by-marmeon-build',
-    'low-marmeon-build-precomputes-the-injection-lists--deploy-what-you-built',
-    'low-marmeon-start-writes-nodes-compile-cache-to-storageframeworkcompile-cache',
-    'low-oxc-parser-pino-pretty-and-the-tinker-repl-load-only-when-used',
-    'low-environments-of-the-scheduler-counts-a-missing-node_env-as-production',
-    'low-createtestapp-runs-as-node_envtest-unless-its-env-names-another',
-    'low-the-packages-ship-their-sources-for-the-source-maps-and-a-license-each',
-    'low-the-blank-app-has-a-envexample-and-a-storage-skeleton',
-    'low-an-opt-in-content-security-policy-with-a-nonce-per-response--on-in-the-web-app-and-the-starters-shell',
-    'low-assets-cached-a-year-and-sent-precompressed--marmeon-build-writes-br-and-gz',
-    'low-host-chooses-the-interface-the-start-line-names-it-and-the-port-it-got',
-    'low-the-development-error-page-and-the-mail-preview-bring-their-own-content-security-policy',
-    'low-upready-answers-503-from-sigterm-on-and-keeps-a-result-for-a-second-shutdown_delay',
-    'low-marmeon-start---workersn-and-marmeon-makedocker',
-    'low-a-flash-message-stays-with-the-tab-that-flashed-it',
-    'low-middleware-sets-the-headers-of-the-frameworks-responses-in-place--editableresponse',
-    'low-middlewaregroupsget-and-routermiddlewarefor-return-the-same-frozen-list-until-a-group-changes',
-    'low-the-encrypter-runs-on-nodecrypto--the-same-payloads-about-five-times-faster',
-    'low-marmeon-makeauth-no-longer-maps--to-the-sign-in-page',
-    'low-create-marmeon--the-blank-app-is-its---minimal-output-with-the-devtools-a-test-and-pnpm-test',
-    'low-the-dev-server-pre-bundles-from-the-client-entry-and-the-pages',
-    'low-one-version-for-every-package--010-from-npm',
-    'medium-trusted_proxies-trusts-the-direct-peer-only--a-client-can-no-longer-choose-its-address', // W8.13, E172
-    'low-a-guests-island-that-follows-a-live-channel-answers-without-the-subscription--not-500',
-    'low-the-file-stores-break-a-stale-guard-one-waiter-at-a-time--withfileguard',
-    'low-an-idle-worker-names-a-queue-nobody-takes',
-    'low-port0-asks-the-system-for-a-free-port',
-    'low-with---workersn-the-boots-warnings-come-once-from-the-primary',
-    'low-marmeon-in-a-copy-under-node_modules-runs-its-dist-a-failed-start-names-nodes-error-code',
-    'low-contributors-the-monorepo-needs-pnpm-12',
-  ],
-  // Wave 7: the 22 hints of its acceptance (W8 step 11), in their order there.
-  'Devtools and observability': [
-    'low-contributors-pnpm-run-ci-is-the-check-command--not-pnpm-ci', // 1
-    'medium-development-features-run-with-node_envdevelopment-only--never-not-production', // 2 (E115; E139)
-    'low-marmeon-dev-sets-node_envdevelopment-when-it-is-missing', // 3
-    'low-ononeserver-and-withoutoverlapping-with-a-file-or-memory-cache-warn-instead-of-throwing', // 4 (E123)
-    'low-the-schedulers-events--the-field-is-skipped', // 5 (E127)
-    'low-diagnostics-channels-for-observing-the-framework', // 6
-    'medium-up-and-upready-belong-to-the-framework', // 7 (E126)
-    'low-createtestapp-turns-the-devtools-off-unless-asked', // 8
-    'medium-shared-props-are-optional--layouts-must-cope-with-undefined', // 9
-    'medium-discovery-follows-pnpm--an-app-discovers-only-what-it-installs', // 10
-    'medium-client-code-imports-server-modules-with-import-type-only', // 11 (E121)
-    'low-marmeon-makelint-config-and-the-lint-preset', // 12
-    'low-redaction-reaches-into-lists-child-loggers-and-the-request-log-line', // 13 (E125)
-    'low-html-raw-html-and-escapehtml-live-in-marmeoncore', // 14
-    'low-the-devtools-are-a-package-of-their-own', // 15
-    'low-opentelemetry--the-app-brings-the-sdk-as-dependencies', // 16 (E159)
-    'low-a-defaulted-constructor-parameter-of-an-injectable-type-warns', // 17 (E128)
-    'low-a-configerror-shows-its-solution-only-when-it-lists-variables', // 18
-    'low-tinker-keeps-a-history--plain-text-and-a-banner-where-it-is-protected', // 19
-    'high-every-app-needs-an-app_key', // 20
-    'low-contributors-the-postgres-test-databases-are-dropped-after-a-test-run', // 21
-    'medium-mail_mailerlog-writes-mail-texts-to-the-log--protected-environments-warn', // 22 (E135; E139)
-  ],
-  // Wave 6: from the queue README's "Upgrading from before Wave 6".
-  'Background services': [
-    'medium-an-event-with-a-queued-listener-needs-static-event-and-static-schema',
-    'medium-createtestapp-fakes-the-queue-events-storage-and-notifications',
-    'medium-mails-need-absolute-links',
-    'low-the-login-event-carries-via-ip-and-useragent-and-can-be-queued',
-    'low-queued-listeners-have-no-aftercommit-any-more',
-    'low-custom-stores-implement-more',
-    'low-constructors-that-take-a-clock-take-it-as-a-required-parameter',
-  ],
-};
+/** A release's section: `## Upgrading to <version> from <version>`. Steps (`### …`) inside it keep the release as the section. */
+const RELEASE_SECTION = /^## Upgrading to (\d+\.\d+\.\d+\S*)\b/;
 
 /** GitHub's anchor for a heading: lower case, punctuation dropped (not `-` and `_`), every space a hyphen. */
 export function slug(heading: string): string {
@@ -364,39 +221,53 @@ export function checkTrust(repository: string): string[] {
   return [];
 }
 
-/** 6 · `UPGRADING.md`. */
+/** 6 · `UPGRADING.md`: nothing before the first release; from then on every listed entry under its release. */
 export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS): string[] {
   const file = join(repository, 'UPGRADING.md');
   if (!existsSync(file)) return ['UPGRADING.md is missing (E168)'];
   const problems: string[] = [];
   const text = readFileSync(file, 'utf8');
-  const entries = new Map<string, { section: string; body: string }>();
-  let section = '';
+  /** Entry anchor → the release it stands under (`undefined`: before any release section) and its text. */
+  const entries = new Map<string, { release: string | undefined; body: string }>();
+  const releases = new Set<string>();
+  let release: string | undefined;
   let current: string | undefined;
   for (const line of text.split('\n')) {
-    const heading = /^(#{2,4}) (.+)$/.exec(line);
-    if (heading && heading[1] !== '####') section = heading[2]!;
-    if (heading) {
-      current = heading[1] === '####' ? slug(heading[2]!) : undefined;
-      if (current !== undefined) {
-        if (entries.has(current)) problems.push(`UPGRADING.md: two entries have the anchor #${current}`);
-        entries.set(current, { section, body: '' });
-        if (!/^#### (High|Medium|Low)( \(contributors\))?: /.test(line)) problems.push(`UPGRADING.md: "${line}" — an entry starts with its impact (High:, Medium:, Low:)`);
-      }
-    } else if (current !== undefined) entries.get(current)!.body += `${line}\n`;
+    const heading = /^(#{1,4}) (.+)$/.exec(line);
+    if (!heading) {
+      if (current !== undefined) entries.get(current)!.body += `${line}\n`;
+      continue;
+    }
+    if (heading[1]!.length <= 2) {
+      release = RELEASE_SECTION.exec(line)?.[1];
+      if (release !== undefined) releases.add(release);
+    }
+    current = heading[1] === '####' ? slug(heading[2]!) : undefined;
+    if (current === undefined) continue;
+    if (entries.has(current)) problems.push(`UPGRADING.md: two entries have the anchor #${current}`);
+    entries.set(current, { release, body: '' });
+    if (!/^#### (High|Medium|Low)( \(contributors\))?: /.test(line)) problems.push(`UPGRADING.md: "${line}" — an entry starts with its impact (High:, Medium:, Low:)`);
+    if (release === undefined) {
+      problems.push(`UPGRADING.md: #${current} stands under no release — an entry goes under its "## Upgrading to <version> from <version>"`);
+    }
   }
-  for (const [name, list] of Object.entries(anchors)) {
-    list.forEach((anchor, index) => {
+  for (const version of releases) {
+    if (!(version in anchors)) {
+      problems.push(`UPGRADING.md has the section of ${version}, and scripts/check-changesets.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["${version}"]`);
+    }
+  }
+  for (const [version, list] of Object.entries(anchors)) {
+    if (!releases.has(version)) problems.push(`UPGRADING.md has no section "## Upgrading to ${version} from …", which scripts/check-changesets.ts lists`);
+    for (const anchor of list) {
       const entry = entries.get(anchor);
-      const label = name === 'Devtools and observability' ? `the devtools hint ${index + 1}` : `an entry of "${name}"`;
-      if (!entry) problems.push(`UPGRADING.md lacks ${label}: #${anchor}`);
-      else if (!entry.section.startsWith(name)) problems.push(`UPGRADING.md: #${anchor} (${label}) is under "${entry.section}", not "${name}"`);
-    });
+      if (!entry) problems.push(`UPGRADING.md lacks an entry of ${version}: #${anchor}`);
+      else if (entry.release !== undefined && entry.release !== version) problems.push(`UPGRADING.md: #${anchor} (an entry of ${version}) is under ${entry.release}`);
+    }
   }
   for (const [anchor, entry] of entries) {
     if (!/\*Likelihood of impact: (high|medium|low)\b/.test(entry.body)) problems.push(`UPGRADING.md: #${anchor} does not say its likelihood of impact`);
   }
-  if (/Collected in W8 step 11|<!--/.test(text)) problems.push('UPGRADING.md still has a placeholder or a comment');
+  if (/<!--/.test(text)) problems.push('UPGRADING.md still has a placeholder or a comment');
   return problems;
 }
 
@@ -448,9 +319,10 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
+    const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no release yet)' : `${upgrading} UPGRADING entries`;
     console.log(
       `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, release.yml, ` +
-        `npm-trust.sh, ${upgrading} UPGRADING entries and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
+        `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }
 }

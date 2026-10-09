@@ -325,9 +325,7 @@ pnpm marmeon make:queue-table
 pnpm marmeon migrate
 ```
 
-`make:queue-table` writes into the `system` module, or the module that `--module` names. An app whose `jobs` table is older than
-the fair order of workers lacks one index; the [deployment](deployment.md#the-queue-index-of-an-older-app) page shows the
-migration that adds it.
+`make:queue-table` writes into the `system` module, or the module that `--module` names.
 
 ## Retries and failures
 

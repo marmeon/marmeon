@@ -4,13 +4,15 @@ import { defineGegenproben } from '../define.ts';
  * W11.10 (third part) — the Upgrade Guide speaks to its readers (E215), and the final review's guards. The measures, each with its
  * own cases:
  *
- * - **`check:source` rule 5 over `UPGRADING.md`** — a decision number (U1), a wave heading (U2) and another framework (U3) in the
- *   guide; another framework in CONTRIBUTING, a page of the docs too (U3b). The guide taken back out of the decision rule's files
- *   (U4) or of the wave rule's (U5): their unit tests are red.
- * - **`check-changesets`, every entry under its section** — the wave heading of U2 also moves the devtools hints out of their
- *   section, which the release check names on its own (U2b, a pair with U2: each guard alone is red); a step heading inside 0.2.0
- *   moves its entries out of the release (U6); the section taken from `###` headings only again, the release's own `##` heading
- *   no longer counts and its unit test is red (U6b).
+ * - **`check:source` rule 5 over `UPGRADING.md`** — a decision number (U1), a wave (U2) and another framework (U3) in the guide;
+ *   another framework in CONTRIBUTING, a page of the docs too (U3b). The guide taken back out of the decision rule's files (U4) or
+ *   of the wave rule's (U5): their unit tests are red.
+ *
+ * W11 step 12 (E216): the guide is one paragraph until the first release, its 133 entries are in git's history only. U1–U3 patch
+ * that paragraph. Retired, since their measure — the sections of 0.2.0 and of 0.1.0's steps in `check-changesets` — is gone: U2b
+ * (the wave heading moved the devtools hints out of their step), U6 (a step heading inside 0.2.0) and U6b (the section taken from
+ * `###` headings only). What `check-changesets` asks of the guide now — nothing before the first release, every listed entry under
+ * its release after it — has its cases in W11.12 (`scripts/gegen/w11/s12-before-release.ts`) and W10.9's G3.
  * - **The anchor check of the docs app reads the cards** — a package card (C1) and the root README (C1b) linking an anchor its
  *   page does not have; the cards taken out of the scan, the count of named pages falls below its floor (C1c); a stub of another
  *   package than `auth` naming a wrong anchor (C2).
@@ -21,7 +23,6 @@ import { defineGegenproben } from '../define.ts';
  *   `start` and grows to its links: the stylesheet test is red (M1).
  */
 const SOURCE = { command: ['node', 'scripts/check-source.ts'] } as const;
-const CHANGESETS = { command: ['node', 'scripts/check-changesets.ts'] } as const;
 const ci = (name: string) => ({ vitest: 'scripts/ci.test.ts', name }) as const;
 const NAMED = { vitest: 'apps/docs/modules/docs/links.test.ts', name: 'every docs path the framework names' };
 const WANTED = "/^(?:packages\\/[^/]+\\/stubs|packages\\/create-marmeon\\/template|apps\\/web-app|apps\\/blank-app)\\//.test(path) ||\n        /^(?:packages\\/[^/]+\\/)?README\\.md$/.test(path);";
@@ -32,17 +33,17 @@ export default defineGegenproben({
     // --- check:source rule 5 over UPGRADING.md -------------------------------------------------------------------------------------
     {
       id: 'U1',
-      title: 'a decision number back in an entry of the Upgrade Guide: check:source names it',
-      patch: [{ file: 'UPGRADING.md', find: 'included. Now STARTTLS is required: such a send fails', replace: 'included. Now STARTTLS is required (E192): such a send fails' }],
+      title: 'a decision number in the Upgrade Guide: check:source names it',
+      patch: [{ file: 'UPGRADING.md', find: 'Marmeon has had no release yet, so', replace: 'Marmeon has had no release yet (E216), so' }],
       run: SOURCE,
-      expect: /a decision number in the docs \([^)]*\): UPGRADING\.md:343: included\. Now STARTTLS is required \(E192\)/,
+      expect: /a decision number in the docs \([^)]*\): UPGRADING\.md:3: Marmeon has had no release yet \(E216\), so/,
     },
     {
       id: 'U2',
-      title: 'a step of 0.1.0 named by its wave again: check:source names the heading',
-      patch: [{ file: 'UPGRADING.md', find: '\n### Devtools and observability\n', replace: '\n### Wave 7 — devtools and observability\n' }],
+      title: 'the Upgrade Guide names a wave of the maintainers\' plan: check:source names it',
+      patch: [{ file: 'UPGRADING.md', find: 'Marmeon has had no release yet, so', replace: 'Marmeon has had no release yet, Wave 11 aside, so' }],
       run: SOURCE,
-      expect: /a wave reference in the docs \([^)]*\): UPGRADING\.md:1320: ### Wave 7 — devtools and observability/,
+      expect: /a wave reference in the docs \([^)]*\): UPGRADING\.md:3: Marmeon has had no release yet, Wave 11 aside/,
     },
     {
       id: 'U3',
@@ -50,12 +51,12 @@ export default defineGegenproben({
       patch: [
         {
           file: 'UPGRADING.md',
-          find: 'What changes for an app from one version of Marmeon to the next. Each entry',
-          replace: "What changes for an app from one version of Marmeon to the next, in Laravel's manner. Each entry",
+          find: 'From the first release on, this page lists every change',
+          replace: "From the first release on, this page lists in Laravel's manner every change",
         },
       ],
       run: SOURCE,
-      expect: /a comparison with another framework in the docs \([^)]*\): UPGRADING\.md:8: What changes .* in Laravel's manner/,
+      expect: /a comparison with another framework in the docs \([^)]*\): UPGRADING\.md:3: .* this page lists in Laravel's manner/,
     },
     {
       id: 'U3b',
@@ -80,35 +81,7 @@ export default defineGegenproben({
       // Three of the four found: UPGRADING.md's "### Wave 10" is missed.
       expect: /expected \[ …\(3\) \] to deeply equal \[ …\(4\) \]/,
     },
-    // --- check-changesets: every entry under its section ---------------------------------------------------------------------------
-    {
-      id: 'U2b',
-      title: 'the same wave heading: the release check names the devtools hints that left their section',
-      patch: [{ file: 'UPGRADING.md', find: '\n### Devtools and observability\n', replace: '\n### Wave 7 — devtools and observability\n' }],
-      run: CHANGESETS,
-      masks: 'U2',
-      expect: /UPGRADING\.md: #low-contributors-pnpm-run-ci-is-the-check-command--not-pnpm-ci \(the devtools hint 1\) is under "Wave 7 — devtools and observability", not "Devtools and observability"/,
-    },
-    {
-      id: 'U6',
-      title: 'a step heading inside 0.2.0: the release check names the entries it took out of the release',
-      patch: [
-        {
-          file: 'UPGRADING.md',
-          find: '\n#### Medium: the navigator uses the Navigation API',
-          replace: '\n### Client and navigation\n\n#### Medium: the navigator uses the Navigation API',
-        },
-      ],
-      run: CHANGESETS,
-      expect: /UPGRADING\.md: #medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible \(an entry of "Upgrading to 0\.2\.0"\) is under "Client and navigation", not "Upgrading to 0\.2\.0"/,
-    },
-    {
-      id: 'U6b',
-      title: 'the section taken from ### headings only, as before: the release’s own heading no longer counts — its unit test is red',
-      patch: [{ file: 'scripts/check-changesets.ts', find: "    if (heading && heading[1] !== '####') section = heading[2]!;", replace: "    if (heading?.[1] === '###') section = heading[2]!;" }],
-      run: { vitest: 'scripts/check-changesets.test.ts', name: 'takes the release’s own heading as the section' },
-      expect: /UPGRADING\.md: #low-a-change-of-020 \(an entry of "Upgrading to 0\.2\.0"\) is under "", not "Upgrading to 0\.2\.0"/,
-    },
+    // U2b, U6 and U6b retired (W11 step 12, E216): the sections of 0.2.0 and of 0.1.0's steps they patched are gone — see above.
     // --- The anchor check of the docs app reads the cards, the root README and every stub --------------------------------------------
     {
       id: 'C1',

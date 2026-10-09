@@ -152,9 +152,11 @@ describe('the docs: sections of pages under /docs', () => {
     expect(JSON.stringify(sections)).not.toContain('/packages/');
   });
 
-  it('finds the deployment page’s sections — and the record of changes comes after every other hit', async () => {
-    const hits = results(await app.navigating().get('/search?q=SHUTDOWN_DELAY').assertOk());
-    expect(hits.some((hit) => hit.href.startsWith('/docs/deployment'))).toBe(true);
+  it('finds the release policy’s sections — and the record of changes comes after every other hit', async () => {
+    // "likely" scores the same in the upgrade guide and in the release policy's "How to upgrade": by order alone the guide, the
+    // first page of the navigation, would come first.
+    const hits = results(await app.navigating().get('/search?q=likely').assertOk());
+    expect(hits.some((hit) => hit.href.startsWith('/docs/releases'))).toBe(true);
     const late = hits.map((hit) => hit.href.startsWith('/docs/upgrading'));
     expect(late).toContain(true);
     expect(late.indexOf(true)).toBeGreaterThan(late.lastIndexOf(false));

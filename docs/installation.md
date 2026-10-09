@@ -12,8 +12,8 @@ cd my-app
 pnpm dev
 ```
 
-This page walks through those three commands: what you need first, what the creator asks, what it writes, and what runs when
-you start the app.
+This page walks through those three commands: what you need first, how you call the creator, what it writes, and what runs
+when you start the app.
 
 ## Requirements
 
@@ -21,8 +21,7 @@ You need **Node.js 26.10** or newer. Marmeon runs your TypeScript directly on No
 recent Node versions provide for that. An older Node stops the creator before it writes a single file.
 
 You also need a package manager. Marmeon is built and tested with **pnpm 12**, and a new app pins the exact version in its
-`package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well: with `--npm`, the app's `package.json` has no
-`packageManager` field, and its README names the npm commands.
+`package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well, with `--npm`.
 
 Nothing else is required. The app uses SQLite in a file by default, so you need no database server to get started.
 
@@ -43,26 +42,12 @@ npm create marmeon@latest my-app -- --npm
 The directory must not exist yet, or it must be empty. Its name becomes the package name, and a readable form of it becomes the
 app's name: `my-app` is the package `my-app` and the app "My App".
 
-### The questions
-
-On a terminal, the creator asks four questions. Press Enter to take the default:
-
-| Question | Default |
-| --- | --- |
-| The starter kit — sign-in and registration, a layout, a home page? | yes |
-| Docker files (Dockerfile, compose.production.yaml)? | no |
-| Package manager — pnpm or npm? | pnpm |
-| A git repository with a first commit? | yes |
-
-A flag answers its question in advance. `--yes` takes every default without asking: the starter kit, pnpm, the install and a
-first commit.
-
 ### Options
 
 | Option | Effect |
 | --- | --- |
 | `<dir>` | The directory of the new app. On a terminal it is asked for when you leave it out. |
-| `-y`, `--yes` | Takes the defaults and asks nothing. |
+| `-y`, `--yes` | Takes the defaults and asks nothing: the starter kit, pnpm, the install and a first commit. |
 | `--minimal` | A blank app instead of the starter kit: no sign-in, no home page. |
 | `--docker` | Adds a `Dockerfile`, a `.dockerignore` and a `compose.production.yaml`. |
 | `--npm`, `--pnpm` | Chooses the package manager. pnpm is the default. |

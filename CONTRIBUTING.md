@@ -76,9 +76,10 @@ package store, the registry and Docker — without them they are reported as ski
   removes them when the test, or the file, is done.
 - **A measure comes with its Gegenproben** ([below](#gegenproben)).
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
-- **A change an app can notice** gets an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — in the
-  next version's section, in its place by impact and area, and a changeset ([Changesets and releases](#changesets-and-releases));
-  `scripts/check-changesets.ts` lists its anchor under that section.
+- **A change an app can notice** gets a changeset ([Changesets and releases](#changesets-and-releases)) and, from the first
+  release on, an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — in the next version's section, in
+  its place by impact and area; `scripts/check-changesets.ts` lists its anchor under that version. Until the first release there
+  is nothing to upgrade from: the page says so and holds no entry.
 - **A change to a public API, an environment default or a command** changes its page under `docs/` in the same commit
   ([Writing documentation](#writing-documentation)).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.
@@ -192,7 +193,7 @@ checked over every file of the repository — tracked, or new and not ignored. E
 
 1. **The old name is gone**: no file and no path says the framework's name from before 0.1.0, in any letter case.
    Allowed are the company name (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`) and
-   the one rename hint in `README.md` and `UPGRADING.md`. Code that must spell the old name — a test, a Gegenprobe — builds it from
+   the one rename hint in `README.md`. Code that must spell the old name — a test, a Gegenprobe — builds it from
    parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
 2. **No app installs a validation engine**: apps, the starter's template, the `make:auth` stubs, scripts and what the `make:*`
    generators write validate with `rules` of `@marmeon/validation` — no file outside a package's `src/` imports Valibot (in code or in
@@ -206,8 +207,8 @@ checked over every file of the repository — tracked, or new and not ignored. E
    `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` inline (a client build folds it away), server code
    `environment.isDevelopment()` / `environment.isProtected()` of `@marmeon/core`.
 4. **The old prefix of API tokens is gone**: `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says the two letters and the
-   underscore of before in front of a digit, a `|`, a quote, whitespace or a line's end — but the rename hint's way back in
-   `UPGRADING.md`. Tests spell it from parts like the old name.
+   underscore of before in front of a digit, a `|`, a quote, whitespace or a line's end, anywhere. Tests spell it from parts like
+   the old name.
 5. **The docs speak to their readers**: the pages under `docs/`, the packages' READMEs, the root `README.md` and the three
    policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) name no decision number (an `E` and two or three
    digits as a word of its own — a hex value, an exponent or `E2E` is none) and compare Marmeon with no other framework; the
@@ -301,8 +302,8 @@ is 0 when every case is as expected, 1 when one is not, 2 for a usage error, 3 w
   (no `.env`, `storage/` or `.marmeon/`), with and without `--control`.
 - **Anchors age:** a later change can move a case's `find`; the anchor check says which, before anything is written. A change that
   moves an anchor of an older wave updates it in the same commit — `pnpm gegen w9 --control` and `pnpm gegen w10 --control` stay
-  green (the framework's rename moved all 208 anchors of the earlier Gegenproben with the code). A case red for another (correct) reason after a later
-  step — read the message, then correct the reason, never just count "red".
+  green. A case red for another (correct) reason after a later step — read the message, then correct the reason, never just count
+  "red". A case whose measure is gone is removed, and a comment in its file says why.
 - **Masked by the repository:** a dependency check inside the monorepo stays green (workspace links, devDependencies) — patch the
   packed manifest or `dist/` and run `pack:smoke`, with a masking scenario where the app installs the library itself.
   The old name and the validation engine in a patch or a reason are built from parts or written `[v]alibot` (`check:source` reads
@@ -343,6 +344,10 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
 
 - **0.x:** `minor` for a breaking change, `patch` for everything else. A `major` changeset would jump to 1.0.0 — `pnpm run ci`
   (`scripts/check-changesets.ts`) refuses it below 1.0.0. 1.0 comes after the reference app.
+- **The upgrade guide** starts with the first release. Until then `UPGRADING.md` is a short page without entries, and
+  `check-changesets` refuses an entry that stands under no release. The first `## Upgrading to <version> from <version>` section
+  switches the requirement on: `check-changesets` refuses it until `UPGRADING_ANCHORS` lists its entries under that version, and
+  from then on every listed entry must stand under its release, with its impact and its likelihood.
 - **How a release happens** (`.github/workflows/release.yml`): on every push to `main`, the Changesets action opens or updates
   the *Version packages* pull request (`changeset version`: the versions, the changelogs). Merging it runs the checks again and
   **stages** every package that is not on npm yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
