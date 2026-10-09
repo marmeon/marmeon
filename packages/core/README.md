@@ -10,15 +10,14 @@ Part of every new Marmeon app: `pnpm create marmeon` installs it.
 ## A module and its configuration
 
 ```ts title="modules/notes/config.ts"
-import { defineConfig, type ConfigOf } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 export const NotesConfig = defineConfig('notes', {
-  env: r.env({
-    NOTES_PER_PAGE: r.integer().between(5, 100).default(25),
-    NOTES_SHARING: r.boolean().default(false),
+  env: env({
+    NOTES_PER_PAGE: env.integer().min(5).max(100).default(25),
+    NOTES_SHARING: env.boolean().default(false),
   }),
-  resolve: (env) => ({ perPage: env.NOTES_PER_PAGE, sharing: env.NOTES_SHARING }),
+  resolve: (e) => ({ perPage: e.NOTES_PER_PAGE, sharing: e.NOTES_SHARING }),
 });
 export type NotesConfig = ConfigOf<typeof NotesConfig>;
 ```
@@ -36,7 +35,8 @@ export default defineModule({
 ```
 
 The module joins the app in `modules` of `defineApplication()` in `bootstrap/app.ts`. Any class that asks for `NotesConfig` in its
-constructor gets the checked values: the container injects by type, from generated lists, without decorators.
+constructor gets the checked values: the container injects by type, from generated lists, without decorators. `env` reads the
+variables without a validation library; an empty variable counts as missing.
 
 ## Documentation
 

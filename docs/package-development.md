@@ -95,18 +95,20 @@ export class AuditServiceProvider implements ServiceProvider {
 a wrong value stops the start with the variable's name:
 
 ```ts title="src/AuditConfig.ts"
-import { defineConfig, type ConfigOf } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 export const AuditConfig = defineConfig('audit', {
-  env: r.env({
-    AUDIT_ENABLED: r.boolean().default(true),
-    AUDIT_RETENTION_DAYS: r.integer().between(1, 3650).default(90),
+  env: env({
+    AUDIT_ENABLED: env.boolean().default(true),
+    AUDIT_RETENTION_DAYS: env.integer().min(1).max(3650).default(90),
   }),
-  resolve: (env) => ({ enabled: env.AUDIT_ENABLED, retentionDays: env.AUDIT_RETENTION_DAYS }),
+  resolve: (e) => ({ enabled: e.AUDIT_ENABLED, retentionDays: e.AUDIT_RETENTION_DAYS }),
 });
 export type AuditConfig = ConfigOf<typeof AuditConfig>;
 ```
+
+The environment reader `env` comes with `@marmeon/core`, which every package depends on, so a package's configuration needs no
+validation library. The [configuration](configuration.md#reading-variables) page lists its building blocks.
 
 Prefix the variables with the package's name, so they never collide with the app's. Give every variable a default that is safe,
 and document each one in a table, as these pages do. Read configuration in `boot()` or in the services themselves, never in

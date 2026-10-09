@@ -7,15 +7,14 @@ the variables they need as a config definition: a schema that checks the variabl
 value. The app checks every definition when it starts, so a missing or wrong variable stops the start before anything runs.
 
 ```ts title="config/app.ts"
-import { defineConfig, type ConfigOf } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 export const AppConfig = defineConfig('app', {
-  env: r.env({
-    APP_NAME: r.string().required(),
-    APP_URL: r.url(),
+  env: env({
+    APP_NAME: env.string(),
+    APP_URL: env.url(),
   }),
-  resolve: (env) => ({ name: env.APP_NAME, url: env.APP_URL }),
+  resolve: (e) => ({ name: e.APP_NAME, url: e.APP_URL }),
 });
 export type AppConfig = ConfigOf<typeof AppConfig>;
 ```
@@ -104,21 +103,20 @@ something, and `isDevelopment()` where it offers a development tool. Never compa
 treat staging and a missing value as development.
 
 ```ts title="config/demo.ts"
-import { defineConfig, environment, type ConfigOf } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 
 export const DemoConfig = defineConfig('demo', {
-  env: r.env({
-    NODE_ENV: r.string().optional(),
-    DEMO_DELAY_MS: r.integer().between(0, 10_000).default(0),
+  env: env({
+    NODE_ENV: env.string().optional(),
+    DEMO_DELAY_MS: env.integer().min(0).max(10_000).default(0),
   }),
   // A delay to watch a slow page load — never where the app is protected.
-  resolve: (env) => ({ delayMs: environment.isProtected(env) ? 0 : env.DEMO_DELAY_MS }),
+  resolve: (e) => ({ delayMs: environment.isProtected(e) ? 0 : e.DEMO_DELAY_MS }),
 });
 export type DemoConfig = ConfigOf<typeof DemoConfig>;
 ```
 
-Inside `resolve`, pass `env` on: it is the environment the definition was checked against, which a test may set itself. Outside
+Inside `resolve`, pass its argument on: it is the environment the definition was checked against, which a test may set itself. Outside
 a definition, the functions read `process.env`. `environment.isTest()`, `environment.name()` and `environment.describe()` complete
 the set. `describe()` returns what the start line shows, such as `staging (protected)`.
 
@@ -130,36 +128,85 @@ value `marmeon build` ran under, and server rendering reads it when it runs.
 
 ### Reading variables
 
-`r.env({ … })` of [validation](validation.md#queries-and-environment-variables) is the schema of a definition. Every variable is a
-string, and the rules read numbers, booleans and lists from their spelling. A default goes into the schema, and `resolve` turns
-the checked values into the shape your code wants:
+`env({ … })` from `@marmeon/core` is the schema of a definition. Its keys are the variables, and each one gets a building block
+that reads the variable's text: `env.integer()` makes `'25'` the number 25, `env.boolean()` makes `'true'` the value `true`. A
+default goes into the block, and `resolve` turns the values into the shape your code wants:
 
 ```ts title="modules/notes/config.ts"
-import { defineConfig, type ConfigOf } from '@marmeon/core';
-import { rules as r } from '@marmeon/validation';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
 export const NotesConfig = defineConfig('notes', {
-  env: r.env({
-    NOTES_PER_PAGE: r.integer().between(5, 100).default(25),
-    NOTES_SHARING: r.boolean().default(false),
-    NOTES_EDITORS: r.list(r.email()).default([]),
+  env: env({
+    NOTES_PER_PAGE: env.integer().min(5).max(100).default(25),
+    NOTES_SHARING: env.boolean().default(false),
+    NOTES_EDITORS: env.list(env.email()).default([]),
+    NOTES_EXPORT_URL: env.url({ protocols: ['https'] }).optional(),
   }),
-  resolve: (env) => ({ perPage: env.NOTES_PER_PAGE, sharing: env.NOTES_SHARING, editors: env.NOTES_EDITORS }),
+  resolve: (e) => ({ perPage: e.NOTES_PER_PAGE, sharing: e.NOTES_SHARING, editors: e.NOTES_EDITORS, exportUrl: e.NOTES_EXPORT_URL }),
 });
 export type NotesConfig = ConfigOf<typeof NotesConfig>;
 ```
 
-`NOTES_EDITORS=ada@example.com, alan@example.com` becomes a list of two addresses, and each one is checked. `r.port()` takes a
-port number from 1 to 65535. An empty variable, such as `NOTES_PER_PAGE=`, counts as missing, whatever its rule: a `.env` file
-has no other way to say "not set". `ConfigOf<typeof NotesConfig>` is the type that `resolve` returns.
+`NOTES_EDITORS=ada@example.com, alan@example.com` becomes a list of two addresses, and each one is checked. `ConfigOf<typeof
+NotesConfig>` is the type that `resolve` returns, and `resolve` sees each variable with its type: `NOTES_PER_PAGE` is a `number`,
+`NOTES_EXPORT_URL` a `string | undefined`.
 
-A rule that cannot read a string is a compile error. `r.array()` is one, and the compiler names the rules that fit:
+These are the building blocks:
 
-```text
-Environment variable 'TAGS' is text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.port(), r.list(…)
+| Block | Reads | Narrowed by |
+| --- | --- | --- |
+| `env.string()` | Any text. | `.min(n)` and `.max(n)` characters, `.regex(pattern, message?)` |
+| `env.integer()` | A whole number, written in decimal: `25`, `-1`. | `.min(n)`, `.max(n)` |
+| `env.number()` | A number, decimals too: `0.5`. | `.min(n)`, `.max(n)` |
+| `env.boolean()` | `true` or `false`, `1` or `0`, in any case. Any other text is an error, not `false`. | |
+| `env.in(['sqlite', 'pgsql'])` | One of the values, case-sensitive. Its type is their union, `'sqlite' \| 'pgsql'`. | |
+| `env.url()` | An absolute URL with `//`: `http://` or `https://`. `env.url({ protocols: ['redis', 'rediss'] })` takes others. | |
+| `env.port()` | A port from 1 to 65535. | |
+| `env.email()` | An e-mail address. | |
+| `env.list(block)` | A list split at commas, each entry trimmed and read by `block`. Empty entries are dropped. `env.list(block, { separator: ';' })` splits at another character. | |
+
+Every block ends in one of three ways, which decide what a missing variable means:
+
+| Ending | A missing variable |
+| --- | --- |
+| none | Stops the start: `NOTES_TOKEN is required.` |
+| `.default(value)` | Is `value`. The default has the block's type: `env.integer().default(25)`, not `'25'`. |
+| `.optional()` | Is `undefined`. |
+
+An empty variable, such as `NOTES_PER_PAGE=`, counts as missing, for every block: a `.env` file has no other way to say "not set".
+So `NOTES_PER_PAGE=` gives the default 25, and an empty required variable stops the start like a missing one.
+
+`.default()` and `.optional()` come last. `env.integer().default(25).min(5)` is a compile error, and so is a default of the wrong
+type, a `.min()` on a boolean, and a variable that `resolve` reads but `env({ … })` does not declare.
+
+### Messages of your own
+
+A block's own message names the variable and what it expects, such as `NOTES_PER_PAGE must be at least 5.` It never repeats the
+value, because a variable may hold a secret. Each block and each narrowing takes a message of its own as its last argument, and
+`.check()` adds a rule of your own. `.required(message)` says what to do about a missing variable:
+
+```ts title="modules/billing/config.ts"
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
+
+const isTaxRate = (rate: number) => [0, 7, 19].includes(rate);
+
+export const BillingConfig = defineConfig('billing', {
+  env: env({
+    BILLING_API_KEY: env.string().required('Missing — create a key in the billing dashboard'),
+    BILLING_TAX_RATE: env.integer().check(isTaxRate, 'Expected 0, 7 or 19').default(19),
+    BILLING_COUNTRIES: env.list(env.string().regex(/^[A-Z]{2}$/, 'Expected country codes like DE,AT')).default(['DE']),
+    BILLING_DEFAULT_COUNTRY: env.string().default('DE'),
+  }).check((e) => e.BILLING_COUNTRIES.includes(e.BILLING_DEFAULT_COUNTRY), 'BILLING_DEFAULT_COUNTRY must be one of BILLING_COUNTRIES', 'BILLING_DEFAULT_COUNTRY'),
+  resolve: (e) => ({ apiKey: e.BILLING_API_KEY, taxRate: e.BILLING_TAX_RATE, countries: e.BILLING_COUNTRIES, defaultCountry: e.BILLING_DEFAULT_COUNTRY }),
+});
+export type BillingConfig = ConfigOf<typeof BillingConfig>;
 ```
 
-The schema can come from any library that implements Standard Schema. The starter and the generators use `r.env()`.
+`.check()` on `env({ … })` relates variables to each other. It runs once every variable was read without a problem, and its
+message belongs to the variable its third argument names.
+
+The schema can also come from any library that implements Standard Schema, such as Zod or Valibot. Then the library decides how
+an empty variable is read.
 
 ### Where a definition is listed
 
@@ -203,13 +250,14 @@ everything to fix:
 
 ```text
 Invalid configuration — the application cannot start:
-  • notes: NOTES_PER_PAGE — The NOTES_PER_PAGE field must be between 5 and 100.
-  • notes: NOTES_EDITORS.1 — The NOTES_EDITORS.1 field must be a valid email address.
+  • notes: NOTES_PER_PAGE — NOTES_PER_PAGE must be at most 100.
+  • notes: NOTES_EDITORS — NOTES_EDITORS entry 2 must be an e-mail address.
   • encryption: APP_KEY — Missing — run "marmeon key:generate"
 Set these variables in the environment or in .env (see .env.example).
 ```
 
-Each line names the definition, the variable as it is written, and the problem. The `marmeon` command prints how to fix it
+Each line names the definition, the variable as it is written, and the problem. A variable has one line, however much is wrong
+with it. The `marmeon` command prints how to fix it
 below the error, such as the command that generates a key.
 
 ## Configuration and the build

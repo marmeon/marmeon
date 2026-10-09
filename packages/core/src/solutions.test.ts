@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, resolveConfig, defineConfig } from './config/config.ts';
+import { env } from './config/env.ts';
 import { Container, ContainerError } from './container.ts';
 import { coreSolutions } from './core-solutions.ts';
 import { InjectionError } from './injection/analyze.ts';
 import { defineSolutions, ErrorSolutions } from './solutions.ts';
 import { token } from './token.ts';
-import * as v from 'valibot';
 
 interface Mailer {
   send(): void;
@@ -98,7 +98,7 @@ describe('the core solutions (E130)', () => {
   });
 
   it('invalid configuration: the variables to set', async () => {
-    const Config = defineConfig('mail', { env: v.object({ MAIL_HOST: v.string(), MAIL_PORT: v.string() }), resolve: (env) => env });
+    const Config = defineConfig('mail', { env: env({ MAIL_HOST: env.string(), MAIL_PORT: env.port() }), resolve: (e) => e });
     const error = await resolveConfig([Config], {}).catch((failure: unknown) => failure);
     expect(error).toBeInstanceOf(ConfigError);
     const [solution] = await solutions.find(error);

@@ -60,6 +60,8 @@ export { escapeHtml, Html, html, interpolateHtml, raw } from './html.ts';
 export { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_KEYS, redactText, Redactor } from './redact.ts';
 export type { RedactableQuery } from './redact.ts';
 export { ConfigError, defineConfig, loadEnv, resolveConfig } from './config/config.ts';
+export { env } from './config/env.ts';
+export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable } from './config/env.ts';
 export { DOTENV_MARKER, environment, readEnvFile, resolveEnvironment } from './environment.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export type { NodeEnvironment, ResolvedEnvironment } from './environment.ts';

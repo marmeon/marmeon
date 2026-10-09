@@ -11,8 +11,8 @@ type Env = Readonly<Record<string, string | undefined>>;
  *
  * ```ts
  * export const AppConfig = defineConfig('app', {
- *   env: r.env({ APP_NAME: r.string().required(), PORT: r.port().default(3000) }),   // rules of @marmeon/validation (or any Standard Schema)
- *   resolve: (env) => ({ name: env.APP_NAME, port: env.PORT }),
+ *   env: env({ APP_NAME: env.string(), PORT: env.port().default(3000) }),   // the env reader of this package (or any Standard Schema)
+ *   resolve: (e) => ({ name: e.APP_NAME, port: e.PORT }),
  * });
  * export type AppConfig = ConfigOf<typeof AppConfig>;
  *

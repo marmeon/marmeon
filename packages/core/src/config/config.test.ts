@@ -1,27 +1,27 @@
 import { realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createApplication } from '../application.ts';
 import { Container } from '../container.ts';
 import { ConfigError, defineConfig, loadEnv, resolveConfig, type ConfigOf } from './config.ts';
+import { env } from './env.ts';
 import type { StandardSchemaV1 } from './standard-schema.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 export const AppConfig = defineConfig('app', {
-  env: v.object({
-    APP_NAME: v.pipe(v.string(), v.nonEmpty()),
-    APP_URL: v.pipe(v.string(), v.url()),
-    PORT: v.optional(v.pipe(v.string(), v.transform(Number), v.integer()), '3000'),
+  env: env({
+    APP_NAME: env.string(),
+    APP_URL: env.url(),
+    PORT: env.integer().default(3000),
   }),
-  resolve: (env) => ({ name: env.APP_NAME, url: env.APP_URL, port: env.PORT }),
+  resolve: (e) => ({ name: e.APP_NAME, url: e.APP_URL, port: e.PORT }),
 });
 export type AppConfig = ConfigOf<typeof AppConfig>;
 
 const MailConfig = defineConfig('mail', {
-  env: v.object({ MAIL_FROM: v.pipe(v.string(), v.email()) }),
-  resolve: (env) => ({ from: env.MAIL_FROM }),
+  env: env({ MAIL_FROM: env.email() }),
+  resolve: (e) => ({ from: e.MAIL_FROM }),
 });
 
 // Top-level on purpose: the injection transform derives `inject = [AppConfig]` from the constructor.
@@ -60,10 +60,10 @@ describe('configuration', () => {
     const error = await rejection(resolveConfig([AppConfig, MailConfig], { APP_URL: 'not a url', PORT: 'eighty', MAIL_FROM: 'nope' }));
     expect(error).toBeInstanceOf(ConfigError);
     expect(error.message.split('\n').filter((line) => line.startsWith('  • '))).toEqual([
-      '  • app: APP_NAME — Invalid key: Expected "APP_NAME" but received undefined',
-      expect.stringMatching(/^ {2}• app: APP_URL — Invalid URL/),
-      expect.stringMatching(/^ {2}• app: PORT — Invalid integer/),
-      expect.stringMatching(/^ {2}• mail: MAIL_FROM — Invalid email/),
+      '  • app: APP_NAME — APP_NAME is required.',
+      '  • app: APP_URL — APP_URL must be a URL starting with http:// or https://.',
+      '  • app: PORT — PORT must be a whole number.',
+      '  • mail: MAIL_FROM — MAIL_FROM must be an e-mail address.',
     ]);
   });
 
@@ -118,12 +118,12 @@ describe('createApplication — configuration', () => {
 export function typeLevelTests(): void {
   const container = new Container();
   const port: number = container.make(AppConfig).port;
-  // @ts-expect-error — PORT is transformed to a number by the schema.
+  // @ts-expect-error — PORT is read as a number.
   const text: string = container.make(AppConfig).port;
   defineConfig('x', {
-    env: v.object({ FLAG: v.string() }),
+    env: env({ FLAG: env.string() }),
     // @ts-expect-error — the schema has no MISSING key.
-    resolve: (env) => env.MISSING,
+    resolve: (e) => e.MISSING,
   });
   void port;
   void text;

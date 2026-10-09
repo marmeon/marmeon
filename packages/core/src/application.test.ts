@@ -1,8 +1,8 @@
-import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createApplication, type Application } from './application.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
+import { env } from './config/env.ts';
 import { Logger } from './logger.ts';
 import type { ServiceProvider } from './provider.ts';
 
@@ -100,12 +100,12 @@ describe('injection warnings in the log (E128)', () => {
  */
 describe('createApplication({ phase: "build" }) (E187)', () => {
   const Secret = defineConfig('secret', {
-    env: v.object({ APP_KEY: v.pipe(v.string('Missing'), v.nonEmpty('Missing')) }),
-    resolve: (env) => ({ key: env.APP_KEY }),
+    env: env({ APP_KEY: env.string() }),
+    resolve: (e) => ({ key: e.APP_KEY }),
   });
   const Plain = defineConfig('plain', {
-    env: v.object({ PORT: v.optional(v.string(), '3000') }),
-    resolve: (env) => ({ port: env.PORT }),
+    env: env({ PORT: env.string().default('3000') }),
+    resolve: (e) => ({ port: e.PORT }),
   });
 
   it('registers every provider and boots none — no connection, no shutdown hook afterwards', async () => {
