@@ -301,7 +301,10 @@ describe('marmeon make:* (generated code compiles)', () => {
 
     const again = marmeon(app, ['key:generate']);
     expect(again.code).toBe(1);
-    expect(again.stderr).toContain('APP_KEY is already set');
+    // What --force does: it keeps the old key for what it encrypted — the message must not say it breaks them.
+    expect(again.stderr).toBe(
+      '✗ APP_KEY is already set. --force replaces it and moves the old key to APP_PREVIOUS_KEYS, so sessions, encrypted cookies and signed links stay valid.\n',
+    );
     expect(readFileSync(join(app, '.env'), 'utf8')).toBe(env);
 
     // --force rotates (E169): the old key moves to APP_PREVIOUS_KEYS — what it encrypted stays readable.

@@ -30,7 +30,7 @@ export class KeyGenerateCommand {
     const line = /^APP_KEY=(.*)$/m.exec(env);
 
     if (line && line[1]!.trim() !== '' && options.force !== true) {
-      output.error('APP_KEY is already set. Replacing it makes existing sessions and encrypted cookies unreadable — use --force.');
+      output.error('APP_KEY is already set. --force replaces it and moves the old key to APP_PREVIOUS_KEYS, so sessions, encrypted cookies and signed links stay valid.');
       return 1;
     }
 

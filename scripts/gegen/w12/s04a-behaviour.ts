@@ -28,6 +28,8 @@ import { defineGegenproben } from '../define.ts';
  * - **`package:build` fails for a directory without a `tsconfig.json`** (G16) — skipped again, the command ends with exit 0.
  * - **`redirect().with()` on a route without a session names the route and the `web` group** (G17) — without the check of
  *   `Flasher.started` the session's own "add the StartSession middleware" comes through.
+ * - **`key:generate` says what `--force` does** (G18) — the old text claims a new key makes sessions unreadable, while `--force`
+ *   keeps the old key in `APP_PREVIOUS_KEYS`.
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -177,6 +179,19 @@ export default defineGegenproben({
       patch: [{ file: 'packages/http/src/redirect.ts', find: '  if (flasher.started === false) {', replace: '  if (flasher.started === undefined) {' }],
       run: { vitest: 'packages/session/src/session.test.ts', name: 'as the Flasher of a route without StartSession' },
       expect: /to throw error including 'redirect\(\)\.with\(\) needs a session, an…' but got 'The session has not been started — ad…'/,
+    },
+    {
+      id: 'G18',
+      title: 'key:generate warns that a new key makes sessions unreadable — what --force does not do',
+      patch: [
+        {
+          file: 'packages/cli/src/commands/key-generate.ts',
+          find: "'APP_KEY is already set. --force replaces it and moves the old key to APP_PREVIOUS_KEYS, so sessions, encrypted cookies and signed links stay valid.'",
+          replace: "'APP_KEY is already set. Replacing it makes existing sessions and encrypted cookies unreadable — use --force.'",
+        },
+      ],
+      run: { vitest: 'packages/cli/src/cli.test.ts', name: 'generates the application key into .env' },
+      expect: /expected '✗ APP_KEY is already set\. Replacing i…' to be '✗ APP_KEY is already set\. --force rep…'/,
     },
   ],
 });

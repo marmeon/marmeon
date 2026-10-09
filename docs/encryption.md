@@ -41,7 +41,8 @@ pnpm marmeon key:generate --force  # replaces a key that is set, and keeps the o
 ```
 
 The command runs without starting the app, since a missing key is exactly why an app cannot start. It refuses to replace a key
-that is set unless you pass `--force`. `generateKey()` of `@marmeon/encryption` returns a key in the same format, for a test or a
+that is set unless you pass `--force`, and its message says what `--force` does: it keeps the old key in `APP_PREVIOUS_KEYS`, so
+nothing made with it breaks. `generateKey()` of `@marmeon/encryption` returns a key in the same format, for a test or a
 script.
 
 The app checks the key when it starts, with the rest of its configuration. A missing, empty or malformed key stops the start:
