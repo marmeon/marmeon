@@ -47,8 +47,8 @@ The client core sends the token by itself. Every write it makes, from a `<Form>`
 `X-XSRF-TOKEN` header with the value of the `XSRF-TOKEN` cookie, when the session has one. The browser sends Fetch Metadata along
 anyway, so the token is a second line.
 
-A `<Form>` also works without JavaScript. It then posts as a plain HTML form, and writes the token into a hidden `_token` field
-when the page has one. A guest's page has none and needs none: the browser's headers carry the guest's form.
+A `<Form>` also works without JavaScript, and so does a [link that sends](navigation.md#links-that-send). It then posts as a
+plain HTML form, and writes the token into a hidden `_token` field when the page has one. A guest's page has none and needs none: the browser's headers carry the guest's form.
 
 ### The token
 

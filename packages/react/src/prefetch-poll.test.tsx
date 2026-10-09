@@ -143,6 +143,21 @@ describe('<Link prefetch>', () => {
   });
 });
 
+describe('<Link> to an action', () => {
+  it('sends one visit with JavaScript — the form around its button is not submitted as well', async () => {
+    server = () => respond(page('B', '/b', { name: 'signed out' }));
+    await mount(page('Links', '/a'));
+    let submitted = 0;
+    container.addEventListener('submit', () => submitted++, true);
+    expect($('[data-testid="post"]')!.closest('form')?.getAttribute('action')).toBe('/logout');
+    await act(async () => ($('[data-testid="post"]') as HTMLButtonElement).click());
+    await wait(10);
+    expect(requests.filter((r) => r.url.startsWith('/logout')).map((r) => r.method)).toEqual(['POST']);
+    expect(submitted).toBe(0);
+    expect($('[data-page="b"]')!.textContent).toBe('signed out');
+  });
+});
+
 /** Hides or shows the tab, as the browser does. */
 function visibility(state: DocumentVisibilityState) {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });

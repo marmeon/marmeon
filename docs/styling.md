@@ -118,6 +118,7 @@ for streamed parts of a page. `styleSrc: ["'self'"]` alone blocks nothing of the
 
 | Component | Classes |
 | --- | --- |
+| The form around a link that sends, `<Link>` to a `POST`, `PUT`, `PATCH` or `DELETE` route | `marmeon-link` |
 | The dialog frame, `LayerDialog` | `marmeon-layer`, `marmeon-layer--modal`, `marmeon-layer--slideover`, `marmeon-layer__content`, `marmeon-layer__close` |
 | The confirm dialog, `ConfirmDialog` | `marmeon-confirm`, `marmeon-confirm__title`, `marmeon-confirm__field`, `marmeon-confirm__actions` |
 | A failed visit | `marmeon-failure--network` for the notice when the server cannot be reached, `marmeon-failure--server` for the dialog with the server's error page, `marmeon-failure__frame`, `marmeon-failure__close` |

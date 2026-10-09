@@ -1,4 +1,6 @@
 import {
+  FORM_METHOD_FIELD,
+  FORM_TOKEN_FIELD,
   HOVER_PREFETCH_DELAY,
   isCurrentLink,
   linkQuery,
@@ -84,7 +86,7 @@ type HrefLinkProps =
       NoPrefetch &
       ButtonAttributes & {
         href: string;
-        /** Other methods render a `<button>` — actions are not links (logout, delete). */
+        /** Other methods render a `<button>` in a `<form>` — actions are not links (logout, delete). */
         method: Exclude<VisitMethod, 'get'>;
         data?: VisitOptions['data'];
         route?: never;
@@ -93,7 +95,7 @@ type HrefLinkProps =
 /** The path parameters of the route: required when its path has required ones. */
 type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
 
-/** A GET route is a link; any other method is a `<button>` with that method — written out or left to the route. */
+/** A GET route is a link; any other method is a `<button>` in a `<form>` with that method — written out or left to the route. */
 type MethodProps<N extends string> = [MethodOf<N>] extends ['get']
   ? AnchorAttributes & PrefetchProps & CurrentProps & { method?: 'get' }
   : ButtonAttributes & NoPrefetch & { method?: MethodOf<N> & VisitMethod; data?: VisitOptions['data'] };
@@ -164,7 +166,7 @@ type AnyLinkProps = LinkOptions &
  *
  * ```tsx
  * <Link route="user-profile.show" params={{ user: profile.id }}>{profile.name}</Link>
- * <Link route="auth.logout">Sign out</Link>            // a POST route: a <button> sending the visit with the CSRF token
+ * <Link route="auth.logout">Sign out</Link>            // a POST route: a <button> in a <form>, sending the visit with the CSRF token
  * <Link href="https://example.com">elsewhere</Link>
  * <Link route="user-profile.show" params={{ user: 7 }} prefetch>Grace</Link>   // fetched on hover, shown at once on click
  * <Link route="user-profile.edit" params={{ user: 7 }} layer>Edit</Link>     // a layer (modal) over the page on screen
@@ -172,7 +174,10 @@ type AnyLinkProps = LinkOptions &
  *
  * With `route`, name, parameters and method come from `bootstrap/routes.ts`: a typo, a missing parameter or
  * `method="get"` on a POST route is a compile error. Methods other than GET render a button — actions are not links
- * (and are never prefetched: `prefetch` on one is a compile error, and ignored at runtime).
+ * (and are never prefetched: `prefetch` on one is a compile error, and ignored at runtime). The button sits in a real `<form>`
+ * (`class="marmeon-link"`), so it also works without JavaScript and before the app started: `POST`, the method in `_method`, the
+ * page's CSRF token as `_token`, and the strings and numbers of `data` as fields. A link that asks first (`confirm`) sends only
+ * with JavaScript.
  */
 export function Link<const N extends BrowserRouteNameInput = never>(props: LinkProps<N>) {
   const { visit, prefetch: prefetchPage } = useRouterContext();
@@ -268,7 +273,20 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     };
     // Never prefetched — whatever `prefetch` says (an action is no page to fetch ahead).
     const handlers = { onMouseEnter, onMouseLeave, onMouseDown, onTouchStart } as Pick<ButtonAttributes, 'onMouseEnter' | 'onMouseLeave' | 'onMouseDown' | 'onTouchStart'>;
-    return <button type="button" onClick={handleClick} {...pending} {...handlers} {...(rest as ButtonAttributes)} />;
+    // Without JavaScript, or before the app started: a plain form — POST (the method in `_method`, first: the server reads it at
+    // the start of the body only), the token in `_token`. A confirmation needs the app: without it the button does nothing.
+    return (
+      <form action={href} method="post" className="marmeon-link">
+        {method !== 'post' && <input type="hidden" name={FORM_METHOD_FIELD} value={method.toUpperCase()} />}
+        {page.csrf !== undefined && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
+        {data &&
+          !(data instanceof FormData) &&
+          Object.entries(data).map(([name, value]) =>
+            typeof value === 'string' || typeof value === 'number' ? <input key={name} type="hidden" name={name} value={value} /> : null,
+          )}
+        <button type={confirm === undefined ? 'submit' : 'button'} onClick={handleClick} {...pending} {...handlers} {...(rest as ButtonAttributes)} />
+      </form>
+    );
   }
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {

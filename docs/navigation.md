@@ -55,7 +55,7 @@ and `useRoute()` for a URL without a link.
 ### Links that send
 
 A link to a route of another method, such as `POST` or `DELETE`, renders a `<button>` that sends the request with the CSRF
-token:
+token. The button sits in a real `<form>`, so it also works without JavaScript and before the app has started:
 
 ```tsx
 <Link route="auth.logout">Sign out</Link>
@@ -65,8 +65,16 @@ token:
 ```
 
 `method` and `data` set the method and the body of an `href` link. `confirm` asks first, through the app's dialog: a message, or
-an object with `title`, `confirmLabel`, `destructive` and `prompt`, a text the user must type. A no sends nothing. The button needs
-JavaScript. A request that must work without it is a [form](forms.md).
+an object with `title`, `confirmLabel`, `destructive` and `prompt`, a text the user must type. A no sends nothing.
+
+Without JavaScript the browser posts the form, as it does for a [form](forms.md#without-javascript): `PUT`, `PATCH` and `DELETE`
+travel as a hidden `_method` field, the page's CSRF token as `_token`, and the strings and numbers of `data` as hidden fields.
+Other values of `data` go along with JavaScript only. A link with `confirm` never sends without asking, so without JavaScript its
+button does nothing. With JavaScript the click sends the request once, as a visit, and the browser does not post the form as well.
+
+The form has the class `marmeon-link`, and `@marmeon/react/styles.css` lays it out as if it were not there: the button sits in the
+text like a link. Without that stylesheet the form is a block of its own. Give the button its look through `className`. A form
+cannot sit inside another form, so keep such a link out of a `<Form>`.
 
 ### The current link
 

@@ -26,6 +26,12 @@ function Page({ id }: { id: number }) {
       <Link route="people.links.destroy" params={{ person: id, link: 3 }}>
         Remove
       </Link>
+      <Link href="/people/7/notes" method="post" data={{ title: 'Hi', stars: 5, draft: { body: 'x' } }}>
+        Note
+      </Link>
+      <Link route="auth.logout" confirm="Sign out everywhere?">
+        Sign out everywhere
+      </Link>
       <Link href="https://example.com">elsewhere</Link>
       <p>{route('people.show', { person: id, page: 2 })}</p>
       <p>
@@ -43,11 +49,29 @@ describe('routes in the browser', () => {
     const html = await new Response((await render({ component: 'people/Page', props: { id: 7 }, url: '/' })).html).text();
     expect(html).toContain('<a href="/people/7?tab=links">Ada</a>');
     // Not GET: a button (actions are not links), its method from the route.
-    expect(html).toContain('<button type="button">Sign out</button>');
-    expect(html).toContain('<button type="button">Remove</button>');
+    expect(html).toContain('<button type="submit">Sign out</button>');
+    expect(html).toContain('<button type="submit">Remove</button>');
     expect(html).toContain('<a href="https://example.com">elsewhere</a>');
     expect(html).toContain('<p>/people/7?page=2</p>'); // extra parameters into the query, like Router.url()
     expect(html).toContain('<p>put<!-- --> <!-- -->/people/7</p>');
+  });
+
+  it('renders a link that sends as a real form, which works without JavaScript: POST, _method first, the token, flat data', async () => {
+    const render = createSsrRenderer(resolve, { routes });
+    const html = await new Response((await render({ component: 'people/Page', props: { id: 7 }, url: '/', version: null, csrf: 't0ken' })).html).text();
+    const form = (action: string, fields: string, button: string) => `<form class="marmeon-link" action="${action}" method="post">${fields}${button}</form>`;
+    const token = '<input type="hidden" name="_token" value="t0ken"/>';
+    const forms = html.match(/<form class="marmeon-link".*?<\/form>|<button[^>]*>[^<]*<\/button>/g) ?? [];
+    // The forms in full in the message: what a missing field or another button type looks like.
+    expect(forms, JSON.stringify(forms)).toEqual([
+      form('/logout', token, '<button type="submit">Sign out</button>'),
+      // `_method` first: the server reads it at the start of the body only.
+      form('/people/7/links/3', `<input type="hidden" name="_method" value="DELETE"/>${token}`, '<button type="submit">Remove</button>'),
+      // Strings and numbers of `data` go along; an object needs JavaScript.
+      form('/people/7/notes', `${token}<input type="hidden" name="title" value="Hi"/><input type="hidden" name="stars" value="5"/>`, '<button type="submit">Note</button>'),
+      // A link that asks first never sends without asking: without JavaScript its button does nothing.
+      form('/logout', token, '<button type="button">Sign out everywhere</button>'),
+    ]);
   });
 
   it('says what is missing: the manifest, or a route it does not carry', async () => {

@@ -1,6 +1,7 @@
 /*
- * @marmeon/react — the default look of the framework's components (E202): the layer frame (LayerDialog), the confirmation
- * dialog (ConfirmDialog), the dialogs of a failed visit (VisitFailure) and the built-in error page. Import it once, in the
+ * @marmeon/react — the default look of the framework's components (E202): the form of a link that sends (<Link> to an action),
+ * the layer frame (LayerDialog), the confirmation dialog (ConfirmDialog), the dialogs of a failed visit (VisitFailure) and the
+ * built-in error page. Import it once, in the
  * app's client entry: `import '@marmeon/react/styles.css';` — a stylesheet of the app's origin, allowed under a strict
  * `style-src 'self'` (inline `style` attributes are not: the components render none).
  *
@@ -8,6 +9,11 @@
  * (`data-marmeon-layer`, `data-variant`, `data-marmeon-confirm`, `data-marmeon-failure`) overrides it. Leave the import out
  * and style them yourself.
  */
+
+/* A link that sends (<Link> to a POST, PUT, PATCH or DELETE route): the form around its button takes no box of its own. */
+:where(.marmeon-link) {
+  display: contents;
+}
 
 /* The layer frame: a native <dialog>, opened modally (E53). */
 :where(.marmeon-layer) {
