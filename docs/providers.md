@@ -21,7 +21,7 @@ export class NotesServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     // Sharing a note: 30 a minute per signed-in user.
-    app.container.make(RateLimiter).for('notes-share', (ctx) => Limit.perMinute(30).by(String((ctx as { user?: { id: number } }).user?.id ?? ctx.ip)));
+    app.container.make(RateLimiter).for('notes-share', (ctx) => Limit.perMinute(30).by(String(ctx.user?.id ?? ctx.ip)));
   }
 }
 ```

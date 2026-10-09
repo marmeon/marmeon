@@ -23,7 +23,7 @@ export type { RedisStoreConnection } from './stores/redis.ts';
 export { CACHE_MIGRATION, MakeCacheTableCommand } from './commands/make-cache-table.ts';
 export { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 export { DEFAULT_LIVE_VALIDATION_LIMIT, Limit, LimitLiveValidation, LIVE_VALIDATION_LIMITER, RateLimiter, throttle } from './rate-limiter.ts';
-export type { LimiterCallback } from './rate-limiter.ts';
+export type { LimiterCallback, LimiterContext } from './rate-limiter.ts';
 
 export { CacheConfig } from './config.ts';
 export { CacheHealthCheck } from './health.ts';

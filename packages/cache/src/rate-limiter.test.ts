@@ -11,11 +11,11 @@ class LoginLimits {
     app.container
       .make(RateLimiter)
       .for('login', async (ctx) => Limit.perMinute(3).by(`${String((await ctx.input()).email)}|${ctx.ip ?? ''}`))
-      .for('api', () => [Limit.perMinute(100), Limit.perSecond(2)]);
+      .for('api', () => [Limit.perSecond(2), Limit.perMinute(100)]);
   }
 }
 
-async function boot() {
+async function boot({ broken = false } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -27,7 +27,7 @@ async function boot() {
         apiRoutes: defineRoutes((Route) => {
           Route.middleware(throttle('login')).post('/login', () => ({ ok: true }));
           Route.middleware(throttle('api')).get('/items', () => []);
-          Route.middleware(throttle('nope')).get('/broken', () => []);
+          if (broken) Route.middleware(throttle('nope')).get('/broken', () => []);
         }),
       }),
     ],
@@ -65,7 +65,8 @@ describe('throttle()', () => {
   it('reports the remaining budget and applies every limit of a limiter', async () => {
     const app = await boot();
     const first = await app.request('/api/items');
-    expect(first.headers.get('x-ratelimit-remaining')).toBe('1'); // the stricter per-second limit, reported last
+    // The tightest limit's headers — the one with the fewest attempts left, wherever it is in the list.
+    expect([first.headers.get('x-ratelimit-limit'), first.headers.get('x-ratelimit-remaining')]).toEqual(['2', '1']);
     await app.request('/api/items');
     expect((await app.request('/api/items')).status).toBe(429);
   });
@@ -79,9 +80,10 @@ describe('throttle()', () => {
     expect(await page.text()).toContain('Too Many Attempts.');
   });
 
-  it('names an undefined limiter', async () => {
-    const response = await (await boot()).request('/api/broken', { headers: { accept: 'application/json' } });
-    expect(response.status).toBe(500);
+  it('fails the start for an undefined limiter — not its first request', async () => {
+    await expect(boot({ broken: true })).rejects.toThrow(
+      "Rate limiter [nope] is not defined, but GET /api/broken uses throttle('nope'). Define it in a provider's boot(): app.container.make(RateLimiter).for('nope', …).",
+    );
   });
 
   it('is named after its limiter (route:list)', () => {

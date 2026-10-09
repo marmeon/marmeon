@@ -9,6 +9,8 @@ import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
+// An optional peer: it only types a rate limiter's `ctx.user` (below) where the app has the cache — nothing of it is loaded.
+import type {} from '@marmeon/cache';
 
 /** Session keys of the signed-in user — `_`-prefixed: framework bookkeeping, left out of `session.all()`. */
 export const AUTH_SESSION_KEYS = {
@@ -28,6 +30,13 @@ declare module '@marmeon/session' {
     _auth_password: string;
     _auth_confirmed_at: number;
     _auth_via_remember: boolean;
+  }
+}
+
+declare module '@marmeon/cache' {
+  interface LimiterContext {
+    /** The signed-in user, when `authenticate()` runs before `throttle()` on the route — else `undefined`. */
+    readonly user?: AuthUser | undefined;
   }
 }
 

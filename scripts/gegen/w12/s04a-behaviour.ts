@@ -14,6 +14,10 @@ import { defineGegenproben } from '../define.ts';
  * - **A read-only request's message names its own cause** — the layer's base (G9) and the deferred prop streamed after the headers
  *   (G9b) without a rule of their own fall back to an island's: "an island is read-only … Do that in the page".
  * - **A provider with only `static solutions` is one** (G11) — without the check's third static it stops the start.
+ * - **`throttle()` with a list of limits** — three measures: the headers of the last limit again (G12: `100`/`99` beside a per-second
+ *   limit with one attempt left); the server's start no longer asks the middleware (G12b: an undefined limiter boots, its route
+ *   answers 500 at the first request); `ctx.user` not added to a limiter's context by `@marmeon/auth` (G12c: the web app's limiters
+ *   do not compile without a cast).
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -87,6 +91,27 @@ export default defineGegenproben({
       patch: [{ file: 'packages/core/src/application.ts', find: ' && !Provider.health?.length && !Provider.solutions?.length) {', replace: ' && !Provider.health?.length) {' }],
       run: { vitest: 'packages/core/src/application.test.ts', name: 'accepts a provider that only brings solutions' },
       expect: /promise rejected "TypeError: OnlySolutions is listed as a s…" instead of resolving/,
+    },
+    {
+      id: 'G12',
+      title: "a list of limits sends the last limit's headers: the per-minute 100/99 beside a per-second limit with one attempt left",
+      patch: [{ file: 'packages/cache/src/rate-limiter.ts', find: '        if (remaining >= fewest) continue;\n', replace: '' }],
+      run: { vitest: 'packages/cache/src/rate-limiter.test.ts', name: 'reports the remaining budget and applies every limit of a limiter' },
+      expect: /expected \[ '100', '99' \] to deeply equal \[ '2', '1' \]/,
+    },
+    {
+      id: 'G12b',
+      title: 'the server does not ask the middleware when it starts: an undefined limiter boots and fails its first request',
+      patch: [{ file: KERNEL, find: "      if (typeof verify !== 'function' || verified.has(middleware)) continue;", replace: '      if (true) continue;' }],
+      run: { vitest: 'packages/cache/src/rate-limiter.test.ts', name: 'fails the start for an undefined limiter' },
+      expect: /promise resolved "Hono\{ get: \[Function\], …\(\d+\) \}" instead of rejecting/,
+    },
+    {
+      id: 'G12c',
+      title: "@marmeon/auth does not add the user to a limiter's context: ctx.user does not compile without a cast",
+      patch: [{ file: 'packages/auth/src/auth.ts', find: '    readonly user?: AuthUser | undefined;\n  }\n}', replace: '    readonly account?: AuthUser | undefined;\n  }\n}' }],
+      run: { command: ['pnpm', '--dir', 'apps/web-app', 'exec', 'tsc', '--noEmit', '--pretty', 'false'] },
+      expect: /modules\/auth\/cache\.type-test\.ts\(26,\d+\): error TS2339: Property 'user' does not exist on type/,
     },
   ],
 });

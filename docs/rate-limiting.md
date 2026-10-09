@@ -58,17 +58,15 @@ import type { Application, ServiceProvider } from '@marmeon/core';
 export class MembersServiceProvider implements ServiceProvider {
   boot(app: Application): void {
     app.container.make(RateLimiter).for('members-table', (ctx) => {
-      const user = (ctx as { user?: { id: number; admin: boolean } }).user;
-      if (user?.admin) return Limit.none();
-      const key = String(user?.id ?? ctx.ip);
+      const key = String(ctx.user?.id ?? ctx.ip);
       return [Limit.perMinute(60).by(key), Limit.perDay(1000).by(key)];
     });
   }
 }
 ```
 
-The callback's context does not know which middleware ran before it, so `ctx.user` needs the cast. It holds the user only when
-`authenticate()` runs before `throttle()` on the route.
+`ctx.user` is the signed-in user, of your app's user type, when `authenticate()` runs before `throttle()` on the route. Elsewhere it
+is `undefined`, so the type says it may be missing. Without `@marmeon/auth` the context has no `user`.
 
 > [!WARNING]
 > A limit without `.by()` is one counter for every client. Ten registrations a minute then means ten for the whole app, and one
@@ -101,8 +99,8 @@ export default defineRoutes((Route) => {
   processes when they share the cache.
 - **Routes that use the same limiter share its counters.** The members table puts one limiter on its actions, bulk actions and
   export, so all three count together.
-- **A limiter that is not defined** throws on the first request: `Rate limiter [members-table] is not defined. Define it with
-  RateLimiter.for('members-table', …).`
+- **A limiter that is not defined** stops the server when it starts, once every provider has booted: `Rate limiter [members-table] is not defined,
+  but POST /members/_tables/members/actions/:tableAction uses throttle('members-table'). Define it in a provider's boot(): app.container.make(RateLimiter).for('members-table', …).`
 
 The window opens with the first attempt and does not move with later ones. Once it has passed, the count starts again at zero.
 
@@ -120,7 +118,7 @@ A request over the limit gets a `429` with these headers:
 Its message is the translation `marmeon.errors.throttled`, "Too Many Attempts." in English. A page, a form and a JSON client each
 see it the way they see any other HTTP error, as the [error handling](errors.md#what-the-client-sees) page shows. A request within
 the limit goes on, and its response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`. With several limits, these two headers
-describe the last limit of the list.
+describe the tightest one: the limit with the fewest attempts left.
 
 ### Live validations
 

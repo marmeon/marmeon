@@ -1,5 +1,5 @@
 import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@marmeon/router';
-import { Clock } from '@marmeon/core';
+import { Clock, type Resolver } from '@marmeon/core';
 import { Cache } from './cache.ts';
 
 /** How many attempts per window, and whose attempts count together (`by`). */
@@ -37,7 +37,13 @@ export class Limit {
   }
 }
 
-export type LimiterCallback = (ctx: HttpContext) => Limit | readonly Limit[] | Promise<Limit | readonly Limit[]>;
+/**
+ * What a limiter's callback gets besides the request's context. `@marmeon/auth` adds `user`: the signed-in user when `authenticate()`
+ * runs before `throttle()` on the route, else `undefined`.
+ */
+export interface LimiterContext {}
+
+export type LimiterCallback = (ctx: HttpContext & LimiterContext) => Limit | readonly Limit[] | Promise<Limit | readonly Limit[]>;
 
 /**
  * Counts attempts in the cache (Laravel's `RateLimiter`). Named limiters are
@@ -107,10 +113,17 @@ export class RateLimiter {
 /**
  * Middleware for a named limiter: `Route.middleware(throttle('login')).post(…)`.
  * Answers 429 with `Retry-After` once a limit is used up; successful responses
- * carry `X-RateLimit-Limit` / `X-RateLimit-Remaining`.
+ * carry `X-RateLimit-Limit` / `X-RateLimit-Remaining` of the tightest limit — the one with the fewest attempts left.
+ * A limiter the app never defines fails the start (the server asks every route's middleware when it starts).
  */
 export function throttle(name: string): MiddlewareClass<{}, {}> {
   const Throttle = class {
+    /** @internal — asked once when the server starts, for every route that uses it: the limiter must be defined by then. */
+    static verify(container: Resolver, route: string): void {
+      if (container.make(RateLimiter).limiter(name)) return;
+      throw new Error(`Rate limiter [${name}] is not defined, but ${route} uses throttle('${name}'). Define it in a provider's boot(): app.container.make(RateLimiter).for('${name}', …).`);
+    }
+
     readonly #limiter: RateLimiter;
     readonly #clock: Clock;
 
@@ -122,10 +135,12 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
     async handle(ctx: HttpContext, next: Next<{}>): Promise<Response> {
       const callback = this.#limiter.limiter(name);
       if (!callback) throw new Error(`Rate limiter [${name}] is not defined. Define it with RateLimiter.for('${name}', …).`);
-      const limits = [await callback(ctx)].flat().filter((limit) => Number.isFinite(limit.maxAttempts));
+      const limits = [await callback(ctx as HttpContext & LimiterContext)].flat().filter((limit) => Number.isFinite(limit.maxAttempts));
       const live = isLiveValidation(ctx.request);
 
+      // The headers of the tightest limit: the fewest attempts left (the first of equals).
       let headers: Record<string, string> = {};
+      let fewest = Number.POSITIVE_INFINITY;
       for (const limit of limits) {
         // The window is part of the counter's key: two limits with the same `by` (per minute and per
         // second) must not share one counter — Laravel leaves that to unique `by` values.
@@ -149,7 +164,10 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
           );
         }
         if (live) continue;
-        headers = { 'x-ratelimit-limit': String(limit.maxAttempts), 'x-ratelimit-remaining': String(Math.max(0, limit.maxAttempts - attempts)) };
+        const remaining = Math.max(0, limit.maxAttempts - attempts);
+        if (remaining >= fewest) continue;
+        fewest = remaining;
+        headers = { 'x-ratelimit-limit': String(limit.maxAttempts), 'x-ratelimit-remaining': String(remaining) };
       }
 
       const response = await next();

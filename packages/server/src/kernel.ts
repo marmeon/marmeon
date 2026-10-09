@@ -392,6 +392,18 @@ export function createHttpKernel(
     return renderRegionError(handler, error, request, scope);
   };
 
+  // Middleware that needs what the app defines while it boots (a named rate limiter) says so now, not at its first request:
+  // each class's `static verify(container, route)` runs once, for the first route that uses it.
+  const verified = new Set<unknown>();
+  for (const route of router.routes) {
+    for (const middleware of router.middlewareFor(route)) {
+      const verify = typeof middleware === 'function' ? (middleware as { verify?: unknown }).verify : undefined;
+      if (typeof verify !== 'function' || verified.has(middleware)) continue;
+      verified.add(middleware);
+      (verify as (container: Container, route: string) => void).call(middleware, container, `${route.methods.join('|')} ${route.path}`);
+    }
+  }
+
   // Health (E126): answered first — before the request id, the log line, the request channel and every middleware group.
   if (health !== false) {
     const endpoints = createHealthEndpoints(application, container, { path: health, debug });

@@ -26,8 +26,8 @@ export class AuthServiceProvider implements ServiceProvider {
     // Registrations: ten a minute per IP — scripted sign-ups (and the mails they queue) are slowed down.
     limiter.for('register', (ctx) => Limit.perMinute(10).by(ctx.ip ?? 'unknown'));
     // Resending the verification mail: per signed-in user (the route is behind authenticate()).
-    limiter.for('verification', (ctx) => Limit.perMinute(3).by(String((ctx as { user?: { id: number } }).user?.id ?? ctx.ip)));
+    limiter.for('verification', (ctx) => Limit.perMinute(3).by(String(ctx.user?.id ?? ctx.ip)));
     // Changing the address: every request sends a mail — to the new address or its owner (private registration). Per user.
-    limiter.for('email-change', (ctx) => Limit.perMinute(6).by(String((ctx as { user?: { id: number } }).user?.id ?? ctx.ip)));
+    limiter.for('email-change', (ctx) => Limit.perMinute(6).by(String(ctx.user?.id ?? ctx.ip)));
   }
 }

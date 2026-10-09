@@ -73,15 +73,20 @@
   },
   "devDependencies": {
     "marmeon": "workspace:*",
+    "@marmeon/cache": "workspace:*",
     "@marmeon/encryption": "workspace:*",
     "@marmeon/redis": "workspace:*",
     "@marmeon/server": "workspace:*"
   },
   "peerDependencies": {
-    "marmeon": "workspace:*"
+    "marmeon": "workspace:*",
+    "@marmeon/cache": "workspace:*"
   },
   "peerDependenciesMeta": {
     "marmeon": {
+      "optional": true
+    },
+    "@marmeon/cache": {
       "optional": true
     }
   }

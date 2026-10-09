@@ -1,5 +1,5 @@
 // Type guarantees of the cache, locks and the test clock (W6 step 1) — compiled by `pnpm typecheck` / `marmeon build`, never run.
-import { Cache, RateLimiter } from '@marmeon/cache';
+import { Cache, Limit, RateLimiter } from '@marmeon/cache';
 import type { TestApp } from '@marmeon/testing';
 
 export async function LockCallbacks(cache: Cache) {
@@ -18,6 +18,18 @@ export async function AtomicCounting(cache: Cache, limiter: RateLimiter) {
   const allowed: boolean = await limiter.attempt('login:ada', 5, 60);
   const added: boolean = await cache.add('welcome-sent:7', true, 86_400);
   return { count, allowed, added };
+}
+
+export function LimiterUser(limiter: RateLimiter) {
+  limiter.for('per-user', (ctx) => {
+    // The app's user, when authenticate() runs before throttle() — no cast.
+    const id: number | undefined = ctx.user?.id;
+    // @ts-expect-error — only there when authenticate() ran first: 'ctx.user' is possibly 'undefined'
+    const always: number = ctx.user.id;
+    // @ts-expect-error — the user type is the app's: 'nickname' does not exist on it
+    void ctx.user?.nickname;
+    return Limit.perMinute(3).by(String(id ?? always ?? ctx.ip));
+  });
 }
 
 export function TravelInTime(app: TestApp) {
