@@ -10,13 +10,14 @@ import { defineGegenproben } from '../define.ts';
  * - **One line of pages through every section** — `neighbours()` only within a section leaves the last page of a section without its
  *   next (G4).
  * - **The file name of a code block** — without the `title` taken from the info string the caption is gone (G5).
- * - **Links into the docs** — a README that still links to the old name `docs/getting-started.md` (G6): the path is no page of the docs
+ * - **Links into the docs** — a page that still links to the old name `getting-started.md` (G6): the path is no page of the docs
  *   (no `docs/<slug>.md` of a section), so it is a link to a file — code text — and the check of the named files finds it missing
- *   ("names only files that exist"); the page-link check stays green, there is no `<a>` to follow.
+ *   ("names only files that exist"); the page-link check stays green, there is no `<a>` to follow. (Until W11 step 10 a README
+ *   carried the link; the READMEs are no pages since.)
  * - **The pending marker** — rendered as text when it is not taken out (G7).
  * - **The root README is no page** — a link to it stays code text; the old rule made any `…README.md` a page link, `/README.md` (G8).
  */
-const START = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'highlights every code block of every README' };
+const START = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'highlights every code block of every page' };
 const MARKDOWN = 'apps/docs/modules/docs/markdown.test.ts';
 /** The whole describe: the link tests read what the page tests rendered before them (alone they see no page). */
 const LINKS = { vitest: 'apps/docs/modules/docs/links.test.ts', name: 'every page' };
@@ -53,8 +54,8 @@ export default defineGegenproben({
       patch: [
         {
           file: 'apps/docs/modules/docs/DocsRepository.ts',
-          find: "    const list = [...(page.kind === 'doc' ? docs : packages).values()];",
-          replace: "    const list = [...(page.kind === 'doc' ? docs : packages).values()].filter((other) => other.section === page.section);",
+          find: '    const list = this.pages();',
+          replace: '    const list = this.pages().filter((other) => other.section === page.section);',
         },
       ],
       run: { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'leads from page to page across the sections' },
@@ -71,10 +72,10 @@ export default defineGegenproben({
     // --- Links into the docs ------------------------------------------------------------------------------------------------------------
     {
       id: 'G6',
-      title: 'a README links to docs/getting-started.md, the old name of the installation page',
-      patch: [{ file: 'packages/cli/README.md', find: '[deployment guide](../../docs/deployment.md)', replace: '[deployment guide](../../docs/getting-started.md)' }],
+      title: 'a page links to getting-started.md, the old name of the installation page',
+      patch: [{ file: 'docs/releases.md', find: '[deployment](deployment.md)', replace: '[deployment](getting-started.md)' }],
       run: LINKS,
-      expect: /packages\/cli\/README\.md: docs\/getting-started\.md/,
+      expect: /docs\/releases\.md: docs\/getting-started\.md/,
     },
     // --- The pending marker -------------------------------------------------------------------------------------------------------------
     {
@@ -94,7 +95,7 @@ export default defineGegenproben({
     {
       id: 'G8',
       title: 'any path ending in README.md a page link again: a link to the root README becomes /README.md, a page that does not exist',
-      patch: [{ file: 'apps/docs/modules/docs/markdown.ts', find: ": path.endsWith('/README.md') ? `/${path}` : undefined;", replace: ": path.endsWith('README.md') ? `/${path}` : undefined;" }],
+      patch: [{ file: 'apps/docs/modules/docs/markdown.ts', find: "  return path.endsWith('/README.md') ? `/${path}` : undefined;", replace: "  return path.endsWith('README.md') ? `/${path}` : undefined;" }],
       run: { vitest: MARKDOWN, name: 'keeps a link to the root README code text' },
       expect: /expected '<p>See <a href="\/README\.md#versions-a…' to contain '<span class="file">the README<\/span>'/,
     },

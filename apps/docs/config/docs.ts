@@ -4,7 +4,7 @@ import { rules as r } from '@marmeon/validation';
 /** Where the pages come from and how long browsers and caches may keep a page. */
 export const DocsConfig = defineConfig('docs', {
   env: r.env({
-    /** The repository whose `docs/*.md`, policies at the root and `packages/*\/README.md` are the pages — relative to the app root. */
+    /** The repository whose `docs/*.md` and policies at the root are the pages — relative to the app root. */
     DOCS_SOURCE: r.string().default('../..'),
     /**
      * `Cache-Control: public, max-age=…` of a page in seconds (the content changes only with a deploy; an `ETag` lets a

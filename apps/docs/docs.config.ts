@@ -1,40 +1,8 @@
 /**
- * The navigation of the docs: the sections with their pages (`/docs/<slug>`), then every framework package (a directory under
- * `packages/` with a README.md) in exactly one group. The groups are typed against `PACKAGES` — a name that is no package, or a
- * package in no group, is a compile error — and both are checked against the repository when the app boots: a page or package
- * without an entry here, or an entry without its file, stops the start.
+ * The navigation of the docs: the sections with their pages (`/docs/<slug>`), in reading order. Checked against the repository
+ * when the app boots: a `docs/*.md` without its entry here, or an entry without its file, stops the start. The packages' READMEs
+ * are no pages — they are cards for npm that link here.
  */
-export const PACKAGES = [
-  'auth',
-  'cache',
-  'cli',
-  'core',
-  'create-marmeon',
-  'database',
-  'devtools',
-  'encryption',
-  'http',
-  'i18n',
-  'live',
-  'log',
-  'mail',
-  'notifications',
-  'otel',
-  'queue',
-  'react',
-  'redis',
-  'router',
-  'scheduler',
-  'server',
-  'session',
-  'storage',
-  'table',
-  'testing',
-  'validation',
-  'vite',
-] as const;
-
-export type PackageName = (typeof PACKAGES)[number];
 
 /** A page of the docs: `/docs/<slug>`, its file `docs/<slug>.md` — or a policy at the root (`file`). */
 export interface DocsPageEntry {
@@ -49,33 +17,18 @@ export interface DocsPageEntry {
 
 /**
  * A part of the navigation and of the start page, its pages in reading order. Previous and next lead through every page of every
- * section in this order. Every `docs/*.md` needs its entry — an unlisted page stops the start, as an unlisted package does.
+ * section in this order. Every `docs/*.md` needs its entry — an unlisted page stops the start.
  */
 export interface DocsSection {
   readonly title: string;
   readonly pages: readonly DocsPageEntry[];
 }
 
-export interface DocsGroup<N extends string = PackageName> {
-  readonly title: string;
-  readonly packages: readonly N[];
-}
-
-/** The packages no group lists — `never` when every one has its place. */
-type Unlisted<G extends readonly DocsGroup[]> = Exclude<PackageName, G[number]['packages'][number]>;
-
-/** Refuses a navigation that leaves a package out: the error names it. */
-type EveryPackageListed<G extends readonly DocsGroup[]> = [Unlisted<G>] extends [never]
-  ? G
-  : { readonly 'every package needs a group — not listed': Unlisted<G> };
-
-export interface DocsDefinition<G extends readonly DocsGroup[] = readonly DocsGroup[]> {
+export interface DocsDefinition {
   readonly sections: readonly DocsSection[];
-  /** The packages' READMEs — until they become cards on npm, as the navigation's last part ("Package READMEs"). */
-  readonly groups: G;
 }
 
-export function defineDocs<const G extends readonly DocsGroup[]>(docs: { readonly sections: readonly DocsSection[]; readonly groups: G & EveryPackageListed<G> }): DocsDefinition<G> {
+export function defineDocs(docs: DocsDefinition): DocsDefinition {
   return docs;
 }
 
@@ -204,14 +157,5 @@ export default defineDocs({
         { slug: 'health', label: 'Health Checks' },
       ],
     },
-  ],
-  groups: [
-    { title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing'] },
-    { title: 'HTTP', packages: ['router', 'http', 'server', 'session', 'vite', 'i18n', 'validation'] },
-    { title: 'Data', packages: ['database', 'cache', 'redis', 'table'] },
-    { title: 'Auth & Mail', packages: ['auth', 'mail', 'notifications'] },
-    { title: 'Background', packages: ['queue', 'scheduler', 'storage', 'live'] },
-    { title: 'Frontend', packages: ['react'] },
-    { title: 'Tools', packages: ['devtools', 'otel'] },
   ],
 });

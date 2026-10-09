@@ -7,8 +7,8 @@
 #   docker run --read-only -p 3000:3000 -e APP_KEY=base64:… -e APP_URL=https://docs.example.com \
 #     -v marmeon-docs-storage:/app/storage marmeon-docs
 #
-# deploy/docs/compose.yaml runs it behind Caddy (TLS, HTTP/2 and HTTP/3). The pages are this checkout's docs and READMEs,
-# copied into the image (/app/content): a new version of the docs is a new image.
+# deploy/docs/compose.yaml runs it behind Caddy (TLS, HTTP/2 and HTTP/3). The pages are this checkout's docs, copied into the
+# image (/app/content): a new version of the docs is a new image.
 
 ARG NODE_IMAGE=node:26-slim
 
@@ -40,12 +40,10 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @marmeon/d
  && cp -R apps/docs/dist /out/dist \
  && mkdir -p /out/.marmeon && cp apps/docs/.marmeon/injections.json /out/.marmeon/ \
  && cd /out && node_modules/.bin/marmeon discover
-# The pages: the docs of this checkout (docs/*.md and the policies at the root) and the packages' READMEs, with each package's
-# package.json (the docs check one against the other).
+# The pages: the docs of this checkout — docs/*.md and the policies at the root. The packages' READMEs are cards for npm, no pages.
 RUN mkdir -p /out/content/docs \
  && cp UPGRADING.md CONTRIBUTING.md SECURITY.md /out/content/ \
- && cp docs/*.md /out/content/docs/ \
- && for dir in packages/*/; do mkdir -p "/out/content/$dir" && cp "${dir}package.json" "${dir}README.md" "/out/content/$dir"; done
+ && cp docs/*.md /out/content/docs/
 
 # ── Run: Node and the docs, nothing to build with ──────────────────────────────────────────────────────────────────────
 FROM ${NODE_IMAGE}

@@ -1,22 +1,21 @@
 import { existsSync, readdirSync, readFileSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import type { RouteBinder } from '@marmeon/http';
-import docsConfig, { PACKAGES, type DocsDefinition, type DocsPageEntry, type DocsSection } from '../../docs.config.ts';
+import docsConfig, { type DocsDefinition, type DocsPageEntry, type DocsSection } from '../../docs.config.ts';
 import { createCodeHighlighter, type CodeHighlighter } from './highlight.ts';
 import { renderMarkdown, type RenderedMarkdown } from './markdown.ts';
 import { SearchIndex, type SearchResult } from './search.ts';
 import type { DocNode, TocEntry } from './types.ts';
 
-/** A page: one of the docs (`/docs/<slug>`) or a package's README (`/packages/<name>`). */
+/** A page of the docs: `/docs/<slug>`. */
 export interface DocPage {
-  readonly kind: 'doc' | 'package';
-  /** The page's slug or the package's name. */
+  /** The page's slug. */
   readonly name: string;
   readonly path: string;
-  /** The file's place in the repository: `docs/routing.md`, `UPGRADING.md`, `packages/core/README.md`. */
+  /** The file's place in the repository: `docs/routing.md`, `UPGRADING.md`. */
   readonly file: string;
   readonly title: string;
-  /** The section of the navigation the page is in: `The Basics`, `Package READMEs · Core`. */
+  /** The section of the navigation the page is in: `The Basics`. */
   readonly section: string;
   /** The file carries the pending marker: a page still to be written. */
   readonly pending: boolean;
@@ -40,15 +39,12 @@ export interface NavigationGroup {
   readonly pages: readonly NavigationPage[];
 }
 
-/** The side navigation: the sections of `docs.config.ts`, then its groups of packages — each entry with its page. */
+/** The side navigation: the sections of `docs.config.ts`, each entry with its page. */
 export interface Navigation {
   readonly groups: readonly NavigationGroup[];
 }
 
-/** The title of a group of package READMEs in the navigation, after the sections: `Package READMEs · Core`. */
-export const packageGroupTitle = (group: string): string => `Package READMEs · ${group}`;
-
-/** The docs cannot start: a page or README without its place in `docs.config.ts`, or a place without its file. */
+/** The docs cannot start: a page without its place in `docs.config.ts`, or a place without its file. */
 export class DocsError extends Error {
   override readonly name = 'DocsError';
   readonly problems: readonly string[];
@@ -60,7 +56,7 @@ export class DocsError extends Error {
 }
 
 export interface DocsRepositoryOptions {
-  /** The repository: `docs/*.md`, the policies at the root (`UPGRADING.md`, …) and `packages/<name>/README.md`. */
+  /** The repository: `docs/*.md` and the policies at the root (`UPGRADING.md`, …). */
   readonly source: string;
   /** Re-read when a page changes (development). */
   readonly watch?: boolean;
@@ -72,18 +68,16 @@ export interface DocsRepositoryOptions {
 interface Loaded {
   /** The docs' pages by slug, in the order of the sections. */
   readonly docs: ReadonlyMap<string, DocPage>;
-  readonly packages: ReadonlyMap<string, DocPage>;
-  readonly sections: readonly NavigationGroup[];
   readonly navigation: Navigation;
   readonly index: SearchIndex;
 }
 
 /**
- * The docs' pages and the packages' READMEs — read, rendered and indexed once when the app boots (in development again when one
- * changes). An app singleton that holds only the repository's content: nothing of a request, nothing a request could change.
- * Also the route binder of `/packages/:name` — an unknown package is a 404 ({@link DocBinding} binds `/docs/:page`).
+ * The docs' pages — read, rendered and indexed once when the app boots (in development again when one changes). An app singleton
+ * that holds only the repository's content: nothing of a request, nothing a request could change. {@link DocBinding} binds
+ * `/docs/:page` to its page.
  */
-export class DocsRepository implements RouteBinder<DocPage> {
+export class DocsRepository {
   readonly #options: DocsRepositoryOptions;
   #highlighter: CodeHighlighter | undefined;
   #loaded: Loaded | undefined;
@@ -109,38 +103,28 @@ export class DocsRepository implements RouteBinder<DocPage> {
     this.#watchers = [];
   }
 
-  /** A package's README. */
-  page(name: string): DocPage | undefined {
-    return this.#state().packages.get(name);
-  }
-
   /** A page of the docs. */
   doc(slug: string): DocPage | undefined {
     return this.#state().docs.get(slug);
   }
 
-  /** Every page in the order of the navigation: the docs' pages section by section, then the packages. */
+  /** Every page in the order of the navigation, section by section. */
   pages(): DocPage[] {
-    const { docs, packages } = this.#state();
-    return [...docs.values(), ...packages.values()];
+    return [...this.#state().docs.values()];
   }
 
   navigation(): Navigation {
     return this.#state().navigation;
   }
 
-  /** The docs' sections of the navigation — without the package READMEs (the start page lists them). */
+  /** The docs' sections, each with its pages — the navigation's groups (the start page lists them). */
   sections(): readonly NavigationGroup[] {
-    return this.#state().sections;
+    return this.#state().navigation.groups;
   }
 
-  /**
-   * The pages before and after `page`: for a page of the docs in one line through every section (the last page of a section
-   * leads to the first of the next), for a package among the packages.
-   */
+  /** The pages before and after `page`, in one line through every section: the last page of a section leads to the first of the next. */
   neighbours(page: DocPage): { previous: DocPage | null; next: DocPage | null } {
-    const { docs, packages } = this.#state();
-    const list = [...(page.kind === 'doc' ? docs : packages).values()];
+    const list = this.pages();
     const at = list.findIndex((other) => other.path === page.path);
     if (at === -1) return { previous: null, next: null };
     return { previous: list[at - 1] ?? null, next: list[at + 1] ?? null };
@@ -148,11 +132,6 @@ export class DocsRepository implements RouteBinder<DocPage> {
 
   search(query: string, options?: { limit?: number }): SearchResult[] {
     return this.#state().index.search(query, options);
-  }
-
-  /** `/packages/:name` → its page, or a 404. */
-  resolveRouteBinding(value: string): DocPage | undefined {
-    return this.page(value);
   }
 
   #state(): Loaded {
@@ -163,54 +142,22 @@ export class DocsRepository implements RouteBinder<DocPage> {
   #read(highlighter: CodeHighlighter): Loaded {
     const { source } = this.#options;
     const docs = this.#options.docs ?? docsConfig;
-    const problems: string[] = [];
-
-    const listed = new Map<string, string>();
-    for (const group of docs.groups) {
-      for (const name of group.packages) {
-        if (listed.has(name)) problems.push(`'${name}' is listed twice in docs.config.ts (in "${listed.get(name)}" and "${group.title}").`);
-        listed.set(name, group.title);
-      }
-    }
-    const packagesDir = join(source, 'packages');
-    const found = existsSync(packagesDir)
-      ? readdirSync(packagesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(packagesDir, entry.name, 'package.json'))).map((entry) => entry.name)
-      : [];
-    for (const name of found) {
-      const readme = existsSync(join(packagesDir, name, 'README.md'));
-      if (!(PACKAGES as readonly string[]).includes(name)) {
-        problems.push(`packages/${name}${readme ? '/README.md' : ''} has no entry in docs.config.ts — add '${name}' to PACKAGES and to a group.`);
-      } else if (!listed.has(name)) {
-        problems.push(`'${name}' is in no group of docs.config.ts.`);
-      }
-      if (!readme) problems.push(`packages/${name} has no README.md — every package documents itself.`);
-    }
-    for (const name of PACKAGES) {
-      if (!found.includes(name)) problems.push(`docs.config.ts lists '${name}', but packages/${name} does not exist in ${source}.`);
-    }
-    problems.push(...checkPages(source, docs.sections));
+    const problems = checkPages(source, docs.sections);
     if (problems.length > 0) throw new DocsError(problems);
 
-    const names = new Set<string>(PACKAGES);
     const entries = docs.sections.flatMap((section) => section.pages.map((entry) => ({ entry, section: section.title })));
     const docOf = new Map(entries.map(({ entry }) => [fileOf(entry), `/docs/${entry.slug}`]));
-    // The root README is no page: a link to it stays code text (the start page is the app's own).
-    const pageOf = (file: string) => {
-      const doc = docOf.get(file);
-      if (doc) return doc;
-      const name = /^packages\/([^/]+)\/README\.md$/.exec(file)?.[1];
-      return name && names.has(name) ? `/packages/${name}` : undefined;
-    };
-    const page = (kind: DocPage['kind'], name: string, file: string, section: string): { page: DocPage; rendered: RenderedMarkdown } => {
+    // Only the docs' files are pages: a link to the root README stays code text (the start page is the app's own).
+    const pageOf = (file: string) => docOf.get(file);
+    const page = (name: string, file: string, section: string): { page: DocPage; rendered: RenderedMarkdown } => {
       const rendered = renderMarkdown(readFileSync(join(source, file), 'utf8'), { file, pageOf, highlight: highlighter.highlight });
       return {
         rendered,
         page: {
-          kind,
           name,
           path: pageOf(file)!,
           file,
-          title: rendered.title || (kind === 'package' ? `@marmeon/${name}` : name),
+          title: rendered.title || name,
           section,
           pending: rendered.pending,
           body: rendered.body,
@@ -224,17 +171,9 @@ export class DocsRepository implements RouteBinder<DocPage> {
     const all: { page: DocPage; rendered: RenderedMarkdown }[] = [];
     const docPages = new Map<string, DocPage>();
     for (const { entry, section } of entries) {
-      const rendered = page('doc', entry.slug, fileOf(entry), section);
+      const rendered = page(entry.slug, fileOf(entry), section);
       docPages.set(entry.slug, rendered.page);
       all.push(rendered);
-    }
-    const packages = new Map<string, DocPage>();
-    for (const group of docs.groups) {
-      for (const name of group.packages) {
-        const rendered = page('package', name, `packages/${name}/README.md`, packageGroupTitle(group.title));
-        packages.set(name, rendered.page);
-        all.push(rendered);
-      }
     }
     const late = new Set(entries.filter(({ entry }) => entry.changes).map(({ entry }) => `/docs/${entry.slug}`));
     const index = new SearchIndex(
@@ -242,7 +181,7 @@ export class DocsRepository implements RouteBinder<DocPage> {
         rendered.sections.map((section) => ({ path, page: title, heading: section.heading, anchor: section.anchor, text: section.text, late: late.has(path) })),
       ),
     );
-    const sections: NavigationGroup[] = docs.sections.map((section) => ({
+    const groups: NavigationGroup[] = docs.sections.map((section) => ({
       title: section.title,
       pages: section.pages.map((entry) => ({
         name: entry.slug,
@@ -251,16 +190,10 @@ export class DocsRepository implements RouteBinder<DocPage> {
         ...(docPages.get(entry.slug)!.pending ? { pending: true as const } : {}),
       })),
     }));
-    const navigation: Navigation = {
-      groups: [
-        ...sections,
-        ...docs.groups.map((group) => ({ title: packageGroupTitle(group.title), pages: group.packages.map((name) => ({ name, label: name, path: `/packages/${name}` })) })),
-      ],
-    };
-    return { docs: docPages, packages, sections, navigation, index };
+    return { docs: docPages, navigation: { groups }, index };
   }
 
-  /** Development: `docs/`, the root (for the policies that are pages) and every package directory — for a changed, new or removed page (editors replace files). */
+  /** Development: `docs/` and the root (for the policies that are pages) — for a changed, new or removed page (editors replace files). */
   #watch(): void {
     const { source } = this.#options;
     const docs = this.#options.docs ?? docsConfig;
@@ -276,12 +209,9 @@ export class DocsRepository implements RouteBinder<DocPage> {
       }, 50);
     };
     const docsDir = join(source, 'docs');
-    const packagesDir = join(source, 'packages');
-    const directories = [source, packagesDir, docsDir, ...PACKAGES.map((name) => join(packagesDir, name))];
-    for (const directory of directories.filter((path) => existsSync(path))) {
+    for (const directory of [source, docsDir].filter((path) => existsSync(path))) {
       const watcher = watch(directory, (_event, file) => {
-        const relevant = directory === docsDir || directory === packagesDir || (directory === source ? file !== null && rootFiles.has(file) : file === 'README.md');
-        if (file === null || relevant) changed();
+        if (file === null || directory === docsDir || rootFiles.has(file)) changed();
       });
       watcher.unref();
       this.#watchers.push(watcher);

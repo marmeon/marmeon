@@ -16,7 +16,7 @@ interface Building {
 const element = (t: string, a?: Record<string, string> | null): Building => (a ? { t, a, c: [] } : { t, c: [] });
 
 /**
- * CommonMark + GFM tables and strikethrough. `html: false`: raw HTML in a README is text — `<script>` shows as
+ * CommonMark + GFM tables and strikethrough. `html: false`: raw HTML in a page is text — `<script>` shows as
  * `<script>`, it never reaches the page as markup. markdown-it also refuses `javascript:`, `vbscript:`, `file:` and
  * `data:` URLs in links (they stay text).
  */
@@ -29,7 +29,7 @@ const markdown = new MarkdownIt('commonmark', { html: false, linkify: false, typ
  */
 export const PENDING_MARKER = '<!-- docs:pending -->';
 
-/** Where a link of a README points. */
+/** Where a link of a page points. */
 export type LinkTarget =
   | { kind: 'page'; path: string; hash: string }
   | { kind: 'external'; href: string }
@@ -58,16 +58,16 @@ export interface RenderedMarkdown {
 }
 
 export interface RenderOptions {
-  /** The file's path relative to the repository: `docs/routing.md`, `packages/core/README.md`. */
+  /** The file's path relative to the repository: `docs/routing.md`, `UPGRADING.md`. */
   readonly file: string;
-  /** Which repository path is which page: `packages/core/README.md` → `/packages/core`. */
+  /** Which repository path is which page: `docs/routing.md` → `/docs/routing`. */
   readonly pageOf: (repoPath: string) => string | undefined;
   readonly highlight: Highlighter;
 }
 
 const ALERTS: Record<string, string> = { NOTE: 'Note', TIP: 'Tip', IMPORTANT: 'Important', WARNING: 'Warning', CAUTION: 'Caution' };
 
-/** Renders one README: a node tree for the page, its table of contents (H2/H3) and its sections for the search. */
+/** Renders one page: a node tree, its table of contents (H2/H3) and its sections for the search. */
 export function renderMarkdown(source: string, options: RenderOptions): RenderedMarkdown {
   const tokens = markdown.parse(source, {});
   const slugger = new GithubSlugger();
@@ -315,19 +315,19 @@ export function linkTarget(href: string, options: Pick<RenderOptions, 'file' | '
   const path = at === -1 ? href : href.slice(0, at);
   const hash = at === -1 ? '' : href.slice(at);
   const resolved = posix.normalize(posix.join(posix.dirname(options.file), decodeURIComponent(path))).replace(/\/$/, '');
-  const page = options.pageOf(resolved) ?? options.pageOf(`${resolved}/README.md`) ?? missingPage(resolved);
+  const page = options.pageOf(resolved) ?? missingPage(resolved);
   if (page === undefined) return { kind: 'file', path: resolved };
   // A link into the page itself stays an anchor: the browser scrolls, no visit.
   return page === options.pageOf(options.file) && hash ? { kind: 'page', path: '', hash } : { kind: 'page', path: page, hash };
 }
 
 /**
- * A README the docs do not have (a typo, a package that is gone): still a page link — the link check reports it. The root
- * README is no page (the start page is the app's own): a link to it stays code text, as on any file.
+ * A README is no page of the docs — a package's README is a card for npm: a link to one stays a page link the link check reports
+ * ("no such page"), never code text that hides it. The root README is no page either (the start page is the app's own): a link to
+ * it stays code text, as on any file.
  */
 function missingPage(path: string): string | undefined {
-  const name = /^packages\/([^/]+)(?:\/README\.md)?$/.exec(path)?.[1];
-  return name ? `/packages/${name}` : path.endsWith('/README.md') ? `/${path}` : undefined;
+  return path.endsWith('/README.md') ? `/${path}` : undefined;
 }
 
 /** The text of inline tokens, as GitHub reads a heading for its anchor (code spans without their backticks). */

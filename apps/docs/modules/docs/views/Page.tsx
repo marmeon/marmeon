@@ -1,11 +1,11 @@
 import type { PageProps } from '@marmeon/http';
 import { Head, Link } from '@marmeon/react';
-import type { ShowPackageController } from '../controllers/ShowPackageController.ts';
+import type { ShowDocController } from '../controllers/ShowDocController.ts';
 import { Markdown } from '../components/Markdown.tsx';
 import { Toc } from '../components/Toc.tsx';
 
-/** `/docs/:page` and `/packages/:name`: a page of the docs or a package's README. */
-export default function Page({ title, section, body, toc, previous, next }: PageProps<ShowPackageController>) {
+/** `/docs/:page`: a page of the docs. */
+export default function Page({ title, section, body, toc, previous, next }: PageProps<ShowDocController>) {
   return (
     <div className="page">
       <Head title={title} />

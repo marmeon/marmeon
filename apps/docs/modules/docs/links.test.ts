@@ -4,14 +4,14 @@ import { join, resolve } from 'node:path';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import docsConfig, { PACKAGES } from '../../docs.config.ts';
+import docsConfig from '../../docs.config.ts';
 import { DOCS_CSP } from './DocsServiceProvider.ts';
 import { DocsRepository } from './DocsRepository.ts';
 
 /**
- * The link check (instead of checking a static export, E133): every page — the start page, the docs, the packages — renders
- * on the server, and every link on it that stays in the docs leads to a page that exists — and to an anchor that exists on it.
- * A link of a page or README that breaks on GitHub breaks here.
+ * The link check (instead of checking a static export, E133): every page — the start page and the docs — renders on the server,
+ * and every link on it that stays in the docs leads to a page that exists — and to an anchor that exists on it. A link of a page
+ * that breaks on GitHub breaks here; a link to a package README (a card for npm, no page) is "no such page".
  */
 let app: TestApp;
 beforeAll(async () => {
@@ -22,7 +22,7 @@ afterAll(() => app?.close());
 const repo = resolve(import.meta.dirname, '../../../..');
 
 const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
-const PAGES = ['/', ...DOCS, ...PACKAGES.map((name) => `/packages/${name}`)];
+const PAGES = ['/', ...DOCS];
 const html = { headers: { accept: 'text/html' } };
 
 /** The links of the page's content and navigation, and the ids on it — read from the server-rendered markup. */
@@ -64,7 +64,7 @@ describe('every page', () => {
     expect(DOCS_CSP.scriptSrc).toEqual(["'self'"]);
   });
 
-  it('links only to pages and anchors that exist (README links as on GitHub)', () => {
+  it('links only to pages and anchors that exist (links as on GitHub)', () => {
     expect(rendered.size).toBe(PAGES.length);
     const broken: string[] = [];
     let internal = 0;
@@ -84,12 +84,13 @@ describe('every page', () => {
     }
     // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
     expect(broken, broken.join('\n')).toEqual([]);
-    // Measured 12 157 (the start page, 73 pages of the docs, 27 READMEs — the header's and the navigation's links on each page count too): the
-    // threshold is that − 10 %, so a page that renders without its links or its navigation shows.
-    expect(internal).toBeGreaterThan(10_940);
+    // Measured 8 403 (the start page and the 73 pages of the docs; the header's and the navigation's 70-odd links on each page count
+    // too). The threshold is that − 10 %: it shows a renderer or a layout that drops the navigation or the content's links on every
+    // page — not one page that lost its links (a few dozen of eight thousand), which only the per-link check above can see.
+    expect(internal).toBeGreaterThan(7_560);
   });
 
-  it('names only files that exist where a README points at the code (`src/kernel.ts` — code text, no link: E10)', () => {
+  it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link: E10)', () => {
     const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.filter((file) => !existsSync(join(repo, file))).map((file) => `${page.file}: ${file}`));
     expect(missing, missing.join('\n')).toEqual([]);
   });

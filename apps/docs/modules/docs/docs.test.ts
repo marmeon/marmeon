@@ -1,10 +1,10 @@
-import { appendFileSync, cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import docsConfig, { PACKAGES, type DocsPageEntry } from '../../docs.config.ts';
+import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
 import type { SearchController } from './controllers/SearchController.ts';
 import { DocsError, DocsRepository, type Navigation } from './DocsRepository.ts';
 import { createCodeHighlighter } from './highlight.ts';
@@ -78,9 +78,10 @@ describe('the search (a server route, E133)', () => {
 });
 
 describe('pages', () => {
-  it('an unknown package is a 404 (the repository binds the route)', async () => {
-    await app.get('/packages/no-such-package').assertNotFound();
-    await app.get('/packages/core').assertOk().assertPage('docs/Page');
+  it('has no package pages — a package README is a card for npm: /packages/… is a 404', async () => {
+    await app.get('/packages/http').assertNotFound();
+    await app.get('/packages/core/README.md').assertNotFound();
+    await app.navigating().get('/packages/http').assertNotFound();
   });
 
   it('a path without a route is a 404 page in the layout — without the navigation (no shared props there), rendered on the server', async () => {
@@ -91,15 +92,13 @@ describe('pages', () => {
     expect(response.body).not.toContain('id="sidebar"');
   });
 
-  it('shares the navigation — the ten sections, then every package in its group — once per tab', async () => {
-    const page = (await app.navigating().get('/packages/http').assertOk()).page()!;
+  it('shares the navigation — the ten sections with their pages, nothing else — once per tab', async () => {
+    const page = (await app.navigating().get('/docs/routing').assertOk()).page()!;
     const nav = page.props.nav as Navigation;
-    const packageGroups = ['Core', 'HTTP', 'Data', 'Auth & Mail', 'Background', 'Frontend', 'Tools'].map((title) => `Package READMEs · ${title}`);
-    expect(nav.groups.map((group) => group.title)).toEqual([...SECTIONS, ...packageGroups]);
-    expect(nav.groups.slice(0, 10).flatMap((group) => group.pages.map((entry) => entry.path))).toEqual(ENTRIES.map((entry) => `/docs/${entry.slug}`));
-    expect(nav.groups.slice(0, 10).flatMap((group) => group.pages.map((entry) => entry.label))).toEqual(ENTRIES.map((entry) => entry.label));
-    expect(nav.groups.slice(10).flatMap((group) => group.pages.map((pkg) => pkg.name)).sort()).toEqual([...PACKAGES].sort());
-    expect(page.props).toMatchObject({ previous: { path: '/packages/router' }, next: { path: '/packages/server' }, section: 'Package READMEs · HTTP', title: '@marmeon/http' });
+    expect(nav.groups.map((group) => group.title)).toEqual(SECTIONS);
+    expect(nav.groups.flatMap((group) => group.pages.map((entry) => entry.path))).toEqual(ENTRIES.map((entry) => `/docs/${entry.slug}`));
+    expect(nav.groups.flatMap((group) => group.pages.map((entry) => entry.label))).toEqual(ENTRIES.map((entry) => entry.label));
+    expect(page.props).toMatchObject({ previous: { path: '/docs/context' }, next: { path: '/docs/middleware' }, section: 'The Basics', title: 'Routing' });
   });
 });
 
@@ -173,7 +172,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   const document = { headers: { accept: 'text/html' } };
 
   it('sets no cookie, on any page — the docs group has no session, no CSRF, no encrypted cookies', async () => {
-    for (const path of ['/', '/packages/session', '/docs/security', '/search?q=csrf']) {
+    for (const path of ['/', '/docs/session', '/docs/security', '/search?q=csrf']) {
       const response = await app.get(path, document).assertOk();
       expect(response.headers.get('set-cookie'), path).toBeNull();
       expect(response.headers.get('cache-control'), path).toMatch(/^public, max-age=300$/);
@@ -182,8 +181,8 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   });
 
   it('answers a revalidation with 304 — and the document and the page object differ in ETag, with Vary naming the headers', async () => {
-    const html = await app.get('/packages/queue', document).assertOk();
-    const json = await app.navigating().get('/packages/queue').assertOk();
+    const html = await app.get('/docs/queues', document).assertOk();
+    const json = await app.navigating().get('/docs/queues').assertOk();
     const etag = html.headers.get('etag')!;
     expect(etag).toMatch(/^"[\w-]{27}"$/);
     expect(json.headers.get('etag')).not.toBe(etag);
@@ -191,14 +190,14 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
       const vary = response.headers.get('vary')!.toLowerCase().split(/\s*,\s*/);
       expect(vary).toEqual(expect.arrayContaining(['x-marmeon', 'x-marmeon-partial-component', 'x-marmeon-partial-data', 'x-marmeon-partial-except', 'purpose', 'x-marmeon-once', 'x-marmeon-version']));
     }
-    const again = await app.get('/packages/queue', { headers: { accept: 'text/html', 'if-none-match': `W/${etag}` } });
+    const again = await app.get('/docs/queues', { headers: { accept: 'text/html', 'if-none-match': `W/${etag}` } });
     expect(again.status).toBe(304);
     expect(again.body).toBe('');
     expect(again.headers.get('etag')).toBe(etag);
-    expect((await app.get('/packages/queue', { headers: { accept: 'text/html', 'if-none-match': '"other"' } })).status).toBe(200);
+    expect((await app.get('/docs/queues', { headers: { accept: 'text/html', 'if-none-match': '"other"' } })).status).toBe(200);
   });
 
-  it('in development a page is no-cache: an edited README shows on the next visit', async () => {
+  it('in development a page is no-cache: an edited page shows on the next visit', async () => {
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
     const response = await dev.get('/', document).assertOk();
     expect(response.headers.get('cache-control')).toBe('no-cache');
@@ -206,10 +205,10 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
 
   it("a cached page's policy has no nonce ('self'); in development — nothing cached — Vite's inline scripts get the strict nonce policy", async () => {
     const ssr = await createTestApp(application, { ssr: true });
-    const first = await ssr.get('/packages/http', document).assertOk();
-    const second = await ssr.get('/packages/http', document).assertOk();
+    const first = await ssr.get('/docs/csp', document).assertOk();
+    const second = await ssr.get('/docs/csp', document).assertOk();
     expect(first.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
-    // No nonce attribute on a tag (the http README's text mentions `nonce=` — escaped, inside the page).
+    // No nonce attribute on a tag (the CSP page's text mentions `nonce=` — escaped, inside the page).
     expect(first.body).not.toMatch(/<[a-z]+ [^>]*\bnonce=/);
     expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
     // The 404 page (no route, no group) is a document too.
@@ -224,7 +223,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
       });
     }
     // JSON visits carry no policy (it is for documents).
-    expect((await ssr.navigating().get('/packages/http').assertOk()).headers.get('content-security-policy')).toBeNull();
+    expect((await ssr.navigating().get('/docs/csp').assertOk()).headers.get('content-security-policy')).toBeNull();
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
     expect((await dev.get('/', document).assertOk()).headers.get('content-security-policy')).toMatch(/^script-src 'nonce-[\w+/=-]+' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'$/);
   });
@@ -244,7 +243,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   });
 
   it('leaves a 404 alone (no public caching of errors)', async () => {
-    const response = await app.get('/packages/nope', document);
+    const response = await app.get('/docs/nope', document);
     expect(response.status).toBe(404);
     expect(response.headers.get('cache-control') ?? '').not.toMatch(/public/);
     expect(response.headers.get('etag')).toBeNull();
@@ -252,14 +251,9 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
 });
 
 describe('the repository and docs.config.ts', () => {
-  /** A copy of the repository's pages and READMEs — the real ones are never touched. */
+  /** A copy of the repository's pages — the real ones are never touched. */
   function copy(): string {
     const dir = mkdtempSync(join(tmpdir(), 'marmeon-docs-'));
-    for (const name of PACKAGES) {
-      mkdirSync(join(dir, 'packages', name), { recursive: true });
-      cpSync(join(repo, 'packages', name, 'README.md'), join(dir, 'packages', name, 'README.md'));
-      writeFileSync(join(dir, 'packages', name, 'package.json'), '{}');
-    }
     mkdirSync(join(dir, 'docs'));
     for (const entry of ENTRIES) cpSync(join(repo, fileOf(entry)), join(dir, fileOf(entry)));
     return dir;
@@ -291,7 +285,7 @@ describe('the repository and docs.config.ts', () => {
       { slug: 'notes', label: 'Notes', file: 'packages/core/README.md' },
       { slug: 'other', label: 'Other', file: 'docs/routing.md' },
     ];
-    const docs = { sections: [...docsConfig.sections, { title: 'More', pages: extra }], groups: docsConfig.groups };
+    const docs = { sections: [...docsConfig.sections, { title: 'More', pages: extra }] };
     const error = await new DocsRepository({ source: repo, docs }).load().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DocsError);
     expect((error as DocsError).problems).toEqual([
@@ -320,33 +314,26 @@ describe('the repository and docs.config.ts', () => {
     }
   }, ciTimeout);
 
-  it('stops the start for a package without its place in docs.config.ts — and for a package without a README', async () => {
+  it('starts without the packages — their READMEs are no pages', async () => {
     const dir = copy();
     try {
-      await new DocsRepository({ source: dir }).load();
-      mkdirSync(join(dir, 'packages/brandnew'));
-      writeFileSync(join(dir, 'packages/brandnew/package.json'), '{}');
-      writeFileSync(join(dir, 'packages/brandnew/README.md'), '# @marmeon/brandnew\n');
-      rmSync(join(dir, 'packages/otel/README.md'));
-      const error = await new DocsRepository({ source: dir }).load().catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(DocsError);
-      expect((error as DocsError).problems).toEqual([
-        "packages/brandnew/README.md has no entry in docs.config.ts — add 'brandnew' to PACKAGES and to a group.",
-        'packages/otel has no README.md — every package documents itself.',
-      ]);
+      expect(existsSync(join(dir, 'packages'))).toBe(false);
+      const docs = await new DocsRepository({ source: dir }).load();
+      expect(docs.pages().map((page) => page.file)).toEqual(ENTRIES.map(fileOf));
+      expect(JSON.stringify(docs.navigation())).not.toContain('/packages/');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }, ciTimeout);
 
-  it('shows raw HTML of a README as text — a <script> never reaches the page as markup (server-rendered)', async () => {
+  it('shows raw HTML of a page as text — a <script> never reaches the page as markup (server-rendered)', async () => {
     const dir = copy();
     try {
-      appendFileSync(join(dir, 'packages/core/README.md'), "\n<script>alert('readme')</script>\n\nInline <img src=x onerror=alert(1)> too.\n");
+      appendFileSync(join(dir, 'docs/routing.md'), "\n<script>alert('page')</script>\n\nInline <img src=x onerror=alert(1)> too.\n");
       const ssr = await createTestApp(application, { ssr: true, env: { DOCS_SOURCE: dir } });
-      const response = await ssr.get('/packages/core', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
+      const response = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
       const content = response.body.slice(response.body.indexOf('<div id="app">'));
-      expect(content).toContain('&lt;script&gt;alert(&#x27;readme&#x27;)&lt;/script&gt;');
+      expect(content).toContain('&lt;script&gt;alert(&#x27;page&#x27;)&lt;/script&gt;');
       expect(content).toContain('&lt;img src=x onerror=alert(1)&gt;');
       expect(content).not.toMatch(/<script>alert|<img src=x/);
     } finally {
@@ -364,14 +351,14 @@ describe('the repository and docs.config.ts', () => {
     }
   });
 
-  it('highlights every code block of every README with the stylesheet’s token classes (no inline colours left)', async () => {
+  it('highlights every code block of every page with the stylesheet’s token classes (no inline colours left)', async () => {
     const highlighter = await createCodeHighlighter();
     const docs = await new DocsRepository({ source: repo }).load();
-    expect(docs.pages().length).toBe(PACKAGES.length + 73);
+    expect(docs.pages().length).toBe(73);
     expect(highlighter.highlight("import { x } from 'y';", 'ts')).toBe(
       '<pre class="code" tabindex="0" data-lang="ts"><code><span class="line"><span class="tk">import</span> { x } <span class="tk">from</span><span class="ts"> \'y\'</span>;</span></code></pre>',
     );
-    // Every colour of every README's code is one of TOKEN_CLASSES (styles/docs.css has both themes for them).
+    // Every colour of every page's code is one of TOKEN_CLASSES (styles/docs.css has both themes for them).
     expect(JSON.stringify(docs.pages().map((page) => page.body))).not.toContain('style=');
   });
 });

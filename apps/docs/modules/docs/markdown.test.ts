@@ -2,13 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { PENDING_MARKER, renderMarkdown } from './markdown.ts';
 import type { DocNode } from './types.ts';
 
-/** As the repository maps them: `docs/<slug>.md` and the packages' READMEs are pages — the root README is none (code text). */
+/** As the repository maps them: `docs/<slug>.md` is a page — a README is none. */
 const pageOf = (file: string) => {
   const doc = /^docs\/([a-z-]+)\.md$/.exec(file)?.[1];
-  const name = /^packages\/(\w+)\/README\.md$/.exec(file)?.[1];
-  return doc ? `/docs/${doc}` : name ? `/packages/${name}` : undefined;
+  return doc ? `/docs/${doc}` : undefined;
 };
-const render = (source: string, file = 'packages/http/README.md') => renderMarkdown(source, { file, pageOf, highlight: (code) => `<pre>${code}</pre>` });
+const render = (source: string, file = 'docs/routing.md') => renderMarkdown(source, { file, pageOf, highlight: (code) => `<pre>${code}</pre>` });
 
 /** The tree as markup — what React renders from it. */
 function html(nodes: readonly DocNode[]): string {
@@ -22,8 +21,8 @@ function html(nodes: readonly DocNode[]): string {
     .join('');
 }
 
-describe('README markdown', () => {
-  it('shows raw HTML as text — a <script> in a README never becomes markup', () => {
+describe('the markdown of a page', () => {
+  it('shows raw HTML as text — a <script> in a page never becomes markup', () => {
     const { body } = render('# T\n\n<script>alert(1)</script>\n\nText <img src=x onerror=alert(1)> and <b>bold</b>.\n\n[x](javascript:alert(1))');
     const markup = html(body);
     expect(markup).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
@@ -45,15 +44,15 @@ describe('README markdown', () => {
     expect(anchors).toContain('deep');
   });
 
-  it('turns links to READMEs and docs pages into page links, keeps anchors into the page itself, and shows links to source files as code text', () => {
+  it('turns links to docs pages into page links, keeps anchors into the page itself, and shows links to source files as code text', () => {
     const markup = html(
       render(
-        '# H\n\nSee [the router](../router/README.md#middleware), [routing](../../docs/routing.md#groups), [here](#features), ' +
-          '[this page](./README.md#the-protocol), [the kernel](src/kernel.ts), [Kysely](https://kysely.dev).',
+        '# H\n\nSee [middleware](middleware.md#groups), [forms](../docs/forms.md#validation), [here](#features), ' +
+          '[this page](./routing.md#the-protocol), [the kernel](../packages/server/src/kernel.ts), [Kysely](https://kysely.dev).',
       ).body,
     );
-    expect(markup).toContain('<a href="/packages/router#middleware" data-internal>the router</a>');
-    expect(markup).toContain('<a href="/docs/routing#groups" data-internal>routing</a>');
+    expect(markup).toContain('<a href="/docs/middleware#groups" data-internal>middleware</a>');
+    expect(markup).toContain('<a href="/docs/forms#validation" data-internal>forms</a>');
     expect(markup).toContain('<a href="#features">here</a>');
     expect(markup).toContain('<a href="#the-protocol">this page</a>');
     expect(markup).toContain('<span class="file">the kernel</span>');
@@ -76,12 +75,19 @@ describe('README markdown', () => {
   });
 
   it('keeps a link to the root README code text — it is no page (a page link to /README.md would be a broken link)', () => {
-    const fromPackage = render('# H\n\nSee [the README](../../README.md#versions-and-deprecations).');
-    expect(html(fromPackage.body)).toContain('<span class="file">the README</span>');
-    expect(fromPackage.fileLinks).toEqual(['README.md']);
-    const fromDocs = render('# H\n\n[Back](../README.md)', 'docs/releases.md');
-    expect(html(fromDocs.body)).toContain('<span class="file">Back</span>');
+    const fromDocs = render('# H\n\nSee [the README](../README.md#versions-and-deprecations).');
+    expect(html(fromDocs.body)).toContain('<span class="file">the README</span>');
     expect(fromDocs.fileLinks).toEqual(['README.md']);
+    const fromPolicy = render('# H\n\n[Back](README.md)', 'UPGRADING.md');
+    expect(html(fromPolicy.body)).toContain('<span class="file">Back</span>');
+    expect(fromPolicy.fileLinks).toEqual(['README.md']);
+  });
+
+  it('keeps a link to a package README a page link, which no page answers — the link check reports it, code text would hide it', () => {
+    const { body, fileLinks } = render('# H\n\nSee [the router](../packages/router/README.md#middleware) and [http](../packages/http/README.md).');
+    expect(html(body)).toContain('<a href="/packages/router/README.md#middleware" data-internal>the router</a>');
+    expect(html(body)).toContain('<a href="/packages/http/README.md" data-internal>http</a>');
+    expect(fileLinks).toEqual([]);
   });
 
   it('puts the file name of a code block with title="…" above it — a figure with its caption', () => {

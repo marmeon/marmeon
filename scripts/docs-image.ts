@@ -3,11 +3,11 @@
  * starter kit's image): `apps/docs/Dockerfile` built from this checkout, then
  *
  *   the image: runs as a user other than root · no .env*, no test, no other app's code, no config of the build (vite, vitest,
- *   tsconfig) · no dev dependency · every page of the docs and every package README in /app/content · a command besides start (route:types --check, no
+ *   tsconfig) · no dev dependency · every page of the docs in /app/content, and no package README · a command besides start (route:types --check, no
  *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and marmeon gives the
  *   source condition only inside the workspace (E187) · tini is PID 1 and reaps an orphaned process
- *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page,
- *   every page of the docs and every package 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
+ *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page
+ *   and every page of the docs 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
  *   reaps an orphan · no warning in the log · SIGTERM → exit 0
  *   behind Caddy (deploy/docs/compose.yaml itself, Caddy's port moved to a free one on 127.0.0.1, DOCS_DOMAIN=localhost — Caddy's
  *   own CA): HTTP/2 · no Set-Cookie · Strict-Transport-Security · X-Forwarded-Proto/-Host trusted (an old client's 409 names
@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import docsConfig, { PACKAGES } from '../apps/docs/docs.config.ts';
+import docsConfig from '../apps/docs/docs.config.ts';
 import { cleanEnvironment, freePort, Offline, OFFLINE, SKIPPED, SmokeError } from './pack-smoke.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -68,9 +68,9 @@ async function until<T>(what: string, check: () => Promise<T | undefined> | T | 
 /** The docs' pages in the order of their sections. */
 const entries = () => docsConfig.sections.flatMap((section) => section.pages);
 
-/** Every page of the docs: the start page, the sections' pages, the packages. */
+/** Every page of the docs: the start page and the sections' pages. */
 export function docsPages(): string[] {
-  return ['/', ...entries().map((entry) => `/docs/${entry.slug}`), ...PACKAGES.map((name) => `/packages/${name}`)];
+  return ['/', ...entries().map((entry) => `/docs/${entry.slug}`)];
 }
 
 /** Lists, inside the image, what must not be there (printed as JSON by Node — the image has no find). */
@@ -131,12 +131,12 @@ export function inspectionProblems(found: Inspection, repository = root): string
   if (found.tests.length > 0) problems.push(`tests in the image: ${found.tests.slice(0, 8).join(', ')}${found.tests.length > 8 ? ` … (${found.tests.length})` : ''}`);
   const dev = found.store.filter((entry) => DEV_PACKAGES.test(entry));
   if (dev.length > 0) problems.push(`dev dependencies in the image: ${dev.join(', ')} (pnpm deploy --prod)`);
-  const pages = [
-    ...entries().map((entry) => `content/${entry.file ?? `docs/${entry.slug}.md`}`),
-    ...PACKAGES.flatMap((name) => [`content/packages/${name}/README.md`, `content/packages/${name}/package.json`]),
-  ];
+  const pages = entries().map((entry) => `content/${entry.file ?? `docs/${entry.slug}.md`}`);
   const absent = pages.filter((file) => !found.content.includes(file));
   if (absent.length > 0) problems.push(`/app/content lacks ${absent.slice(0, 8).join(', ')}`);
+  // Only the pages: docs/*.md and the policies at the root — no package's README or manifest (they are no pages).
+  const others = found.content.filter((file) => !pages.includes(file) && !/^content\/docs\/[^/]+\.md$/.test(file));
+  if (others.length > 0) problems.push(`/app/content has what is no page: ${others.slice(0, 8).join(', ')}${others.length > 8 ? ` … (${others.length})` : ''}`);
   const docs = readdirSync(join(repository, 'docs')).filter((name) => name.endsWith('.md')).map((name) => `content/docs/${name}`);
   const unshipped = docs.filter((file) => !found.content.includes(file));
   if (unshipped.length > 0) problems.push(`/app/content lacks ${unshipped.join(', ')}`);
@@ -258,7 +258,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       const base = `https://localhost:${port}`;
       await until('Caddy answering over HTTPS', () => (curl(`${base}/up`).status === 200 ? true : undefined), 60_000, () => compose(['logs'], 'any').output);
       const problems: string[] = [];
-      for (const path of ['/', '/docs/installation', '/packages/session']) {
+      for (const path of ['/', '/docs/installation', '/docs/session']) {
         const page = curl(base + path, { accept: 'text/html' });
         if (page.version !== 'HTTP/2' || page.status !== 200) problems.push(`${path}: ${page.version} ${page.status}, expected HTTP/2 200`);
         if (page.headers.has('set-cookie')) problems.push(`${path}: Set-Cookie behind Caddy: ${page.headers.get('set-cookie')}`);

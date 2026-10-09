@@ -7,14 +7,15 @@ import { defineGegenproben } from '../define.ts';
  *
  * - **The guides list** — a `docs/*.md` without its entry stops the docs app's start (G1: a new guide unlisted; G2: the check that
  *   finds it taken out, its own test turns red).
- * - **The link check** (`links.test.ts`) — a broken anchor anywhere is red: into a README (G3), into another guide (G3b), inside
- *   UPGRADING.md's new overview of the wave (G3c).
+ * - **The link check** (`links.test.ts`) — a broken anchor anywhere is red: from UPGRADING.md into a page (G3), into another guide
+ *   (G3b), inside UPGRADING.md's new overview of the wave (G3c).
  *
  * Since the docs have sections, the guides are pages of them (`/docs/<slug>`; `lists.md` is `pagination.md`): the anchors and reasons
  * moved with them, the measures are the same. The rewritten tables page links no README and no pending page by anchor (W11 step 7):
- * G3 patches a README link of UPGRADING.md, G3b the tables page's link into the requests page.
+ * G3 patches a README link of UPGRADING.md, G3b the tables page's link into the requests page. The READMEs are no pages since W11
+ * step 10 (cards for npm): G3 patches UPGRADING.md's link into the session page that replaced the README's section.
  */
-const START = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'highlights every code block of every README' };
+const START = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'highlights every code block of every page' };
 const UNLISTED = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'stops the start for a docs/*.md without its entry in a section' };
 /** The whole describe: the link test reads what the page tests rendered before it (alone it sees no page). */
 const LINKS = { vitest: 'apps/docs/modules/docs/links.test.ts', name: 'every page' };
@@ -48,10 +49,10 @@ export default defineGegenproben({
     // --- The link check -----------------------------------------------------------------------------------------------------------
     {
       id: 'G3',
-      title: 'a page links to an anchor a README does not have',
-      patch: [{ file: 'UPGRADING.md', find: '(packages/session/README.md#blocking-routes-block)', replace: '(packages/session/README.md#blocking-routes)' }],
+      title: 'UPGRADING.md links to an anchor the session page does not have',
+      patch: [{ file: 'UPGRADING.md', find: '(docs/session.md#requests-that-must-not-overlap)', replace: '(docs/session.md#blocking-routes)' }],
       run: LINKS,
-      expect: /\/docs\/upgrading: \/packages\/session#blocking-routes — no #blocking-routes on \/packages\/session/,
+      expect: /\/docs\/upgrading: \/docs\/session#blocking-routes — no #blocking-routes on \/docs\/session/,
     },
     {
       id: 'G3b',

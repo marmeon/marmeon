@@ -6,10 +6,11 @@
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
  * The smoke test asks the running production build what the acceptance asks: the start page, every page of the docs'
- * sections (`/docs/<slug>`: `docs/*.md`, `UPGRADING.md`, …) and every package page (200, server-rendered, the static `'self'`
+ * sections (`/docs/<slug>`: `docs/*.md`, `UPGRADING.md`, …) (200, server-rendered, the static `'self'`
  * Content-Security-Policy without a nonce), the search (`onOneServer` → the scheduling page, `afterRollback` → transactions,
  * `SHUTDOWN_DELAY` → the deployment page), `/up`, no `Set-Cookie` on any public page, caching headers (`public`, `ETag`,
- * `Vary`, `304`), an unknown package and page (404) and a 10 000-character query (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
+ * `Vary`, `304`), an unknown page and a package's old page (404 — the READMEs are cards for npm) and a 10 000-character query
+ * (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -17,7 +18,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import docsConfig, { PACKAGES } from '../apps/docs/docs.config.ts';
+import docsConfig from '../apps/docs/docs.config.ts';
 
 const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -76,7 +77,7 @@ async function check(): Promise<number> {
     console.error(`docs:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
     return 1;
   }
-  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${PACKAGES.length + pages.length + 1} pages) and stop in ${seconds} s`);
+  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 1} pages) and stop in ${seconds} s`);
   return 0;
 }
 
@@ -115,11 +116,6 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     expect(again.status === 304, `/ with If-None-Match: status ${again.status}, expected 304`);
   }
 
-  // Each page's heading is the package's npm name (`@marmeon/core`; `create-marmeon` has no scope).
-  for (const name of PACKAGES) {
-    const { name: npmName } = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8')) as { name: string };
-    await publicPage(`/packages/${name}`, `${npmName}</h1>`);
-  }
   // Each page's heading is its file's first `#` line (React escapes `&` and quotes in it).
   for (const page of pages) {
     const title = /^# (.+)$/m.exec(readFileSync(join(root, page.file), 'utf8'))?.[1] ?? page.slug;
@@ -138,8 +134,8 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   await search('afterRollback', '/docs/transactions');
   await search('SHUTDOWN_DELAY', '/docs/deployment');
 
-  const missing = await get('/packages/no-such-package');
-  expect(missing.response.status === 404, `/packages/no-such-package: status ${missing.response.status}, expected 404`);
+  const packagePage = await get('/packages/http');
+  expect(packagePage.response.status === 404, `/packages/http: status ${packagePage.response.status}, expected 404 (the READMEs are no pages)`);
   const noPage = await get('/docs/no-such-page');
   expect(noPage.response.status === 404, `/docs/no-such-page: status ${noPage.response.status}, expected 404`);
   const long = await get(`/search?q=${'a'.repeat(10_000)}`);

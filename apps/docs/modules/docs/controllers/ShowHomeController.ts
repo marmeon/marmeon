@@ -1,7 +1,7 @@
 import { Controller } from '@marmeon/http';
 import { DocsRepository } from '../DocsRepository.ts';
 
-/** `/`: what Marmeon is, where to start, and every section of the docs with its pages (the package READMEs are not among them). */
+/** `/`: what Marmeon is, where to start, and every section of the docs with its pages. */
 export class ShowHomeController extends Controller {
   readonly #docs: DocsRepository;
 
