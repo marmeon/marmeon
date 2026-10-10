@@ -39,6 +39,19 @@ function Page({ id }: { id: number }) {
       <Link href="//elsewhere.example/hook" method="post">
         Protocol-relative
       </Link>
+      {/* What the URL parser reads as another origin, though no scheme or `//` starts it: it drops tabs and newlines, and leading spaces. */}
+      <Link href={'/\t/elsewhere.example/hook'} method="post">
+        Tab
+      </Link>
+      <Link href={'/\n/elsewhere.example/hook'} method="post">
+        Newline
+      </Link>
+      <Link href=" //elsewhere.example/hook" method="post">
+        Leading space
+      </Link>
+      <Link href={'/\\elsewhere.example/hook'} method="post">
+        Backslash
+      </Link>
       <p>{route('people.show', { person: id, page: 2 })}</p>
       <p>
         {form.method} {form.url}
@@ -67,7 +80,7 @@ describe('routes in the browser', () => {
     const html = await new Response((await render({ component: 'people/Page', props: { id: 7 }, url: '/', version: null, csrf: 't0ken' })).html).text();
     const form = (action: string, fields: string, button: string) => `<form class="marmeon-link" action="${action}" method="post">${fields}${button}</form>`;
     const token = '<input type="hidden" name="_token" value="t0ken"/>';
-    const forms = html.match(/<form class="marmeon-link".*?<\/form>|<button[^>]*>[^<]*<\/button>/g) ?? [];
+    const forms = html.match(/<form class="marmeon-link"[\s\S]*?<\/form>|<button[^>]*>[^<]*<\/button>/g) ?? [];
     // The forms in full in the message: what a missing field or another button type looks like.
     expect(forms, JSON.stringify(forms)).toEqual([
       form('/logout', token, '<button type="submit">Sign out</button>'),
@@ -80,6 +93,10 @@ describe('routes in the browser', () => {
       // Another origin never gets the page's CSRF token, not even without JavaScript.
       form('https://elsewhere.example/hook', '', '<button type="submit">Elsewhere</button>'),
       form('//elsewhere.example/hook', '', '<button type="submit">Protocol-relative</button>'),
+      form('/\t/elsewhere.example/hook', '', '<button type="submit">Tab</button>'),
+      form('/\n/elsewhere.example/hook', '', '<button type="submit">Newline</button>'),
+      form(' //elsewhere.example/hook', '', '<button type="submit">Leading space</button>'),
+      form('/\\elsewhere.example/hook', '', '<button type="submit">Backslash</button>'),
     ]);
   });
 

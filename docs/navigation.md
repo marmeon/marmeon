@@ -69,7 +69,8 @@ an object with `title`, `confirmLabel`, `destructive` and `prompt`, a text the u
 
 Without JavaScript the browser posts the form, as it does for a [form](forms.md#without-javascript): `PUT`, `PATCH` and `DELETE`
 travel as a hidden `_method` field, the page's CSRF token as `_token`, and the strings and numbers of `data` as hidden fields.
-The token goes only to this site: a link whose `href` names another origin, with a scheme or `//`, sends none.
+The token goes only to this site: a link whose `href` the browser reads as another origin, such as one with a scheme or `//`, sends
+none.
 Other values of `data` go along with JavaScript only. A link with `confirm` never sends without asking, so without JavaScript its
 button does nothing. With JavaScript the click sends the request once, as a visit, and the browser does not post the form as well.
 

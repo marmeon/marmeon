@@ -12,7 +12,8 @@ import { defineGegenproben } from '../define.ts';
  *   stopped (G8c) posts the form beside the visit — two requests, the second after the page changed; a link with `confirm` that
  *   submits anyway (G8d) sends without asking before the app started. Fix round 1: the page's token goes to this site only (G8e: a
  *   link to another origin carries it); a sending link back in a `<p>` (G8f: the web app's VerifyEmail) fails `assertHydrates()`,
- *   whose nesting check names it.
+ *   whose nesting check names it. Final review: another origin as the URL parser reads it, not by the href's first characters (G8g:
+ *   `"/\t/elsewhere.example"`, `"/\n/…"` and `" //…"` get the token).
  * - **A read-only request's message names its own cause** — the layer's base (G9) and the deferred prop streamed after the headers
  *   (G9b) without a rule of their own fall back to an island's: "an island is read-only … Do that in the page".
  * - **A provider with only `static solutions` is one** (G11) — without the check's third static it stops the start.
@@ -81,7 +82,7 @@ export default defineGegenproben({
     {
       id: 'G8b',
       title: "the form leaves the page's CSRF token out: a signed-in user's sign-out without JavaScript fails with 419",
-      patch: [{ file: LINK, find: '        {page.csrf !== undefined && !OTHER_ORIGIN.test(href) && <input type="hidden" name={FORM_TOKEN_FIELD}', replace: '        {false && <input type="hidden" name={FORM_TOKEN_FIELD}' }],
+      patch: [{ file: LINK, find: '        {page.csrf !== undefined && sameOrigin(href) && <input type="hidden" name={FORM_TOKEN_FIELD}', replace: '        {false && <input type="hidden" name={FORM_TOKEN_FIELD}' }],
       run: LINK_FORM,
       expect: /\["<form class=\\"marmeon-link\\" action=\\"\/logout\\" method=\\"post\\"><button type=\\"submit\\">Sign out<\/button><\/form>",.*: expected/,
     },
@@ -102,9 +103,16 @@ export default defineGegenproben({
     {
       id: 'G8e',
       title: "a link that sends to another origin carries the page's CSRF token in its form",
-      patch: [{ file: LINK, find: '{page.csrf !== undefined && !OTHER_ORIGIN.test(href) && <input', replace: '{page.csrf !== undefined && <input' }],
+      patch: [{ file: LINK, find: '{page.csrf !== undefined && sameOrigin(href) && <input', replace: '{page.csrf !== undefined && <input' }],
       run: LINK_FORM,
       expect: /action=\\"https:\/\/elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\" value=\\"t0ken\\"\/>.*: expected/,
+    },
+    {
+      id: 'G8g',
+      title: "the link judges another origin by the href's first characters again: a tab, a newline or a leading space sends the page's CSRF token to another host",
+      patch: [{ file: LINK, find: '{page.csrf !== undefined && sameOrigin(href) && <input', replace: '{page.csrf !== undefined && !/^(?:[a-z][a-z\\d+.-]*:|[/\\\\]{2})/i.test(href) && <input' }],
+      run: LINK_FORM,
+      expect: /action=\\"\/\\t\/elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\" value=\\"t0ken\\"\/>.*action=\\" \/\/elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\".*: expected/,
     },
     {
       id: 'G8f',

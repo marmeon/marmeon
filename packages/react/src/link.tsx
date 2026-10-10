@@ -278,8 +278,8 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     return (
       <form action={href} method="post" className="marmeon-link">
         {method !== 'post' && <input type="hidden" name={FORM_METHOD_FIELD} value={method.toUpperCase()} />}
-        {/* The page's token goes to this site only: never into a form that posts to another origin (a scheme, or `//`). */}
-        {page.csrf !== undefined && !OTHER_ORIGIN.test(href) && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
+        {/* The page's token goes to this site only: never into a form that posts to another origin (a scheme, `//`, or what the URL parser reads as one). */}
+        {page.csrf !== undefined && sameOrigin(href) && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
         {data &&
           !(data instanceof FormData) &&
           Object.entries(data).map(([name, value]) =>
@@ -332,8 +332,18 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
 
 const noSubscription = () => () => {};
 
-/** An `href` that may lead to another origin: with a scheme (`https:`), or protocol-relative (`//`, `/\` as browsers read it). */
-const OTHER_ORIGIN = /^(?:[a-z][a-z\d+.-]*:|[/\\]{2})/i;
+/**
+ * Whether `href` stays on this site, as the browser's URL parser reads it — not by its first characters: the parser drops tabs and
+ * newlines anywhere and leading spaces, and reads `/\` as `//` (`"/\t/evil.example"` and `" //evil.example"` lead to another host).
+ * A scheme (`https:`, `mailto:`) counts as another origin. Resolved against a placeholder host, so it needs no `window` (server rendering).
+ */
+function sameOrigin(href: string): boolean {
+  try {
+    return new URL(href, 'http://local.invalid').host === 'local.invalid';
+  } catch {
+    return false;
+  }
+}
 
 /** Path and query — what a visit's URL is. */
 function withoutHash(href: string): string {
