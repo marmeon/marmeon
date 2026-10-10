@@ -573,6 +573,49 @@ describe.each(drivers)('a transaction callback that returns a Result on %s', (dr
     });
   });
 
+  it('keeps a commitAnyway write only while the transactions around it keep it: propagated plainly it is rolled back, with commitAnyway it stays', async () => {
+    const dropRequest = () =>
+      connections.transaction(async () => {
+        await notes.insert({ title: 'request dropped' });
+        return commitAnyway(err({ kind: 'taken', email: 'ada@example.com' }));
+      });
+
+    const plainly = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'outer' });
+        const result = await dropRequest();
+        if (!result.ok) return result;
+        return ok(undefined);
+      }),
+    );
+    expect(plainly).toEqual({ ok: false, error: { kind: 'taken', email: 'ada@example.com' } });
+    expect(await notes.titles()).toEqual([]);
+
+    const kept = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'outer' });
+        const result = await dropRequest();
+        if (!result.ok) return commitAnyway(result);
+        return ok(undefined);
+      }),
+    );
+    expect(kept).toEqual({ ok: false, error: { kind: 'taken', email: 'ada@example.com' } });
+    expect(await notes.titles()).toEqual(['outer', 'request dropped']);
+  });
+
+  it('repository.transaction() without Connections still rejects with a thrown error and rolls back', async () => {
+    const thrown = new Rollback();
+    await expect(
+      within(
+        notes.using(db).transaction(async (inside) => {
+          await inside.insert({ title: 'rolled back' });
+          throw thrown;
+        }),
+      ),
+    ).rejects.toBe(thrown);
+    expect(await notes.titles()).toEqual([]);
+  });
+
   it('repository.transaction() on using(trx) rolls its own savepoint back on an err and keeps the outer writes', async () => {
     // Kysely's own transaction, outside the ambient context: the repository bound to it opens a savepoint of its own.
     const results = await within(
@@ -640,6 +683,17 @@ describe.each(drivers)('transactions in an isolated test connection on %s', (dri
           ),
         ),
       );
+      expect(await notes.titles()).toEqual(['kept in the test', 'y']);
+      // An err rolls back the same way here, where the app's outermost transaction is a savepoint of the test's.
+      const failed = err({ kind: 'invalid' });
+      expect(
+        await within(
+          connections.transaction(async () => {
+            await notes.insert({ title: 'err, rolled back' });
+            return failed;
+          }),
+        ),
+      ).toBe(failed);
       expect(await notes.titles()).toEqual(['kept in the test', 'y']);
       // outsideTransaction() cannot leave the test's single connection while a transaction is open on it.
       await expect(within(connections.transaction(() => outsideTransaction(() => notes.insert({ title: 'out' }))))).rejects.toBeInstanceOf(TransactionError);

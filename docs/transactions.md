@@ -163,9 +163,24 @@ export class Invitations {
 }
 ```
 
-`commitAnyway()` takes an `err` only. It marks that one return of that one callback: the caller gets a plain `err`, and returns
-it from a transaction of its own, that transaction rolls back. A rollback looks for the results that `err()` made. An object that
-only looks like one, such as a JSON payload with `ok: false` or a copy made with `{ ...result }`, commits like any other value.
+`commitAnyway()` takes an `err` only, and it marks that one return of that one callback. The caller gets a plain `err`; if it
+returns that `err` from a transaction of its own, that transaction rolls back. Inside another transaction, `accept()` runs as a
+savepoint, so that rollback takes back the deleted invitation as well. To keep it, mark the `err` again where you pass it on:
+
+```ts
+return this.#connections.transaction(async () => {
+  const accepted = await this.#invitations.accept(tokenHash, userId);
+  if (!accepted.ok) return commitAnyway(accepted); // the invitation stays used up
+  await this.#activity.insert({ team_id: accepted.value.team_id, user_id: userId, action: 'joined' });
+  return accepted;
+});
+```
+
+That commits the writes of the outer callback too. A write that must stay whatever its callers do, such as a failed-attempt
+counter, belongs in [`outsideTransaction()`](#outside-the-transaction) instead.
+
+A rollback looks for the results that `err()` made. An object that only looks like one, such as a JSON payload with `ok: false`
+or a copy made with `{ ...result }`, commits like any other value.
 
 `connections.transaction()` and a repository's `transaction()` both roll back on an `err`, whether they run as a savepoint or
 over a transaction bound with `using(trx)`. Kysely's own `db.transaction().execute()` knows no results and commits whatever its
@@ -285,9 +300,11 @@ a savepoint that rolls back runs it at once, since what it cleans up after is go
 savepoint that commits hands it on to the transaction around it. Outside a transaction it never runs.
 
 When `fn` fails, the error that rolled the transaction back is not lost: `transaction()` throws a `SuppressedError` whose `error`
-is the failure of `fn` and whose `suppressed` is the original error. After an `err` there is no error to keep, so `transaction()`
-throws the failure of `fn` itself, or an `AggregateError` when several failed. A [unique job](queues.md#unique-jobs) does exactly this for
-you, so the lock of a unique dispatch needs no `afterRollback()` of your own.
+is the failure of `fn` and whose `suppressed` is the original error. After an `err` there is no error to keep, so
+`transaction()` throws the failure of `fn` itself, or an `AggregateError` when several failed.
+
+A [unique job](queues.md#unique-jobs) does exactly this for you, so the lock of a unique dispatch needs no `afterRollback()` of
+your own.
 
 ## Transactions you control yourself
 
