@@ -62,11 +62,6 @@ Options:
 
 export const NO_DIRECTORY = 'create-marmeon needs a directory: create-marmeon <dir> [--yes]';
 
-/** What `--private-registration` says since it is gone (E193) — the app is made all the same. */
-export const PRIVATE_REGISTRATION_FLAG_GONE =
-  'create-marmeon: --private-registration is gone — the starter kit\'s registration is private by default now (it never tells ' +
-  'whether an address has an account). Set AUTH_PRIVATE_REGISTRATION=false in the app\'s .env to turn it off.';
-
 interface Choices {
   readonly directory: string;
   readonly kit: boolean;
@@ -95,8 +90,6 @@ export async function main(io: Io = processIo()): Promise<number> {
       options: {
         yes: { type: 'boolean', short: 'y' },
         minimal: { type: 'boolean' },
-        // Gone (E193) — parsed only to say so.
-        'private-registration': { type: 'boolean' },
         docker: { type: 'boolean' },
         npm: { type: 'boolean' },
         pnpm: { type: 'boolean' },
@@ -127,7 +120,6 @@ export async function main(io: Io = processIo()): Promise<number> {
     err('create-marmeon: choose one package manager — --npm or --pnpm.');
     return USAGE;
   }
-  if (values['private-registration'] !== undefined) err(PRIVATE_REGISTRATION_FLAG_GONE);
 
   // Asked only on a terminal, and never with --yes: without one a run never waits for an answer (E167).
   const interactive = io.stdin.isTTY === true && io.stdout.isTTY === true;

@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symli
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { AUTH_STYLES_IMPORT, MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, PRIVATE_REGISTRATION_FLAG_GONE, STUBS } from './make-auth.ts';
+import { AUTH_STYLES_IMPORT, MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, STUBS } from './make-auth.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -151,27 +151,22 @@ describe('make:auth', () => {
     expect(lines[0]).toBe('✗ There are no auth templates for the UI adapter "vue". Known: react.');
   });
 
-  it('makes one module, private by default (E146, E193) — the old --private-registration only says so and is otherwise ignored', async () => {
-    const root = blankApp();
-    const { input, lines } = fakeInput(root, { 'private-registration': true });
-    expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines[0]).toBe(`! ${PRIVATE_REGISTRATION_FLAG_GONE}`);
-    expect(PRIVATE_REGISTRATION_FLAG_GONE).toContain('private registration is the default now');
-    expect(PRIVATE_REGISTRATION_FLAG_GONE).toContain('AUTH_PRIVATE_REGISTRATION=false');
-    expect(lines[1]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
-    // The same files as without the flag: one set of templates, both behaviours in it — the switch decides at run time.
+  it('makes one module, private by default (E146, E193) — AUTH_PRIVATE_REGISTRATION=false turns it off, no flag of the command', async () => {
+    expect(Object.keys(MakeAuthCommand.options)).toEqual(['force', 'adapter']);
     const defaults = blankApp();
     const plain = fakeInput(defaults);
     expect(await new MakeAuthCommand().handle(plain.input)).toBe(0);
     expect(plain.lines.filter((line) => line.startsWith('!'))).toEqual([]);
-    const files = (dir: string) => (readdirSync(join(dir, 'modules/auth'), { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file)).sort();
-    expect(files(root)).toEqual(files(defaults));
     expect(existsSync(join(STUBS, 'react', 'private-registration'))).toBe(false);
     // The change of address is pending by default (W9 step 9) and immediate with the switch off: both in the one controller.
     const controller = readFileSync(join(defaults, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8');
     expect(controller).toContain('requestEmailChange');
     expect(controller).toContain('changeEmail');
-    expect(existsSync(join(defaults, 'modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts'))).toBe(true);
+    // The users table is made with every column it has — no migration adds one later (E216: no app is older than its table).
+    const migrations = readdirSync(join(defaults, 'modules/auth/migrations')).filter((file) => file.includes('users_table'));
+    expect(migrations).toEqual(['0001_01_01_000000_create_users_table.ts']);
+    const users = readFileSync(join(defaults, 'modules/auth/migrations', migrations[0]!), 'utf8');
+    for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at']) expect(users).toContain(`'${column}'`);
     expect(plain.lines).toContain('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
   });
 
@@ -210,7 +205,7 @@ describe('make:auth', () => {
       expect(marmeon('route:types', '--check').code).toBe(0);
       const migrated = marmeon('migrate');
       expect(migrated.out).toContain('create_personal_access_tokens_table');
-      expect(migrated.out).toContain('add_pending_email_to_users_table');
+      expect(migrated.out).toContain('create_users_table');
       expect(migrated.code).toBe(0);
       const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
       expect(tables).toContain('password: Secret<string>;');

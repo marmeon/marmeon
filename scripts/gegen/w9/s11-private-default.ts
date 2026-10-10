@@ -3,7 +3,8 @@ import { defineGegenproben } from '../define.ts';
 /**
  * W9.11 (after Wave 9, E193) — private registration is the default: `make:auth` writes one module whose controllers read
  * `AuthConfig.privateRegistration` (`AUTH_PRIVATE_REGISTRATION`, on unless `false`; only `true`/`false` boot), the `--private-registration`
- * flags are gone with a notice, and switching it off outside development and tests warns at boot.
+ * flags are gone with a notice, and switching it off outside development and tests warns at boot. G4/G4b (the notices) are retired:
+ * the flags themselves went in W12 step 4b, and passing one is an unknown option.
  *
  * The default proven twice: on the web app's module and on the generated module (the fixture test generates, migrates and runs its
  * tests). The switch decides — never the input: a branch by the address breaks the bytes (G2a, G2b) or, with the same answer, the
@@ -97,21 +98,7 @@ export default defineGegenproben({
       run: { vitest: 'packages/auth/src/private-registration.test.ts', name: 'is on unless set to false' },
       expect: /promise resolved .* instead of rejecting/,
     },
-    // --- The old flags --------------------------------------------------------------------------------------------------------
-    {
-      id: 'G4',
-      title: 'make:auth takes --private-registration without a word: whoever passes it never learns it is gone',
-      patch: [{ file: 'packages/auth/src/make-auth.ts', find: "    if (input.options['private-registration'] !== undefined) input.output.warn(PRIVATE_REGISTRATION_FLAG_GONE);\n", replace: '' }],
-      run: { vitest: 'packages/auth/src/make-auth.test.ts', name: 'makes one module, private by default' },
-      expect: /expected '✓ Created modules\/auth \(\d+ files\)' to be '! --private-registration is gone/,
-    },
-    {
-      id: 'G4b',
-      title: 'create-marmeon takes --private-registration without a word',
-      patch: [{ file: 'packages/create-marmeon/src/main.ts', find: "  if (values['private-registration'] !== undefined) err(PRIVATE_REGISTRATION_FLAG_GONE);\n", replace: '' }],
-      run: { vitest: 'packages/create-marmeon/src/create.test.ts', name: 'the starter kit adds the home module' },
-      expect: /expected '' to be 'create-marmeon: --private-registr/,
-    },
+    // G4 and G4b retired (W12 step 4b, E216): the --private-registration flags and their notices are gone — an unknown option now.
     // --- The boot warning -----------------------------------------------------------------------------------------------------
     {
       id: 'G5',

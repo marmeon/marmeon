@@ -37,11 +37,6 @@ export const NEEDED = [
 /** What only the module's tests import — reported as dev dependencies. */
 export const NEEDED_FOR_TESTS = ['@marmeon/testing', 'vitest'];
 
-/** What `make:auth --private-registration` says since the flag is gone (E193) — the module is made all the same. */
-export const PRIVATE_REGISTRATION_FLAG_GONE =
-  '--private-registration is gone: private registration is the default now — the module never tells whether an address has an ' +
-  'account. Set AUTH_PRIVATE_REGISTRATION=false in .env to turn it off.';
-
 /**
  * `marmeon make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
  * remember-me, password reset, e-mail verification, password confirmation, API tokens, with views,
@@ -52,8 +47,8 @@ export class MakeAuthCommand {
   static command = 'make:auth';
   static description = 'Create the auth module (sign-in, registration, reset, verification, API tokens) — yours to change';
   static usage = '[--adapter=react] [--force]';
-  // `private-registration` only to name what replaced it (E193): the module is private by default, the switch lives in the env.
-  static options = { force: { type: 'boolean' }, adapter: { type: 'string' }, 'private-registration': { type: 'boolean' } } as const;
+  // The module is private by default (E193); AUTH_PRIVATE_REGISTRATION=false turns it off at run time — no option for it.
+  static options = { force: { type: 'boolean' }, adapter: { type: 'string' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
     const adapter = typeof input.options.adapter === 'string' ? input.options.adapter : 'react';
@@ -71,8 +66,6 @@ export class MakeAuthCommand {
       input.output.error('The templates need config/app.ts exporting AppConfig (APP_NAME, APP_URL) — the app skeleton has one.');
       return 1;
     }
-
-    if (input.options['private-registration'] !== undefined) input.output.warn(PRIVATE_REGISTRATION_FLAG_GONE);
 
     cpSync(source, target, { recursive: true, force: true });
     const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));

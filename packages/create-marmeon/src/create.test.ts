@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { main, NO_DIRECTORY, PRIVATE_REGISTRATION_FLAG_GONE, USAGE, type Io } from './main.ts';
+import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
 import { appManifest, filesUnder, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_TITLE, writeTitle } from './template.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -172,11 +172,14 @@ describe('create-marmeon — the app', () => {
 
   it('the starter kit adds the home module, registered — and names the generators when it does not install', async () => {
     const cwd = workspace();
-    // The old --private-registration (E193): said to be the default now, the kit made all the same.
-    const run = await create(cwd, ['kit', '--private-registration', '--docker', '--no-install', '--no-git']);
+    // Registration is private by default, AUTH_PRIVATE_REGISTRATION=false turns it off: there is no flag for it.
+    const refused = await create(cwd, ['flagged', '--private-registration', '--no-install', '--no-git']);
+    expect(refused.code).toBe(USAGE);
+    expect(refused.err).toContain("Unknown option '--private-registration'");
+    expect(existsSync(join(cwd, 'flagged'))).toBe(false);
+    const run = await create(cwd, ['kit', '--docker', '--no-install', '--no-git']);
     expect(run.code).toBe(0);
-    expect(run.err.trim()).toBe(PRIVATE_REGISTRATION_FLAG_GONE);
-    expect(PRIVATE_REGISTRATION_FLAG_GONE).toContain('AUTH_PRIVATE_REGISTRATION=false');
+    expect(run.err).toBe('');
     for (const file of ['modules/home/index.ts', 'modules/home/routes.ts', 'modules/home/views/Home.tsx', 'modules/home/home.test.ts']) expect(existsSync(join(cwd, 'kit', file)), file).toBe(true);
     const app = readFileSync(join(cwd, 'kit/bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import home from '#modules/home';\nimport system from '#modules/system';");

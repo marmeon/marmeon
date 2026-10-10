@@ -58,13 +58,14 @@ export default defineGegenproben({
       title: 'a personal date in a make:auth migration: check:source names it',
       patch: [
         {
-          file: 'packages/auth/stubs/react/modules/auth/migrations/0001_01_01_000005_add_first_verified_at_to_users_table.ts',
-          find: ' * When the account confirmed an address for the first time — set once,',
-          replace: ' * When the account confirmed an address for the first time (Max 07.10.) — set once,',
+          // Re-based in W12 step 4b: the users table is made with first_verified_at, the migration that added it is gone (E216).
+          file: 'packages/auth/stubs/react/modules/auth/migrations/0001_01_01_000000_create_users_table.ts',
+          find: '      // When the account confirmed an address for the first time — set once,',
+          replace: '      // When the account confirmed an address for the first time (Max 07.10.) — set once,',
         },
       ],
       run: SOURCE,
-      expect: /a personal date in what every new app copies \([^)]*\): packages\/auth\/stubs\/react\/modules\/auth\/migrations\/0001_01_01_000005_add_first_verified_at_to_users_table\.ts:4: \* When the account confirmed an address for the first time \(Max 07\.10\.\)/,
+      expect: /a personal date in what every new app copies \([^)]*\): packages\/auth\/stubs\/react\/modules\/auth\/migrations\/0001_01_01_000000_create_users_table\.ts:12: \/\/ When the account confirmed an address for the first time \(Max 07\.10\.\)/,
     },
     {
       id: 'T4',
