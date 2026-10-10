@@ -329,7 +329,7 @@ export class MarmeonDriver implements Driver {
    */
   #ran(connection: DatabaseConnection, query: CompiledQuery, metadata: SchemaMetadata): void {
     // A savepoint rolled back by hand (`sql\`rollback to savepoint …\``, a repository bound with using(trx)).
-    if (RawNode.is(query.query) && ROLLBACK_TO_SAVEPOINT.test(query.sql)) return this.#undone(connection);
+    if (RawNode.is(query.query) && ROLLBACK_TO.test(query.sql)) return this.#undone(connection);
     if (!changesSchema(query.query)) return;
     metadata.invalidate();
     if ((this.#depth.get(connection) ?? 0) > 0) metadata.hold(connection);
@@ -360,7 +360,8 @@ export class MarmeonDriver implements Driver {
 }
 
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
-const ROLLBACK_TO_SAVEPOINT = /^\s*rollback\s+to\s+savepoint\b/i;
+/** `rollback [work | transaction] to [savepoint] name`, after leading comments — a match while nothing was undone only reloads. */
+const ROLLBACK_TO = /^\s*(?:(?:--[^\n]*\n|\/\*[\s\S]*?\*\/)\s*)*rollback\s+(?:(?:work|transaction)\s+)?to\b/i;
 
 /** How long a query that needs the schema metadata waits for another connection's open schema change (a migration) to end. */
 const SCHEMA_CHANGE_WAIT_MS = 10_000;

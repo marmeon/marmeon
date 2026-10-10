@@ -175,7 +175,8 @@ class Guard {
    * Registers a statement's common table expressions. Every one is known before any body is checked — a body may refer to a
    * later one — and the bodies are checked again until no column gains a secret. One whose body reaches its own name, directly
    * or through another of the clause, is recursive (keyword or not): since recursion can move a value from column to column,
-   * once any of its columns carries a secret, every column does.
+   * once any of its columns carries a secret, every column does. A name a table or an outer expression has is refused: which of
+   * the two a reference means depends on the database (and on the clause's order), so neither is modelled.
    */
   #with(node: WithNode | undefined): boolean {
     if (!node) return false;
@@ -185,15 +186,21 @@ class Guard {
     for (const { name, expression } of node.expressions) {
       const table = name.table.table.identifier.name;
       const named = name.columns?.map((column) => column.column.name);
+      const shadows = this.#metadata.kinds.has(table) ? 'a table of the migrations' : this.#cte(table) ? 'a common table expression around it' : undefined;
+      if (shadows) {
+        throw new Error(
+          `${this.#relation ?? 'This query'} names a common table expression "${table}", which is also ${shadows} — rename the expression: whether a ` +
+            'reference means the one or the other differs between databases, so the check for secret columns cannot follow it. See docs/migrations.md#secret-columns.',
+        );
+      }
       if (!SelectQueryNode.is(expression)) {
         // A statement with `returning` as a common table expression: its columns are not followed — it cannot be read from.
         this.#scan(expression);
         ctes.set(table, { names: [], secret: new Set(), known: false, untyped: true });
         continue;
       }
-      // Its own name inside its body: a recursive one's columns carry nothing yet; one named like a table of the migrations is
-      // that table (Postgres reads the table there unless the clause is recursive).
-      const self = this.#table(table) ?? { names: named ?? [], secret: new Set(), known: named !== undefined };
+      // Its own name inside its body (a recursive one): columns that carry nothing yet.
+      const self: Output = { names: named ?? [], secret: new Set(), known: named !== undefined };
       ctes.set(table, self);
       bodies.push({ name: table, expression, named, self, mentions: tablesIn(expression) });
     }
@@ -237,12 +244,6 @@ class Guard {
         );
       }
     }
-  }
-
-  /** A table of the migrations as what it outputs: its columns, the secret ones among them — `undefined` for one nobody migrated. */
-  #table(name: string): Output | undefined {
-    const kinds = this.#metadata.kinds.get(name);
-    return kinds ? { names: [...kinds.keys()], secret: this.#metadata.secrets.get(name) ?? new Set(), known: true } : undefined;
   }
 
   #source(item: OperationNode): Source {
@@ -332,7 +333,9 @@ class Guard {
       output.names.push(name);
       kept.push(node);
     }
+    // Checked again (a later pass over a with clause): what this pass found replaces what an earlier one did.
     if (changed) this.spelled.set(owner, kept);
+    else this.spelled.delete(owner);
     return output;
   }
 

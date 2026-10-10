@@ -288,7 +288,9 @@ A secret column is written like any other, but:
 - a subquery or a common table expression that reads it with `secret()` passes it on as a secret column: the query around it asks
   with `secret()` again. That holds through a union, which lines its parts up by position, and a common table expression that
   refers to itself (with or without `RECURSIVE`), whose every column then counts as secret — the expressions of one `with` clause
-  are checked as a whole, whatever their order. A [relation](queries.md#relations-and-secret-columns) never loads one;
+  are checked as a whole, whatever their order, and one named like a table or like an expression around it is refused (rename
+  it: which of the two a reference means differs between databases). A [relation](queries.md#relations-and-secret-columns)
+  never loads one;
 - a subquery that selects it in a `where()` is refused too, although its value stays in the database. Filter on a key instead:
   `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`.
 

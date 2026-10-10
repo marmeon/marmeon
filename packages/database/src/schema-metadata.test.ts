@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import { Kysely, sql, SqliteDialect, type CompiledQuery, type DatabaseConnection, type QueryResult } from 'kysely';
+import { CompiledQuery, Kysely, sql, SqliteDialect, type DatabaseConnection, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
@@ -498,6 +498,42 @@ describe('schema metadata, unit', () => {
     await driver.rollbackTransaction(acquired);
     await metadata.refresh(connection, acquired);
     expect(sent.length - before).toBeGreaterThan(1); // the rollback, then the catalog again
+    await driver.rollbackTransaction(acquired);
+    await driver.releaseConnection(acquired);
+  });
+
+  it.each([
+    ['rollback to savepoint sp', true],
+    ['ROLLBACK TO SAVEPOINT "sp"', true],
+    ['rollback to sp', true],
+    ['/* undo */ rollback to savepoint sp', true],
+    ['-- undo\nrollback to savepoint sp', true],
+    ['rollback transaction to savepoint sp', true],
+    ['rollback work to sp', true],
+    ['release savepoint sp', false],
+    ["select 'rollback to savepoint sp'", false],
+  ])('loads again after a hand-written %j while the transaction changed the schema: %s', async (statement, undone) => {
+    const metadata = new SchemaMetadata('sqlite');
+    const sent: string[] = [];
+    const connection: DatabaseConnection = {
+      async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
+        sent.push(query.sql);
+        return { rows: [] };
+      },
+      async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {},
+    };
+    const driver = new MarmeonDriver(
+      { init: async () => {}, acquireConnection: async () => connection, releaseConnection: async () => {}, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, destroy: async () => {} },
+      { name: 'default', target: 'fake', metadata },
+    );
+    const acquired = await driver.acquireConnection();
+    await driver.beginTransaction(acquired, {});
+    await acquired.executeQuery(new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) }).schema.createTable('x').addColumn('id', 'integer').compile());
+    await metadata.refresh(connection, acquired);
+    await acquired.executeQuery(CompiledQuery.raw(statement));
+    const before = sent.length;
+    await metadata.refresh(connection, acquired);
+    expect(sent.length > before).toBe(undone);
     await driver.rollbackTransaction(acquired);
     await driver.releaseConnection(acquired);
   });

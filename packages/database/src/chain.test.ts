@@ -728,18 +728,64 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       ).rejects.toThrow(refused(`with('comments')`, 'k.name'));
     });
 
-    it('take a common table expression named like a table for the table inside its own body — Postgres reads the table there', async () => {
+    it('refuse a common table expression named like a table or like one around it — a reference would mean one or the other, by database', async () => {
       const any = db as unknown as Kysely<any>;
-      // Without RECURSIVE, Postgres resolves the name inside the body to the table: the token would be copied into the expression.
+      const shadows = (name: string, what: string) =>
+        `This query names a common table expression "${name}", which is also ${what} — rename the expression: whether a reference means the one or the other differs between databases, so the check for secret columns cannot follow it. See docs/migrations.md#secret-columns.`;
+      const table = shadows('api_keys', 'a table of the migrations');
+      // Without RECURSIVE, Postgres resolves a reference to a later expression to the table of that name; SQLite to the expression.
       if (driver === 'pgsql') {
-        const bare = any.withoutPlugins().with('api_keys', (q) => q.selectFrom('api_keys').select('token')).selectFrom('api_keys').select('token');
-        expect(await bare.execute()).toEqual([{ token: 'the-secret-token' }]);
+        const bare = any.withoutPlugins().with('a', (q) => q.selectFrom('api_keys').select('token')).with('api_keys', (q) => q.selectFrom('users').select('name as token'));
+        expect(await bare.selectFrom('a').select('token').execute()).toEqual([{ token: 'the-secret-token' }]);
       }
-      await expect(any.with('api_keys', (q) => q.selectFrom('api_keys').select(['user_id', 'token'])).selectFrom('api_keys').select('user_id').execute()).rejects.toThrow(
-        unasked('api_keys.token'),
+      const later = (target: Kysely<any>) =>
+        target.with('a', (q) => q.selectFrom('api_keys').select(['user_id', 'token'])).with('api_keys', (q) => q.selectFrom('users').select(['id as user_id', 'name as token']));
+      await expect(later(any).selectFrom('a').select('token').execute()).rejects.toThrow(table);
+      await expect(later(any).selectFrom('a').selectAll().execute()).rejects.toThrow(table);
+      await expect(
+        later(any).selectFrom('posts').select('title').with('comments', (c: any) => c.innerJoin('a', 'a.user_id', 'comments.user_id').select(['body', 'a.token'])).execute(),
+      ).rejects.toThrow(table);
+      // A later expression of a nested clause, named like an outer one that asked with secret().
+      const outer = shadows('b', 'a common table expression around it');
+      const nested = (target: Kysely<any>) =>
+        target.with('b', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)])).selectFrom(
+          target
+            .with('a', (q) => q.selectFrom('b').select(['b.user_id', 'b.token']))
+            .with('b', (q) => q.selectFrom('users').select(['id as user_id', 'name as token']))
+            .selectFrom('a')
+            .select(['a.user_id', 'a.token'])
+            .as('x'),
+        );
+      await expect(nested(any).select('x.token').execute()).rejects.toThrow(outer);
+      // A builder of the connection joined in a relation is compiled where the join is built: the refusal is thrown there.
+      expect(() =>
+        any
+          .with('b', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]))
+          .selectFrom('posts')
+          .select('title')
+          .with('comments', (c: any) => c.innerJoin(nested(any).select(['x.user_id', 'x.token']).as('x'), 'x.user_id', 'comments.user_id').select(['body', 'x.token'])),
+      ).toThrow(outer);
+      // Without any secret involved too — and the same name twice in one clause.
+      await expect(any.with('users', (q) => q.selectFrom('posts').select('id')).selectFrom('users').select('id').execute()).rejects.toThrow(shadows('users', 'a table of the migrations'));
+      await expect(any.with('k', (q) => q.selectFrom('posts').select('id')).with('k', (q) => q.selectFrom('tags').select('id')).selectFrom('k').select('id').execute()).rejects.toThrow(
+        shadows('k', 'a common table expression around it'),
       );
-      const asked = any.with('api_keys', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]));
-      await expect(asked.selectFrom('api_keys').select('token').execute()).rejects.toThrow(unasked('api_keys.token'));
+      await expect(any.with('k', (q) => q.selectFrom('posts').select('id')).selectFrom(any.with('k', (q) => q.selectFrom('tags').select('id')).selectFrom('k').select('id').as('x')).select('x.id').execute()).rejects.toThrow(
+        shadows('k', 'a common table expression around it'),
+      );
+    });
+
+    it('spell out a selectAll() as the last pass over a with clause sees it — the model and the SQL agree', async () => {
+      // `a` reads all of `b`, defined after it: the first pass knows no secret in `b`, the last one does.
+      const query = (db as unknown as Kysely<any>)
+        .withRecursive('a', (q) => q.selectFrom('b').selectAll())
+        .with('b(user_id, name)', ((q: Kysely<any>) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)])) as never)
+        .selectFrom('a')
+        .selectAll();
+      const compiled = sent(query);
+      expect(compiled).toContain('"b"."user_id"');
+      expect(compiled).not.toContain('"b".*');
+      expect(await query.execute()).toEqual([{ user_id: ids.ada }]);
     });
 
     it('are refused in a relation of the free helpers too', async () => {
