@@ -1,15 +1,10 @@
 /**
- * What `NODE_ENV` means to the framework, and where it comes from — the one place that decides both.
- *
- * `NODE_ENV` is `development`, `test` or `production` (missing = `production`); any other value stops the start. The two rules
- * are not mirror images of each other:
- * - **Development tools** run **only** with `NODE_ENV=development` — never with "anything but production".
- * - **Protections** apply to `production` and, fail-closed, to everything but `development` and `test`.
- *
- * `APP_ENV` only names the environment (and selects scheduled tasks): it never weakens a protection or enables a development
- * tool. See docs/configuration.md#the-environment-node_env.
- *
- * No dependencies besides Node: `marmeon` loads this module (`@marmeon/core/environment`) before the injection hook.
+ * What `NODE_ENV` means to the framework, and where it comes from — the one place that decides both. `NODE_ENV` is
+ * `development`, `test` or `production` (missing = `production`); any other value stops the start. The two rules are not
+ * mirror images: **development tools** run **only** with `NODE_ENV=development` — never with "anything but production";
+ * **protections** apply to `production` and, fail-closed, to everything but `development` and `test`. `APP_ENV` only names
+ * the environment: it never weakens a protection or enables a tool. See docs/configuration.md#the-environment-node_env.
+ * No dependencies besides Node: `marmeon` loads this module before the injection hook.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

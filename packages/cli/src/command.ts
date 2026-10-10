@@ -17,17 +17,8 @@ export interface CommandInput {
 }
 
 /**
- * A console command: a class with `handle()` and constructor injection, like a
- * controller. Returning a number sets the exit code.
- *
- * ```ts
- * export class PruneTokensCommand {
- *   static command = 'tokens:prune';
- *   static description = 'Delete expired tokens';
- *   constructor(tokens: TokenRepository) { … }
- *   async handle({ output }: CommandInput) { … }
- * }
- * ```
+ * A console command: a class with `static command`, `handle()` and constructor injection, like a controller. Returning a
+ * number sets the exit code. See docs/console.md#writing-commands.
  */
 export interface Command {
   handle(input: CommandInput): void | number | Promise<void | number>;

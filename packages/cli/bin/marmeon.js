@@ -1,25 +1,9 @@
 #!/usr/bin/env node
 /**
- * The `marmeon` launcher. It runs the command **in this process** — `marmeon start`, `queue:work`, `schedule:work`,
- * `migrate` and every other command of an installed app: the injection hook is registered with `module.registerHooks`
- * before the command loads, so signals, exit codes (a stuck worker's 70) and `NODE_OPTIONS='--import …'` (telemetry) reach
- * exactly one Node process — PID 1 in a container.
- *
- * Node is started once more only for what a running process cannot switch on: `node --watch` for `marmeon dev`, and the
- * `@marmeon/source` condition inside the framework's monorepo — where a `pnpm-workspace.yaml` lists this package (its
- * packages resolve to their TypeScript sources; a published package does not carry the condition — `pnpm pack` writes the
- * `publishConfig.exports` without it — and a copied one is not given it).
- *
- * `marmeon start` turns on Node's compile cache before anything else loads — `storage/framework/compile-cache` of the
- * app, or Node's own `NODE_COMPILE_CACHE` (`NODE_DISABLE_COMPILE_CACHE=1` turns it off). Node keys an entry by the module's
- * URL and checks it against a hash of the source it compiles — the source after the injection hook — so a changed module
- * is compiled afresh, never served from an old entry. A directory that cannot be written leaves the start uncached.
- *
- * `NODE_ENV` is resolved once, in the process that runs the command, before anything of the app loads
- * (`resolveEnvironment` of `@marmeon/core/environment`): the environment's value wins; else the app's `.env` (marked, and
- * named as `NODE_ENV from .env`); else `marmeon start` and `marmeon build` set `production` and `marmeon dev` `development`;
- * else it stays unset — production. A value that is none of `development`, `test`, `production` stops every command here,
- * with the hint to set `NODE_ENV=production` and `APP_ENV=<name>` — before a development tool or a check could read it.
+ * The `marmeon` launcher: resolves `NODE_ENV` (docs/configuration.md#where-node_env-comes-from), registers the injection hook
+ * and runs the command **in this process**, so signals and exit codes reach one Node process (docs/deployment.md#one-process).
+ * Node is started again only for `node --watch` (`marmeon dev`) and for the `@marmeon/source` condition inside the framework's
+ * monorepo. `marmeon start` turns on Node's compile cache, which checks each entry against the source after the hook.
  */
 import { spawn } from 'node:child_process';
 import { enableCompileCache, getCompileCacheDir } from 'node:module';

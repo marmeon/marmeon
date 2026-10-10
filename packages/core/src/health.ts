@@ -1,23 +1,8 @@
 import type { Container } from './container.ts';
 
 /**
- * One readiness check: can this instance serve — is its database, its Redis, its cache reachable? An invokable class:
- * dependencies come through the constructor, `handle()` throws (or rejects) when the check fails. What it returns — a short
- * note like `2 connections` — shows in the development details of `/up/ready`.
- *
- * ```ts
- * export class StorageWritable implements HealthCheck {
- *   static check = 'storage';
- *   readonly #storage: Storage;
- *   constructor(storage: Storage) {
- *     this.#storage = storage;
- *   }
- *   async handle(): Promise<void> {
- *     await this.#storage.disk('local').put('.health', 'ok');
- *   }
- * }
- * defineModule({ name: 'system', health: [StorageWritable] });
- * ```
+ * One readiness check of `/up/ready`: an invokable class whose `handle()` throws (or rejects) when the check fails; what it
+ * returns (`2 connections`) shows in the development details. See docs/health.md#writing-a-health-check.
  */
 export interface HealthCheck {
   handle(): void | string | Promise<void | string>;

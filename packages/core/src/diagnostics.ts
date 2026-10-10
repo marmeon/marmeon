@@ -1,25 +1,7 @@
 /**
- * The framework's observation points: `node:diagnostics_channel` TracingChannels named
- * `tracing:marmeon:<operation>:{start,end,asyncStart,asyncEnd,error}` plus three plain channels, `marmeon:log`,
- * `marmeon:exception` and `marmeon:event`. The error page, the devtools recorder, the debug bar and `@marmeon/otel` subscribe to them;
- * apps keep using events (job events, scheduler events) for their own reactions.
- *
- * ```ts
- * import { channels } from '@marmeon/core/diagnostics';
- *
- * const off = channels.subscribe(app, 'db.query', {
- *   end: (query) => console.log(query.sql, query.durationMs, query.requestId ?? query.jobId),
- * });
- * // … in the provider's shutdown(): off();
- * ```
- *
- * - **Without a subscriber nothing is built**: every place that publishes asks `hasSubscribers` first.
- * - **Every message names its app** — two apps in one process (tests, a worker beside a server) never see each other's:
- *   `channels.subscribe(app, …)` passes only `app`'s messages on.
- * - **The channels are the only process-wide part** (they are Node's): a subscription belongs to whoever made it and ends
- *   with `off()` — a provider's `shutdown()`.
- * - **Raw values**: queries carry their parameters, log entries their context, exceptions the error itself. Whatever
- *   records or shows them redacts them first; `QueryMessage.secret` says when a statement touches secret columns.
+ * The framework's observation points: TracingChannels `tracing:marmeon:<operation>:…` and the plain channels `marmeon:log`,
+ * `marmeon:exception` and `marmeon:event` (docs/observability.md#the-channels). Every message names its app; nothing is built
+ * without a subscriber; values are raw — whatever records or shows them redacts them first.
  */
 import { channel as plainChannel, tracingChannel, type TracingChannel } from 'node:diagnostics_channel';
 import type { Application } from './application.ts';
@@ -395,18 +377,11 @@ export const channels = {
   subscribe,
 
   /**
-   * Runs the work of each traced operation of `app` on channel `name` inside `around` — the one thing a `start` handler
-   * cannot do: put the work into a context of its own, so what the operation does (its queries, the jobs it dispatches, its
-   * log lines) happens inside it. `@marmeon/otel` runs it in the operation's span (`context.with(…)`). Node's
-   * `bindStore` cannot carry OpenTelemetry's context: Node 26 enters a bound store with `store.withScope()`, which only an
-   * `AsyncLocalStorage` has, and OpenTelemetry's context manager offers only `with(context, fn)`.
-   *
-   * ```ts
-   * const off = channels.around(app, 'http.request', (request, run) => context.with(contextOf(request), run));
-   * ```
-   *
-   * `run` must be called once, synchronously; a wrapper that throws or never calls it is reported as a process warning and the
-   * work runs without it. Not for `db.query` (published after the statement ran). Returns `off`.
+   * Runs the work of each traced operation of `app` on channel `name` inside `around` — so what the operation does (its
+   * queries, jobs, log lines) runs in a context of the subscriber's (`@marmeon/otel`: the operation's span). A `start` handler
+   * cannot do that, and Node's `bindStore` cannot carry OpenTelemetry's context: Node 26 enters a bound store with
+   * `store.withScope()`, which only an `AsyncLocalStorage` has. `run` must be called once, synchronously; a wrapper that throws
+   * or never calls it is a process warning and the work runs without it. Not for `db.query`. Returns `off`.
    */
   around<N extends TracingName>(app: Application, name: N, around: Around<TracingMessages[N]>): () => void {
     const tracing = tracings.get(name);

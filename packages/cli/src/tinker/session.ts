@@ -33,16 +33,10 @@ const NOT_APP_CODE = /(^|[\\/])(node_modules|dist|storage|\.marmeon|\.git|public
 const ROLLBACK = Symbol('tinker sandbox rollback');
 
 /**
- * One `marmeon tinker` session: the booted app, ONE container scope for all of it (like a command's — scoped
- * services such as the Translator in `APP_LOCALE` live as long as the session), the helpers, and — with `--sandbox` —
- * a transaction around everything that rolls back at the end.
- *
- * Nothing of it is global: the helpers are properties of the REPL's context ({@link attach}), built on first use and
- * removed again when the session ends ({@link detach}); the framework's modules never see them.
- *
- * The helpers of packages the CLI does not depend on (`db`, `jobs`, `mail`, `repos`, the sandbox) are found by the name
- * the package binds them under — `Database`, `Queue`, `Mailer`, `Connections` — so an app without the package still has
- * a tinker, whose `.ls` says what is missing.
+ * One `marmeon tinker` session: the booted app, one container scope for all of it, the helpers and — with `--sandbox` — a
+ * transaction around everything that rolls back at the end. The helpers live on the REPL's context only, built on first use;
+ * those of packages the CLI does not depend on are found by the name the package binds (`Database`, `Queue`, `Mailer`,
+ * `Connections`), so an app without the package still has a tinker. See docs/console.md#tinker.
  */
 export class TinkerSession {
   readonly app: Application;

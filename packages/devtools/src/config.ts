@@ -19,19 +19,8 @@ export const WATCHERS: readonly Watcher[] = ['requests', 'queries', 'jobs', 'mai
 export type PathPattern = string | RegExp;
 
 /**
- * The app's devtools settings — the default export of `config/devtools.ts` (optional: the defaults suffice):
- *
- * ```ts
- * import { defineDevtools } from '@marmeon/devtools';
- *
- * export default defineDevtools({
- *   ignore: { paths: ['/_marmeon/live*'], queries: (query) => query.sql.startsWith('pragma') },
- *   slowQueryMs: 100,
- * });
- * ```
- *
- * The file is loaded only where the devtools run (`NODE_ENV=development`), by the devtools themselves — nothing else imports
- * it, so it may import `@marmeon/devtools` while the package is a dev dependency (absent in production installs).
+ * The app's devtools settings — the default export of the optional `config/devtools.ts`. It is loaded only where the
+ * devtools run, so it may import `@marmeon/devtools` as a dev dependency. See docs/devtools.md#settings.
  */
 export interface DevtoolsOptions {
   /** What to record (default: everything). */

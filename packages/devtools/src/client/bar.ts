@@ -1,21 +1,7 @@
 /**
- * The in-page bar: plain DOM in a shadow root — no UI framework, so it shows any adapter's app. A pill at the
- * bottom right opens a panel with six tabs:
- *
- * - **Visits** — every request of the client core, newest first: visits, reloads, partial reloads, polls, deferred props,
- *   prefetches, layers, islands, actions, live validations, uploads and live hints — with status, duration and the request id.
- * - **Page** — the page on screen and each layer: component, route, controller and view ("open in editor"), the answer that showed
- *   it (`only`/`except`), the query raw and parsed, and every prop with its size and badges (deferred, optional, merged, once,
- *   live, shared, streamed).
- * - **Layers & regions** — the stack (the page, then each layer) and the islands of each, with their status.
- * - **Optimistic** — the patches shown: what each changed, before and after, and how it ended.
- * - **Server** — what the server recorded for a request (`GET /_marmeon/devtools/api/requests/:id`): route, controller,
- *   queries, log, events, jobs (in the worker too), mails, exceptions.
- * - **SSR** — hydration errors React recovered from, and the document's server rendering.
- *
- * What it shows of the app's data comes from the data feature's slots (`devtools` of `@marmeon/http/client`) or straight from
- * the navigator — read when it renders, kept nowhere else: when the document is left (signed out, a new build) the slots are
- * empty and the panel shows nothing of it. `sessionStorage` holds only whether the panel is open and which tab (never props).
+ * The in-page bar: plain DOM in a shadow root, so it shows any adapter's app (docs/devtools.md#the-bar-on-every-page). The
+ * app's data it shows is read from the data feature's slots when it renders and kept nowhere else; `sessionStorage` holds
+ * only whether the panel is open and which tab — never props.
  */
 import type { DevtoolsFeature, Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client';
 import type { PageObject } from '@marmeon/http/page';

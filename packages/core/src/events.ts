@@ -28,18 +28,8 @@ export interface Listener<TEvent> {
 export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | ((event: TEvent) => void | Promise<void>);
 
 /**
- * Where and how a queued listener runs — its class's `static queue`:
- *
- * ```ts
- * export class SendEmailVerification {
- *   static readonly queue = { queue: 'mail' };          // on the `mail` queue
- *   async handle(payload: EventPayload<typeof Registered>) { … }
- * }
- * ```
- *
- * Its job is dispatched like any other: inside `connections.transaction()` it exists only once the
- * transaction commits and is gone after a rollback — a `database` queue writes it into the transaction itself (atomic
- * with the data), every other connection holds it until the commit. There is no `afterCommit` switch: it is always on.
+ * Where and how a queued listener runs — its class's `static queue`. Its job is dispatched like any other: inside a
+ * transaction it exists only once the transaction commits. See docs/events.md#queued-listeners.
  */
 export interface QueuedListenerOptions {
   /** The queue (default: the connection's default queue). */
@@ -55,18 +45,8 @@ export interface QueuedListenerOptions {
 }
 
 /**
- * The static side of an event that queued listeners can listen to: a stable name and the schema of what is queued
- * of it — the event's own fields, as JSON (IDs, not records):
- *
- * ```ts
- * export class Registered {
- *   static readonly event = 'auth.registered';
- *   static readonly schema = r.object({ userId: r.integer() });   // reads event.userId
- *   readonly #event = true;
- *   …
- *   get userId() { return this.user.id; }
- * }
- * ```
+ * The static side of an event that queued listeners can listen to: a stable name (`static event`) and the schema of what is
+ * queued of it — the event's own fields, as JSON (IDs, not records). See docs/events.md#queued-listeners.
  */
 export interface QueueableEvent {
   /** The event's stable name — what the queue stores, never the class name: `'auth.registered'`. */
@@ -218,16 +198,9 @@ function listenerName(listener: ListenerBinding['listener']): string {
 }
 
 /**
- * Dispatches events: listeners run in registration order, each awaited. A queued listener (`static queue`) is
- * queued at its place in that order — like any dispatch, part of the transaction around it — and runs
- * later in a worker.
- *
- * An error stops the dispatch and propagates to the caller — in a request, the exception handler. The listeners after
- * the failing one do not run and are not queued; inside `connections.transaction()` the rollback drops the queued ones
- * before it as well. For all or nothing, dispatch inside a transaction.
- *
- * Created per resolution and bound to the container that asked for it, so in a
- * request, listeners are built from the request scope and may use scoped services.
+ * Dispatches events: listeners run in registration order, each awaited; a queued listener is queued at its place, part of
+ * the transaction around the dispatch. An error stops the dispatch and reaches the caller. Bound to the container that asked
+ * for it, so in a request the listeners may use scoped services. See docs/events.md#dispatching-events.
  */
 export class EventDispatcher {
   readonly #registry: EventRegistry;

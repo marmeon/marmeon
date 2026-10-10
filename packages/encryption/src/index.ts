@@ -41,8 +41,8 @@ const TAG_BYTES = 16;
 const ALGORITHM = 'aes-256-gcm';
 
 /**
- * AES-256-GCM through `node:crypto`. Payload: base64url(version · iv · ciphertext · tag) — the 16-byte tag last, the layout
- * WebCrypto writes, so either reads the other's payloads. Encrypts with the current key, decrypts with it or any previous key.
+ * AES-256-GCM through `node:crypto`. Payload: base64url(version · iv · ciphertext · tag), the 16-byte tag last: the layout
+ * of WebCrypto's AES-GCM. Encrypts with the current key, decrypts with it or any previous key.
  */
 export class AesGcmEncrypter implements Encrypter {
   readonly #keys: readonly KeyObject[];

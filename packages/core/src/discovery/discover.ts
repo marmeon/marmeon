@@ -1,20 +1,8 @@
 /**
- * `marmeon discover` — Composer's dump-autoload plus Laravel's package:discover.
- *
- * Walks the installed packages that opt in with a `"marmeon"` field in their
- * package.json, reads the `.d.ts` files they ship, and writes `.marmeon/manifest.json`:
- * - injection lists for their exported classes (from the constructor signatures),
- * - their service providers, in dependency order.
- *
- * One file per set of resolution conditions: `manifest.json` for the published packages (production, an installed app),
- * `manifest.source.json` for the framework's monorepo (`@marmeon/source`) — switching between `marmeon dev` and
- * `marmeon start` there rewrites nothing. Module references are file paths relative to the app (the classmap of Composer,
- * portable like a Docker build stage), so dependencies the app cannot import itself — transitive ones under pnpm — resolve.
- * `marmeon build` writes the production manifest; a start that finds `.marmeon/` read-only discovers in memory and says so once.
- *
- * The manifest is data (JSON), applied by {@link loadDiscoveredPackages}. Being read
- * rather than imported, it is never watched by `node --watch`, so regenerating it can
- * never restart a dev server.
+ * `marmeon discover`: reads the `.d.ts` files of installed packages with a `"marmeon"` field and writes `.marmeon/manifest*.json`
+ * — the injection lists of their classes and their providers, dependencies first (docs/modules.md#discovery). One file per set
+ * of resolution conditions; module paths are relative to the app, so transitive dependencies resolve. The manifest is read, not
+ * imported: `node --watch` never sees it, so regenerating it never restarts a dev server.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';

@@ -51,20 +51,11 @@ interface ModuleBindings {
 }
 
 /**
- * Finds the classes of a TypeScript module that take constructor parameters —
- * at any depth, so a class declared in a function (a middleware factory, a
- * test) is covered too — and resolves every parameter type to a runtime expression.
- * Types resolve against the module's imports and declarations.
- *
- * Never throws for a class: most classes (value objects, the router's own) are
- * never built by the container, so a parameter like `amount: number` is only a
- * problem once someone asks the container for that class.
- *
- * - Covered: `class X`, `export class X`, `export default class`, `const X = class`, `return class { … }`.
- * - A class declaring its own `static inject` is left alone (explicit override).
- * - Optional and defaulted parameters end the list, so their JavaScript defaults apply. When one has an injectable type
- *   (`clock: Clock = new SystemClock()`), the class carries a warning: the container never injects it — a test's
- *   fake `Clock` would not reach the class.
+ * Finds the classes of a TypeScript module, at any depth, that take constructor parameters and resolves each parameter type
+ * to a runtime expression (against the module's imports and declarations). Never throws for a class: a parameter that cannot
+ * be injected is only a problem once the container is asked for that class. A class with its own `static inject` is left
+ * alone; optional and defaulted parameters end the list, with a warning when their type could be injected
+ * (docs/container.md#default-values-are-never-injected).
  */
 export function analyzeInjections(source: string, filename: string): InjectionSite[] {
   if (!source.includes('constructor')) return [];

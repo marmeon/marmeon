@@ -10,19 +10,11 @@ export interface DevRequest {
 export type DevMarkup = string | ((request: DevRequest) => string);
 
 /**
- * Development only: HTML the Vite dev renderer adds to every document it renders — before `</body>` (outside the app's
- * root element, so hydration never sees it) or, `at: 'head'`, before `</head>` (before the app's entry: a module script there
- * runs first). Never in a client chunk. The devtools hang their in-page bar here (a module script the Vite dev server
- * serves, and the document's request id). Bound by the `ServerServiceProvider` only with `NODE_ENV=development`; the production
- * renderer never reads it.
- *
- * ```ts
- * if (app.container.has(DevDocument)) app.container.make(DevDocument).add('<a href="/_marmeon/devtools">Devtools</a>');
- * ```
- *
- * What is added is trusted markup (a package's own) — a function that puts anything of the request into it escapes it. A
- * `<script>` or `<style>` writes `nonce="__marmeon_csp_nonce__"` (`CSP_NONCE_PLACEHOLDER` of `@marmeon/core`): the renderer puts the response's
- * CSP nonce there, so the markup runs under `contentSecurityPolicy()` too.
+ * Development only: HTML the Vite dev renderer adds to every document — before `</body>`, outside the app's root (hydration
+ * never sees it), or with `at: 'head'` before `</head>`, ahead of the app's entry. Bound only with `NODE_ENV=development`; the
+ * production renderer never reads it. The markup is trusted: a function that puts anything of the request into it escapes it.
+ * A `<script>` or `<style>` writes `nonce="__marmeon_csp_nonce__"` (`CSP_NONCE_PLACEHOLDER`), which the renderer replaces
+ * with the response's nonce.
  */
 export class DevDocument {
   readonly #body: DevMarkup[] = [];

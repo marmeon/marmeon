@@ -1,24 +1,7 @@
 /**
- * The environment reader: the `env` of a config definition, without any validation library.
- *
- * ```ts
- * export const RedisConfig = defineConfig('redis', {
- *   env: env({
- *     REDIS_URL: env.url({ protocols: ['redis', 'rediss'] }).default('redis://127.0.0.1:6379'),
- *     REDIS_PREFIX: env.string().optional(),
- *     REDIS_TIMEOUT: env.integer().min(0).default(5000),
- *   }),
- *   resolve: (e) => ({ url: e.REDIS_URL, prefix: e.REDIS_PREFIX ?? '', timeout: e.REDIS_TIMEOUT }),
- * });
- * ```
- *
- * Every variable is a string; a building block reads its spelling (`'5000'` → `5000`, `'true'` → `true`). An empty variable
- * (`REDIS_PREFIX=`) is a missing one, for every block: a `.env` file has no other way to say "not set". A missing variable
- * takes its `.default(…)`, is `undefined` with `.optional()`, and is a problem otherwise. Every variable is read, and each
- * one that is wrong gives one message that names it — the start lists them all at once. The blocks' own messages never repeat
- * the value: a variable may hold a secret.
- *
- * `env({ … })` is a Standard Schema, so `defineConfig` takes it like any other; its output keeps the declared variables only.
+ * The environment reader: the `env` of a config definition, a Standard Schema without any validation library. An empty
+ * variable is a missing one, and a message never repeats the value (a variable may hold a secret).
+ * See docs/configuration.md#reading-variables.
  */
 import type { StandardIssue, StandardResult, StandardSchemaV1 } from './standard-schema.ts';
 
@@ -294,21 +277,8 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
 }
 
 /**
- * The environment variables of a config definition, by name — each with its building block:
- *
- * | Block | Reads |
- * | --- | --- |
- * | `env.string()` | text; `.min(n)`, `.max(n)` (length), `.regex(pattern, message?)` |
- * | `env.integer()` / `env.number()` | a whole number / any number; `.min(n)`, `.max(n)` |
- * | `env.boolean()` | `true`/`false`, `1`/`0` (any case) |
- * | `env.in(['a', 'b'])` | one of the values — typed as their union |
- * | `env.url({ protocols })` | an absolute URL (http and https unless `protocols` names others) |
- * | `env.port()` | a port from 1 to 65535 |
- * | `env.email()` | an e-mail address |
- * | `env.list(block, { separator })` | entries split at `,` (or `separator`), trimmed, each read by `block` |
- *
- * Every block has `.check(test, message)`, `.required(message?)`, `.optional()` and `.default(value)`. A block's own messages
- * name the variable; each takes a message of your own as its last argument.
+ * The environment variables of a config definition, by name — each read by a building block (`env.string()`,
+ * `env.integer()`, `env.in([...])`, `env.list(block)` …). See docs/configuration.md#reading-variables.
  */
 function envSchema<const F extends Fields>(fields: F): EnvSchema<{ -readonly [K in keyof F]: F[K] extends EnvVariable<infer Out> ? Out : never }, InputOf<F>> {
   return new EnvSchema(fields);

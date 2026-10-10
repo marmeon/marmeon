@@ -160,6 +160,10 @@ the server. TypeScript, Vite and pnpm stay in the build stage.
 compile cache. A container's own files are gone with the container. The first container on a new volume starts a little slower,
 and every later one reuses the compile cache.
 
+`marmeon start` keeps the compile cache in `storage/framework/compile-cache/`. Node's own `NODE_COMPILE_CACHE` names another
+directory, and `NODE_DISABLE_COMPILE_CACHE=1` turns it off. A directory that cannot be written is no error: the app starts without
+the cache.
+
 The image also runs on a read-only root file system, such as `docker run --read-only --tmpfs /tmp -v app-storage:/app/storage`.
 The build wrote everything into `.marmeon/` already, so nothing is written next to the code.
 

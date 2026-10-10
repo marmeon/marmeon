@@ -32,21 +32,9 @@ export interface SolutionDefinition<E = Error> {
 }
 
 /**
- * Solutions for a package's (or an app's) errors — a provider lists them as `static solutions`, the development error
- * page shows the ones that match:
- *
- * ```ts
- * export const solutions = defineSolutions([
- *   {
- *     for: ContainerError,
- *     when: (e) => e.reason === 'unbound',
- *     solve: (e) => ({ title: `Bind ${e.key} in a service provider`, text: '…', docs: 'docs/container.md#binding-services' }),
- *   },
- * ]);
- * export class MyServiceProvider { static solutions = solutions; … }
- * ```
- *
- * Each entry's `when` and `solve` get the error typed by its `for`.
+ * Solutions for a package's (or an app's) errors — a provider lists them as `static solutions`, and the development error
+ * page shows the ones that match. Each entry's `when` and `solve` get the error typed by its `for`.
+ * See docs/errors.md#solutions.
  */
 export function defineSolutions<const Classes extends readonly ErrorClass<unknown>[]>(
   definitions: { readonly [I in keyof Classes]: SolutionDefinition<InstanceType<Classes[I]>> & { readonly for: Classes[I] } },

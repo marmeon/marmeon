@@ -1,23 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
- * The ambient transaction context: which database transaction the current async call chain runs in.
- *
- * A transaction is entered ONLY by an explicit `transaction(callback)` (`connections.transaction`,
- * `repository.transaction` in @marmeon/database) and lasts exactly as long as its callback. Everything awaited
- * inside joins it — repositories, the database queue driver, in-process event listeners — without passing the
- * transaction around. AsyncLocalStorage follows one async call chain: a transaction never reaches another request, job
- * or test running at the same time.
- *
- * The rules that keep this door narrow:
- * - **Loud, never silent:** work started inside a transaction that runs after it finished (an un-awaited promise, a
- *   timer) throws {@link TransactionFinishedError} — it is never quietly sent to the database outside the transaction.
- * - **Framework boundaries cut the context** ({@link outsideTransaction}): work after the response, jobs, the worker —
- *   they never run inside the transaction that happened to be open when they were registered.
- * - **After the commit** ({@link afterCommit}): work that must not happen for a rolled-back transaction (a job on a
- *   queue outside the database, a mail) waits for the outermost commit and is dropped on a rollback.
- *
- * This module is the context only; the database package binds connections to it.
+ * One open database transaction of the ambient context: entered only by an explicit `transaction(callback)`, it follows that
+ * call chain and nothing else. Work started inside that runs after it finished throws {@link TransactionFinishedError} —
+ * never quietly outside the transaction. The database package binds connections to it; see docs/transactions.md#introduction.
  */
 export class TransactionFrame {
   /** The transaction around this one (a savepoint's transaction, or one on another connection). */
@@ -216,20 +202,9 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Runs `fn` once the current transaction has committed — the outermost one, when transactions are nested — outside of
- * any transaction; never, if it rolls back. Outside a transaction it runs now (and the returned promise settles with
- * it). Inside one, the returned promise resolves at once; an error of `fn` is thrown by the `transaction()` call that
- * committed (its data is committed by then).
- *
- * For work that must not happen for data that never existed: a job on a queue outside the database, a mail, a cache
- * write. (The database queue needs none of this — its jobs are rows in the same transaction.)
- *
- * ```ts
- * await connections.transaction(async () => {
- *   const user = await users.insert({ … });
- *   await afterCommit(() => mailer.send(new WelcomeMail(user)));
- * });
- * ```
+ * Runs `fn` once the outermost transaction has committed, outside of any transaction; never after a rollback, and at once
+ * outside a transaction. An error of `fn` is thrown by the `transaction()` call that committed (the data is committed by
+ * then). See docs/transactions.md#after-the-commit.
  */
 export async function afterCommit(fn: () => unknown): Promise<void> {
   const frame = currentTransaction();
@@ -241,49 +216,19 @@ export async function afterCommit(fn: () => unknown): Promise<void> {
 }
 
 /**
- * Runs `fn` if the current transaction rolls back — right after that rollback, outside of any transaction; never, if it
- * commits. The counterpart of {@link afterCommit}, for work done OUTSIDE the transaction on its behalf that must be
- * undone with it: a lock taken on the cache's own connection for a job whose row is part of the transaction (a unique
- * job), a file written for a record that is gone.
- *
- * ```ts
- * await connections.transaction(async () => {
- *   if (!(await lock.get())) return;                       // on the cache's connection: visible to everyone at once
- *   await afterRollback(() => lock.release());             // the job below never existed — free the lock again
- *   await queue.dispatch(RebuildStatsJob, { userId });     // a row in the transaction
- * });
- * ```
- *
- * It belongs to the innermost transaction: a savepoint that rolls back runs it at once (what it undoes is gone, even if
- * the transaction around it commits); one that commits hands it to the transaction around it. Outside a transaction
- * nothing can roll back, and `fn` never runs. An error of `fn` does not replace the error that rolled the transaction
- * back: `transaction()` throws a `SuppressedError` whose `error` is the failure of `fn` and whose `suppressed` is the
- * original error.
+ * Runs `fn` right after the current (innermost) transaction rolls back, outside of any transaction; never after a commit or
+ * outside a transaction — to undo work done outside it on its behalf. An error of `fn` does not hide the rollback's:
+ * `transaction()` throws a `SuppressedError`. See docs/transactions.md#after-a-rollback.
  */
 export async function afterRollback(fn: () => unknown): Promise<void> {
   currentTransaction()?.addAfterRollback([fn]);
 }
 
 /**
- * Runs `fn` outside of the current transaction: its database work goes to the connection directly and is kept even
- * when the transaction rolls back — a failed-attempt counter, a security log entry:
- *
- * ```ts
- * await connections.transaction(async () => {
- *   if (!(await this.#codes.consume(user, code))) {
- *     await outsideTransaction(() => this.#attempts.recordFailure(user.id));   // survives the rollback below
- *     throw new InvalidCodeError();
- *   }
- *   …
- * });
- * ```
- *
- * It is also how the framework cuts the context at its own boundaries (work after the response, jobs, the worker): what
- * runs there never joins the transaction that was open when it was registered.
- *
- * On a connection with a single physical connection — SQLite, or a test's isolated connection — work outside an open
- * transaction cannot run until it ends; there it fails at once with a {@link TransactionError} instead of waiting
- * forever. Record such things after the transaction instead (catch, record, rethrow).
+ * Runs `fn` outside of the current transaction: its database work is kept even when the transaction rolls back (a
+ * failed-attempt counter). The framework cuts the context the same way at its boundaries (work after the response, jobs).
+ * On a single physical connection (SQLite, a test's isolated connection) such work throws a {@link TransactionError} at once
+ * instead of waiting forever. See docs/transactions.md#outside-the-transaction.
  */
 export function outsideTransaction<R>(fn: () => R): R {
   const context = storage.getStore();

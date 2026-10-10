@@ -6,18 +6,9 @@ import { issuePath, type InferOutput, type StandardSchemaV1 } from './standard-s
 type Env = Readonly<Record<string, string | undefined>>;
 
 /**
- * A validated, typed piece of configuration. It is also a container token, so
- * with a same-named type it is injected like any service:
- *
- * ```ts
- * export const AppConfig = defineConfig('app', {
- *   env: env({ APP_NAME: env.string(), PORT: env.port().default(3000) }),   // the env reader of this package (or any Standard Schema)
- *   resolve: (e) => ({ name: e.APP_NAME, port: e.PORT }),
- * });
- * export type AppConfig = ConfigOf<typeof AppConfig>;
- *
- * class ShowLoginController { constructor(config: AppConfig) {} }
- * ```
+ * A validated, typed piece of configuration — also a container token, so with a same-named type
+ * (`export type AppConfig = ConfigOf<typeof AppConfig>`) it is injected like any service.
+ * See docs/configuration.md#defining-configuration.
  */
 export interface ConfigDefinition<T> extends Token<T> {
   readonly env: StandardSchemaV1;

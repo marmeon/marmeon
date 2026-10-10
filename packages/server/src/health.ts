@@ -3,17 +3,10 @@ import { ServerClosing } from '@marmeon/http';
 import type { RouteDefinition } from '@marmeon/router';
 
 /**
- * The health endpoints, answered by the kernel before anything else runs for a request — no request id, no session, no
- * CSRF, no middleware of any group, no log line, no `http.request` message (so neither a span nor a devtools entry):
- *
- * - `GET /up` — liveness: `200 OK` once the app booted, `503` from the moment the server closes. It checks
- *   nothing else — a database outage must not get a healthy process restarted.
- * - `GET /up/ready` — readiness: every `HealthCheck` (the packages' — database, redis, cache, queue — and the app's), at once,
- *   each with its time limit: `200 {"status":"ok"}`, else `503 {"status":"failing"}` — and `503 {"status":"draining"}` from the
- *   moment the server stops (SIGTERM), also while it still takes requests for `SHUTDOWN_DELAY` seconds, so a load
- *   balancer sends the next ones elsewhere. A result is kept for {@link READY_CACHE_MS}: the path is public, and a flood
- *   of probes runs the checks (`select 1`, a Redis `PING`) at most once a second. Which checks ran, how long they took and why
- *   one failed only with `NODE_ENV=development` (`ServerConfig.debug`).
+ * The health endpoints, answered by the kernel before anything else runs for a request (no request id, session, CSRF,
+ * middleware, log line or `http.request` message). `/up` is liveness and checks nothing else; `/up/ready` runs every
+ * `HealthCheck`, answers 503 from the stop signal on, and keeps its result for {@link READY_CACHE_MS} (the path is public);
+ * its details only with `NODE_ENV=development`. See docs/health.md#liveness-and-readiness.
  */
 export interface HealthEndpoints {
   /** `/up` — or what `HEALTH_PATH` says. */

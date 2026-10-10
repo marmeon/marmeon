@@ -90,17 +90,11 @@ export interface RedactableQuery {
 }
 
 /**
- * The one place that decides what of a value may be shown or recorded — for the development error page and its
- * Markdown copy, the devtools recorder and telemetry spans alike, also locally:
- *
- * - **by key**, at any depth: {@link REDACTED_KEYS} (passwords, tokens, secrets, cookies, `authorization`, signatures — so also
- *   `set-cookie`, `x-xsrf-token`, `_token`) and the names packages add — the session's cookie (`addKeys`);
- * - **in text**: what {@link redactText} masks (values of sensitive keys, bearer credentials, URL passwords, password hashes,
- *   API tokens) and the values of the added names (`marmeon_session=…`);
- * - **statements** that touch a table with secret columns show none of their parameters;
- * - **files and bytes** are never shown, only their size; every string is cut at {@link MAX_ENTRY_BYTES}.
- *
- * One per app (`app.container.make(Redactor)`), so the names an app adds stay its own.
+ * The one place that decides what of a value may be shown or recorded — the development error page, the devtools and
+ * telemetry: sensitive keys at any depth (the core's list and the names packages add), secrets in text, statements on secret
+ * columns without parameters, files and bytes by their size, every string cut at {@link MAX_ENTRY_BYTES}. One per app
+ * (`app.container.make(Redactor)`), so the names an app adds stay its own.
+ * See docs/logging.md#what-the-framework-shows-elsewhere.
  */
 export class Redactor {
   readonly #keys = new Set<string>();

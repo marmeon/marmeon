@@ -14,7 +14,7 @@ import { batchPage, entryPage, listPage, listQuery, overviewPage, queuePage, sch
 export { BASE } from './layout.ts';
 export { MAIL_CSP, PAGE_CSP } from './assets.ts';
 
-/** The version of the JSON API and the stream (documented, so the in-page bar and later adapters build on it). */
+/** The version of the JSON API and the stream (documented: the in-page bar builds on it). */
 export const API_VERSION = 1;
 
 /** Entries per page of a list. */
@@ -34,16 +34,9 @@ export interface PagesOptions {
 }
 
 /**
- * Registers `/_marmeon/devtools` — only ever called where the devtools run (`NODE_ENV=development`
- * or a test's opt-in): in production the routes do not exist (404). Every route:
- *
- * - **GET only** — there is no endpoint that writes or runs anything: retrying a job is a command to copy;
- * - outside every middleware group — **no session, no cookies, no CSRF**;
- * - behind a **host check** (403 for any host but `localhost`, `127.0.0.1`, `[::1]` and `APP_URL`'s — DNS rebinding);
- * - with `Cache-Control: no-store`, a CSP (`default-src 'none'`, the inline style and script by hash, `frame-ancestors 'self'`),
- *   no CORS header ever.
- *
- * Pages are rendered on the server with the escaping `html` template; a recorded mail shows in a sandboxed frame.
+ * Registers `/_marmeon/devtools` — called only where the devtools run (`NODE_ENV=development` or a test's opt-in). Every
+ * route is GET only, outside every middleware group (no session, cookies or CSRF), behind the host check of development
+ * routes (DNS rebinding), `no-store`, with a strict CSP and no CORS header. See docs/devtools.md#how-the-pages-are-protected.
  */
 export async function registerDevtoolsPages(options: PagesOptions): Promise<boolean> {
   let router: typeof import('@marmeon/router');

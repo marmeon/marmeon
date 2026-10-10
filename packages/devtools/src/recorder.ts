@@ -55,20 +55,10 @@ export interface RecorderOptions {
 }
 
 /**
- * The devtools' recorder: listens to the app's channels — requests, queries, jobs, mails, notifications, logs,
- * exceptions, scheduled runs, live hints, events and commands — and keeps what happens as entries:
- *
- * - **Batches:** a request's entries (with those of islands and layer bases it resolved in-process), a job attempt's, a
- *   scheduled run's or a command's are collected in memory and written in one go when it ends — to the store, never to the
- *   app's database, outside of any transaction. A job's entries carry the request that dispatched it.
- * - **Redacted before written**: every value through the app's `Redactor` — by key, in text (hashes, API tokens, token
- *   paths in links), statements on secret columns without parameters, encrypted payloads as `[encrypted]` — then cut to
- *   64 KB per entry.
- * - **Never in the way:** a handler never throws into the operation (the channels turn it into a warning), a failed write
- *   loses entries, not the request. Queries outside of a request, job, run or command (a worker polling its queue) are not
- *   recorded; other entries outside of them are written together after a moment.
- *
- * One per app; `close()` (the provider's shutdown) unsubscribes and writes what is left.
+ * The devtools' recorder: listens to the app's channels and keeps what a request, job attempt, scheduled run or command did
+ * as one batch, written to the store when it ends — never to the app's database. Every value passes the app's `Redactor`
+ * before it is written (an encrypted payload only as `[encrypted]`), cut to 64 KB per entry. A handler never throws into the
+ * operation, and a failed write loses entries, not the request. One per app. See docs/devtools.md#what-they-record.
  */
 export class Recorder {
   readonly #app: Application;

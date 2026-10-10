@@ -44,16 +44,10 @@ interface FileState {
 }
 
 /**
- * Entries as NDJSON files — one line per entry, shared by every process of the app (server, worker, scheduler):
- *
- * - **Writing:** one file per process and hour (`<YYYYMMDDHH>-<pid>-<random>-<n>.ndjson`, UTC), so no two processes ever
- *   append to the same file; a batch is one append. A file holds at most a tenth of `maxBytes` — then the next one starts.
- *   Writes are queued one after the other; a failure is reported and the entries are lost (never the request).
- * - **Ring:** after a write that may have taken the files over `maxBytes`, and when an hour begins, the files of hours older
- *   than `maxAgeHours` and then the oldest ones go until the rest fits.
- * - **Reading:** an index in memory (id, type, time, batch, request, job, tags and where the line is) over every file in the
- *   directory, brought up to date before each read by reading what was appended since — whole lines only, so a line another
- *   process is writing right now is read next time. Contents are read from the file when asked for.
+ * Entries as NDJSON files shared by every process of the app: one file per process and hour, so no two processes append to
+ * the same file (a batch is one append); a ring of `maxBytes` and `maxAgeHours`; an in-memory index brought up to date before
+ * each read from whole lines only, so a line another process is writing is read next time. A failed write is reported and
+ * loses its entries, never the request. See docs/devtools.md#where-the-entries-live.
  */
 export class FileStore implements DevtoolsStore {
   readonly directory: string;

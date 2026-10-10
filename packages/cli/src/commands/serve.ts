@@ -13,24 +13,10 @@ import { RouteTypes } from '../route-types.ts';
 import { writeRouteTypes } from './route-types.ts';
 
 /**
- * Runs the HTTP server. `marmeon dev` (with restarts) and `marmeon start` (production) both end up here.
- * It returns on SIGINT/SIGTERM (Ctrl+C, `node --watch` restarting, a deployment): the server stops
- * accepting requests, open keep-alive connections close, and then the CLI shuts the app down.
- *
- * SIGTERM — a deployment, `docker stop`, Kubernetes, systemd — first takes the server out of readiness (`/up/ready` 503) and
- * keeps answering for `SHUTDOWN_DELAY` seconds, so a load balancer that learns from its probes stops sending requests
- * before the server stops listening; SIGINT (Ctrl+C) skips that. The handlers are in place before the server listens: a
- * supervisor's SIGTERM right after the start line still drains.
- *
- * `marmeon start --workers=N` runs N servers in worker processes of `node:cluster` that share the port: this process
- * (the primary) passes SIGTERM/SIGINT on to each of them — each drains as one server would — and ends with 0 once all ended
- * with 0 (else with the first worker's code). A worker that ends while the cluster runs is started again; one that ends
- * before it listened stops the cluster (a broken start would only repeat).
- *
- * `marmeon dev` also runs what packages add to {@link DevProcesses} (a queue worker) — started with the server,
- * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own. Each has a channel
- * to this process: when it closes — this process ended without its shutdown (killed, crashed) — the companion stops itself as
- * on SIGTERM (`startMarmeon`).
+ * Runs the HTTP server — `marmeon dev` (with its companions, {@link DevProcesses}) and `marmeon start` (`--workers=N`: a
+ * `node:cluster` primary) both end up here. It returns on SIGINT/SIGTERM once the server drained; the handlers are in place
+ * before the server listens, so a supervisor's SIGTERM right after the start line still drains.
+ * See docs/deployment.md#stopping-without-dropped-requests and docs/console.md#the-development-server.
  */
 export class ServeCommand {
   static command = 'serve';
