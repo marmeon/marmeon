@@ -69,6 +69,7 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
     const { result: alan, sql } = await logged(() => users.findBy('email', 'alan@example.com'));
     expect(alan).toMatchObject({ id: ids.alan, name: 'Alan', is_admin: false, balance: '0.00' });
     expect(sql).toHaveLength(1);
+    expect(sql[0]).toMatch(/ limit \?$|limit \$\d+$/); // the first row only, not every match
     expectTypeOf(alan).toEqualTypeOf<{
       id: number;
       name: string;
@@ -103,6 +104,15 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
     await expect(users.findBy('email', undefined as never)).rejects.toThrow(
       'findBy() was given no value for email (undefined) — a condition without a value would match any row. Pass null to find a NULL.',
     );
+  });
+
+  it('refuses a key that is not a column of the table, or a secret one — also from a cast or a request', async () => {
+    await expect(users.findBy('tokn' as never, 'x' as never)).rejects.toThrow('findBy() compares columns of users that are not secret — tokn is not a column of it.');
+    await expect(keys.firstWhere({ name: 'cli', token: 'the-secret-token' } as never)).rejects.toThrow(
+      'firstWhere() compares columns of api_keys that are not secret — token is a secret column.',
+    );
+    const { sql } = await logged(() => keys.findBy('token' as never, 'the-secret-token' as never).catch(() => undefined));
+    expect(sql).toEqual([]); // refused before any query
   });
 
   it('pluck() reads one column of every row — not of the soft-deleted ones; a secret column is refused', async () => {
@@ -226,9 +236,10 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
       }
     });
 
-    it('refuses a size that is not a whole number ≥ 1, and a callback that leaves the key out', async () => {
+    it('refuses a size that is not a whole number ≥ 1, an order of its own, and a callback that leaves the key out', async () => {
       await expect(users.chunk(0).next()).rejects.toThrow('chunk() takes a size that is a whole number ≥ 1, got 0.');
       await expect(users.chunk(2.5).next()).rejects.toThrow('chunk() takes a size that is a whole number ≥ 1, got 2.5.');
+      await expect(users.chunk(1, (query) => query.orderBy('name')).next()).rejects.toThrow('chunk() reads the rows in the order of their id — leave orderBy() out of its callback.');
       await expect(users.chunk(1, (query) => query.clearSelect().select('name') as never).next()).rejects.toThrow(
         'chunk() reads the rows by their key "id", but the query does not select it — keep it in the selection.',
       );

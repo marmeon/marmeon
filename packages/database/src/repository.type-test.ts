@@ -31,6 +31,7 @@ declare const posts: Posts;
 declare const keys: Keys;
 declare const blogUsers: BlogUsers;
 declare const blogPosts: BlogPosts;
+declare const removed: number[] | undefined;
 
 export async function finderTypes() {
   expectTypeOf(await posts.findBy('title', 'First')).toEqualTypeOf<Awaited<ReturnType<Posts['find']>>>();
@@ -99,6 +100,11 @@ export async function relationWriteTypes() {
   // Type 'string' is not assignable to type 'number'.
   // @ts-expect-error — a tag's key is a number
   void posts.relation(1, 'tags').sync(['1']);
+  await posts.relation(1, 'tags').detach();
+  // Argument of type 'number[] | undefined' is not assignable to parameter of type 'number | readonly number[]'.
+  //   Type 'undefined' is not assignable to type 'number | readonly number[]'.
+  // @ts-expect-error — ids that may be undefined: detach() without an argument is the one that unlinks every link
+  void posts.relation(1, 'tags').detach(removed);
 
   const comment = await posts.relation(1, 'comments').create({ user_id: 2, body: 'hello' });
   expectTypeOf(comment.post_id).toEqualTypeOf<number>();

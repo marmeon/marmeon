@@ -141,13 +141,16 @@ transaction. Give other dependencies to the service that uses the repository.
 | `paginate(query, ctx.query)` | One page and the total. See [pagination](pagination.md#pages-by-number). |
 
 Every one of them leaves soft-deleted rows out and never returns a secret column. A finder cannot name a secret column at all:
-`pluck('password')` is a compile error, and refused when the query runs. `findBy()` and `firstWhere()` find a NULL with `null`. A
-value that is `undefined`, such as a field a request did not send, is refused, because a condition without a value would match any
-row. Which row is "first" is up to the database unless the column is unique; order a `query()` yourself when it matters.
+`pluck('password')` is a compile error, and refused when the query runs. A key of `findBy()` or `firstWhere()` that is not a
+column of the table, or is a secret one, is refused before the query, also when it got past the types. `findBy()` and
+`firstWhere()` find a NULL with `null`. A value that is `undefined`, such as a field a request did not send, is refused, because a
+condition without a value would match any row. Which row is "first" is up to the database unless the column is unique; order a
+`query()` yourself when it matters.
 
 `findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
-row's type has them. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows added
-during the loop come at the end, and rows removed do not make it skip others. Its callback narrows what it reads:
+row's type has them. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed
+during the loop do not make it skip others. Rows added meanwhile come at the end or, when another transaction commits them later
+with a lower id, not at all. Its callback narrows what it reads:
 
 ```ts
 for await (const users of this.#users.chunk(500, (query) => query.where('email_verified_at', 'is', null).with('profile_links'))) {
@@ -155,7 +158,8 @@ for await (const users of this.#users.chunk(500, (query) => query.where('email_v
 }
 ```
 
-The callback may add conditions and relations. It must keep `id` among the columns.
+The callback may add conditions and relations. It must keep `id` among the columns, and an `orderBy()` in it is refused: the
+batches go by `id`.
 
 `query().withTrashed()` keeps the soft-deleted rows, and so does a relation that calls it in its callback. The
 [relations](#soft-deleted-rows) section shows both.
@@ -352,13 +356,15 @@ await this.relation(noteId, 'tags').detach(4); // 1
 ```
 
 `sync(ids)` leaves the note linked to exactly these tags: it attaches the missing ones, detaches the others and leaves the rest
-alone, and says which it attached and detached. `attach()` takes one id or a list, skips the ones linked already and returns
-those it linked. `detach()` returns how many links went: without ids, every one; with an empty list, none.
+alone, and says which it attached and detached. `attach()` takes one id or a list, skips the ones linked already, also by a
+request at the same moment, and returns those it linked. `detach()` returns how many links went: without an argument, every
+one; with an empty list, none. Ids that may be `undefined`, such as a field a request did not send, are a compile error and
+refused when the call runs.
 
 A link to a row that is missing or soft-deleted is refused before anything is written, and the error names the ids:
 
 ```text
-relation('tags').attach() would link notes 3 to tags 9, which is missing or soft-deleted — nothing was written. Check the ids first: the rule exists() leaves soft-deleted rows out. See docs/queries.md#writing-through-relations.
+relation('tags').attach() would link the notes row 3 to the tags row 9, which is missing or soft-deleted — nothing was written. Check the ids first: the rule exists() leaves soft-deleted rows out. See docs/queries.md#writing-through-relations.
 ```
 
 Check ids that come from a request with [`exists()`](validation.md#database-rules-and-why-they-never-run-live) in its rules. A

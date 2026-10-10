@@ -46,8 +46,10 @@ export interface LinkWriter<K> {
   sync(ids: readonly K[]): Promise<{ attached: K[]; detached: K[] }>;
   /** Links `ids` that are not linked yet; returns those. A soft-deleted or missing related row is refused, and nothing is written. */
   attach(ids: K | readonly K[]): Promise<K[]>;
-  /** Unlinks `ids` — or, without any, every one; returns how many links went. */
-  detach(ids?: K | readonly K[]): Promise<number>;
+  /** Unlinks every one; returns how many links went. */
+  detach(): Promise<number>;
+  /** Unlinks `ids` (an empty list: none); returns how many links went. `undefined` is refused, never "every one". */
+  detach(ids: K | readonly K[]): Promise<number>;
 }
 
 /** The rows of one row's hasMany or hasOne. See `docs/queries.md#writing-through-relations`. */
@@ -74,10 +76,10 @@ export interface WriteContext {
   readonly table: string;
   readonly name: string;
   /**
-   * Runs `work` in a transaction of the repository — with the row (`undefined` when there is none, or it is soft-deleted) and the
-   * metadata its query loaded.
+   * Runs `work` in a transaction of the repository — with the loaded metadata and a reader of the row's `column` (`undefined` when
+   * there is no row, or it is soft-deleted).
    */
-  run<R>(work: (db: Kysely<any>, row: Record<string, unknown> | undefined, metadata: SchemaMetadata) => Promise<R>): Promise<R>;
+  run<R>(work: (db: Kysely<any>, key: (column: string) => Promise<{ value: unknown } | undefined>, metadata: SchemaMetadata) => Promise<R>): Promise<R>;
   /** The error for a row that is not there (a 404). */
   missing(): Error;
 }
@@ -91,7 +93,7 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
   const label = `relation('${name}')`;
 
   const write = <R>(method: Method, work: (db: Kysely<any>, relation: Relation, key: unknown, metadata: SchemaMetadata) => Promise<R>): Promise<R> =>
-    context.run(async (db, row, metadata) => {
+    context.run(async (db, key, metadata) => {
       const relation = metadata.relations.get(table)?.get(name);
       if (!relation) {
         const known = [...(metadata.relations.get(table)?.keys() ?? [])];
@@ -101,8 +103,9 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
       if (relation.pivot && metadata.softDeletes.has(relation.pivot)) {
         throw new Error(`${label} writes the links in ${relation.pivot}, which has soft deletes — write them with a query of your own.`);
       }
+      const row = await key(relation.localKey);
       if (!row) throw context.missing();
-      return work(db, relation, row[relation.localKey], metadata);
+      return work(db, relation, row.value, metadata);
     });
 
   /** The related rows among `ids` that are there and not soft-deleted — the only ones a link may point at. */
@@ -113,7 +116,8 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     const gone = ids.filter((id) => !there.has(same(id)));
     if (gone.length > 0) {
       throw new Error(
-        `${label}.${method}() would link ${table} ${String(key)} to ${relation.table} ${gone.map(String).join(', ')}, which ${gone.length > 1 ? 'are' : 'is'} missing or ` +
+        `${label}.${method}() would link the ${table} row ${String(key)} to the ${relation.table} ${gone.length > 1 ? 'rows' : 'row'} ${gone.map(String).join(', ')}, ` +
+          `which ${gone.length > 1 ? 'are' : 'is'} missing or ` +
           'soft-deleted — nothing was written. Check the ids first: the rule exists() leaves soft-deleted rows out. See docs/queries.md#writing-through-relations.',
       );
     }
@@ -122,8 +126,17 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
   const linked = async (db: Kysely<any>, relation: Relation, key: unknown): Promise<unknown[]> =>
     (await db.selectFrom(relation.pivot!).select(relation.relatedKey!).where(relation.foreignKey, '=', key).execute()).map((link) => (link as Record<string, unknown>)[relation.relatedKey!]);
 
-  const link = async (db: Kysely<any>, relation: Relation, key: unknown, ids: readonly unknown[]) => {
-    if (ids.length > 0) await db.insertInto(relation.pivot!).values(ids.map((id) => ({ [relation.foreignKey]: key, [relation.relatedKey!]: id }))).execute();
+  /** Inserts the links, and returns the ids it linked: a link another transaction made meanwhile is left alone (the pivot is unique). */
+  const link = async (db: Kysely<any>, relation: Relation, key: unknown, ids: readonly unknown[]): Promise<unknown[]> => {
+    if (ids.length === 0) return [];
+    const inserted = await db
+      .insertInto(relation.pivot!)
+      .values(ids.map((id) => ({ [relation.foreignKey]: key, [relation.relatedKey!]: id })))
+      .onConflict((conflict) => conflict.doNothing())
+      .returning(relation.relatedKey!)
+      .execute();
+    const linkedNow = new Set(inserted.map((row) => same((row as Record<string, unknown>)[relation.relatedKey!])));
+    return ids.filter((id) => linkedNow.has(same(id)));
   };
 
   const insert = async (db: Kysely<any>, relation: Relation, key: unknown, method: Method, values: object): Promise<unknown> => {
@@ -139,23 +152,27 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
       write('sync', async (db, relation, key) => {
         const wanted = distinct(ids);
         const current = await linked(db, relation, key);
-        const attached = without(wanted, current);
+        const missing = without(wanted, current);
         const detached = without(current, wanted);
         // Refused before anything changes: a sync either happens whole, or not at all.
-        await refuseGone(db, relation, key, 'sync', attached);
-        await link(db, relation, key, attached);
+        await refuseGone(db, relation, key, 'sync', missing);
+        const attached = await link(db, relation, key, missing);
         if (detached.length > 0) await db.deleteFrom(relation.pivot!).where(relation.foreignKey, '=', key).where(relation.relatedKey!, 'in', detached).execute();
         return { attached, detached };
       }),
     attach: (ids) =>
       write('attach', async (db, relation, key) => {
-        const attached = without(distinct(list(ids)), await linked(db, relation, key));
-        await refuseGone(db, relation, key, 'attach', attached);
-        await link(db, relation, key, attached);
-        return attached;
+        const missing = without(distinct(list(ids)), await linked(db, relation, key));
+        await refuseGone(db, relation, key, 'attach', missing);
+        return link(db, relation, key, missing);
       }),
-    detach: (ids) =>
-      write('detach', async (db, relation, key) => {
+    detach: (...given: [] | [unknown]) => {
+      const ids = given[0];
+      // An ids argument that is undefined (a field a request did not send) is a mistake — never "unlink every one".
+      if (given.length > 0 && ids === undefined) {
+        return Promise.reject(new TypeError(`${label}.detach() was given undefined — that is no list of ids. Call detach() without an argument to unlink every one.`));
+      }
+      return write('detach', async (db, relation, key) => {
         let query = db.deleteFrom(relation.pivot!).where(relation.foreignKey, '=', key);
         if (ids !== undefined) {
           const only = distinct(list(ids));
@@ -164,7 +181,8 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
           query = query.where(relation.relatedKey!, 'in', only);
         }
         return Number((await query.executeTakeFirst()).numDeletedRows);
-      }),
+      });
+    },
     create: (values) => write('create', (db, relation, key) => insert(db, relation, key, 'create', values)),
     createMany: async (values) => {
       if (values.length === 0) return [];

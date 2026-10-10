@@ -8,6 +8,7 @@ import { keyset, paginate, type CheckPageRequest, type Paginated, type PageReque
 import { TOUCH_COLUMN } from './placeholders.ts';
 import { relationWriter, type RelationWriter, type WritableRelationName } from './relation-writes.ts';
 import { metadataOf, softDelete, softDeleteFilter } from './schema-resolver.ts';
+import type { SchemaMetadata } from './metadata.ts';
 import type { Tables } from './types.ts';
 
 /** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
@@ -206,6 +207,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     if (!Number.isSafeInteger(size) || size < 1) throw new RangeError(`chunk() takes a size that is a whole number ≥ 1, got ${size}.`);
     const all = this.query().selectAll() as unknown as SelectQueryBuilder<DB, T, Selectable<DB[T]>>;
     const base = query ? query(all) : (all as unknown as SelectQueryBuilder<DB, T, O>);
+    // The batches go by id: another order would be dropped without a word.
+    if (base.toOperationNode().orderBy) throw new TypeError('chunk() reads the rows in the order of their id — leave orderBy() out of its callback.');
     let after: unknown[] | undefined;
     for (;;) {
       const rows = await keyset(base, [`${this.#name}.id`], after, 'asc', size).execute();
@@ -280,11 +283,15 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       missing: () => new RecordNotFoundError(this.table, id),
       run: (work) =>
         this.transaction(async (repository) => {
-          // The row first: its query loads the metadata on this connection, which says what the relation is.
-          const row = (await repository.query().selectAll().where('id' as never, '=', id as never).executeTakeFirst()) as Record<string, unknown> | undefined;
-          const metadata = metadataOf(repository.#db);
-          if (!metadata) throw new Error(`relation('${name}') needs the app's connection, which knows the relations — this repository runs on one without Marmeon's plugins.`);
-          return work(repository.#untyped, row, metadata);
+          const metadata = await repository.#schema(`relation('${name}')`);
+          // The row's key, locked on Postgres: a concurrent soft delete of it waits until the links are written.
+          const key = async (column: string) => {
+            let query = repository.query().select(column as never).where('id' as never, '=', id as never);
+            if (metadata.driver === 'pgsql') query = query.forUpdate();
+            const row = (await query.executeTakeFirst()) as Record<string, unknown> | undefined;
+            return row && { value: row[column] };
+          };
+          return work(repository.#untyped, key, metadata);
         }),
     }) as unknown as RelationWriter<DB, T, N>;
   }
@@ -349,10 +356,29 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return loading as unknown as SelectQueryBuilder<DB, T, O>;
   }
 
+  /**
+   * The connection's schema metadata, loaded: a query on this connection loads it (once, on the first of a process or after a
+   * schema change).
+   */
+  async #schema(label: string): Promise<SchemaMetadata> {
+    const metadata = metadataOf(this.#db);
+    if (!metadata) throw new Error(`${label} needs the app's connection, which knows the schema — this repository runs on one without Marmeon's plugins.`);
+    if (!metadata.fresh) await sql`select 1`.execute(this.#db);
+    return metadata;
+  }
+
   async #firstWhere(method: string, values: Record<string, unknown>): Promise<Selectable<DB[T]> | undefined> {
     const conditions = Object.entries(values);
     if (conditions.length === 0) throw new TypeError(`${method}() needs at least one column to match — it was given none.`);
-    let query = this.query().selectAll() as unknown as SelectQueryBuilder<any, any, any>;
+    // The names come from the code's types — checked here too, for a cast or an object a request made: never a secret column.
+    const metadata = await this.#schema(`${method}()`);
+    for (const [column] of conditions) {
+      const secret = metadata.secrets.get(this.#name)?.has(column) === true;
+      if (secret || metadata.kinds.get(this.#name)?.has(column) !== true) {
+        throw new TypeError(`${method}() compares columns of ${this.#name} that are not secret — ${column} is ${secret ? 'a secret column' : 'not a column of it'}.`);
+      }
+    }
+    let query = this.query().selectAll().limit(1) as unknown as SelectQueryBuilder<any, any, any>;
     for (const [column, value] of conditions) {
       // A missing value is a mistake (a field the request did not have), never "any value".
       if (value === undefined) {

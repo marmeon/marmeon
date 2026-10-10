@@ -427,7 +427,8 @@ export default defineRoutes((Route) => {
 
 The attachment is looked up with `note_id` equal to the bound note's `id`. An attachment of another note answers 404, so a
 changed id in the URL cannot reach somebody else's attachment. The column defaults to the parent's name with `_id`. Pass
-`column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`.
+`column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`. A `column` without `scopedBy` is a
+compile error, and refused when the routes load: it would look the attachment up without its note.
 
 ### Loading relations with the record
 

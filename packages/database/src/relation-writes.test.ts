@@ -11,6 +11,7 @@ const modules: ModuleDefinition[] = [
   { name: 'blog', migrations: fixtures('relations') },
   { name: 'keys', migrations: fixtures('relations-secrets') },
   { name: 'readers', migrations: fixtures('relations-readers') },
+  { name: 'archive', migrations: fixtures('relations-archived') },
 ];
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 
@@ -73,13 +74,13 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     it('sync() and attach() refuse a target that is soft-deleted or missing — and write nothing, in one transaction', async () => {
       await posts.relation(ids.first, 'users').sync([ids.ada]);
       await expect(posts.relation(ids.first, 'users').sync([ids.alan, ids.gone])).rejects.toThrow(
-        `relation('users').sync() would link posts ${ids.first} to users ${ids.gone}, which is missing or soft-deleted — nothing was written. ` +
+        `relation('users').sync() would link the posts row ${ids.first} to the users row ${ids.gone}, which is missing or soft-deleted — nothing was written. ` +
           "Check the ids first: the rule exists() leaves soft-deleted rows out. See docs/queries.md#writing-through-relations.",
       );
       // Neither the detach of Ada nor the attach of Alan happened.
       expect(await readersOf(ids.first)).toEqual([ids.ada]);
       await expect(posts.relation(ids.first, 'users').attach([ids.alan, 999_999, ids.gone])).rejects.toThrow(
-        `relation('users').attach() would link posts ${ids.first} to users 999999, ${ids.gone}, which are missing or soft-deleted — nothing was written.`,
+        `relation('users').attach() would link the posts row ${ids.first} to the users rows 999999, ${ids.gone}, which are missing or soft-deleted — nothing was written.`,
       );
       expect(await readersOf(ids.first)).toEqual([ids.ada]);
       // A link to a row that was soft-deleted later stays until it is detached.
@@ -102,6 +103,11 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
       await posts.relation(ids.second, 'tags').attach(ids.kysely);
 
       expect(await posts.relation(ids.first, 'tags').detach([])).toBe(0); // an empty list is no list: nothing goes
+      // Nor does undefined — a field a request did not send — mean "every one".
+      await expect(posts.relation(ids.first, 'tags').detach(undefined as never)).rejects.toThrow(
+        "relation('tags').detach() was given undefined — that is no list of ids. Call detach() without an argument to unlink every one.",
+      );
+      expect(await tagsOf(ids.first)).toEqual([ids.kysely, ids.sql, ids.orm]);
       expect(await posts.relation(ids.first, 'tags').detach(ids.sql)).toBe(1);
       expect(await posts.relation(ids.first, 'tags').detach([ids.sql, ids.orm])).toBe(1);
       expect(await posts.relation(ids.first, 'tags').detach()).toBe(1);
@@ -111,6 +117,25 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
       expect(await users.relation(ids.ada, 'posts').attach([ids.first, ids.second])).toEqual([ids.first, ids.second]);
       expect(await readersOf(ids.second)).toEqual([ids.ada]);
     });
+  });
+
+  it('attach() twice at once links once — the row is locked on Postgres, and the pivot insert leaves an existing link alone', async () => {
+    queries.length = 0;
+    const both = await Promise.all([posts.relation(ids.first, 'tags').attach([ids.kysely]), posts.relation(ids.first, 'tags').attach([ids.kysely])]);
+    expect(both.map((attached) => attached.length).sort()).toEqual([0, 1]);
+    expect(await tagsOf(ids.first)).toEqual([ids.kysely]);
+    const parentReads = queries.filter((query) => query.sql.startsWith('select "id" from "posts"'));
+    expect(parentReads).toHaveLength(2);
+    expect(parentReads.every((query) => query.sql.endsWith(' for update') === (driver === 'pgsql'))).toBe(true);
+    expect(queries.some((query) => /on conflict do nothing/.test(query.sql))).toBe(true);
+  });
+
+  it('refuses to write the links of a pivot with soft deletes — sync, attach and detach', async () => {
+    const labels = posts.relation(ids.first, 'labels' as never) as unknown as { sync(ids: number[]): Promise<unknown>; attach(id: number): Promise<unknown>; detach(): Promise<number> };
+    const refused = "relation('labels') writes the links in label_post, which has soft deletes — write them with a query of your own.";
+    await expect(labels.sync([1])).rejects.toThrow(refused);
+    await expect(labels.attach(1)).rejects.toThrow(refused);
+    await expect(labels.detach()).rejects.toThrow(refused);
   });
 
   describe('a hasMany and a hasOne', () => {
@@ -181,7 +206,7 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     const tags = posts.relation(ids.first, 'tags') as unknown as { create(values: object): Promise<unknown> };
     await expect(tags.create({ slug: 'new' })).rejects.toThrow("relation('tags').create() adds a row to a hasMany or a hasOne — tags is a belongsToMany of posts: use attach().");
     await expect((posts.relation(ids.first, 'nope' as never) as unknown as { detach(): Promise<number> }).detach()).rejects.toThrow(
-      "relation('nope'): posts has no relation \"nope\" — it has author, comments, editor, post_stats, post_tag, post_user, tags, users.",
+      "relation('nope'): posts has no relation \"nope\" — it has author, comments, editor, label_post, labels, post_stats, post_tag, post_user, tags, users.",
     );
   });
 

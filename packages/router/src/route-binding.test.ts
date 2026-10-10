@@ -140,6 +140,13 @@ describe('Route.bind', () => {
     expect(lookups).toEqual(['team 1 with members', 'team 1 with nothing', 'member 10 in team (team_id)', 'team 1 with nothing', 'member 20 in team (team_id)']);
   });
 
+  it('refuses a column without scopedBy — at boot, for untyped code: it would bind the record without its parent', () => {
+    const untyped = defineRoutes((Route) => (Route.bind('team', Teams) as any).bind('member', Members, { column: 'team_id' }));
+    expect(() => new Router().load(untyped)).toThrow(
+      "Route.bind('member') has a column (team_id) but no scopedBy — name the parent parameter, or the record is looked up without it.",
+    );
+  });
+
   it('refuses a binding for a parameter the path does not have — at boot, for untyped code', () => {
     const untyped = defineRoutes((Route) => (Route.bind('team', Teams) as any).get('/teams/:id', () => 'x'));
     expect(() => new Router().load(untyped)).toThrow("Route.bind('team') needs a :team parameter in /teams/:id.");
@@ -165,8 +172,18 @@ export function typeLevelTests() {
     Route.bind('team', Teams).get('/teams/:id', (ctx) => ctx.params);
     // @ts-expect-error — (2) the controller expects the id string, the route hands it a Team
     Route.bind('team', Teams).get('/teams/:team', (ctx: HttpContext<{}, { team: string }>) => ctx.params.team);
+    // Type '"team"' is not assignable to type '"scopedBy names a parameter bound before this one — bind the parent first:
+    // Route.bind(parent, …).bind(child, …, { scopedBy: parent })"'.
     // @ts-expect-error — (3) scopedBy must name a parameter bound before
     Route.bind('member', Members, { scopedBy: 'team' }).get('/teams/:team/members/:member', ShowMemberController);
+    // Type '"teem"' is not assignable to type '"team"'.
+    // @ts-expect-error — (3b) nor one that is not bound at all
+    Route.bind('team', Teams).bind('member', Members, { scopedBy: 'teem' });
+    // Argument of type '{ column: string; }' is not assignable to parameter of type 'BindOptions<"team", …> | undefined'.
+    //   Property 'scopedBy' is missing in type '{ column: string; }' but required in type '{ readonly scopedBy: "team"; readonly column?: string |
+    //   undefined; … }'.
+    // @ts-expect-error — (3c) a column scopes only together with its parent: alone it would bind the member unscoped
+    Route.bind('team', Teams).bind('member', Members, { column: 'team_id' });
     // @ts-expect-error — (4) a controller that needs a bound member — the route binds none
     Route.bind('team', Teams).get('/teams/:team/members/:member', ShowMemberController);
     // @ts-expect-error — (5) not a binder (no resolveRouteBinding)

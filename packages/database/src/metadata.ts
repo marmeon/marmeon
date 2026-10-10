@@ -46,6 +46,11 @@ export class SchemaMetadata {
     this.#driver = driver;
   }
 
+  /** The database it describes: `sqlite` or `pgsql`. */
+  get driver(): Driver {
+    return this.#driver;
+  }
+
   /** Table → column → kind, as declared (SQLite) or reported (Postgres). */
   get kinds(): ReadonlyMap<string, ReadonlyMap<string, ColumnKind>> {
     return this.#kinds;

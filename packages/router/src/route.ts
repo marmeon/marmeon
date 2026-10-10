@@ -22,6 +22,17 @@ import type {
 /** What `with` takes for a binder that loads nothing besides the record — the message the compiler shows. */
 type NoRelations = 'this binder loads nothing with the record — only one with a routeBindingWith does, such as a repository';
 
+/**
+ * `bind()`'s options: unscoped, or scoped by a parameter bound before (`scopedBy`, and the `column` that points at it) — a `column`
+ * alone would bind without the parent. `with` goes with both.
+ */
+type BindOptions<TScope extends string, TWith> =
+  | { readonly scopedBy?: never; readonly column?: never; readonly with?: TWith }
+  | { readonly scopedBy: [TScope] extends [never] ? NoParent : TScope; readonly column?: string; readonly with?: TWith };
+
+/** What `scopedBy` takes before any parameter is bound — the message the compiler shows. */
+type NoParent = 'scopedBy names a parameter bound before this one — bind the parent first: Route.bind(parent, …).bind(child, …, { scopedBy: parent })';
+
 export interface GroupAttributes {
   readonly prefix: string;
   readonly namePrefix: string;
@@ -134,11 +145,15 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * is a 404 — insecure direct object references cannot happen by forgetting a check. See docs/routing.md#scoped-bindings. `with`
    * names relations a repository loads with the record, in the same query: docs/routing.md#loading-relations-with-the-record.
    */
-  bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = never, const W extends BindingWith<B> = never>(
+  bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(
     param: TName,
     binder: B & ConsistentBinder<B>,
-    options?: { scopedBy?: TScope; column?: string; with?: [BindingWith<B>] extends [never] ? NoRelations : readonly W[] },
+    options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[]>,
   ): Route<TState, TParams, Merge<TBindings, { [K in TName]: BoundValue<B, W> }>> {
+    // Untyped code gets past the options type: a column without its parent would bind the record unscoped.
+    if (options?.column !== undefined && options.scopedBy === undefined) {
+      throw new Error(`Route.bind('${param}') has a column (${options.column}) but no scopedBy — name the parent parameter, or the record is looked up without it.`);
+    }
     const binding: RouteBinding = {
       param,
       binder,
