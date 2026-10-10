@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, currentLogContext, Logger, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, Logger, Redactor, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -118,7 +118,16 @@ class ResetLinkJob {
   }
 }
 
-const allJobs = [WelcomeJob, FlakyJob, ChoosyJob, PoliteSlowJob, RudeSlowJob, ResetLinkJob];
+/** Fails with the value of a name only the app knows is secret (its session cookie's, as @marmeon/session adds it). */
+class LeakyJob {
+  static readonly job = 'test.leaky';
+  static readonly schema = v.object({});
+  handle(): void {
+    throw Object.assign(new Error('the store refused shop_session=s3ss10nvalue'), { shop_session: 'pr0pvalue' });
+  }
+}
+
+const allJobs = [WelcomeJob, FlakyJob, ChoosyJob, PoliteSlowJob, RudeSlowJob, ResetLinkJob, LeakyJob];
 
 /** A real app: database (SQLite in memory, migrated), queue, encryption — the jobs in one module. */
 async function app(options: { env?: Record<string, string>; modules?: ModuleDefinition[]; clock?: TestClock; logger?: Logger } = {}): Promise<Application & { seen: Seen; clock: TestClock }> {
@@ -333,6 +342,21 @@ describe('the worker', () => {
       'Failed test.flaky after 3 attempts: SMTP said no (password=[redacted], url postgres://app:***@db/app)',
     ]);
     expect(await queue.size()).toBe(0);
+  });
+
+  it("records and logs a failure masked by the app's Redactor — the names its packages add count too, not only the core's", async () => {
+    const logged: string[] = [];
+    const capture: Logger = { debug() {}, info() {}, warn: (message) => logged.push(message), error: (message) => logged.push(message), child: () => capture };
+    await using application = await app({ logger: capture });
+    application.container.make(Redactor).addKeys('shop_session');
+    await application.container.make(Queue).dispatch(LeakyJob, {});
+    const { QueueConnections } = await import('./connections.ts');
+    const connections = application.container.make(QueueConnections);
+    expect(await connections.worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
+    const [failed] = await connections.failed().all();
+    expect(failed!.exception).toContain('the store refused shop_session=[redacted]');
+    expect(failed!.exception, failed!.exception).not.toMatch(/s3ss10nvalue|pr0pvalue/);
+    expect(logged).toEqual(['Failed test.leaky: the store refused shop_session=[redacted]']);
   });
 
   it('lets a job discard, release or fail itself', async () => {

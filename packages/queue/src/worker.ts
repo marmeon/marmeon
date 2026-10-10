@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { describeError, outsideTransaction, redactText, type Clock, type Logger } from '@marmeon/core';
+import { describeError, outsideTransaction, Redactor, type Clock, type Logger } from '@marmeon/core';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
 import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
@@ -75,6 +75,8 @@ export interface WorkerDependencies {
   readonly retryAfter?: number;
   /** Job events (`JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, `JobQueued` for the next of a chain) — the app's `EventDispatcher`. */
   readonly events?: JobEvents;
+  /** What masks a failure's text in the failed jobs and the log — the app's, with the names its packages add (default: the core's list). */
+  readonly redactor?: Redactor;
 }
 
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
@@ -93,9 +95,11 @@ const DEFAULT_STOP_TIMEOUT = 10;
  */
 export class Worker {
   readonly #deps: WorkerDependencies;
+  readonly #redactor: Redactor;
 
   constructor(dependencies: WorkerDependencies) {
     this.#deps = dependencies;
+    this.#redactor = dependencies.redactor ?? new Redactor();
   }
 
   run(options: WorkOptions): Promise<WorkResult> {
@@ -308,7 +312,7 @@ export class Worker {
             if (counts.ready > 0 && counts.reserved === 0) now.add(queue);
           }
         } catch (error) {
-          logger.debug(`Could not look at the other queues: ${messageOf(error)}`);
+          logger.debug(`Could not look at the other queues: ${this.#message(error)}`);
           return;
         }
         for (const queue of now) {
@@ -334,7 +338,7 @@ export class Worker {
     try {
       await releaseUnique(this.#deps.runner.cache, record, moment);
     } catch (error) {
-      this.#deps.logger.warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${messageOf(error)}`, { job: record.job, jobId: record.uuid });
+      this.#deps.logger.warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${this.#message(error)}`, { job: record.job, jobId: record.uuid });
     }
   }
 
@@ -344,7 +348,7 @@ export class Worker {
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${messageOf(error)}`, { job: event.job, jobId: event.jobId });
+      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`, { job: event.job, jobId: event.jobId });
     }
   }
 
@@ -419,7 +423,7 @@ export class Worker {
     if (reserved.attempts < record.tries) {
       const delay = backoffDelay(record.backoff, reserved.attempts);
       await this.#deps.driver.release(reserved, delay);
-      this.#deps.logger.warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${messageOf(error)}`, context);
+      this.#deps.logger.warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${this.#message(error)}`, context);
       await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay, reason, ...(ms === undefined ? {} : { ms }) }));
       return 'released';
     }
@@ -436,12 +440,12 @@ export class Worker {
       queue: reserved.queue,
       job: name,
       payload: reserved.payload,
-      exception: describeError(error),
+      exception: describeError(error, this.#redactor),
       failedAt: this.#deps.clock.now(),
     });
     const removed = await this.#deps.driver.fail(reserved);
     const dropped = record?.chain?.length ? ` — the ${record.chain.length} job(s) chained after it will not run` : '';
-    this.#deps.logger.error(`Failed ${name}${how}${dropped}: ${messageOf(error)}`, {
+    this.#deps.logger.error(`Failed ${name}${how}${dropped}: ${this.#message(error)}`, {
       job: name,
       ...(record ? { jobId: record.uuid } : {}),
       attempt: reserved.attempts,
@@ -453,11 +457,11 @@ export class Worker {
     if (removed) await this.#releaseUnique(record, 'done');
     await this.#emit(new JobFailed({ ...this.#about(reserved, record), attempt: reserved.attempts, error: error instanceof Error ? error : new Error(String(error)) }));
   }
-}
 
-/** An error's message for a log line — redacted like the stored error (E105): a message may quote a secret. */
-function messageOf(error: unknown): string {
-  return redactText(error instanceof Error ? error.message : String(error));
+  /** An error's message for a log line — redacted like the stored error (E105), by the same Redactor: a message may quote a secret. */
+  #message(error: unknown): string {
+    return this.#redactor.text(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Resolves true when `signal` aborts (now or later), false when `cancel` aborts first. */

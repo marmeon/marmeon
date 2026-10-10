@@ -1,6 +1,6 @@
 import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
-import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, type Container, type QueuedListenerClass } from '@marmeon/core';
+import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, Redactor, type Container, type QueuedListenerClass } from '@marmeon/core';
 import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import type { Kysely } from '@marmeon/database';
 import { QueueConnections } from './connections.ts';
@@ -237,6 +237,7 @@ export class QueueFake implements Queue {
       clock: container.make(Clock),
       logger: container.make(Logger).child({ channel: 'queue' }),
       events: connections.events,
+      ...(container.has(Redactor) ? { redactor: container.make(Redactor) } : {}),
     });
     // Without `queues` every queue, fairly — like `queue:work` without --queue (E199): the job that became due first runs first.
     return worker.run({ ...(options.queues ? { queues: options.queues } : {}), stopWhenEmpty: true, stopTimeout: options.stopTimeout ?? 1, ...(options.maxJobs === undefined ? {} : { maxJobs: options.maxJobs }) });

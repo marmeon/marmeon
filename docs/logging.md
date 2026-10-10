@@ -118,7 +118,8 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 When you must log text that may hold a secret, mask it with `redactText()` of `@marmeon/core`. It takes out the values of
 sensitive keys such as `token=…`, bearer credentials, passwords in URLs, password hashes, API tokens and path segments that look
 like a token. The framework's own entries log an error as text passed through `redactText()`: the exception handler's report,
-failed jobs and scheduled tasks, and work after the response.
+scheduled tasks and work after the response. A failed job's text, in `failed_jobs` and in the worker's log, passes the app's
+`Redactor`, so the values of the names packages add, such as the session cookie's, are masked there too.
 
 ### What the framework shows elsewhere
 

@@ -314,20 +314,22 @@ function truncate(text: string): string {
 
 /**
  * An error as text for storage (a failed job's `exception`): name, message, stack and the error's own properties and
- * causes — redacted like a log entry ({@link redact} for properties, {@link redactText} for the text).
+ * causes — redacted like a log entry by `redactor` ({@link Redactor.log} for properties, {@link Redactor.text} for the text, cut
+ * at {@link MAX_ENTRY_BYTES}). Pass the app's (`app.container.make(Redactor)`), so the names its packages add — the session's
+ * cookie — are masked too; without one, the core's key list alone.
  */
-export function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return redactText(typeof error === 'string' ? error : safeJson(redact({ value: error }).value));
+export function describeError(error: unknown, redactor: Redactor = new Redactor()): string {
+  if (!(error instanceof Error)) return redactor.text(typeof error === 'string' ? error : safeJson(redactor.log({ value: error }).value));
   const parts: string[] = [];
   let current: unknown = error;
   for (let depth = 0; current instanceof Error && depth < 5; depth++) {
     const own = Object.fromEntries(Object.entries(current).filter(([key]) => key !== 'cause'));
-    const properties = Object.keys(own).length > 0 ? `\n${safeJson(redact(own))}` : '';
+    const properties = Object.keys(own).length > 0 ? `\n${safeJson(redactor.log(own))}` : '';
     parts.push(`${depth > 0 ? 'Caused by: ' : ''}${current.stack ?? `${current.name}: ${current.message}`}${properties}`);
     current = current.cause;
   }
-  if (current !== undefined && !(current instanceof Error)) parts.push(`Caused by: ${typeof current === 'string' ? current : safeJson(redact({ value: current }).value)}`);
-  return redactText(parts.join('\n'));
+  if (current !== undefined && !(current instanceof Error)) parts.push(`Caused by: ${typeof current === 'string' ? current : safeJson(redactor.log({ value: current }).value)}`);
+  return redactor.text(parts.join('\n'));
 }
 
 function safeJson(value: unknown): string {

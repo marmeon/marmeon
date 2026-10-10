@@ -381,20 +381,43 @@ export default defineMigration({
 ```
 
 Your provider stores the key and hands it back as `sessionKey` from `findById()` and `findForLogin()`. A secret column is read
-only when it is named, as the starter kit's `UserRepository` reads the password hash:
+only when it is named, as the starter kit's `UserRepository` reads the password hash. Its parts that signing in needs, with the
+session key added:
 
-```ts
-async updateSessionKey(id: number, key: string): Promise<void> {
-  await this.update(id, { session_key: key });
-}
+```ts title="modules/auth/UserRepository.ts"
+import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
+import { Repository, secret } from '@marmeon/database';
+import type { User } from './users.ts';
 
-async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
-  const row = await query.selectAll().select((eb) => [secret(eb, 'password'), secret(eb, 'session_key')]).executeTakeFirst();
-  if (!row) return undefined;
-  const { password, session_key, ...user } = row;
-  return { user, passwordHash: password as PasswordHash, sessionKey: session_key };
+export class UserRepository extends Repository<'users'> implements UserProvider<User> {
+  static table = 'users' as const;
+
+  findById(id: number): Promise<Credentials<User> | undefined> {
+    return this.#credentials(this.query().where('id', '=', id));
+  }
+
+  findForLogin(email: string): Promise<Credentials<User> | undefined> {
+    return this.#credentials(this.query().where('email', '=', email));
+  }
+
+  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
+    await this.update(id, { password: hash });
+  }
+
+  async updateSessionKey(id: number, key: string): Promise<void> {
+    await this.update(id, { session_key: key });
+  }
+
+  async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
+    const row = await query.selectAll().select((eb) => [secret(eb, 'password'), secret(eb, 'session_key')]).executeTakeFirst();
+    if (!row) return undefined;
+    const { password, session_key, ...user } = row;
+    return { user, passwordHash: password as PasswordHash, sessionKey: session_key };
+  }
 }
 ```
+
+`User` is `Row<'users'>` in the starter kit's `users.ts`: the secret columns are not part of it.
 
 `updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. Without
 `updateSessionKey` on the provider it throws an error that names the method, and it throws as well when `findById()` does not hand

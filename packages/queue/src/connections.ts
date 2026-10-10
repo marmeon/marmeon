@@ -1,5 +1,5 @@
 import type { Cache } from '@marmeon/cache';
-import { Clock, EventDispatcher, Logger, type Container } from '@marmeon/core';
+import { Clock, EventDispatcher, Logger, Redactor, type Container } from '@marmeon/core';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, QueueDriver } from './driver.ts';
 import { DatabaseFailedJobStore, DatabaseQueueDriver, type DatabaseQueueConnection } from './drivers/database.ts';
@@ -129,6 +129,8 @@ export class QueueConnections {
       logger: this.#container.make(Logger).child({ channel: 'queue' }),
       retryAfter: options.retryAfter,
       events: this.events,
+      // The app's: the names its packages add (the session's cookie) are masked in failed jobs and their log lines too.
+      ...(this.#container.has(Redactor) ? { redactor: this.#container.make(Redactor) } : {}),
     });
   }
 
