@@ -1,4 +1,5 @@
 import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
+import { commitAnyway, err, ok, type Result } from '@marmeon/core';
 import { Repository, secret, sql } from '@marmeon/database';
 import type { User } from './users.ts';
 
@@ -24,10 +25,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.query().selectAll().where('email', '=', email).executeTakeFirst();
   }
 
-  /** A new user — `undefined` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
-  async register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
-    const created = await this.tryInsert(values);
-    return created.ok ? created.value : undefined;
+  /** A new user — or `duplicate` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
+  register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<Result<User, { kind: 'duplicate' }>> {
+    return this.tryInsert(values);
   }
 
   async markEmailVerified(id: number): Promise<void> {
@@ -41,17 +41,15 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * A new address at once, unverified — `'duplicate'` when another account has it. Only with `AUTH_PRIVATE_REGISTRATION=false`:
-   * the default keeps a change pending (`requestEmailChange`) until its link is clicked.
+   * A new address at once, unverified — `duplicate` when another account has it, `missing` when the account is gone. Only with
+   * `AUTH_PRIVATE_REGISTRATION=false`: the default keeps a change pending (`requestEmailChange`) until its link is clicked.
    */
-  async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
+  async changeEmail(id: number, email: string): Promise<Result<User, { kind: 'duplicate' } | { kind: 'missing' }>> {
     // A confirmed account stays one: what confirmed it — its link, or `email_verified_at` alone (an import, a seeder, an
     // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so `auth:prune-unverified` never takes it.
     // (A taken address changes nothing else: the account was confirmed all the same.)
     await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
-    const changed = await this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
-    if (changed.ok) return changed.value;
-    return changed.error.kind === 'duplicate' ? 'duplicate' : undefined;
+    return this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
   }
 
   /**
@@ -77,10 +75,14 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   /**
    * The click on a change link: the pending address becomes the account's, confirmed `now`. Only for the account `id` (the signed-in
    * user), only with the token of its current request, only before it expires — and only once: the token is claimed in the same
-   * statement that checks it, so two clicks at once change it once. `'taken'` when another account has the address by now: the
-   * unique index decides (`tryUpdate`), the request is dropped. The previous address comes back for the note to it.
+   * statement that checks it, so two clicks at once change it once. `taken` when another account has the address by now: the
+   * unique index decides (`tryUpdate`), and the request is dropped for good. The previous address comes back for the note to it.
    */
-  async confirmEmailChange(id: number, tokenHash: string, now: Date): Promise<{ user: User; previous: string } | 'invalid' | 'taken'> {
+  async confirmEmailChange(
+    id: number,
+    tokenHash: string,
+    now: Date,
+  ): Promise<Result<{ user: User; previous: string }, { kind: 'invalid' } | { kind: 'taken'; email: string }>> {
     return this.transaction(async (users) => {
       const claimed = await users.db
         .updateTable('users')
@@ -90,17 +92,18 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
         .where('pending_email_expires_at', '>', now.toISOString())
         .returning(['email', 'pending_email'])
         .executeTakeFirst();
-      if (!claimed?.pending_email) return 'invalid';
+      if (!claimed?.pending_email) return err({ kind: 'invalid' });
       const changes = { pending_email: null, pending_email_expires_at: null };
       const changed = await users.tryUpdate(id, { email: claimed.pending_email, email_verified_at: now, ...changes });
       if (!changed.ok) {
-        if (changed.error.kind === 'missing') return 'invalid';
+        if (changed.error.kind === 'missing') return err({ kind: 'invalid' });
         await users.update(id, changes);
-        return 'taken';
+        // Committed although it is an err: the dropped request must stay dropped, so its link no longer works.
+        return commitAnyway(err({ kind: 'taken', email: claimed.pending_email }));
       }
       // A confirmed address — the first one, if the account had none before (kept for good).
       await users.db.updateTable('users').set({ first_verified_at: now }).where('id', '=', id).where('first_verified_at', 'is', null).execute();
-      return { user: changed.value, previous: claimed.email };
+      return ok({ user: changed.value, previous: claimed.email });
     });
   }
 

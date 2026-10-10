@@ -73,24 +73,25 @@ export class RegisterController extends Controller {
     // mail's listener is queued in it.
     if (this.#private) {
       // Either way one job is queued — the verification mail's listener or the note to the owner — and composed by a worker,
-      // never here (a mail rendered in one branch only would show in the time).
+      // never here (a mail rendered in one branch only would show in the time). A taken address is not returned as an err:
+      // the transaction must commit the note's job.
       await this.#connections.transaction(async () => {
-        const user = await this.#users.register({ name, email, password: hash, locale });
-        if (user) await this.#events.dispatch(new Registered(user));
+        const created = await this.#users.register({ name, email, password: hash, locale });
+        if (created.ok) await this.#events.dispatch(new Registered(created.value));
         else await this.#queue.dispatch(SendAccountExistsMailJob, { email, locale }, { queue: 'mail' });
       });
       // The same answer for both: no session, no cookie, no flash — nothing that tells them apart.
       return this.redirect().route('auth.register.sent');
     }
 
-    const user = await this.#connections.transaction(async () => {
-      const user = await this.#users.register({ name, email, password: hash, locale });
-      if (user) await this.#events.dispatch(new Registered(user));
-      return user;
+    const created = await this.#connections.transaction(async () => {
+      const created = await this.#users.register({ name, email, password: hash, locale });
+      if (created.ok) await this.#events.dispatch(new Registered(created.value));
+      return created;
     });
     // Taken — the unique index decides (the schema never asks; two sign-ups at once included): a field error.
-    if (!user) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
-    await this.#auth.login(user);
+    if (!created.ok) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
+    await this.#auth.login(created.value);
     return this.redirect().route('user-profile.me');
   }
 }

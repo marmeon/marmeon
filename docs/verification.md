@@ -184,7 +184,8 @@ With private registration, a new address on the security page waits beside the o
   60 minutes after the request. A newer request replaces the link. The link works only for the signed-in account it names, only
   once and only before it expires.
 - **Confirmed by the click.** The new address becomes the account's, confirmed, and the old address gets a note. When another
-  account took the address in the meantime, the click is refused with 409 and nothing changes.
+  account took the address in the meantime, the click is refused with 409: the address stays as it was, and the request is
+  dropped, so its link no longer works.
 
 The change page sits behind `confirmedPassword()` and allows six requests a minute per user, since every request sends a mail. A
 pending address signs nobody in and gets no reset link. Typing the account's own address again drops a pending change, and the

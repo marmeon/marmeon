@@ -88,11 +88,13 @@ export class UpdateEmailController extends Controller {
   /** `AUTH_PRIVATE_REGISTRATION=false`: the new address at once — "taken" tells a signed-in user (in sudo mode) that it has an account. */
   async #changeNow(user: ContextOf<typeof UpdateEmailRequest>['user'], email: string) {
     if (email === user.email) return this.back('/settings/security');
-    const updated = await this.#users.changeEmail(user.id, email);
-    if (updated === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
-    if (!updated) return this.redirect().route('auth.login');
+    const changed = await this.#users.changeEmail(user.id, email);
+    if (!changed.ok) {
+      if (changed.error.kind === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
+      return this.redirect().route('auth.login');
+    }
     // Both queued (composed now, sent by a worker): the answer does not wait for the mail server.
-    await this.#verification.send(updated);
+    await this.#verification.send(changed.value);
     // To the old address, in the user's language (not necessarily this request's).
     await this.#mailer.queue(new EmailChangedMail(user.name, user.email, email, this.#translators.for(user.locale)), { queue: 'mail' });
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_changed') });

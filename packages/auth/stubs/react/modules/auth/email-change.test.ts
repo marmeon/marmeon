@@ -147,6 +147,19 @@ describe('changing the address (private registration) — the default', () => {
     expect((await reload(kj)).email).toBe('kj@example.com');
   });
 
+  it('drops the request for good when the address was taken — its link stays refused once the address is free again', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    await change(session, 'grace@example.com');
+    await app.queue.work();
+    const link = linkIn(ConfirmNewEmailMail);
+    const grace = await app.factory(UserFactory).create({ email: 'grace@example.com' });
+    await session.expectingJson().get(link).assertStatus(409);
+    await app.make(Connections).get<any>().deleteFrom('users').where('id', '=', grace.id).execute();
+    await session.expectingJson().get(link).assertForbidden().assertExactJson(expired);
+    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null });
+  });
+
   it('a pending address signs nobody in — and gets no reset link', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
     await change(await signIn(kj), 'new@example.com');

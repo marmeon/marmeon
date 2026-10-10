@@ -223,6 +223,9 @@ describe('make:auth', () => {
       expect(tables).toContain('password: Secret<string>;');
       // The link's token hash is secret — never in `Row<'users'>`.
       expect(tables).toContain('pending_email_token: Secret<string | null>;');
+      // The module's foreign keys relate its tables: `with('personal_access_tokens')` on users, `with('user')` on a token.
+      expect(tables).toContain("personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id';");
+      expect(tables).toContain("user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };");
 
       const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
       expect(typecheck.out).toBe('');
@@ -244,7 +247,7 @@ describe('make:auth', () => {
       const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
       expect(ran('registration', 'private registration — the default')).toBe(6);
       expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(4);
-      expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(7);
+      expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(8);
       expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(2);
       // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS by the command, in both behaviours — the module schedules no
       // deletion (the app turns it on).

@@ -36,12 +36,16 @@ export class ConfirmEmailChangeController extends Controller {
     if (!this.#private) abort(404);
     // A valid signature proves the app made the link — not that it is yours.
     if (ctx.params.id !== String(ctx.user.id)) abort(403, this.#translator.get('auth.email_change.wrong_account'));
+    // Not inside a transaction of its own: returning a taken err from one would roll back the dropped request.
     const changed = await this.#users.confirmEmailChange(ctx.user.id, emailChangeTokenHash(ctx.params.token), new Date(this.#clock.now()));
-    if (changed === 'invalid') abort(403, this.#translator.get('auth.email_change.invalid'));
-    // Registered (or changed to) by another account since: the unique index decided, the request is gone.
-    if (changed === 'taken') abort(409, this.#translator.get('auth.email_change.taken'));
+    if (!changed.ok) {
+      if (changed.error.kind === 'invalid') abort(403, this.#translator.get('auth.email_change.invalid'));
+      // Registered (or changed to) by another account since: the unique index decided, the request is gone.
+      abort(409, this.#translator.get('auth.email_change.taken'));
+    }
+    const { user, previous } = changed.value;
     // To the old address, in the user's language (not necessarily this request's).
-    await this.#mailer.queue(new EmailChangedMail(ctx.user.name, changed.previous, changed.user.email, this.#translators.for(ctx.user.locale)), { queue: 'mail' });
-    return this.redirect().route('dashboard').flash('toast', { kind: 'success', message: this.#translator.get('auth.email_change.done', { email: changed.user.email }) });
+    await this.#mailer.queue(new EmailChangedMail(ctx.user.name, previous, user.email, this.#translators.for(ctx.user.locale)), { queue: 'mail' });
+    return this.redirect().route('dashboard').flash('toast', { kind: 'success', message: this.#translator.get('auth.email_change.done', { email: user.email }) });
   }
 }

@@ -190,15 +190,15 @@ the [transactions](transactions.md#returning-an-err) page explains. The starter 
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { PasswordHash } from '@marmeon/auth';
+import type { Result } from '@marmeon/core';
 import { Repository } from '@marmeon/database';
 import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> {
   static table = 'users' as const;
 
-  async register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
-    const created = await this.tryInsert(values);
-    return created.ok ? created.value : undefined;
+  register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<Result<User, { kind: 'duplicate' }>> {
+    return this.tryInsert(values);
   }
 }
 ```
@@ -462,6 +462,18 @@ In the `notes` module, `insertInto('users')`, `updateTable('users')` and `delete
 another module that is not exposed does not exist at all. Writing to `users` goes through the auth module's `UserRepository`. The
 boundary is a type: at runtime both are the same connection, and raw SQL is not checked. A module that exposes a table another
 module's migration created, or that no migration created, stops `db:types` with an error that says so.
+
+A repository sees every table: `Repository<'profile_links'>` is typed with all of `Tables`. To give it the module's view, pass
+`ModuleTables` as its second type argument. Its queries then see only the module's own tables and the exposed ones, `with()`
+offers only relations to those, and `relation()` writes only into the module's own:
+
+```ts title="modules/user-profile/ProfileLinkRepository.ts"
+import { Repository, type ExposedTables, type ModuleTables, type TableOwners, type Tables } from '@marmeon/database';
+
+export class ProfileLinkRepository extends Repository<'profile_links', ModuleTables<Tables, TableOwners, ExposedTables, 'user-profile'>> {
+  static table = 'profile_links' as const;
+}
+```
 
 The migrator records which module's migration created each table. That record is what the boundaries and the comments in
 `bootstrap/database.d.ts` are built on.
