@@ -171,7 +171,7 @@ describe('createMarmeonApp — tab sync', () => {
     expect(use.mock.calls.filter((_, index) => use.mock.contexts[index] === app).map(([feature]) => (feature as { name: string }).name).slice(0, 2)).toEqual(['history', 'tabSync']);
   });
 
-  it('tabSync: false leaves it out — and its chunk is never loaded ', async () => {
+  it('tabSync: false leaves it out — and its chunk is never loaded', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const use = vi.spyOn(Navigator.prototype, 'use');
     const lazy = await import('@marmeon/http/client');

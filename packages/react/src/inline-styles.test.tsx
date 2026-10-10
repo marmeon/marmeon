@@ -17,7 +17,7 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
 
 /*
- * the framework renders no `style` attribute — a strict `style-src` (without 'unsafe-inline') blocks every one, and nonces
+ * The framework renders no `style` attribute — a strict `style-src` (without 'unsafe-inline') blocks every one, and nonces
  * do not cover attributes. The look comes from `@marmeon/react/styles.css` (classes); `LayerDialog`'s `style` prop is written
  * through the CSSOM once mounted, which no policy blocks.
  */

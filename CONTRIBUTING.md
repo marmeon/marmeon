@@ -400,7 +400,7 @@ against `dist/` — minified, with production defines, without React, i18n and V
 
 - `bundle-size.test.ts` (part of `pnpm test`; run `pnpm build` first) fails when a scenario grows over its limit, and when it is
   more than 0.6 KB under it, until the limit follows. `MARMEON_SIZE_BUDGET=update` lowers limits in place to the measured
-  size + 0.5 KB and never raises one. Raising a limit is the maintainers' decision, recorded in the file's `$comment`.
+  size + 0.5 KB and never raises one. Raising a limit is the maintainers' decision; the commit that raises it gives the reason.
 - The same test is the **leak test**: every feature has markers (its modules) and must be in a bundle only with its own import —
   a lazy one only in a lazy chunk. `stillLeaking` is `[]` in every scenario.
 - `pnpm size` attributes every byte of the scenarios and the real apps to its module (source maps) and checks the apps against

@@ -84,7 +84,7 @@ const FEATURES = {
   // Uploads: <FileInput> (static, small) loads the feature where it renders, in a chunk of its own with the XHR code —
   // which the core also loads with the first FormData visit with progress. Running uploads and tokens: its slot only.
   uploads: { markers: ['http/client/upload', 'http/client/features/uploads'], use: inApp('FileInput'), lazy: true },
-  // server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
+  // Server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
   // asks for the waiting updates (`useLiveUpdates`) loads it too. The stream, sequences and hints: its document slot only.
   live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
   // The client hook API: a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
@@ -214,7 +214,7 @@ describe('an app holds only the features it uses (leak test)', () => {
     }
   });
 
-  // whatever an app imports, the layers are a chunk the core loads when the server answers with one — never in the first
+  // Whatever an app imports, the layers are a chunk the core loads when the server answers with one — never in the first
   // download, and always there to load (a layer may answer any visit).
   it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the layers are a chunk of their own in %s — loaded on demand', (name) => {
     const built = bundle(name);
@@ -222,13 +222,13 @@ describe('an app holds only the features it uses (leak test)', () => {
     expect(featuresIn(built, true)).toContain('layers');
   });
 
-  // the XHR code is no part of any first download — the core loads it with the first FormData visit with progress.
+  // The XHR code is no part of any first download — the core loads it with the first FormData visit with progress.
   it('the core alone carries uploads only in a chunk it loads on demand', () => {
     expect(featuresIn(bundle('core'))).not.toContain('uploads');
     expect(featuresIn(bundle('core'), true)).toContain('uploads');
   });
 
-  // an answer may follow a live channel whatever the app imported — the core loads the feature then (server-driven, like the
+  // An answer may follow a live channel whatever the app imported — the core loads the feature then (server-driven, like the
   // layers): never in a first download, always there to load.
   it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('live props are a chunk of their own in %s — loaded on demand', (name) => {
     const built = bundle(name);
@@ -236,7 +236,7 @@ describe('an app holds only the features it uses (leak test)', () => {
     expect(featuresIn(built, true)).toContain('live');
   });
 
-  // every app of createMarmeonApp loads tab sync — in a chunk of its own, never in a first download; the core alone
+  // Every app of createMarmeonApp loads tab sync — in a chunk of its own, never in a first download; the core alone
   // carries none of it, not even lazily.
   it.each(['emptyApp', 'minimalApp', 'everything'] as const)('tab sync is a chunk of its own in %s — loaded by createMarmeonApp', (name) => {
     const built = bundle(name);
@@ -244,21 +244,21 @@ describe('an app holds only the features it uses (leak test)', () => {
     expect(featuresIn(built, true)).toContain('tabSync');
   });
 
-  // the History fallback only where the browser has no Navigation API — a chunk createMarmeonApp loads then.
+  // The History fallback only where the browser has no Navigation API — a chunk createMarmeonApp loads then.
   it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the History fallback is a chunk of its own in %s — never in the first download', (name) => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('history');
     expect(featuresIn(built, true)).toContain('history');
   });
 
-  // whatever an app imports, view transitions are a chunk the core loads with the first visit that asks for one.
+  // Whatever an app imports, view transitions are a chunk the core loads with the first visit that asks for one.
   it.each(['core', 'emptyApp', 'minimalApp', 'everything', 'table'] as const)('view transitions are a chunk of their own in %s — never in the first download', (name) => {
     const built = bundle(name);
     expect(featuresIn(built), 'view transitions in the first download').not.toContain('viewTransitions');
     expect(featuresIn(built, true)).toContain('viewTransitions');
   });
 
-  // what a failure shows — the failure dialogs, the error page for a page that threw, the built-in error page — is
+  // What a failure shows — the failure dialogs, the error page for a page that threw, the built-in error page — is
   // a chunk of its own in every app of <MarmeonApp>; its styles are classes of styles.css, so none of it is in the first download.
   it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the failure dialogs are a chunk of their own in %s — never in the first download', (name) => {
     const built = bundle(name);
@@ -289,7 +289,7 @@ describe('an app holds only the features it uses (leak test)', () => {
     expect(featuresIn(bundle('core'), true)).not.toContain('tabSync');
   });
 
-  // the headless table and the TanStack bridge come with their own imports only — in no other scenario, not
+  // The headless table and the TanStack bridge come with their own imports only — in no other scenario, not
   // even in `everything` (all of the adapter's main entry: their subpaths have optional peers), and TanStack not with `useTable` alone.
   it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the headless table and TanStack are in no bundle of %s — first download or lazy', (name) => {
     const built = bundle(name);
@@ -321,13 +321,13 @@ describe('an app holds only the features it uses (leak test)', () => {
       const built = await appClientBuild(join(PACKAGES, '../apps/web-app'));
       expect(featuresIn(built)).not.toContain('layers');
       expect(built.lazyModules).toEqual(expect.arrayContaining(['http/dist/client/features/layers.js', 'http/dist/client/layer.js', 'react/dist/layer-stack.js']));
-      // the devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
+      // The devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
       expect(devtoolsIn(built), 'web-app').toEqual([]);
-      // the members table (useTable) comes with its page — a lazy chunk; TanStack is in no chunk (the app has no bridge).
+      // The members table (useTable) comes with its page — a lazy chunk; TanStack is in no chunk (the app has no bridge).
       expect(featuresIn(built)).not.toContain('table');
       expect(featuresIn(built, true)).toContain('table');
       expect([...featuresIn(built), ...featuresIn(built, true)]).not.toContain('tanstack');
-      // validation is the server's — the lab's form imports types of its rules only; no rule, no Valibot in any chunk.
+      // Validation is the server's — the lab's form imports types of its rules only; no rule, no Valibot in any chunk.
       const leaked = [...built.modules, ...built.lazyModules].filter((id) => id.startsWith('validation/') || id.includes('valibot'));
       expect(leaked, `web-app client chunks with validation code: ${leaked.join(', ')}`).toEqual([]);
     } finally {

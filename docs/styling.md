@@ -125,8 +125,8 @@ for streamed parts of a page. `styleSrc: ["'self'"]` alone blocks nothing of the
 | The built-in error page | `marmeon-error`, `marmeon-error__status`, `marmeon-error__title`, `marmeon-error__exception` |
 
 Every rule sits in `:where()`, so it has no specificity. A class of your own, passed as `className`, overrides it, and so does a
-rule on the components' data attributes: `[data-marmeon-layer]`, `[data-variant]`, `[data-marmeon-confirm]` and
-`[data-marmeon-failure]`. The failure notices take their colours from variables, which you set on `:root`:
+rule on the components' data attributes: `[data-marmeon-layer]`, `[data-variant]`, `[data-marmeon-confirm]`, `[data-kind]`,
+`[data-destructive]` and `[data-marmeon-failure]`. The failure notices take their colours from variables, which you set on `:root`:
 
 ```css title="styles/app.css"
 :root {
@@ -152,6 +152,7 @@ The framework marks state with attributes, so the stylesheet can follow it:
 | `aria-busy="true"` | `<html>` | A visit is under way. |
 | `data-island`, `data-status` | The element around an `<Island>` | Always: the island's route, and its status, such as `loading` or `ready`. |
 | `data-marmeon-layer`, `data-variant`, `data-depth` | A `LayerDialog` | Its key, `modal` or `slideover`, and its depth. |
+| `data-marmeon-confirm`, `data-kind`, `data-destructive` | A `ConfirmDialog` | Always; `confirm`, or `leave` for the guard's question; the request is `destructive`. |
 
 ```css title="styles/app.css"
 a[data-current] { font-weight: 600; }

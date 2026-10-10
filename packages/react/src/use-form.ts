@@ -337,7 +337,6 @@ export function useForm(...args: unknown[]): unknown {
     dirty,
     reset: (...fields) => setData((current) => (fields.length === 0 ? defaults : { ...current, ...Object.fromEntries(fields.map((field) => [field, defaults[field]])) })),
     submit: submit as Form<Record<string, unknown>>['submit'],
-    // get, post, put, patch, delete
     ...(Object.fromEntries((['get', 'post', 'put', 'patch', 'delete'] as const).map((method) => [method, (url: string, options?: FormSubmitOptions) => send(method, url, options)])) as Pick<
       Form<Record<string, unknown>>,
       VisitMethod

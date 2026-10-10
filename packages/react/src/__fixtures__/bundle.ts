@@ -405,7 +405,7 @@ export function lowerLimits(limits: Readonly<Record<string, number>>, file = BUD
 }
 
 /**
- * The reserve above the measured size that every limit keeps ("the reserve stays"): a saving lowers a limit to the new
+ * The reserve above the measured size that every limit keeps: a saving lowers a limit to the new
  * size + 0.5, extra cost eats the reserve and is never refilled.
  */
 export const RESERVE_KB = 0.5;

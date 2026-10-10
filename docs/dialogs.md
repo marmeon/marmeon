@@ -259,7 +259,8 @@ export function Confirm(props: ConfirmProps) {
 ```
 
 `bootstrap/client.tsx` passes it as `createMarmeonApp({ confirm: Confirm })`. `ConfirmDialog` is a native modal `<dialog>` whose
-focus starts on the safe choice. A request's own `confirmLabel` and `cancelLabel` win over the dialog's. `request.kind` is
+focus starts on the safe choice. Its heading names it: the request's `title`, or the message when there is no title, and with a
+title the message describes it. Escape answers no, and the focus goes back to what had it before the dialog opened. A request's own `confirmLabel` and `cancelLabel` win over the dialog's. `request.kind` is
 `confirm` for a question of a link, a form or an action, and `leave` for the guard's. A `leave` with `reason: 'session'` means that
 another tab signed in or out, or switched the language, and loading the page again would lose the unsaved changes.
 

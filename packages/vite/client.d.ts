@@ -12,7 +12,7 @@ declare module 'virtual:marmeon/pages' {
 declare module 'virtual:marmeon/lang' {
   /**
    * Every language file (the `lang` glob of `marmeon()`), keyed by its path from the app root and loaded lazily, one chunk
-   * per file. Hand it to `createMessageLoader(lang)` of `@marmeon/i18n/messages`.
+   * per file, so the browser loads only the locale it shows. Hand it to `createMessageLoader(lang)` of `@marmeon/i18n/messages`.
    */
   const lang: Record<string, () => Promise<unknown>>;
   export default lang;

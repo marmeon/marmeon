@@ -221,7 +221,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     ...(layer ? { layer: true } : {}),
     ...(confirm !== undefined ? { confirm } : {}),
     ...(viewTransition !== undefined ? { viewTransition } : {}),
-    // The route's name goes with the visit: `usePending(name)`.
+    // For `usePending(name)`.
     ...(route !== undefined ? { name: route } : {}),
     // An instant visit: the view the route renders (the manifest knows it when it is written out) shows its placeholder.
     ...(instant !== undefined && route !== undefined && manifest?.[route]?.view !== undefined
@@ -257,7 +257,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const onMount = triggers.has('mount');
   useEffect(() => {
     if (onMount) fetchAhead();
-    // Prefetch again when the link goes elsewhere.
+    // `href`, not `fetchAhead`: a link that goes elsewhere prefetches again, a re-render does not.
   }, [onMount, href]);
   useEffect(() => () => clearTimeout(hover.current), []);
 
@@ -330,10 +330,11 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
 const noSubscription = () => () => {};
 
 /**
- * Whether `href` stays on this site, as the browser's URL parser reads it — never by its first characters: the parser drops tabs,
- * newlines and leading spaces and reads `/\` as `//` (`"/\t/evil.example"`, `" //evil.example"`). Resolved against a placeholder
- * host of both special schemes (no `window` needed): `http:evil.example` is relative only on a page of that scheme, so both bases
- * must keep their host and scheme. Any other scheme (`mailto:`) counts as another origin.
+ * Whether `href` stays on this site, as the browser's URL parser reads it — never by its first characters: the parser drops tabs
+ * and newlines anywhere and leading spaces, and reads `/\` as `//` (`"/\t/evil.example"`, `" //evil.example"`). Resolved against a
+ * placeholder host of both special schemes (no `window` needed): `http:evil.example` is relative only on a page of that very
+ * scheme — on the other scheme it names another host — so both bases must keep their host and scheme. Any other scheme
+ * (`mailto:`) counts as another origin.
  */
 function sameOrigin(href: string): boolean {
   try {

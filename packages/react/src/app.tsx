@@ -458,7 +458,6 @@ export function MarmeonApp({
   const renderRef = useRef(render);
   renderRef.current = render;
 
-  // Questions for the app's confirmation dialog, one at a time.
   const [questions, setQuestions] = useState<readonly PendingQuestion[]>([]);
   const nextQuestion = useRef(0);
   const ask = useCallback(
@@ -517,12 +516,11 @@ export function MarmeonApp({
     const stops = [nav.on('exception', setFailure), nav.on('start', (visit) => visit.async || setFailure(null))];
     const indicator = progressIndicator(progress);
     if (indicator) stops.push(indicator(nav));
-    // `aria-busy` on the document while a visit runs.
     if (typeof document !== 'undefined') stops.push(markBusy(nav));
     return () => {
       for (const stop of stops) stop();
     };
-    // The progress indicator is read once — like the navigator itself.
+    // No dependencies: the progress indicator is read once, like the navigator itself.
   }, []);
 
   const browser = useCallback(() => {
@@ -571,7 +569,6 @@ export function MarmeonApp({
 
   const locale = messages ? pageLocale(page, messages) : page.locale;
   const i18n = useMemo(() => (catalog && locale ? { catalog, locale } : null), [catalog, locale]);
-  // The document's language follows the page's (the server set it for the first one).
   useEffect(() => {
     if (locale && typeof document !== 'undefined' && document.documentElement.lang !== locale) document.documentElement.lang = locale;
   }, [locale]);

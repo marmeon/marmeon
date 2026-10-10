@@ -315,6 +315,6 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
         setRunning((count) => count - 1);
       }
     }
-    // `version` changes with the selection: what it shows is read again.
+    // `version` stands in for the selection, which changes in place inside the controller.
   }, [data, controller, version, running, page, options.labels]);
 }
