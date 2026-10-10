@@ -3,7 +3,8 @@ import { dirname, join } from 'node:path';
 import { Application, Logger } from '@marmeon/core';
 import { sql } from 'kysely';
 import { Connections } from '../connections.ts';
-import { Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from '../migrations/migrator.ts';
+import { deriveRelations, introspect } from '../introspection.ts';
+import { MARKERS_TABLE, Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from '../migrations/migrator.ts';
 import { renderTypes, type Rendered, type SchemaSnapshot } from './render.ts';
 
 declare module '@marmeon/core' {
@@ -65,13 +66,17 @@ export class TypeGenerator {
     await migrator.migrate();
     const db = scratch.get<any>();
     const driver = scratch.options().driver;
-    const bookkeeping = new Set([MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE]);
+    const bookkeeping = new Set([MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, MARKERS_TABLE]);
     const tables = (await db.introspection.getTables()).filter((t) => !bookkeeping.has(t.name));
     const sqliteKeys = driver === 'sqlite' ? await sqliteKeysOf(scratch, tables.map((t) => t.name)) : undefined;
+    // The same derivation the connection uses at runtime, so the generated names are the names that work.
+    const derived = deriveRelations(await introspect(async (query) => (await sql.raw<any>(query).execute(db)).rows, driver));
+    if (derived.problems.length) throw new Error(derived.problems.join('\n'));
     return {
       driver,
       tables,
       sqliteKeys,
+      relations: derived.relations,
       owners: await migrator.owners(),
       secrets: await migrator.secrets(),
       modules: this.#app.modules.map((module) => module.name),

@@ -17,8 +17,11 @@ interface ColumnSpec {
   unique: boolean;
   secret: boolean;
   default?: { value: unknown } | { now: true };
-  references?: { table: string; column: string; onDelete?: OnDelete };
+  references?: { table: string; column: string; onDelete?: OnDelete; inverse?: string };
 }
+
+/** What a migration declares about a table beyond its columns — kept by the migrator, read by the connection. */
+export type TableMarker = 'soft_deletes' | 'timestamps';
 
 /**
  * One column, fluently: `table.string('email').unique()`. Columns are NOT NULL unless marked
@@ -91,6 +94,15 @@ export class ConstrainedColumn<T> extends Column<T> {
   restrictOnDelete(): this {
     return this.#onDelete('restrict');
   }
+  /**
+   * Names the relation the referenced table gets back (default: this table's name) — needed when a table has two foreign keys
+   * to the same table: `.inverse('edited_posts')`. See `docs/migrations.md#relations-from-foreign-keys`.
+   */
+  inverse(name: string): this {
+    if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error(`inverse('${name}') on "${this.spec.name}": a relation name is snake_case, like a table's.`);
+    this.spec.references!.inverse = name;
+    return this;
+  }
   #onDelete(action: OnDelete): this {
     this.spec.references!.onDelete = action;
     return this;
@@ -112,6 +124,8 @@ export class Blueprint {
   readonly drops: string[] = [];
   readonly dropIndexes: string[] = [];
   readonly renames: { from: string; to: string }[] = [];
+  /** `timestamps()` and `softDeletes()` were called. */
+  readonly markers = new Set<TableMarker>();
 
   constructor(table: string) {
     this.table = table;
@@ -176,15 +190,23 @@ export class Blueprint {
     return new TimestampColumn<string | Date>(this.#spec(name, { sqlite: 'datetime', pgsql: 'timestamptz(3)' }));
   }
 
-  /** `created_at` and `updated_at`, both set to the current time on insert. */
+  /**
+   * `created_at` and `updated_at`, both set to the current time on insert — and a mark on the table: a repository's `update()`
+   * sets `updated_at`. See `docs/migrations.md#timestamps-and-soft-deletes`.
+   */
   timestamps(): void {
     this.timestamp('created_at').useCurrent();
     this.timestamp('updated_at').useCurrent();
+    this.markers.add('timestamps');
   }
 
-  /** `deleted_at`, for soft deletes. */
+  /**
+   * `deleted_at` — and a mark on the table: a repository's `delete()` sets it, and its reads leave deleted rows out.
+   * See `docs/migrations.md#timestamps-and-soft-deletes`.
+   */
   softDeletes(): void {
     this.timestamp('deleted_at').nullable();
+    this.markers.add('soft_deletes');
   }
 
   /** A big integer that references another table: `table.foreignId('user_id').constrained().cascadeOnDelete()`. */

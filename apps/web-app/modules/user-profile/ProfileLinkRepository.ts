@@ -3,7 +3,6 @@ import { Repository } from '@marmeon/database';
 /** The links on people's profiles — this module's own table. Bound scoped to its user in the routes. */
 export class ProfileLinkRepository extends Repository<'profile_links'> {
   static table = 'profile_links' as const;
-  static timestamps = true;
 
   /** Removes every link of these users (moderation, the members table) — how many there were. */
   async removeAllOf(userIds: readonly number[]): Promise<number> {

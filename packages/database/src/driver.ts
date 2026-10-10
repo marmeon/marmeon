@@ -1,6 +1,6 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
-import type { SchemaMetadata } from './metadata.ts';
+import { changesSchema, type SchemaMetadata } from './metadata.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
 export class DatabaseConnectionError extends Error {
@@ -14,6 +14,14 @@ export interface DriverContext {
   readonly target: string;
   /** Refreshed on each connection handed out, while stale (see {@link SchemaMetadata}). */
   readonly metadata?: SchemaMetadata;
+  /** Queries compiled before the metadata was fresh: resolved on the connection that runs them, after it loaded the metadata. */
+  readonly deferred?: DeferredQueries;
+}
+
+/** What the connection's plugins left unresolved while compiling (see `SchemaResolver`). */
+export interface DeferredQueries {
+  deferred(query: CompiledQuery): boolean;
+  resolve(query: CompiledQuery): CompiledQuery;
 }
 
 /**
@@ -159,7 +167,7 @@ export class MarmeonDriver implements Driver {
       throw error;
     }
     try {
-      await this.#context.metadata?.refresh(connection);
+      await this.#context.metadata?.refresh(unlogged(connection));
     } catch (error) {
       await this.releaseConnection(connection);
       throw error;
@@ -187,7 +195,7 @@ export class MarmeonDriver implements Driver {
 
   /** The transaction's connection, for a query (or a savepoint) inside it. */
   async #join(connection: DatabaseConnection): Promise<DatabaseConnection> {
-    await this.#context.metadata?.refresh(connection);
+    await this.#context.metadata?.refresh(unlogged(connection));
     // Counted once it is handed out (a failed refresh is never released).
     const holders = this.#holders.get(connection);
     if (holders !== undefined) this.#holders.set(connection, holders + 1);
@@ -211,6 +219,7 @@ export class MarmeonDriver implements Driver {
         if (this.#pinned !== connection) return;
         this.#pinned = undefined;
         this.#depth.delete(connection);
+        this.#context.metadata?.release(connection);
         try {
           await this.#driver.rollbackTransaction(connection);
         } finally {
@@ -230,14 +239,28 @@ export class MarmeonDriver implements Driver {
 
   async commitTransaction(connection: DatabaseConnection): Promise<void> {
     const depth = this.#leave(connection);
-    if (depth === 0) await this.#driver.commitTransaction(connection);
-    else await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(depth)}`));
+    if (depth === 0) {
+      try {
+        await this.#driver.commitTransaction(connection);
+      } finally {
+        this.#context.metadata?.release(connection);
+      }
+    } else await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(depth)}`));
   }
 
   async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
     const depth = this.#leave(connection);
-    if (depth === 0) await this.#driver.rollbackTransaction(connection);
-    else await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(depth)}`));
+    if (depth === 0) {
+      try {
+        await this.#driver.rollbackTransaction(connection);
+      } finally {
+        this.#context.metadata?.release(connection);
+      }
+    } else {
+      await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(depth)}`));
+      // A schema change inside the savepoint is undone.
+      this.#context.metadata?.invalidate();
+    }
   }
 
   savepoint(...args: Parameters<NonNullable<Driver['savepoint']>>): Promise<void> {
@@ -259,6 +282,7 @@ export class MarmeonDriver implements Driver {
     if (pinned) {
       this.#pinned = undefined;
       this.#depth.delete(pinned);
+      this.#context.metadata?.release(pinned);
       try {
         await this.#driver.rollbackTransaction(pinned);
       } finally {
@@ -278,8 +302,31 @@ export class MarmeonDriver implements Driver {
 
   #serialOf(connection: DatabaseConnection): DatabaseConnection {
     let serial = this.#serial.get(connection);
-    if (!serial) this.#serial.set(connection, (serial = serialQueries(connection)));
+    if (!serial) {
+      const { metadata, deferred } = this.#context;
+      const hooks: SerialHooks = {};
+      if (deferred) {
+        hooks.deferred = (query) => deferred.deferred(query);
+        hooks.resolve = async (query, own) => {
+          await metadata?.refresh(own);
+          return deferred.resolve(query);
+        };
+      }
+      if (metadata) hooks.ran = (query) => this.#ran(serial!, query, metadata);
+      this.#serial.set(connection, (serial = serialQueries(connection, hooks)));
+    }
     return serial;
+  }
+
+  /**
+   * Called around every statement on a connection: one that changed the schema makes the metadata stale — also after it
+   * ran, since the connection loaded the metadata before it. Inside a transaction, what is loaded until it ends may be the
+   * transaction's own uncommitted view: not fresh until then.
+   */
+  #ran(connection: DatabaseConnection, query: CompiledQuery, metadata: SchemaMetadata): void {
+    if (!changesSchema(query.query)) return;
+    metadata.invalidate();
+    if ((this.#depth.get(connection) ?? 0) > 0) metadata.hold(connection);
   }
 
   async #connecting<T>(open: () => Promise<T>): Promise<T> {
@@ -311,6 +358,25 @@ export function multipleConnections(adapter: DialectAdapter): DialectAdapter {
 
 const ignore = () => {};
 
+/** What a connection does around its queries, beside taking turns ({@link serialQueries}). */
+export interface SerialHooks {
+  /** Whether a query must be resolved before it runs (cheap: called for every query). */
+  deferred?(query: CompiledQuery): boolean;
+  /** Resolves it — `own` is the connection without Kysely's query log, for the metadata's own queries. */
+  resolve?(query: CompiledQuery, own: DatabaseConnection): Promise<CompiledQuery>;
+  /** Before and after a statement ran (or failed) on the connection. */
+  ran?(query: CompiledQuery): void;
+}
+
+/**
+ * The connection without Kysely's query log around it — for the metadata's own catalog queries, which therefore never appear
+ * in `onQuery()`, the log or devtools.
+ */
+const UNLOGGED = Symbol('unlogged');
+function unlogged(connection: DatabaseConnection): DatabaseConnection {
+  return (connection as unknown as Record<symbol, DatabaseConnection | undefined>)[UNLOGGED] ?? connection;
+}
+
 /**
  * The connection, but its queries take turns — in the order they were sent, a failed one passing the turn on. `pg` warns about a
  * query sent while another is under way ("client.query() when the client is already executing a query") and pg 9 refuses it. A
@@ -318,10 +384,23 @@ const ignore = () => {};
  * What is set on the wrapper stays on it: Kysely puts its query log around `executeQuery` that way — around the turn, so the
  * connection's own method is never replaced underneath it.
  */
-export function serialQueries(connection: DatabaseConnection): DatabaseConnection {
-  const execute = connection.executeQuery.bind(connection);
-  const stream = connection.streamQuery.bind(connection);
+export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks = {}): DatabaseConnection {
+  type Execute = (query: CompiledQuery, ...rest: unknown[]) => Promise<QueryResult<unknown>>;
+  type Stream = (query: CompiledQuery, ...rest: unknown[]) => AsyncIterableIterator<QueryResult<unknown>>;
+  const execute = connection.executeQuery.bind(connection) as Execute;
+  const stream = connection.streamQuery.bind(connection) as Stream;
   const own = new Map<PropertyKey, unknown>();
+  const { ran } = hooks;
+  const run: Execute = ran
+    ? async (query, ...rest) => {
+        ran(query);
+        try {
+          return await execute(query, ...rest);
+        } finally {
+          ran(query);
+        }
+      }
+    : execute;
   let tail: Promise<unknown> | undefined;
   const turn = <T>(run: () => Promise<T>): Promise<T> => {
     const result = tail ? tail.then(run, run) : run();
@@ -332,8 +411,8 @@ export function serialQueries(connection: DatabaseConnection): DatabaseConnectio
     });
     return result;
   };
-  const executeQuery: DatabaseConnection['executeQuery'] = (...args) => turn(() => execute(...args));
-  async function* streamQuery<R>(...args: Parameters<DatabaseConnection['streamQuery']>): AsyncIterableIterator<QueryResult<R>> {
+  const turned: Execute = (query, ...rest) => turn(() => run(query, ...rest));
+  async function* turnedStream(query: CompiledQuery, ...rest: unknown[]): AsyncIterableIterator<QueryResult<unknown>> {
     let done!: () => void;
     const finished = new Promise<void>((resolve) => (done = resolve));
     await new Promise<void>((started) =>
@@ -343,13 +422,30 @@ export function serialQueries(connection: DatabaseConnection): DatabaseConnectio
       }),
     );
     try {
-      yield* stream<R>(...args);
+      yield* stream(query, ...rest);
     } finally {
       done();
     }
   }
+  // Resolved before it takes its turn: loading the metadata takes turns on this connection too. A query with nothing to
+  // resolve is queued at once, so queries keep the order they were sent in.
+  const unloggedView = { executeQuery: turned, streamQuery: turnedStream } as unknown as DatabaseConnection;
+  const resolving = (query: CompiledQuery) => (hooks.deferred?.(query) ? hooks.resolve!(query, unloggedView) : undefined);
+  const resolvedExecute =
+    (inner: Execute): Execute =>
+    (query, ...rest) => {
+      const pending = resolving(query);
+      return pending ? pending.then((resolved) => inner(resolved, ...rest)) : inner(query, ...rest);
+    };
+  const resolvedStream = (inner: Stream): Stream =>
+    async function* (query, ...rest) {
+      yield* inner((await resolving(query)) ?? query, ...rest);
+    };
+  const executeQuery = resolvedExecute(turned);
+  const streamQuery = resolvedStream(turnedStream);
   return new Proxy(connection, {
     get(target, property) {
+      if (property === UNLOGGED) return unloggedView;
       if (own.has(property)) return own.get(property);
       if (property === 'executeQuery') return executeQuery;
       if (property === 'streamQuery') return streamQuery;
@@ -357,7 +453,10 @@ export function serialQueries(connection: DatabaseConnection): DatabaseConnectio
       return typeof value === 'function' ? value.bind(target) : value;
     },
     set(_target, property, value) {
-      own.set(property, value);
+      // Kysely puts its query log around executeQuery and streamQuery this way: resolve outside it, so it logs what ran.
+      if (property === 'executeQuery' && typeof value === 'function') own.set(property, resolvedExecute(value as Execute));
+      else if (property === 'streamQuery' && typeof value === 'function') own.set(property, resolvedStream(value as Stream));
+      else own.set(property, value);
       return true;
     },
   });

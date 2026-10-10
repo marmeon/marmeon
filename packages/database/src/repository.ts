@@ -4,6 +4,7 @@ import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Select
 import { Connections } from './connections.ts';
 import { isUniqueViolation } from './errors.ts';
 import { paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
+import { softDelete, softDeleteFilter, TOUCH_COLUMN } from './schema-resolver.ts';
 import type { Tables } from './types.ts';
 
 /** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
@@ -28,10 +29,6 @@ export interface RepositoryStatics {
   readonly table: string;
   /** Default connection name. */
   readonly connection?: string;
-  /** Sets `updated_at` on every `update()` (the migration's `timestamps()` fill both on insert). */
-  readonly timestamps?: boolean;
-  /** `delete()` sets `deleted_at`; reads skip deleted rows unless `withTrashed()`. */
-  readonly softDeletes?: boolean;
   /** The column a route parameter matches (`Route.bind`) — default `id`. */
   readonly routeKey?: string;
   /**
@@ -53,7 +50,8 @@ export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never 
 /**
  * Optional base for a table's repository — rows in, rows out: no identity map, no lazy loading, no dirty tracking. Declare
  * the table again as a value (`static table = 'users' as const`); the only dependency is the connection, which is what lets
- * {@link using} bind one to a transaction. See `docs/queries.md#repositories`.
+ * {@link using} bind one to a transaction. Soft deletes and timestamps follow the table's migration (`softDeletes()`,
+ * `timestamps()`). See `docs/queries.md#repositories`.
  */
 export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
   readonly #db: Kysely<DB>;
@@ -139,10 +137,9 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     }
   }
 
-  /** A select on the table — soft-deleted rows excluded when the repository uses soft deletes. */
+  /** A select on the table — without soft-deleted rows when its migration called `softDeletes()`. */
   query(): SelectQueryBuilder<DB, T, {}> {
-    const query = this.#untyped.selectFrom(this.#name) as unknown as SelectQueryBuilder<DB, T, {}>;
-    return this.#statics().softDeletes ? (query.where('deleted_at' as never, 'is', null) as typeof query) : query;
+    return this.#untyped.selectFrom(this.#name).where(softDeleteFilter(this.#name)) as unknown as SelectQueryBuilder<DB, T, {}>;
   }
 
   /**
@@ -215,26 +212,24 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     }
   }
 
-  /** Updates a row and returns it — `undefined` when there is none. Sets `updated_at` with `static timestamps = true`. */
+  /**
+   * Updates a row and returns it — `undefined` when there is none (or it is soft-deleted). Sets `updated_at` when the
+   * table's migration called `timestamps()`, unless `values` set it.
+   */
   async update<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
-    const changes: Record<string, unknown> = this.#statics().timestamps ? { ...values, updated_at: new Date() } : { ...values };
-    let query = this.#untyped.updateTable(this.#name).set(changes).where('id', '=', id);
-    if (this.#statics().softDeletes) query = query.where('deleted_at', 'is', null);
-    return (await query.returningAll().executeTakeFirst()) as Selectable<DB[T]> | undefined;
+    return (await this.#untyped
+      .updateTable(this.#name)
+      .set({ ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date() })
+      .where('id', '=', id)
+      .where(softDeleteFilter(this.#name))
+      .returningAll()
+      .executeTakeFirst()) as Selectable<DB[T]> | undefined;
   }
 
-  /** Deletes a row — with soft deletes, marks it deleted. Returns whether there was one. */
+  /** Deletes a row — sets `deleted_at` instead when the table's migration called `softDeletes()`. Returns whether there was one. */
   async delete(id: KeyOf<T, DB>): Promise<boolean> {
-    if (this.#statics().softDeletes) {
-      const result = await this.#untyped
-        .updateTable(this.#name)
-        .set({ deleted_at: new Date() })
-        .where('id', '=', id)
-        .where('deleted_at', 'is', null)
-        .executeTakeFirst();
-      return result.numUpdatedRows > 0n;
-    }
-    return this.forceDelete(id);
+    const result = await this.#untyped.deleteFrom(this.#name).where('id', '=', id).where(softDelete(this.#name)).executeTakeFirst();
+    return result.numDeletedRows > 0n;
   }
 
   /** Deletes a row for real, soft deletes or not. */

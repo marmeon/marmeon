@@ -135,6 +135,26 @@ declare module '@marmeon/database' {
       avatar_path: string | null;
     };
   }
+  interface Relations {
+    login_activity: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    personal_access_tokens: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    profile_links: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    remember_tokens: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    users: {
+      login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
+      personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      remember_tokens: { kind: 'hasMany'; table: 'remember_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+    };
+  }
   interface TableOwners {
     cache: 'system';
     cache_locks: 'system';

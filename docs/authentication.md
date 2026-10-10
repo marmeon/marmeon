@@ -73,7 +73,6 @@ import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> implements UserProvider<User> {
   static table = 'users' as const;
-  static timestamps = true;
 
   findById(id: number): Promise<Credentials<User> | undefined> {
     return this.#credentials(this.query().where('id', '=', id));

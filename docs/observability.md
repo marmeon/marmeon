@@ -82,7 +82,8 @@ and OpenTelemetry never records parameters at all.
 `Connections` of `@marmeon/database` has a plain listener for code that counts queries itself, such as a test:
 `connections.onQuery(listener)` hears every statement of every connection with its `connection`, `sql`, `parameters`,
 `durationMs` and `error`, and returns the function that stops it. It knows no `secret` flag and passes the parameters as they
-are, so keep it out of anything that records or ships them.
+are, so keep it out of anything that records or ships them. The catalog queries a connection runs to learn its schema, its
+relations and secret columns, are not statements of the app: no listener, log or devtools panel sees them.
 
 ### The log channel
 

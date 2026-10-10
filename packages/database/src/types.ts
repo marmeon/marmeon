@@ -22,6 +22,12 @@ export interface TableOwners {}
 export interface ExposedTables {}
 /** The app's modules — so `Database<'user-profil'>` (a typo) is an error. */
 export interface Modules {}
+/**
+ * The relations the foreign keys describe, by table and name: `{ posts: { author: { kind: 'belongsTo'; table: 'users'; … } } }`.
+ * A one-relation is `nullable` unless its foreign key is NOT NULL and the related table has no soft deletes.
+ * See `docs/migrations.md#relations-from-foreign-keys`.
+ */
+export interface Relations {}
 
 /** A column the database fills in (identity, default): optional on insert, always there when read. */
 export type Generated<T> =

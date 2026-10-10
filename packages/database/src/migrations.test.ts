@@ -42,7 +42,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
       ['2026_01_02_000000_create_posts_table', 'blog', 2],
       ['2026_01_03_000000_add_slug_to_posts_table', 'blog', 2],
     ]);
-    expect(await tables()).toEqual(['articles', 'migrations', 'secret_columns', 'table_owners', 'users']);
+    expect(await tables()).toEqual(['articles', 'migrations', 'schema_markers', 'secret_columns', 'table_owners', 'users']);
   });
 
   it('records which module owns each table — renames included', async () => {
@@ -83,7 +83,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
     const both = migrator(connections, auth, blog);
     const rolledBack = (await both.rollback()).map((run) => run.name);
     expect(rolledBack).toEqual(['2026_01_03_000000_add_slug_to_posts_table', '2026_01_02_000000_create_posts_table']);
-    expect(await tables()).toEqual(['migrations', 'secret_columns', 'table_owners', 'users']);
+    expect(await tables()).toEqual(['migrations', 'schema_markers', 'secret_columns', 'table_owners', 'users']);
     expect(Object.fromEntries(await both.owners())).toEqual({ users: 'auth' });
 
     await both.migrate();
@@ -91,13 +91,13 @@ describe.each(drivers)('migrations on %s', (driver) => {
     const posts = (await db().introspection.getTables()).find((t) => t.name === 'posts')!;
     expect(posts.columns.map((c) => c.name)).toEqual(['id', 'user_id', 'title', 'body', 'published_at']);
     expect((await both.reset()).length).toBe(2);
-    expect(await tables()).toEqual(['migrations', 'secret_columns', 'table_owners']);
+    expect(await tables()).toEqual(['migrations', 'schema_markers', 'secret_columns', 'table_owners']);
   });
 
   it('undoes a failing migration completely and does not record it', async () => {
     const withBroken = migrator(connections, auth, broken);
     await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
-    expect(await tables()).toEqual(['migrations', 'secret_columns', 'table_owners', 'users']); // `half` is gone; users (earlier file) stays
+    expect(await tables()).toEqual(['migrations', 'schema_markers', 'secret_columns', 'table_owners', 'users']); // `half` is gone; users (earlier file) stays
     expect((await withBroken.status()).map((m) => [m.name, m.batch])).toEqual([
       ['2026_01_01_000000_create_users_table', 1],
       ['2026_01_04_000000_create_half_table', undefined],
@@ -108,7 +108,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
     await sql`create table stray (x integer)`.execute(db());
     const runs = await migrator(connections, auth, blog).fresh();
     expect(runs.map((run) => run.name)).toHaveLength(3);
-    expect(await tables()).toEqual(['articles', 'migrations', 'secret_columns', 'table_owners', 'users']);
+    expect(await tables()).toEqual(['articles', 'migrations', 'schema_markers', 'secret_columns', 'table_owners', 'users']);
     expect((await migrator(connections, auth, blog).status()).every((m) => m.batch === 1)).toBe(true);
   });
 });
@@ -135,8 +135,8 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
   it('creates the tables on their connection, keeps the record on default, and owners and secrets with the tables', async () => {
     const ran = await on(auth, system).migrate();
     expect(ran.map((run) => run.name)).toEqual(['2026_01_01_000000_create_users_table', '2026_01_07_000000_create_counters_table', '2026_01_08_000000_create_audit_table']);
-    expect(await tablesOf('default')).toEqual(['migrations', 'secret_columns', 'table_owners', 'users']);
-    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'secret_columns', 'table_owners']);
+    expect(await tablesOf('default')).toEqual(['migrations', 'schema_markers', 'secret_columns', 'table_owners', 'users']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'schema_markers', 'secret_columns', 'table_owners']);
     expect((await on(auth, system).status()).map((m) => [m.name, m.batch])).toEqual([
       ['2026_01_01_000000_create_users_table', 1],
       ['2026_01_07_000000_create_counters_table', 1],
@@ -156,10 +156,10 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
   it('rolls back on the connection the migration ran on', async () => {
     const rolledBack = await on(auth, system).rollback({ steps: 1 });
     expect(rolledBack.map((run) => run.name)).toEqual(['2026_01_08_000000_create_audit_table']);
-    expect(await tablesOf('system')).toEqual(['counters', 'secret_columns', 'table_owners']);
+    expect(await tablesOf('system')).toEqual(['counters', 'schema_markers', 'secret_columns', 'table_owners']);
     expect((await on(auth, system).status()).at(-1)?.batch).toBeUndefined();
     await on(auth, system).migrate();
-    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'secret_columns', 'table_owners']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'schema_markers', 'secret_columns', 'table_owners']);
   });
 
   it('drops the tables of every connection a migration runs on for a fresh start', async () => {
@@ -168,7 +168,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
     expect(await on(auth, system).connections()).toEqual(['default', 'system']);
     const ran = await on(auth, system).fresh();
     expect(ran).toHaveLength(3);
-    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'secret_columns', 'table_owners']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'schema_markers', 'secret_columns', 'table_owners']);
     expect(await connections.get<any>('system').selectFrom('counters').selectAll().execute()).toEqual([]);
     expect(await connections.get<any>('system').selectFrom('audit').selectAll().execute()).toEqual([]);
   });
@@ -188,6 +188,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
         'audit',
         'counters',
         'migrations',
+        'schema_markers',
         'secret_columns',
         'table_owners',
         'users',

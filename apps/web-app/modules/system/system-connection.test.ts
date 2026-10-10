@@ -45,7 +45,7 @@ describe('the system connection', () => {
 
   it('migrates the cache and session tables into the system file — the rest, the jobs included, into the app’s', async () => {
     const app = await open();
-    expect(await tables(app, 'system')).toEqual(['cache', 'cache_locks', 'secret_columns', 'sessions', 'table_owners']);
+    expect(await tables(app, 'system')).toEqual(['cache', 'cache_locks', 'schema_markers', 'secret_columns', 'sessions', 'table_owners']);
     const own = await tables(app, 'default');
     expect(own).toEqual(expect.arrayContaining(['users', 'jobs', 'failed_jobs', 'migrations']));
     expect(own).not.toEqual(expect.arrayContaining(['cache']));

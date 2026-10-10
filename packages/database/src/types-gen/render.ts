@@ -1,4 +1,5 @@
 import type { ColumnMetadata, TableMetadata } from 'kysely';
+import type { Relation } from '../introspection.ts';
 import type { Driver } from '../schema/blueprint.ts';
 
 export interface SchemaSnapshot {
@@ -10,6 +11,8 @@ export interface SchemaSnapshot {
   readonly owners: ReadonlyMap<string, string>;
   /** Table → its `.secret()` columns (from `secret_columns`); missing means none. */
   readonly secrets?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Table → its relations, derived from the foreign keys; missing means none. */
+  readonly relations?: ReadonlyMap<string, ReadonlyMap<string, Relation>>;
   /** Every module of the app, whether it owns tables or not. */
   readonly modules: readonly string[];
   /** Module → tables it exposes. */
@@ -61,6 +64,13 @@ export function renderTypes(snapshot: SchemaSnapshot): Rendered {
     tableLines.push('    };');
   }
 
+  const relationLines: string[] = [];
+  for (const [table, relations] of snapshot.relations ?? []) {
+    relationLines.push(`    ${key(table)}: {`);
+    for (const [name, relation] of relations) relationLines.push(`      ${key(name)}: ${renderRelation(relation)};`);
+    relationLines.push('    };');
+  }
+
   const ownerLines = tables.flatMap((t) => (snapshot.owners.has(t.name) ? [`    ${key(t.name)}: '${snapshot.owners.get(t.name)}';`] : []));
   const exposedLines: string[] = [];
   for (const [module, exposed] of [...snapshot.exposes].sort(([a], [b]) => a.localeCompare(b))) {
@@ -79,6 +89,7 @@ export function renderTypes(snapshot: SchemaSnapshot): Rendered {
     '',
     "declare module '@marmeon/database' {",
     ...block('Tables', tableLines),
+    ...block('Relations', relationLines),
     ...block('TableOwners', ownerLines),
     ...block('ExposedTables', exposedLines),
     ...block('Modules', moduleLines),
@@ -107,6 +118,21 @@ function render(table: string, column: ColumnMetadata, snapshot: SchemaSnapshot,
   if (nullable) type = `${type} | null`;
   if (snapshot.secrets?.get(table)?.has(column.name)) type = `Secret<${type}>`;
   return generated ? `Generated<${type}>` : type;
+}
+
+function renderRelation(relation: Relation): string {
+  const fields: [string, string | boolean | undefined][] = [
+    ['kind', relation.kind],
+    ['table', relation.table],
+    ['pivot', relation.pivot],
+    ['foreignKey', relation.foreignKey],
+    ['relatedKey', relation.relatedKey],
+    ['localKey', relation.localKey],
+    ['targetKey', relation.targetKey],
+    ['nullable', relation.nullable],
+  ];
+  const parts = fields.filter(([, value]) => value !== undefined).map(([field, value]) => `${field}: ${typeof value === 'string' ? `'${value}'` : value}`);
+  return `{ ${parts.join('; ')} }`;
 }
 
 function key(name: string): string {

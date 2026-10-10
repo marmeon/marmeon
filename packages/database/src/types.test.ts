@@ -84,6 +84,11 @@ it('types migrations: defaults match the column, references come before on-delet
         table.string('title').default(null);
         // @ts-expect-error — on-delete rules need a reference first
         table.foreignId('owner_id').cascadeOnDelete();
+        table.foreignId('approver_id').constrained('users').nullOnDelete().inverse('approved_invoices').nullable();
+        // @ts-expect-error — an inverse name needs a reference first
+        table.foreignId('reviewer_id').inverse('reviewed_invoices');
+        // @ts-expect-error — `.nullable()` goes last: it keeps a plain column
+        table.foreignId('auditor_id').constrained('users').nullable().inverse('audited_invoices');
         // @ts-expect-error — only timestamps default to the current time
         table.string('slug').useCurrent();
       }),

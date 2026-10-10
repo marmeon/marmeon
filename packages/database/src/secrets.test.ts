@@ -20,7 +20,6 @@ interface AccountTables extends FixtureTables {
 
 class AccountRepository extends Repository<'accounts', AccountTables> {
   static table = 'accounts' as const;
-  static timestamps = true;
 
   /** The one place that reads the hash. */
   findForLogin(email: string) {

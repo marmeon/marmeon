@@ -4,7 +4,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
-import { SECRETS_TABLE } from '../metadata.ts';
+import { byCodePoint, type SchemaMarker } from '../introspection.ts';
+import { MARKERS_TABLE, SECRETS_TABLE } from '../metadata.ts';
 import { Schema, type SchemaRecorder } from '../schema/schema.ts';
 import type { Migration } from './migration.ts';
 
@@ -32,21 +33,26 @@ export interface MigrationRun {
 /** Internal bookkeeping tables — not part of the app's generated `Tables`. */
 export const MIGRATIONS_TABLE = 'migrations';
 export const OWNERS_TABLE = 'table_owners';
-export { SECRETS_TABLE };
+export { MARKERS_TABLE, SECRETS_TABLE };
 
 interface Bookkeeping {
   migrations: { id: Generated<number>; name: string; module: string; batch: number };
   table_owners: { table_name: string; module: string };
   secret_columns: { table_name: string; column_name: string };
+  schema_markers: { table_name: string; column_name: string; marker: string; value: string | null };
 }
+
+/** The columns a table-level marker stands for: dropping or renaming one of them takes the marker with it. */
+const MARKER_COLUMNS: Readonly<Record<string, SchemaMarker['marker']>> = { deleted_at: 'soft_deletes', created_at: 'timestamps', updated_at: 'timestamps' };
 
 /**
  * Runs the migrations of every module in batches, ordered by their timestamp, and records which module's
- * migration created which table and which columns are secret.
+ * migration created which table, which columns are secret and what the migrations marked (`timestamps()`, `softDeletes()`,
+ * `.inverse()`).
  *
  * A migration may run on another connection (`connection` in `defineMigration`, e.g. the cache's own SQLite
- * file): its record stays on `default` (one order, one batch number for all), the table's owner and secret columns go
- * to the bookkeeping of the connection the table is on.
+ * file): its record stays on `default` (one order, one batch number for all), the table's owner, secret columns and marks
+ * go to the bookkeeping of the connection the table is on.
  */
 export class Migrator {
   readonly #app: Application;
@@ -192,6 +198,15 @@ export class Migrator {
     return secrets;
   }
 
+  /** Every marker the migrations recorded (`timestamps()`, `softDeletes()`, `.inverse()`), ordered by table and column. */
+  async markers(): Promise<SchemaMarker[]> {
+    await this.#prepare();
+    const rows = await this.#db().selectFrom(MARKERS_TABLE).select(['table_name', 'column_name', 'marker', 'value']).execute();
+    return rows
+      .map((row) => ({ table: row.table_name, column: row.column_name, marker: row.marker as SchemaMarker['marker'], value: row.value }))
+      .sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column) || byCodePoint(a.marker, b.marker));
+  }
+
   async #down(rows: readonly { name: string; module: string }[], onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
     const files = new Map(this.files().map((file) => [file.name, file]));
     const db = this.#db();
@@ -243,29 +258,47 @@ export class Migrator {
         await trx.deleteFrom(OWNERS_TABLE).where('table_name', '=', table).execute();
         await trx.insertInto(OWNERS_TABLE).values({ table_name: table, module }).execute();
         await trx.deleteFrom(SECRETS_TABLE).where('table_name', '=', table).execute();
+        await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).execute();
       },
       dropped: async (table) => {
         await trx.deleteFrom(OWNERS_TABLE).where('table_name', '=', table).execute();
         await trx.deleteFrom(SECRETS_TABLE).where('table_name', '=', table).execute();
+        await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).execute();
       },
       renamed: async (from, to) => {
         await trx.updateTable(OWNERS_TABLE).set({ table_name: to }).where('table_name', '=', from).execute();
         await trx.updateTable(SECRETS_TABLE).set({ table_name: to }).where('table_name', '=', from).execute();
+        await trx.updateTable(MARKERS_TABLE).set({ table_name: to }).where('table_name', '=', from).execute();
       },
       secret: async (table, column) => {
         await trx.insertInto(SECRETS_TABLE).values({ table_name: table, column_name: column }).execute();
       },
+      marker: async (table, column, marker, value) => {
+        await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', column).where('marker', '=', marker).execute();
+        await trx.insertInto(MARKERS_TABLE).values({ table_name: table, column_name: column, marker, value }).execute();
+      },
       columnDropped: async (table, column) => {
         await trx.deleteFrom(SECRETS_TABLE).where('table_name', '=', table).where('column_name', '=', column).execute();
+        await this.#columnGone(trx, table, column);
       },
       columnRenamed: async (table, from, to) => {
         await trx.updateTable(SECRETS_TABLE).set({ column_name: to }).where('table_name', '=', table).where('column_name', '=', from).execute();
+        // A foreign key keeps its inverse name; `deleted_at` under another name is no soft delete any more.
+        await trx.updateTable(MARKERS_TABLE).set({ column_name: to }).where('table_name', '=', table).where('column_name', '=', from).execute();
+        if (MARKER_COLUMNS[from]) await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', '').where('marker', '=', MARKER_COLUMNS[from]).execute();
       },
     };
     return new Schema(trx, this.#driver(connection), owners);
   }
 
-  /** The bookkeeping tables: the record of migrations on `default`; table owners and secret columns on every connection with tables. */
+  /** The markers of a dropped column: its own (an inverse name), and the table's marker it stood for. */
+  async #columnGone(trx: Kysely<Bookkeeping>, table: string, column: string): Promise<void> {
+    await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', column).execute();
+    const marker = MARKER_COLUMNS[column];
+    if (marker) await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', '').where('marker', '=', marker).execute();
+  }
+
+  /** The bookkeeping tables: the record of migrations on `default`; table owners, secret columns and markers on every connection with tables. */
   async #prepare(connection = 'default'): Promise<void> {
     const db = this.#db(connection);
     if (connection === 'default') {
@@ -292,6 +325,15 @@ export class Migrator {
       .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
       .addColumn('column_name', 'varchar(255)', (c) => c.notNull())
       .addPrimaryKeyConstraint(`${SECRETS_TABLE}_pkey`, ['table_name', 'column_name'])
+      .execute();
+    await db.schema
+      .createTable(MARKERS_TABLE)
+      .ifNotExists()
+      .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
+      .addColumn('column_name', 'varchar(255)', (c) => c.notNull().defaultTo(''))
+      .addColumn('marker', 'varchar(32)', (c) => c.notNull())
+      .addColumn('value', 'varchar(255)')
+      .addPrimaryKeyConstraint(`${MARKERS_TABLE}_pkey`, ['table_name', 'column_name', 'marker'])
       .execute();
   }
 

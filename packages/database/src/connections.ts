@@ -10,6 +10,7 @@ import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure
 import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
+import { SchemaResolver } from './schema-resolver.ts';
 import { SecretColumnsPlugin } from './secrets.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
@@ -132,6 +133,11 @@ export class Connections {
     return db as Kysely<DB>;
   }
 
+  /** @internal — what a connection knows about its schema (relations, markers, secret columns), as far as it is loaded. */
+  metadata(name = 'default'): SchemaMetadata {
+    return this.#instance(name).metadata;
+  }
+
   /** Whether the current call chain runs inside a `transaction()` of this connection. */
   inTransaction(name = 'default'): boolean {
     const instance = this.#instances.get(name);
@@ -213,8 +219,10 @@ export class Connections {
     if (!instance) {
       const options = this.options(name);
       const metadata = new SchemaMetadata(options.driver);
-      const { dialect, driver } = withMarmeonDriver(this.#dialect(options, name), { name, target: describeConnection(options), metadata });
-      const plugins = [metadata.plugin(), new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
+      const base = this.#dialect(options, name);
+      const resolver = new SchemaResolver(metadata, base.createQueryCompiler());
+      const { dialect, driver } = withMarmeonDriver(base, { name, target: describeConnection(options), metadata, deferred: resolver });
+      const plugins = [resolver, new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);

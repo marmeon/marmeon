@@ -14,6 +14,8 @@ export function createSqliteDialect(path: string): SqliteDialect {
   return new SqliteDialect({
     database: async () => {
       const db = new DatabaseSync(path, { timeout: 5000 });
+      // Enforced, not assumed (node:sqlite's default): a relation typed non-null relies on its foreign key.
+      db.exec('PRAGMA foreign_keys = ON');
       if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
       return adaptNodeSqlite(db);
     },

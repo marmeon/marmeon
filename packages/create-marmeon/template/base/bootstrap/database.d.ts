@@ -26,6 +26,7 @@ declare module '@marmeon/database' {
       created_at: number;
     };
   }
+  interface Relations {}
   interface TableOwners {
     failed_jobs: 'system';
     jobs: 'system';

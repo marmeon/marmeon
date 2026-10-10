@@ -17,7 +17,6 @@ import { Repository } from '@marmeon/database';
 
 export class NoteRepository extends Repository<'notes'> {
   static table = 'notes' as const;
-  static timestamps = true;
 
   latestOf(userId: number) {
     return this.query().selectAll().where('user_id', '=', userId).orderBy('updated_at', 'desc').limit(10).execute();

@@ -16,6 +16,7 @@ export type {
   ModuleTables,
   Modules,
   NewRow,
+  Relations,
   Row,
   RowUpdate,
   TableOwners,
@@ -45,12 +46,13 @@ export { TypeGenerator, TYPES_FILE } from './types-gen/generator.ts';
 export { columnType, renderTypes } from './types-gen/render.ts';
 export type { Rendered, SchemaSnapshot } from './types-gen/render.ts';
 export type { Migration } from './migrations/migration.ts';
-export { Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from './migrations/migrator.ts';
+export { MARKERS_TABLE, Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from './migrations/migrator.ts';
 export { SchemaMetadata } from './metadata.ts';
 export type { ColumnKind } from './metadata.ts';
 export { secret, SecretColumnsPlugin } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
+export type { SchemaMarker } from './introspection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
 export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';

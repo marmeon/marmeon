@@ -22,4 +22,43 @@ export interface FixtureTables {
     published_at: Timestamp | null;
     slug: string | null;
   };
+  // The relations fixture (`migrations/relations`).
+  posts: {
+    id: Generated<number>;
+    author_id: number;
+    editor_id: number | null;
+    title: string;
+    featured: Generated<boolean>;
+    rating: Generated<Decimal>;
+    published_at: Timestamp | null;
+    created_at: Generated<Timestamp>;
+    updated_at: Generated<Timestamp>;
+  };
+  comments: {
+    id: Generated<number>;
+    post_id: number;
+    user_id: number;
+    body: string;
+    approved: Generated<boolean>;
+    created_at: Generated<Timestamp>;
+    updated_at: Generated<Timestamp>;
+    deleted_at: Timestamp | null;
+  };
+  tags: {
+    id: Generated<number>;
+    slug: string;
+  };
+  post_tag: {
+    post_id: number;
+    tag_id: number;
+  };
+  post_stats: {
+    post_id: number;
+    views: Generated<number>;
+  };
+  categories: {
+    id: Generated<number>;
+    name: string;
+    parent_id: number | null;
+  };
 }

@@ -1,13 +1,13 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
+import type { Generated } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
 
+// `users` has soft deletes and timestamps — its migration says so (`softDeletes()`, `timestamps()`); `articles` neither.
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
-  static timestamps = true;
-  static softDeletes = true;
 
   findByEmail(email: string) {
     return this.query().select(['id', 'name']).where('email', '=', email).executeTakeFirst();
@@ -97,14 +97,24 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(error).toMatchObject({ status: 404, message: 'Not Found', table: 'users', key: 404 });
   });
 
-  it('updates a row, sets updated_at with timestamps, and returns undefined for no row', async () => {
+  it('updates a row, sets updated_at when the migration has timestamps(), and returns undefined for no row', async () => {
     const old = '2020-01-01T00:00:00.000Z';
     const ada = await users.insert({ name: 'Ada', email: 'ada@example.com', created_at: old, updated_at: old });
     const updated = await users.update(ada.id, { name: 'Ada Lovelace' });
     expect(updated).toMatchObject({ name: 'Ada Lovelace', created_at: old });
     expect(updated!.updated_at > old).toBe(true);
+    expect(await users.update(ada.id, { updated_at: old })).toMatchObject({ updated_at: old }); // set explicitly: kept
     expect(await users.update(ada.id + 1, { name: 'Nobody' })).toBeUndefined();
-    expect(await articles.update(1, { title: 'x' })).toBeUndefined(); // no timestamps, no row
+    const article = await articles.insert({ user_id: ada.id, title: 'Notes' });
+    expect(await articles.update(article.id, { title: 'More notes' })).toEqual({ ...article, title: 'More notes' }); // no updated_at to set
+  });
+
+  it('deletes for real when the migration has no softDeletes()', async () => {
+    const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    const article = await articles.insert({ user_id: ada.id, title: 'Notes' });
+    expect(await articles.delete(article.id)).toBe(true);
+    expect(await articles.delete(article.id)).toBe(false);
+    expect(await connections.get<FixtureTables>().selectFrom('articles').selectAll().execute()).toEqual([]);
   });
 
   it('soft-deletes: hidden from reads and updates, visible withTrashed, restorable, force-deletable', async () => {
@@ -194,7 +204,6 @@ describe.each(drivers)('Repository as a route binder on %s', (driver) => {
 
   class Users extends Repository<'users', FixtureTables> {
     static table = 'users' as const;
-    static softDeletes = true;
   }
   class Articles extends Repository<'articles', FixtureTables> {
     static table = 'articles' as const;
@@ -228,5 +237,39 @@ describe.each(drivers)('Repository as a route binder on %s', (driver) => {
 
     await users.delete(alan.id); // soft-deleted rows do not bind either
     expect(await users.resolveRouteBinding(String(alan.id), { ctx })).toBeUndefined();
+  });
+});
+
+describe.each(drivers)('Repository without markers on %s', (driver) => {
+  interface LogTables {
+    log_entries: { id: Generated<number>; message: string; deleted_at: string | null; updated_at: string | null };
+  }
+  class LogEntries extends Repository<'log_entries', LogTables> {
+    static table = 'log_entries' as const;
+  }
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections(driver));
+    // Columns named like the markers' — but no migration said `softDeletes()` or `timestamps()`.
+    await connections
+      .get()
+      .schema.createTable('log_entries')
+      .addColumn('id', driver === 'sqlite' ? 'integer' : 'bigint', (c) => (driver === 'sqlite' ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity()))
+      .addColumn('message', 'text', (c) => c.notNull())
+      .addColumn('deleted_at', 'text')
+      .addColumn('updated_at', 'text')
+      .execute();
+  });
+  afterAll(() => close());
+
+  it('deletes for real, reads every row and leaves updated_at alone — a column is no marker', async () => {
+    const entries = new LogEntries(connections);
+    const kept = await entries.insert({ message: 'kept', deleted_at: '2020-01-01' });
+    const gone = await entries.insert({ message: 'gone' });
+    expect(await entries.update(kept.id, { message: 'still kept' })).toMatchObject({ updated_at: null });
+    expect(await entries.delete(gone.id)).toBe(true);
+    expect(await entries.query().select('message').execute()).toEqual([{ message: 'still kept' }]);
+    expect(await connections.get<LogTables>().selectFrom('log_entries').select('id').execute()).toHaveLength(1);
   });
 });

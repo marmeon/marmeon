@@ -8,7 +8,6 @@ import { failOnDuplicate, Migrator, Repository, uniqueViolationColumns, type Con
 
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
-  static softDeletes = true;
 }
 
 const modules: ModuleDefinition[] = [{ name: 'auth', migrations: new URL('./__fixtures__/migrations/auth/', import.meta.url) }];

@@ -150,9 +150,9 @@ A deployment runs `marmeon migrate --force` once, before the new version takes r
 | `timestamp(name)` | `timestamptz(3)` | `datetime` | an ISO-8601 string in UTC, to the millisecond |
 | `foreignId(name)` | `bigint` | `integer` | `number` |
 
-Two shortcuts add common columns. `timestamps()` adds `created_at` and `updated_at`, both set to the current time on insert.
-`softDeletes()` adds a nullable `deleted_at` for a repository with `static softDeletes = true`. Defining the same column twice
-throws.
+Two shortcuts add common columns and mark the table. `timestamps()` adds `created_at` and `updated_at`, both set to the current
+time on insert. `softDeletes()` adds a nullable `deleted_at`. What the marks change is under
+[timestamps and soft deletes](#timestamps-and-soft-deletes). Defining the same column twice throws.
 
 ### Modifiers
 
@@ -197,6 +197,9 @@ is wrong: `constrained('users', 'id')`. Then `cascadeOnDelete()` deletes the row
 sets the column to `NULL`, and `restrictOnDelete()` refuses to delete the referenced row while this one points at it. Without any
 of them, the database's default applies and refuses the delete as well. The compiler only offers the three after
 `constrained()`, and `.nullable()` goes last, as in `uploaded_by` above. Both SQLite and Postgres enforce the reference.
+
+Every foreign key also describes two relations, one for each table. The
+[relations from foreign keys](#relations-from-foreign-keys) section shows how they are named.
 
 ### Indexes
 
@@ -282,6 +285,83 @@ const row = await this.query().where('email', '=', email).selectAll().select((eb
 a table with secret columns are marked as such for whatever records queries, which then leaves their parameters out. The
 [observability](observability.md#queries-and-secret-columns) page explains it.
 
+## Timestamps and soft deletes
+
+`timestamps()` and `softDeletes()` do more than add columns. The migrator records them as marks of the table, next to the
+secret columns, and the connection reads them:
+
+- **`timestamps()`**: a repository's `update()` sets `updated_at` to the current time, unless the values set it themselves.
+- **`softDeletes()`**: a repository's `delete()` sets `deleted_at` instead of deleting the row, and its `query()`, `find()`,
+  `count()`, route binding and the rest leave deleted rows out. `withTrashed()` and `forceDelete()` reach them on purpose.
+
+A column of the same name without the call is an ordinary column: a `deleted_at` added with `table.timestamp('deleted_at')` deletes
+nothing softly. The mark follows the table when it is renamed. It goes away when its column is dropped or renamed, and a
+`softDeletes()` in the migration's `down()` brings it back. The [repositories](queries.md#repositories) page shows the methods.
+
+## Relations from foreign keys
+
+Each foreign key describes how two tables relate, so the relations are derived from the migrations, like the table types:
+
+- **belongsTo**: the table with the foreign key gets a relation named after the column without `_id`. `comments.post_id` gives
+  `comments.post`.
+- **hasMany**: the referenced table gets one named after the table with the foreign key, `posts.comments`.
+- **hasOne**: instead of hasMany, when the foreign key column alone is unique or the primary key. A table that holds one row per
+  user, `table.foreignId('user_id').primary()`, gives `users.login_activity`.
+- **belongsToMany**: a table with exactly two foreign keys to two other tables, unique together, links them both ways. Each side
+  is named after the other table: `posts.tags` and `tags.posts` through `post_tag`.
+
+```ts title="modules/blog/migrations/2026_10_08_090000_create_post_tag_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) =>
+    schema.create('post_tag', (table) => {
+      table.foreignId('post_id').constrained().cascadeOnDelete();
+      table.foreignId('tag_id').constrained().cascadeOnDelete();
+      table.unique(['post_id', 'tag_id']);
+    }),
+  down: (schema) => schema.drop('post_tag'),
+});
+```
+
+A one-relation, a belongsTo or a hasOne, may find no row. A hasOne always may. A belongsTo finds a row only when its foreign key is
+`NOT NULL` and the referenced table has no soft deletes: a soft-deleted row never comes back through a relation.
+
+### Naming the way back
+
+Two foreign keys to the same table would give that table two relations of one name. Name each one with `.inverse()`, after
+`constrained()` and before `.nullable()`:
+
+```ts title="modules/blog/migrations/2026_10_08_080000_create_posts_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) =>
+    schema.create('posts', (table) => {
+      table.id();
+      table.foreignId('author_id').constrained('users').cascadeOnDelete().inverse('authored_posts');
+      table.foreignId('editor_id').constrained('users').nullOnDelete().inverse('edited_posts').nullable();
+      table.string('title');
+      table.timestamps();
+    }),
+  down: (schema) => schema.drop('posts'),
+});
+```
+
+Now `posts` has `author` and `editor`, and `users` has `authored_posts` and `edited_posts`. Without the two names, `db:types`
+stops and says what to do:
+
+```text
+posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')
+```
+
+A foreign key to its own table follows the same rules: `categories.parent_id` gives `categories.parent` and the children as
+`categories.categories`. `.inverse('children')` gives them a better name. A relation never hides a column either: a foreign key
+named `owner` would give a relation `owner`, so `db:types` asks for `owner_id` instead.
+
+`db:types` writes the relations into `bootstrap/database.d.ts` next to the tables, as `Relations`, with the keys each one
+joins on. The connection derives the same relations at runtime, from the same migrations.
+
 ## Migrations on another connection
 
 A migration runs on another connection with `connection`: a name, or a function that reads the name from the app's configuration
@@ -305,8 +385,8 @@ export default defineMigration({
 - **One order.** The record of every migration stays on `default`, with one batch number for all of them.
 - **Two transactions.** The migration runs in a transaction of its own connection and is recorded afterwards. A migration that
   fails is not recorded.
-- **Its table's books stay with the table.** Which module owns it and which columns are secret is kept on the connection the
-  table is on, so a `selectAll()` there leaves the secret columns out too.
+- **Its table's books stay with the table.** Which module owns it, which columns are secret and its marks are kept on the
+  connection the table is on, so a `selectAll()` there leaves the secret columns out too.
 - `migrate:fresh` drops the tables of every connection a migration runs on.
 - `db:types` runs every migration on one scratch database, so `Tables` knows every table, wherever it lives.
 

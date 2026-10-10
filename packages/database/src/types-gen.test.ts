@@ -4,7 +4,7 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import type { TableMetadata } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { drivers, freshConnections, silent } from './__fixtures__/databases.ts';
-import { columnType, renderTypes, TypeGenerator } from './index.ts';
+import { columnType, renderTypes, TypeGenerator, type Connections } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
@@ -44,6 +44,14 @@ declare module '@marmeon/database' {
       deleted_at: Timestamp | null;
     };
   }
+  interface Relations {
+    articles: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: true };
+    };
+    users: {
+      articles: { kind: 'hasMany'; table: 'articles'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+    };
+  }
   interface TableOwners {
     articles: 'blog';
     users: 'auth';
@@ -78,6 +86,71 @@ describe.each(drivers)('TypeGenerator on %s', (driver) => {
       expect((await generator.write()).changed).toBe(false);
       writeFileSync(join(root, 'bootstrap/database.d.ts'), EXPECTED.replace('slug', 'slogan'));
       expect(await generator.isCurrent()).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe.each(drivers)('Relations from db:types on %s', (driver) => {
+  const root = tempDir('marmeon-types-');
+  const generator = (connections: Connections, blog: string) =>
+    new TypeGenerator({ root, modules: [{ name: 'auth', migrations: fixtures('auth') }, { name: 'blog', migrations: fixtures(blog) }] } as unknown as Application, connections, silent);
+
+  it('derives them from the foreign keys — inverse names, hasOne, belongsToMany, nullable one-relations', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      const { source } = await generator(connections, 'relations').render();
+      const relations = source.slice(source.indexOf('  interface Relations {'), source.indexOf('  interface TableOwners {'));
+      expect(relations).toBe(`  interface Relations {
+    categories: {
+      categories: { kind: 'hasMany'; table: 'categories'; foreignKey: 'parent_id'; localKey: 'id'; targetKey: 'parent_id' };
+      parent: { kind: 'belongsTo'; table: 'categories'; foreignKey: 'parent_id'; localKey: 'parent_id'; targetKey: 'id'; nullable: true };
+    };
+    comments: {
+      post: { kind: 'belongsTo'; table: 'posts'; foreignKey: 'post_id'; localKey: 'post_id'; targetKey: 'id'; nullable: false };
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: true };
+    };
+    post_stats: {
+      post: { kind: 'belongsTo'; table: 'posts'; foreignKey: 'post_id'; localKey: 'post_id'; targetKey: 'id'; nullable: false };
+    };
+    post_tag: {
+      post: { kind: 'belongsTo'; table: 'posts'; foreignKey: 'post_id'; localKey: 'post_id'; targetKey: 'id'; nullable: false };
+      tag: { kind: 'belongsTo'; table: 'tags'; foreignKey: 'tag_id'; localKey: 'tag_id'; targetKey: 'id'; nullable: false };
+    };
+    posts: {
+      author: { kind: 'belongsTo'; table: 'users'; foreignKey: 'author_id'; localKey: 'author_id'; targetKey: 'id'; nullable: true };
+      comments: { kind: 'hasMany'; table: 'comments'; foreignKey: 'post_id'; localKey: 'id'; targetKey: 'post_id' };
+      editor: { kind: 'belongsTo'; table: 'users'; foreignKey: 'editor_id'; localKey: 'editor_id'; targetKey: 'id'; nullable: true };
+      post_stats: { kind: 'hasOne'; table: 'post_stats'; foreignKey: 'post_id'; localKey: 'id'; targetKey: 'post_id'; nullable: true };
+      post_tag: { kind: 'hasMany'; table: 'post_tag'; foreignKey: 'post_id'; localKey: 'id'; targetKey: 'post_id' };
+      tags: { kind: 'belongsToMany'; table: 'tags'; pivot: 'post_tag'; foreignKey: 'post_id'; relatedKey: 'tag_id'; localKey: 'id'; targetKey: 'id' };
+    };
+    tags: {
+      post_tag: { kind: 'hasMany'; table: 'post_tag'; foreignKey: 'tag_id'; localKey: 'id'; targetKey: 'tag_id' };
+      posts: { kind: 'belongsToMany'; table: 'posts'; pivot: 'post_tag'; foreignKey: 'tag_id'; relatedKey: 'post_id'; localKey: 'id'; targetKey: 'id' };
+    };
+    users: {
+      authored_posts: { kind: 'hasMany'; table: 'posts'; foreignKey: 'author_id'; localKey: 'id'; targetKey: 'author_id' };
+      comments: { kind: 'hasMany'; table: 'comments'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      edited_posts: { kind: 'hasMany'; table: 'posts'; foreignKey: 'editor_id'; localKey: 'id'; targetKey: 'editor_id' };
+    };
+  }
+`);
+      // Written once, it stays current: the check is stable.
+      expect((await generator(connections, 'relations').write()).changed).toBe(true);
+      expect(await generator(connections, 'relations').isCurrent()).toBe(true);
+    } finally {
+      await close();
+    }
+  });
+
+  it('stops on two foreign keys to one table without inverse names — with the message to fix it', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await expect(generator(connections, 'relations-ambiguous').render()).rejects.toThrow(
+        "posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')",
+      );
     } finally {
       await close();
     }

@@ -1,9 +1,9 @@
 import { sql, type Kysely } from 'kysely';
-import { Blueprint, compileColumn, type Driver } from './blueprint.ts';
+import { Blueprint, compileColumn, type Driver, type TableMarker } from './blueprint.ts';
 
 /**
- * Keeps the migrator's books: which module owns which table (`table_owners`) and which
- * columns are secret (`secret_columns`).
+ * Keeps the migrator's books: which module owns which table (`table_owners`), which columns are secret
+ * (`secret_columns`), and the markers of tables and foreign keys (`schema_markers`).
  */
 export interface SchemaRecorder {
   created(table: string): Promise<void>;
@@ -11,6 +11,8 @@ export interface SchemaRecorder {
   renamed(from: string, to: string): Promise<void>;
   /** A column was marked `.secret()`. */
   secret(table: string, column: string): Promise<void>;
+  /** A table was marked (`timestamps()`, `softDeletes()`), or a foreign key named its inverse relation. */
+  marker(table: string, column: string, marker: TableMarker | 'inverse', value: string | null): Promise<void>;
   columnDropped(table: string, column: string): Promise<void>;
   columnRenamed(table: string, from: string, to: string): Promise<void>;
 }
@@ -51,6 +53,7 @@ export class Schema {
     await this.#createIndexes(blueprint);
     await this.#owners?.created(table);
     await this.#recordSecrets(blueprint);
+    await this.#recordMarkers(blueprint);
   }
 
   /**
@@ -68,6 +71,7 @@ export class Schema {
     for (const spec of blueprint.columns) await this.db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, this.driver)).execute();
     await this.#createIndexes(blueprint);
     await this.#recordSecrets(blueprint);
+    await this.#recordMarkers(blueprint);
     for (const column of blueprint.drops) {
       await this.db.schema.alterTable(table).dropColumn(column).execute();
       await this.#owners?.columnDropped(table, column);
@@ -76,6 +80,13 @@ export class Schema {
 
   async #recordSecrets(blueprint: Blueprint): Promise<void> {
     for (const spec of blueprint.columns) if (spec.secret) await this.#owners?.secret(blueprint.table, spec.name);
+  }
+
+  async #recordMarkers(blueprint: Blueprint): Promise<void> {
+    for (const marker of blueprint.markers) await this.#owners?.marker(blueprint.table, '', marker, null);
+    for (const spec of blueprint.columns) {
+      if (spec.references?.inverse) await this.#owners?.marker(blueprint.table, spec.name, 'inverse', spec.references.inverse);
+    }
   }
 
   async #createIndexes(blueprint: Blueprint): Promise<void> {

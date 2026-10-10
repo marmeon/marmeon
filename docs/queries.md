@@ -11,7 +11,6 @@ import { Repository } from '@marmeon/database';
 
 export class NoteRepository extends Repository<'notes'> {
   static table = 'notes' as const;
-  static timestamps = true;
 
   latestOf(userId: number) {
     return this.query().selectAll().where('user_id', '=', userId).orderBy('updated_at', 'desc').limit(10).execute();
@@ -112,11 +111,13 @@ static table = '…' as const;`. Other statics change its behaviour:
 | Static | Default | Effect |
 | --- | --- | --- |
 | `table` | required | The table, as a runtime value. |
-| `timestamps` | `false` | `update()` sets `updated_at`. The migration's `timestamps()` fill both columns on insert. |
-| `softDeletes` | `false` | `delete()` sets `deleted_at`, and reads leave deleted rows out. |
 | `connection` | `default` | Another connection. See [another connection](#another-connection). |
 | `routeKey` | `id` | The column a route parameter is looked up in. |
 | `routeKeyPattern` | digits for `id` | What a route parameter must look like before it is looked up. |
+
+Timestamps and soft deletes follow the table's migration. When it calls `timestamps()`, `update()` sets
+`updated_at`. When it calls `softDeletes()`, `delete()` sets `deleted_at`, and every read leaves deleted rows out. The
+[migrations](migrations.md#timestamps-and-soft-deletes) page explains the marks.
 
 A repository is an ordinary class, built by the [container](container.md#binding-services). It holds nothing but its connection,
 so register it once in your module's provider: `container.singleton(NoteRepository)`. Its constructor takes `Connections` and
@@ -143,7 +144,7 @@ an `insertInto(…).onConflict(…)`.
 | Method | Returns |
 | --- | --- |
 | `insert(values)` | The row as stored, with its id and defaults. Secret columns are not in it. |
-| `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. |
+| `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at`. |
 | `tryInsert(values)` | The row, or `undefined` when a unique index already holds the values. |
 | `tryUpdate(id, values)` | The row, `undefined` when there is none, or `'duplicate'` when a unique index holds the new values. |
 | `delete(id)` | Whether there was a row. With soft deletes, it sets `deleted_at`. |
@@ -164,7 +165,6 @@ import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> {
   static table = 'users' as const;
-  static timestamps = true;
 
   register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
     return this.tryInsert(values);
