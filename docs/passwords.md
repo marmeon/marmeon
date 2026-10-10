@@ -89,8 +89,7 @@ for that address is younger than `AUTH_RESET_THROTTLE` seconds, 60 by default. S
 however often someone asks.
 
 - **The token** is 256 random bits. The `password_reset_tokens` table keeps only its SHA-256 hash, one row per address: a new
-  token replaces the older one, and with it the older link. A table of your own keeps `email` as its primary key, so an address
-  never has two rows, and `token_hash` as a 64-character `secret()` column, like the starter kit's migration.
+  token replaces the older one, and with it the older link.
 - **The job's payload is encrypted,** because it holds an address. The mail is queued once more on its own, so a failing mail
   server retries the mail with this token instead of asking the broker for a second one.
 - **The link comes from `APP_URL`,** never from a request's `Host` header, so nobody can make the mail point to another site.
@@ -215,6 +214,9 @@ interface PasswordResetTokenStore {
 
 `create()` returns `undefined` while the last token of the address is younger than `throttleSeconds`. `consume()` returns `true`
 only for the current, fresh token of the address, and uses it up in the same step. Store a hash of the token, never the token.
+
+A `password_reset_tokens` table of your own needs what the starter kit's migration gives it: `email` as its primary key, so an
+address never has two rows, and `token_hash` as a 64-character `secret()` column.
 
 ## Configuration
 

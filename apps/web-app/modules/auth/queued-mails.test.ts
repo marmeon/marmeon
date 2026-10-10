@@ -86,7 +86,7 @@ describe('the verification mail through the queue', () => {
     await app.assertDatabaseCount('failed_jobs', 0);
   }, heavyTimeout);
 
-  // No clock ("under 1 000 ms" broke on a loaded machine): the mail server never answers — a request that waited for it
+  // No clock — a time bound fails on a loaded machine: the mail server never answers — a request that waited for it
   // would never return; one that reached it at all fails at once.
   it('the registration answers without waiting for the mail server (one that never answers)', async () => {
     const transport = new TestTransport();

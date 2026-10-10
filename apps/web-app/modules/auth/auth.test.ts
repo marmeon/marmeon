@@ -482,7 +482,6 @@ describe('password reset', () => {
     await resetWith(cookie).assertRedirect('/login').assertFlashed('toast', { message: 'Your password has been reset. Sign in with the new one.' }).assertCookieExpired('password_reset');
     await app.post('/login', credentialsOf(ada)).assertGuest();
     await app.post('/login', { form: { email: ada.email, password: 'brand new password' } }).assertAuthenticated(ada);
-    // The same link a second time
     await resetWith(cookie, 'yet another password').assertInvalid<ResetPasswordController>({ password: INVALID });
   });
 

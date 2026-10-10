@@ -46,8 +46,8 @@ shows alone over an empty surface inside the app's layout. Nothing of the base i
 > [!WARNING]
 > A base resolved for a deep link only reads. Its middleware and controller cannot write the session, set a cookie or queue work
 > after the response, and it takes no flash message. In development and in tests such a write throws a `ReadOnlyViolation` that
-> names the base and where the write belongs. In production it is dropped and logged, so a base route that records something works as a page and loses the write as a base. Keep
-> writes in the layer's own route or in an action.
+> names the base and where the write belongs. In production it is dropped and logged, so a base route that records something works
+> as a page and loses the write as a base. Keep writes in the layer's own route or in an action.
 
 ### The link
 
@@ -260,9 +260,10 @@ export function Confirm(props: ConfirmProps) {
 
 `bootstrap/client.tsx` passes it as `createMarmeonApp({ confirm: Confirm })`. `ConfirmDialog` is a native modal `<dialog>` whose
 focus starts on the safe choice. Its heading names it: the request's `title`, or the message when there is no title, and with a
-title the message describes it. Escape answers no, and the focus goes back to what had it before the dialog opened. A request's own `confirmLabel` and `cancelLabel` win over the dialog's. `request.kind` is
-`confirm` for a question of a link, a form or an action, and `leave` for the guard's. A `leave` with `reason: 'session'` means that
-another tab signed in or out, or switched the language, and loading the page again would lose the unsaved changes.
+title the message describes it. Escape answers no, and the focus goes back to what had it before the dialog opened. A request's
+own `confirmLabel` and `cancelLabel` win over the dialog's. `request.kind` is `confirm` for a question of a link, a form or an
+action, and `leave` for the guard's. A `leave` with `reason: 'session'` means that another tab signed in or out, or switched the
+language, and loading the page again would lose the unsaved changes.
 
 With `prompt`, the user must type a text: `confirm={{ message: 'Delete the folder?', prompt: 'DELETE' }}`. The answer is yes only
 for exactly that text, and the framework compares it, not the dialog. A dialog of your own is a component that takes

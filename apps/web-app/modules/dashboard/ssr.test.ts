@@ -3,7 +3,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true).
+// Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 // Islands in the SSR stream: resolved in-process while the page renders — rendered completely here, as for a bot.

@@ -14,7 +14,7 @@ import { PENDING_MARKER } from './markdown.ts';
 import type { SearchResult } from './search.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true).
+// Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 const repo = resolve(import.meta.dirname, '../../../..');
