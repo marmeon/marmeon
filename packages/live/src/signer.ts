@@ -1,7 +1,7 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import type { LiveSigner } from '@marmeon/http';
 
-/** The keys of live tokens (E90): from `APP_KEY` (and the previous keys, still accepted) by HKDF, context `live`. */
+/** The keys of live tokens: from `APP_KEY` (and the previous keys, still accepted) by HKDF, context `live`. */
 export function liveKeys(key: Uint8Array, previousKeys: readonly Uint8Array[] = []): readonly Uint8Array[] {
   return [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:live', 32)));
 }
@@ -9,7 +9,7 @@ export function liveKeys(key: Uint8Array, previousKeys: readonly Uint8Array[] = 
 const digest = (key: Uint8Array, scope: string, channel: string) => createHmac('sha256', key).update(`${scope}\n${channel}`).digest('base64url');
 
 /**
- * Signs channels for sessions (E90): a token is an HMAC over the channel and the session's scope (a hash of its id, never the
+ * Signs channels for sessions: a token is an HMAC over the channel and the session's scope (a hash of its id, never the
  * id). Whoever was shown a page that follows a channel may hear its hints — for as long as that session lives: signing in or
  * out regenerates the id, and the tokens of the old one are void.
  */
@@ -36,9 +36,9 @@ export class LiveTokens {
   }
 
   /**
-   * A signer for one request: its session's scope, read when a page is signed. A page keeps its session for the signature (W8
-   * step 6); a read-only request (`readOnly()` — an island) cannot start one, so a guest without a session gets no token there
-   * (the subscription is left out) — anything else without a session is a mistake that says so.
+   * A signer for one request: its session's scope, read when a page is signed. A page keeps its session for the signature;
+   * a read-only request (`readOnly()` — an island) cannot start one, so a guest without a session gets no token there (the
+   * subscription is left out) — anything else without a session is a mistake that says so.
    */
   for(scope: () => string | undefined, readOnly: () => boolean = () => false): LiveSigner {
     return {

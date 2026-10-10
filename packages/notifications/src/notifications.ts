@@ -19,7 +19,7 @@ type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['t
 export type SendData<N> = N extends { readonly schema: infer S extends StandardSchemaV1 } ? SchemaInput<S> : never;
 
 /**
- * Sends notifications (E92) — `constructor(notifications: Notifications)`:
+ * Sends notifications — `constructor(notifications: Notifications)`:
  *
  * ```ts
  * await this.#notifications.send({ type: 'user', id: user.id }, NewSignInNotification, { at, ip, agent });   // queued
@@ -33,8 +33,8 @@ export interface Notifications {
   /**
    * Checks the data against the notification's schema **now** and queues the delivery (`marmeon.notification`, encrypted)
    * — one job per recipient, on the notification's `static queue`. A worker finds the recipient, asks `via()` and
-   * delivers through each channel. Inside `connections.transaction()` it is queued only if the transaction commits
-   * (E107). Resolves with the notification's id (one per recipient for a list). Needs @marmeon/queue.
+   * delivers through each channel. Inside `connections.transaction()` it is queued only if the transaction commits.
+   * Resolves with the notification's id (one per recipient for a list). Needs @marmeon/queue.
    */
   send<const R extends Recipients, N extends abstract new (...args: any[]) => object>(
     recipient: R,
@@ -79,7 +79,7 @@ export interface DelivererDependencies {
   readonly connections: Connections;
   /** A translator in `locale` (the recipient's), else `APP_LOCALE`. */
   readonly translator: (locale: string | null | undefined, container: Resolver) => Translator;
-  /** The app its deliveries are reported for on the `notification.send` channel (E118). */
+  /** The app its deliveries are reported for on the `notification.send` channel. */
   readonly app?: Application;
 }
 
@@ -104,7 +104,7 @@ export function sendMessage(app: Application, pending: PendingDelivery, queued: 
  * 3. the recipient's language (`locale()` of the resolver) — mails are composed in it;
  * 4. in **one transaction** of the notifications' connection: the `database` channel first, then the others in the
  *    order `via()` gave them. A row with the notification's id already there means an earlier attempt committed
- *    (at-least-once, E85): nothing is delivered twice.
+ *    (at-least-once): nothing is delivered twice.
  */
 export class NotificationDeliverer {
   readonly #deps: DelivererDependencies;
@@ -113,7 +113,7 @@ export class NotificationDeliverer {
     this.#deps = deps;
   }
 
-  /** Traced on `notification.send` while something listens (E118): the channels `via()` chose, and the outcome. */
+  /** Traced on `notification.send` while something listens: the channels `via()` chose, and the outcome. */
   deliver(container: Resolver, pending: PendingDelivery): Promise<DeliveryOutcome> {
     const { app } = this.#deps;
     if (!app || !sends.hasSubscribers) return this.#deliver(container, pending);
@@ -202,7 +202,7 @@ export class NotificationSender implements Notifications {
   readonly #dispatch: QueueNotification;
   readonly #app: Application | undefined;
 
-  /** `app`: queued notifications are reported on its `notification.send` channel (E118). */
+  /** `app`: queued notifications are reported on its `notification.send` channel. */
   constructor(container: Resolver, registry: NotificationRegistry, recipients: RecipientRegistry, deliverer: () => NotificationDeliverer, dispatch: QueueNotification, app?: Application) {
     this.#container = container;
     this.#registry = registry;

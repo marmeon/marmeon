@@ -14,7 +14,7 @@ function describe(result: TaskResult): string {
 
 /**
  * A scheduler that cannot start (no cache, a missing command …) says so, without a stack trace. One that starts with
- * locks in a cache that is not shared (E123) says that too — and starts.
+ * locks in a cache that is not shared says that too — and starts.
  */
 async function checked(scheduler: Scheduler, output: CommandInput['output'], options: { warn?: boolean } = {}): Promise<boolean> {
   try {
@@ -30,8 +30,8 @@ async function checked(scheduler: Scheduler, output: CommandInput['output'], opt
 }
 
 /**
- * `marmeon schedule:work`: the scheduler as a process of its own (E88) — a tick at the start of every minute, until
- * stopped. `marmeon dev` starts it next to the server (E101); in production run one per server under a supervisor (or
+ * `marmeon schedule:work`: the scheduler as a process of its own — a tick at the start of every minute, until
+ * stopped. `marmeon dev` starts it next to the server; in production run one per server under a supervisor (or
  * `schedule:run` from cron). SIGTERM/SIGINT: no new tick; runs still going get `--stop-timeout` seconds, then the process
  * ends and frees their overlap locks.
  */
@@ -71,10 +71,10 @@ export class ScheduleWorkCommand {
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
     const tasks = this.#scheduler.tasks;
-    // A scheduler as development because a .env says so (E170): a production command — said loudly, not refused.
+    // A scheduler as development because a .env says so: a production command — said loudly, not refused.
     const fromDotEnv = environment.dotEnvDevelopmentWarning('schedule:work');
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
-    // The environment it assumed (E139, E221) — `.environments(…)` compares against its APP_ENV (`local`, `testing`, `production` by default).
+    // The environment it assumed — `.environments(…)` compares against its APP_ENV (`local`, `testing`, `production` by default).
     output.line(
       `Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''} — in ${environment.describe()}`,
     );
@@ -159,7 +159,7 @@ export class ScheduleListCommand {
         return [task.name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), task.summary, options.join(', ')];
       }),
     );
-    // The same warning schedule:work and schedule:run start with (E123).
+    // The same warning schedule:work and schedule:run start with.
     const warning = this.#scheduler.lockWarning();
     if (warning) output.warn(warning);
     return 0;

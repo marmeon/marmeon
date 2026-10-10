@@ -24,11 +24,11 @@ export interface RedisLiveDependencies {
 }
 
 /**
- * Redis pub/sub (E87, E89): every process of the app hears every hint and every session that ended, over one subscriber
+ * Redis pub/sub: every process of the app hears every hint and every session that ended, over one subscriber
  * connection per process; the sequences are Redis keys (`<prefix>live:seq:<channel>`, a day after the last hint).
  *
  * A hint published while Redis is unreachable is lost — the refresh logs it and the change stays without a hint; a stream that
- * reconnects later compares sequences (E104) and reloads only what it knows it missed.
+ * reconnects later compares sequences and reloads only what it knows it missed.
  */
 export class RedisLiveBackend implements LiveBackend {
   readonly #connection: RedisConnection;

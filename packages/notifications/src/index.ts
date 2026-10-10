@@ -9,9 +9,6 @@ import { NotificationDeliverer, Notifications, NotificationSender, type QueueNot
 import { NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
 import { NotificationStore } from './store.ts';
 
-// Notifications (E92, E93): classes with a stable name, a data schema and via(); recipients as data ({ type, id }),
-// found again per kind by the modules' resolvers; channels `mail` and `database` — and an open contract for more
-// (`live` with @marmeon/live, Web Push with @marmeon/pwa); an Inbox always bound to its recipient; a fake.
 export type {
   AnyRecipient,
   AnyRecipientResolverClass,
@@ -64,13 +61,7 @@ declare module '@marmeon/core' {
   }
 }
 
-/**
- * Notifications:
- *
- * ```sh
- * NOTIFICATIONS_CONNECTION=default   # the database connection of the `notifications` table (marmeon make:notifications-table)
- * ```
- */
+/** Notifications: `NOTIFICATIONS_CONNECTION` (default `default`), the database connection of the `notifications` table. */
 export const NotificationConfig = defineConfig('notifications', {
   env: env({
     NOTIFICATIONS_CONNECTION: env.string().default('default'),
@@ -152,7 +143,7 @@ export class NotificationServiceProvider implements ServiceProvider {
         // The notification's own tries and backoff, for its job (like a queued listener's).
         [module.RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: typeof backoff === 'number' ? [backoff] : backoff }) },
       };
-      // Like any dispatch (E107): inside a transaction it exists with the commit — a database queue writes it into it.
+      // Like any dispatch: inside a transaction it exists with the commit — a database queue writes it into it.
       await container
         .make(module.Queue)
         .dispatch(SendQueuedNotification as never, { id: pending.id, notification: pending.notification.notification, recipient: pending.recipient, data: pending.data } as never, dispatch);
@@ -175,7 +166,6 @@ export class NotificationServiceProvider implements ServiceProvider {
     // An unknown connection name fails here, with the known ones.
     container.make(Connections).options(container.make(NotificationConfig).connection);
 
-    // The mail channel: a mail composed in the recipient's language and queued (mailer.queue, E105).
     const mail: MailModule | undefined = await importOptional(() => import('@marmeon/mail'), '@marmeon/mail');
     if (mail && container.has(mail.Mailer)) {
       container.make(NotificationChannels).add('mail', (scope) => new MailChannel((message, options) => scope.make(mail.Mailer).queue(message as never, options)));

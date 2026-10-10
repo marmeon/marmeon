@@ -7,13 +7,10 @@ import { traceMail } from './trace.ts';
 type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
 
 /**
- * Records mail instead of sending it — `@marmeon/testing` puts it in place of the `Mailer` (`app.mail`).
- * Every mail is still composed (envelope and content run), so a broken template fails the test.
- *
- * Mails sent now (`mailer.send`) and queued ones (`mailer.queue`) are kept apart: `assertSent` sees the first,
- * `assertQueued` the second (Laravel's `Mail::assertQueued`). A queued mail is composed here like a real one — in the
- * language and with the links of the moment it was queued — but not put on the queue: test the queue's `marmeon.mail`
- * job with `createTestApp(…, { mail: 'real' })`.
+ * Records mail instead of sending it — `@marmeon/testing` puts it in place of the `Mailer` (`app.mail`). Every mail is
+ * still composed, so a broken template fails the test. Mails sent now and queued ones are kept apart: `assertSent` sees
+ * the first, `assertQueued` the second (Laravel's `Mail::assertQueued`); a queued mail is not put on the queue.
+ * See `docs/fakes.md#mail`.
  */
 export class MailFake implements Mailer {
   readonly #from: Address;
@@ -22,7 +19,7 @@ export class MailFake implements Mailer {
 
   readonly #app: Application | undefined;
 
-  /** `app`: its mails are reported on the `mail.send` channel like real ones (E118) — the devtools record them in tests. */
+  /** `app`: its mails are reported on the `mail.send` channel like real ones — the devtools record them in tests. */
   constructor(from: Address = 'test@example.com', app?: Application) {
     this.#from = from;
     this.#app = app;

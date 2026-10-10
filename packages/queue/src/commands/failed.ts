@@ -7,7 +7,7 @@ import type { FailedJob } from '../driver.ts';
 /** The migration `make:queue-table` copies — a real file, so the driver tests run exactly what apps get. */
 export const QUEUE_MIGRATION = new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url);
 
-/** `marmeon make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module (E96). */
+/** `marmeon make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module. */
 export class MakeQueueTableCommand {
   static command = 'make:queue-table';
   static description = 'Create the migration for the database queue (jobs, failed_jobs)';
@@ -135,7 +135,7 @@ export class QueueFlushCommand {
   }
 }
 
-/** `marmeon queue:prune-failed [--hours=168]`: deletes failed jobs older than the given hours — for the scheduler (W6 step 6). */
+/** `marmeon queue:prune-failed [--hours=168]`: deletes failed jobs older than the given hours — for the scheduler. */
 export class QueuePruneFailedCommand {
   static command = 'queue:prune-failed';
   static description = 'Delete failed jobs older than --hours (default 168)';

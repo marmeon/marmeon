@@ -34,7 +34,7 @@ export type SharedTarget = Exclude<QueueTarget, { kind: 'memory' }>;
 export const queueKinds: readonly QueueKind[] = ['memory', 'sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : []), ...(REDIS_URL ? (['redis'] as const) : [])];
 /** The database drivers (what the transactions of the database queue need). */
 export const databaseKinds: readonly Exclude<QueueKind, 'memory' | 'redis'>[] = ['sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : [])];
-/** The drivers real `queue:work` processes run against (one suite for all, E83). */
+/** The drivers real `queue:work` processes run against (one suite for all). */
 export const processKinds: readonly SharedTarget['kind'][] = [...databaseKinds, ...(REDIS_URL ? (['redis'] as const) : [])];
 
 export function databaseConnections(options: ConnectionOptions): Connections {
@@ -196,7 +196,7 @@ export function startDispatcher(target: SharedTarget, args: readonly string[], e
 function startProcess(argv: readonly string[], env: Record<string, string>, stdin: 'ignore' | 'pipe' = 'ignore'): WorkerProcess {
   const child = spawn(process.execPath, argv, {
     cwd: APP,
-    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
+    // Through the launcher, in this one process: the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
     env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...env },
     stdio: [stdin, 'pipe', 'pipe'],
   });

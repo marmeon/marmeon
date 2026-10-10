@@ -6,7 +6,7 @@ import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { LiveServiceProvider } from './index.ts';
 
-describe('a guest without a session follows a channel (no guest sessions, W8 step 6)', async () => {
+describe('a guest without a session follows a channel (no guest sessions)', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -31,7 +31,7 @@ describe('a guest without a session follows a channel (no guest sessions, W8 ste
     expect(answer.headers.getSetCookie().some((cookie) => cookie.startsWith('marmeon_session='))).toBe(true);
   });
 
-  it('the stream\'s path is read-only by itself — without `Accept: text/event-stream` no cookie, the session not saved (W9 step 4)', async () => {
+  it('the stream\'s path is read-only by itself — without `Accept: text/event-stream` no cookie, the session not saved', async () => {
     const answer = await kernel.request('/board', { headers: { 'x-marmeon': 'true' } });
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = ((await answer.json()) as PageObject).live![0]!;

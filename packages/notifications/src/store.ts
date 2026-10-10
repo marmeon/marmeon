@@ -2,7 +2,7 @@ import type { Clock } from '@marmeon/core';
 import { cursorPaginate, sql, type Connections, type CursorEncrypter, type CursorPaginated } from '@marmeon/database';
 import type { AnyRecipient } from './notification.ts';
 
-/** The table `marmeon make:notifications-table` creates (E96: the app owns the migration; this package types it itself). */
+/** The table `marmeon make:notifications-table` creates (the app owns the migration; this package types it itself). */
 export const NOTIFICATIONS_TABLE = 'notifications';
 
 interface NotificationTable {
@@ -34,11 +34,11 @@ export function isNotificationId(id: unknown): id is string {
 
 /**
  * The `notifications` table. Every read and every change of a recipient's notifications is bound to that recipient —
- * `where recipient_type = ? and recipient_id = ?` in the same statement (E92): an id of someone else's notification
+ * `where recipient_type = ? and recipient_id = ?` in the same statement: an id of someone else's notification
  * finds nothing. The app's code uses the `Inbox`, which only offers that.
  *
  * Queries go through the app's connection (`NOTIFICATIONS_CONNECTION`, default `default`) and so join a
- * `connections.transaction()` around them (E107) — a delivery writes its row and queues its mail in one transaction.
+ * `connections.transaction()` around them — a delivery writes its row and queues its mail in one transaction.
  */
 export class NotificationStore {
   readonly #connections: Connections;
@@ -71,7 +71,7 @@ export class NotificationStore {
       .execute();
   }
 
-  /** Whether a notification with this id was stored already — a delivery that ran before (at-least-once, E85). */
+  /** Whether a notification with this id was stored already — a delivery that ran before (at-least-once). */
   async exists(id: string): Promise<boolean> {
     if (!isNotificationId(id)) return false;
     return (await this.#db().selectFrom(NOTIFICATIONS_TABLE).select('id').where('id', '=', id).executeTakeFirst()) !== undefined;

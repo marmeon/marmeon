@@ -16,7 +16,7 @@ export const CATCH_UP_DAYS = 7;
 /** Seconds the `onOneServer()` lock of a minute is kept — longer than any two servers' clocks or ticks lie apart. */
 export const ONE_SERVER_SECONDS = 3600;
 /**
- * Seconds a job queued by `s.job()` stays unique beyond the task's next due time (E88) — after that, a job lost on its way
+ * Seconds a job queued by `s.job()` stays unique beyond the task's next due time — after that, a job lost on its way
  * (deleted, flushed) no longer blocks new ones.
  */
 export const JOB_UNIQUE_FOR = 3600;
@@ -131,10 +131,10 @@ declare module '@marmeon/core' {
 }
 
 /**
- * The app's schedule (E88): the tasks of every module's `schedule`, and what runs when. `marmeon schedule:work` calls
+ * The app's schedule: the tasks of every module's `schedule`, and what runs when. `marmeon schedule:work` calls
  * {@link tick} at every minute, `marmeon schedule:run` once (system cron); tests use `app.schedule`.
  *
- * Every run is a boundary like a request or a job: outside any transaction (E107), in a container scope of its own, with
+ * Every run is a boundary like a request or a job: outside any transaction, in a container scope of its own, with
  * `{ task }` in its log entries. Runs never wait for each other — a slow task does not hold up the next tick.
  */
 export class Scheduler {
@@ -236,7 +236,7 @@ export class Scheduler {
   /**
    * What a scheduler process checks before its first tick (`schedule:work`, `schedule:run`), on top of the checks at
    * boot: the app has a cache (`ScheduleError` without one), every `s.command()` names a known command, every `s.job()` a
-   * registered job. Locks in a cache that is not shared are no error (E123) — see {@link lockWarning}.
+   * registered job. Locks in a cache that is not shared are no error — see {@link lockWarning}.
    */
   async checkProcess(): Promise<void> {
     const tasks = this.tasks;
@@ -270,7 +270,7 @@ export class Scheduler {
   }
 
   /**
-   * The warning a scheduler shows at its start (E123, revising E88), in every environment, when tasks lock with
+   * The warning a scheduler shows at its start, in every environment, when tasks lock with
    * `onOneServer()` or `withoutOverlapping()` in a cache that is not shared: `file` locks hold on this machine only, `memory`
    * locks in this process only. A single scheduler runs correctly with them — a production with one instance included —
    * so it is a warning, not an error. `undefined` when there is nothing to warn about. `schedule:list` shows it too.
@@ -340,7 +340,7 @@ export class Scheduler {
     return { task, minute, reason, done: this.#execute(task, minute, reason) };
   }
 
-  /** One run — never rejects: a failure is logged and reported in the result, the scheduler goes on. Traced on `schedule.task` while something listens (E118). */
+  /** One run — never rejects: a failure is logged and reported in the result, the scheduler goes on. Traced on `schedule.task` while something listens. */
   #execute(task: Task, minute: number, reason: RunReason): Promise<TaskResult> {
     if (!runs.hasSubscribers) return this.#run(task, minute, reason);
     const message: ScheduleTaskMessage = { ...messageBase(this.#app), task: task.name, minute, reason };
@@ -361,13 +361,13 @@ export class Scheduler {
       ms: Math.round(performance.now() - started),
       ...extra,
     });
-    // A run is a boundary (E107): never inside a transaction of whoever ticked, in a scope of its own (like a request or a job).
+    // A run is a boundary: never inside a transaction of whoever ticked, in a scope of its own (like a request or a job).
     return outsideTransaction(() =>
       runWithTask({ task: task.name }, async () => {
         const scope = this.#container.createScope();
         const logger = this.#logger.child({ task: task.name });
         const about = { task: task.name, minute, reason };
-        // The events (E127) go through the app's dispatcher; a listener's error is logged, never the run's.
+        // The events go through the app's dispatcher; a listener's error is logged, never the run's.
         const emit = async (event: ScheduledTaskEvent) => {
           try {
             await scope.make(EventDispatcher).dispatch(event);
@@ -444,7 +444,7 @@ export class Scheduler {
     switch (definition.kind) {
       case 'job': {
         const { Queue } = await importQueue();
-        // Unique until a worker starts it (E88): while the last one still waits, no second one — workers that are behind
+        // Unique until a worker starts it: while the last one still waits, no second one — workers that are behind
         // or down find one waiting job, not one per tick. The lock outlives the next due time (by JOB_UNIQUE_FOR), so a
         // job lost on its way never blocks the task for longer than that.
         const next = nextDue(task.expression, minute, task.timeZone);

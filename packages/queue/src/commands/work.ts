@@ -15,17 +15,10 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 }
 
 /**
- * `marmeon queue:work`: processes jobs until stopped — one at a time, each in its own container scope (E84).
- *
- * - **Queues (E199):** without `--queue` (or with `--queue=*`) every queue, fairly — the database: the oldest due job of all
- *   queues, in one statement; Redis: the queues in turn. `--queue=mail,default` narrows it down to these, in strict priority
- *   order (Laravel's). `*` in a list stands for every queue the list does not name, taken fairly at its place: `--queue=mail,*`.
- *
- * - **SIGTERM/SIGINT:** no new claim; the running job may finish for `--stop-timeout` seconds, then it is released and the
- *   worker exits with 0. Later signals do not cut that short.
- * - **A job past its timeout:** `job.signal` aborts; if it has not stopped `--stop-timeout` seconds later, the worker exits
- *   (code 70) — Node cannot cancel a promise. Run workers under a supervisor (systemd, Docker, Kubernetes) that
- *   restarts them; the job returns after `retryAfter`.
+ * `marmeon queue:work`: processes jobs until stopped — one at a time, each in its own container scope. Without `--queue`
+ * it takes every queue fairly; `--queue=mail,default` narrows it down, in strict priority order (Laravel's). On
+ * SIGTERM/SIGINT the running job may finish for `--stop-timeout` seconds; a job that ignores its timeout ends the worker
+ * (code 70) — run workers under a supervisor. See `docs/queues.md#running-workers`.
  */
 export class QueueWorkCommand {
   static command = 'queue:work';
@@ -72,10 +65,10 @@ export class QueueWorkCommand {
     };
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
-    // A worker as development because a .env says so (E170): a production command — said loudly, not refused.
+    // A worker as development because a .env says so: a production command — said loudly, not refused.
     const fromDotEnv = environment.dotEnvDevelopmentWarning('queue:work');
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
-    // The environment it assumed (E139, E217): `in production (APP_ENV=staging)`, `in production (APP_ENV=production, NODE_ENV unset)`.
+    // The environment it assumed: `in production (APP_ENV=staging)`, `in production (APP_ENV=production, NODE_ENV unset)`.
     output.line(`Processing jobs of the ${connection} connection: ${describeQueues(queues, this.#connections.options(connection).driver)} — in ${environment.describe()}`);
     try {
       const result = await worker.run({

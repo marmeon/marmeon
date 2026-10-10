@@ -30,16 +30,9 @@ export interface CalendarEvent {
 }
 
 /**
- * A calendar event as a mail attachment (`.ics`, RFC 5545) — for a mailable's `attachments()`:
- *
- * ```ts
- * attachments() {
- *   return [calendarEvent({ uid: `booking-${this.#booking.id}@app.example`, summary: 'Consultation', start, end, url })];
- * }
- * ```
- *
- * Text is escaped as the format wants (`,` `;` `\` and line breaks), long lines are folded, and a line break in a value
- * that must be one line (a `uid`, an address, a link) is refused — no value adds properties to the calendar entry.
+ * A calendar event as a mail attachment (`.ics`, RFC 5545) — for a mailable's `attachments()`. Text is escaped and
+ * folded; a line break in a value that must be one line (a `uid`, an address, a link) is refused, so no value adds
+ * properties to the calendar entry. See `docs/mail.md#attachments`.
  */
 export function calendarEvent(event: CalendarEvent): Attachment {
   const method = event.method ?? 'PUBLISH';

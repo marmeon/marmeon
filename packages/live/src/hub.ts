@@ -37,7 +37,7 @@ export interface LiveHubOptions {
 /** The streams one session may hold in a process when nothing says otherwise (`LIVE_MAX_STREAMS_PER_SESSION`). */
 export const MAX_STREAMS_PER_SESSION = 16;
 
-/** The headers of a live stream (E104): an event stream, never cached, transformed or buffered on its way (nginx: X-Accel-Buffering). */
+/** The headers of a live stream: an event stream, never cached, transformed or buffered on its way (nginx: X-Accel-Buffering). */
 export const STREAM_HEADERS: Readonly<Record<string, string>> = {
   'content-type': 'text/event-stream; charset=utf-8',
   'cache-control': 'no-cache, no-store, no-transform',
@@ -107,7 +107,7 @@ export class OpenStream {
     this.#waiting = undefined;
     // Hints that came while `hello` was prepared: those it counted already are not told again (their sequence is at most its).
     for (const message of waiting) if (message.seq > (this.#seqs.get(message.channel) ?? 0)) this.hint(message);
-    // A comment line now and then: proxies and load balancers close connections that stay silent (E104).
+    // A comment line now and then: proxies and load balancers close connections that stay silent.
     this.#heartbeat = setInterval(() => outsideTransaction(() => this.#write(': heartbeat\n\n')), heartbeat * 1000);
     this.#heartbeat.unref?.();
   }
@@ -118,7 +118,7 @@ export class OpenStream {
     if (this.#waiting) return void this.#waiting.push(message);
     // After `hello` every hint is news: the backend delivers each refresh once, in the order of its sequence. One with a lower
     // sequence than the stream saw means the channel's counter started again (its key expired after a day without hints, was
-    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).
+    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old".
     this.#seqs.set(message.channel, message.seq);
     const hint: LiveHint = { channel: message.channel, only: message.except === this.connection ? [] : message.only, seq: message.seq };
     this.#write(event('refresh', hint, eventId(this.#seqs)));
@@ -172,9 +172,9 @@ function unindex(map: Map<string, Set<OpenStream>>, key: string, stream: OpenStr
 }
 
 /**
- * The live streams of this process (E89): it opens them, hands each the hints of its channels as the backend delivers them,
+ * The live streams of this process: it opens them, hands each the hints of its channels as the backend delivers them,
  * closes those of a session that ended (signed in or out — in any process) and all of them when the server closes. A
- * process holds at most `maxStreams`, a session at most `maxStreamsPerSession` of them (W9 step 4).
+ * process holds at most `maxStreams`, a session at most `maxStreamsPerSession` of them.
  *
  * A hint goes to the streams of its channel only (an index `channel → streams`), a session's end to the streams of that
  * session (`scope → streams`) — never a walk over every stream of the process. A stream takes its place in both indexes

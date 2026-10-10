@@ -43,7 +43,7 @@ const FAKE_CONNECTION = 'fake';
 const dispatches = channels.tracing('queue.dispatch');
 
 /**
- * Records jobs instead of queuing them — `@marmeon/testing` puts it in place of the `Queue` (`app.queue`, E101), like
+ * Records jobs instead of queuing them — `@marmeon/testing` puts it in place of the `Queue` (`app.queue`), like
  * `MailFake`. Payloads are still checked against the job's schema (a bad dispatch fails the test), and the jobs wait in
  * memory: `app.queue.work()` runs them for real in the test — through the container (injection, a scope per attempt),
  * with retries, backoff (move the time with `app.travel`), failed jobs, chains, middleware and job events.
@@ -91,8 +91,8 @@ export class QueueFake implements Queue {
   }
 
   /**
-   * Like the real queue, a dispatch is traced on `queue.dispatch` while something listens (E118) — so a tracer's
-   * `traceparent` reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it (E131).
+   * Like the real queue, a dispatch is traced on `queue.dispatch` while something listens — so a tracer's
+   * `traceparent` reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it.
    */
   #traced<T>(kind: QueueDispatchMessage['kind'], pending: readonly (readonly [JobClass, unknown])[], options: DispatchOptions | UniqueDispatchOptions, run: (traceparent?: string) => Promise<T>, ids: (result: T) => (string | undefined)[]): Promise<T> {
     const container = this.#owner.#container;
@@ -171,7 +171,7 @@ export class QueueFake implements Queue {
   }
 
   /**
-   * The queued runs of a queued listener (E86, `static queue`) — each with the event's payload as queued. The dispatch
+   * The queued runs of a queued listener (`static queue`) — each with the event's payload as queued. The dispatch
    * happens with the commit of the transaction around it (the default `afterCommit`).
    */
   listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): { readonly payload: P; readonly dispatched: DispatchedJob }[] {
@@ -239,7 +239,7 @@ export class QueueFake implements Queue {
       events: connections.events,
       ...(container.has(Redactor) ? { redactor: container.make(Redactor) } : {}),
     });
-    // Without `queues` every queue, fairly — like `queue:work` without --queue (E199): the job that became due first runs first.
+    // Without `queues` every queue, fairly — like `queue:work` without --queue: the job that became due first runs first.
     return worker.run({ ...(options.queues ? { queues: options.queues } : {}), stopWhenEmpty: true, stopTimeout: options.stopTimeout ?? 1, ...(options.maxJobs === undefined ? {} : { maxJobs: options.maxJobs }) });
   }
 
@@ -301,7 +301,7 @@ export class QueueFake implements Queue {
         await owner.#memory().push(options.queue ?? 'default', serialized, delay);
       }
     };
-    // Like the database queue (E85, E107): a job dispatched inside a transaction exists once it commits, never after a rollback.
+    // Like the database queue: a job dispatched inside a transaction exists once it commits, never after a rollback.
     if (ambient) await afterCommit(record);
     else await record();
     return entries.map(({ prepared }) => prepared.record.uuid);

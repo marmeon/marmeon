@@ -14,14 +14,8 @@ export interface MailPreviewContext {
 }
 
 /**
- * A mail class with sample data — `static preview()` builds an instance (factory data, never real records: `make()`, not
- * `create()`), shown under `/_marmeon/mail/<module>/<Class>` in development (E106):
- *
- * ```ts
- * static preview({ make, locale }: MailPreviewContext) {
- *   return new VerifyEmailMail(make(Factories).for(UserFactory).make(), 'https://app.test/email/verify/1/abc', make(Translators).for(locale));
- * }
- * ```
+ * A mail class with sample data — `static preview()` builds an instance (factory data: `make()`, never `create()`),
+ * shown under `/_marmeon/mail/<module>/<Class>` in development. See `docs/mail.md#previews`.
  */
 export interface PreviewableMail {
   readonly name: string;
@@ -52,10 +46,9 @@ export async function findMailPreviews(root: string): Promise<Map<string, Previe
 const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,3}$/;
 
 /**
- * The preview pages (E106) — only ever registered with `NODE_ENV=development` (E115). `GET /_marmeon/mail` lists the previewable mails,
- * `GET /_marmeon/mail/<module>/<Class>` shows one: subject, sender, recipients and attachments above the HTML (in a
- * sandboxed frame — no script of a template runs), `?text` the text version, `?raw` the HTML alone, `?locale=de` another
- * language. A name finds a mail in the list found at startup — never a file path from the URL.
+ * The preview pages — only ever registered with `NODE_ENV=development`. The HTML is shown in a sandboxed frame (no script
+ * of a template runs), and a name finds a mail in the list of found mails — never a file path from the URL.
+ * See `docs/mail.md#previews`.
  */
 export class MailPreviews {
   readonly #root: string;
@@ -119,7 +112,7 @@ function page(title: string, body: string): Response {
 }
 
 /**
- * The preview page's own policy — an app's `contentSecurityPolicy()` leaves it alone (E147): no script at all, its inline style
+ * The preview page's own policy — an app's `contentSecurityPolicy()` leaves it alone: no script at all, its inline style
  * and the mail's (the `srcdoc` frame inherits this policy), images and fonts as a mail client loads them, framed only here.
  */
 const PREVIEW_CSP = [

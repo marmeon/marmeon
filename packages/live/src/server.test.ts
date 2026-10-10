@@ -26,7 +26,7 @@ class ShowBoardController extends Controller {
   }
 }
 
-describe('a live stream and the server (E104)', () => {
+describe('a live stream and the server', () => {
   it('startServer().close() ends the open streams — it is not held up by a tab that never goes away', async () => {
     const app = await createApplication({
       root,
@@ -56,7 +56,7 @@ describe('a live stream and the server (E104)', () => {
     await app.shutdown();
   }, 20_000);
 
-  it('a stream opened while the server drains (its request on the way when close() begins) does not hold close() (W9 step 4)', async () => {
+  it('a stream opened while the server drains (its request on the way when close() begins) does not hold close()', async () => {
     // The backend starts listening only when the test says so: the stream's request is inside the hub when the server closes.
     const memory = new MemoryLiveBackend();
     let release!: () => void;
@@ -93,7 +93,7 @@ describe('a live stream and the server (E104)', () => {
     const closed = running.close();
     release();
     const response = await stream;
-    // The server closes by itself — not because the tab let go of a stream it got (the old code: held until the hard exit).
+    // The server closes by itself — not because the tab let go of a stream it got.
     const outcome = await Promise.race([closed.then(() => 'closed'), new Promise((resolve) => setTimeout(resolve, 3000, 'held'))]);
     await response.body?.cancel();
     await closed;
@@ -104,7 +104,7 @@ describe('a live stream and the server (E104)', () => {
   }, 20_000);
 });
 
-describe('the memory backend and marmeon start --workers (W9 step 4)', () => {
+describe('the memory backend and marmeon start --workers', () => {
   const fixture = fileURLToPath(new URL('./__fixtures__/cluster-boot.ts', import.meta.url));
   const run = (mode: string) => {
     const { NODE_OPTIONS: _options, MARMEON_CLUSTER_WORKER: _mark, ...env } = process.env;

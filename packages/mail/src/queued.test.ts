@@ -66,7 +66,7 @@ async function app(env: Record<string, string> = {}, transport: MailTransport = 
   });
 }
 
-describe('mailer.queue() (E105)', () => {
+describe('mailer.queue()', () => {
   it('composes now, queues an encrypted marmeon.mail job, and a worker hands the message to the transport', async () => {
     const transport = new FlakyTransport();
     transport.down = false;
@@ -81,7 +81,7 @@ describe('mailer.queue() (E105)', () => {
     expect(dispatched).toMatchObject({ queue: 'mail', delay: 30, payload: { mailable: 'ResetMail' } });
     const stored = queue.pending().map((entry) => entry.payload).join('\n');
     expect(stored).toContain('"job":"marmeon.mail"');
-    expect(stored).not.toContain('plain-reset-token-123'); // E105: no plaintext link in the queue
+    expect(stored).not.toContain('plain-reset-token-123'); // no plaintext link in the queue
     expect(stored).not.toContain('ada@example.com');
 
     expect(await queue.work()).toMatchObject({ processed: 0 }); // delayed by 30 s
@@ -219,7 +219,7 @@ describe('calendarEvent() (.ics)', () => {
   });
 });
 
-describe('mail previews (E106)', () => {
+describe('mail previews', () => {
   const root = join(import.meta.dirname, '__fixtures__', 'preview-app');
   const previewApp = (environment = 'development', override: (c: import('@marmeon/core').Container) => void = () => {}) =>
     createApplication({ root, discover: false, env: environment ? { NODE_ENV: environment } : {}, providers: [MailServiceProvider], override: (c) => (c.instance(Router, new Router()), override(c)) });
@@ -232,7 +232,7 @@ describe('mail previews (E106)', () => {
 
     const page = await previews.show('shop/OrderShippedMail', new URL('http://localhost/_marmeon/mail/shop/OrderShippedMail?locale=de'));
     expect(page.headers.get('cache-control')).toBe('no-store');
-    // Its own policy (E147): no script at all — an app's contentSecurityPolicy() leaves it alone; the srcdoc frame inherits it.
+    // Its own policy: no script at all — an app's contentSecurityPolicy() leaves it alone; the srcdoc frame inherits it.
     expect(page.headers.get('content-security-policy')).toMatch(/^default-src 'none'; style-src 'unsafe-inline'; .*frame-ancestors 'self'$/);
     expect(page.headers.get('content-security-policy')).not.toContain('script-src');
     const body = await page.text();
@@ -251,7 +251,7 @@ describe('mail previews (E106)', () => {
     expect(paths).toEqual(expect.arrayContaining(['/_marmeon/mail', '/_marmeon/mail/:module/:mail']));
   });
 
-  // E115 (W7 step 8): development only — not "anything but production" (a test, production or a server without NODE_ENV).
+  // Development only — not "anything but production" (a test, production or a server without NODE_ENV).
   it.each([['production'], ['test'], ['']])('is not registered with NODE_ENV=%j (empty: unset)', async (environment) => {
     const application = await previewApp(environment);
     expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_marmeon/mail');

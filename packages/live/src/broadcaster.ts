@@ -14,15 +14,9 @@ export interface RefreshOptions {
 }
 
 /**
- * Hints the browsers on a channel that it changed (W6.10, E89) — injected wherever something changes (a controller, a job, a
- * listener): `await this.#broadcast.refresh(\`users.${user.id}\`, { only: ['profile'] })`.
- *
- * - **A hint, never data** — `{ channel, only, seq }`: each tab reloads through the page's own route, its middleware,
- *   policies and props, as for any partial reload.
- * - **After the commit** (like a dispatched job, E85/E107): inside a transaction it goes out once it committed — a rollback
- *   sends nothing; the other tab never reloads what is not there yet.
- * - **Not to the tab that caused it**: a request's `x-marmeon-connection` (sent by every request of a tab that follows live
- *   hints) — that tab gets the hint with nothing to reload; it shows the change from its own answer.
+ * Hints the browsers on a channel that it changed: `await this.#broadcast.refresh(\`users.${user.id}\`, { only: ['profile'] })`.
+ * A hint, never data — each tab reloads through the page's own route and policies. It goes out after the commit (a
+ * rollback sends nothing), and reaches the tab that caused it with nothing to reload. See `docs/realtime.md#sending-hints`.
  */
 export interface Broadcaster {
   refresh(channel: string, options?: RefreshOptions): Promise<void>;
@@ -39,7 +33,7 @@ export interface LiveBroadcasterDependencies {
   readonly logger: Logger;
   /** Tests: what was refreshed (`app.broadcast`). */
   readonly recorder?: BroadcastRecorder | undefined;
-  /** The app its hints are reported for on the `live.refresh` channel (E118). */
+  /** The app its hints are reported for on the `live.refresh` channel. */
   readonly app?: Application | undefined;
   /** Masks a failure's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
   readonly redactor?: Redactor | undefined;
@@ -72,17 +66,16 @@ export class LiveBroadcaster implements Broadcaster {
     }
     const only = given === undefined ? null : [...(given as string[])];
     const except = this.#connection;
-    // After the commit (E107) — and outside of any transaction: it is no part of one.
+    // After the commit — and outside of any transaction: it is no part of one.
     await afterCommit(() =>
       outsideTransaction(async () => {
         this.#recorder?.record({ channel: name, only, connection: except });
         try {
           const send = () => this.#backend().refresh(name, only, except);
-          // On the `live.refresh` channel while something listens (E118) — once it goes out, after the commit.
           if (this.#app && refreshes.hasSubscribers) await trace(refreshes, { ...messageBase(this.#app), channel: name, only }, send);
           else await send();
         } catch (error) {
-          // The change is committed; its hint is lost — a tab that reconnects later still compares sequences (E104).
+          // The change is committed; its hint is lost — a tab that reconnects later still compares sequences.
           this.#logger.error(`A live hint on "${name}" could not be sent`, { channel: name, exception: this.#redactor.text(String(error)) });
         }
       }),

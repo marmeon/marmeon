@@ -4,7 +4,7 @@ import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobMiddleware, JobStatics, SchemaOutput, UniqueDispatchOptions } from './job.ts';
 import { QueueError } from './registry.ts';
 
-// Unique jobs, `withoutOverlapping` and `job.once` (E85): locks and markers in the app's cache (@marmeon/cache, an
+// Unique jobs, `withoutOverlapping` and `job.once`: locks and markers in the app's cache (@marmeon/cache, an
 // optional peer — loaded where it is used). Every lock expires, so a crashed worker never blocks a key for good.
 
 /** Seconds a unique lock holds at most, unless `uniqueFor` says otherwise. */
@@ -72,7 +72,7 @@ export async function runOnce(cache: CacheSource, key: string, fn: () => unknown
   try {
     if (await store.has(marker)) return false;
     await fn();
-    // The gap E85 admits: a crash right here — after `fn`, before the marker — runs `fn` again on the next attempt.
+    // The gap `once` admits: a crash right here — after `fn`, before the marker — runs `fn` again on the next attempt.
     await store.put(marker, 1, ttl);
     return true;
   } finally {
@@ -92,13 +92,8 @@ export interface WithoutOverlappingOptions {
 
 /**
  * Job middleware: never two attempts with the same key at once — on any worker (a lock in the app's cache). An attempt
- * that finds the key taken does not run; it goes back to the queue for `releaseAfter` seconds (an attempt counts).
- *
- * ```ts
- * export class RebuildStatsJob {
- *   static readonly middleware = [withoutOverlapping<typeof RebuildStatsJob>((p) => `stats:${p.userId}`, { releaseAfter: 30 })];
- * }
- * ```
+ * that finds the key taken does not run; it goes back to the queue for `releaseAfter` seconds (an attempt counts). See
+ * `docs/queues.md#job-middleware`.
  *
  * The type argument types the payload (the class is not known yet where its own static field is written). Only its
  * `schema` is looked at — a constraint on the whole job class would refer to the field being written.

@@ -28,14 +28,8 @@ export type NotificationMatch<N extends NotificationClass> = Partial<Notificatio
 
 /**
  * Records notifications instead of delivering them — `@marmeon/testing` puts it in place of `Notifications`
- * (`app.notifications`), like `MailFake` and `QueueFake`. Every send is still checked as for real: the class is
- * registered, a resolver finds its kind of recipient, the data matches the schema (a bad send fails the test). Inside
- * a transaction a notification is recorded with the commit — never after a rollback.
- *
- * ```ts
- * app.notifications.assertSent({ type: 'user', id: ada.id }, NewSignInNotification, { ip: '203.0.113.9' });
- * await app.notifications.deliver();   // now for real: rows in `notifications`, mails queued
- * ```
+ * (`app.notifications`). Every send is still checked as for real (a bad send fails the test), and inside a transaction
+ * it is recorded with the commit — never after a rollback. See `docs/fakes.md#notifications`.
  */
 export class NotificationFake implements Notifications {
   readonly #container: Container;
@@ -115,7 +109,7 @@ export class NotificationFake implements Notifications {
     afterCommit(() => {
       this.#sent.push(...entries);
     });
-    // Reported on `notification.send` like the real sender's (E118) — the devtools record them in tests too.
+    // Reported on `notification.send` like the real sender's — the devtools record them in tests too.
     const sends = channels.tracing('notification.send');
     if (sends.hasSubscribers && this.#container.has(Application)) {
       const app = this.#container.make(Application);

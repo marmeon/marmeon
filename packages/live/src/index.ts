@@ -12,10 +12,8 @@ import { BroadcastRecorder } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
 
-// Live props (W6.10, E89, E90, E104): a page, an island or a layer follows channels (`.live(channel, { only })` — signed for
-// the session by the answer that declares them); the server hints a change (`broadcast.refresh(channel, { only })` — never
-// data, after the commit, not to the tab that caused it) over one Server-Sent-Events stream per tab; the browser reloads
-// `only` through the page's own route. Pub/sub in memory (one process) or over Redis (every process).
+// Live props: a page follows signed channels, the server hints a change over one Server-Sent-Events stream per tab, and the
+// browser reloads through the page's own route.
 export { Broadcaster, CONNECTION_ID, LiveBroadcaster } from './broadcaster.ts';
 export type { LiveBroadcasterDependencies, RefreshOptions } from './broadcaster.ts';
 export { MemoryLiveBackend, parseMessage } from './backend.ts';
@@ -55,7 +53,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string): Promise<
 
 /**
  * The session's scope of the current request (a hash of its id) — undefined without a session. `keep`: a page signs a channel
- * for it, so a guest's new session is kept (E143: guests get a session only when something needs one).
+ * for it, so a guest's new session is kept (guests get a session only when something needs one).
  */
 function sessionScopeOf(container: Resolver, keep = false): string | undefined {
   try {
@@ -86,7 +84,7 @@ function connectionOf(container: Resolver): string | undefined {
 type RedisModule = typeof import('@marmeon/redis');
 
 /**
- * Registers the `Broadcaster`, the signer of `PageObject.live` (E90), the stream endpoint `GET /_marmeon/live` (web group,
+ * Registers the `Broadcaster`, the signer of `PageObject.live`, the stream endpoint `GET /_marmeon/live` (web group,
  * read-only) and the pub/sub backend (`LIVE_DRIVER`); closes the streams of a session that ended (with @marmeon/session),
  * adds the notifications' `live` channel (with @marmeon/notifications) and closes every stream when the server or the app
  * stops. Found by `marmeon discover`.
@@ -114,7 +112,7 @@ export class LiveServiceProvider implements ServiceProvider {
       this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
       return this.#hub;
     });
-    // Signs the channels a page follows for the session of its request (E90).
+    // Signs the channels a page follows for the session of its request.
     // A read-only request (an island) cannot keep a session for the signature: a guest without one gets no subscription there.
     container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c, true), () => readOnlyRequest(c)));
     // Per resolution: in a request it knows the tab that sent it (x-marmeon-connection); in a job or a command, none.
@@ -128,9 +126,9 @@ export class LiveServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     const { container } = app;
     const config = container.make(LiveConfig);
-    // A worker of `marmeon start --workers=N` (E140): with the memory backend a hint reaches the streams of its own worker only,
+    // A worker of `marmeon start --workers=N`: with the memory backend a hint reaches the streams of its own worker only,
     // and a stream that reconnects to another worker compares its sequences with another counter — live updates would go
-    // missing without a sound. The start fails instead (W9 step 4).
+    // missing without a sound. The start fails instead.
     if (config.driver === 'memory' && process.env[CLUSTER_WORKER] === '1' && cluster.isWorker) {
       throw new LiveSetupError(
         'LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
@@ -172,7 +170,7 @@ export class LiveServiceProvider implements ServiceProvider {
       });
     }
 
-    // Notifications (E92): the `live` channel — a hint on the recipient's channel once the delivery committed.
+    // Notifications: the `live` channel — a hint on the recipient's channel once the delivery committed.
     const notifications = await importOptional(() => import('@marmeon/notifications'), '@marmeon/notifications');
     if (notifications && container.has(notifications.NotificationChannels)) {
       container.make(notifications.NotificationChannels).add('live', (scope) => new LiveChannel(scope.make(Broadcaster)));

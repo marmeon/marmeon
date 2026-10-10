@@ -5,7 +5,7 @@ import type { Duration, IsJson, StandardSchemaV1 } from '@marmeon/core';
  * What a job's `handle(payload, job)` gets besides its payload: who it is, which attempt this is, a signal that aborts
  * at the job's timeout, and how to end the attempt other than by returning or throwing.
  *
- * Delivery is at-least-once (E85): a job can run more than once — a worker may die after the work and before the
+ * Delivery is at-least-once: a job can run more than once — a worker may die after the work and before the
  * acknowledgement. `id` stays the same across every attempt and retry, so a job can recognize work it already did.
  */
 export interface JobContext {
@@ -31,20 +31,10 @@ export interface JobContext {
   /** Fails the job now — no more attempts, it goes to the failed jobs. */
   fail(reason: string | Error): void;
   /**
-   * Runs `fn` — a side effect that must not repeat, like sending a mail — unless it already ran for `key` (E85): after
-   * it succeeds, a marker for `key` goes into the app's cache (for `options.for` seconds, default a day), and a later
-   * attempt, a retry or another job with the same key skips it. Resolves true when `fn` ran now, false when it was
-   * skipped. The key is the app's: include an id, `welcome-mail:${user.id}`.
-   *
-   * ```ts
-   * await job.once(`welcome-mail:${user.id}`, () => this.#mailer.send(new WelcomeMail(user)));
-   * ```
-   *
-   * **Honest about the gap:** the marker is written after `fn` — a worker that dies between the two (after the mail
-   * went out, before the marker) runs `fn` again on the next attempt. `once` makes repeats rare, not impossible:
-   * delivery stays at-least-once. While one attempt runs `fn` for a key, another with the same key goes back to the queue
-   * for 5 seconds instead of running it alongside — without using up a try, also of a job with one. Needs a cache
-   * (@marmeon/cache) — `database` or `redis` when workers run on several machines.
+   * Runs `fn` — a side effect that must not repeat, like sending a mail — unless it already ran for `key`: after it
+   * succeeds, a marker for `key` goes into the app's cache (`options.for` seconds, default a day). Resolves true when `fn`
+   * ran now, false when it was skipped. The marker is written after `fn`, so a worker that dies between the two runs `fn`
+   * again: repeats get rare, not impossible. Needs @marmeon/cache. See `docs/queues.md#at-least-once`.
    */
   once(key: string, fn: () => unknown, options?: { readonly for?: number }): Promise<boolean>;
 }
@@ -74,7 +64,7 @@ export type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standa
 /** The output type of a Standard Schema — what `handle()` gets. */
 export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['output'] : never;
 
-/** The static side of a job class (E84): a stable name, the payload's schema, and how it retries. */
+/** The static side of a job class: a stable name, the payload's schema, and how it retries. */
 export interface JobStatics {
   /** The job's stable name — what the queue stores, never the class name: `'auth.send-welcome-mail'`. */
   readonly job: string;
@@ -86,7 +76,7 @@ export interface JobStatics {
   readonly backoff?: number | readonly number[];
   /** Seconds an attempt may take (default 60): then `job.signal` aborts; a job that does not stop ends the worker. */
   readonly timeout?: number;
-  /** Encrypt the payload in the queue (E105) — for payloads with secrets (tokens, signed links). Needs APP_KEY. */
+  /** Encrypt the payload in the queue — for payloads with secrets (tokens, signed links). Needs APP_KEY. */
   readonly encrypted?: boolean;
   /**
    * Runs around each attempt's `handle()`, first to last:
@@ -142,7 +132,7 @@ export type PendingJob<J extends JobClass = JobClass> = readonly [job: J, payloa
 export interface DispatchOptions {
   /** Run no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
   readonly delay?: number | Duration;
-  /** The queue (default: the connection's, usually `default`). A worker without `--queue` takes every queue (E199); `--queue=mail,default` takes only these, in this order. */
+  /** The queue (default: the connection's, usually `default`). A worker without `--queue` takes every queue; `--queue=mail,default` takes only these, in this order. */
   readonly queue?: string;
   /** The queue connection (default: `QUEUE_CONNECTION`). */
   readonly connection?: string;
@@ -159,7 +149,7 @@ export interface BatchOptions extends Omit<DispatchOptions, 'unique'> {
 export type DispatchResult<O> = O extends { readonly unique: string } ? string | undefined : string;
 
 /**
- * A unique job (E85): while one with this key waits (or runs), dispatching another is a no-op — `dispatch()` resolves
+ * A unique job: while one with this key waits (or runs), dispatching another is a no-op — `dispatch()` resolves
  * `undefined` instead of an id. The key is held by a lock in the app's cache (`cache.lock`, @marmeon/cache), taken
  * at the dispatch — outside any transaction, so other processes see it at once — and freed again when a transaction
  * around the dispatch rolls back (`afterRollback`), when the worker starts the job (`uniqueUntil: 'processing'`) or

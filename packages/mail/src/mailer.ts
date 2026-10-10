@@ -27,12 +27,8 @@ export interface QueueMailOptions {
 export interface Mailer {
   send(mailable: Mailable): Promise<MailMessage>;
   /**
-   * Composes the mail **now** — its language, its links, its content: the recipient's translator and absolute links
-   * (from `APP_URL`) belong in the mailable — and queues the message for a worker to hand to the transport (E105). The
-   * request does not wait for the mail server, and an SMTP failure retries in the worker instead of failing the request.
-   * The queued message is **encrypted** (`jobs`/`failed_jobs` keep no reset link in plain text). Inside
-   * `connections.transaction()` it is queued only if the transaction commits. Resolves with the composed message.
-   * Needs @marmeon/queue (and APP_KEY).
+   * Composes the mail **now** and queues it **encrypted** for a worker to send — inside `connections.transaction()` only
+   * once it commits. Resolves with the composed message. Needs @marmeon/queue and APP_KEY. See `docs/mail.md#sending-mails`.
    */
   queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
 }
@@ -82,7 +78,7 @@ export class TransportMailer implements Mailer {
   readonly #queue: MailQueue | undefined;
   readonly #app: Application | undefined;
 
-  /** `app`: the mails are reported on its `mail.send` channel (E118). */
+  /** `app`: the mails are reported on its `mail.send` channel. */
   constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue, app?: Application) {
     this.#transport = typeof transport === 'function' ? transport : () => transport;
     this.#from = from;
@@ -117,9 +113,8 @@ const LINK = /(?<![\w-])(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g
 const ABSOLUTE = /^(?:[a-z][a-z\d+.-]*:|#)/i;
 
 /**
- * Links in a mail are absolute — a mail client has no page to resolve `/users/me` or `notes/7` against, and a mail composed in a
- * worker has no request whose host could fill one in (nor should a Host header ever decide where a link points). Every link
- * without a scheme is refused, `//host/…` too: whatever the mail client would guess.
+ * Links in a mail are absolute: a mail client has nothing to resolve `notes/7` against, and a Host header must never decide
+ * where a link points. Every link without a scheme is refused, `//host/…` too.
  */
 function checkLinks(mailable: Mailable, html: string): void {
   for (const [tag] of html.matchAll(TAG)) {

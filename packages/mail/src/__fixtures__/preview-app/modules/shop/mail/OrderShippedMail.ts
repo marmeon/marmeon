@@ -1,6 +1,6 @@
 import { html, fromHtml, type Mailable, type MailPreviewContext } from '../../../../../index.ts';
 
-/** A previewable mail (E106): `static preview()` builds it from sample data. */
+/** A previewable mail: `static preview()` builds it from sample data. */
 export class OrderShippedMail implements Mailable {
   readonly #name: string;
   readonly #locale: string;

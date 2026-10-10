@@ -39,7 +39,7 @@ class WelcomeMail implements Mailable {
 }
 
 describe('html``', () => {
-  it('counter-check: escapes every value — a name cannot inject markup', () => {
+  it('escapes every value — a name cannot inject markup', () => {
     const name = '<img src=x onerror="alert(1)">';
     expect(String(html`<p>Hello ${name}</p>`)).toBe('<p>Hello &lt;img src=x onerror=&quot;alert(1)&quot;&gt;</p>');
     expect(String(html`<a title='${"x' onmouseover='alert(1)"}'>`)).toBe(`<a title='x&#39; onmouseover=&#39;alert(1)'>`);
@@ -88,7 +88,7 @@ describe('mjml``', () => {
     expect(message.text).toBe('Hello Ada,\n\nChoose a new password (https://app.test/reset-password?token=abc&email=ada%40example.com)');
   });
 
-  it('counter-check: escapes values — a name cannot inject markup or MJML', async () => {
+  it('escapes values — a name cannot inject markup or MJML', async () => {
     const message = await compose(new ResetMail('<mj-raw><img src=x onerror="alert(1)"></mj-raw>'), 'hello@app.test');
     expect(message.html).not.toContain('<img src=x');
     expect(message.html).toContain('&lt;mj-raw&gt;&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
@@ -99,7 +99,7 @@ describe('mjml``', () => {
     await expect(compose(typo, 'hello@app.test')).rejects.toThrow(MjmlError);
   });
 
-  it('without mjml (an optional peer, E198) says what to install — with the tested major; a broken install passes through', async () => {
+  it('without mjml (an optional peer) says what to install — with the tested major; a broken install passes through', async () => {
     const { loadMjml } = await import('./mjml.ts');
     const missing = Object.assign(new Error("Cannot find package 'mjml' imported from /app/node_modules/@marmeon/mail/dist/mjml.js"), { code: 'ERR_MODULE_NOT_FOUND' });
     const message = await loadMjml(() => Promise.reject(missing)).then(() => 'loaded', (error: Error) => error.message);
@@ -123,7 +123,7 @@ describe('compose()', () => {
     expect(message.text).toBe('Hello Ada\n\nStart here: Your profile (https://app.test/start?a=1&b=2)');
   });
 
-  it('counter-check: refuses line breaks in headers — no Bcc smuggled in through a subject or a name', async () => {
+  it('refuses line breaks in headers — no Bcc smuggled in through a subject or a name', async () => {
     await expect(compose(new WelcomeMail('Ada\r\nBcc: everyone@evil.test'), 'hello@app.test')).rejects.toThrow(MailError);
     const withHeader = { envelope: () => ({ to: 'a@b.test', subject: 'x', headers: { 'X-Tag': 'a\nBcc: c@d.test' } }), content: () => ({ html: '', text: '' }) };
     await expect(compose(withHeader, 'hello@app.test')).rejects.toThrow('header X-Tag must be a single line');
@@ -167,7 +167,7 @@ describe('transports', () => {
     expect(received.data).toContain('Content-Type: text/html');
   });
 
-  it('counter-check: smtp sends nothing to a server that does not upgrade to TLS — STARTTLS is required by default (E192)', async () => {
+  it('smtp: sends nothing to a server that does not upgrade to TLS — STARTTLS is required by default', async () => {
     let failure: unknown;
     const received = await withSmtpServer(async (port) => {
       const transport = new SmtpTransport({ host: '127.0.0.1', port, secure: false });
@@ -179,7 +179,7 @@ describe('transports', () => {
     expect(received.data).toBe('');
   });
 
-  it('asks nodemailer for STARTTLS unless MAIL_REQUIRE_TLS=false — implicit TLS (MAIL_SECURE) as before', async () => {
+  it('asks nodemailer for STARTTLS unless MAIL_REQUIRE_TLS=false — implicit TLS (MAIL_SECURE) needs none', async () => {
     const created: Record<string, unknown>[] = [];
     vi.doMock('nodemailer', () => ({ default: { createTransport: (options: Record<string, unknown>) => (created.push(options), { sendMail: async () => {}, close() {} }) } }));
     try {
@@ -213,7 +213,7 @@ describe('MailServiceProvider', () => {
     await expect(boot({ MAIL_FROM_ADDRESS: 'nope' })).rejects.toThrow(/mail: MAIL_FROM_ADDRESS/);
   });
 
-  it('warns once at boot when a protected environment runs on the log mailer — reset links would land in the log (W7.11, E139)', async () => {
+  it('warns once at boot when a protected environment runs on the log mailer — reset links would land in the log', async () => {
     const warningsWith = async (env: Record<string, string>) => {
       const warnings: string[] = [];
       const logger: Logger = { debug() {}, info() {}, warn: (message: string, _context?: LogContext) => void warnings.push(message), error() {}, child: () => logger };
@@ -229,7 +229,7 @@ describe('MailServiceProvider', () => {
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'array' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'development' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'test' })).toEqual([]);
-    // Fail-closed (E139): a missing NODE_ENV is protected like production — APP_ENV changes nothing (E217).
+    // Fail-closed: a missing NODE_ENV is protected like production — APP_ENV changes nothing.
     expect(await warningsWith({ NODE_ENV: 'production', APP_ENV: 'local' })).toEqual([LOG_MAILER_WARNING]);
     expect(await warningsWith({ NODE_ENV: '' })).toEqual([LOG_MAILER_WARNING]);
   });
@@ -272,7 +272,7 @@ describe('MailFake', () => {
 // --- Type guarantees (never called) -----------------------------------------------------------
 
 export function mailTypes() {
-  // content() must be { html, text }: an element of some UI library is not (E29 — this package knows none).
+  // content() must be { html, text }: an element of some UI library is not (this package knows none).
   // @ts-expect-error — an object that is not { html: string; text: string }
   const element: Mailable = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => ({ type: 'p', props: {}, key: null }) };
   // Templates are content too: the text version is derived.

@@ -10,16 +10,9 @@ function isTimeZone(value: string): boolean {
 }
 
 /**
- * The scheduler (E88):
- *
- * ```sh
- * SCHEDULE_TIMEZONE=Europe/Berlin   # whose clocks the tasks' times are on, unless a task says .timezone(…) — default UTC
- * ```
- *
- * `environments('production')` compares against the app's environment name, `APP_ENV` (E221) — without one the name that goes with
- * `NODE_ENV`: `local` (development), `testing` (test), `production` (production or none). So a staging server
- * (`NODE_ENV=production APP_ENV=staging`) runs `.environments('staging')` and leaves `.environments('production')` out. `APP_ENV`
- * selects tasks only: it never weakens a protection or enables a development tool.
+ * The scheduler: `SCHEDULE_TIMEZONE` (default UTC) and the environment name `environments()` compares against — `APP_ENV`,
+ * else the name that goes with `NODE_ENV`. `APP_ENV` selects tasks only: it never weakens a protection or enables a
+ * development tool. See `docs/scheduling.md#conditions`.
  */
 export const ScheduleConfig = defineConfig('schedule', {
   env: env({

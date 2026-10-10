@@ -190,7 +190,7 @@ describe('the schedule', () => {
     await app.shutdown();
   });
 
-  it('runs each task in a scope of its own, outside the transaction of whoever ticks (E107)', async () => {
+  it('runs each task in a scope of its own, outside the transaction of whoever ticks', async () => {
     const { scheduler, runs, app, clock } = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')), {
       providers: [DatabaseServiceProvider],
       env: { DB_DATABASE: ':memory:' },
@@ -352,7 +352,7 @@ describe('onOneServer', () => {
     await two.app.shutdown();
   });
 
-  it('with a file or memory cache the scheduler starts — and says where its locks hold (E123, revises E88)', async () => {
+  it('with a file or memory cache the scheduler starts — and says where its locks hold', async () => {
     const { scheduler, app } = await boot(defineSchedule((s) => void s.command('fixture:prune').daily().at('03:10').onOneServer()));
     await expect(scheduler.checkProcess()).resolves.toBeUndefined();
     expect(scheduler.lockWarning()).toBe(
@@ -397,7 +397,7 @@ describe('onOneServer', () => {
   });
 });
 
-describe('events (E127)', () => {
+describe('events', () => {
   /** Every scheduler event, in order — through the app's EventDispatcher, as a listener of the base class. */
   async function withEvents(schedule: ModuleDefinition['schedule'], options: Parameters<typeof boot>[1] = {}) {
     const events: ScheduledTaskEvent[] = [];
@@ -513,7 +513,7 @@ describe('events (E127)', () => {
   });
 });
 
-describe('the schedule.task channel (E118)', () => {
+describe('the schedule.task channel', () => {
   it('traces each run for its app — with the outcome and the error', async () => {
     const one = await boot(defineSchedule((s) => {
       s.call(CountRun).everyMinute().name('count');
@@ -580,7 +580,7 @@ describe('s.job()', () => {
 });
 
 describe('the provider', () => {
-  it('adds the schedule:* commands — and marmeon dev runs schedule:work only when the app schedules something (E101)', async () => {
+  it('adds the schedule:* commands — and marmeon dev runs schedule:work only when the app schedules something', async () => {
     const some = await boot(defineSchedule((s) => void s.call(CountRun).hourly()));
     expect(some.app.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['schedule:work', 'schedule:run', 'schedule:list', 'schedule:test']));
     expect(some.app.container.make(DevProcesses).all()).toEqual([{ name: 'schedule', args: ['schedule:work', '--stop-timeout=5'] }]);
@@ -618,7 +618,7 @@ describe('a schedule set up wrongly', () => {
     await here.app.shutdown();
   });
 
-  it('counts a missing NODE_ENV as production for environments() — protected like production (E139)', async () => {
+  it('counts a missing NODE_ENV as production for environments() — protected like production', async () => {
     const schedule = defineSchedule((s) => {
       s.call(CountRun).hourly().environments('production').name('production-only');
       s.call(CountRun).hourly().environments('local').name('local-only');
@@ -628,7 +628,7 @@ describe('a schedule set up wrongly', () => {
     await unset.app.shutdown();
   });
 
-  it('selects the tasks by APP_ENV (E221): a staging server runs its staging tasks and leaves production\'s out', async () => {
+  it('selects the tasks by APP_ENV: a staging server runs its staging tasks and leaves production\'s out', async () => {
     const schedule = defineSchedule((s) => {
       s.call(CountRun).hourly().environments('production').name('production-only');
       s.call(CountRun).hourly().environments('staging').name('staging-only');

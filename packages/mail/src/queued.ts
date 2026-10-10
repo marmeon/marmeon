@@ -25,14 +25,9 @@ const message = v.object({
 export type QueuedMailPayload = v.InferOutput<typeof SendQueuedMail.schema>;
 
 /**
- * The framework job behind `mailer.queue(mail)` (E105): the message composed where it was queued — in the recipient's
- * language, with its links — handed to the transport by a worker. **Encrypted**: a queued mail carries what its
- * recipient may see and nobody else (a reset link, a signed verification link), and the `jobs`/`failed_jobs` tables
- * keep only ciphertext of it (APP_KEY).
- *
- * Five attempts — 10 s, 1 min, 5 min apart (an SMTP server that is down for a while); then it waits in the failed jobs
- * for `marmeon queue:retry`. Delivery is at-least-once (E85): a worker that dies after the transport took the mail and
- * before the acknowledgement sends it again.
+ * The framework job behind `mailer.queue(mail)`: hands the message composed where it was queued to the transport.
+ * **Encrypted** (APP_KEY): a queued mail carries what only its recipient may see, such as a reset link, so `jobs` and
+ * `failed_jobs` keep only ciphertext. Delivery is at-least-once. See `docs/mail.md#sending-mails`.
  */
 export class SendQueuedMail {
   static readonly job = 'marmeon.mail';

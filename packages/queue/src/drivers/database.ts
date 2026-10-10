@@ -2,7 +2,7 @@ import { SystemClock, type Clock } from '@marmeon/core';
 import type { Kysely } from '@marmeon/database';
 import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
 
-/** The tables `marmeon make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
+/** The tables `marmeon make:queue-table` creates (the app owns the migration; the queue types them itself). */
 export const JOBS_TABLE = 'jobs';
 export const FAILED_JOBS_TABLE = 'failed_jobs';
 
@@ -10,10 +10,10 @@ export const FAILED_JOBS_TABLE = 'failed_jobs';
 export interface DatabaseQueueConnection {
   readonly db: Kysely<any>;
   readonly driver: 'sqlite' | 'pgsql';
-  /** Whether the current call chain runs inside a `transaction()` of this connection (E107) — `db` then writes into it. */
+  /** Whether the current call chain runs inside a `transaction()` of this connection — `db` then writes into it. */
   readonly inTransaction?: () => boolean;
   /**
-   * Runs `work` in a transaction of its own on this connection (`connections.transaction()`, E107: `db` joins it) — for
+   * Runs `work` in a transaction of its own on this connection (`connections.transaction()`: `db` joins it) — for
    * steps that must happen together, like acknowledging a job and queuing the next of its chain. Without it, Kysely's
    * `db.transaction()` with its `trx`.
    */
@@ -29,17 +29,16 @@ async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { 
   return { ...resolved, sql };
 }
 
-/** The index the fair claim needs (`make:queue-table`'s migration creates it, E199). */
+/** The index the fair claim needs (`make:queue-table`'s migration creates it). */
 export const FAIR_CLAIM_INDEX = 'jobs_reserved_at_available_at_id_index';
 
 /**
  * The claim of `reserveAny`: one `UPDATE` whose row is the first of two subqueries — an expired claim (a worker died), else the
  * oldest due job — each `LIMIT 1` (`FOR UPDATE SKIP LOCKED` on Postgres), joined by `coalesce` (the second runs only when the
  * first found nothing). Not one `WHERE (reserved_at IS NULL AND available_at <= now) OR reserved_at <= expired`: an `OR` over
- * two ranges cannot walk one index in order, so both databases read every due row and sort them (EXPLAIN, 200 000 jobs:
- * SQLite 8–17 ms, Postgres 45–50 ms with an external sort — against 0.01 and 0.06 ms). Both subqueries order by all three
- * columns of {@link FAIR_CLAIM_INDEX}: Postgres does not treat `reserved_at IS NULL` as an equality, so `ORDER BY available_at, id`
- * alone made it sort again. Exported for the EXPLAIN test.
+ * two ranges cannot walk one index in order, so both databases would read every due row and sort them. Both subqueries order
+ * by all three columns of {@link FAIR_CLAIM_INDEX}: Postgres does not treat `reserved_at IS NULL` as an equality, so
+ * `ORDER BY available_at, id` alone makes it sort again. Exported for the EXPLAIN test.
  */
 export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['driver'], { now, expired, except }: { now: number; expired: number; except: readonly string[] }) {
   const lock = driver === 'pgsql' ? sql`for update skip locked` : sql``;
@@ -56,22 +55,15 @@ export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['dri
 }
 
 /**
- * Jobs in the app's database (`QUEUE_CONNECTION=database`, E83) — the table `jobs`.
+ * Jobs in the app's database (`QUEUE_CONNECTION=database`) — the table `jobs`.
  *
- * **The claim is one atomic statement across any number of workers:**
- * `UPDATE jobs … WHERE id = (SELECT id … LIMIT 1) RETURNING …` — on Postgres with `FOR UPDATE SKIP LOCKED` in the
- * subquery (a row another worker is claiming is skipped, never waited for, never taken twice); on SQLite as it is: a
- * write statement takes the database's single write lock before it reads (waiting with the busy timeout), so two
- * processes never claim the same row. (A `BEGIN` + `SELECT` + `UPDATE` would not be safe there — the read would come
- * before the lock.) A claim counts the attempt; `ack` deletes, `release` hands the row back —
- * both only while the claim is still this worker's (`attempts` unchanged), so a worker whose claim expired cannot
- * touch the job another worker holds now.
- *
- * A worker without `--queue` claims with `reserveAny`: the oldest due job of every queue, in one statement
- * ({@link claimAnyStatement}, along {@link FAIR_CLAIM_INDEX}) — `reserve` keeps one statement per named queue, in order.
- *
- * A dispatch inside `connections.transaction()` on the same connection is part of that transaction (E85, E107): visible
- * to workers with the commit, gone with a rollback — as is one through `queue.using(trx)`.
+ * **The claim is one atomic statement across any number of workers:** `UPDATE jobs … WHERE id = (SELECT id … LIMIT 1)` —
+ * on Postgres with `FOR UPDATE SKIP LOCKED` (a row another worker claims is skipped, never taken twice); on SQLite the write
+ * statement takes the single write lock before it reads (a `BEGIN` + `SELECT` + `UPDATE` would read before the lock). A
+ * claim counts the attempt; `ack` and `release` act only while the claim is still this worker's (`attempts` unchanged), so
+ * a worker whose claim expired cannot touch the job another worker holds now. A worker without `--queue` claims with
+ * `reserveAny` ({@link claimAnyStatement}). A dispatch inside `connections.transaction()` on the same connection is part
+ * of that transaction.
  */
 export class DatabaseQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<DatabaseQueueConnection>;
@@ -132,7 +124,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   }
 
   /**
-   * The oldest due job of every queue (but `except`) in ONE statement (E199) — an idle round asks the database once, whatever
+   * The oldest due job of every queue (but `except`) in ONE statement — an idle round asks the database once, whatever
    * the number of queues, and a queue that appears later is taken at once. Expired claims (a worker died) come first, then
    * jobs by when they became due. See {@link claimAnyStatement} for why the statement looks the way it does.
    */
@@ -147,7 +139,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
     if (next.length === 0) return this.#delete(job);
     // The acknowledgement and the next job of the chain in ONE transaction: a crash (or a failed insert) between the two
-    // would otherwise lose the rest of the chain — now the job stays claimed and runs again after retryAfter.
+    // would otherwise lose the rest of the chain; this way the job stays claimed and runs again after retryAfter.
     const connection = await use(this.#connection, this.#cache);
     const handOff = async (db: Kysely<any>) => {
       if (!(await this.#delete(job, db))) return false;

@@ -1,16 +1,13 @@
 import { Logger, token } from '@marmeon/core';
 import type { MailMessage } from './message.ts';
 
-/**
- * Delivers messages (E29) — the one thing a transport does. SMTP, a log, an array; HTTP APIs
- * (Postmark, SES, Resend …) and failover are further transports, later.
- */
+/** Delivers messages — the one thing a transport does. */
 export interface MailTransport {
   send(message: MailMessage): Promise<void>;
 }
 export const MailTransport = token<MailTransport>('MailTransport');
 
-/** Writes every message to the log instead of sending it — the default in development (`MAIL_MAILER=log`). */
+/** Writes every message to the log instead of sending it (`MAIL_MAILER=log`, the default). */
 export class LogTransport implements MailTransport {
   readonly #logger: Logger;
 
@@ -44,9 +41,9 @@ export interface SmtpOptions {
   /** Implicit TLS from the first byte (port 465). Otherwise the connection is upgraded with STARTTLS. */
   readonly secure: boolean;
   /**
-   * Without `secure`: refuse to send unless the server upgrades to TLS (STARTTLS) — default `true` (E192). Without it, a server
-   * that does not offer STARTTLS — or someone on the network who strips the offer — gets the credentials and the mails (reset
-   * links) in plain text. `false` only for a local server without TLS (Mailpit): `MAIL_REQUIRE_TLS=false`.
+   * Without `secure`: refuse to send unless the server upgrades to TLS (STARTTLS) — default `true`. Without it, a server
+   * without STARTTLS (or someone who strips the offer) gets the credentials and the mails in plain text. `false` only for a
+   * local server without TLS (Mailpit).
    */
   readonly requireTls?: boolean;
   readonly username?: string;
@@ -59,10 +56,7 @@ interface NodemailerTransporter {
   close(): void;
 }
 
-/**
- * SMTP through nodemailer — a dependency of this package (E198: the production path, no dependencies of its own), imported
- * on first use (`MAIL_MAILER=smtp`). Nothing of nodemailer is visible outside this class.
- */
+/** SMTP through nodemailer, imported on first use (`MAIL_MAILER=smtp`). Nothing of nodemailer is visible outside this class. */
 export class SmtpTransport implements MailTransport {
   readonly #options: SmtpOptions;
   #transporter: Promise<NodemailerTransporter> | undefined;

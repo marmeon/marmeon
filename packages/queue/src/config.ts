@@ -4,23 +4,9 @@ import type { QueueConnectionOptions } from './queue.ts';
 const seconds = (name: string) => env.integer(`${name} must be a number of seconds`).min(1).default(90);
 
 /**
- * The queue connections (E83): `sync` runs a job at once, in the dispatching process (scripts, tests); `database` keeps
- * jobs in the `jobs` table for `marmeon queue:work` (`marmeon make:queue-table`); `redis` keeps them in Redis lists
- * (needs @marmeon/redis — it brings redis).
- *
- * ```sh
- * QUEUE_CONNECTION=database       # the default connection: database (default) | redis | sync
- * DB_QUEUE_CONNECTION=default     # the database connection of the jobs table
- * DB_QUEUE=default                # the default queue
- * DB_QUEUE_RETRY_AFTER=90         # seconds before a claimed job whose worker died is claimed again
- * REDIS_QUEUE_CONNECTION=default  # the Redis connection of the redis queue (REDIS_URL)
- * REDIS_QUEUE=default
- * REDIS_QUEUE_RETRY_AFTER=90
- * QUEUE_FAILED_DRIVER=database    # failed jobs: database (failed_jobs) | null (only logged)
- * ```
- *
- * `retryAfter` must be longer than any job's `timeout` plus the worker's `--stop-timeout`, or a job still running would be
- * claimed by a second worker — `queue:work` refuses to start otherwise.
+ * The queue connections: `sync` runs a job at once, in the dispatching process; `database` keeps jobs in the `jobs`
+ * table, `redis` in Redis. `retryAfter` must be longer than any job's `timeout` plus the worker's `--stop-timeout`, or a
+ * second worker would claim a job still running — `queue:work` refuses to start otherwise. See `docs/queues.md#configuration`.
  */
 export const QueueConfig = defineConfig('queue', {
   env: env({

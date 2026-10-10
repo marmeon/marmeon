@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
 import { QueueServiceProvider } from './index.ts';
 
-describe('the queue health check (E126)', () => {
+describe('the queue health check', () => {
   it('the default connection\'s driver answers: the size of its default queue', async () => {
     await using app = await createApplication({
       root: '/tmp',

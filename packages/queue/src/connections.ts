@@ -104,7 +104,7 @@ export class QueueConnections {
   /** Dispatches a job event through the app's `EventDispatcher` (listeners built from the root container). */
   readonly events = (event: JobEvent): Promise<void> => this.#container.make(EventDispatcher).dispatch(event);
 
-  /** The app's `Encrypter`, for `static encrypted` jobs (E105). */
+  /** The app's `Encrypter`, for `static encrypted` jobs. */
   async cipher(): Promise<PayloadCipher> {
     const { Encrypter } = await importEncryption();
     if (!this.#container.has(Encrypter)) throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY.');

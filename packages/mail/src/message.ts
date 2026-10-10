@@ -9,10 +9,7 @@ export interface Attachment {
   readonly contentType?: string;
 }
 
-/**
- * A message as transports send it — our own, neutral type (E29): no transport library's types leak
- * into the API, so transports (SMTP today, HTTP APIs later) are interchangeable.
- */
+/** A message as transports send it — a neutral type, so no transport library's types leak into the API. */
 export interface MailMessage {
   readonly from: { readonly address: string; readonly name?: string };
   readonly to: readonly { readonly address: string; readonly name?: string }[];
@@ -38,8 +35,8 @@ export interface Envelope {
 }
 
 /**
- * The body — HTML and plain text, nothing else (E29): this package knows no UI library. `content()` may
- * also return an `mjml` or `html` template; the text version is then derived (`fromMjml`/`fromHtml` to give one).
+ * The body: HTML and plain text. `content()` may also return an `mjml` or `html` template; the text version is then
+ * derived (`fromMjml`/`fromHtml` to give one).
  */
 export interface MailContent {
   readonly html: string;
@@ -47,17 +44,8 @@ export interface MailContent {
 }
 
 /**
- * A mail as a class — like a controller or a listener (E11): data through the constructor, the
- * envelope and the content as methods.
- *
- * ```ts
- * export class WelcomeMail implements Mailable {
- *   readonly #user: User;
- *   constructor(user: User) { this.#user = user; }
- *   envelope() { return { to: this.#user.email, subject: 'Welcome' }; }
- *   content() { return mjml`<mjml><mj-body><mj-section><mj-column><mj-text>Hello ${this.#user.name}</mj-text></mj-column></mj-section></mj-body></mjml>`; }
- * }
- * ```
+ * A mail as a class: data through the constructor, the envelope and the content as methods.
+ * See `docs/mail.md#writing-mails`.
  */
 export interface Mailable {
   envelope(): Envelope | Promise<Envelope>;

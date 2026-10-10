@@ -101,7 +101,7 @@ class RudeSlowJob {
   }
 }
 
-/** Carries a secret: its payload is encrypted in the queue (E105). */
+/** Carries a secret: its payload is encrypted in the queue. */
 class ResetLinkJob {
   static readonly job = 'test.reset-link';
   static readonly schema = v.object({ email: v.string(), token: v.string() });
@@ -258,7 +258,7 @@ describe('dispatching', () => {
     expect(await queue.size()).toBe(2);
   });
 
-  it('writes through a transaction: a rollback leaves no job (E85)', async () => {
+  it('writes through a transaction: a rollback leaves no job', async () => {
     await using application = await app();
     const queue = application.container.make(Queue);
     const db = application.container.make(Connections).get();
@@ -288,7 +288,7 @@ describe('dispatching', () => {
     expect(await queue.size()).toBe(0);
   });
 
-  it('encrypts the payload of a static encrypted job — no plaintext in jobs or failed_jobs (E105)', async () => {
+  it('encrypts the payload of a static encrypted job — no plaintext in jobs or failed_jobs', async () => {
     await using application = await app();
     const queue = application.container.make(Queue);
     await queue.dispatch(ResetLinkJob, { email: 'ada@example.com', token: 'plain-secret-token' });
@@ -415,7 +415,7 @@ describe('the worker', () => {
     expect((await failed.all())[0]!.exception).toMatch(/^Error: No job named "test\.from-the-next-release" is registered in this app/);
   });
 
-  it('traces an attempt that cannot run on queue.job — an unknown name, a poisoned payload — ending with its error, its log in the job\'s context (W7.11)', async () => {
+  it('traces an attempt that cannot run on queue.job — an unknown name, a poisoned payload — ending with its error, its log in the job\'s context', async () => {
     const lines: { message: string; context: Record<string, unknown> }[] = [];
     const logger: Logger = { debug() {}, info() {}, warn: (message, context = {}) => void lines.push({ message, context: { ...currentLogContext(), ...context } }), error: (message, context = {}) => void lines.push({ message, context: { ...currentLogContext(), ...context } }), child: () => logger };
     await using application = await app({ logger });
@@ -483,7 +483,7 @@ describe('the worker', () => {
     expect(await driver.size('mail')).toBe(2);
   });
 
-  it('without queues takes every queue in one claim per round — an idle round asks the driver once, never for its list (E199)', async () => {
+  it('without queues takes every queue in one claim per round — an idle round asks the driver once, never for its list', async () => {
     await using application = await app();
     const memory = new MemoryQueueDriver({ clock: application.container.make(Clock) });
     const calls: string[] = [];
@@ -515,10 +515,10 @@ describe('the worker', () => {
     expect([...new Set(calls)], 'driver calls of an idle worker without queues').toEqual(['reserveAny']);
   });
 
-  it('goes round the queues itself for a driver without reserveAny — the one after the queue it took from last first (E199)', async () => {
+  it('goes round the queues itself for a driver without reserveAny — the one after the queue it took from last first', async () => {
     await using application = await app();
     const memory = new MemoryQueueDriver({ clock: application.container.make(Clock) });
-    // A driver of an older contract: no reserveAny.
+    // A driver without the optional reserveAny.
     const driver = new Proxy(memory, {
       get: (target, key) => {
         const value = Reflect.get(target, key) as unknown;

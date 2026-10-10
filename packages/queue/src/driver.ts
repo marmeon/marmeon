@@ -1,7 +1,7 @@
 import type { Kysely } from '@marmeon/database';
 
 /**
- * A queued job as the queue stores it — the same for every driver (E83). `payload` is the JSON of a {@link JobRecord}.
+ * A queued job as the queue stores it — the same for every driver. `payload` is the JSON of a {@link JobRecord}.
  */
 export interface QueuedJob {
   /** The driver's own id of this entry (a row id, a list entry) — not the job's id, which is in the payload. */
@@ -42,7 +42,7 @@ export interface QueueCounts {
 }
 
 /**
- * The contract of a queue driver (E83): `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
+ * The contract of a queue driver: `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
  * lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts the
  * attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after `retryAfter`)
  * and another worker holds the job now, they change nothing and return false.
@@ -56,7 +56,7 @@ export interface QueueDriver {
    */
   reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
   /**
-   * Claims a job of any queue but those in `except` — every queue taken fairly (E199): what `queue:work` without `--queue` (or
+   * Claims a job of any queue but those in `except` — every queue taken fairly: what `queue:work` without `--queue` (or
    * the `*` of `--queue=mail,*`) asks for. The `database` driver takes the oldest due job of all queues in one statement, `redis`
    * goes round its queues (the one after the queue it took from last comes first). The same claim as `reserve` otherwise:
    * atomic, counts the attempt, takes expired claims again. Optional: without it the worker goes round `queues()` itself.
@@ -79,16 +79,16 @@ export interface QueueDriver {
   size(queue: string): Promise<number>;
   /**
    * What `size` counts, split up — jobs ready to be claimed, delayed (not yet due, or released for a later retry) and reserved
-   * (claimed by a worker: running, or an expired claim of a worker that died). Optional: for the devtools' queue view (W7).
+   * (claimed by a worker: running, or an expired claim of a worker that died). Optional: for the devtools' queue view.
    */
   counts?(queue: string): Promise<QueueCounts>;
   /** The queues that hold jobs (or held some — a driver may remember a queue after it ran empty), sorted — `queue:size`, the worker's look at the queues it does not take. */
   queues(): Promise<string[]>;
-  /** Drivers that keep jobs in the database: the same driver writing through a transaction (E85). */
+  /** Drivers that keep jobs in the database: the same driver writing through a transaction. */
   using?(transaction: Kysely<any>): QueueDriver;
   /**
    * Drivers that keep jobs in the database: whether a push now writes into the ambient transaction of the current call
-   * chain (E107) — then the job commits or rolls back with it. When this is missing or false, a dispatch inside a
+   * chain — then the job commits or rolls back with it. When this is missing or false, a dispatch inside a
    * transaction waits for its commit (`afterCommit`) and is dropped on a rollback.
    */
   joinsTransaction?(): Promise<boolean>;
@@ -114,9 +114,9 @@ export interface JobRecord {
   readonly unique?: UniqueRecord;
   /** The rest of its chain (`queue.chain([...])`): queued one after the other, each when the one before succeeded. */
   readonly chain?: readonly JobRecord[];
-  /** The request it was dispatched in (its `x-request-id`, E131) — what the devtools and logs link the job to. */
+  /** The request it was dispatched in (its `x-request-id`) — what the devtools and logs link the job to. */
   readonly requestId?: string;
-  /** The trace context it was dispatched in (W3C `traceparent`, E131) — when a tracer (`@marmeon/otel`) gave one. */
+  /** The trace context it was dispatched in (W3C `traceparent`) — when a tracer (`@marmeon/otel`) gave one. */
   readonly traceparent?: string;
 }
 
@@ -154,7 +154,7 @@ export interface FailedJob {
   readonly failedAt: number;
 }
 
-/** Where failed jobs go (E83): the `failed_jobs` table, or memory (tests). */
+/** Where failed jobs go: the `failed_jobs` table, or memory (tests). */
 export interface FailedJobStore {
   /** Records a failure — again for the same job id replaces the entry. */
   record(job: FailedJob): Promise<void>;

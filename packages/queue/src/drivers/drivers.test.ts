@@ -13,7 +13,7 @@ async function withQueue(kind: (typeof queueKinds)[number], test: (queue: QueueU
   }
 }
 
-// One suite, every driver (E83): the contract a worker relies on.
+// One suite, every driver: the contract a worker relies on.
 describe.each(queueKinds)('the %s queue driver', (kind) => {
   it('hands out jobs oldest first, counting the attempt at the claim', async () => {
     await withQueue(kind, async ({ driver }) => {
@@ -150,7 +150,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
-  it('reserveAny: takes every queue fairly — a mail job behind a full default queue is not starved (E199)', async () => {
+  it('reserveAny: takes every queue fairly — a mail job behind a full default queue is not starved', async () => {
     await withQueue(kind, async ({ driver, clock }) => {
       clock.freeze();
       for (const payload of ['a1', 'a2']) await driver.push('default', payload, 0);
@@ -164,7 +164,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
-  it('reserveAny: leaves the queues it is told to — the * of --queue=mail,* (E199)', async () => {
+  it('reserveAny: leaves the queues it is told to — the * of --queue=mail,*', async () => {
     await withQueue(kind, async ({ driver }) => {
       await driver.push('mail', 'mail', 0);
       await driver.push('default', 'default', 0);
@@ -174,7 +174,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
-  it('reserveAny: keeps a delayed job back and takes an expired claim (its worker died) again (E199)', async () => {
+  it('reserveAny: keeps a delayed job back and takes an expired claim (its worker died) again', async () => {
     await withQueue(
       kind,
       async ({ driver, clock }) => {
@@ -195,7 +195,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     );
   });
 
-  it('reserveAny: takes a queue that appears after the worker started (E199)', async () => {
+  it('reserveAny: takes a queue that appears after the worker started', async () => {
     await withQueue(kind, async ({ driver }) => {
       await driver.push('default', 'first', 0);
       expect((await driver.reserveAny!())?.payload).toBe('first');
@@ -223,7 +223,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
   });
 });
 
-describe.each(databaseKinds)('the database queue driver on %s, in a transaction (E85)', (kind) => {
+describe.each(databaseKinds)('the database queue driver on %s, in a transaction', (kind) => {
   it('queues a job dispatched in a transaction only with its commit — and not at all after a rollback', async () => {
     await withQueue(kind, async ({ driver, connections, target }) => {
       const db = connections!.get();
@@ -276,7 +276,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction 
     });
   });
 
-  it('reserveAny asks the database once per round, whatever the number of queues (E199)', async () => {
+  it('reserveAny asks the database once per round, whatever the number of queues', async () => {
     await withQueue(kind, async ({ connections, clock }) => {
       let statements = 0;
       const counting = connections!.get().withPlugin({
@@ -294,7 +294,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction 
     });
   });
 
-  it('reserveAny claims through the index of the fair claim — no sort, no scan of every due job (EXPLAIN, E199)', async () => {
+  it('reserveAny claims through the index of the fair claim — no sort, no scan of every due job (EXPLAIN)', async () => {
     await withQueue(kind, async ({ connections }) => {
       const claim = claimAnyStatement(sql, kind, { now: 2_000_000, expired: 1_000_000, except: [] });
       const plan =

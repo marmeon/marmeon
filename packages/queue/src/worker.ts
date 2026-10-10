@@ -18,7 +18,7 @@ export class JobTimeoutError extends Error {
 
 export interface WorkOptions {
   /**
-   * Which queues, and how (E199). Missing, empty or `['*']`: **every queue, fairly** — the driver's `reserveAny` (the database:
+   * Which queues, and how. Missing, empty or `['*']`: **every queue, fairly** — the driver's `reserveAny` (the database:
    * the oldest due job of all queues; Redis: the queues in turn). A list is a **strict** priority: a job of the first is taken
    * before any of the second (`['mail', 'default']`). `*` in a list stands for every queue the list does not name, taken fairly
    * at its place: `['mail', '*']` takes `mail` first, then the rest.
@@ -90,7 +90,7 @@ const DEFAULT_STOP_TIMEOUT = 10;
  * unreadable ciphertext) fails at once — retrying cannot fix it. A job this app does not know (a rolling deploy: the
  * worker is older or newer than the code that queued it) is released with backoff until its tries are used up.
  *
- * Delivery is at-least-once (E85): the job leaves the queue only after `handle()` finished — a worker that dies in between
+ * Delivery is at-least-once: the job leaves the queue only after `handle()` finished — a worker that dies in between
  * leaves it claimed, and it runs again once `retryAfter` is over.
  */
 export class Worker {
@@ -103,7 +103,7 @@ export class Worker {
   }
 
   run(options: WorkOptions): Promise<WorkResult> {
-    // A boundary (E107): claims, acks and jobs never run inside a transaction of whoever started the worker.
+    // A boundary: claims, acks and jobs never run inside a transaction of whoever started the worker.
     return outsideTransaction(() => this.#loop(options));
   }
 
@@ -458,7 +458,7 @@ export class Worker {
     await this.#emit(new JobFailed({ ...this.#about(reserved, record), attempt: reserved.attempts, error: error instanceof Error ? error : new Error(String(error)) }));
   }
 
-  /** An error's message for a log line — redacted like the stored error (E105), by the same Redactor: a message may quote a secret. */
+  /** An error's message for a log line — redacted like the stored error, by the same Redactor: a message may quote a secret. */
   #message(error: unknown): string {
     return this.#redactor.text(error instanceof Error ? error.message : String(error));
   }

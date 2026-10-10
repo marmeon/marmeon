@@ -1,4 +1,4 @@
-// Type guarantees of notifications (E92) — checked by `tsc` (pnpm build / typecheck), never run.
+// Type guarantees of notifications — checked by `tsc` (pnpm build / typecheck), never run.
 import * as v from 'valibot';
 import type { Member } from './__fixtures__/app.ts';
 import { OrderShipped, Welcome } from './__fixtures__/app.ts';

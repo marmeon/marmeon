@@ -3,9 +3,6 @@ import { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleW
 import { ScheduleConfig } from './config.ts';
 import { Scheduler } from './scheduler.ts';
 
-// The scheduler (E88): tasks in the modules (`schedule: defineSchedule(…)`), a process of its own (`schedule:work`, or
-// `schedule:run` from cron), time zones by Temporal, locks for `onOneServer()`/`withoutOverlapping()` in the app's cache,
-// missed runs caught up once, `ScheduledTask*` events (E127) and the `schedule.task` channel (E118).
 export { ScheduleConfig } from './config.ts';
 export { CronExpression, ScheduleError } from './cron.ts';
 export type { WallTime } from './cron.ts';
@@ -24,7 +21,7 @@ export { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleW
 
 /**
  * Registers the `Scheduler` and the `schedule:*` commands; `marmeon dev` runs `schedule:work` next to the server when
- * the app schedules anything (E101). Found by `marmeon discover`.
+ * the app schedules anything. Found by `marmeon discover`.
  */
 export class SchedulerServiceProvider implements ServiceProvider {
   static config = [ScheduleConfig];

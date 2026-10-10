@@ -1,16 +1,9 @@
 import type { Duration, IsJson, StandardSchemaV1, Translator } from '@marmeon/core';
 
 /**
- * Who notifications go to (E92) — kinds of recipients, by declaration merging: a name per kind and its record.
- *
- * ```ts
- * declare module '@marmeon/notifications' {
- *   interface NotificationRecipients { user: User }
- * }
- * ```
- *
- * A recipient travels as data — `{ type: 'user', id: 7 }` — and is looked up again where the notification is delivered
- * (a worker), by the module's resolver for its type (`recipients: { user: UserRecipients }`).
+ * Who notifications go to — kinds of recipients, by declaration merging: `interface NotificationRecipients { user: User }`.
+ * A recipient travels as data (`{ type: 'user', id: 7 }`) and is found again where the notification is delivered, by its
+ * module's resolver. See `docs/notifications.md#recipients`.
  */
 export interface NotificationRecipients {}
 
@@ -20,7 +13,7 @@ export type RecipientType = keyof NotificationRecipients & string;
 /** The id of a recipient of a kind: its record's `id`, else a string or a number. */
 export type RecipientId<T extends RecipientType> = NotificationRecipients[T] extends { readonly id: infer I extends string | number } ? I : string | number;
 
-/** A recipient as data (E92): its kind and its id — `{ type: 'user', id: user.id }`. */
+/** A recipient as data: its kind and its id — `{ type: 'user', id: user.id }`. */
 export type RecipientRef<T extends RecipientType = RecipientType> = { [K in T]: { readonly type: K; readonly id: RecipientId<K> } }[T];
 
 /** A recipient as the framework handles it inside (the app's kinds are not known there). */
@@ -40,15 +33,7 @@ export interface NotificationMail {
 
 /**
  * The channels a notification can go through, and what a notification needs for each — open to other packages by
- * declaration merging (E92/E93: `live` comes with @marmeon/live, Web Push with @marmeon/pwa):
- *
- * ```ts
- * declare module '@marmeon/notifications' {
- *   interface NotificationChannelMap { live: {} }   // a channel that needs no method of the notification
- * }
- * ```
- *
- * The package registers its channel at boot: `container.make(NotificationChannels).add('live', (c) => new LiveChannel(…))`.
+ * declaration merging (`live` comes with @marmeon/live). See `docs/notifications.md#a-channel-of-your-own`.
  */
 export interface NotificationChannelMap {
   /** A mail, composed by `toMail(recipient, data, t)` in the recipient's language and queued (`mailer.queue`). */
@@ -74,7 +59,7 @@ export interface NotificationQueueOptions {
   readonly backoff?: number | readonly number[];
 }
 
-/** The static side of a notification class (E92): a stable name and the schema of its data — like a job's (E84). */
+/** The static side of a notification class: a stable name and the schema of its data — like a job's. */
 export interface NotificationStatics {
   /** The notification's stable name — what the queue and the `notifications` table store, never the class name: `'auth.new-sign-in'`. */
   readonly notification: string;
@@ -96,18 +81,7 @@ export type NotificationClass = NotificationStatics & (new (...args: any[]) => N
 
 /**
  * What a notification class implements (optional, for checks where it is written): `via()` gets the recipient's record
- * of kind `T` and returns channels this app has.
- *
- * ```ts
- * export class NewSignInNotification implements Notification<'user'> {
- *   static readonly notification = 'auth.new-sign-in';
- *   static readonly schema = r.object({ at: r.string(), ip: r.string().nullable() });
- *   static readonly database = r.object({ at: r.string(), ip: r.string().nullable() });
- *   via(user: User) { return user.email_verified_at ? (['database', 'mail'] as const) : (['database'] as const); }
- *   toDatabase(data: NotificationData<typeof NewSignInNotification>) { return { at: data.at, ip: data.ip }; }
- *   toMail(user: User, data: NotificationData<typeof NewSignInNotification>, t: Translator) { return new NewSignInMail(user, data, t); }
- * }
- * ```
+ * of kind `T` and returns channels this app has. See `docs/notifications.md#defining-notifications`.
  */
 export interface Notification<T extends RecipientType = RecipientType> {
   via(recipient: NotificationRecipients[T], data: any): readonly NotificationChannelName[] | Promise<readonly NotificationChannelName[]>;

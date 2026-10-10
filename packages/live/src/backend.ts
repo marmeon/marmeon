@@ -1,7 +1,7 @@
 /**
- * Where hints travel (E89): from the process that refreshes a channel to every process with a stream on it. `memory` — one
+ * Where hints travel: from the process that refreshes a channel to every process with a stream on it. `memory` — one
  * process (development, tests, a single server); `redis` — Redis pub/sub, every process of the app. Each channel counts its
- * hints (`seq`), so a stream that was away knows whether it missed one (E104).
+ * hints (`seq`), so a stream that was away knows whether it missed one.
  */
 
 /** What goes over the backend: a hint — or a session that ended (its streams close, everywhere). */
@@ -41,10 +41,10 @@ export interface MemoryLiveOptions {
 /**
  * One process: hints go straight to the streams of this process. The default — and what tests use.
  *
- * The sequences are bounded (W9 step 4): a channel's is forgotten a day after its last hint, and beyond `maxChannels` the one
+ * The sequences are bounded: a channel's is forgotten a day after its last hint, and beyond `maxChannels` the one
  * hinted longest ago goes first — an app with a channel per record would otherwise grow the map for as long as the process
  * lives. A forgotten channel counts on from above every sequence ever forgotten, so a stream still open (one that saw a
- * higher number) never takes its next hint for an old one; a stream that reconnects sees "changed" and reloads once (E104).
+ * higher number) never takes its next hint for an old one; a stream that reconnects sees "changed" and reloads once.
  */
 export class MemoryLiveBackend implements LiveBackend {
   /** Channel → its sequence and when it was last hinted, the one hinted longest ago first (a Map keeps insertion order). */

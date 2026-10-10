@@ -9,9 +9,6 @@ import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './
 import { Queue, QueueManager } from './queue.ts';
 import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
 
-// The queue (E83–E85, E98): jobs as injectable classes with a stable name and a payload schema, drivers behind one
-// contract (sync, database, redis), a worker with a scope per job, retries, failed jobs, unique jobs, chains, job
-// middleware, job events — and a fake for tests.
 export { QueueConfig, queueTablesConnection } from './config.ts';
 export { QueueHealthCheck } from './health.ts';
 export { checkTimeouts, QueueConnections } from './connections.ts';
@@ -66,11 +63,11 @@ declare module '@marmeon/core' {
 
 /**
  * Registers the `Queue` (`QUEUE_CONNECTION`), the modules' jobs and the `queue:*` commands; `marmeon dev` starts a worker
- * alongside the server (E101). Found by `marmeon discover`.
+ * alongside the server. Found by `marmeon discover`.
  */
 export class QueueServiceProvider implements ServiceProvider {
   static config = [QueueConfig];
-  /** The default connection's driver answers, for `/up/ready` (E126). */
+  /** The default connection's driver answers, for `/up/ready`. */
   static health = [QueueHealthCheck];
 
   register(container: Container): void {
@@ -82,7 +79,7 @@ export class QueueServiceProvider implements ServiceProvider {
       if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@marmeon/queue', { framework: true });
       return registry;
     });
-    // Queued listeners (E86): checked at startup, queued by the EventDispatcher through the ListenerQueue, run by a
+    // Queued listeners: checked at startup, queued by the EventDispatcher through the ListenerQueue, run by a
     // `marmeon.listener` job — built in the job's scope, which then builds the listener.
     container.singleton(QueuedListeners, (c) => new QueuedListeners(c.make(EventRegistry)));
     container.singleton(ListenerQueue, (c) => new QueueListenerDispatcher(() => container.make(Queue), c.make(QueuedListeners)));
@@ -151,7 +148,7 @@ export class QueueServiceProvider implements ServiceProvider {
         .make(cli.CommandRegistry)
         .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand]);
     }
-    // `marmeon dev` runs a worker next to the server (E101) — on every queue, like any worker without --queue (E199), unless jobs run at dispatch anyway.
+    // `marmeon dev` runs a worker next to the server — on every queue, like any worker without --queue, unless jobs run at dispatch anyway.
     if (cli && app.container.has(cli.DevProcesses) && config.default !== 'sync') {
       app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--stop-timeout=5'] });
     }

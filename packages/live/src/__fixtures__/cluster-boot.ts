@@ -1,4 +1,4 @@
-// Boots an app with live props the way a worker of `marmeon start --workers=N` does (E140): the primary forks one worker of
+// Boots an app with live props the way a worker of `marmeon start --workers=N` does: the primary forks one worker of
 // node:cluster with the workers' mark (CLUSTER_WORKER) and ends with its code. `single` boots in this process instead, with the
 // mark left in the environment — no worker. Prints `booted` or `failed: <message>`. Used by server.test.ts.
 import cluster from 'node:cluster';

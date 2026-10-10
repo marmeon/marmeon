@@ -55,7 +55,7 @@ async function boot(): Promise<Application> {
 
 const work = (application: Application) => application.container.make(QueueConnections).worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true });
 
-describe('job metadata (E131)', () => {
+describe('job metadata', () => {
   it('a job dispatched in a request carries the request\'s id — always, also without a subscriber', async () => {
     await using application = await boot();
     const queue = application.container.make(Queue);
@@ -83,7 +83,7 @@ describe('job metadata (E131)', () => {
   });
 });
 
-describe('the queue.dispatch and queue.job channels (E118)', () => {
+describe('the queue.dispatch and queue.job channels', () => {
   it('a tracer\'s traceparent travels with the job — set in its dispatch start, read in the worker\'s attempt', async () => {
     await using application = await boot();
     const queue = application.container.make(Queue);

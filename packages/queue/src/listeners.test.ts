@@ -10,7 +10,7 @@ import { QueueFake } from './fake.ts';
 import { Queue, QueueServiceProvider, RECORD_OPTIONS } from './index.ts';
 import { QueueSetupError } from './registry.ts';
 
-// Queued listeners (E86): `static queue` on a listener class — the dispatcher queues a `marmeon.listener` job with the
+// Queued listeners: `static queue` on a listener class — the dispatcher queues a `marmeon.listener` job with the
 // event's payload (its `static schema`), a worker runs the listener with it.
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
@@ -83,7 +83,7 @@ async function app(options: { listeners?: ModuleDefinition['listeners']; fake?: 
 const jobRows = async (application: Application) =>
   (await sql<{ queue: string; payload: string }>`select queue, payload from jobs order by id`.execute(application.container.make(Connections).get())).rows;
 
-describe('queued listeners (E86)', () => {
+describe('queued listeners', () => {
   it('are queued as an encrypted marmeon.listener job with the event payload — and a worker runs them in a scope of their own', async () => {
     await using application = await app();
     await application.container.createScope().make(EventDispatcher).dispatch(new OrderShipped('order-77'));
@@ -92,10 +92,10 @@ describe('queued listeners (E86)', () => {
     expect(rows.map((row) => row.queue)).toEqual(['mail', 'default']);
     const record = JSON.parse(rows[0]!.payload) as { job: string; encrypted: boolean; data: unknown; tries: number; backoff: number[] };
     expect(record).toMatchObject({ job: 'marmeon.listener', encrypted: true, tries: 3, backoff: [10, 60] }); // the listener's settings
-    expect(rows.map((row) => row.payload).join()).not.toContain('order-77'); // E105: no plaintext payload
+    expect(rows.map((row) => row.payload).join()).not.toContain('order-77'); // no plaintext payload
     expect(application.seen.entries).toEqual([]);
 
-    // A worker on every queue (E199): the job queued first runs first — the mail, then the default queue's.
+    // A worker on every queue: the job queued first runs first — the mail, then the default queue's.
     const result = await application.container.make(QueueConnections).worker('database', 10).run({ stopWhenEmpty: true });
     expect(result).toMatchObject({ processed: 2, failed: 0 });
     expect(application.seen.entries.map(({ listener, payload, inTransaction }) => ({ listener, payload, inTransaction }))).toEqual([
@@ -104,7 +104,7 @@ describe('queued listeners (E86)', () => {
     ]);
   });
 
-  it('are part of the transaction around the dispatch (E107, E109): the job rows are written inside it — atomic with the data — and a rollback drops them', async () => {
+  it('are part of the transaction around the dispatch: the job rows are written inside it — atomic with the data — and a rollback drops them', async () => {
     await using application = await app();
     const connections = application.container.make(Connections);
     const inside: string[][] = [];
@@ -218,6 +218,6 @@ export function typeLevelTests(): void {
     static readonly queue = { queue: 'mail', afterCommit: false };
     handle(_payload: EventPayload<typeof OrderShipped>): void {}
   }
-  // @ts-expect-error — afterCommit is gone (E109): queued listeners always join the transaction.
+  // @ts-expect-error — afterCommit is gone: queued listeners always join the transaction.
   listen(OrderShipped, WithAfterCommit);
 }

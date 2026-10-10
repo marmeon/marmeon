@@ -128,7 +128,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
       expect(await rows(application)).toEqual([]);
     });
 
-    it('delivers a notification once, also when its job runs twice (at-least-once, E85): the row says it went through', async () => {
+    it('delivers a notification once, also when its job runs twice (at-least-once): the row says it went through', async () => {
       const application = await app(driver);
       const deliverer = application.container.make(NotificationDeliverer);
       const pending = { id: crypto.randomUUID(), notification: OrderShipped, recipient: ada, data: { orderId: 'o-5' } };
@@ -151,7 +151,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
       expect(jobs).toEqual([]);
     });
 
-    it('keeps the data out of the jobs table in plain text (encrypted, E105)', async () => {
+    it('keeps the data out of the jobs table in plain text (encrypted)', async () => {
       const application = await app(driver, { queue: 'database' });
       await application.container.make(Notifications).send(ada, OrderShipped, { orderId: 'o-plain-text-7', carrier: 'secret-carrier' });
       const { rows: jobs } = await sql<{ payload: string }>`select payload from jobs`.execute(application.connections.get());
@@ -268,12 +268,12 @@ describe.each(drivers)('notifications on %s', (driver) => {
       const second = await inbox.page(ada, { perPage: 2, cursor: first.meta.nextCursor, encrypter });
       expect([...first.data, ...second.data].map((row) => row.id).sort()).toEqual([...adas, newest].sort());
       expect(second.meta.nextCursor).toBeNull();
-      // Alan's list is his own; a cursor of Ada's list is no way into it — not even a position: it does not decrypt for his (W10 step 8).
+      // Alan's list is his own; a cursor of Ada's list is no way into it — not even a position: it does not decrypt for his.
       expect((await inbox.page(alan, { encrypter })).data).toHaveLength(1);
       await expect(inbox.page(alan, { perPage: 2, cursor: first.meta.nextCursor, encrypter })).rejects.toBeInstanceOf(InvalidCursorError);
     });
 
-    it("deletes all of a recipient's notifications at once — a deleted account's — and nobody else's (W10 step 8)", async () => {
+    it("deletes all of a recipient's notifications at once — a deleted account's — and nobody else's", async () => {
       const { inbox, adas } = await seeded();
       expect(await inbox.deleteAll(ada)).toBe(adas.length);
       expect(await inbox.latest(ada)).toEqual([]);

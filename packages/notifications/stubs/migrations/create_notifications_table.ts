@@ -1,11 +1,8 @@
 import { defineMigration } from '@marmeon/database';
 import { notificationsTableConnection } from '@marmeon/notifications';
 
-// The table of the `database` notification channel (written by `marmeon make:notifications-table`): a row per notification
-// and recipient — who it is for (`recipient_type` and `recipient_id`, as `{ type, id }` was sent), its name (`static
-// notification`), what `toDatabase()` returned (JSON), when it was read (null: unread) and when it came. The id is the
-// notification's own (a UUID, the same over every attempt of its job — a second delivery finds it and stops).
-// The Inbox reads it, always for one recipient; `marmeon notifications:prune` empties it of old, read ones.
+// The table of the `database` notification channel: a row per notification and recipient. The id is the notification's
+// own, the same over every attempt of its job — a second delivery finds the row and stops.
 export default defineMigration({
   // NOTIFICATIONS_CONNECTION: where the database channel and the Inbox look.
   connection: notificationsTableConnection,

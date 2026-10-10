@@ -112,7 +112,7 @@ async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) 
   }
 }
 
-// The Gegenproben of the queue core (W6 step 3) with real `marmeon queue:work` processes on a shared database.
+// The queue core with real `marmeon queue:work` processes on a shared database.
 describe.each(processKinds)('queue:work processes on %s', (kind) => {
   it(
     'runs each of 200 jobs exactly once with two workers taking from one queue',
@@ -122,9 +122,9 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
         const a = fixture.worker(['--sleep=0.01']);
         const b = fixture.worker(['--sleep=0.01']);
         await Promise.all([a.waitFor(/^Processing jobs of the /), b.waitFor(/^Processing jobs of the /)]);
-        // Started is not taking jobs yet: under load one worker took its first job only after the other had taken all 200
-        // (W6.11). So both first hold a gate job at the same time — a gate one worker took after the other is offered again,
-        // as long as it takes — and the race starts when both are taking jobs, not after a guessed time.
+        // Started is not taking jobs yet: under load one worker can take its first job only after the other took all 200.
+        // So both first hold a gate job at the same time — a gate one worker took after the other is offered again, as
+        // long as it takes — and the race starts when both are taking jobs, not after a guessed time.
         let gates = 0;
         const gate = () => fixture.driver.push('default', record('fixture.gate', { n: -++gates }), 0);
         await gate();
@@ -267,7 +267,7 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     });
   });
 
-  // W6 step 4: unique jobs, withoutOverlapping and job.once across processes — each with its control (the same without the measure).
+  // Unique jobs, withoutOverlapping and job.once across processes — each with its control (the same without the measure).
   it('queues ONE job when two processes dispatch the same unique job at once (and 40 without unique)', { timeout: 60_000 }, async () => {
     await withFixture(kind, async (fixture) => {
       const race = async (args: string[]) => {

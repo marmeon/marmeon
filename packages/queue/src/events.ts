@@ -1,8 +1,8 @@
 /**
  * What every job event says about its job. The events go through the app's `EventDispatcher` — listen to one
- * (`listen(JobFailed, AlertOnFailedJob)`) or to all of them (`listen(JobEvent, …)`): the hook for observability (W7).
+ * (`listen(JobFailed, AlertOnFailedJob)`) or to all of them (`listen(JobEvent, …)`): the hook for observability.
  *
- * They are not queueable (no `static event` + `static schema`, E86): a queued listener of a job event would queue a job,
+ * They are not queueable (no `static event` + `static schema`): a queued listener of a job event would queue a job,
  * whose events would queue the next — listeners run where the event happens (the worker, the dispatching process). An
  * error of a listener is logged and does not change what happens to the job.
  */

@@ -5,7 +5,6 @@ import { MailPreviews } from './preview.ts';
 import { SendQueuedMail } from './queued.ts';
 import { ArrayTransport, LogTransport, MailTransport, SmtpTransport } from './transports.ts';
 
-// Mail (E29): mails as classes, a transport behind a neutral message type, UI-agnostic content (MJML or HTML).
 export { escapeHtml, fromHtml, Html, html, raw, textFromHtml } from './html.ts';
 export { fromMjml, Mjml, mjml, MJML_INSTALL, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
@@ -23,7 +22,7 @@ export type { SmtpOptions } from './transports.ts';
 
 export const MailConfig = defineConfig('mail', {
   env: env({
-    /** `log` (default: written to the log, nothing is sent), `array` (kept in memory) or `smtp` (nodemailer, a dependency of this package — E198). */
+    /** `log` (default: written to the log, nothing is sent), `array` (kept in memory) or `smtp` (nodemailer, a dependency of this package). */
     MAIL_MAILER: env.in(['log', 'array', 'smtp']).default('log'),
     MAIL_FROM_ADDRESS: env.email('MAIL_FROM_ADDRESS must be an e-mail address').default('hello@example.com'),
     MAIL_FROM_NAME: env.string().default(''),
@@ -31,7 +30,7 @@ export const MailConfig = defineConfig('mail', {
     MAIL_PORT: env.port().default(587),
     /** `true`: TLS from the first byte (port 465). Otherwise STARTTLS (required unless MAIL_REQUIRE_TLS=false). */
     MAIL_SECURE: env.in(['true', 'false']).default('false'),
-    // Without MAIL_SECURE: STARTTLS or no mail (E192) — `false` only for a local server without TLS (Mailpit).
+    // Without MAIL_SECURE: STARTTLS or no mail — `false` only for a local server without TLS (Mailpit).
     MAIL_REQUIRE_TLS: env.in(['true', 'false']).default('true'),
     MAIL_USERNAME: env.string().default(''),
     MAIL_PASSWORD: env.string().default(''),
@@ -49,24 +48,18 @@ export const MailConfig = defineConfig('mail', {
       username: e.MAIL_USERNAME,
       password: e.MAIL_PASSWORD,
     },
-    /**
-     * The mail previews under `/_marmeon/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
-     * a test, production or a server without `NODE_ENV` has no such routes.
-     */
+    /** The mail previews under `/_marmeon/mail`: only with `NODE_ENV=development`, never "not production". */
     previews: environment.isDevelopment(e),
-    /** The hosts the previews answer (E200 — DNS rebinding): loopback names and `APP_URL`'s; any other gets 403. */
+    /** The hosts the previews answer (DNS rebinding): loopback names and `APP_URL`'s; any other gets 403. */
     previewHosts: devHosts(e.APP_URL),
-    /**
-     * Protected (E139 — every `NODE_ENV` but `development` and `test`: production, none): the boot warns about
-     * `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}).
-     */
+    /** Protected (production, or no `NODE_ENV`): the boot warns about `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}). */
     protected: environment.isProtected(e),
   }),
 });
 export type MailConfig = ConfigOf<typeof MailConfig>;
 
 /**
- * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV` — E139) runs on the
+ * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV`) runs on the
  * `log` mailer — the default when `MAIL_MAILER` is not set.
  * The log mailer stays as it is everywhere (Laravel's too): in development the links of a mail are clicked from the log.
  */
@@ -90,7 +83,7 @@ async function importQueue(): Promise<QueueModule | undefined> {
 /**
  * Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`) — built on first use —, the `marmeon.mail` job for
  * `mailer.queue()` when the app has @marmeon/queue, and with `NODE_ENV=development` only the mail previews
- * (`/_marmeon/mail`, E106, E115). Found by `marmeon discover`.
+ * (`/_marmeon/mail`). Found by `marmeon discover`.
  */
 export class MailServiceProvider implements ServiceProvider {
   static config = [MailConfig];
@@ -118,14 +111,12 @@ export class MailServiceProvider implements ServiceProvider {
   }
 
   async boot(app: Application): Promise<void> {
-    // The job behind mailer.queue(): a framework job (`marmeon.mail`), registered with the app's jobs.
     const queue = await importQueue();
     if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@marmeon/mail', { framework: true });
 
     const config = app.container.make(MailConfig);
-    // Production on the log mailer (W7.11, Max 04.10.): no mail goes out, and reset links land in the log — said once, at boot.
+    // Production on the log mailer: no mail goes out, and reset links land in the log — said once, at boot.
     if (config.protected && config.mailer === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { mailer: 'log' });
-    // Mail previews (E106): only in development (E115) — the devtools link to them.
     if (config.previews) await registerPreviews(app);
   }
 
@@ -147,7 +138,7 @@ async function registerPreviews(app: Application): Promise<void> {
   app.container.instance(MailPreviews, previews);
   const hosts = config.previewHosts;
   // No middleware group: no session, no cookies — a page for the developer's browser only. Behind the guard of every development
-  // route (E200): 403 for any host but loopback and APP_URL's (DNS rebinding), `no-store`, CORP/COOP same-origin, no CORS.
+  // route: 403 for any host but loopback and APP_URL's (DNS rebinding), `no-store`, CORP/COOP same-origin, no CORS.
   app.container.make(router.Router).load(
     router.defineRoutes((Route) => {
       Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));

@@ -17,7 +17,7 @@ const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
 export const FRAMEWORK_PREFIX = 'marmeon.';
 
 /**
- * Which job class has which name — from the modules' `jobs: [...]` (E84). The worker finds a job's class here, so a job
+ * Which job class has which name — from the modules' `jobs: [...]`. The worker finds a job's class here, so a job
  * that is not registered cannot run: dispatching it is an error, and a name used twice fails the start.
  */
 export class JobRegistry {

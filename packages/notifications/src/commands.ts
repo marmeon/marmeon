@@ -6,7 +6,7 @@ import { NotificationStore } from './store.ts';
 /** The migration `make:notifications-table` copies — a real file, so the tests run exactly what apps get. */
 export const NOTIFICATIONS_MIGRATION = new URL('../stubs/migrations/create_notifications_table.ts', import.meta.url);
 
-/** `marmeon make:notifications-table [--module=system]`: the migration of `notifications` into an app module (E96). */
+/** `marmeon make:notifications-table [--module=system]`: the migration of `notifications` into an app module. */
 export class MakeNotificationsTableCommand {
   static command = 'make:notifications-table';
   static description = 'Create the migration for the database notification channel (notifications)';

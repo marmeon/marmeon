@@ -5,7 +5,7 @@ import type { JobClass, JobContext, JobMiddleware } from './job.ts';
 import { runOnce, type CacheSource } from './locks.ts';
 import { QueueError, timeoutOf, type JobRegistry } from './registry.ts';
 
-/** Encrypts and decrypts encrypted payloads (`static encrypted`, E105) — the app's `Encrypter`. */
+/** Encrypts and decrypts encrypted payloads (`static encrypted`) — the app's `Encrypter`. */
 export interface PayloadCipher {
   encrypt(plaintext: string, context: string): Promise<string>;
   decrypt(ciphertext: string, context: string): Promise<string>;
@@ -83,7 +83,7 @@ export type Requested = { readonly kind: 'discard'; readonly reason: string | un
 
 /**
  * Turns a queued payload into a job to run, and runs it — shared by the worker and the `sync` connection: the class from
- * the registry, the payload decrypted (`static encrypted`) and checked against the schema again (E84), then a fresh
+ * the registry, the payload decrypted (`static encrypted`) and checked against the schema again, then a fresh
  * container scope per attempt (like a request) with the job's log context.
  */
 export class JobRunner {
@@ -133,7 +133,7 @@ export class JobRunner {
   /**
    * Runs one attempt in its own container scope, with `{ job, jobId, attempt }` as the log context. Resolves with what
    * the job asked for through its context (`discard`, `release`, `fail`), if anything; rejects with what it threw.
-   * Traced on the `queue.job` channel while something listens (E118).
+   * Traced on the `queue.job` channel while something listens.
    */
   run(
     prepared: Extract<Prepared, { kind: 'ready' }>,
@@ -175,7 +175,7 @@ export class JobRunner {
       attempt: attempt.attempt,
       ...(record.requestId === undefined ? {} : { originRequestId: record.requestId }),
       ...(record.traceparent === undefined ? {} : { traceparent: record.traceparent }),
-      // As queued — not checked against any schema: shown only through the redactor, a ciphertext never (E125).
+      // As queued — not checked against any schema: shown only through the redactor, a ciphertext never.
       ...(record.encrypted ? { encrypted: true } : { payload: record.data }),
     };
     let result: { value: T } | undefined;
@@ -219,7 +219,7 @@ export class JobRunner {
         runOnce(this.#cache, key, fn, { ...(options.for === undefined ? {} : { for: options.for }), lockSeconds: attempt.retryAfter ?? timeoutOf(job) + 60 }),
     };
     const middleware: readonly JobMiddleware[] = job.middleware ?? [];
-    // A job is a boundary (E107): it never runs inside a transaction that was open where it was dispatched or worked on.
+    // A job is a boundary: it never runs inside a transaction that was open where it was dispatched or worked on.
     await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }) }, async () => {
       // One scope per attempt, like a request: scoped services (a Translator, a unit of work) start fresh each time.
       const scope = this.#container.createScope();

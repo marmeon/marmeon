@@ -1,4 +1,4 @@
-// Type guarantees of live props (W6.10) — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
+// Type guarantees of live props — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
 // compiler shows them, are quoted in the comments.
 import { island, view, type SharedData } from '@marmeon/http';
 import type { Broadcaster } from './broadcaster.ts';

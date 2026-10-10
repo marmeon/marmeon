@@ -18,7 +18,7 @@ export function toEpoch(time: ScheduleTime): number {
 }
 
 /**
- * The schedule in tests (`app.schedule`, E97 — with the test app's clock):
+ * The schedule in tests (`app.schedule`, with the test app's clock):
  *
  * ```ts
  * expect(app.schedule.due('2026-10-04T03:10:00+02:00')).toContain('auth:prune-tokens');

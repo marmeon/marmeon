@@ -12,7 +12,7 @@ import { QueueConnections } from './connections.ts';
 import { JobRegistry } from './registry.ts';
 import { JobRunner } from './runner.ts';
 
-// Dispatching inside `connections.transaction()` (E85, E107): the database queue joins the transaction; every other
+// Dispatching inside `connections.transaction()`: the database queue joins the transaction; every other
 // connection holds the job until the outermost commit and drops it on a rollback.
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
@@ -152,7 +152,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     ).rejects.toThrow('job 3 failed');
     expect((await sql<{ n: number }>`select n from handled where n = 3`.execute(db)).rows).toHaveLength(1);
 
-    // Outside a transaction: at once, as before.
+    // Outside a transaction: at once.
     await queue.dispatch(LookJob, { n: 2 });
     expect(application.seen.entries).toHaveLength(3);
   });
@@ -171,7 +171,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
   it('holds a job for a queue that cannot join the transaction (redis, another connection) until the commit', async () => {
     await using application = await app();
     const container = application.container;
-    // A driver outside the database — like redis (W6 step 4): no joinsTransaction().
+    // A driver outside the database — like redis: no joinsTransaction().
     const memory = new MemoryQueueDriver({ clock: container.make(Clock) });
     const queue = new QueueManager({
       connections: { outside: { driver: 'database', queue: 'default', connection: 'default', retryAfter: 90 } },

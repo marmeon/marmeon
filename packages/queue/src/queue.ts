@@ -10,7 +10,7 @@ import { cipherContext, delaySeconds, nextInChain, toJson, validatePayload, type
 
 /**
  * Settings of one queued record that the framework's own jobs take from elsewhere — a queued listener's `tries` and
- * `backoff` (`static queue`, E86) instead of those of the `marmeon.listener` class. A symbol key of the dispatch options:
+ * `backoff` (`static queue`) instead of those of the `marmeon.listener` class. A symbol key of the dispatch options:
  * not part of the public API.
  */
 export const RECORD_OPTIONS: unique symbol = Symbol.for('marmeon.queue.record-options');
@@ -28,26 +28,16 @@ export function recordOptionsOf(options: object): RecordOptions {
 export type PendingJobs<J extends readonly JobClass[]> = { readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>] };
 
 /**
- * Queues jobs (E83, E84) — injected like any service, no facade:
- *
- * ```ts
- * constructor(queue: Queue) { this.#queue = queue; }
- * await this.#queue.dispatch(SendWelcomeMailJob, { userId: user.id }, { delay: 60, queue: 'mail' });
- * ```
- *
- * The payload is checked against the job's `static schema` here (a mismatch is a type error, and at runtime a
- * {@link JobPayloadError}) and again before the job runs. Delivery is at-least-once (E85).
- *
- * **Inside a transaction** (`connections.transaction()`, E107) a job is queued only if the transaction commits: the
- * `database` driver writes it into the same transaction; every other connection (`sync`, `redis`) holds it until the
- * outermost commit — and drops it on a rollback. A `sync` job then runs after the commit, outside the transaction;
- * its error is thrown by the `transaction()` call.
+ * Queues jobs — injected like any service: `await this.#queue.dispatch(SendWelcomeMailJob, { userId: user.id })`. The
+ * payload is checked against the job's `static schema` here (a mismatch is a type error, and at runtime a
+ * {@link JobPayloadError}) and again before the job runs; delivery is at-least-once. **Inside a transaction**
+ * (`connections.transaction()`) a job is queued only if the transaction commits. See `docs/queues.md#inside-a-transaction`.
  */
 export interface Queue {
   /**
    * Queues one job. Returns its id (stable over retries).
    *
-   * With `unique` (E85): a no-op — resolving `undefined` — while one of this job with the same key is queued (or
+   * With `unique`: a no-op — resolving `undefined` — while one of this job with the same key is queued (or
    * running, with `uniqueUntil: 'done'`). The key's lock lives in the app's cache, taken right here (visible to every
    * process at once); a rollback of a transaction around the dispatch frees it again.
    */
@@ -55,7 +45,7 @@ export interface Queue {
   /** Queues several jobs at once: `bulk([[SendWelcomeMailJob, { userId: 1 }], [SendWelcomeMailJob, { userId: 2 }]])`. Returns their ids. */
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
-   * Queues jobs to run one after the other (E98): the first now, each next one only once the one before succeeded —
+   * Queues jobs to run one after the other: the first now, each next one only once the one before succeeded —
    * a job that fails for good (or discards itself) ends the chain. Every payload is checked now; the rest of the chain
    * travels in the job's record and is queued together with the acknowledgement of the job before it (one atomic step
    * of the driver). Returns the ids of all of them.
@@ -66,8 +56,8 @@ export interface Queue {
    */
   chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
-   * The queue, writing through a database transaction you control yourself (E85) — like `repository.using(trx)`. Inside
-   * `connections.transaction()` no `using()` is needed: a dispatch joins the transaction by itself (E107).
+   * The queue, writing through a database transaction you control yourself — like `repository.using(trx)`. Inside
+   * `connections.transaction()` no `using()` is needed: a dispatch joins the transaction by itself.
    *
    * ```ts
    * const trx = await db.startTransaction().execute();
@@ -101,7 +91,7 @@ export interface QueueManagerDependencies {
   readonly cache?: CacheSource;
   /** `JobQueued` (and, for `sync`, `JobProcessing`, `JobProcessed`, `JobFailed`) — the app's `EventDispatcher`. */
   readonly events?: JobEvents;
-  /** The app its dispatches are reported for on the `queue.dispatch` channel (E118). */
+  /** The app its dispatches are reported for on the `queue.dispatch` channel. */
   readonly app?: Application;
   /** Masks a failing listener's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
   readonly redactor?: Redactor;
@@ -217,7 +207,7 @@ export class QueueManager implements Queue {
   }
 
   /**
-   * A unique job: its lock first — on the cache's own connection, outside any transaction (E108), so every process sees
+   * A unique job: its lock first — on the cache's own connection, outside any transaction, so every process sees
    * it at once — then, inside a transaction, `afterRollback` to free it again if the job never comes to exist, then the
    * push (into the transaction, or held until its commit).
    */
@@ -248,7 +238,7 @@ export class QueueManager implements Queue {
     const queued = () => Promise.all(prepared.map(({ record }) => this.#emit(new JobQueued({ connection: name, queue, job: record.job, jobId: record.uuid, delay }))));
 
     if (connection.driver === 'sync') {
-      // Held until the commit inside a transaction (E107): a sync job must never act on data that is rolled back.
+      // Held until the commit inside a transaction: a sync job must never act on data that is rolled back.
       await afterCommit(async () => {
         await queued();
         await this.#runNow(prepared, queue, name);
@@ -334,7 +324,7 @@ export class QueueManager implements Queue {
   }
 }
 
-/** A chain checked and ready to queue: its first job's record carries the rest (E98). */
+/** A chain checked and ready to queue: its first job's record carries the rest. */
 export async function prepareChain(
   deps: Parameters<typeof prepareRecord>[0],
   jobs: readonly PendingJob[],
@@ -367,7 +357,7 @@ export async function prepareRecord(
   const json = toJson(job, payload);
   await validatePayload(job, json, 'dispatch');
   const uuid = crypto.randomUUID();
-  // Where it comes from (E131): the request's id always — in a job, the request that job came from —, the trace context
+  // Where it comes from: the request's id always — in a job, the request that job came from —, the trace context
   // when a tracer gave one at dispatch.
   const requestId = currentRequest()?.requestId ?? currentJob()?.requestId;
   const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;

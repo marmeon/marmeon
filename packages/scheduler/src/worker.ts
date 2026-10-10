@@ -9,7 +9,7 @@ export type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
 const realSleep: Sleep = (ms, signal) => delay(ms, undefined, { signal }).catch(() => undefined);
 
 /**
- * The loop of `marmeon schedule:work` (E88): a tick at the start of every minute, by the app's {@link Clock}. Runs started
+ * The loop of `marmeon schedule:work`: a tick at the start of every minute, by the app's {@link Clock}. Runs started
  * by one tick do not hold up the next. A loop that wakes up late — the machine slept, the process was stopped — ticks
  * the minute it woke up in; what was missed meanwhile is caught up once by the tick (`catchUp('once')`).
  */

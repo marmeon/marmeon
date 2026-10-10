@@ -12,7 +12,7 @@ export interface RecordedRefresh {
 const sameProps = (a: readonly string[] | null, b: readonly string[] | null) => (a === null || b === null ? a === b : a.length === b.length && [...a].sort().every((prop, i) => prop === [...b].sort()[i]));
 
 /**
- * What the app's `Broadcaster` sent (W6.10) — `app.broadcast` in tests: every refresh that went out (after its commit), as it
+ * What the app's `Broadcaster` sent — `app.broadcast` in tests: every refresh that went out (after its commit), as it
  * went out; the hints themselves reach the streams as in production (`app.live(path)`).
  */
 export class BroadcastRecorder {

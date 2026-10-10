@@ -35,7 +35,7 @@ describe('make:notifications-table', () => {
     expect(await on({})).toBe('default');
   });
 
-  it('writes the migration into a new system module (E96), registers the module, and refuses a second one', async () => {
+  it('writes the migration into a new system module, registers the module, and refuses a second one', async () => {
     const root = app();
     const first = run(root);
     expect(await new MakeNotificationsTableCommand().handle(first.input)).toBe(0);

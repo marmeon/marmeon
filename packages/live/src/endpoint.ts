@@ -8,11 +8,11 @@ const refuse = (status: number, message: string) =>
   new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
 
 /**
- * `GET /_marmeon/live?connection=<id>&c=<token>.<channel>&…` — a tab's stream (E89): every channel its page, islands and layers
- * follow, each with the token the page was signed with (E90). Runs in the `web` group, read-only (its path, with or without
- * `Accept: text/event-stream`: the kernel never saves the session, sets no cookie): the session is read only to know whose stream it is. One invalid token — a
- * channel rewritten, a token of another session or of one that ended (signed out) — and there is no stream (403). The hub
- * counts what is open: 429 beyond the session's streams, 503 beyond the process's or while the server closes (W9 step 4).
+ * `GET /_marmeon/live?connection=<id>&c=<token>.<channel>&…` — a tab's stream: every channel its page, islands and layers
+ * follow, each with the token the page was signed with. Runs in the `web` group, read-only (on its path the kernel never
+ * saves the session or sets a cookie): the session is read only to know whose stream it is. One invalid token — a channel
+ * rewritten, a token of another session or of one that ended — and there is no stream (403). The hub counts what is open:
+ * 429 beyond the session's streams, 503 beyond the process's or while the server closes.
  */
 export class LiveStreamController {
   readonly #hub: LiveHub;
@@ -40,7 +40,7 @@ export class LiveStreamController {
       const dot = pair.indexOf('.');
       const token = pair.slice(0, dot);
       const channel = pair.slice(dot + 1);
-      // Signed for this session (E90) — a rewritten channel, another session's token or an ended one: no stream at all.
+      // Signed for this session — a rewritten channel, another session's token or an ended one: no stream at all.
       if (dot < 1 || !isLiveChannel(channel) || !this.#tokens.verify(scope, channel, token)) return refuse(403, 'Not allowed to follow these channels.');
       channels.add(channel);
     }

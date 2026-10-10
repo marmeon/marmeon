@@ -43,8 +43,8 @@ end
 `;
 
 /**
- * The scripts, defined once per process with `defineRedisScript` (step 1: run by hash, loaded when Redis does not know
- * them). @marmeon/redis is an optional peer of the queue — imported when the redis driver is first used.
+ * The scripts, defined once per process with `defineRedisScript` (run by hash, loaded when Redis does not know them).
+ * @marmeon/redis is an optional peer of the queue — imported when the redis driver is first used.
  */
 interface Scripts {
   readonly push: RedisScript;
@@ -68,7 +68,7 @@ return 1`,
     // record the claim — is one atomic step: two workers never pop the same member.
     reserve: defineRedisScript('queue.reserve', `${MIGRATE}${CLAIM}return claim(KEYS[1], KEYS[2], KEYS[3], ARGV[1], ARGV[2])`),
     // KEYS: list, delayed, reserved of each queue in turn. ARGV: now (ms), claim expiry (ms), the queue to try first (1-based).
-    // Every queue in one call (E199): from the start queue round to the one before it, the first claim wins — `{ queue, member }`.
+    // Every queue in one call: from the start queue round to the one before it, the first claim wins — `{ queue, member }`.
     reserveAny: defineRedisScript(
       'queue.reserve-any',
       `${MIGRATE}${CLAIM}local count = #KEYS / 3
@@ -108,21 +108,14 @@ return 1`,
 export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnection>);
 
 /**
- * Jobs in Redis (`QUEUE_CONNECTION=redis`, E83) — Laravel's model:
+ * Jobs in Redis (`QUEUE_CONNECTION=redis`) — Laravel's model: a list of waiting jobs per queue (`<prefix>queues:<queue>`),
+ * sorted sets of delayed (`:delayed`) and claimed jobs (`:reserved`, scored by when the claim expires), and the names of
+ * the queues (`<prefix>queues`).
  *
- * - `<prefix>queues:<queue>` — a list of waiting jobs, oldest first;
- * - `<prefix>queues:<queue>:delayed` — a sorted set of jobs not yet due (score: when they are), and of released ones;
- * - `<prefix>queues:<queue>:reserved` — a sorted set of claimed jobs (score: when the claim expires = now + `retryAfter`);
- * - `<prefix>queues` — the names of the queues (`reserveAny`, `queue:size`); a queue that ran empty stays in it.
- *
- * A job is the member `<id>:<attempts>:<payload>`. **The claim is one Lua script:** it moves due delayed jobs and
- * expired claims (a worker that died) back to the list, pops the first job, counts the attempt and records the claim —
- * atomically, so two workers never hold the same job. Acknowledging removes exactly the claimed member: once a claim
- * expired and another worker took the job (`attempts` counted up: another member), a late ack, release or fail changes
- * nothing. Times come from the queue's {@link Clock} (passed to the scripts), like Laravel's — not from Redis.
- *
- * Redis cannot join a database transaction: a dispatch inside `connections.transaction()` is pushed after the commit and
- * dropped on a rollback (the `QueueManager` holds it, E85/E107).
+ * A job is the member `<id>:<attempts>:<payload>`. **The claim is one Lua script**, atomic, so two workers never hold the
+ * same job. Acknowledging removes exactly the claimed member: once another worker took the job (`attempts` counted up),
+ * a late ack, release or fail changes nothing. Times come from the queue's {@link Clock} (passed to the scripts), like
+ * Laravel's — not from Redis. A dispatch inside `connections.transaction()` is pushed after the commit, dropped on a rollback.
  */
 export class RedisQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<RedisConnection>;
@@ -162,10 +155,10 @@ export class RedisQueueDriver implements QueueDriver {
   }
 
   /**
-   * Every queue in turn (E199), in ONE script call: Redis keeps a list per queue, so there is no oldest job across them — the
+   * Every queue in turn, in ONE script call: Redis keeps a list per queue, so there is no oldest job across them — the
    * queue after the one this driver took from last is tried first (round robin), then the rest. The queues come from the
    * registry (`SMEMBERS <prefix>queues`), asked again after a second or a round without a job — so an idle round costs two
-   * calls, whatever the number of queues (before: one per queue, plus the registry). Their keys go to the script as `KEYS`.
+   * calls, whatever the number of queues. Their keys go to the script as `KEYS`.
    */
   async reserveAny(except: readonly string[] = []): Promise<ReservedJob | undefined> {
     const [redis, { reserveAny }] = await Promise.all([this.#connection(), loadScripts()]);

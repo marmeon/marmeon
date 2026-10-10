@@ -23,7 +23,7 @@ const APP = fileURLToPath(new URL('./__fixtures__/app/', import.meta.url));
 const silent = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
 /** Where the processes share their cache (the locks) — and the table `ran` they record their runs in. */
-// `file`: the cache in files on this machine (E123) — locks hold for every process of one machine; the table `ran` in SQLite.
+// `file`: the cache in files on this machine — locks hold for every process of one machine; the table `ran` in SQLite.
 type Target = { kind: 'sqlite'; file: string } | { kind: 'file'; file: string; cache: string } | { kind: 'pgsql'; url: string } | { kind: 'redis'; file: string; url: string; prefix: string };
 const kinds = ['sqlite', 'file', ...(PGSQL_URL ? (['pgsql'] as const) : []), ...(REDIS_URL ? (['redis'] as const) : [])] as const;
 
@@ -118,7 +118,7 @@ function kill(processes: readonly SchedulerProcess[]): void {
 function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule:run', processEnv: Record<string, string>): SchedulerProcess {
   const child = spawn(process.execPath, ['--conditions=@marmeon/source', CLI, command], {
     cwd: APP,
-    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
+    // Through the launcher, in this one process: the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
     env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', LOG_LEVEL: 'info', ...processEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -262,12 +262,12 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     }
   });
 
-  // E123 (revises E88): a cache that is not shared is no reason to refuse — a single scheduler runs correctly with it, in
+  // A cache that is not shared is no reason to refuse — a single scheduler runs correctly with it, in
   // production too. The start says where the locks hold.
   it.each([
     ['file', 'onOneServer() locks in CACHE_DRIVER=file: locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis. Tasks: record'],
     ['memory', 'onOneServer() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again.'],
-  ])('starts with onOneServer() on a %s cache, in production too — and warns (E123)', { timeout: 30_000 }, async (driver, warning) => {
+  ])('starts with onOneServer() on a %s cache, in production too — and warns', { timeout: 30_000 }, async (driver, warning) => {
     const directory = mkdtempSync(join(tmpdir(), 'marmeon-schedule-file-'));
     const started: SchedulerProcess[] = [];
     try {

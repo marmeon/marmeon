@@ -47,7 +47,7 @@ function broadcasterOf(backend: LiveBackend, connection?: string, recorder?: Bro
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
 
-describe('live tokens — the answer that declares a channel signs it for its session (E90)', () => {
+describe('live tokens — the answer that declares a channel signs it for its session', () => {
   it('verifies a token for its channel and session only — a rewritten channel or another session is refused', () => {
     const token = tokens.sign(ADA, 'users.1');
     expect(tokens.verify(ADA, 'users.1', token)).toBe(true);
@@ -70,11 +70,11 @@ describe('live tokens — the answer that declares a channel signs it for its se
   });
 });
 
-describe('the stream endpoint — GET /_marmeon/live (E89, E90)', () => {
+describe('the stream endpoint — GET /_marmeon/live', () => {
   const request = (query: string, headers: Record<string, string> = {}) => ({ request: new Request(`http://app.test/_marmeon/live?${query}`, { headers }) }) as never;
   const pair = (channel: string, scope = ADA) => `c=${encodeURIComponent(`${tokens.sign(scope, channel)}.${channel}`)}`;
 
-  it('opens a stream for channels signed for this session — with the headers of E104', async () => {
+  it('opens a stream for channels signed for this session — with the stream headers', async () => {
     const hub = hubOf();
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
     const response = await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}&${pair('dashboard.sign-ins')}`));
@@ -178,7 +178,7 @@ describe('the stream endpoint — GET /_marmeon/live (E89, E90)', () => {
   });
 });
 
-describe('the stream — hints, never data (E89, E104)', () => {
+describe('the stream — hints, never data', () => {
   it('says hello with each channel’s sequence, then a hint per refresh: { channel, only, seq } — only to followers of the channel', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
@@ -335,7 +335,7 @@ describe('the stream — hints, never data (E89, E104)', () => {
     expect(hub.size).toBe(0);
   });
 
-  it('the server began closing: a stream asked for afterwards is refused (503) — none opens that would hold server.close() (W9 step 4)', async () => {
+  it('the server began closing: a stream asked for afterwards is refused (503) — none opens that would hold server.close()', async () => {
     const closing = new AbortController();
     const hub = hubOf(new MemoryLiveBackend(), {}, closing.signal);
     closing.abort();
@@ -375,7 +375,7 @@ describe('the stream — hints, never data (E89, E104)', () => {
   });
 });
 
-describe('a channel whose counter started again (its key expired, was evicted or flushed) — W9 step 4', () => {
+describe('a channel whose counter started again (its key expired, was evicted or flushed)', () => {
   /** A backend whose sequences can be forgotten — what Redis does after a day without hints (TTL), an eviction or a flush. */
   function forgetful() {
     const memory = new MemoryLiveBackend();
@@ -421,7 +421,7 @@ describe('a channel whose counter started again (its key expired, was evicted or
   });
 });
 
-describe('the memory backend — bounded like Redis (W9 step 4)', () => {
+describe('the memory backend — bounded like Redis', () => {
   it('forgets the channel hinted longest ago beyond maxChannels, and a channel a day after its last hint', async () => {
     let now = 0;
     const backend = new MemoryLiveBackend({ maxChannels: 3, now: () => now });
@@ -451,7 +451,7 @@ describe('the memory backend — bounded like Redis (W9 step 4)', () => {
   });
 });
 
-describe('the Broadcaster — after the commit, never in a rollback (E107)', () => {
+describe('the Broadcaster — after the commit, never in a rollback', () => {
   const owner = {};
 
   it('inside a transaction the hint goes out once it committed — not before', async () => {
@@ -505,7 +505,7 @@ describe('the Broadcaster — after the commit, never in a rollback (E107)', () 
   });
 });
 
-describe('a heartbeat keeps a stream alive behind a proxy with an idle timeout (E104)', () => {
+describe('a heartbeat keeps a stream alive behind a proxy with an idle timeout', () => {
   /** A TCP proxy that cuts a connection silent for `idle` ms — as nginx, a load balancer or a NAT does. */
   async function proxy(target: number, idle: number): Promise<{ port: number; cut: () => number; close: () => Promise<void> }> {
     let cuts = 0;
@@ -539,7 +539,7 @@ describe('a heartbeat keeps a stream alive behind a proxy with an idle timeout (
     });
     await new Promise<void>((resolve) => app.listen(0, '127.0.0.1', resolve));
     cleanups.push(() => new Promise<void>((resolve) => (app.closeAllConnections(), app.close(() => resolve()))));
-    // Idle timeout 400 ms, heartbeat 150 ms (the plan's 2 s / 1 s, scaled down five-fold): alive after 2 s?
+    // Idle timeout 400 ms, heartbeat 150 ms (2 s / 1 s scaled down five-fold): alive after 2 s?
     const through = await proxy((app.address() as AddressInfo).port, 400);
     cleanups.push(through.close);
     const reader = new LiveStreamReader(await fetch(`http://127.0.0.1:${through.port}/`));
@@ -559,7 +559,7 @@ describe('a heartbeat keeps a stream alive behind a proxy with an idle timeout (
   }, 10_000);
 });
 
-describe.runIf(REDIS_URL)('the redis backend — every process hears every hint (E87, E89)', () => {
+describe.runIf(REDIS_URL)('the redis backend — every process hears every hint', () => {
   /** A process of the app: its own Redis connections (its own sockets), backend and hub. */
   function processOf(prefix: string) {
     const connections = new RedisConnections({ connections: { default: { url: REDIS_URL!, prefix } }, logger: silent });

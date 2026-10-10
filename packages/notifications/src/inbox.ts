@@ -3,16 +3,9 @@ import type { CursorEncrypter, CursorPaginated } from '@marmeon/database';
 import type { NotificationStore, StoredNotification } from './store.ts';
 
 /**
- * A recipient's notifications of the `database` channel — **always bound to the recipient** (E92): every method takes
- * whose notifications it reads or changes, and an id of somebody else's notification finds nothing.
- *
- * ```ts
- * const me = { type: 'user', id: ctx.user.id } as const;
- * const unread = await this.#inbox.count(me);
- * if (!(await this.#inbox.markRead(me, ctx.params.notification))) abort(404);   // someone else's id: 404, nothing changed
- * ```
- *
- * The recipient comes from who is signed in — never from the request's input.
+ * A recipient's notifications of the `database` channel — **always bound to the recipient**: every method takes
+ * whose notifications it reads or changes, and an id of somebody else's notification finds nothing. The recipient comes
+ * from who is signed in — never from the request's input. See `docs/notifications.md#the-inbox`.
  */
 export class Inbox {
   readonly #store: NotificationStore;
@@ -66,7 +59,7 @@ export class Inbox {
     return this.#store.markAllRead(recipient);
   }
 
-  /** Deletes all of the recipient's notifications — how many: the recipient is gone (a deleted account, E203). */
+  /** Deletes all of the recipient's notifications — how many: the recipient is gone (a deleted account). */
   deleteAll(recipient: RecipientRef): Promise<number> {
     return this.#store.deleteAll(recipient);
   }

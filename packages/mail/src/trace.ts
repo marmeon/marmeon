@@ -5,8 +5,8 @@ import type { MailMessage } from './message.ts';
 const sends = channels.tracing('mail.send');
 
 /**
- * Runs `send` on the `mail.send` channel while something listens (E118) — the recipients, subject and body filled in from
- * the composed message (raw: the devtools redact it, E125). Without a subscriber (or an app) it just runs.
+ * Runs `send` on the `mail.send` channel while something listens — the recipients, subject and body filled in from
+ * the composed message (raw: the devtools redact it). Without a subscriber (or an app) it just runs.
  */
 export function traceMail(app: Application | undefined, mailable: string, mode: MailSendMessage['mode'], send: () => Promise<MailMessage>): Promise<MailMessage> {
   if (!app || !sends.hasSubscribers) return send();

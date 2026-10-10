@@ -9,13 +9,9 @@ import { describeIssues, NotificationDataError } from './validate.ts';
 export type QueuedNotificationPayload = v.InferOutput<typeof SendQueuedNotification.schema>;
 
 /**
- * The framework job behind `notifications.send()` (E92): one notification for one recipient. **Encrypted** (E105) — a
- * notification's data is the app's and may say more than IDs.
- *
- * In the worker, in the job's scope: the class by its name, the data checked again — one that no longer matches its
- * schema after a deploy fails at once (no retries that cannot succeed) —, then the delivery (`NotificationDeliverer`). A
- * recipient that is gone discards the job; a channel the app does not have fails it. Three attempts by default
- * (`static queue.tries` of the notification); a retry after a committed delivery finds its row and stops.
+ * The framework job behind `notifications.send()`: one notification for one recipient. **Encrypted** — a
+ * notification's data is the app's and may say more than IDs. Data that no longer matches its schema fails at once, a
+ * recipient that is gone discards the job, and a retry after a committed delivery finds its row and stops.
  */
 export class SendQueuedNotification {
   static readonly job = 'marmeon.notification';
@@ -44,7 +40,7 @@ export class SendQueuedNotification {
     // Renamed or removed by a deploy — or this worker runs an older version (a rolling deploy): retried by its tries.
     if (!notification) throw new NotificationError(`No notification "${payload.notification}" in this app — was it renamed or removed?`);
     const result = await notification.schema['~standard'].validate(payload.data);
-    // A deploy changed the schema: it never will match — failed at once, like a job's payload (E84).
+    // A deploy changed the schema: it never will match — failed at once, like a job's payload.
     if (result.issues) {
       return job.fail(new NotificationDataError(`The data of ${payload.notification} no longer matches its static schema: ${describeIssues(result.issues)}`, result.issues));
     }

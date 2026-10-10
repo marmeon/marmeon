@@ -31,20 +31,10 @@ export interface Delivery {
 }
 
 /**
- * A way to reach a recipient — the open channel contract (E92, E93). `mail` and `database` come with this package;
- * others with theirs (`live` with @marmeon/live, Web Push with @marmeon/pwa) — each adds its name to
- * `interface NotificationChannelMap` and registers itself at boot:
- *
- * ```ts
- * container.make(NotificationChannels).add('live', (c) => new LiveChannel(c.make(Broadcaster)));
- * ```
- *
- * A delivery's channels run one after the other inside one transaction of the notifications' connection (E107): what
- * a channel writes or queues there commits with the `notifications` row — or not at all. A channel that talks to the
- * outside world itself (a push service) should queue a job of its own instead, so a retry repeats only that.
- *
- * **Web Push (E93):** a push channel sends a **generic** text — "You have a new notification" — and the details load
- * after the click, behind authentication: a notification's text shows on a lock screen and passes the push service.
+ * A way to reach a recipient: a package or an app adds its name to `NotificationChannelMap` and registers it at boot.
+ * A delivery's channels run inside one transaction: what a channel writes or queues commits with the `notifications`
+ * row. A push channel sends a **generic** text — a notification's text shows on a lock screen and passes the push
+ * service. See `docs/notifications.md#a-channel-of-your-own`.
  */
 export interface NotificationChannel {
   deliver(delivery: Delivery): Promise<void>;
@@ -107,9 +97,9 @@ export type QueueMail = (mail: NotificationMail, options: { readonly queue?: str
 
 /**
  * The `mail` channel: `toMail(recipient, data, t)` composes the mail in the recipient's language, and it is **queued**
- * (`mailer.queue`, E105: composed now, encrypted, sent by a worker — `marmeon.mail`, 5 tries) on the notification's
- * queue. A mail server that is down retries the mail alone — never the notification's other channels. With a database
- * queue on the same connection the queued mail is part of the delivery's transaction.
+ * (`mailer.queue`: composed now, encrypted, sent by a worker) on the notification's queue. A mail server that is down
+ * retries the mail alone — never the notification's other channels. With a database queue on the same connection the
+ * queued mail is part of the delivery's transaction.
  */
 export class MailChannel implements NotificationChannel {
   readonly #queue: QueueMail;

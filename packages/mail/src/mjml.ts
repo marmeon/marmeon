@@ -1,27 +1,13 @@
 import { Html, interpolate, textFromHtml } from './html.ts';
 import type { MailContent } from './message.ts';
 
-/**
- * MJML markup — what the `mjml` template returns. MJML compiles to the table layouts and Outlook
- * conditionals that mail clients need; React or Vue markup is made for browsers, not for them.
- */
+/** MJML markup — what the `mjml` template returns; it compiles to the table layouts and Outlook conditionals mail clients need. */
 export class Mjml extends Html {}
 
 /**
- * A mail in MJML, every interpolated value escaped (like `html`), nested `mjml`/`html` kept — a
- * layout can be a function returning `mjml`:
- *
- * ```ts
- * content() {
- *   return mjml`<mjml><mj-body><mj-section><mj-column>
- *     <mj-text>Hello ${this.#user.name}</mj-text>
- *     <mj-button href="${this.#url}">Choose a new password</mj-button>
- *   </mj-column></mj-section></mj-body></mjml>`;
- * }
- * ```
- *
- * Compiled by `mjml` (an optional peer: `pnpm add mjml@^5`) with strict validation — a mistyped tag is
- * an error, not a silently missing part. The text version is derived from the compiled HTML.
+ * A mail in MJML: every interpolated value escaped (like `html`), nested `mjml`/`html` kept. Compiled by `mjml` (an
+ * optional peer: `pnpm add mjml@^5`) with strict validation — a mistyped tag is an error, not a silently missing part.
+ * See `docs/mail.md#writing-mails`.
  */
 export function mjml(strings: TemplateStringsArray, ...values: unknown[]): Mjml {
   let out = strings[0]!;
@@ -48,7 +34,7 @@ export async function fromMjml(source: Mjml, options: { text?: string } = {}): P
   return { html: result.html, text: options.text ?? textFromHtml(result.html) };
 }
 
-/** What to install for `` mjml`…` `` templates — an optional peer (E198: a renderer, not the transport; ≈ 50 MB with its dependencies). */
+/** What to install for `` mjml`…` `` templates — an optional peer (a renderer, not the transport; ≈ 50 MB with its dependencies). */
 export const MJML_INSTALL = 'pnpm add mjml@^5';
 
 /** Loads the compiler, or says how to install it. Other failures (a broken install) pass through. `load` is replaced in tests. */

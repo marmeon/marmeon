@@ -58,14 +58,14 @@ describe('cron expressions', () => {
 describe('due times across daylight saving time (Europe/Berlin)', () => {
   const berlin = 'Europe/Berlin';
 
-  it('runs daily().at("02:30") exactly once on the day the clocks go forward (29.03.) — right after the gap', () => {
+  it('runs daily().at("02:30") exactly once on the day the clocks go forward (29 March) — right after the gap', () => {
     expect(everyMinuteOf('30 2 * * *', '2026-03-29', berlin)).toEqual(['2026-03-29T03:00+02:00[Europe/Berlin]']);
     // The days around it: at 02:30, as always.
     expect(everyMinuteOf('30 2 * * *', '2026-03-28', berlin)).toEqual(['2026-03-28T02:30+01:00[Europe/Berlin]']);
     expect(everyMinuteOf('30 2 * * *', '2026-03-30', berlin)).toEqual(['2026-03-30T02:30+02:00[Europe/Berlin]']);
   });
 
-  it('runs daily().at("02:30") exactly once on the day the clocks go back (25.10.) — in the first pass of the hour', () => {
+  it('runs daily().at("02:30") exactly once on the day the clocks go back (25 October) — in the first pass of the hour', () => {
     expect(everyMinuteOf('30 2 * * *', '2026-10-25', berlin)).toEqual(['2026-10-25T02:30+02:00[Europe/Berlin]']);
   });
 

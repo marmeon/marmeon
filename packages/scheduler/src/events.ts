@@ -1,7 +1,7 @@
 import type { RunReason, SkipReason } from './scheduler.ts';
 
 /**
- * What every scheduler event says about its run (E127) — like Laravel's `ScheduledTask*` events. They go through the
+ * What every scheduler event says about its run — like Laravel's `ScheduledTask*` events. They go through the
  * app's `EventDispatcher`: listen to one (`listen(ScheduledTaskFailed, AlertOnFailedTask)`) or to all of them
  * (`listen(ScheduledTaskEvent, …)`); tests see them in `app.events`.
  *

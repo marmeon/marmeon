@@ -4,7 +4,7 @@ import type { Broadcaster } from './broadcaster.ts';
 declare module '@marmeon/notifications' {
   interface NotificationChannelMap {
     /**
-     * A hint on the recipient's notifications channel (W6.10): `notificationsChannel(recipient)` — the bell and the list of a
+     * A hint on the recipient's notifications channel: `notificationsChannel(recipient)` — the bell and the list of a
      * page that follows it reload (no polling). Needs no method of the notification: it says only that something arrived.
      */
     live: {};
@@ -17,7 +17,7 @@ export function notificationsChannel(recipient: { readonly type: string; readonl
 }
 
 /**
- * The notifications' `live` channel (W6.10, E92): refreshes the recipient's notifications channel — after the delivery's
+ * The notifications' `live` channel: refreshes the recipient's notifications channel — after the delivery's
  * transaction committed (its `database` row first: a page that reloads finds it). A hint without `only`: each follower
  * reloads what it follows the channel for (`only: ['bell']` in the layout, `['notifications']` on the list).
  */

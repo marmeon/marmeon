@@ -56,7 +56,7 @@ function input(root: string, args: string[] = [], options: Record<string, unknow
 }
 
 describe('the queue provider', () => {
-  it('adds the queue commands and a worker for `marmeon dev` (E101) — none with the sync connection', async () => {
+  it('adds the queue commands and a worker for `marmeon dev` — none with the sync connection', async () => {
     await using application = await app();
     const commands = application.container.make(CommandRegistry).all().map((command) => command.command);
     expect(commands).toEqual(
@@ -90,7 +90,7 @@ describe('the queue commands', () => {
     expect(lines).toEqual([expect.stringMatching(/^✗ The queue connection "database" gives a claimed job 30s \(retryAfter\).*test\.ping \(timeout 60s\)/)]);
   });
 
-  it('queue:work without --queue (or with --queue=*) takes every queue, oldest first; --queue only narrows it down (E199)', async () => {
+  it('queue:work without --queue (or with --queue=*) takes every queue, oldest first; --queue only narrows it down', async () => {
     await using application = await app();
     const queue = application.container.make(Queue);
     const connections = application.container.make(QueueConnections);
@@ -177,7 +177,7 @@ describe('the queue commands', () => {
     expect(flushed.lines).toEqual(['✓ Deleted 1 failed job.']);
   });
 
-  it("the apps' and the starter's jobs tables are the stub's: made with the fair claim's index, no migration adds it later (E199, E216)", () => {
+  it("the apps' and the starter's jobs tables are the stub's: made with the fair claim's index, no migration adds it later", () => {
     const stub = readFileSync(new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url), 'utf8');
     const index = "      // A worker without --queue claims the oldest due job of every queue in one statement — this index serves it.\n      table.index(['reserved_at', 'available_at', 'id']);\n";
     expect(stub, 'make:queue-table writes a new table with the index').toContain(index);
@@ -210,7 +210,7 @@ describe('the queue commands', () => {
     );
   });
 
-  it('make:queue-table writes the migration of jobs and failed_jobs into the system module (E96)', async () => {
+  it('make:queue-table writes the migration of jobs and failed_jobs into the system module', async () => {
     const root = tempDir('marmeon-queue-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
@@ -221,7 +221,7 @@ describe('the queue commands', () => {
     const contents = readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8');
     expect(contents).toContain("schema.create('jobs'");
     expect(contents).toContain("schema.create('failed_jobs'");
-    // The index of the fair claim (E199): a worker without --queue takes the oldest due job of every queue through it.
+    // The index of the fair claim: a worker without --queue takes the oldest due job of every queue through it.
     expect(contents).toContain("table.index(['reserved_at', 'available_at', 'id']);");
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [system]');
     expect(lines.at(-1)).toBe('Then: marmeon migrate');

@@ -12,7 +12,7 @@ export type JobPayloadArgument<J extends JobClass> = {} extends JobInput<J> ? [p
  */
 export interface Schedule {
   /**
-   * Queues a job when due — `s.job(PruneJob).daily()`. Unique until a worker starts it (E88): while the one queued last
+   * Queues a job when due — `s.job(PruneJob).daily()`. Unique until a worker starts it: while the one queued last
    * time still waits (the workers are behind or down), the next is not queued — no pile of N waiting jobs.
    */
   job<J extends JobClass>(job: J & CheckJob<J>, ...payload: JobPayloadArgument<J>): UnscheduledTask<'job'>;
@@ -30,18 +30,8 @@ export interface ScheduleDefinition {
 }
 
 /**
- * A module's scheduled tasks — `schedule` in `defineModule` (E88):
- *
- * ```ts
- * export const schedule = defineSchedule((s) => {
- *   s.command('auth:prune-tokens').daily().at('03:10').timezone('Europe/Berlin').onOneServer();
- *   s.command('session:prune').everyFifteenMinutes().withoutOverlapping();
- *   s.job(RebuildStatsJob, { userId: 1 }).hourly();
- *   s.call(PruneTemporaryUploads).hourly();
- * });
- * ```
- *
- * `marmeon schedule:work` runs them (`marmeon dev` starts it), `marmeon schedule:run` from a system cron every minute.
+ * A module's scheduled tasks — `schedule` in `defineModule`. `marmeon schedule:work` runs them (`marmeon dev` starts it),
+ * or `marmeon schedule:run` from a system cron every minute. See `docs/scheduling.md#defining-tasks`.
  */
 export function defineSchedule(define: (s: Schedule) => void): ScheduleDefinition {
   if (typeof define !== 'function') throw new ScheduleError('defineSchedule() takes a function: defineSchedule((s) => { s.command(…).daily(); }).');

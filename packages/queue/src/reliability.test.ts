@@ -22,7 +22,7 @@ import {
   type JobPayload,
 } from './index.ts';
 
-// W6 step 4 (E83, E85, E98): unique jobs, chains, job.once, withoutOverlapping and job events — on every driver that
+// Unique jobs, chains, job.once, withoutOverlapping and job events — on every driver that
 // keeps jobs (database on SQLite and Postgres, redis), with the cache the app would use there.
 
 class Seen {
@@ -133,7 +133,7 @@ class RecordJobEvents {
 
 type TestApp = Application & { seen: Seen; queue: Queue; target: SharedTarget; clock: TestClock; work(queues?: string[] | 'every queue'): Promise<void> };
 
-/** The cache a target's app would use for the queue's locks: memory beside SQLite (a shared file cannot lock inside a transaction, E108). */
+/** The cache a target's app would use for the queue's locks: memory beside SQLite (a shared file cannot lock inside a transaction). */
 function cacheFor(target: SharedTarget): Record<string, string> {
   return { CACHE_DRIVER: target.kind === 'sqlite' ? 'memory' : target.kind === 'pgsql' ? 'database' : 'redis' };
 }
@@ -260,7 +260,7 @@ describe.each(processKinds)('unique jobs on %s', (kind) => {
   });
 });
 
-describe.each(processKinds)('dispatching inside connections.transaction() on %s (E85, E107)', (kind) => {
+describe.each(processKinds)('dispatching inside connections.transaction() on %s', (kind) => {
   it('queues nothing when the transaction rolls back, and one job with the commit — as another process sees it', async () => {
     await withApp(kind, async (app) => {
       const connections = app.container.make(Connections);
@@ -441,8 +441,8 @@ describe.each(processKinds)('job.once, withoutOverlapping and job events on %s',
   });
 });
 
-describe.each(processKinds)('which queues a worker takes on %s (E199)', (kind) => {
-  // The W8.10 trap: a full default queue, one mail behind it, more default jobs after it.
+describe.each(processKinds)('which queues a worker takes on %s', (kind) => {
+  // A full default queue, one mail behind it, more default jobs after it.
   async function fill(app: TestApp): Promise<void> {
     for (let n = 1; n <= 20; n++) await app.queue.dispatch(NoteJob, { n });
     await app.queue.dispatch(NoteJob, { n: 100 }, { queue: 'mail' });
@@ -474,7 +474,7 @@ describe.each(processKinds)('which queues a worker takes on %s (E199)', (kind) =
 });
 
 describe('the queue beyond one driver', () => {
-  it('works the listed queues first with --queue=default,* — then every other queue, oldest first (E199)', async () => {
+  it('works the listed queues first with --queue=default,* — then every other queue, oldest first', async () => {
     await withApp('sqlite', async (app) => {
       await app.queue.dispatch(NoteJob, { n: 1 }, { queue: 'reports' });
       await app.queue.dispatch(NoteJob, { n: 2 }, { queue: 'mail' });
@@ -484,7 +484,7 @@ describe('the queue beyond one driver', () => {
     });
   });
 
-  it('a unique dispatch inside a transaction with a cache on the same SQLite file fails loudly (E108), outside it works', async () => {
+  it('a unique dispatch inside a transaction with a cache on the same SQLite file fails loudly, outside it works', async () => {
     await withApp(
       'sqlite',
       async (app) => {
@@ -521,7 +521,7 @@ describe('the queue beyond one driver', () => {
   });
 });
 
-describe('QueueFake (W6 step 4)', () => {
+describe('QueueFake', () => {
   async function withFake(test: (app: TestApp & { fake: QueueFake }) => Promise<void>): Promise<void> {
     await withApp('sqlite', async (app) => {
       const fake = new QueueFake(app.container);
@@ -570,5 +570,5 @@ describe('QueueFake (W6 step 4)', () => {
   });
 });
 
-if (!PGSQL_URL) describe.skip('W6 step 4 on pgsql (set MARMEON_TEST_PGSQL_URL: pnpm test:pgsql)', () => it('runs', () => {}));
-if (!REDIS_URL) describe.skip('W6 step 4 on redis (set MARMEON_TEST_REDIS_URL: pnpm test:redis)', () => it('runs', () => {}));
+if (!PGSQL_URL) describe.skip('unique jobs, chains and job.once on pgsql (set MARMEON_TEST_PGSQL_URL: pnpm test:pgsql)', () => it('runs', () => {}));
+if (!REDIS_URL) describe.skip('unique jobs, chains and job.once on redis (set MARMEON_TEST_REDIS_URL: pnpm test:redis)', () => it('runs', () => {}));

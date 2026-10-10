@@ -26,7 +26,7 @@ interface QueuedTarget {
 }
 
 /**
- * The app's queued listeners (E86), by event name and listener name — checked at startup: every event with a queued
+ * The app's queued listeners, by event name and listener name — checked at startup: every event with a queued
  * listener can be queued (`static event`, `static schema`), names are unique, `static queue` holds sensible settings.
  *
  * A listener is known by its class name within its event: renaming a queued listener's class while jobs of it wait
@@ -108,8 +108,8 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
 }
 
 /**
- * The framework job behind every queued listener (E86): the event's name, the listener's name and the event's payload.
- * Encrypted (E105) — an event's payload is the app's, and may carry more than IDs.
+ * The framework job behind every queued listener: the event's name, the listener's name and the event's payload.
+ * Encrypted — an event's payload is the app's, and may carry more than IDs.
  */
 export class CallQueuedListener {
   static readonly job = 'marmeon.listener';
@@ -136,10 +136,10 @@ export class CallQueuedListener {
 }
 
 /**
- * Queues queued listeners (E86) — the app's `ListenerQueue`: the event checked against its schema now (a mismatch is the
- * dispatcher's error), as JSON, in a `marmeon.listener` job on the listener's queue — dispatched like any job (E107,
- * E109): inside a transaction it exists only with the commit (a database queue writes it into the transaction itself,
- * other connections hold it until the commit), never after a rollback.
+ * Queues queued listeners — the app's `ListenerQueue`: the event checked against its schema now (a mismatch is the
+ * dispatcher's error), as JSON, in a `marmeon.listener` job on the listener's queue — dispatched like any job: inside a
+ * transaction it exists only with the commit (a database queue writes it into the transaction itself, other connections
+ * hold it until the commit), never after a rollback.
  */
 export class QueueListenerDispatcher implements ListenerQueue {
   readonly #queue: () => Queue;
@@ -167,7 +167,7 @@ export class QueueListenerDispatcher implements ListenerQueue {
       ...(delay === undefined ? {} : { delay }),
       [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: typeof backoff === 'number' ? [backoff] : backoff }) },
     };
-    // The normal dispatch path (E109): in a transaction, part of it — atomic with a database queue.
+    // The normal dispatch path: in a transaction, part of it — atomic with a database queue.
     await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.name, payload } as never, options);
   }
 }

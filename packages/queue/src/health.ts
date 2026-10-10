@@ -3,7 +3,7 @@ import { QueueConfig } from './config.ts';
 import { Queue } from './queue.ts';
 
 /**
- * Readiness (E126): the default connection's driver answers — the size of its default queue, read from the jobs table or
+ * Readiness: the default connection's driver answers — the size of its default queue, read from the jobs table or
  * Redis (`sync` has nothing to reach). Registered by the `QueueServiceProvider` for `/up/ready`.
  */
 export class QueueHealthCheck implements HealthCheck {
