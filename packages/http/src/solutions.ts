@@ -5,7 +5,7 @@ const UNDEFINED_ROUTE = /^Route \[([^\]]+)\] is not defined\.$/;
 const MISSING_PAGE = /^\[marmeon:R2\] Page \[([^\]]+)\] not found/;
 
 /**
- * Solutions for HTTP errors (E130): a route name that is not defined ("did you mean" from the app's routes) and a page whose
+ * Solutions for HTTP errors: a route name that is not defined ("did you mean" from the app's routes) and a page whose
  * view is missing (R2). Text only — the error page shows them in development.
  */
 export const httpSolutions = defineSolutions([

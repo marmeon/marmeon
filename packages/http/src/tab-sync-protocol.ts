@@ -1,5 +1,5 @@
 /**
- * The tab-sync protocol (W8 step 8, E148, E165) — what the `tabSync` feature's chunk and the server share. A module of its own
+ * The tab-sync protocol — what the `tabSync` feature's chunk and the server share. A module of its own
  * (like `live-protocol.ts`): the core's first download carries none of it.
  *
  * - Every page object carries the session's **epoch** (`PageObject.epoch`): an opaque value (an HMAC keyed from `APP_KEY`) over
@@ -11,7 +11,7 @@
  *   writes and extends no session). Asked when a tab becomes visible again, comes back from the back/forward cache, or hears
  *   another epoch.
  * - Every request of a tab names its document ({@link DOCUMENT_HEADER}): a flash message is bound to the document whose request
- *   flashed it (E165) — another tab's request never takes it.
+ *   flashed it — another tab's request never takes it.
  */
 
 /** Where the server says the current epoch. */

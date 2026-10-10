@@ -3,12 +3,9 @@ import { resolveProp, type SharedValue } from './props.ts';
 import { checkedChannel, type LiveDeclaration, type LiveOnly } from './live.ts';
 
 /**
- * The shared props of the current request (Inertia's `share`). Scoped: middleware
- * shares, the response factory merges the values into every page it renders.
- *
- * A function is evaluated lazily — only when a page is rendered that includes it, never for redirects, JSON or
- * a partial reload that asks for other props — and at most once per request. The wrappers of page props work
- * here too: `share('errors', always(() => …))` is sent with every partial reload.
+ * The shared props of the current request (Inertia's `share`), scoped: middleware shares, the response factory merges the
+ * values into every page it renders. A function is evaluated only when a page that includes it renders, at most once per
+ * request; the wrappers of page props work here too. See docs/responses.md#shared-props.
  *
  * ```ts
  * shared.share('auth', () => ({ user: users.find(session.get('user_id') ?? '') ?? null }));
@@ -27,7 +24,7 @@ export class SharedData {
   }
 
   /**
-   * A live channel every page follows (W6.10) — for shared props, which every page's layout shows: the bell's count reloads
+   * A live channel every page follows — for shared props, which every page's layout shows: the bell's count reloads
    * when the server hints that the signed-in user's notifications changed.
    *
    * ```ts
@@ -37,8 +34,7 @@ export class SharedData {
    * }, { only: ['bell'] });
    * ```
    *
-   * The channel (or a function of the request that says which — evaluated only when a page renders) is signed into every
-   * page this request renders (never into an island or a layer, which show no layout). Needs @marmeon/live.
+   * Signed into every page this request renders — never into an island or a layer, which show no layout. Needs @marmeon/live.
    */
   live<const O extends readonly string[] = readonly []>(
     channel: string | (() => string | undefined | Promise<string | undefined>),

@@ -5,7 +5,7 @@ import { SessionEpoch } from './session-epoch.ts';
 const keyOf = (key: string) => Buffer.from(key.slice('base64:'.length), 'base64');
 const epochs = (key = generateKey()) => new SessionEpoch({ key: keyOf(key), previousKeys: [] } as unknown as EncryptionConfig);
 
-describe('SessionEpoch (W8 step 8, E165)', () => {
+describe('SessionEpoch', () => {
   it('the same input, the same epoch — opaque, short, base64url', () => {
     const key = generateKey();
     const epoch = epochs(key).of('scope-generation\nuser-4711', 'de');

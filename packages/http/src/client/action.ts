@@ -1,5 +1,5 @@
 /**
- * Actions (E59), UI-free: requests that do not navigate — a like, removing a list item, a toggle. Typed by route name in the
+ * Actions, UI-free: requests that do not navigate — a like, removing a list item, a toggle. Typed by route name in the
  * adapter (`useAction`); here, by URL and method. An action never touches the history or the page cache: what it changes on
  * screen is an optimistic patch (rolled back when it fails) and the props it reloads when it succeeded.
  *
@@ -40,7 +40,7 @@ export interface ActionOptions {
   /** The body — JSON, or multipart when it is (or holds) a file. For a GET, the query string. */
   data?: Record<string, unknown> | FormData;
   headers?: Record<string, string>;
-  /** The route's name: while under way, the action is listed in `navigator.submissions` by it (ghost rows, E59 model 2). */
+  /** The route's name: while under way, the action is listed in `navigator.submissions` by it (ghost rows). */
   name?: string;
   /** What the listing shows of it — default `data`. */
   input?: unknown;
@@ -48,7 +48,7 @@ export interface ActionOptions {
   key?: string;
   /** Aborts the action (it ends `cancelled`, its patches rolled back). */
   signal?: AbortSignal;
-  /** Patches shown at once (model 1): rolled back unless it succeeds; reconciled with `reload` when it does. */
+  /** Patches shown at once: rolled back unless it succeeds; reconciled with `reload` when it does. */
   optimistic?: OptimisticUpdate | readonly OptimisticUpdate[];
   /**
    * After it succeeded: reload these — some props of the page or a layer, an island — in the background. A patch on a target
@@ -57,11 +57,11 @@ export interface ActionOptions {
   reload?: Reloading | readonly Reloading[];
   /** `'visit'`: when its controller redirected, go there (a visit) after it ended. Default: report it only. */
   onRedirect?: 'visit';
-  /** Ask first (E64) — a no sends nothing: the action ends `cancelled`, nothing optimistic shows. */
+  /** Ask first — a no sends nothing: the action ends `cancelled`, nothing optimistic shows. */
   confirm?: Confirm;
 }
 
-/** An action (or a form's visit) under way, as `navigator.submissions` lists it — what ghost rows are made of (E59 model 2). */
+/** An action (or a form's visit) under way, as `navigator.submissions` lists it — what ghost rows are made of. */
 export interface Submission {
   readonly id: number;
   /** The route's name, when the adapter gave it. */
@@ -85,9 +85,9 @@ export interface ActionHost {
   visit(url: string): Promise<unknown>;
   /** The request of an action: URL, headers (XSRF for a write) and body. */
   request(target: URL, method: ActionMethod, data: ActionOptions['data']): { url: string; headers: Record<string, string>; body?: BodyInit };
-  /** Asks the user (E64): whether to send it. */
+  /** Asks the user: whether to send it. */
   confirm(confirm: Confirm): Promise<boolean>;
-  /** The flash messages its answer delivered (E60): they fire, once each. */
+  /** The flash messages its answer delivered: they fire, once each. */
   flash(messages: readonly FlashMessage[]): void;
 }
 
@@ -174,7 +174,7 @@ export class Actions {
     const target = new URL(url, this.#host.href);
     // The XSRF token goes with a write: never to another site.
     if (target.origin !== new URL(this.#host.href).origin) throw new Error(`An action goes to this site, not to ${target.origin} (${url}).`);
-    // Asked first (E64): a no sends nothing — no request, no patch, no listing.
+    // Asked first: a no sends nothing — no request, no patch, no listing.
     if (options.confirm !== undefined && !(await this.#host.confirm(options.confirm))) return CANCELLED;
     if (this.#host.left || signal?.aborted) return CANCELLED;
 
@@ -201,7 +201,7 @@ export class Actions {
       if (method !== 'get') this.#host.changed();
       // Its patches reconciled with the server's props — the submission stays listed until they are (no gap for a ghost row).
       await reconcile(applied, listOf(options.reload));
-      // Its flash messages (E60) — delivered with its answer, fired once what it reloads is on screen.
+      // Its flash messages — delivered with its answer, fired once what it reloads is on screen.
       if (!this.#host.left) this.#host.flash(outcome.flash);
       if (outcome.kind === 'redirect' && onRedirect === 'visit' && !this.#host.left) await this.#host.visit(outcome.redirect);
       return outcome;
@@ -245,7 +245,7 @@ export class Actions {
       this.#host.leaveFor(location);
       return CANCELLED;
     }
-    // The flash messages it took (E60): with the outcome — and, for a failure, fired as they are.
+    // The flash messages it took: with the outcome — and, for a failure, fired as they are.
     const flash = flashOfResponse(response);
     if (!response.ok && response.status !== 204) this.#host.flash(flash);
     const redirect = response.headers.get(ACTION_REDIRECT_HEADER);

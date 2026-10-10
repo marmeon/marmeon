@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/people" }
 /**
- * Query state in the client core (E55), driven by a plain-DOM adapter: the adapter renders `state.value()` and calls
+ * Query state in the client core, driven by a plain-DOM adapter: the adapter renders `state.value()` and calls
  * `set()` — debouncing, partial reloads, history and Back/Forward are the core's.
  */
-// happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there (E184).
+// happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there.
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../page.ts';

@@ -1,5 +1,5 @@
 /**
- * View transitions (E185, W9 step 8): a page change animates in `document.startViewTransition` — the page loaded first, only its
+ * View transitions: a page change animates in `document.startViewTransition` — the page loaded first, only its
  * swap in the update, the history entry and the scroll after it is in; types for the direction and the app's own. Skipped under
  * reduced motion, in a hidden tab, without the API; never two (an adapter that starts them itself gets the types instead). Runs on
  * the Navigation API's path and on the History fallback's.
@@ -11,7 +11,7 @@ import { loadViewTransitions } from './lazy.ts';
 import { Navigator, type ViewTransitionOption } from './navigation.ts';
 import { boot, FakeWindow, historyFeatures, ORIGIN, page, pageResponse, PATHS, settle } from './test-window.ts';
 
-/** A layer's page object (E53). */
+/** A layer's page object. */
 const layer = (url: string): PageObject => ({ ...page(url, {}, 'users/Edit'), layer: { key: 'users/Edit', base: '/a' } });
 
 /** A tab whose server answers every URL with a page of that path (a layer for `/edit`) — the document has view transitions. */
@@ -33,7 +33,7 @@ const settled = async (rounds = 6) => {
 
 const typesOf = (win: FakeWindow) => win.transitions.map((transition) => transition.types.join(' '));
 
-describe.each(PATHS)('view transitions on the %s path (E185)', (path) => {
+describe.each(PATHS)('view transitions on the %s path', (path) => {
   beforeEach(() => void (FakeWindow.path = path));
   afterEach(() => void (FakeWindow.path = 'navigation'));
 

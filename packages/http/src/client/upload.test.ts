@@ -38,7 +38,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe('uploads with progress load their code on first use (W5c.6)', () => {
+describe('uploads with progress load their code on first use', () => {
   it('the first upload loads the XHR code, then sends — aborted meanwhile, it sends nothing', async () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     const sent: string[] = [];

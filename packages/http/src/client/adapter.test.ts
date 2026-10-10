@@ -3,12 +3,12 @@
 /**
  * The adapter contract is real: a complete "UI adapter" in a dozen lines of plain DOM — it renders a page as its
  * component name and props in text — drives the client core through a visit, Back/Forward, deferred props, a partial
- * reload and a 409, and through what W5b added: islands (loaded, and hydrated from the SSR stream's data block), layers
+ * reload and a 409, and through islands (loaded, and hydrated from the SSR stream's data block), layers
  * (Back closes, Forward opens from memory), an action with an optimistic patch and its rollback, a flash message fired
  * once, the navigation guard, an instant visit's placeholder, remembered state and a postponed new build — with no UI
  * framework anywhere. A Vue (or Svelte, or Solid) adapter is this plus components.
  */
-// happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there (E184).
+// happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there.
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -126,7 +126,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const text = () => root.textContent ?? '';
     expect(text()).toBe('users/Show {"user":"Ada"}'); // the server's markup, kept
 
-    // A visit: the next page as JSON, rendered by the adapter; the history entry holds no props (E36).
+    // A visit: the next page as JSON, rendered by the adapter; the history entry holds no props.
     await navigator.visit('/users/2');
     expect(requests.at(-1)).toMatchObject({ method: 'GET', url: '/users/2', headers: { [PAGE_HEADER]: 'true', 'x-marmeon-version': 'v1' } });
     expect(window.location.pathname).toBe('/users/2');
@@ -222,7 +222,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('renders layers (E53): each over the page in an element of its own — Back closes the top one, the page untouched; the core loads their code (E71)', async () => {
+  it('renders layers: each over the page in an element of its own — Back closes the top one, the page untouched; the core loads their code', async () => {
     window.fetch = (async (input: string, init: RequestInit = {}) => {
       const url = new URL(input, 'https://app.test');
       const headers = { ...(init.headers as Record<string, string>) };
@@ -266,7 +266,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('hydrates a streamed island from its data block (E49): no request — and Back shows it from the entry’s memory', async () => {
+  it('hydrates a streamed island from its data block: no request — and Back shows it from the entry’s memory', async () => {
     window.fetch = server as typeof fetch;
     window.history.replaceState(null, '', '/users/1');
     // What the SSR stream left in the document: the island's markup and, in its boundary, the `RegionResult` the kernel resolved.
@@ -343,7 +343,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('runs an action with an optimistic patch (E59): shown at once, rolled back on a 422 — kept, with its flash, on success', async () => {
+  it('runs an action with an optimistic patch: shown at once, rolled back on a 422 — kept, with its flash, on success', async () => {
     let answer: 'invalid' | 'ok' = 'invalid';
     let release!: () => void;
     window.fetch = (async (input: string, init: RequestInit = {}) => {
@@ -353,7 +353,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       if (headers[ACTION_HEADER] !== 'true') return server(input, init);
       await new Promise<void>((done) => (release = done));
       if (answer === 'invalid') return new Response(JSON.stringify({ message: 'Invalid.', errors: { link: ['Not yours.'] } }), { status: 422, headers: { 'content-type': 'application/json' } });
-      // The kernel's answer to an action that redirected: 204 + where to, and the flash messages it took (E60).
+      // The kernel's answer to an action that redirected: 204 + where to, and the flash messages it took.
       const flash = [{ id: 'f1', key: 'toast', data: { message: 'Removed.' } }];
       return new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/1', [FLASH_HEADER]: encodeURIComponent(JSON.stringify(flash)) } });
     }) as typeof fetch;
@@ -362,7 +362,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const { navigator, root, stop } = await createTextApp();
     const toasts: string[] = [];
     navigator.on('flash', (message) => toasts.push((message.data as { message: string }).message));
-    // The adapter attaches the features where it uses them (E70): actions, and the patches of the page's entry.
+    // The adapter attaches the features where it uses them: actions, and the patches of the page's entry.
     const run = navigator.use(actions).run;
     const pageTarget = () => navigator.use(optimistic).target(navigator.regionOwner.entry!);
     const withoutCode = { target: pageTarget(), patch: (props: Readonly<Record<string, unknown>>) => ({ links: (props.links as string[]).filter((link) => link !== 'code') }) };
@@ -386,7 +386,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('fires a flash message once (E60): not again for a partial reload that brings it again, nor for Back/Forward', async () => {
+  it('fires a flash message once: not again for a partial reload that brings it again, nor for Back/Forward', async () => {
     const toast = { id: 'saved-1', key: 'toast', data: { message: 'Saved.' } };
     window.fetch = (async (input: string, init: RequestInit = {}) => {
       const url = new URL(input, 'https://app.test');
@@ -416,7 +416,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('guards unsaved changes (E64): the adapter’s dialog says Stay — no request, Back undone; Leave — the visit goes', async () => {
+  it('guards unsaved changes: the adapter’s dialog says Stay — no request, Back undone; Leave — the visit goes', async () => {
     window.fetch = server as typeof fetch;
     window.history.replaceState(null, '', '/users/1');
     serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
@@ -484,10 +484,10 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       },
     });
     owner = navigator.regionOwner;
-    // Instant visits — attached where an instant link renders (E74; React loads them then).
+    // Instant visits — attached where an instant link renders (React loads them then).
     navigator.use(instant);
     const stop = navigator.start();
-    // Remembered state of /users/1's entry (E63) — the feature attached where a component remembers.
+    // Remembered state of /users/1's entry — the feature attached where a component remembers.
     const remembered = () => navigator.use(remember).of(owner.entry!);
     remembered().set('tab', 'links');
 
@@ -515,7 +515,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('prefetches with the code loaded on the first hover (E74): the click asks nothing, an instant link to it shows no placeholder', async () => {
+  it('prefetches with the code loaded on the first hover: the click asks nothing, an instant link to it shows no placeholder', async () => {
     window.fetch = server as typeof fetch;
     window.history.replaceState(null, '', '/users/1');
     serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
@@ -554,7 +554,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('reloads what a view declares when Back shows it from memory — with the revalidateOnBack feature attached (E58, E70)', async () => {
+  it('reloads what a view declares when Back shows it from memory — with the revalidateOnBack feature attached', async () => {
     window.fetch = server as typeof fetch;
     const revalidations = () => requests.filter((request) => request.headers[PARTIAL_DATA_HEADER] === 'stats').map((request) => request.url);
     for (const attached of [false, true]) {
@@ -582,7 +582,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     }
   });
 
-  it('keeps URL state with the query-state feature, attached where it is used (E55, E70)', async () => {
+  it('keeps URL state with the query-state feature, attached where it is used', async () => {
     window.fetch = (async (input: string, init: RequestInit = {}) => {
       const url = new URL(input, 'https://app.test');
       requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers: { ...(init.headers as Record<string, string>) } });
@@ -625,7 +625,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(firstErrors(page('users/Edit', '/users/1/edit', { errors: { name: ['Too short.', 'Taken.'], bio: 'Too long.' } }))).toEqual({ name: 'Too short.', bio: 'Too long.' });
   });
 
-  it('validates a plain form live (E62): an input left shows the server’s message in the DOM, the password never leaves', async () => {
+  it('validates a plain form live: an input left shows the server’s message in the DOM, the password never leaves', async () => {
     const sent: { fields: string | null; body: string }[] = [];
     window.fetch = (async (_input: string, init: RequestInit = {}) => {
       const headers = init.headers as Record<string, string>;
@@ -641,7 +641,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     document.body.insertAdjacentHTML('beforeend', '<form><input name="email"><input name="password" type="password"><small id="email-error"></small></form>');
     const form = document.querySelector('form')!;
     const data = () => Object.fromEntries(new FormData(form)) as Record<string, unknown>;
-    // Its code loads on the form's first use (E74): the first input fetches the feature's chunk.
+    // Its code loads on the form's first use: the first input fetches the feature's chunk.
     const live = liveValidationOnFirstUse(navigator, '/register', {
       method: 'post',
       data,
@@ -677,7 +677,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
   });
 });
 
-describe('two tabs of one browser, each a plain-DOM adapter (tab sync, W8 step 8)', () => {
+describe('two tabs of one browser, each a plain-DOM adapter (tab sync)', () => {
   it('signing out in tab A: tab B lets go of what it shows and loads again — the server shows it the login page', async () => {
     // One browser: its channels, its cookie (the server's session), and two tabs — each a FakeWindow with a plain-DOM root.
     const channels = new FakeChannels();

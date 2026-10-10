@@ -1,5 +1,5 @@
 /**
- * Live validation (E62), UI-free: a form's fields checked against the server's request schema while they are filled in —
+ * Live validation, UI-free: a form's fields checked against the server's request schema while they are filled in —
  * Laravel's Precognition. The request is the form's own (same method, URL and body) plus `x-marmeon-validate: name,email`;
  * the server runs the route's middleware, `authorize` and schema — never its controller — and answers `204` or `422` with the
  * errors of the named fields only. Read-only on the server, never cached, held to its own rate limit.

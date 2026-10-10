@@ -1,4 +1,4 @@
-/** A write a read-only request tried (E52) — thrown in development and tests, so the mistake shows where it is made. */
+/** A write a read-only request tried — thrown in development and tests, so the mistake shows where it is made. */
 export class ReadOnlyViolation extends Error {
   override name = 'ReadOnlyViolation';
 }
@@ -11,7 +11,7 @@ export interface ReadOnlyOptions {
   readonly strict: boolean;
   /** Where a dropped write is reported (the log). */
   readonly report: (message: string) => void;
-  /** Why it may not write, and where to do it instead — default: an island's rule (E52). Every other read-only request names its own. */
+  /** Why it may not write, and where to do it instead — default: an island's rule. Every other read-only request names its own. */
   readonly rule?: string;
 }
 
@@ -19,14 +19,11 @@ const ISLAND_RULE =
   'an island is read-only — it cannot change the session, cookies or flash data, nor defer work after the response. Do that in the page or an action, not in an island.';
 
 /**
- * Whether the current request may leave anything behind — per request (scoped). An island's request is read-only (E52):
- * it runs beside the page and after it, so whatever it wrote into the session (flash data, the page a guest wanted), into
- * cookies or into work after the response would race the page's own requests — or, streamed with the page (W5b step 4),
- * never reach the browser at all. Whatever would write asks first (`permit`): the session (`StartSession` locks it), the
- * cookie jar and `AfterResponse` (the kernel locks them).
+ * Whether the current request may leave anything behind — per request (scoped). An island's request is read-only: it runs
+ * beside and after the page, so a write to the session, cookies or work after the response would race the page's own
+ * requests, or, streamed with the page, never reach the browser. Every writer asks {@link permit} first.
  *
- * In development and tests a write throws a {@link ReadOnlyViolation} naming it; in production it is dropped and logged,
- * and the island — and the page around it — stays whole.
+ * In development and tests a write throws a {@link ReadOnlyViolation}; in production it is dropped and logged.
  */
 export class ReadOnly {
   #options: ReadOnlyOptions | undefined;

@@ -21,7 +21,7 @@ export const pageResponse = (body: PageObject) => new Response(JSON.stringify(bo
 type Handler = (url: string, init: RequestInit) => Response | Promise<Response>;
 
 /**
- * A live stream as the browser's `EventSource` (W6.10) — what the test makes the server say: `emit('hello', { seq })`,
+ * A live stream as the browser's `EventSource` — what the test makes the server say: `emit('hello', { seq })`,
  * `emit('refresh', hint)`, `fail()` (it broke: the browser reconnects), `fail(true)` (refused: it gives up).
  */
 export class FakeEventSource extends EventTarget {
@@ -52,7 +52,7 @@ export class FakeEventSource extends EventTarget {
 }
 
 /**
- * The `BroadcastChannel`s of one browser (W8 step 8): what a tab posts, every other tab's channel of the same name hears a task
+ * The `BroadcastChannel`s of one browser: what a tab posts, every other tab's channel of the same name hears a task
  * later — never the sender (like the browser's), and never a tab that is `frozen` (it misses it: a frozen tab's queue is not
  * promised). `posted` is everything any tab ever posted, structured-cloned as the browser would.
  */
@@ -101,7 +101,7 @@ export class FakeChannels {
   }
 }
 
-/** Which way the navigator writes the history in a fake tab: the Navigation API (E184), or the History fallback without it. */
+/** Which way the navigator writes the history in a fake tab: the Navigation API, or the History fallback without it. */
 export type HistoryPath = 'navigation' | 'history';
 
 /** Both ways — a suite that runs on each (`describe.each(PATHS)`). */
@@ -116,7 +116,7 @@ let nextKey = 0;
  */
 export class FakeEntry {
   url: string;
-  /** `history.state`, serialized — `null` for an entry the Navigation API wrote (E184). */
+  /** `history.state`, serialized — `null` for an entry the Navigation API wrote. */
   history: string;
   /** The Navigation API's state, serialized — undefined when it has none (a `pushState` entry, one a `replaceState` rewrote). */
   navigation: string | undefined;
@@ -193,8 +193,8 @@ const handled = (result: FakeNavigationResult): FakeNavigationResult => {
 };
 
 /**
- * The Navigation API of a fake tab (`window.navigation`, E184), over the tab's entries — modelled on what Chrome 154 does (spike
- * W9 7a): `navigate()` fires `navigate` (push/replace, cancelable), commits a same-document entry when a listener intercepted it
+ * The Navigation API of a fake tab (`window.navigation`), over the tab's entries — modelled on what Chrome 154 does:
+ * `navigate()` fires `navigate` (push/replace, cancelable), commits a same-document entry when a listener intercepted it
  * (else the document is loaded — a spy entry in `loads`), its handlers run after the commit (`transition` meanwhile). Traversals
  * (`back`/`forward`/`traverseTo`, `history.go`) run a task later and are always cancelable from a script; the user's own Back
  * (`win.back()`) is cancelable only with a fresh activation (`win.activate()`), which it uses up. `traverseTo` right after a
@@ -362,7 +362,7 @@ function isHashChange(from: string, to: string): boolean {
  */
 type StartViewTransition = NonNullable<NonNullable<NavigatorWindow['document']>['startViewTransition']>;
 
-/** A view transition the fake document started (E185): its types, and what became of it. */
+/** A view transition the fake document started: its types, and what became of it. */
 export interface FakeViewTransition {
   readonly types: readonly string[];
   /** Its update ran (the swap is in). */
@@ -383,39 +383,39 @@ export class FakeWindow implements NavigatorWindow {
   scrollX = 0;
   scrollY = 0;
   scrollRestoration: ScrollRestoration = 'auto';
-  /** The Navigation API (E184) — undefined on the History fallback's path. */
+  /** The Navigation API — undefined on the History fallback's path. */
   readonly navigation: FakeNavigation | undefined;
   /** The user just clicked or typed (a fresh user activation): their next Back/Forward is cancelable — and uses it up. */
   #activated = false;
   /** The page's `[scroll-region]` elements. */
   regions: ScrollRegion[] = [];
-  /** `loading` while the document "still streams" (E49) — `finishLoading()` ends it. */
+  /** `loading` while the document "still streams" — `finishLoading()` ends it. */
   readyState = 'complete';
   readonly #loaded = new Set<() => void>();
   readonly document: NonNullable<NavigatorWindow['document']>;
   XMLHttpRequest?: new () => XMLHttpRequest;
-  /** The tab is shown or hidden (`hide()`, `show()`) — a live stream over HTTP/1.1 waits while hidden (E104). */
+  /** The tab is shown or hidden (`hide()`, `show()`) — a live stream over HTTP/1.1 waits while hidden. */
   visibilityState: DocumentVisibilityState = 'visible';
   /** The protocol the document came over (`nextHopProtocol`) — `''`: unknown. */
   protocol = 'h2';
-  /** The live streams opened (W6.10), oldest first — `EventSource` of this tab. */
+  /** The live streams opened, oldest first — `EventSource` of this tab. */
   readonly sources: FakeEventSource[] = [];
   EventSource?: new (url: string) => EventSource;
-  /** The browser's channels between tabs (W8 step 8) — with `new FakeWindow(url, channels)`. */
+  /** The browser's channels between tabs — with `new FakeWindow(url, channels)`. */
   BroadcastChannel?: new (name: string) => BroadcastChannel;
   /** A frozen tab (Page Lifecycle): it hears nothing on the channels. */
   frozen = false;
-  /** The user prefers reduced motion (`prefers-reduced-motion: reduce`, E185). */
+  /** The user prefers reduced motion (`prefers-reduced-motion: reduce`). */
   reducedMotion = false;
-  /** The view transitions the document started (E185) — once it has them (`supportViewTransitions()`). */
+  /** The view transitions the document started — once it has them (`supportViewTransitions()`). */
   readonly transitions: FakeViewTransition[] = [];
-  /** What happened, in order, for tests that follow a view transition (E185): `transition`, `updated`, `animated`, the scroll. */
+  /** What happened, in order, for tests that follow a view transition: `transition`, `updated`, `animated`, the scroll. */
   readonly log: string[] = [];
   readonly performance: NonNullable<NavigatorWindow['performance']>;
   readonly #documentListeners = new Map<string, Set<() => void>>();
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
   handler: Handler = () => new Response('not found', { status: 404 });
-  /** The browser's own dialogs (E64) — what they were asked, and what the "user" answers. */
+  /** The browser's own dialogs — what they were asked, and what the "user" answers. */
   readonly asked: string[] = [];
   confirmAnswer = false;
   promptAnswer: string | null = null;
@@ -466,7 +466,7 @@ export class FakeWindow implements NavigatorWindow {
   }
 
   /**
-   * The document gets view transitions (E185), as Chrome has them: `startViewTransition` captures the old state first (a task later),
+   * The document gets view transitions, as Chrome has them: `startViewTransition` captures the old state first (a task later),
    * then runs the update (`updateCallbackDone` once it is in) and animates (another task) — a newer one or `skipTransition` skips the
    * animation. `types: false`: a browser without types (Chrome before 125) — an object as the argument throws.
    */
@@ -533,7 +533,7 @@ export class FakeWindow implements NavigatorWindow {
         return JSON.parse(win.current.history);
       },
       // With the Navigation API, these fire `navigate` too (push/replace, never intercepted by the navigator) — and the entry has no
-      // Navigation API state then: `replaceState` erases the one it had (spike W9 7a).
+      // Navigation API state then: `replaceState` erases the one it had (as in Chrome).
       pushState(state: unknown, _title: string, url?: string | URL | null) {
         win.#write(state, url, false);
       },
@@ -714,18 +714,18 @@ export class FakeWindow implements NavigatorWindow {
   }
 }
 
-/** The features an adapter attaches to a navigator on this tab from the start: the History fallback, where it has no Navigation API (E184). */
+/** The features an adapter attaches to a navigator on this tab from the start: the History fallback, where it has no Navigation API. */
 export const historyFeatures = (win: FakeWindow): Feature[] => (win.navigation ? [] : [historyFallback]);
 
 export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm' | 'features' | 'loadLayers' | 'viewTransition'> = {}) {
   const shown: PageObject[] = [];
   /** The region owner handed with each page rendered (islands live there). */
   const owners: RegionOwner[] = [];
-  /** The layers handed with each render (E53). */
+  /** The layers handed with each render. */
   const stacks: (readonly Layer[])[] = [];
-  /** Every render in order — an instant visit's placeholder too (E64), which `shown` leaves out (it is no page). */
+  /** Every render in order — an instant visit's placeholder too, which `shown` leaves out (it is no page). */
   const renders: { page: PageObject; placeholder: boolean; transition?: readonly string[] }[] = [];
-  // Without the Navigation API, the adapter attaches the History fallback from the start (createMarmeonApp does, E184).
+  // Without the Navigation API, the adapter attaches the History fallback from the start (createMarmeonApp does).
   const features = win.navigation || options.features?.some((feature) => feature.name === 'history') ? options.features : [historyFallback, ...(options.features ?? [])];
   const navigator = new Navigator({
     initialPage: initial,
@@ -761,8 +761,8 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
 export const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
- * Actions and optimistic patches of the page on screen (E59), as an adapter uses them since Wave 5c step 4: the features
- * attached to the navigator (`use`), the page's patch target by its entry.
+ * Actions and optimistic patches of the page on screen, as an adapter uses them: the features attached to the navigator
+ * (`use`), the page's patch target by its entry.
  */
 export function withActions(navigator: Navigator) {
   // Attached at once — as `useAction`/`usePendingSubmissions` do when they render, before anything is sent.

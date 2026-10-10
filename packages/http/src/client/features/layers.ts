@@ -1,7 +1,7 @@
 /**
- * The layer stack (E53, E54): layers over the page, each with its history entry, page object, visits, deferred props and
+ * The layer stack: layers over the page, each with its history entry, page object, visits, deferred props and
  * islands — opened by an answer that is a layer, replaced in place by the same layer, closed by Back, `closeLayer()` or a
- * page; Back/Forward brings them back from memory. What a layer showed lives in this tab's memory only (E36): the layers on
+ * page; Back/Forward brings them back from memory. What a layer showed lives in this tab's memory only: the layers on
  * screen in a slot of the document, each layer entry's place in the stack in a slot of the entry — both emptied by the core.
  */
 import { LAYER_BACKDROP, LAYER_CLOSE_HEADER, MAX_LAYER_DEPTH, REGION_HEADER, type FlashMessage, type LayerClose, type PageObject } from '../../page.ts';
@@ -69,13 +69,13 @@ export const PLACE = slot(
   (place) => place.below,
 );
 
-/** `HistoryState.layer`: a depth and keys — a position, never what the layer showed (E36). */
+/** `HistoryState.layer`: a depth and keys — a position, never what the layer showed. */
 const isLayerPosition: PositionCheck = (value) => {
   const { depth, below } = (value ?? {}) as { depth?: unknown; below?: unknown };
   return Object.keys(value as object).length === 2 && Number.isInteger(depth) && Array.isArray(below) && below.every((key) => typeof key === 'string');
 };
 
-/** The history state of a layer's entry: where it is, how deep, and the keys beneath it — never what it shows (E36). */
+/** The history state of a layer's entry: where it is, how deep, and the keys beneath it — never what it shows. */
 function layerEntry(page: PageObject, key: string, position: Scroll, below: readonly string[]): HistoryState {
   return { ...entry(page, key, position), layer: { depth: below.length, below: [...below] } };
 }
@@ -137,7 +137,7 @@ export class LayerStack implements LayerHost {
     const pageKey = newKey();
     const below = [pageKey];
     initial.forEach((page, index) => {
-      // A deep link's layer that follows live channels (W6.10): the core's live feature follows them too.
+      // A deep link's layer that follows live channels: the core's live feature follows them too.
       follow(this.#core.navigator, page);
       const own = index === initial.length - 1 ? key : newKey();
       // Not pushed over an entry of their own: closing one replaces the entry with what is beneath.
@@ -183,7 +183,7 @@ export class LayerStack implements LayerHost {
     try {
       const body = (await response.json()) as { close?: LayerClose; flash?: unknown };
       if (body.close && Number.isInteger(body.close.layers) && body.close.layers > 0) close = body.close;
-      // The flash messages of the close (E60): they fire once what stays is on screen.
+      // The flash messages of the close: they fire once what stays is on screen.
       if (Array.isArray(body.flash)) this.#core.inbox.push(...(body.flash as FlashMessage[]));
     } catch {
       // No body: close the one layer.
@@ -195,7 +195,7 @@ export class LayerStack implements LayerHost {
     return shown;
   }
 
-  /** A visit from inside a layer (E53) — `layer.visit()`: sent as the layer's, its answer placed for it. */
+  /** A visit from inside a layer — `layer.visit()`: sent as the layer's, its answer placed for it. */
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined> {
     const from = this.find(layer);
     // A layer that left the screen visits nothing any more.
@@ -203,8 +203,8 @@ export class LayerStack implements LayerHost {
   }
 
   /**
-   * Closes `layer` and `close.layers - 1` beneath it — and every layer over it (E53) — asking first when one that closes holds
-   * unsaved changes (E64). When their entries were pushed one over the other right over what stays, that is Back in the history
+   * Closes `layer` and `close.layers - 1` beneath it — and every layer over it — asking first when one that closes holds
+   * unsaved changes. When their entries were pushed one over the other right over what stays, that is Back in the history
    * (Forward then asks the server again: what closed is forgotten); otherwise the current entry becomes what stays. Then
    * `close.reload` reloads what is beneath — the page and the layers that stay — and a layer shown once (an action's answer)
    * reloads them fully.
@@ -213,12 +213,12 @@ export class LayerStack implements LayerHost {
     const index = this.controls.findIndex((control) => control.layer === layer);
     if (index < 0 || this.#core.left) return;
     const keep = Math.max(0, index + 1 - Math.max(1, close.layers));
-    // Unsaved changes in a layer that closes (E64): asked first — Stay keeps it open.
+    // Unsaved changes in a layer that closes: asked first — Stay keeps it open.
     if (!(await this.#core.mayLeave((at) => at > keep))) return;
     await this.#close(layer, close);
   }
 
-  /** A layer's reload for an action (E59) — see `LayerHost.reloadLayer`. */
+  /** A layer's reload for an action — see `LayerHost.reloadLayer`. */
   reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
     const control = this.find(layer);
     return control ? this.revalidate(control, spec, drop, signal) : Promise.resolve(false);
@@ -251,7 +251,7 @@ export class LayerStack implements LayerHost {
 
   /**
    * The layers on screen become `levels` (from memory, by Back/Forward): the ones they share at the bottom stay as they are, the
-   * others leave, the new ones are made from memory — their islands too (what their views declare reloads, E58). Returns the
+   * others leave, the new ones are made from memory — their islands too (what their views declare reloads). Returns the
    * layers that left.
    */
   set(levels: readonly CachedLevel[]): Layer[] {
@@ -386,7 +386,7 @@ export class LayerStack implements LayerHost {
 
   /**
    * Back/Forward to the page on screen with other layers (a layer closed by Back, opened again by Forward): only the layers
-   * change. Those Forward opened again from memory reload what their views declare (E58) — and when an action's answer (shown
+   * change. Those Forward opened again from memory reload what their views declare — and when an action's answer (shown
    * once) left, what is beneath reloads (or what the closing asked for).
    */
   async rearrange(stack: CachedStack, own: boolean): Promise<void> {
@@ -481,7 +481,7 @@ export class LayerStack implements LayerHost {
       // A new layer object (a fresh state) — the one it replaces is not forgotten when pushed over: Back shows it again.
       controls.splice(at, 1);
       current.dismiss();
-      // Replaced in place (a new state, the same entry): its islands start over, what it remembered stays with the entry (E63).
+      // Replaced in place (a new state, the same entry): its islands start over, what it remembered stays with the entry.
       if (!push) this.#core.forget(key, REGIONS);
       this.#keep(key, page, below, pushed);
       const control = Layer.create(this, key, below.length, page, this.#core.ownerOf(key));
@@ -533,7 +533,7 @@ export class LayerStack implements LayerHost {
   /** Closes every layer above `keep` by replacing the current entry with what stays. */
   async #closeInPlace(keep: number, forget: ReadonlySet<string>, reload: LayerClose['reload']): Promise<void> {
     if (this.#core.left) return;
-    // Over the neutral surface (E54) there is nothing to go back to: the base is visited — the server says what it shows.
+    // Over the neutral surface there is nothing to go back to: the base is visited — the server says what it shows.
     if (keep === 0 && this.#core.page.component === LAYER_BACKDROP) {
       this.dismissFrom(0);
       // The layers' guards were asked already (or the server closed them).
@@ -556,9 +556,9 @@ export class LayerStack implements LayerHost {
 }
 
 /**
- * Layers (E53, E54) as a feature: an answer that is a layer opens over the screen, Back closes it, Forward opens it from memory,
+ * Layers as a feature: an answer that is a layer opens over the screen, Back closes it, Forward opens it from memory,
  * a deep link stacks them over their base. Writes its own position into history entries (`layer`: a depth and keys). Loaded
- * on demand (E71, `loadLayers`): by the core when the server answers with a layer, by an adapter where one opens.
+ * on demand (`loadLayers`): by the core when the server answers with a layer, by an adapter where one opens.
  */
 export const layers = defineFeature('layers', (host) => {
   const stack = new LayerStack(host);

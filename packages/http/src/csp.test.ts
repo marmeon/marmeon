@@ -6,7 +6,7 @@ import { compilePolicy, contentSecurityPolicy, DEFAULT_CSP, NONCE } from './csp.
 const html = () => new Response('<p>page</p>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
 const ctx = { request: new Request('http://app.test/page'), route: { path: '/page' } } as unknown as HttpContext;
 
-describe('contentSecurityPolicy() (E147)', () => {
+describe('contentSecurityPolicy()', () => {
   it('compiles the strict default — the nonce\'s place kept for each response', () => {
     const { pieces, usesNonce } = compilePolicy(DEFAULT_CSP);
     expect(usesNonce).toBe(true);

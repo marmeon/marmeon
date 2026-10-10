@@ -1,7 +1,7 @@
 /**
  * Where the current request's response stands — per request (scoped). A server-rendered page streams on after its
- * headers went out (E49): the status, the headers and the session cookie are fixed from then on, so what still runs in
- * the request's scope — its deferred props, computed while the page streams — runs read-only (E52), like an island.
+ * headers went out: the status, the headers and the session cookie are fixed from then on, so what still runs in
+ * the request's scope — its deferred props, computed while the page streams — runs read-only, like an island.
  * The kernel marks the moment; what streams waits for it.
  */
 export class ResponseLifecycle {

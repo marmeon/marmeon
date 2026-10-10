@@ -40,7 +40,7 @@ export class DefaultExceptionHandler implements ExceptionHandler {
   report(error: unknown): void {
     if (error instanceof HttpError && error.status < 500) return;
     const { name, message, stack } = asError(error);
-    // The message is the log line's own text, the stack a string: masked like text by the app's Redactor (E125) — keys alone would
+    // The message is the log line's own text, the stack a string: masked like text by the app's Redactor — keys alone would
     // not catch a connection URL or a token an error quotes, and the core's list alone not the names packages add (the session cookie).
     this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
   }

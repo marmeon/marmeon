@@ -6,7 +6,7 @@ import { mergePage } from './merge.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
 
 /**
- * Merged props after Wave 9 (E183, step 3): a revalidation — an action's reload, a live hint's, Back's — replaces what it brings,
+ * Merged props: a revalidation — an action's reload, a live hint's, Back's — replaces what it brings,
  * also a `merge()`d list; "load more" (a visit with `data`/`query`) appends. The difference comes from where a reload comes from,
  * never from what it looks like.
  */
@@ -70,7 +70,7 @@ describe('mergePage', () => {
   });
 });
 
-describe('a revalidation replaces merged props — load more appends (E183)', () => {
+describe('a revalidation replaces merged props — load more appends', () => {
   it('an action’s reload: the row it deleted stays gone, though the list was merge()d and had loaded more', async () => {
     const { win, navigator, visible, serve } = await loadedMore();
     win.handler = (url, init) => {

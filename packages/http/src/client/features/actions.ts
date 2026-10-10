@@ -1,8 +1,8 @@
 /**
- * Actions (E59) and route forms under way, as a feature: actions with what they need of the navigator (`actionHost`), and
- * the listing of what is under way — actions, and the visits of route forms (`visit({ name })`) — for ghost rows (E59 model
- * 2) and `isPending(name)`. What is under way lives in slots of the document: aborted and gone when it is left. Attached
- * where it is used (`useAction`, `usePendingSubmissions`, E70); a form's optimistic patches are the `optimistic` feature's.
+ * Actions and route forms under way, as a feature: actions with what they need of the navigator (`actionHost`), and
+ * the listing of what is under way — actions, and the visits of route forms (`visit({ name })`) — for ghost rows and
+ * `isPending(name)`. What is under way lives in slots of the document: aborted and gone when it is left. Attached
+ * where it is used (`useAction`, `usePendingSubmissions`); a form's optimistic patches are the `optimistic` feature's.
  */
 import { Actions, Submissions } from '../action.ts';
 import { actionHost } from '../action-host.ts';

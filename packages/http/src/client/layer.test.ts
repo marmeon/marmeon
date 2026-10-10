@@ -26,11 +26,11 @@ function profile(win: FakeWindow, props: Record<string, unknown> = { name: 'Ada'
   return boot(win, page('/users/1', props, 'users/Show'));
 }
 
-describe.each(PATHS)('layers on the %s path (E184)', (path) => {
+describe.each(PATHS)('layers on the %s path', (path) => {
   beforeEach(() => void (FakeWindow.path = path));
   afterEach(() => void (FakeWindow.path = 'navigation'));
 
-  describe('Layers in the client core (E53) — opening over the page on screen', () => {
+  describe('Layers in the client core — opening over the page on screen', () => {
     it('opens a layer over the page on screen — one request (the layer’s), a history entry of its own, the page stays', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(layer('/users/1/edit', { profile: { name: 'Ada' } }));
@@ -47,7 +47,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
       expect(app.layers().map((open) => [open.depth, open.page.component])).toEqual([[1, 'users/Edit']]);
     });
 
-    it('keeps no layer props in history.state — the key, the URL, the depth and the keys beneath (E36)', async () => {
+    it('keeps no layer props in history.state — the key, the URL, the depth and the keys beneath', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(layer('/settings/tokens', { plainText: 'marmeon_1|secret-token', email: 'ada@example.com' }, 'auth/NewToken', { once: true }));
       const app = profile(win, { email: 'ada@example.com' });
@@ -63,7 +63,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
       expect(top.layer).toEqual({ depth: 1, below: [JSON.parse(win.entries[0]!.state).key] });
     });
 
-    it('a visit without `layer` whose answer is a layer opens it over the page too (client-opened layers stack, Max 02.10.)', async () => {
+    it('a visit without `layer` whose answer is a layer opens it over the page too (client-opened layers stack)', async () => {
       const win = new FakeWindow(`${ORIGIN}/people`);
       win.handler = () => pageResponse(layer('/users/1/edit'));
       const app = boot(win, page('/people', {}, 'users/People'));
@@ -364,7 +364,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
       expect(win.requests).toEqual([]);
     });
 
-    it('closing a deep-linked layer over the neutral surface (E54) visits its base — the server decides what it shows', async () => {
+    it('closing a deep-linked layer over the neutral surface visits its base — the server decides what it shows', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/2/card`);
       win.handler = () => new Response('', { status: 403 });
       const app = boot(win, { ...page('/users/2', {}, LAYER_BACKDROP), layers: [layer('/users/2/card', {}, 'users/Card', { base: '/users/2' })] }, { features: [layers] });
@@ -417,7 +417,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
     return { loads, load, release: () => release(layers), fail: () => fail(new Error('Failed to fetch dynamically imported module')) };
   }
 
-  describe('Layers loaded on demand (E71) — the server answers with one, and no code here loaded them', () => {
+  describe('Layers loaded on demand — the server answers with one, and no code here loaded them', () => {
     it('a plain visit answered with a layer: the layers load first — then it opens over the page, and Back closes it', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(layer('/users/1/edit', { profile: { name: 'Ada' } }));

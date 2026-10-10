@@ -54,7 +54,7 @@ export function prefetchUrlOf(href: string, location: Pick<Location, 'href' | 'o
 }
 
 /**
- * Whether a link to `href` points at the page on screen (E64) — `aria-current="page"` and `data-current`: the same URL, path and
+ * Whether a link to `href` points at the page on screen — `aria-current="page"` and `data-current`: the same URL, path and
  * query (in any order; the fragment aside) — a sort link is current for its own order only. With `activeMatch`, also when the
  * route that answered the page (`PageObject.route`) matches one of the patterns: a name (`user-profile.people` — the list,
  * whatever it is filtered by), or a prefix of names (`user-profile.*` — every route whose name starts with `user-profile.`).

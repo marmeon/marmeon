@@ -1,7 +1,7 @@
 /**
- * `@marmeon/http/client` — the UI-free client core (E39). Everything a UI adapter needs that is not rendering:
- * visits and their events, 409/hard page changes, XSRF, the history and the in-memory page cache (E36), regions
- * (islands, E50) and layers (E53) with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
+ * `@marmeon/http/client` — the UI-free client core. Everything a UI adapter needs that is not rendering:
+ * visits and their events, 409/hard page changes, XSRF, the history and the in-memory page cache, regions
+ * (islands) and layers with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
  * scroll restoration, the progress bar, the first page, route URLs and the page's messages. It may use DOM APIs, but no UI framework — and it never imports server code
  * (only `../page.ts`, the shared page contract). The adapter contract is in CONTRIBUTING.md, "The client core and its adapters".
  */
@@ -98,7 +98,7 @@ export { instant, InstantVisits } from './features/instant.ts';
 export { guard, Guards } from './features/guard.ts';
 export { hooks } from './features/hooks.ts';
 export type { BeforeVisit, ClientHooks, HookEvent, HookEvents, InvalidAnswer } from './features/hooks.ts';
-// Development only (W7 step 9): what the devtools' in-page bar records — attached by its client alone, never by an app (E115).
+// Development only: what the devtools' in-page bar records — attached by its client alone, never by an app.
 export { devtools, devtoolsReports, TIMELINE_LIMIT } from './features/devtools.ts';
 export type { DevtoolsFeature, DevtoolsGlobal, DevtoolsHook, HydrationIssue, PatchSnapshot, TimelineEntry, TimelineKind, TimelineOutcome } from './features/devtools.ts';
 export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadLiveValidation, loadOptimistic, loadPrefetch, loadTabSync, loadViewTransitions, prefetchWith } from './lazy.ts';

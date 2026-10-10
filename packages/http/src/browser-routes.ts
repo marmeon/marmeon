@@ -17,7 +17,7 @@ export interface BrowserRoutes {
   readonly version: 1;
   /**
    * The routes the browser may learn — the named `web` routes and `clientRoutes.include`, without `.internal()` routes
-   * and `clientRoutes.except`. A client build ships only those its code names (E57); the SSR renderer gets all of them.
+   * and `clientRoutes.except`. A client build ships only those its code names; the SSR renderer gets all of them.
    */
   readonly routes: Readonly<Record<string, BrowserRoute>>;
   /** The other named routes and why they stay on the server — for the build's error messages only, never bundled. */
@@ -30,7 +30,7 @@ export interface BrowserRoute {
   readonly path: string;
   /**
    * The page its controller renders, when that is written out once in it (`this.view('user-profile/Show', …)` — not a layer, an
-   * island or a computed name): an instant visit (E64, `<Link instant>`) shows that view's placeholder before the answer.
+   * island or a computed name): an instant visit (`<Link instant>`) shows that view's placeholder before the answer.
    */
   readonly view?: string;
 }
@@ -66,7 +66,7 @@ export function browserRoutes(routes: readonly RouteDefinition[], { include = []
 const VIEW_CALL = /\bthis\.view\(\s*(['"`])([\w./-]+)\1/g;
 
 /**
- * The page a controller renders, read from its `handle` (E64, instant visits): exactly one view name written out, and the
+ * The page a controller renders, read from its `handle` (instant visits): exactly one view name written out, and the
  * result is a page — no layer (`.layer(`), no island. Anything else (a closure, two views, a name built at runtime): none, and
  * an instant visit of the route simply waits for its answer.
  */

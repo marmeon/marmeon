@@ -1,7 +1,7 @@
 /**
- * The events of the navigator's requests (E44, Inertia's names): `start`, `progress`, then `success`, `error`, `exception`
- * or `cancel`, and always `finish` — per visit (`onStart`, …) and for every request (`navigator.on`). Plus `flash` (E60) and
- * `version` (E64).
+ * The events of the navigator's requests (Inertia's names): `start`, `progress`, then `success`, `error`, `exception`
+ * or `cancel`, and always `finish` — per visit (`onStart`, …) and for every request (`navigator.on`). Plus `flash` and
+ * `version`.
  */
 import type { FlashMessage, PageObject, ValidationErrors } from '../page.ts';
 import type { VisitMethod } from './navigation.ts';
@@ -28,7 +28,7 @@ export interface VisitProgress {
 }
 
 /**
- * A visit that failed (E44: `exception`, as in Inertia) — the page stays as it is (nothing typed is lost) and the
+ * A visit that failed (`exception`, as in Inertia) — the page stays as it is (nothing typed is lost) and the
  * app shows a fallback:
  * - `network`: the server could not be reached (offline, the server is down, the connection broke).
  * - `server`: the server answered with a 5xx — its error page (`page`, with the exception in debug mode) or, from
@@ -42,7 +42,7 @@ export type VisitException =
 
 /**
  * The events of a visit, in order: `start`, `progress` (uploads), then one of `success`, `error`, `exception` or
- * `cancel`, and always `finish` — Inertia's names and meanings (E44). Back/Forward to a page that is not in memory
+ * `cancel`, and always `finish` — Inertia's names and meanings. Back/Forward to a page that is not in memory
  * and loading deferred props report `start`, `exception`/`cancel` and `finish` only (they are no visits of the
  * app's own); an `async` visit of the app (a poll) reports all of them. Prefetches report nothing.
  */
@@ -59,12 +59,12 @@ export interface VisitEvents {
   cancel: (visit: Visit) => void;
   finish: (visit: Visit) => void;
   /**
-   * A flash message an answer delivered (E60) — once per message, whichever answer brought it (a page, a partial reload, a
+   * A flash message an answer delivered — once per message, whichever answer brought it (a page, a partial reload, a
    * layer, an action). A listener added later still gets those nobody heard yet (the first page's).
    */
   flash: (message: FlashMessage) => void;
   /**
-   * A new build is out (E64): a request was answered `409` with `x-marmeon-reload: version`. By default the page loads fully —
+   * A new build is out: a request was answered `409` with `x-marmeon-reload: version`. By default the page loads fully —
    * after asking, when that would lose unsaved changes (a navigation guard). `event.preventDefault()` keeps the page as it is
    * ("a new version is available" instead); then the user's next visit loads fully, and `event.reload()` loads it now.
    * Signing in or out (the other 409) never fires it: that full load is never postponed.
@@ -72,7 +72,7 @@ export interface VisitEvents {
   version: (event: VersionChange) => void;
 }
 
-/** The `version` event (E64): a new build is out, and the page is about to load it fully. */
+/** The `version` event: a new build is out, and the page is about to load it fully. */
 export interface VersionChange {
   /** Where the full load goes — the URL the request was for. */
   readonly location: string;

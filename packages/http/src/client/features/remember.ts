@@ -1,7 +1,7 @@
 /**
- * Remembered state (E63) as a feature: what the components of a history entry keep for Back/Forward — in a slot of the entry
+ * Remembered state as a feature: what the components of a history entry keep for Back/Forward — in a slot of the entry
  * (`REMEMBERED`), so the core empties it with the entry (memory lets go of it, another page replaces it) and with the document
- * (every 409). In memory only, never in `history.state` (E36). Attached where a component remembers (`useRemember`, a form's
+ * (every 409). In memory only, never in `history.state`. Attached where a component remembers (`useRemember`, a form's
  * `remember`).
  */
 import { defineFeature } from '../feature.ts';
@@ -13,5 +13,5 @@ export interface RememberFeature {
   of(entry: string): Remembered;
 }
 
-/** Remembered state (E63): `navigator.use(remember).of(owner.entry)`. */
+/** Remembered state: `navigator.use(remember).of(owner.entry)`. */
 export const remember = defineFeature('remember', (host): RememberFeature => ({ of: (entry) => host.entry(REMEMBERED, entry) }));

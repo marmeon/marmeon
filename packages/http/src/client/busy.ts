@@ -1,8 +1,8 @@
-/** `aria-busy` while a visit runs (E64) — always on in an adapter: assistive technology and CSS learn the page is about to change. */
+/** `aria-busy` while a visit runs — always on in an adapter: assistive technology and CSS learn the page is about to change. */
 import type { Navigator } from './navigation.ts';
 
 /**
- * `aria-busy="true"` on `element` (the document's root) while a visit runs in the foreground (E64) — assistive technology
+ * `aria-busy="true"` on `element` (the document's root) while a visit runs in the foreground — assistive technology
  * knows the page is about to change; CSS can dim it (`html[aria-busy] main { opacity: .6 }`). Background requests (deferred
  * props, polls) leave it. Returns the function that stops it.
  */

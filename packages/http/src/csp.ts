@@ -3,7 +3,7 @@ import { editableResponse, RequestNonce, type CookieDefaults as CookieDefaultsOp
 
 /**
  * What every cookie of a request gets unless its `set` says otherwise — `@marmeon/session` binds it from its config
- * (`secure`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`, E162), the kernel hands it to each request's cookie jar.
+ * (`secure`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`), the kernel hands it to each request's cookie jar.
  */
 export type CookieDefaults = CookieDefaultsOptions;
 export const CookieDefaults = token<CookieDefaults>('CookieDefaults');
@@ -52,7 +52,7 @@ export interface ContentSecurityPolicyOptions extends CspDirectives {
 }
 
 /**
- * The strict default (E147): scripts only with the response's nonce — and what those load (`'strict-dynamic'`: the entry's
+ * The strict default: scripts only with the response's nonce — and what those load (`'strict-dynamic'`: the entry's
  * chunks, React's streamed scripts carry the nonce themselves) — no plugins, no `<base>` pointing elsewhere. Styles, images and
  * connections are not restricted: add those directives for your app.
  */
@@ -93,7 +93,7 @@ export function compilePolicy(directives: CspDirectives): { pieces: readonly str
 }
 
 /**
- * A `Content-Security-Policy` for the documents the app renders (E147) — opt-in, with a strict default ({@link DEFAULT_CSP}):
+ * A `Content-Security-Policy` for the documents the app renders — opt-in, with a strict default ({@link DEFAULT_CSP}):
  *
  * ```ts
  * middleware: { global: [SecurityHeaders, contentSecurityPolicy()] }                      // bootstrap/app.ts
@@ -101,13 +101,9 @@ export function compilePolicy(directives: CspDirectives): { pieces: readonly str
  * contentSecurityPolicy({ baseUri: false, reportOnly: true, reportUri: ['/csp-reports'] })   // a default left out, report only
  * ```
  *
- * Each response gets its own nonce (`ctx.nonce()`), made only when a document is rendered: the server puts it on the
- * template's tags (Vite's `html.cspNonce`, set by `marmeon()`), on React's streamed scripts and styles and on `<Head>`'s
- * scripts — and here into the header. Only HTML responses get the header, and only those without a policy of their own (the
- * devtools' pages, a sandboxed file): a JSON visit, an island or an API answer never needs a nonce.
- *
- * A page cached publicly (`Cache-Control: public`, `s-maxage`) with a nonce is logged once: a shared cache would hand the same
- * nonce to everybody, which a script injected into the page could reuse — keep such pages out of the policy or private.
+ * Each response gets its own nonce (`ctx.nonce()`). Only HTML responses without a policy of their own get the header. A page
+ * cached publicly with a nonce is logged once: a shared cache would hand the same nonce to everybody. See
+ * docs/csp.md#pages-in-a-shared-cache.
  */
 export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}): MiddlewareClass<{}, {}> {
   const { reportOnly = false, ...given } = options;

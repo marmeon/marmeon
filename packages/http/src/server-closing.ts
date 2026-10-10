@@ -1,11 +1,11 @@
 import { token } from '@marmeon/core';
 
 /**
- * The server is closing (W6.10): what holds a response open — a live stream — ends, so `startServer().close()`, which waits for
+ * The server is closing: what holds a response open — a live stream — ends, so `startServer().close()`, which waits for
  * every connection, is not held up by a tab that never goes away (its `EventSource` connects to the next server). One per
  * application; `drain()` and `close()` are the server's.
  *
- * Two steps (E163): {@link draining} from the moment the server is told to stop — readiness answers 503 while it still takes
+ * Two steps: {@link draining} from the moment the server is told to stop — readiness answers 503 while it still takes
  * requests for `SHUTDOWN_DELAY` seconds — and {@link signal} when it closes (streams end, liveness answers 503).
  */
 export class ServerClosing {
@@ -17,7 +17,7 @@ export class ServerClosing {
     return this.#closing.signal;
   }
 
-  /** Aborted once the server is told to stop — before `SHUTDOWN_DELAY` (E163), and at the latest when it closes. */
+  /** Aborted once the server is told to stop — before `SHUTDOWN_DELAY`, and at the latest when it closes. */
   get draining(): AbortSignal {
     return this.#draining.signal;
   }

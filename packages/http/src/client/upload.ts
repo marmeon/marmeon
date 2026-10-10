@@ -1,6 +1,6 @@
 /**
  * Uploads with progress (`FormData` with an `onProgress` listener): over XHR — a chunk of its own, loaded with the first such
- * upload (Wave 5c, E74: what an app uses on first use). A chunk that cannot load sends the upload with `fetch`, without progress.
+ * upload. A chunk that cannot load sends the upload with `fetch`, without progress.
  */
 import type { VisitProgress } from './events.ts';
 

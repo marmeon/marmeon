@@ -5,7 +5,7 @@ import { hooks, type BeforeVisit, type ClientHooks, type InvalidAnswer } from '.
 import { prefetch } from './prefetch.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from '../test-window.ts';
 
-/** The client hook API (E132): `before` cancels a visit before its request goes out, `invalid` reports a form sent back. */
+/** The client hook API: `before` cancels a visit before its request goes out, `invalid` reports a form sent back. */
 
 function tab(url = '/a') {
   const win = new FakeWindow(`${ORIGIN}${url}`);
@@ -18,7 +18,7 @@ function tab(url = '/a') {
   return { win, ...boot(win, page(url, {}, 'pages/A')) };
 }
 
-describe('the hook API (E132) — a feature: navigator.use(hooks)', () => {
+describe('the hook API — a feature: navigator.use(hooks)', () => {
   it('before: every visit of the navigator, with what it asked for — before its request', async () => {
     const { win, navigator } = tab();
     const seen: { url: string; method: string; only: readonly string[] | undefined; layer: boolean; requests: number }[] = [];
@@ -95,7 +95,7 @@ describe('the hook API (E132) — a feature: navigator.use(hooks)', () => {
 
 });
 
-// Type guarantees (E132): the events and their payloads are typed — read the real messages by removing a directive.
+// Type guarantees: the events and their payloads are typed — read the real messages by removing a directive.
 function typed(api: ClientHooks, navigator: ReturnType<typeof tab>['navigator']): void {
   // @ts-expect-error — `before` is the hook API's (navigator.use(hooks).on), not one of the core's events
   navigator.on('before', () => {});

@@ -1,9 +1,8 @@
 /**
- * The client hook API (E132): typed events an app — analytics, an error tracker, a rule of its own — listens to across every
+ * The client hook API: typed events an app — analytics, an error tracker, a rule of its own — listens to across every
  * visit, without wrapping each one. `before` may cancel a visit before its request is sent; `invalid` reports the validation
- * errors a visit's answer brought. A feature (E70), not the core: the core's budget does not hold even this (E132 — no limit is raised for
- * it), and an app that listens to nothing carries none of it. Attached where it is used: `navigator.use(hooks).on('before', …)`
- * (React: `useFeature(hooks)`). It keeps no data: only its listeners (wiring), never what an event carried.
+ * errors a visit's answer brought. A feature, not the core: an app that listens to nothing carries none of it. Attached where
+ * it is used: `navigator.use(hooks).on('before', …)`. It keeps no data: only its listeners, never what an event carried.
  */
 import type { ValidationErrors } from '../../page.ts';
 import type { FeatureHost } from '../core.ts';
@@ -77,7 +76,7 @@ function beforeVisit(visit: PendingVisit): BeforeVisit {
 }
 
 /**
- * The hook API (E132) as a feature: `before` hangs on the visit pipeline first (order 0, before the guard asks about unsaved
+ * The hook API as a feature: `before` hangs on the visit pipeline first (order 0, before the guard asks about unsaved
  * changes — a visit an app stops asks nothing), `invalid` on the visits' `error` event.
  */
 export const hooks = defineFeature(

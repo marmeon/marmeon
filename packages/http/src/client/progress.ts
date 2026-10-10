@@ -1,5 +1,5 @@
 /**
- * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one. An opt-in feature (E82): an app
+ * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one. An opt-in feature: an app
  * that wants it passes `progressBar(options)` to its adapter (React: `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`)
  * — one that does not carries none of it, and builds its own indicator from the visit events and `aria-busy` if it likes.
  * Styled through CSS variables, set as inline style properties (no `<style>` element, so a strict
@@ -24,12 +24,12 @@ export const DEFAULT_PROGRESS_DELAY = 250;
 export const PROGRESS_ATTRIBUTE = 'data-marmeon-progress';
 
 /**
- * A progress indicator an adapter starts with its navigator (E82): attached to the navigator's visit events, it returns the
+ * A progress indicator an adapter starts with its navigator: attached to the navigator's visit events, it returns the
  * function that removes it. `progressBar(options)` is the core's; an app may pass its own.
  */
 export type ProgressIndicator = (navigator: Pick<Navigator, 'on'>) => () => void;
 
-/** The progress bar as an adapter's indicator (E82): `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`. */
+/** The progress bar as an adapter's indicator: `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`. */
 export function progressBar(options: ProgressOptions = {}): ProgressIndicator {
   return (navigator) => showProgress(navigator, options);
 }

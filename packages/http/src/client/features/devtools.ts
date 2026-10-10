@@ -1,16 +1,14 @@
 /**
- * What the in-page devtools bar shows (W7 step 9, E117, E131), recorded UI-free — the data side of the bar, as a feature: every
- * request the client core makes (visits, reloads, partial reloads, polls, deferred props, prefetches, Back/Forward to a page not in
- * memory, layers, islands, actions, live validations, uploads) with its kind, status, duration and the server's request id
- * (`x-request-id` — the key to what the server recorded for it, E131), the live hints that came, the optimistic patches shown
- * (each with the props it changed) and the hydration errors React recovered from.
+ * What the in-page devtools bar shows, recorded UI-free — the data side of the bar, as a feature: every request the client
+ * core makes with its kind, status, duration and the server's request id (`x-request-id`), the live hints that came, the
+ * optimistic patches shown and the hydration errors React recovered from.
  *
- * **Development only (E115).** Nothing in the framework imports it: the devtools' client (`@marmeon/devtools/client`, served by
- * the Vite dev server only) attaches it through the dev hook (`__MARMEON_DEVTOOLS_HOOK__`), which the core and the React adapter
- * call only under `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (E201: positive — only development and test are development branches) — a production build drops those calls (and so the hook's name).
+ * **Development only.** Nothing in the framework imports it: the devtools' client (served by the Vite dev server only)
+ * attaches it through `__MARMEON_DEVTOOLS_HOOK__`, which the core and the React adapter call only in development and test
+ * builds — a production build drops those calls.
  *
  * **What it holds is the server's data** (validation messages, patched props, a hydration error's text): **only in slots of the
- * document**, emptied by the core when the document is left — signing out leaves none of it (E36), whatever the bar showed.
+ * document**, emptied by the core when the document is left — signing out leaves none of it, whatever the bar showed.
  * Never in `history.state` or any storage. Its wiring — the `fetch` and `EventSource` of the window, wrapped to see every
  * request and hint — is no data.
  */
@@ -52,10 +50,10 @@ export type TimelineKind =
   | 'layer'
   | 'island'
   | 'action'
-  /** A live validation (E62). */
+  /** A live validation. */
   | 'validation'
   | 'upload'
-  /** A hint on the live stream (W6.10) — no request of its own: what it reloads follows as a `background` visit or an island's reload. */
+  /** A hint on the live stream — no request of its own: what it reloads follows as a `background` visit or an island's reload. */
   | 'live';
 
 /** How a request ended. */
@@ -87,7 +85,7 @@ export interface TimelineEntry {
   /** When it ended — undefined while under way. */
   end?: number;
   status?: number;
-  /** The server's request id (`x-request-id`, E131) — what `/_marmeon/devtools/api/requests/:id` knows of it. */
+  /** The server's request id (`x-request-id`) — what `/_marmeon/devtools/api/requests/:id` knows of it. */
   requestId?: string;
   /** Where the answer came from after redirects (path and query) — the page it answered with. */
   answered?: string;
@@ -111,7 +109,7 @@ export interface TimelineEntry {
   readonly hinted?: readonly string[] | null;
 }
 
-/** One optimistic patch (E59) as it was shown: the props it changed — before, and as the patch showed them. */
+/** One optimistic patch as it was shown: the props it changed — before, and as the patch showed them. */
 export interface PatchSnapshot {
   readonly id: number;
   /** The timeline entry of the action or visit it went with. */
@@ -174,7 +172,7 @@ export interface DevtoolsFeature {
   readonly cache: Map<string, unknown>;
   /**
    * The answer that showed `url` (a page or a layer — path and query): the latest with every prop (not a partial reload, not
-   * deferred props), else the latest at all. Its request id is the server's record of it (E131).
+   * deferred props), else the latest at all. Its request id is the server's record of it.
    */
   answerFor(url: string): TimelineEntry | undefined;
   /** Follows every change (batched to a microtask). Returns the function that stops it. */
@@ -264,7 +262,7 @@ function errorsOf(body: unknown): ValidationErrors | undefined {
 }
 
 /**
- * The devtools' data, as a feature (W7 step 9): attached by the devtools' client through the dev hook, never by an app. It wraps
+ * The devtools' data, as a feature: attached by the devtools' client through the dev hook, never by an app. It wraps
  * the window's `fetch` and `EventSource` (to see every request and live hint), hangs on the visit pipeline (`start`: what a visit
  * asked for), and keeps what it saw in slots of the document only.
  */
@@ -408,7 +406,7 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
     }
   };
 
-  // Live hints (W6.10): the stream is the live feature's; a hint is seen where it arrives.
+  // Live hints: the stream is the live feature's; a hint is seen where it arrives.
   const Source = win.EventSource;
   if (Source) {
     win.EventSource = class extends Source {
@@ -418,7 +416,7 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
           if (host.left || stopped) return;
           try {
             const hint = JSON.parse((event as MessageEvent<string>).data) as { channel: string; only: readonly string[] | null };
-            // The stream's path only: its query holds the channels signed for this session (E90).
+            // The stream's path only: its query holds the channels signed for this session.
             add({ kind: 'live', method: 'SSE', url: new URL(url, host.window.location.href).pathname, channel: hint.channel, hinted: hint.only });
           } catch {
             // Not a hint: nothing to show.

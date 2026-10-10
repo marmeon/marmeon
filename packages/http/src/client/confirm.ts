@@ -1,5 +1,5 @@
 /**
- * Asking the user (E64), UI-free: a confirmation before a link, an action or a form is sent (`confirm`), and the navigation
+ * Asking the user, UI-free: a confirmation before a link, an action or a form is sent (`confirm`), and the navigation
  * guard's question before unsaved changes are left (`leave`). The adapter shows it — a dialog of the app's
  * (`createMarmeonApp({ confirm })`) or the browser's own `confirm()`/`prompt()` — and the core decides what the answer
  * means: a type-to-confirm question (`prompt`) is answered yes only by the text typed exactly, whatever the dialog does.
@@ -24,7 +24,7 @@ export interface ConfirmOptions {
   readonly destructive?: boolean;
 }
 
-/** What the navigation guard asks by default (E64). */
+/** What the navigation guard asks by default. */
 export const DEFAULT_LEAVE_MESSAGE = 'You have unsaved changes. Leave anyway?';
 
 /** A confirmation as `confirm` takes it: the question, or {@link ConfirmOptions}. */
@@ -35,7 +35,7 @@ export interface ConfirmRequest extends ConfirmOptions {
   readonly kind: 'confirm' | 'leave';
   /**
    * Why a `leave` question is asked, when it is not unsaved changes a navigation would lose: `session` — another tab signed in or
-   * out, or switched the language (tab sync, W8 step 8), and loading the page again would lose them. An app's dialog words it.
+   * out, or switched the language (tab sync), and loading the page again would lose them. An app's dialog words it.
    */
   readonly reason?: 'session';
 }

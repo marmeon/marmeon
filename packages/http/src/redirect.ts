@@ -18,18 +18,18 @@ export interface Flasher {
   /** Returns a stored value and removes it. */
   pull(key: string): unknown;
   /**
-   * Keeps a flash message (E60) until a response the user is shown takes it ({@link takeFlash}) — not just for the next
+   * Keeps a flash message until a response the user is shown takes it ({@link takeFlash}) — not just for the next
    * request: a prefetch or an island in between leaves it where it is.
    */
   queueFlash(message: FlashEntry): void;
   /**
    * The flash messages waiting, taken — by the response that delivers them (a page, a layer, an action's answer). Empty
    * for a read-only request (an island) and without a session. A 409 that reloads the page puts them back (`reflash()`).
-   * `document`: the document the request names (`x-marmeon-document`, E165) — a message bound to another document (another
+   * `document`: the document the request names (`x-marmeon-document`) — a message bound to another document (another
    * tab's request flashed it) is left waiting; without one (a full page load), every message is taken.
    */
   takeFlash(document?: string): FlashEntry[];
-  /** Whether flash messages wait (for `document`, as `takeFlash` takes them) — without taking them (a prefetch says so, E60). */
+  /** Whether flash messages wait (for `document`, as `takeFlash` takes them) — without taking them (a prefetch says so). */
   hasFlash(document?: string): boolean;
 }
 export const Flasher = token<Flasher>('Flasher');
@@ -107,7 +107,7 @@ export class RedirectResult {
 
   /**
    * Flashes data to the session for the next request — whatever it is: `back().with('email', email)`, read there with
-   * `session.get('email')`. Not shown by itself: a message for the user is a {@link flash} (E60).
+   * `session.get('email')`. Not shown by itself: a message for the user is a {@link flash}.
    */
   with(key: string, value: unknown): this;
   with(values: Record<string, unknown>): this;
@@ -117,7 +117,7 @@ export class RedirectResult {
   }
 
   /**
-   * A flash message for the page the user sees next (E60) — typed by the app's `FlashData`:
+   * A flash message for the page the user sees next — typed by the app's `FlashData`:
    * `redirect().route('user-profile.show', { user }).flash('toast', { kind: 'success', message })`. It fires exactly once in
    * the browser (`useFlash('toast', …)`): with the page the redirect leads to — or, for an action (`useAction`), with the
    * action's answer itself. Unlike `with()`, it waits for a response that is shown: a prefetch or an island never takes it.
@@ -147,7 +147,7 @@ export class RedirectResult {
     }
     if (this.#messages.length > 0) {
       sessionFor('redirect().flash()', request, flasher);
-      // Bound to the document whose request flashed them (E165): another tab's request (a poll, a visit) never takes them —
+      // Bound to the document whose request flashed them: another tab's request (a poll, a visit) never takes them —
       // this tab's next answer does, or the full page load that follows a 409.
       const document = request.headers.get(DOCUMENT_HEADER);
       for (const message of this.#messages) flasher.queueFlash(document ? { ...message, document } : message);
@@ -198,7 +198,7 @@ export function isLocalPath(value: unknown): value is string {
  */
 export function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
   const clean = (given: unknown): unknown => {
-    // What JSON would make of it: a verified upload (W6.9) is nothing — neither its token nor its file go into the session.
+    // What JSON would make of it: a verified upload is nothing — neither its token nor its file go into the session.
     const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;
     if (typeof value === 'object' && value !== null && !(value instanceof File)) {
       if (Array.isArray(value)) return value.map(clean).filter((item) => item !== undefined);

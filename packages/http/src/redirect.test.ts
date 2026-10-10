@@ -59,7 +59,7 @@ describe('RedirectResult', () => {
     );
   });
 
-  it('queues flash() messages (E60) — each with an id of its own, the same message twice is two — and needs a session for them', () => {
+  it('queues flash() messages — each with an id of its own, the same message twice is two — and needs a session for them', () => {
     const queued: { id: string; key: string; data: unknown }[] = [];
     const flasher = { flash: () => {}, pull: () => undefined, queueFlash: (message: { id: string; key: string; data: unknown }) => void queued.push(message), takeFlash: () => [], hasFlash: () => false };
     const saved = { kind: 'success', message: 'Saved.' };
@@ -140,7 +140,7 @@ describe('types', () => {
   it('guards input, cookies and redirects', () => {
     const check = async (ctx: HttpContext) => {
       const input = await ctx.input();
-      // @ts-expect-error -- input values are unknown until validated (step 6), not any
+      // @ts-expect-error -- input values are unknown until validated, not any
       input.name.toUpperCase();
       // @ts-expect-error -- cookie values are strings
       ctx.cookies.set('count', 1);

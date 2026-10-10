@@ -5,8 +5,8 @@ import { applyPatches } from './patches.ts';
 import { createPoll } from './poll.ts';
 import { resolveRoute } from './routes.ts';
 
-// E201 (W10 step 6): development branches ask `NODE_ENV === 'development' || === 'test'` — positively. A client build has the value
-// folded in by Vite; server rendering and these tests read it at run time, so a missing NODE_ENV (production, E217) must take the
+// development branches ask `NODE_ENV === 'development' || === 'test'` — positively. A client build has the value
+// folded in by Vite; server rendering and these tests read it at run time, so a missing NODE_ENV (production) must take the
 // production branch: the short code, no explanation, no devtools hook — and so must, fail-closed, a value the start refuses but a
 // hand-made build could still fold in (a typo, `staging`). (Before: `!== 'production'` — a missing NODE_ENV got every development branch.)
 afterEach(() => {
@@ -39,7 +39,7 @@ function observe(value: string | undefined) {
   };
 }
 
-describe('NODE_ENV is checked positively in the client core (E201)', () => {
+describe('NODE_ENV is checked positively in the client core', () => {
   it.each([[undefined], ['production'], ['Development'], ['dev'], ['staging']])('NODE_ENV=%j takes the production branch: short codes, no devtools hook', (value) => {
     const seen = observe(value);
     const expected = { development: false, c1: '[marmeon:C1] people.show', c2: '[marmeon:C2] people.show', c5: '[marmeon:C5] 0', hook: 0 };

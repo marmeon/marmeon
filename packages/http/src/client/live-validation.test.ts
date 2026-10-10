@@ -20,7 +20,7 @@ function setup() {
   const win = new FakeWindow(`${ORIGIN}/register`);
   const bodies: unknown[] = [];
   const { navigator } = boot(win, page('/register', {}, 'auth/Register'));
-  // Attached where a form uses it (E70, E74) — no navigator has it by default.
+  // Attached where a form uses it — no navigator has it by default.
   const live = navigator.use(liveValidation);
   const record = (init?: RequestInit) => bodies.push(JSON.parse(String(init?.body ?? 'null')));
   return { win, navigator, live, bodies, record };
@@ -30,7 +30,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('live validation in the core (E62)', () => {
+describe('live validation in the core', () => {
   it('sends the form’s own request naming the fields — never cached, never followed, no page or action header', async () => {
     const { win, live, record } = setup();
     let init: RequestInit | undefined;
@@ -47,7 +47,7 @@ describe('live validation in the core (E62)', () => {
     expect(init).toMatchObject({ redirect: 'manual', cache: 'no-store', credentials: 'same-origin' });
   });
 
-  it('never sends a password field — not named, not in the body, at no depth (Gegenprobe: the body of the check)', async () => {
+  it('never sends a password field — not named, not in the body, at no depth', async () => {
     const { win, live, bodies, record } = setup();
     win.handler = (_url, request) => {
       record(request);
@@ -99,7 +99,7 @@ describe('live validation in the core (E62)', () => {
   });
 });
 
-describe('LiveValidation — one form (E62)', () => {
+describe('LiveValidation — one form', () => {
   function form(options: { on?: 'blur' | 'change'; fields?: string[]; errors?: Record<string, string> } = {}) {
     const { win, live: feature, bodies, record } = setup();
     const data: Record<string, unknown> = { name: '', email: '', password: '' };
@@ -170,7 +170,7 @@ describe('LiveValidation — one form (E62)', () => {
     expect(win.requests.map((request) => request.headers[VALIDATE_HEADER])).toEqual(['email']);
   });
 
-  it('a newer check aborts the one under way; its answer never lands (Gegenprobe: older answer last)', async () => {
+  it('a newer check aborts the one under way; its answer never lands', async () => {
     const { win, live, results } = form();
     const first = gate<Response>();
     const second = gate<Response>();
@@ -247,7 +247,7 @@ describe('LiveValidation — one form (E62)', () => {
   });
 });
 
-describe('live validation loaded on first use (E74)', () => {
+describe('live validation loaded on first use', () => {
   /** A navigator without the feature, and a form whose live validation loads its code when first used. */
   function lazyForm(load?: () => Promise<never>) {
     const win = new FakeWindow(`${ORIGIN}/register`);

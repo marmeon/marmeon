@@ -19,7 +19,7 @@ export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent ext
 }
 
 /**
- * What `view()` returns: a page — or, with `.layer({ base })`, a layer over the page on screen (E53):
+ * What `view()` returns: a page — or, with `.layer({ base })`, a layer over the page on screen:
  *
  * ```ts
  * return this.view('user-profile/Edit', { profile }).layer({ base: 'user-profile.show', params: { user: profile.id } });
@@ -34,13 +34,13 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
    */
   readonly layer: LayerMethod<TProps, TComponent>;
   /**
-   * A flash message delivered with this page (E60) — typed by the app's `FlashData`: `this.view('auth/Tokens', { tokens })
+   * A flash message delivered with this page — typed by the app's `FlashData`: `this.view('auth/Tokens', { tokens })
    * .flash('toast', { kind: 'info', message })`. It fires once in the browser, with this response (after a redirect, use
    * `redirect().flash()`).
    */
   readonly flash: FlashMethod<PageResult<TProps, TComponent>>;
   /**
-   * Follows a live channel (W6.10, E89, E90): when the server hints that it changed (`broadcast.refresh('users.7', { only })`),
+   * Follows a live channel: when the server hints that it changed (`broadcast.refresh('users.7', { only })`),
    * the browser reloads `only` of this page — `this.view('user-profile/Show', { profile }).live(\`users.${id}\`, { only:
    * ['profile'] })`. Signed for the session: whoever may see the page may hear its hints. Needs @marmeon/live.
    */

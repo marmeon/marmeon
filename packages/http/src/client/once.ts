@@ -1,6 +1,6 @@
 /**
- * Once props (E64), UI-free: the values the browser keeps of props marked `once()` on the server — in this document's memory
- * only (never in `history.state` or any storage, E36). Every page request names the keys it holds (`x-marmeon-once`) with the
+ * Once props, UI-free: the values the browser keeps of props marked `once()` on the server — in this document's memory
+ * only (never in `history.state` or any storage). Every page request names the keys it holds (`x-marmeon-once`) with the
  * scope they came under (`x-marmeon-once-scope`); the server skips those, and the page they are missing from gets them back
  * here before anything renders.
  *
@@ -73,5 +73,5 @@ export class OnceStore {
   }
 }
 
-/** The once props of the document (E64) — a slot of it: the core empties it when the document is left. */
+/** The once props of the document — a slot of it: the core empties it when the document is left. */
 export const ONCE = slot('once', () => new OnceStore());

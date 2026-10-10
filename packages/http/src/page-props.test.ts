@@ -203,7 +203,7 @@ describe('PageProps with wrapped props', () => {
     const check = () => {
       // @ts-expect-error -- Argument of type '"uid"' is not assignable to parameter of type '"id" | "url"'.
       merge([{ id: 1, url: 'x' }]).matchOn('uid');
-      // A shallow merge appends a top-level array and a paginator's data (W9): 'data.id' and a path into the items are fine.
+      // A shallow merge appends a top-level array and a paginator's data: 'data.id' and a path into the items are fine.
       merge({ data: [{ id: 1 }], meta: {} }).matchOn('data.id');
       merge([{ user: { id: 1 } }]).matchOn('user.id');
       // @ts-expect-error -- Argument of type '"data.uid"' is not assignable to parameter of type '"data.id"'.

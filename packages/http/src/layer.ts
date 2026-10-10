@@ -12,7 +12,7 @@ const LAYER_RESULT = Symbol.for('marmeon.layer-result');
 type BaseParams<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
 
 /**
- * Where a layer sits (E53): its `base` — the route a deep link (or a reload) of the layer's URL shows under it, a page or
+ * Where a layer sits: its `base` — the route a deep link (or a reload) of the layer's URL shows under it, a page or
  * another layer (then that one's base under it) — named like a link's: `{ base: 'user-profile.show', params: { user: 7 } }`.
  * Checked against the app's routes: a GET route that is not an island, its parameters typed.
  */
@@ -35,19 +35,19 @@ export interface LayerBaseRoute {
 }
 
 /**
- * What a layer's controller returns (E53): a view shown over the page (or the layers) on screen instead of replacing it —
+ * What a layer's controller returns: a view shown over the page (or the layers) on screen instead of replacing it —
  * a modal, a slide-over. Opening it pushes a history entry, Back closes it. A deep link (or a reload) of its URL shows its
  * declared `base` under it, resolved on the server in-process — or, when the user may not see the base, the layer alone
- * over a neutral surface (E54). Still a view: `PageProps<Controller>` types its props.
+ * over a neutral surface. Still a view: `PageProps<Controller>` types its props.
  */
 export interface LayerResult<TProps extends ViewProps = ViewProps, TComponent extends string = string> extends ViewResult<TProps, TComponent> {
   readonly [LAYER_RESULT]: true;
   /** The marker the router's types read (`LayerResultMarker`): `<Link layer>` takes only routes that answer a layer. */
   readonly region: 'layer';
   readonly layer: { readonly base: LayerBaseRoute; readonly key: string | undefined };
-  /** A flash message delivered with the layer (E60) — see `PageResult.flash`. */
+  /** A flash message delivered with the layer — see `PageResult.flash`. */
   readonly flash: FlashMethod<LayerResult<TProps, TComponent>>;
-  /** Follows a live channel (W6.10) — see `PageResult.live`: a hint reloads `only` of the layer. */
+  /** Follows a live channel — see `PageResult.live`: a hint reloads `only` of the layer. */
   readonly live: LiveMethod<LayerResult<TProps, TComponent>, PagePropNames<TProps>, 'this layer'>;
 }
 
@@ -84,10 +84,10 @@ export interface CloseLayerOptions {
 }
 
 /**
- * What `closeLayer()` returns (E53, Inertia's `close()`): to a layer's request, "close" — the client closes the layer (and
+ * What `closeLayer()` returns (Inertia's `close()`): to a layer's request, "close" — the client closes the layer (and
  * `layers - 1` beneath it), then reloads what is under them (`reload`). To any other request — a form without JavaScript, a
  * layer's view opened as a page — it is the redirect it also is: `closeLayer().route('user-profile.show', { user })`,
- * by default back (to the `Referer`). A flash message (`.flash()`, E60) goes with the close to the layer's client — it fires
+ * by default back (to the `Referer`). A flash message (`.flash()`) goes with the close to the layer's client — it fires
  * at once; as a redirect, with the page it leads to. Flash data (`.with()`) is kept for the next request either way.
  */
 export class CloseLayerResult extends RedirectResult {
@@ -105,7 +105,7 @@ export class CloseLayerResult extends RedirectResult {
     // Flash data and the target as for the redirect — `with()` data goes with the request that follows (the reload).
     const redirect = super.toResponse(request, routes, flasher);
     if (regionOf(request) !== 'layer') return redirect;
-    // The client is shown the close: it takes the flash messages (E60) — they fire with it, not with whatever loads next.
+    // The client is shown the close: it takes the flash messages — they fire with it, not with whatever loads next.
     const flash = serializedFlash(flasher?.takeFlash(request.headers.get(DOCUMENT_HEADER) ?? undefined) ?? []);
     return new Response(JSON.stringify({ close: this.close, ...(flash.length > 0 ? { flash } : {}) }), {
       status: 200,

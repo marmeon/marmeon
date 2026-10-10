@@ -51,7 +51,7 @@ describe('UrlSigner', () => {
     expect(signer(KEY).hasValidSignature(reused)).toBe(false); // the signature of another route
   });
 
-  it('expires — by the app clock (E97)', () => {
+  it('expires — by the app clock', () => {
     clock.freeze();
     const url = signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, 60);
     clock.travel({ seconds: 59 });

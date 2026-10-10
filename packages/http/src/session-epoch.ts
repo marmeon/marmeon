@@ -4,7 +4,7 @@ import { EncryptionConfig } from '@marmeon/encryption';
 import { PageSession } from './page-session.ts';
 
 /**
- * The session's epoch (W8 step 8, E148/E165): what the tabs of one browser compare to know that someone signed in or out, the
+ * The session's epoch: what the tabs of one browser compare to know that someone signed in or out, the
  * session was regenerated or the language changed — `PageObject.epoch`, the answer of `/_marmeon/session`. An HMAC (its key
  * derived from `APP_KEY` by HKDF, context `session-epoch`) over the session's generation and user (`PageSession.generation()`)
  * and the locale, truncated: opaque — it tells nothing about the session, the user or the language, and cannot be guessed

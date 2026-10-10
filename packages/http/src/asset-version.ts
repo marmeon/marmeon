@@ -9,11 +9,9 @@ export interface AssetVersion {
 export const AssetVersion = token<AssetVersion>('AssetVersion');
 
 /**
- * After a deployment, open tabs still run the old JavaScript, whose chunks may no
- * longer exist. A client-side visit with another version gets 409 and the URL to
- * load fully — the browser then fetches the new build (Inertia's asset versioning).
- * Only GET visits: a form submit is never thrown away. The 409 says why (`x-marmeon-reload: version`, E64): a new build is
- * the one full load the client may postpone — unsaved changes ask first, an app may show "a new version is available".
+ * After a deployment, open tabs still run the old JavaScript, whose chunks may no longer exist: a client-side visit with
+ * another asset version gets 409 (`x-marmeon-reload: version`) and the URL to load fully. Only GET visits — a form submit is
+ * never thrown away. See docs/navigation.md#a-new-version-of-the-app.
  */
 export class CheckAssetVersion {
   readonly #version: AssetVersion;

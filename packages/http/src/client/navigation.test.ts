@@ -6,11 +6,11 @@ import { boot, FakeEntry, FakeWindow, historyFeatures, ORIGIN, page, pageRespons
 import { prefetch } from './features/prefetch.ts';
 import { prefetchWith } from './lazy.ts';
 
-describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
+describe.each(PATHS)('the navigator on the %s path', (path) => {
   beforeEach(() => void (FakeWindow.path = path));
   afterEach(() => void (FakeWindow.path = 'navigation'));
 
-  describe('Navigator — the history without props (E36)', () => {
+  describe('Navigator — the history without props', () => {
     it('keeps only { component, url, scroll, key } in the entry’s state (+ its `index` in the History fallback) — never the props', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'marmeon_1|secret-token', email: 'ada@example.com' }, 'auth/AccessTokens'));
@@ -21,11 +21,11 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       for (const { state, disk } of win.entries) {
         expect(disk, 'props in a history entry').not.toContain('secret-token');
         expect(disk, 'props in a history entry').not.toContain('ada@example.com');
-        // `index`: the entry's position the History fallback counts (E64, for the navigation guard) — a number, like the scroll.
+        // `index`: the entry's position the History fallback counts (for the navigation guard) — a number, like the scroll.
         expect(Object.keys(JSON.parse(state)).sort()).toEqual(path === 'history' ? ['component', 'index', 'key', 'scroll', 'url'] : ['component', 'key', 'scroll', 'url']);
         expect(isHistoryState(JSON.parse(state))).toBe(true);
       }
-      // With the Navigation API, `history.state` stays null (E184): the entry's state is the Navigation API's.
+      // With the Navigation API, `history.state` stays null: the entry's state is the Navigation API's.
       if (path === 'navigation') for (const entry of win.entries) expect(entry.history).toBe('null');
       expect(JSON.parse(win.current.state)).toMatchObject({ component: 'auth/AccessTokens', url: '/settings/tokens', scroll: { x: 0, y: 0 } });
     });
@@ -79,7 +79,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
 
     it('never shows the props an older client left in history.state — the History fallback asks the server; the Navigation API path leaves the entry to the browser', async () => {
       const win = new FakeWindow(`${ORIGIN}/settings/tokens`);
-      // Written by the client before E36: the whole page, plain-text token included.
+      // Written by an older client: the whole page, plain-text token included.
       win.history.pushState(page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }), '', '/settings/tokens');
       win.history.pushState(null, '', '/login');
       win.handler = () => pageResponse(page('/login', {}, 'auth/Login'));
@@ -443,7 +443,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
     });
   });
 
-  describe('Navigator — deferred groups streamed with the document (E49)', () => {
+  describe('Navigator — deferred groups streamed with the document', () => {
     const streamed = (): PageObject => ({ ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'], slow: ['audit'] }, streamedProps: ['default'] });
 
     it('does not ask for a group the server streams — it lands what the adapter hands over, once the document has arrived', async () => {
@@ -485,7 +485,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
     });
   });
 
-  describe('Navigator — partial reloads and deferred props (E7)', () => {
+  describe('Navigator — partial reloads and deferred props', () => {
     /** A response the test lets through when it wants to — a slow server. */
     function gate() {
       let open!: () => void;
@@ -663,7 +663,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
 
   const purpose = (request: { headers: Record<string, string> }) => request.headers.purpose;
 
-  describe('Navigator — a visit’s optimistic patches (E59)', () => {
+  describe('Navigator — a visit’s optimistic patches', () => {
     /** A target that keeps its own patches (a layer, an island) — recording what the core does with them. */
     function target() {
       const calls: string[] = [];
@@ -676,7 +676,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       return { calls, patchTarget };
     }
 
-    it('the core shows them while the visit is under way, and takes them out with its answer — no feature attached (W5c.6)', async () => {
+    it('the core shows them while the visit is under way, and takes them out with its answer — no feature attached', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       const slow = gate();
       win.handler = async () => (await slow.opened, pageResponse(page('/users/1', { name: 'Grace' })));

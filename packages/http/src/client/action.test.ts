@@ -25,7 +25,7 @@ const without = (id: number) => (props: Readonly<Record<string, unknown>>) => {
   return { profile: { ...current, links: current.links.filter((link) => link.id !== id) } };
 };
 
-describe('withActions(navigator).action — requests that do not navigate (E59)', () => {
+describe('withActions(navigator).action — requests that do not navigate', () => {
   it('sends an action: its method, JSON body, the action header, never cached — and changes neither URL nor history', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     let init: RequestInit | undefined;
@@ -79,7 +79,7 @@ describe('withActions(navigator).action — requests that do not navigate (E59)'
   });
 });
 
-describe('optimistic patches (E59 model 1)', () => {
+describe('optimistic patches', () => {
   it('shows a patch at once and, on a 422, restores exactly the props there were — the same object', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     const answer = gate<Response>();
@@ -330,7 +330,7 @@ function idsOf(props: Readonly<Record<string, unknown>>) {
   return (props.links as Link[]).map((link) => link.id);
 }
 
-describe('submissions — ghost rows (E59 model 2)', () => {
+describe('submissions — ghost rows', () => {
   it('lists an action with its input while under way — until the props it reloads have landed', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     const post = gate<Response>();
@@ -368,7 +368,7 @@ describe('submissions — ghost rows (E59 model 2)', () => {
   });
 });
 
-describe('revalidateOnBack (E58)', () => {
+describe('revalidateOnBack', () => {
   function app(declared: Record<string, boolean | readonly string[] | undefined>) {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     const shown: PageObject[] = [];
@@ -429,7 +429,7 @@ describe('revalidateOnBack (E58)', () => {
   });
 });
 
-describe('revalidateOnBack for layers and islands (E58)', () => {
+describe('revalidateOnBack for layers and islands', () => {
   it('a layer Forward opens again from memory reloads what its view declares — as the layer', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     const edit = (name: string) => ({ ...page('/users/1/edit', { profile: { name } }, 'user-profile/Edit'), layer: { key: 'edit', base: '/users/1' } });

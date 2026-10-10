@@ -6,14 +6,14 @@ import { islands } from './islands.ts';
 import { prefetch } from './prefetch.ts';
 
 /**
- * The devtools' data feature (W7 step 9): what the in-page bar shows, recorded UI-free — every request of the client core with its
- * kind, status, duration and the server's request id (E131), live hints, optimistic patches, hydration errors — in slots of the
- * document only: gone when the document is left (E36).
+ * The devtools' data feature: what the in-page bar shows, recorded UI-free — every request of the client core with its
+ * kind, status, duration and the server's request id, live hints, optimistic patches, hydration errors — in slots of the
+ * document only: gone when the document is left.
  */
 
 const CANARY = 'CANARY-signed-in';
 let ids = 0;
-/** A page answer as the server sends it — with its request id (`x-request-id`, E131). */
+/** A page answer as the server sends it — with its request id (`x-request-id`). */
 const answer = (body: object, init: { status?: number; headers?: Record<string, string> } = {}) =>
   new Response(JSON.stringify(body), { status: init.status ?? 200, headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json', 'x-request-id': `req-${++ids}`, ...init.headers } });
 const pending = (init: RequestInit) => new Promise<Response>((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
@@ -51,7 +51,7 @@ afterEach(() => {
   delete (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__;
 });
 
-describe('the devtools data feature — every request of the client core, by kind (W7 step 9)', () => {
+describe('the devtools data feature — every request of the client core, by kind', () => {
   it('visits, reloads, partial reloads, background visits, deferred props, prefetches — with status, request id and view', async () => {
     const { api, navigator } = tab();
     await navigator.visit('/users/2');
@@ -92,7 +92,7 @@ describe('the devtools data feature — every request of the client core, by kin
     await win.fetch('/register', { method: 'POST', headers: { [VALIDATE_HEADER]: 'email' } });
     await settle();
     expect(last(api)).toMatchObject({ kind: 'validation', status: 422, outcome: 'invalid', errors: { email: ['taken'] } });
-    // A hint on the live stream (W6.10) — no request of its own.
+    // A hint on the live stream — no request of its own.
     const stream = new win.EventSource!(`/_marmeon/live?c=${CANARY}.users.1`) as unknown as FakeEventSource;
     stream.emit('refresh', { channel: 'users.1', only: ['secret'], seq: 2 });
     expect(last(api)).toMatchObject({ kind: 'live', method: 'SSE', url: '/_marmeon/live', channel: 'users.1', hinted: ['secret'] }); // not the signed channels
@@ -117,7 +117,7 @@ describe('the devtools data feature — every request of the client core, by kin
     expect(api.left).toBe(false);
   });
 
-  it('the document with the status it came with — a 404 page is a 404 (navigation timing), 200 where the browser does not say (W7.11)', () => {
+  it('the document with the status it came with — a 404 page is a 404 (navigation timing), 200 where the browser does not say', () => {
     const { api } = tab();
     const spy = vi.spyOn(performance, 'getEntriesByType').mockReturnValue([{ responseStatus: 404 } as unknown as PerformanceEntry]);
     try {
@@ -130,7 +130,7 @@ describe('the devtools data feature — every request of the client core, by kin
     expect(api.timeline[0]).toMatchObject({ kind: 'document', status: 200 });
   });
 
-  it('answerFor: the answer that showed a page — the latest with every prop, its request id the server’s record of it (E131)', async () => {
+  it('answerFor: the answer that showed a page — the latest with every prop, its request id the server’s record of it', async () => {
     const { api, navigator } = tab();
     api.record.document('/users/1', 'req-document');
     expect(api.answerFor('/users/1')).toMatchObject({ kind: 'document', requestId: 'req-document' });
@@ -173,7 +173,7 @@ describe('what only the dev hook sees — optimistic patches and hydration error
   });
 });
 
-describe('the document is left (E36): nothing of it stays — in no slot, not in the feature’s lists', () => {
+describe('the document is left: nothing of it stays — in no slot, not in the feature’s lists', () => {
   it('signed out (a 409): timeline, patches, hydration errors and the bar’s cache are empty, `left` says so, listeners hear it', async () => {
     const { api, navigator, win } = tab();
     (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = devtoolsReports(() => api);

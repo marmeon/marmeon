@@ -1,5 +1,5 @@
 /**
- * Typed URL state (E55): the query of the page on screen, as its request's `query` schema parsed it on the server
+ * Typed URL state: the query of the page on screen, as its request's `query` schema parsed it on the server
  * (`PageObject.query`, `PageObject.queryDefaults`), changed by visits of the same page. UI-free — an adapter's
  * `useQueryState` renders `value(page)` and calls `set()`. The browser never parses a URL: what it shows is what the
  * server parsed, or what is being typed into it right now.

@@ -9,7 +9,7 @@ import { DEFAULT_SESSION_CHANGED_MESSAGE, isTabSyncMessage, tabSync, type EpochC
 import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, settle } from '../test-window.ts';
 
 /**
- * Tab sync (W8 step 8, E148/E165): tabs of one browser — a `FakeWindow` each — share the browser's channels (`FakeChannels`) and
+ * Tab sync: tabs of one browser — a `FakeWindow` each — share the browser's channels (`FakeChannels`) and
  * one server, whose epoch the test changes (someone signed out). What each tab does is its own navigator's, as in the browser.
  */
 
@@ -179,7 +179,7 @@ describe('tab sync — navigator.use(tabSync)', () => {
     expect(b.win.asked).toEqual([`confirm ${DEFAULT_SESSION_CHANGED_MESSAGE}`]);
   });
 
-  it('every history entry holds the epoch it was written under — a position, nothing the page showed (E36)', async () => {
+  it('every history entry holds the epoch it was written under — a position, nothing the page showed', async () => {
     const { tab } = browser();
     const b = tab('/users/1');
     await b.navigator.visit('/users/2');

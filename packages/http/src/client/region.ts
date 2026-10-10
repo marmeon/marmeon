@@ -1,11 +1,11 @@
 /**
- * Regions (E50), UI-free: a part of a page that shows the view of *another* route — with its own region object
+ * Regions, UI-free: a part of a page that shows the view of *another* route — with its own region object
  * (component, props, URL, query), its own partial reloads, deferred and merged props, its own failures and its own place
- * in memory. An island (`<Island route>`, E48) is a region embedded in a page, without a URL of its own; a layer (W5b step
- * 5) will be a region with a history entry over the page. Adapters render a region's snapshot and call `load`/`reload`.
+ * in memory. An island (`<Island route>`) is a region embedded in a page, without a URL of its own. Adapters render a region's
+ * snapshot and call `load`/`reload`.
  *
  * Where a region keeps what it loaded is its owner's history entry ({@link RegionOwner}, the slot `REGIONS` in owner.ts) — in this
- * tab's memory only (E36), never in `history.state` or any storage. Back/Forward shows them from there without a request;
+ * tab's memory only, never in `history.state` or any storage. Back/Forward shows them from there without a request;
  * leaving the document (signing out, a new build) drops them with the pages. The islands feature makes them (`islands.region`).
  */
 import type { PageObject, RegionObject, RegionResult } from '../page.ts';
@@ -69,7 +69,7 @@ export interface RegionTransport {
 export type KeptRegion = RegionObject | { readonly status: 'unauthorized' | 'forbidden' };
 
 /**
- * What a region starts with besides nothing: what its owner kept — or what the server streamed with the page (E49),
+ * What a region starts with besides nothing: what its owner kept — or what the server streamed with the page,
  * which may also be a failure (`exception`: shown, never kept — Back asks again).
  */
 export type RegionInitial = KeptRegion | { readonly status: 'exception'; readonly failure: RegionFailure };
@@ -79,7 +79,7 @@ function isRegionObject(kept: RegionInitial | undefined): kept is RegionObject {
 }
 
 /**
- * What a region starts with when the server resolved it while rendering the page (E49) — the {@link RegionResult} streamed
+ * What a region starts with when the server resolved it while rendering the page — the {@link RegionResult} streamed
  * into the document. `browser` (not resolved on the server): nothing, the region loads itself.
  */
 export function regionInitial(result: RegionResult): RegionInitial | undefined {
@@ -103,13 +103,13 @@ export function regionId(url: string): string {
   return parsed.pathname + parsed.search;
 }
 
-/** What a region shown from memory by Back/Forward declares to reload then (E58) — asked for when it is loaded (rendered) again. */
+/** What a region shown from memory by Back/Forward declares to reload then — asked for when it is loaded (rendered) again. */
 export type DeclaredOnBack = (component: string) => Promise<ReloadSpec | undefined>;
 
 /**
  * The region of `url` in `owner`'s entry — the same one for the same id while the owner is on screen (two identical islands
  * share one request and one state). It starts with what the entry kept of it (`kept`, its slot `REGIONS` in owner.ts — Back/Forward)
- * or with `initial` (what the server streamed with the page, E49: its region object, `unauthorized`/`forbidden` — kept like a
+ * or with `initial` (what the server streamed with the page: its region object, `unauthorized`/`forbidden` — kept like a
  * loaded one — or an `exception`, shown but not kept), else `loading` until `load()`. Closed with its owner: requests under
  * way are aborted, nothing lands any more.
  */
@@ -119,7 +119,7 @@ export function ownedRegion(owner: RegionOwner, kept: Map<string, KeptRegion>, t
   if (live) return live as Region;
   const known = kept.get(id);
   if (initial && !('failure' in initial) && !known) kept.set(id, initial);
-  // Back/Forward brought what it kept: its view may declare props to reload then (E58).
+  // Back/Forward brought what it kept: its view may declare props to reload then.
   const region = new Region(owner, kept, transport, id, url, known ?? initial, known && isRegionObject(known) ? onBack : undefined);
   if (!owner.closed) owner.live.set(id, region);
   return region;
@@ -149,11 +149,11 @@ export class Region {
   readonly #deferred = new Set<string>();
   readonly #listeners = new Set<() => void>();
   #snapshot: RegionSnapshot;
-  /** Optimistic patches under way (E59) — over its region object, never in it (nor in what its owner keeps). */
+  /** Optimistic patches under way — over its region object, never in it (nor in what its owner keeps). */
   readonly #patches = new PatchQueue();
   /** Patches of succeeded actions that go when the region's next answer lands — carried over to a newer request. */
   #drops: { readonly ids: readonly number[]; readonly done: () => void }[] = [];
-  /** What its view declares to reload, once, when it was shown from memory by Back/Forward (E58). */
+  /** What its view declares to reload, once, when it was shown from memory by Back/Forward. */
   #onBack: DeclaredOnBack | undefined;
   readonly #target: PatchTarget = {
     add: (patch) => {
@@ -205,7 +205,7 @@ export class Region {
     return this.#region ? pageQuery(this.#region) : {};
   }
 
-  /** A patch of its props for an action (E59) — shown at once over them, never kept before it succeeded. */
+  /** A patch of its props for an action — shown at once over them, never kept before it succeeded. */
   optimistic(patch: PropsPatch): OptimisticUpdate {
     return { target: this.#target, patch };
   }
@@ -230,7 +230,7 @@ export class Region {
       this.#loadDeferred();
       const onBack = this.#onBack;
       this.#onBack = undefined;
-      // Shown from memory by Back/Forward: what its view declares reloads in the background (E58).
+      // Shown from memory by Back/Forward: what its view declares reloads in the background.
       if (onBack) {
         const component = this.#region.component;
         void onBack(component).then((spec) => {

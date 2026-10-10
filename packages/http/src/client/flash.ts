@@ -1,5 +1,5 @@
 /**
- * Flash messages in the client core (E60), UI-free: every answer the user is shown may bring some (`PageObject.flash`, an
+ * Flash messages in the client core, UI-free: every answer the user is shown may bring some (`PageObject.flash`, an
  * action's `x-marmeon-flash`, a layer's close) — each fires exactly once, by its id: never again for a partial reload,
  * Back/Forward or a page shown from memory (the core keeps no message with a page), and twice for the same message flashed
  * twice (another id). A message nobody listens to yet waits for the first listener of its key — the page that mounts with it.
@@ -59,7 +59,7 @@ export class FlashChannel {
   }
 }
 
-/** The flash messages of the document (E60) — a slot of it: what waits for a listener goes when the document is left. */
+/** The flash messages of the document — a slot of it: what waits for a listener goes when the document is left. */
 export const FLASH = slot('flash', () => new FlashChannel());
 
 /** Flash messages of answers on their way to the screen — a slot of the document. */

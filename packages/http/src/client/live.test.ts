@@ -41,7 +41,7 @@ afterEach(async () => {
   await wait(1);
 });
 
-describe('live props in the client core — server-driven, one stream per document (W6.10)', () => {
+describe('live props in the client core — server-driven, one stream per document', () => {
   it('the core loads the feature when a page follows a channel — and opens ONE stream for every channel on screen', async () => {
     const { win, navigator } = await tab();
     expect(win.sources).toHaveLength(1);
@@ -189,7 +189,7 @@ describe('live props in the client core — server-driven, one stream per docume
   });
 });
 
-describe('the connection rule (E104): always connected — over HTTP/1.1 only while visible', () => {
+describe('the connection rule: always connected — over HTTP/1.1 only while visible', () => {
   for (const protocol of ['http/1.1', ''] as const) {
     it(`over ${protocol || 'an unknown protocol'}: a hidden tab has no open stream, a visible one connects again`, async () => {
       const { win } = await tab({ protocol });
@@ -226,7 +226,7 @@ describe('the connection rule (E104): always connected — over HTTP/1.1 only wh
   });
 });
 
-describe('catching up (E104): a stream that was away reloads once what it missed', () => {
+describe('catching up: a stream that was away reloads once what it missed', () => {
   it('hidden over HTTP/1.1 while two hints passed (both channels of the page): back, hello says so — exactly ONE reload, the union', async () => {
     const { win } = await tab({ protocol: 'http/1.1' });
     win.source!.emit('hello', { seq: { 'users.1': 3, 'notifications.user.1': 7 } });
@@ -277,7 +277,7 @@ describe('catching up (E104): a stream that was away reloads once what it missed
   });
 });
 
-describe('live and the session of the tab (W9 step 4)', () => {
+describe('live and the session of the tab', () => {
   /** A tab with tab sync on Ada's profile (it follows users.1) in a browser whose session the test changes; its tokens are the epoch's. */
   async function syncedTab({ confirm }: { confirm?: () => Promise<boolean> } = {}) {
     const channels = new FakeChannels();
@@ -329,7 +329,7 @@ describe('live and the session of the tab (W9 step 4)', () => {
     win.handler = () => pageResponse(livePage('/users/1', [follows('users.1', ['profile'])]));
     const initial = { ...livePage('/users/1', [follows('users.1', ['profile'])]), epoch: 'e1' };
     // The first navigator: its features attached (tab sync, live once its chunk is there), never started — the tree was thrown away.
-    // It neither streams nor listens (before, its live feature listened to the document and threw on every visibilitychange).
+    // It neither streams nor listens.
     new Navigator({ initialPage: initial, window: win, render: async () => {}, features: [tabSync] });
     const { stop } = boot(win, initial, { features: [tabSync] });
     await arrived(win);

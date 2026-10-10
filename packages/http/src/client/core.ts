@@ -1,8 +1,7 @@
 /**
- * The feature host (Wave 5c): what the navigator shares with the modules around it and with its features — the page on
- * screen, its history entry, memory, the request pipeline, the hooks (`on`) and the slots the core empties itself (`entry`,
- * `document`). The navigator keeps this state here itself, so every module reads it the same way (and compresses alike).
- * Each core module names the part it uses (`Pick<NavigatorCore, …>`); a feature gets all of it in `setup`.
+ * The feature host's interface: what the navigator shares with the modules around it and with its features — the page on
+ * screen, its history entry, memory, the request pipeline, the hooks and the slots the core empties itself. Each core module
+ * names the part it uses (`Pick<NavigatorCore, …>`); a feature gets all of it in `setup`.
  */
 import type { FlashMessage, PageObject } from '../page.ts';
 import type { PageCache } from './cache.ts';
@@ -61,14 +60,14 @@ export interface FeatureHost {
   readonly options: NavigatorOptions;
   /** The page the document came with, as the server sent it (a deep link's layers) — until the navigator takes over the history. */
   readonly initial: PageObject | undefined;
-  /** The pages of the history entries, in memory (E36). */
+  /** The pages of the history entries, in memory. */
   readonly cache: PageCache;
   readonly scroll: ScrollMemory;
-  /** Writes history entries — and refuses anything that is not a position (E36). */
+  /** Writes history entries — and refuses anything that is not a position. */
   readonly history: HistoryWriter;
-  /** Once props (E64) — a slot of the document. */
+  /** Once props — a slot of the document. */
   readonly once: OnceStore;
-  /** Flash messages (E60) — a slot of the document. */
+  /** Flash messages — a slot of the document. */
   readonly flash: FlashChannel;
   /** Flash messages of answers on their way to the screen — fired once what they came with is rendered (a slot of the document). */
   readonly inbox: FlashMessage[];
@@ -109,19 +108,19 @@ export interface FeatureHost {
 
   /** The current history entry: the top layer's, or the page's. */
   top(): string;
-  /** The owner of entry `key` on screen — `back`: brought back by Back/Forward (what views declare reloads, E58). */
+  /** The owner of entry `key` on screen — `back`: brought back by Back/Forward (what views declare reloads). */
   ownerOf(key: string, back?: boolean): RegionOwner;
-  /** What the view `component` declares to reload when Back/Forward shows it from memory (E58) — the `declared` hook's. */
+  /** What the view `component` declares to reload when Back/Forward shows it from memory — the `declared` hook's. */
   declared(component: string): Promise<ReloadSpec | undefined>;
-  /** The unsaved changes on the levels `leaving` takes off the screen — but `ignore` (E64). */
+  /** The unsaved changes on the levels `leaving` takes off the screen — but `ignore`. */
   blocking(leaving: (level: number) => boolean, ignore?: readonly NavigationGuard[]): NavigationGuard[];
   /** Whether a navigation that takes the levels `leaving` off the screen may go — asking, when unsaved changes are on one. */
   mayLeave(leaving: (level: number) => boolean, ignore?: true | readonly NavigationGuard[]): Promise<boolean>;
-  /** Asks the user (E64); a failing dialog is a no. */
+  /** Asks the user; a failing dialog is a no. */
   ask(request: ConfirmRequest): Promise<boolean>;
   /** The adapter's render — as it is (no flash messages fired, nothing filled in). */
   render(page: PageObject, options: RenderOptions): Promise<void>;
-  /** Renders, then fires what the rendered answer brought (E60) — with the owner on screen and the features' contributions. */
+  /** Renders, then fires what the rendered answer brought — with the owner on screen and the features' contributions. */
   draw(page: PageObject, options: DrawOptions): Promise<void>;
   /** The page of entry `key` as it is shown: with what features paint over it (optimistic patches). */
   paint(key: string, page: PageObject): PageObject;
@@ -153,9 +152,9 @@ export interface FeatureHost {
   /** Whether a feature caused the Back/Forward under way itself (a layer closing). */
   own(): boolean;
 
-  /** Props that load in the background (deferred, streamed, reloads) — fixed in the core (E72). */
+  /** Props that load in the background (deferred, streamed, reloads) — fixed in the core. */
   readonly props: PropLoader;
-  /** Full loads the server asks for (409) — fixed in the core (E72). */
+  /** Full loads the server asks for (409) — fixed in the core. */
   readonly documentChange: DocumentChange;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Props that load in the background (E7, E49, E58, E59): deferred groups after a page is shown, the groups the server streams
+ * Props that load in the background: deferred groups after a page is shown, the groups the server streams
  * with the document, and reloads of an entry's page (an action's, Back's) — each landing in the page it was loaded for, on
  * screen or in memory.
  */
@@ -22,7 +22,7 @@ export class PropLoader {
   /** Deferred props being loaded — `<history key> <group>`, so no group is asked for twice at once. */
   readonly #loading = new Set<string>();
   /**
-   * Deferred groups of the first page that the server streams with the document (E49, `streamedProps`): not asked for —
+   * Deferred groups of the first page that the server streams with the document (`streamedProps`): not asked for —
    * the adapter hands them over as they arrive (`receiveStreamed`).
    */
   readonly #streaming: Set<string>;
@@ -63,7 +63,7 @@ export class PropLoader {
     for (const [group, props] of Object.entries(page.deferredProps)) {
       const id = `${key} ${group}`;
       if (props.length === 0 || this.#loading.has(id)) continue;
-      // On its way in the document's stream (E49): not asked for.
+      // On its way in the document's stream: not asked for.
       if (key === this.#firstKey && this.#streaming.has(group)) continue;
       this.#loading.add(id);
       void load(props).finally(() => this.#loading.delete(id));
@@ -90,7 +90,7 @@ export class PropLoader {
    * Merges loaded props into the page of history entry `key` — and shows it, if that is the page on screen. `replace`: the
    * loaded page is the whole page now (a full reload) — its deferred props keep their values until they load again. `reset`:
    * the merged props the loaded ones replace (a revalidation's: all). `landed`: what the landing props take the place of goes
-   * (an action's optimistic patches, E59) — in the same render.
+   * (an action's optimistic patches) — in the same render.
    */
   async land(
     key: string,

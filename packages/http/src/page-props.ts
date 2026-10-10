@@ -30,7 +30,7 @@ function list(header: string | null): string[] {
 /** The part of the page object the props make up. */
 export type ResolvedPage = Pick<PageObject, 'props' | 'deferredProps' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn' | 'onceProps'>;
 
-/** How a page's once props (E64) are resolved: for which view, and which of them the browser holds. */
+/** How a page's once props are resolved: for which view, and which of them the browser holds. */
 export interface OnceContext {
   /** The view — the default key of a page's own once prop is `<view>:<prop>`. */
   readonly component: string;
@@ -41,7 +41,7 @@ export interface OnceContext {
 }
 
 /**
- * The once props (E64) the browser of `request` holds — only when it names the scope they were sent under and that is the
+ * The once props the browser of `request` holds — only when it names the scope they were sent under and that is the
  * request's scope now (`current`: the session's, see `PageSession.scope`). A browser that kept them for someone else — another
  * tab signed in as another user, the cookie changed under this tab — holds nothing as far as the server is concerned.
  */
@@ -89,7 +89,7 @@ export async function resolvePageProps(
       continue;
     }
     if (kind === 'once' && once) {
-      // A once prop (E64): announced with its key — and not computed while the browser holds it, unless asked for by name.
+      // A once prop: announced with its key — and not computed while the browser holds it, unless asked for by name.
       const prop = value as OnceProp<unknown>;
       const info: OnceInfo = { key: onceKey(prop, key, !Object.hasOwn(props, key), once.component), ...(prop.ttl !== undefined ? { expiresAt: (once.now ?? Date.now()) + prop.ttl } : {}) };
       onceProps[key] = info;
@@ -124,7 +124,7 @@ export async function resolvePageProps(
   };
 }
 
-/** Where a page's props came from — what the devtools show beside each (W7 step 9). */
+/** Where a page's props came from — what the devtools show beside each. */
 export interface PropOrigins {
   /** Sent props that are shared (`SharedData`), not the controller's own. */
   readonly shared: readonly string[];

@@ -1,20 +1,10 @@
 /**
- * View transitions (E185, W9 step 8): a page change animates. The navigator loads the page first, then this feature wraps only the
- * swap in `document.startViewTransition({ update, types })`: the old page is captured, the new one rendered inside the update — its
- * history entry and its scroll position follow as soon as it is in (after `updateCallbackDone`, before the new state is captured) —
- * and the browser crossfades them (its default; the app's CSS animates the rest). The types say how
- * the page came — `'forward'` (a new entry), `'replace'`, `'back'` (Back/Forward: `'back'` or `'forward'`) — plus the app's own, for
- * `:active-view-transition-type()`. A chunk of its own (`loadViewTransitions`): the navigator loads it before the first page change
- * that asks for one — a visit's `viewTransition`, or the app's (`NavigatorOptions.viewTransition`).
+ * View transitions: a page change animates. The navigator loads the page first, then this feature wraps only the swap in
+ * `document.startViewTransition({ update, types })` — the history entry and the scroll position follow as soon as the new page
+ * is in (after `updateCallbackDone`, before the new state is captured). See docs/navigation.md#view-transitions.
  *
- * Skipped — the swap runs as without it — when the user prefers reduced motion, the tab is hidden or the browser has none: a
- * transition freezes the page until the swap, which is only worth it for an animation someone sees.
- *
- * An adapter that starts transitions itself (`viewTransition: 'adapter'`, React 19.3's `<ViewTransition>`) gets the types with the render
- * (`RenderOptions.transition`) instead — the core never calls `startViewTransition` then: never two for one page change.
- *
- * Layers (E53) are no page change: a layer opening, closing, or coming back by Back/Forward transitions nothing here (its frame
- * animates itself). A page change that takes the layers off the screen does. A new visit skips the animation still running.
+ * Skipped when the user prefers reduced motion, the tab is hidden or the browser has none: a transition freezes the page until
+ * the swap, which is only worth it for an animation someone sees. Layers are no page change (their frame animates itself).
  */
 import { defineFeature, slot } from '../feature.ts';
 import type { ViewTransitionLike, ViewTransitionOption } from '../navigation.ts';

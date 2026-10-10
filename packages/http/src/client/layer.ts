@@ -1,8 +1,8 @@
 /**
- * Layers (E50, E53), UI-free: a region with a history entry of its own over the page — a modal, a slide-over. Its page
+ * Layers, UI-free: a region with a history entry of its own over the page — a modal, a slide-over. Its page
  * object is the answer of its route (`this.view(…).layer({ base })`), with its own visits, partial reloads, deferred props,
  * failures and islands (`owner`). Layers stack (up to {@link MAX_LAYER_DEPTH}); Back closes the top one, Forward opens it
- * again from memory. What a layer showed lives only in this tab's memory (E36) — never in `history.state` or any storage.
+ * again from memory. What a layer showed lives only in this tab's memory — never in `history.state` or any storage.
  * The layers feature creates them; an adapter renders `navigator.layers` (handed with every `render`) and calls their methods.
  */
 import { MAX_LAYER_DEPTH, type LayerClose, type PageObject } from '../page.ts';
@@ -22,7 +22,7 @@ export interface LayerCloseOptions {
 export interface LayerHost {
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined>;
   closeLayer(layer: Layer, close: LayerClose): Promise<void>;
-  /** Reloads the layer's props in the background for an action (E59), dropping `drop` as they land — whether they landed. */
+  /** Reloads the layer's props in the background for an action, dropping `drop` as they land — whether they landed. */
   reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean>;
   /** The layer's props in memory changed (an action's patches became its state): memory keeps them. */
   layerChanged(layer: Layer): void;
@@ -56,7 +56,7 @@ export class Layer {
   #closing = false;
   readonly #listeners = new Set<() => void>();
   readonly #closeListeners = new Set<() => void>();
-  /** Optimistic patches under way (E59) — over its props, never in them. */
+  /** Optimistic patches under way — over its props, never in them. */
   readonly #patches = new PatchQueue();
   readonly #revalidations = new Revalidations();
   readonly #target: PatchTarget = {
@@ -109,12 +109,12 @@ export class Layer {
     return this.#page;
   }
 
-  /** What its view renders: {@link page} with the optimistic patches under way over it (E59) — the same object while neither changed. */
+  /** What its view renders: {@link page} with the optimistic patches under way over it — the same object while neither changed. */
   get view(): PageObject {
     return this.#patches.apply(this.#page);
   }
 
-  /** A patch of its props for an action or a form (E59) — shown at once over them, never written into them before it succeeded. */
+  /** A patch of its props for an action or a form — shown at once over them, never written into them before it succeeded. */
   optimistic(patch: PropsPatch): OptimisticUpdate {
     return { target: this.#target, patch };
   }
@@ -172,13 +172,13 @@ export class Layer {
   close({ reload }: LayerCloseOptions = {}): Promise<void> {
     if (this.#closed || this.#closing) return Promise.resolve();
     this.#closing = true;
-    // Still open afterwards (unsaved changes, and the user chose to stay — E64): it may be closed again.
+    // Still open afterwards (unsaved changes, and the user chose to stay): it may be closed again.
     return this.#host.closeLayer(this, { layers: 1, ...(reload === undefined ? {} : { reload }) }).finally(() => {
       if (!this.#closed) this.#closing = false;
     });
   }
 
-  /** @internal Its props again in the background (what its view declares to reload on Back/Forward, E58) — whether they landed. */
+  /** @internal Its props again in the background (what its view declares to reload on Back/Forward) — whether they landed. */
   revalidate(spec: ReloadSpec): Promise<boolean> {
     return this.#host.reloadLayer(this, spec, new Set(), new AbortController().signal);
   }

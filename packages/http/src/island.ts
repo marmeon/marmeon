@@ -6,7 +6,7 @@ import { withLiveMethod, type LiveMethod } from './live.ts';
 const ISLAND_RESULT = Symbol.for('marmeon.island-result');
 
 /**
- * What an island's controller returns (E48): a view of the app and its props, sent as a region object to the
+ * What an island's controller returns: a view of the app and its props, sent as a region object to the
  * `<Island route>` that asked for it — never as a page. Its route is a GET route of its own, with its own middleware,
  * authorization and query schema, reusable on any page.
  */
@@ -17,7 +17,7 @@ export interface IslandResult<TProps extends ViewProps = ViewProps, TComponent e
   readonly component: TComponent;
   readonly props: TProps;
   /**
-   * Follows a live channel (W6.10, E89, E90): when the server hints that it changed (`broadcast.refresh('dashboard.sign-ins')`),
+   * Follows a live channel: when the server hints that it changed (`broadcast.refresh('dashboard.sign-ins')`),
    * the browser reloads `only` of this island (default: all of it) — `this.island('dashboard/RecentSignIns', { entries })
    * .live('dashboard.sign-ins')`. Signed for the session. Needs @marmeon/live.
    */

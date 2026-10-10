@@ -1,5 +1,5 @@
 /**
- * Features that load on first use (E74): those an app turns on with a prop or an option of a component it uses anyway (a
+ * Features that load on first use: those an app turns on with a prop or an option of a component it uses anyway (a
  * form's `validate`), so a static import would put them in every app. Here are their `import()`s — the code is in a chunk of
  * its own, fetched the first time a form (or link) needs it.
  */
@@ -16,32 +16,32 @@ import type { LiveValidation, LiveValidationOptions } from './live-validation.ts
 import type { Navigator } from './navigation.ts';
 
 /**
- * Layers (E53, E71) — the core loads them itself the first time the server answers with a layer (or Back/Forward goes to a
+ * Layers — the core loads them itself the first time the server answers with a layer (or Back/Forward goes to a
  * layer's entry) and nothing attached them before; an adapter loads them where it opens one (`<Link layer>`) and before it
  * renders a deep link's document (`page.layers`): `navigator.load(loadLayers)`.
  */
 export const loadLayers = (): Promise<Feature<LayerStack>> => import('./features/layers.ts').then((module) => module.layers);
 
 /**
- * Tab sync (W8 step 8, E149) — a default feature of `createMarmeonApp`, in a chunk of its own: the adapter loads it with the first
+ * Tab sync — a default feature of `createMarmeonApp`, in a chunk of its own: the adapter loads it with the first
  * page's component and messages, before it hydrates, and attaches it from the start (`NavigatorOptions.features`).
  */
 export const loadTabSync = (): Promise<Feature<TabSync>> => import('./features/tab-sync.ts').then((module) => module.tabSync);
 
 /**
- * The History fallback (E184) — where the browser has no Navigation API: the adapter loads it before the navigator writes its first
+ * The History fallback — where the browser has no Navigation API: the adapter loads it before the navigator writes its first
  * entry and attaches it from the start (`NavigatorOptions.features`; createMarmeonApp loads it beside the first page's component,
  * only when `window.navigation` is missing).
  */
 export const loadHistoryFallback = (): Promise<Feature> => import('./features/history-fallback.ts').then((module) => module.historyFallback);
 
 /**
- * View transitions (E185) — the navigator loads them before the first page change that asks for one (a visit's `viewTransition`, or
+ * View transitions — the navigator loads them before the first page change that asks for one (a visit's `viewTransition`, or
  * the app's); an adapter whose app turns them on for every page change loads them with the first page.
  */
 export const loadViewTransitions = (): Promise<Feature<ViewTransitions>> => import('./features/view-transitions.ts').then((module) => module.viewTransitions);
 
-/** The optimistic patches of the pages (E59) — loaded with the first `router.optimistic()`/`reloading()` of an adapter (W9 step 7). */
+/** The optimistic patches of the pages — loaded with the first `router.optimistic()`/`reloading()` of an adapter. */
 export const loadOptimistic = (): Promise<Feature<PagePatches>> => import('./features/optimistic.ts').then((module) => module.optimistic);
 
 /**
@@ -65,14 +65,14 @@ export function laterTarget(loading: Promise<PatchTarget>): PatchTarget {
   };
 }
 
-/** Live validation (E62) — `navigator.load(loadLiveValidation)`. */
+/** Live validation — `navigator.load(loadLiveValidation)`. */
 export const loadLiveValidation = (): Promise<Feature<LiveValidationFeature>> => import('./features/live-validation.ts').then((module) => module.liveValidation);
 
-/** Prefetching (W5.6) — `navigator.load(loadPrefetch)`. */
+/** Prefetching — `navigator.load(loadPrefetch)`. */
 export const loadPrefetch = (): Promise<Feature<Prefetches>> => import('./features/prefetch.ts').then((module) => module.prefetch);
 
 /**
- * Fetches the page of `url` ahead (a hovered link, `router.prefetch`), loading the prefetch code first the first time (E74):
+ * Fetches the page of `url` ahead (a hovered link, `router.prefetch`), loading the prefetch code first the first time:
  * it is there while the pointer rests on the link, before the click. Once loaded, it prefetches at once — a press on the link
  * finds the page fetched while hovering before its click takes it. A chunk that cannot load fetches nothing: the visit asks
  * the server, as for any prefetch that fails.
@@ -84,18 +84,18 @@ export function prefetchWith(navigator: Pick<Navigator, 'load' | 'loaded'>, url:
 }
 
 /**
- * Instant visits (E64) — `navigator.load(loadInstant)`: an adapter loads it where a link with a placeholder renders, before
+ * Instant visits — `navigator.load(loadInstant)`: an adapter loads it where a link with a placeholder renders, before
  * anyone clicks it. A visit with `instant` before the code is there goes without its placeholder (the page comes as always).
  */
 export const loadInstant = (): Promise<Feature<InstantVisits>> => import('./features/instant.ts').then((module) => module.instant);
 
-/** What a form uses of its live validation (E62). */
+/** What a form uses of its live validation. */
 export type FormLiveValidation = Pick<LiveValidation, 'changed' | 'blurred' | 'validate' | 'cancel' | 'reset' | 'pending' | 'subscribe'>;
 
 const NOTHING: readonly string[] = [];
 
 /**
- * The live validation of one form at `url` that loads its code on first use (E74): the first field changed (or left, or a
+ * The live validation of one form at `url` that loads its code on first use: the first field changed (or left, or a
  * `validate()`) fetches the feature's chunk, and what happened meanwhile happens again once it is there — the fields
  * touched, the field left. `cancel()` or `reset()` before then forget it all (a form sent or gone asks nothing). A chunk
  * that cannot load checks nothing — the server validates the form when it is sent — and is asked for again on the next

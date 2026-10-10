@@ -4,7 +4,7 @@ import { defineFeature, slot, type FeatureHost } from './feature.ts';
 import { HistoryWriter, OWN, type HistoryState, type NavigateEvent } from './history.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
-/** The feature host (Wave 5c step 3, E70/E73): `use`, the slots the core empties, the history writer that refuses props. */
+/** The feature host: `use`, the slots the core empties, the history writer that refuses props. */
 
 const historyConflict = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', [RELOAD_HEADER]: 'history' } });
 
@@ -17,7 +17,7 @@ function tab(url = '/a', options: Parameters<typeof boot>[2] = {}) {
 /** The host of a navigator — what a feature's setup gets. */
 const hostOf = (navigator: ReturnType<typeof tab>['navigator']) => navigator.use(defineFeature('probe', (host) => host));
 
-describe('navigator.use — a feature attaches once per navigator (E70)', () => {
+describe('navigator.use — a feature attaches once per navigator', () => {
   it('runs setup on the first use only and hands every caller the same API', () => {
     const { navigator } = tab();
     const setup = vi.fn(() => ({ id: Symbol('api') }));
@@ -38,7 +38,7 @@ describe('navigator.use — a feature attaches once per navigator (E70)', () => 
     expect(writes).toHaveBeenCalledTimes(1);
   });
 
-  it('attaches no feature by default (Wave 5c) — each where it is used', () => {
+  it('attaches no feature by default — each where it is used', () => {
     const { navigator } = tab('/a');
     expect(navigator.use(defineFeature('probe', (host) => host.layers))).toEqual([]);
     const setup = vi.fn(() => 'api');
@@ -68,7 +68,7 @@ describe('navigator.use — a feature attaches once per navigator (E70)', () => 
   });
 });
 
-describe('slots — what a feature keeps, emptied by the core (E70)', () => {
+describe('slots — what a feature keeps, emptied by the core', () => {
   const DRAFTS = slot('drafts', () => new Map<string, string>());
 
   it('keeps a value per history entry: each entry its own, back with its entry', async () => {
@@ -139,7 +139,7 @@ describe('slots — what a feature keeps, emptied by the core (E70)', () => {
   });
 });
 
-describe('the history writer — positions only, never props (E36)', () => {
+describe('the history writer — positions only, never props', () => {
   const state = (extra: Record<string, unknown> = {}): HistoryState => ({ component: 'pages/A', url: '/a', key: 'k', scroll: { x: 0, y: 0 }, ...extra }) as HistoryState;
   const original = process.env.NODE_ENV;
   afterEach(() => {
@@ -152,7 +152,7 @@ describe('the history writer — positions only, never props (E36)', () => {
     return new HistoryWriter(win);
   };
 
-  it('writes what an entry is: component, URL, key and where it was scrolled — the Navigation API’s state; history.state stays null (E184)', () => {
+  it('writes what an entry is: component, URL, key and where it was scrolled — the Navigation API’s state; history.state stays null', () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     const writer = writerOn(win);
     writer.push(state({ scrollRegions: [{ x: 0, y: 40 }] }), '/b');
@@ -178,7 +178,7 @@ describe('the history writer — positions only, never props (E36)', () => {
     expect(hostOf(navigator).history.state).toEqual(win.history.state);
   });
 
-  it('writes what a feature’s field says into every entry — no wrapping of the writer (tab sync’s epoch, P4)', () => {
+  it('writes what a feature’s field says into every entry — no wrapping of the writer (tab sync’s epoch)', () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     const writer = writerOn(win);
     let step = 1;
@@ -223,7 +223,7 @@ describe('the history writer — positions only, never props (E36)', () => {
     expect(JSON.parse(win.current.state)).toEqual({ component: 'pages/A', url: '/a', key: 'k', scroll: { x: 0, y: 0 } });
   });
 
-  it('types (W9 step 7, E184): no counted place in an entry any more — and a field’s value comes from the entry it goes into', () => {
+  it('types: no counted place in an entry — and a field’s value comes from the entry it goes into', () => {
     const entry = state();
     // @ts-expect-error — the browser's key undoes a Back now; the History fallback keeps its count to itself
     void entry.index;

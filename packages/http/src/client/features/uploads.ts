@@ -1,7 +1,7 @@
 /**
- * Uploads (W6.9, Livewire's three steps) as a feature: a file is sent ahead of its form — the form's route hands out a
+ * Uploads (Livewire's three steps) as a feature: a file is sent ahead of its form — the form's route hands out a
  * target for the field (its middleware and `authorize` decide), the bytes go there with progress, and the field holds an
- * {@link Upload} whose JSON is the token. Loaded on first use (E74: `<FileInput>` when it renders), in a chunk of its own
+ * {@link Upload} whose JSON is the token. Loaded on first use (`<FileInput>` when it renders), in a chunk of its own
  * with the XHR code (`upload.ts`).
  *
  * The uploads under way and their tokens live in a slot of the document — nowhere else: the {@link Upload} a form holds

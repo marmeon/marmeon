@@ -1,6 +1,6 @@
 /**
- * What actions (E59) and live validations (E62) need of the navigator: its window, whether the document is being left, the
- * request of a write (XSRF), the confirmation (E64), the flash messages (E60). It keeps nothing.
+ * What actions and live validations need of the navigator: its window, whether the document is being left, the
+ * request of a write (XSRF), the confirmation, the flash messages. It keeps nothing.
  */
 import type { ActionHost } from './action.ts';
 import type { FeatureHost } from './core.ts';
@@ -17,7 +17,7 @@ export function actionHost(core: ActionsCore): ActionHost {
     get href() {
       return core.window.location.href;
     },
-    // Features add their headers first (W6.10: the tab's live connection, so its own writes do not hint it).
+    // Features add their headers first (the tab's live connection, so its own writes do not hint it).
     fetch: (url, init) => (core.fire('send', init.headers as Record<string, string>), core.window.fetch(url, init)),
     leaveFor: (location) => {
       core.leave();

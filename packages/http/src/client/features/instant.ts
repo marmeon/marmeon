@@ -1,20 +1,20 @@
 /**
- * Instant visits (E64): the target view's placeholder shows at once, the page when its answer lands. The page on screen
+ * Instant visits: the target view's placeholder shows at once, the page when its answer lands. The page on screen
  * stays the navigator's (and its entry the current one) until then — a visit that ends without its page shows it again. Its
- * code loads where an instant link renders (E74, `loadInstant` in `lazy.ts`): a visit before then shows no placeholder.
+ * code loads where an instant link renders (`loadInstant` in `lazy.ts`): a visit before then shows no placeholder.
  */
 import type { PageObject } from '../../page.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, type PendingVisit, type VisitPart } from '../feature.ts';
 import type { Scroll } from '../scroll.ts';
 
-/** The placeholder an instant visit shows (E64): the target's view and what the link hands its placeholder. */
+/** The placeholder an instant visit shows: the target's view and what the link hands its placeholder. */
 export interface InstantVisit {
   readonly component: string;
   readonly props?: Readonly<Record<string, unknown>>;
 }
 
-/** An instant visit's placeholder on screen (E64): where the page under it was scrolled to. */
+/** An instant visit's placeholder on screen: where the page under it was scrolled to. */
 export interface InstantShown {
   readonly leaving: Scroll;
 }
@@ -24,7 +24,7 @@ type InstantCore = Pick<FeatureHost, 'window' | 'scroll' | 'cache' | 'page' | 'k
 /** The instant visits of one navigator — the placeholder on screen, if any. */
 export class InstantVisits {
   readonly #core: InstantCore;
-  /** The placeholder of an instant visit on screen (E64) — until its page lands, or the visit ends without one. */
+  /** The placeholder of an instant visit on screen — until its page lands, or the visit ends without one. */
   #shown: InstantShown | undefined;
 
   constructor(core: InstantCore) {
@@ -52,7 +52,7 @@ export class InstantVisits {
     return this.#shown?.leaving;
   }
 
-  /** Shows an instant visit's placeholder (E64) over the page on screen — the page stays the navigator's, its entry the current one. */
+  /** Shows an instant visit's placeholder over the page on screen — the page stays the navigator's, its entry the current one. */
   show(instant: InstantVisit, url: string): InstantShown {
     const shown: InstantShown = { leaving: this.#core.scroll.current() };
     this.#shown = shown;
@@ -85,7 +85,7 @@ export class InstantVisits {
     this.#shown = undefined;
   }
 
-  /** Back/Forward during an instant visit (E64): the visit is cancelled, and what the entry shows takes the placeholder's place. */
+  /** Back/Forward during an instant visit: the visit is cancelled, and what the entry shows takes the placeholder's place. */
   cancel(): void {
     if (!this.#shown) return;
     this.#shown = undefined;
@@ -93,7 +93,7 @@ export class InstantVisits {
   }
 }
 
-/** Instant visits (E64) as a feature: the placeholder while the page loads. Keeps no data — only where the page under it was scrolled. */
+/** Instant visits as a feature: the placeholder while the page loads. Keeps no data — only where the page under it was scrolled. */
 export const instant = defineFeature('instant', (host) => {
   const visits = new InstantVisits(host);
   host.on('start', (visit) => visits.start(visit));

@@ -7,7 +7,7 @@ import { boot, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, withAction
 import { prefetch } from './features/prefetch.ts';
 import { guard } from './features/guard.ts';
 
-/** Flash, state attributes, the navigation guard and confirm in the client core (W5b step 7, E60/E64). */
+/** Flash, state attributes, the navigation guard and confirm in the client core. */
 
 const toast = (id: string, message = 'Saved.'): FlashMessage => ({ id, key: 'toast', data: { kind: 'success', message } }) as unknown as FlashMessage;
 const withFlash = (body: PageObject, ...flash: FlashMessage[]): PageObject => ({ ...body, flash });
@@ -21,7 +21,7 @@ function tab(initial: PageObject, url = `${ORIGIN}${initial.url}`, options: Para
   return { win, fired, ...booted };
 }
 
-describe('flash messages in the core (E60)', () => {
+describe('flash messages in the core', () => {
   it('fires the first page’s messages once the app listens — never keeps them with the page', async () => {
     const { fired, navigator } = tab(withFlash(page('/users/1'), toast('a')));
     expect(fired).toEqual(['a Saved.']);
@@ -107,7 +107,7 @@ describe('flash messages in the core (E60)', () => {
   });
 });
 
-describe('state attributes in the core (E64)', () => {
+describe('state attributes in the core', () => {
   it('knows the visit under way — by URL, method and route name — and lists nothing in the background', async () => {
     const { win, navigator } = tab(page('/users/1'));
     let open!: (response: Response) => void;
@@ -164,11 +164,11 @@ describe('state attributes in the core (E64)', () => {
   });
 });
 
-describe.each(PATHS)('the guard on the %s path (E184)', (path) => {
+describe.each(PATHS)('the guard on the %s path', (path) => {
   beforeEach(() => void (FakeWindow.path = path));
   afterEach(() => void (FakeWindow.path = 'navigation'));
 
-  describe('the navigation guard (E64)', () => {
+  describe('the navigation guard', () => {
     const asking = (answers: boolean[]) => {
       const asked: ConfirmRequest[] = [];
       return { asked, confirm: (request: ConfirmRequest) => (asked.push(request), answers.shift() ?? false) };
@@ -261,7 +261,7 @@ describe.each(PATHS)('the guard on the %s path (E184)', (path) => {
   });
 });
 
-describe('confirm (E64)', () => {
+describe('confirm', () => {
   it('counter-check: a no sends nothing — a visit, an action', async () => {
     const { win, navigator } = tab(page('/users/1'));
     win.handler = () => pageResponse(page('/users/1'));

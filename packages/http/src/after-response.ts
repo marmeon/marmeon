@@ -1,16 +1,11 @@
 /**
- * Work for after the response — the client does not wait for it, and its duration tells the client
- * nothing (Laravel's `defer()`). Per request; the server kernel runs the tasks once the response is
- * handed off, and tests wait for them (`kernel.settle()`). Errors are logged, never sent.
+ * Work for after the response: the client does not wait for it, and an error is logged, never sent. Runs outside any open
+ * transaction (work that must wait for a commit: `afterCommit()`), and dies with the process — not a queue. See
+ * docs/controllers.md#work-after-the-response.
  *
  * ```ts
  * this.#afterResponse.defer(() => this.#mailer.send(new WelcomeMail(user)));
  * ```
- *
- * Deferred work runs outside of any transaction (E107): registered inside `connections.transaction()`, it does not
- * join it — it runs after the response, on its own. For work that must wait for a commit, use `afterCommit()`.
- *
- * Not a queue: the work dies with the process. Durable background work: `@marmeon/queue`.
  */
 export class AfterResponse {
   readonly #tasks: (() => unknown)[] = [];
@@ -21,7 +16,7 @@ export class AfterResponse {
     this.#tasks.push(task);
   }
 
-  /** @internal — a read-only request (an island, E52) defers nothing: `permit` throws or drops the task. */
+  /** @internal — a read-only request (an island) defers nothing: `permit` throws or drops the task. */
   lock(permit: (what: string) => boolean): void {
     this.#permit = permit;
   }

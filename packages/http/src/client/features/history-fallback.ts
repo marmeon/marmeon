@@ -1,9 +1,9 @@
 /**
- * The History fallback (E184): where the browser has no Navigation API (Safari before 26.2, older browsers), the navigator
+ * The History fallback: where the browser has no Navigation API (Safari before 26.2, older browsers), the navigator
  * writes its entries with `pushState`/`replaceState` and follows Back/Forward by `popstate` — this feature, a chunk of its own,
  * attached before the navigator writes its first entry (`loadHistoryFallback`: createMarmeonApp loads it beside the first page's
  * component, only when `window.navigation` is missing). Every entry it writes is counted (`index`, a position like the scroll):
- * the browser moved already when `popstate` fires, so the navigation guard (E64) goes back (`history.go`), asks, and goes again.
+ * the browser moved already when `popstate` fires, so the navigation guard goes back (`history.go`), asks, and goes again.
  */
 import { isPageObject } from '../../page.ts';
 import { DEFAULT_LEAVE_MESSAGE } from '../confirm.ts';
@@ -12,8 +12,8 @@ import { isHistoryState, newKey, type HistoryState } from '../history.ts';
 import { TOP } from '../scroll.ts';
 
 /**
- * A history state to follow — the navigator's, or a whole page an older client kept in the history (before E36): never shown
- * from it, only its URL (a key of its own: the server is asked). Anything else (a fragment's, another script's) is none.
+ * A history state to follow — the navigator's, or a whole page an older client kept in the history: never shown from it,
+ * only its URL (a key of its own: the server is asked). Anything else (a fragment's, another script's) is none.
  */
 function stateOf(value: unknown): HistoryState | undefined {
   if (isHistoryState(value)) return value;
@@ -33,7 +33,7 @@ export const historyFallback = defineFeature(
     const { window: win, history } = host;
     // Where the entry is: kept by a reload or a session restore, else the last (a fresh load pushes its entry at the end).
     let index = indexOf(win.history.state) ?? Math.max(0, (win.history.length ?? 1) - 1);
-    /** The guard went back (E64): the popstate that brings the entry on screen back is no navigation. */
+    /** The guard went back: the popstate that brings the entry on screen back is no navigation. */
     let undoing: string | undefined;
     /** The user chose to leave: the popstate that goes again passes the guards. */
     let redoing = false;

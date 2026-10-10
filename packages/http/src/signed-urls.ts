@@ -41,17 +41,13 @@ function derive(key: Uint8Array, purpose: string): Buffer {
 }
 
 /**
- * Signed URLs (Laravel's `URL::signedRoute`): links that prove the app made them — for e-mail
- * verification, one-click unsubscribe, downloads. HMAC-SHA-256 over the path and the sorted query,
- * with a key of its own derived from `APP_KEY` (and from `APP_PREVIOUS_KEYS`, so links survive a key
- * rotation). Protect the route with `signed()`.
+ * Signed URLs: links that prove the app made them — HMAC-SHA-256 over the path and the sorted query, with a key derived from
+ * `APP_KEY` (and `APP_PREVIOUS_KEYS`, so links survive a key rotation). Protect the route with `signed()`. The host is not
+ * signed: behind proxies, the request host is not always the public one. See docs/urls.md#signed-urls.
  *
  * ```ts
  * const url = signer.temporarySignedRoute('auth.verification.verify', { id: user.id, hash }, '60m', { base: config.url });
  * ```
- *
- * The host is not signed: a link is valid on every host of the app (behind proxies, the request
- * host is not always the public one).
  */
 export class UrlSigner {
   readonly #router: Router;
@@ -111,7 +107,7 @@ export class UrlSigner {
     return valid;
   }
 
-  /** Seconds since the epoch, by the app's clock (E97). */
+  /** Seconds since the epoch, by the app's clock. */
   #expiry(expiresIn: Duration): number {
     return Math.floor(this.#clock.now() / 1000) + seconds(expiresIn);
   }

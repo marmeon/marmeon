@@ -1,23 +1,13 @@
 /**
- * Tab sync (W8 step 8, E148, E149, E165 — closes E66) as a feature: the tabs of one browser tell each other when the session's
- * epoch changes (someone signed in or out, the session was regenerated, the language changed), and a tab that hears it lets go
- * of everything it keeps — the pages in memory, islands, pages fetched ahead, once props, remembered input — and loads again.
- * `createMarmeonApp` attaches it by default (E149; `tabSync: false` leaves it out: the risk E66 is back).
+ * Tab sync as a feature: the tabs of one browser tell each other when the session's epoch changes, and a tab that hears it
+ * lets go of everything it keeps and loads again. `createMarmeonApp` attaches it by default. See docs/client-features.md#tab-sync.
  *
- * - **The channel carries a hint, never data:** `{ v: 1, epoch }` on a `BroadcastChannel` — the epoch is opaque (an HMAC on the
- *   server); no props, no ids, no tokens. A message of any other shape is ignored. A tab posts its epoch when it starts and when
- *   an answer brings a new one (its own sign-in by the remember-me cookie, say); the sender never hears its own message.
- * - **The server decides:** a tab that hears another epoch — or becomes visible again (`visibilitychange`: a hidden or frozen tab
- *   missed the message), or comes back from the back/forward cache (`pageshow`) — asks `GET /_marmeon/session`. Only an epoch
- *   that differs from its own there changes anything: a stale tab's message makes no tab reload.
- * - **Then:** the document is left (every slot of every feature emptied, requests aborted — the core's `leave`, as for a 409) and
- *   loaded again: the server says what it shows now (the login page, the new language). With unsaved changes on screen (a
- *   navigation guard holds) the page stays: pages fetched ahead are dropped, and the user is asked (when the tab is visible)
- *   whether to load it again — no, and the next answer of the server takes it over (then the entries of the old epoch go).
- * - **Back/Forward:** every history entry holds the epoch it was written under (its state's `epoch`, a field the history writer
- *   writes into every entry — a position, never data, E36); Back or Forward to an entry of another epoch loads it again.
- * - **Flash messages stay with their tab** (E165): every request names its document (`x-marmeon-document`), and the server
- *   binds a message to the document whose request flashed it — another tab's poll or visit never takes it.
+ * - **The channel carries a hint, never data:** `{ v: 1, epoch }` — no props, no ids, no tokens. A message of any other shape
+ *   is ignored.
+ * - **The server decides:** only an epoch that differs from the one `GET /_marmeon/session` answers changes anything, so a
+ *   stale tab's message makes no tab reload.
+ * - **Then:** the document is left (every slot emptied, requests aborted — the core's `leave`, as for a 409) and loaded again —
+ *   unless a navigation guard holds: then pages fetched ahead are dropped and the user is asked.
  *
  * Its state is in a slot of the document (the channel, the epochs, the entries' keys): leaving the document empties it.
  */
@@ -44,7 +34,7 @@ export interface EpochChange {
 export interface TabSync {
   /** The session's epoch as this tab knows it (opaque) — undefined before a page brought one. */
   readonly epoch: string | undefined;
-  /** Listens to changes of the epoch (E132's hook API, as a feature) — before the tab lets go of what it keeps. Returns the function that stops it. */
+  /** Listens to changes of the epoch — before the tab lets go of what it keeps. Returns the function that stops it. */
   on(event: 'epoch', listener: (change: EpochChange) => void): () => void;
   /** Asks the server now — what becoming visible does. */
   check(): Promise<void>;
@@ -100,7 +90,7 @@ export const tabSync = defineFeature(
     const init = state();
     init.epoch = init.known = first;
 
-    // Every history entry holds the epoch it was written under (E36: a position — registered, checked as a string): the writer
+    // Every history entry holds the epoch it was written under (a position — registered, checked as a string): the writer
     // asks for it with every entry it writes (no wrapping of the writer).
     history.field('epoch', (value) => typeof value === 'string' && EPOCH.test(value), (entry) => {
       const current = state();
@@ -157,7 +147,7 @@ export const tabSync = defineFeature(
       // Forward to an entry of the old epoch loads it from the server (`popState` below). Otherwise the document goes, and loads again.
       if (host.blocking(() => true).length === 0) return reload();
       host.fire('write');
-      // What runs against the session in the background (the live stream) waits until a page of the new one lands (W9 step 4).
+      // What runs against the session in the background (the live stream) waits until a page of the new one lands.
       host.fire('stale', true);
       ask();
     };
@@ -199,7 +189,7 @@ export const tabSync = defineFeature(
       return true;
     });
 
-    // Every request names the document (E165): visits through `start`, actions and live validations through `send`.
+    // Every request names the document: visits through `start`, actions and live validations through `send`.
     host.on('start', () => ({ headers: { [DOCUMENT_HEADER]: id } }));
     host.on('send', (headers) => void (headers[DOCUMENT_HEADER] = id));
 

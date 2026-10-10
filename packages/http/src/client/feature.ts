@@ -1,15 +1,12 @@
 /**
- * The feature host (Wave 5c, E70/E73): how a feature of the client core attaches to the navigator. A feature is a name and a
- * `setup` that runs once per navigator (`navigator.use(feature)`, idempotent) and returns the feature's API — the adapters
- * reach it through that (`useFeature(islands)` in React), not through methods of the navigator. Setup registers hooks into
- * the visit pipeline (`host.on('place', …)`); the core calls them in the features' `order`, without knowing any feature —
- * whenever each was attached (a link prefetches on first hover, a form guards when it renders).
+ * The feature host: how a feature of the client core attaches to the navigator. A feature is a name and a `setup` that runs
+ * once per navigator (`navigator.use(feature)`, idempotent) and returns the feature's API. Setup registers hooks into the
+ * visit pipeline (`host.on('place', …)`); the core calls them in the features' `order`, without knowing any feature.
  *
  * What a feature keeps from the server or the user (pages, props, messages, typed input, requests under way) it keeps in
  * SLOTS only — per history entry (`host.entry(slot, key)`) or per document (`host.document(slot)`). The core empties them
- * itself: an entry's when memory lets go of it (LRU eviction, the entry replaced by another page, a layer forgotten), and all
- * of them when the document is left (a 409: signing in or out, a new build). A feature cannot forget to clear what it
- * holds, so a feature cannot leak it past a sign-out. Its own wiring (listeners, flags) is no data and may live in `setup`.
+ * itself: an entry's when memory lets go of it, and all of them when the document is left (signing in or out, a new build),
+ * so a feature cannot leak what it holds past a sign-out. Its own wiring (listeners, flags) is no data and may live in `setup`.
  */
 import type { PageObject } from '../page.ts';
 import type { Visit } from './events.ts';
@@ -152,7 +149,7 @@ export interface FeatureHooks {
   /** A Back/Forward a feature caused itself (a layer closing by going back): the visit under way is not cancelled by it. */
   own(): boolean | void;
   /**
-   * Back/Forward to an entry of this navigator (the Navigation API's `navigate`, E184), before the navigator intercepts it: `true`
+   * Back/Forward to an entry of this navigator (the Navigation API's `navigate`), before the navigator intercepts it: `true`
    * — a feature took it (the guard cancelled it, or goes back). Not in the History fallback (its `popstate` comes after the move).
    */
   navigate(event: NavigateEvent, state: HistoryState, own: boolean): boolean | void;
@@ -162,7 +159,7 @@ export interface FeatureHooks {
   stack(key: string): EntryStack | false | void;
   /**
    * A page takes the screen — a visit's (`push`, `replace`) or Back/Forward's (`traverse`): `run` renders it. A feature runs it itself
-   * and resolves once it ran (in a view transition's update, E185) — else the core runs it; the history entry and the scroll follow.
+   * and resolves once it ran (in a view transition's update) — else the core runs it; the history entry and the scroll follow.
    * `keep`: the page keeps its state (a partial reload, a form's errors).
    */
   swap(run: () => Promise<void>, how: 'push' | 'replace' | 'traverse', keep: boolean): Promise<void> | void;
@@ -170,9 +167,9 @@ export interface FeatureHooks {
   rearrange(stack: EntryStack, own: boolean): Promise<void> | void;
   /** Back/Forward to an entry not in memory that is a feature's (a layer's): it asks for it itself. */
   restore(state: HistoryState): Promise<void> | void;
-  /** What a view declares to reload when Back/Forward shows it from memory (E58). */
+  /** What a view declares to reload when Back/Forward shows it from memory. */
   declared(component: string): Promise<ReloadSpec | undefined> | void;
-  /** Whether a request of route `name` a feature has under way (an action) is pending — `true`, or nothing (E64). */
+  /** Whether a request of route `name` a feature has under way (an action) is pending — `true`, or nothing. */
   pending(name: string): true | void;
 
   // Events.
@@ -203,7 +200,7 @@ export interface FeatureHooks {
   popped(): void;
   /** What is on screen was rendered without some props: load them (layers load theirs). */
   deferred(): void;
-  /** Back/Forward showed a page (or a feature's layer) from memory (E58). */
+  /** Back/Forward showed a page (or a feature's layer) from memory. */
   restored(page: PageObject, key: string, layer?: Layer): void;
 }
 

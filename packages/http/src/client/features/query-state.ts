@@ -1,6 +1,6 @@
 /**
- * Typed URL state (E55) as a feature: the query state of the page on screen — `navigator.use(queryState).create(options)`,
- * what an adapter's `useQueryState` builds on (E73). It keeps nothing of the server's: the draft is what is being typed, the
+ * Typed URL state as a feature: the query state of the page on screen — `navigator.use(queryState).create(options)`,
+ * what an adapter's `useQueryState` builds on. It keeps nothing of the server's: the draft is what is being typed, the
  * page on screen is the navigator's.
  */
 import { defineFeature } from '../feature.ts';
@@ -12,5 +12,5 @@ export interface QueryStateFeature {
   create<Q extends Record<string, unknown> = Record<string, unknown>>(options?: QueryStateOptions): QueryState<Q>;
 }
 
-/** Typed URL state (E55): `navigator.use(queryState).create({ only: ['people'], debounce: 300 })`. */
+/** Typed URL state: `navigator.use(queryState).create({ only: ['people'], debounce: 300 })`. */
 export const queryState = defineFeature('queryState', (host): QueryStateFeature => ({ create: (options) => new QueryState(host.navigator, options) }));

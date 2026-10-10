@@ -31,7 +31,7 @@ import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, PATHS, sett
 import { TOP } from './scroll.ts';
 
 /**
- * The security matrix (Wave 5c step 3, E70): every feature × every event that must make what a signed-in user saw disappear —
+ * The security matrix: every feature × every event that must make what a signed-in user saw disappear —
  * a 409 for signing out (`history`), a 409 for a new build (`version`), memory letting go of an entry (LRU), a new scope for
  * once props. Data the server sent while "signed in" carries a canary; afterwards no slot a feature used holds it, no hook a
  * feature registered hands it out again, the feature's API does not show it, and no history entry (what the browser writes to
@@ -199,13 +199,13 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
 }
 
 /**
- * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
- * itself when the server answers with one (E71): the matrix holds them all to the same rules.
+ * Every feature a navigator can attach — an adapter attaches each where it is used, the core loads the layers
+ * itself when the server answers with one: the matrix holds them all to the same rules.
  */
 const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync, selection, historyFallback, viewTransitions];
 
 /**
- * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
+ * Live props are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
  * channel — the matrix records that very object (its setup swapped while a tab is stocked), not a wrapper the core would not know.
  */
 function recordInPlace(feature: Feature, into: Recorded[]): () => void {
@@ -216,14 +216,14 @@ function recordInPlace(feature: Feature, into: Recorded[]): () => void {
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
 async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly Feature[]; cacheSize?: number; lazyLayers?: Promise<void> } = {}) {
-  // The browser's channels (tab sync, W8 step 8) and the server's session epoch — another tab may change it.
+  // The browser's channels (tab sync) and the server's session epoch — another tab may change it.
   const channels = new FakeChannels();
   const server = { epoch: 'e1' };
   const win = new FakeWindow(`${ORIGIN}/users/1`, channels);
   win.confirmAnswer = true;
   const records: Recorded[] = [];
-  // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves (E71).
-  // The History fallback (E184) only where the tab has no Navigation API — as createMarmeonApp attaches it.
+  // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves.
+  // The History fallback only where the tab has no Navigation API — as createMarmeonApp attaches it.
   const features = [...ALL_FEATURES.filter((feature) => feature !== live && (!lazyLayers || feature !== layers) && (!win.navigation || feature !== historyFallback)), ...extra].map((feature) => recorded(feature, records));
   const restoreLive = recordInPlace(live, records);
   const loadLayers = lazyLayers && (async () => (await lazyLayers, recorded(layers, records) as Feature<LayerStack>));
@@ -231,7 +231,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   win.handler = (url, init) => {
     const { pathname } = new URL(url);
     if (pathname === SESSION_PATH) return Response.json({ epoch: server.epoch });
-    // An upload's target (W6.9): its token is the signed-in user's — the canary.
+    // An upload's target: its token is the signed-in user's — the canary.
     if ((init.headers as Record<string, string> | undefined)?.['x-marmeon-upload']) {
       return Response.json({ token: `tu_${CANARY}`, upload: { method: 'PUT', url: `/_marmeon/uploads/1?signature=${CANARY}` } });
     }
@@ -240,7 +240,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
     if (pathname === '/users/1/edit') return pageResponse(secretPage(pathname, 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }));
     return pageResponse(secretPage(pathname));
   };
-  // The page follows a live channel (W6.10): its token is the signed-in user's — the canary.
+  // The page follows a live channel: its token is the signed-in user's — the canary.
   const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada', epoch: 'e1', live: [{ channel: 'users.1', only: ['secret'], token: CANARY }] };
   initial.props.locales = [CANARY];
   const tab = boot(win, initial, { features, ...(cacheSize ? { cacheSize } : {}), ...(loadLayers ? { loadLayers } : {}) });
@@ -267,17 +267,17 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   const action = api<ActionsFeature>('actions').run('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: { target: api<PagePatches>('optimistic').target(pageKey), patch: (props) => ({ ...props, liked: CANARY }) } });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   if (!lazyLayers) await navigator.visit('/users/1/edit', { layer: true });
-  // Rows ticked in a table (W9 step 6): their keys are the signed-in user's — on the page's entry and on the layer's.
+  // Rows ticked in a table: their keys are the signed-in user's — on the page's entry and on the layer's.
   api<SelectionFeature>('selection').of('members', pageKey).set([CANARY, 7], true);
   if (!lazyLayers) api<SelectionFeature>('selection').of('members', navigator.layers[0]!.entry).selectMatching();
   api<Guards>('guard').add({ message: 'Unsaved', active: () => false });
-  // The hook API keeps listeners only (E132); the devtools' bar (W7 step 9) records every request above — and, through its dev
+  // The hook API keeps listeners only; the devtools' bar records every request above — and, through its dev
   // hook, the action's optimistic patch and a hydration error with the page's text.
   api<ClientHooks>('hooks').on('before', () => {});
   const recorder = api<DevtoolsFeature>('devtools');
   recorder.record.recoverable(new Error(`Text content does not match: ${CANARY}`), 'users/Show', false);
   recorder.cache.set('request:1', { entries: [CANARY] });
-  // An upload under way (W6.9): its target answered with the token, its bytes still going (the XHR never answers).
+  // An upload under way: its target answered with the token, its bytes still going (the XHR never answers).
   const uploaded: (Upload | null)[] = [];
   api<UploadsFeature>('uploads').start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: new File(['png'], 'me.png', { type: 'image/png' }), onChange: (upload) => uploaded.push(upload) });
   await settle();
@@ -294,7 +294,7 @@ afterEach(() => {
 });
 
 /**
- * The records held to what memory lets go of, entry by entry: all but the devtools' bar (W7 step 9, development only) — it records
+ * The records held to what memory lets go of, entry by entry: all but the devtools' bar (development only) — it records
  * the document's requests across its entries (a timeline), and lets go of all of it when the document is left (the 409 rows).
  */
 const perEntry = (records: readonly Recorded[]) => records.filter((record) => record.feature !== 'devtools');
@@ -308,7 +308,7 @@ function coreLeftovers({ core, navigator, host, submissions, prefetched }: Await
   host.flash.listen((message) => heard.push(message));
   if (heard.length > 0) problems.push('core: a flash message nobody heard');
   if (core.regions.size > 0 || holdsCanary(core.regions)) problems.push('core: the islands of the page’s entry');
-  // The islands on screen live on the page's owner (4k): closed with the document, it holds none of them any more.
+  // The islands on screen live on the page's owner: closed with the document, it holds none of them any more.
   if (navigator.regionOwner.live.size > 0) problems.push('core: the islands on screen');
   if (core.remembered.size > 0) problems.push('remember: remembered input');
   if (navigator.cachedPages > 0) problems.push('core: pages in memory');
@@ -319,11 +319,11 @@ function coreLeftovers({ core, navigator, host, submissions, prefetched }: Await
 /** Every history entry as the browser keeps it (serialized, written to disk) — with the canary in it, or not. */
 const historyWithCanary = (win: FakeWindow) => win.entries.filter((entry) => entry.disk.includes(CANARY)).map((entry) => entry.url);
 
-describe.each(PATHS)('%s path (E184)', (path) => {
+describe.each(PATHS)('%s path', (path) => {
   beforeEach(() => void (FakeWindow.path = path));
   afterEach(() => void (FakeWindow.path = 'navigation'));
 
-  describe('the security matrix — every feature × every event that must forget the signed-in user (E70, E36)', () => {
+  describe('the security matrix — every feature × every event that must forget the signed-in user', () => {
     it('every feature holds something before (or the matrix would prove nothing)', async () => {
       const tab = await stocked();
       expect(tab.core.once.size).toBe(1);
@@ -353,14 +353,14 @@ describe.each(PATHS)('%s path (E184)', (path) => {
           expect.stringMatching(/^selection: its slot "selections" of entry /),
         ]),
       );
-      // The live stream is open (W6.10), its URL holds the signed-in user's token.
+      // The live stream is open, its URL holds the signed-in user's token.
       expect([tab.stream.closed, tab.stream.url.includes(CANARY)]).toEqual([false, true]);
       // The upload is on its way: its progress came, its XHR is open.
       expect([tab.uploaded.at(-1)?.status, tab.uploaded.at(-1)?.progress]).toEqual(['uploading', 0.5]);
       expect(PendingXhr.opened.at(-1)?.url).toContain(CANARY);
     });
 
-    it('holds every feature module of the core to its rules — a feature left out of the matrix is one nobody checks (W9 step 4)', async () => {
+    it('holds every feature module of the core to its rules — a feature left out of the matrix is one nobody checks', async () => {
       const directory = new URL('./features/', import.meta.url);
       const modules = readdirSync(directory).filter((file) => file.endsWith('.ts') && !file.includes('.test.'));
       const features: string[] = [];
@@ -374,7 +374,7 @@ describe.each(PATHS)('%s path (E184)', (path) => {
       expect(features.length).toBeGreaterThanOrEqual(17);
     });
 
-    it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload (W6.9)', async () => {
+    it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload', async () => {
       const tab = await stocked();
       const xhr = PendingXhr.opened.at(-1)!;
       const upload = tab.uploaded.at(-1)!;
@@ -387,7 +387,7 @@ describe.each(PATHS)('%s path (E184)', (path) => {
       expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
     });
 
-    it('a 409 in the background (signed out in another tab): the live stream is closed, its slot empty — no hint reloads anything (W6.10)', async () => {
+    it('a 409 in the background (signed out in another tab): the live stream is closed, its slot empty — no hint reloads anything', async () => {
       const tab = await stocked();
       expect(tab.stream.closed).toBe(false);
       tab.win.handler = () => conflict('history');
@@ -443,7 +443,7 @@ describe.each(PATHS)('%s path (E184)', (path) => {
       });
     }
 
-    it('another tab changed the session’s epoch (signed out there, W8 step 8): nothing of it is left — in no feature, not in the core, not in history.state', async () => {
+    it('another tab changed the session’s epoch (signed out there): nothing of it is left — in no feature, not in the core, not in history.state', async () => {
       const tab = await stocked();
       // What the core keeps, held from before: it forgets its slot maps when the document is left (a later look would find new ones).
       const { core } = tab;
@@ -501,7 +501,7 @@ describe.each(PATHS)('%s path (E184)', (path) => {
       const shown = await tab.navigator.visit('/users/3');
       expect(shown?.props).toEqual({});
       expect(tab.core.once.size).toBe(0);
-      // Not a document change: the other features keep their data — the 409 of signing in or out takes it (E66: no tab sync).
+      // Not a document change: the other features keep their data — the 409 of signing in or out takes it (no tab sync).
     });
 
     it('counter-check: catches a feature that keeps data outside its slots (a module-level map) and hands it out again', async () => {
@@ -529,11 +529,11 @@ describe.each(PATHS)('%s path (E184)', (path) => {
   });
 
   /**
-   * Layers loaded on demand (Wave 5c step 5, E71): the server answers with a layer and the layers' code is not here yet. While it
+   * Layers loaded on demand: the server answers with a layer and the layers' code is not here yet. While it
    * loads, the answer is held by the visit alone — no slot, no memory, no history entry — so whatever happens meanwhile (a 409:
    * signing out) leaves nothing of it once the code arrives; a code that cannot load is a full load, never a half state.
    */
-  describe('the security matrix — a layer answer while the layers’ code loads (E71)', () => {
+  describe('the security matrix — a layer answer while the layers’ code loads', () => {
     /** A stocked tab without the layers attached — and the server answering the edit link with a layer full of the canary. */
     async function waiting() {
       let release!: () => void;
@@ -586,8 +586,8 @@ describe.each(PATHS)('%s path (E184)', (path) => {
   });
 
   /**
-   * The same rows with the core alone (Wave 5c step 4): no feature attached — what an app is before it uses any. The security
-   * invariants are the core's (E72), not a feature's: the hard switch of a 409, memory and once props dropped with the document,
+   * The same rows with the core alone: no feature attached — what an app is before it uses any. The security
+   * invariants are the core's, not a feature's: the hard switch of a 409, memory and once props dropped with the document,
    * a flash message fired once by its id, no page in `history.state`.
    */
   describe('the security matrix — the core alone, no feature attached', () => {
@@ -623,7 +623,7 @@ describe.each(PATHS)('%s path (E184)', (path) => {
 
     /**
      * Signed out by a request in the background (a poll, an island, a deferred prop) while the user's own visit is still under
-     * way (W5c.6): the document is left — and that visit, started before, never lands. Its answer is what the signed-in user was
+     * way: the document is left — and that visit, started before, never lands. Its answer is what the signed-in user was
      * about to see: not rendered, not in memory, not in history.state, its once props and flash messages not taken.
      */
     for (const kind of ['a visit', 'Back to an entry not in memory'] as const) {
@@ -682,7 +682,7 @@ describe.each(PATHS)('%s path (E184)', (path) => {
       expect(fired).toEqual(['unheard', 'saved']);
     });
 
-    it('a visit’s own confirmation is asked by the core — a no sends nothing, with no guard attached (4i)', async () => {
+    it('a visit’s own confirmation is asked by the core — a no sends nothing, with no guard attached', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/logout-done'));
       const asked: string[] = [];

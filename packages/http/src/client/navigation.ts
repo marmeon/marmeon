@@ -3,8 +3,8 @@
  * history and Back/Forward, the request primitives and leaving the document. What it builds on lives next to it (history,
  * cache, scroll, request, events, document-change, deferred); the features (`features/`: layers, guard, prefetch, instant,
  * optimistic patches, actions, islands' requests, revalidateOnBack, …) attach through the feature host (`feature.ts`): hooks
- * into the pipeline, and slots the core empties itself. None is attached by default (Wave 5c): the adapter attaches each where
- * it is used — and the core loads the layers itself when the server answers with one (E71).
+ * into the pipeline, and slots the core empties itself. None is attached by default: the adapter attaches each where it is
+ * used — and the core loads the layers itself when the server answers with one.
  * No UI framework in here — an adapter (`<MarmeonApp>` of @marmeon/react) renders what the navigator hands it.
  */
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type PageObject, type ValidationErrors } from '../page.ts';
@@ -33,7 +33,7 @@ import { RegionOwner } from './owner.ts';
 import { buildRequest, partialReloadHeaders, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
-// The public API that lives in the modules around the navigator — exported from here as before (W5c.2).
+// The public API that lives in the modules around the navigator.
 export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
 export { DEFAULT_LEAVE_MESSAGE } from './confirm.ts';
 export { DEFAULT_NEW_VERSION_MESSAGE } from './document-change.ts';
@@ -50,7 +50,7 @@ export { SCROLL_REGION_ATTRIBUTE } from './scroll.ts';
 export type { ScrollPosition, ScrollRegion } from './scroll.ts';
 
 /**
- * A view transition (E185): on (`true`), off (`false`), or on with types of the app's own — beside the direction the navigator adds
+ * A view transition: on (`true`), off (`false`), or on with types of the app's own — beside the direction the navigator adds
  * (`'forward'`, `'back'`, `'replace'`) for `:active-view-transition-type()` in the app's CSS.
  */
 export type ViewTransitionOption = boolean | { readonly types?: readonly string[] };
@@ -77,9 +77,8 @@ export interface VisitOptions extends VisitCallbacks {
   preserveState?: boolean;
   headers?: Record<string, string>;
   /**
-   * A partial reload (E7): the server sends only these props of the current page — and computes only them — and
-   * they are merged into the props the page has. Applies when the response is the same page component; any other
-   * page comes in full. Props the controller marked `always()` (the shared `errors`) come anyway.
+   * A partial reload: the server sends (and computes) only these props of the current page, merged into the props the page
+   * has. Applies when the response is the same page component; `always()` props come anyway.
    */
   only?: readonly string[];
   /** A partial reload of every prop but these (`optional()`/`defer()` props still only by name, with `only`). */
@@ -93,12 +92,12 @@ export interface VisitOptions extends VisitCallbacks {
    */
   async?: boolean;
   /**
-   * Open the answer as a layer (E53) — `<Link layer>`: sent as a layer's request (`x-marmeon-region: layer`). An answer
+   * Open the answer as a layer — `<Link layer>`: sent as a layer's request (`x-marmeon-region: layer`). An answer
    * that is a layer opens over what is on screen whatever this says; one that is a page is shown as the page.
    */
   layer?: boolean;
   /**
-   * Patches shown while the visit is under way (E59) — a form's optimistic update: gone once its answer is shown (the server's
+   * Patches shown while the visit is under way — a form's optimistic update: gone once its answer is shown (the server's
    * props then), or when it fails.
    */
   optimistic?: OptimisticUpdate | readonly OptimisticUpdate[];
@@ -108,35 +107,30 @@ export interface VisitOptions extends VisitCallbacks {
    */
   name?: string;
   /**
-   * Ask first (E64): `'Remove this link?'`, or with a title, labels or a text to type (`{ message, prompt: 'DELETE' }`). A no
+   * Ask first: `'Remove this link?'`, or with a title, labels or a text to type (`{ message, prompt: 'DELETE' }`). A no
    * sends nothing (the visit ends `cancel`).
    */
   confirm?: Confirm;
   /**
-   * Leaves unsaved changes without asking (the navigation guard, E64): `true` past every guard — a form's own submit passes
+   * Leaves unsaved changes without asking (the navigation guard): `true` past every guard — a form's own submit passes
    * its guard (`useForm(…, { guard })` does), so the others still ask.
    */
   ignoreGuards?: true | readonly NavigationGuard[];
   /**
-   * Keep the URL of the page on screen, though the request went elsewhere — "load more" with `data: { cursor }`:
-   * the history entry stays the list's URL (replaced, not a new one), so a reload starts it over instead of showing
-   * one later page alone.
+   * Keep the URL of the page on screen, though the request went elsewhere — "load more" with `data: { cursor }`: a reload
+   * starts the list over instead of showing one later page alone.
    */
   preserveUrl?: boolean;
   /**
-   * An instant visit (E64): shows the view's placeholder at once — `component`'s `placeholder`, rendered by the adapter with
-   * `props` inside the view's layouts — then the page when its answer lands. The real view never renders with these props.
-   * Only for a plain GET visit of a page (no partial reload, no layer, not in the background); a page fetched ahead already
-   * shows at once instead. The history entry is pushed when the page lands, not before: until then the page on screen is
-   * still the one in the address bar — a failed visit shows it again, Back goes where it would have gone.
+   * An instant visit: shows the view's placeholder at once (with `props`, inside the view's layouts), then the page when its
+   * answer lands. Only for a plain GET visit of a page. The history entry is pushed when the page lands, not before. See
+   * docs/navigation.md#instant-visits.
    */
   instant?: InstantVisit;
   /**
-   * A view transition around the page change (E185): `document.startViewTransition` around the swap of the page — after it loaded,
-   * so nothing freezes while the server answers — with the types `'forward'` (or `'replace'`) and the app's own (`{ types: ['slide'] }`).
-   * Back from the page it shows (and Forward to it) animates alike, with `'back'` (`'forward'`). Skipped when the user prefers reduced
-   * motion, the tab is hidden or the browser has none. `false` turns the app's (`NavigatorOptions.viewTransition`) off for this visit.
-   * Its code loads with the first (a chunk of its own).
+   * A view transition around the page change — after the page loaded, so nothing freezes while the server answers — with the
+   * types `'forward'` (or `'replace'`) and the app's own. `false` turns the app's off for this visit. See
+   * docs/navigation.md#view-transitions.
    */
   viewTransition?: ViewTransitionOption;
 }
@@ -152,7 +146,7 @@ export interface NavigatorWindow {
     /** How many entries the tab's history has — where a fresh document's entry is (the last). */
     readonly length?: number;
   };
-  /** The browser's own dialogs — the default way to ask (E64) when the app brings none (`confirm`). */
+  /** The browser's own dialogs — the default way to ask when the app brings none (`confirm`). */
   confirm?: NativeDialogs['confirm'];
   prompt?: NativeDialogs['prompt'];
   readonly location: Pick<Location, 'href' | 'origin' | 'pathname' | 'search' | 'assign' | 'replace' | 'reload'>;
@@ -166,24 +160,24 @@ export interface NavigatorWindow {
   readonly document?: {
     querySelectorAll(selectors: string): Iterable<ScrollRegion>;
     getElementById(id: string): { scrollIntoView(): void } | null;
-    /** `loading` while the document still streams in — streamed deferred props wait for its end (E49). */
+    /** `loading` while the document still streams in — streamed deferred props wait for its end. */
     readonly readyState?: string;
-    /** Whether the tab is shown — a live stream over HTTP/1.1 connects only while it is (E104). */
+    /** Whether the tab is shown — a live stream over HTTP/1.1 connects only while it is. */
     readonly visibilityState?: DocumentVisibilityState;
     addEventListener?(type: 'DOMContentLoaded' | 'visibilitychange' | 'resume', listener: () => void, options?: AddEventListenerOptions): void;
     removeEventListener?(type: 'visibilitychange' | 'resume', listener: () => void): void;
-    /** View transitions (E185) — without them, a page changes without one. */
+    /** View transitions — without them, a page changes without one. */
     startViewTransition?(options: { update: () => Promise<void>; types: string[] }): ViewTransitionLike;
   };
-  /** For `prefers-reduced-motion` (E185: no view transition then). */
+  /** For `prefers-reduced-motion` (no view transition then). */
   matchMedia?(query: string): { readonly matches: boolean };
   /** The Navigation API — without it, the History fallback feature (`loadHistoryFallback`) writes and follows the history. */
   readonly navigation?: NavigationLike;
-  /** Live hints (W6.10): one stream per document — without it, none. */
+  /** Live hints: one stream per document — without it, none. */
   readonly EventSource?: new (url: string) => EventSource;
-  /** Tab sync (W8 step 8): the tabs of the browser hear each other's session epoch — without it, a tab checks when it becomes visible. */
+  /** Tab sync: the tabs of the browser hear each other's session epoch — without it, a tab checks when it becomes visible. */
   readonly BroadcastChannel?: new (name: string) => BroadcastChannel;
-  /** How the document was loaded — its protocol (`nextHopProtocol`): a live stream over HTTP/1.1 waits while the tab is hidden (E104). */
+  /** How the document was loaded — its protocol (`nextHopProtocol`): a live stream over HTTP/1.1 waits while the tab is hidden. */
   readonly performance?: Pick<Performance, 'getEntriesByType'>;
   /** For the upload progress of `FormData` visits — `fetch` cannot report it (over HTTP/1.1). */
   readonly XMLHttpRequest?: new () => XMLHttpRequest;
@@ -196,26 +190,25 @@ export interface RenderOptions {
   /** The regions of this page's history entry (see {@link Navigator.region}). */
   readonly owner: RegionOwner;
   /**
-   * The layers over the page, bottom first (E53) — rendered over it, each with its own page object, visits and islands.
+   * The layers over the page, bottom first — rendered over it, each with its own page object, visits and islands.
    * When only these change, `page` is the one on screen already (with `preserveState`): it must not render again. What the
    * layers feature contributes to a render (`extras` hook) — empty without it.
    */
   readonly layers: readonly Layer[];
   /**
-   * An instant visit's placeholder (E64): render `page.component`'s placeholder with `page.props` (what the link handed it), inside
+   * An instant visit's placeholder: render `page.component`'s placeholder with `page.props` (what the link handed it), inside
    * that view's layouts — not the view itself, and not as the page (`usePage()` stays the page on screen). A view without a
    * placeholder: nothing changes. A later render replaces it — one that resolves after a later render started is dropped.
    */
   readonly placeholder?: boolean;
   /**
-   * A view transition's types (E185) — only for an adapter that starts them itself (`NavigatorOptions.viewTransition: 'adapter'`): render
-   * this page in one, with these types (React 19.3: in `startTransition`, each type by `addTransitionType` — `<ViewTransition>`
-   * animates). Undefined: a plain render.
+   * A view transition's types — only for an adapter that starts them itself (`NavigatorOptions.viewTransition: 'adapter'`):
+   * render this page in one, with these types. Undefined: a plain render.
    */
   readonly transition?: readonly string[];
 }
 
-/** The parts of a running view transition the navigator uses (E185). */
+/** The parts of a running view transition the navigator uses. */
 export interface ViewTransitionLike {
   readonly updateCallbackDone: Promise<void>;
   readonly ready: Promise<void>;
@@ -237,35 +230,30 @@ export interface NavigatorOptions {
   /** Pages kept in memory, one per history entry; the least recently shown goes first. Default 20. */
   cacheSize?: number;
   /**
-   * What a view declares to reload when Back/Forward shows it from memory (E58) — the adapter reads it from the view
-   * (`Show.revalidateOnBack = ['notifications']`): `true` all its props, a list some of them, nothing (the default) none. Read by
-   * the `revalidateOnBack` feature — attach it (`navigator.use(revalidateOnBack)`).
-   * The page (or layer, or island) shows from memory at once; then those props load in the background, without a progress bar.
+   * What a view declares to reload when Back/Forward shows it from memory (`Show.revalidateOnBack = ['notifications']`): `true`
+   * all its props, a list some of them, nothing none. Read by the `revalidateOnBack` feature.
    */
   revalidateOnBack?: DeclaredRevalidation;
   /**
-   * Asks the user (E64): a confirmation (`confirm` of a visit or an action) or the navigation guard's question. Default: the
+   * Asks the user: a confirmation (`confirm` of a visit or an action) or the navigation guard's question. Default: the
    * browser's own `confirm()` (and `prompt()` to type a text). The answer of a type-to-confirm question is the text typed —
    * the core compares it.
    */
   confirm?: ConfirmHandler;
   /**
-   * The features to attach from the start (E70) — default: none. An adapter attaches each where it is used
-   * (`navigator.use(feature)`, or `navigator.load(loader)` on first use, E74).
+   * The features to attach from the start — default: none. An adapter attaches each where it is used
+   * (`navigator.use(feature)`, or `navigator.load(loader)` on first use).
    */
   features?: readonly Feature[] | undefined;
   /**
-   * How the layers load when the server answers with one and nothing attached them yet (E71) — default {@link loadLayers},
-   * the core's chunk. An adapter loads its own layer UI with it, in the same round trip (React: the layer stack). Then use the
-   * same loader where layers open (`navigator.load(…)` for `<Link layer>`), so the navigator knows it is loaded.
+   * How the layers load when the server answers with one and nothing attached them yet — default {@link loadLayers}. An
+   * adapter loads its own layer UI with it, and uses the same loader where layers open, so the navigator knows it is loaded.
    */
   loadLayers?: () => Promise<Feature<LayerStack>>;
   /**
-   * View transitions for every page change (E185): each visit that takes the page off the screen (not a partial reload, not one in the
-   * background, not a form's errors) and each Back/Forward between pages — see `VisitOptions.viewTransition`. A visit's own wins.
-   * `'adapter'` (React's adapter says `'react'`): on, and the adapter starts them itself (React 19.3's `<ViewTransition>`) — the core
-   * never calls `document.startViewTransition` then, it hands the render the types (`RenderOptions.transition`): never two for one page
-   * change.
+   * View transitions for every page change and each Back/Forward between pages — see `VisitOptions.viewTransition`; a visit's
+   * own wins. `'adapter'` (or `'react'`): the adapter starts them itself and the core hands the render the types
+   * (`RenderOptions.transition`) — never two for one page change.
    */
   viewTransition?: ViewTransitionOption | 'adapter' | 'react';
 }
@@ -291,8 +279,7 @@ function held<T>(slots: Map<Slot<unknown>, unknown>, slot: Slot<T>): T {
  */
 export class Navigator {
   /**
-   * What the navigator shares with the modules around it and with its features (`FeatureHost`): the page on screen, its
-   * entry, memory, the hooks and slots — kept there, so every module reads them the same way. First, so minifiers give it
+   * What the navigator shares with the modules around it and with its features (`FeatureHost`). First, so minifiers give it
    * the same short name in each class.
    */
   readonly #core: Writable<NavigatorCore>;
@@ -303,7 +290,7 @@ export class Navigator {
   readonly #background = new Set<AbortController>();
   /** Who follows the page on screen (`subscribe`) — query state, say. */
   readonly #pageListeners = new Set<(page: PageObject) => void>();
-  /** The visit under way in the foreground (not in the background) — `data-pending`, `usePending` (E64). */
+  /** The visit under way in the foreground (not in the background) — `data-pending`, `usePending`. */
   #visiting: Visit | undefined;
   readonly #visitingListeners = new Set<() => void>();
   /** The features attached (`use`), with what their setup returned. */
@@ -316,7 +303,7 @@ export class Navigator {
   #order = Infinity;
   /** The features loaded on first use (`load`), by their loader — attached from then on without waiting. */
   readonly #loaded = new Map<() => Promise<Feature>, Feature>();
-  /** The layers' code on its way (E71) — whether it loaded. */
+  /** The layers' code on its way — whether it loaded. */
   #layersLoading: Promise<boolean> | undefined;
   /** What the history entries keep in slots, by key — emptied when memory lets go of an entry, and when the document is left. */
   readonly #entries = new Map<string, Map<Slot<unknown>, unknown>>();
@@ -424,7 +411,7 @@ export class Navigator {
     core.documentChange = new DocumentChange(core);
     // What the adapter attaches from the start (a deep link's layers take theirs from `initial`, until the history is taken over).
     for (const feature of features) this.use(feature);
-    // Development only: without the Navigation API, the History fallback follows Back/Forward (E184) — it must be there before the
+    // Development only: without the Navigation API, the History fallback follows Back/Forward — it must be there before the
     // first entry is written.
     if ((process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && !win.navigation && !this.#has('history')) {
       console.warn(
@@ -432,18 +419,18 @@ export class Navigator {
           'Load it before the navigator is made and pass it with the features: features: [await loadHistoryFallback()] (createMarmeonApp does).',
       );
     }
-    // The first page's flash messages (E60) fire once the app has started — never kept with the page.
+    // The first page's flash messages fire once the app has started — never kept with the page.
     const { layers: _layers, ...withFlash } = initialPage;
     const page = this.#collect(withFlash);
     core.page = page;
     core.props = new PropLoader(core, page, initialPage.streamedProps ?? []);
-    // Development only (W7 step 9): the devtools' bar attaches to the navigator (`__MARMEON_DEVTOOLS_HOOK__`, set by its client,
+    // Development only: the devtools' bar attaches to the navigator (`__MARMEON_DEVTOOLS_HOOK__`, set by its client,
     // which the Vite dev server alone serves) — a production build drops this line.
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.navigator?.(this);
   }
 
   /**
-   * Attaches a feature (E70): its setup runs once per navigator — the first call — and what it returned comes back on every
+   * Attaches a feature: its setup runs once per navigator — the first call — and what it returned comes back on every
    * call. What adapters use of a feature they get from here (`useFeature(islands)` in React).
    */
   use<API>(feature: Feature<API>): API {
@@ -460,7 +447,7 @@ export class Navigator {
   }
 
   /**
-   * Attaches a feature whose code loads on first use (E74) — `navigator.load(loadLiveValidation)`: its chunk is fetched once,
+   * Attaches a feature whose code loads on first use — `navigator.load(loadLiveValidation)`: its chunk is fetched once,
    * then it is attached like `use` (idempotent). Rejects when the chunk cannot load (offline, gone after a deployment).
    */
   async load<API>(loader: () => Promise<Feature<API>>): Promise<API> {
@@ -483,7 +470,7 @@ export class Navigator {
     return this.#core.page;
   }
 
-  /** The layers on screen over the page, bottom first (E53). */
+  /** The layers on screen over the page, bottom first. */
   get layers(): readonly Layer[] {
     this.#adopt();
     return this.#core.layers;
@@ -501,7 +488,7 @@ export class Navigator {
   }
 
   /**
-   * A deferred group of the first page, as the server streamed it with the document (E49) — `null` when it did not
+   * A deferred group of the first page, as the server streamed it with the document — `null` when it did not
    * arrive (it failed on the server, or the adapter rendered its part in the browser): then it is asked for, as without
    * streaming. It lands once the document has finished streaming: an update of the page while an island of it is still
    * streaming would make the adapter render that island in the browser — and load it again.
@@ -525,7 +512,7 @@ export class Navigator {
     // The first render is on screen — now the props it was sent without (the layers' too).
     core.props.load();
     this.#all('deferred');
-    // Back/Forward and the navigator's own commits (E184): the Navigation API's `navigate` — without it, the History fallback
+    // Back/Forward and the navigator's own commits: the Navigation API's `navigate` — without it, the History fallback
     // feature follows `popstate` (it is attached before, `loadHistoryFallback`).
     core.window.navigation?.addEventListener('navigate', this.#onNavigate);
     core.window.addEventListener('pageshow', this.#onPageShow);
@@ -533,7 +520,7 @@ export class Navigator {
     core.window.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
     core.started = true;
     this.#all('started');
-    // The first page's flash messages (E60): on screen now.
+    // The first page's flash messages: on screen now.
     this.#flushFlash();
     return () => {
       core.started = false;
@@ -556,7 +543,7 @@ export class Navigator {
 
   /**
    * Listens to the events of every request (a progress bar, logging) — and to the flash messages answers deliver
-   * (`on('flash', …)`, E60). Returns the function that stops listening.
+   * (`on('flash', …)`). Returns the function that stops listening.
    */
   on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void {
     if (event === 'flash') return this.#core.flash.listen(listener as FlashListener);
@@ -564,14 +551,14 @@ export class Navigator {
   }
 
   /**
-   * The flash messages of one key (E60) — each once, from now on, and those nobody heard yet at once: `useFlash('toast', …)`.
+   * The flash messages of one key — each once, from now on, and those nobody heard yet at once: `useFlash('toast', …)`.
    * Returns the function that stops listening.
    */
   onFlash(key: FlashKey, listener: (message: FlashMessage) => void): () => void {
     return this.#core.flash.listen(listener, key);
   }
 
-  /** The visit under way in the foreground, or undefined (E64: `data-pending`, `usePending`). */
+  /** The visit under way in the foreground, or undefined (`data-pending`, `usePending`). */
   get visiting(): Visit | undefined {
     return this.#visiting;
   }
@@ -584,14 +571,14 @@ export class Navigator {
 
   /**
    * Whether a request of route `name` is under way — a visit (`<Link route>`, a route form) or what a feature has under way
-   * (an action, when the actions feature is attached) — E64, `usePending`.
+   * (an action, when the actions feature is attached) — `usePending`.
    */
   isPending(name: string): boolean {
     return this.#visiting?.name === name || this.#first('pending', name) === true;
   }
 
   /**
-   * Asks the user (E64) — what `confirm` of a visit or an action does: resolves with yes or no. A type-to-confirm question
+   * Asks the user — what `confirm` of a visit or an action does: resolves with yes or no. A type-to-confirm question
    * (`prompt`) is a yes only when exactly that text was typed.
    */
   confirm(confirm: Confirm): Promise<boolean> {
@@ -614,7 +601,7 @@ export class Navigator {
     return this.visit(this.#core.page.url, { replace: true, preserveScroll: true, preserveState: true, ...options });
   }
 
-  /** Where a postponed new build loads (E64) — undefined while none is waiting. For "a new version is available". */
+  /** Where a postponed new build loads — undefined while none is waiting. For "a new version is available". */
   get newVersion(): string | undefined {
     return this.#core.documentChange.newVersion;
   }
@@ -691,16 +678,16 @@ export class Navigator {
       partial: partial !== undefined,
       takes: false,
     };
-    // Its own confirmation first (E64) — the core asks, whatever features are attached: a no sends nothing.
+    // Its own confirmation first — the core asks, whatever features are attached: a no sends nothing.
     if (options.confirm !== undefined && !(await core.ask(confirmRequest(options.confirm)))) return undefined;
-    // A feature may stop it (E64: unsaved changes) — asking only when one is concerned: otherwise it starts at once (in the
+    // A feature may stop it (unsaved changes) — asking only when one is concerned: otherwise it starts at once (in the
     // same task).
     for (const hook of this.#hooks.visit ?? []) {
       let go = hook(pending);
       if (go instanceof Promise) go = await go;
       if (go === false) return undefined;
     }
-    // A view transition (E185): its code before the visit starts — the first time (a chunk of its own; one that cannot load: none).
+    // A view transition: its code before the visit starts — the first time (a chunk of its own; one that cannot load: none).
     if (options.viewTransition ?? core.options.viewTransition) await this.load(loadViewTransitions).catch(() => undefined);
     if (target.origin !== core.window.location.origin) {
       // Another site: the browser goes there. Visits only ever read answers of this one.
@@ -708,7 +695,7 @@ export class Navigator {
       this.#away(target.href);
       return undefined;
     }
-    // A new build was postponed (E64): the user's next visit (a GET — a form is never thrown away) loads its page fully. One
+    // A new build was postponed: the user's next visit (a GET — a form is never thrown away) loads its page fully. One
     // that would have kept the page (a partial reload) asks first when unsaved changes are on screen.
     if (core.documentChange.newVersion !== undefined && !background && method === 'get') {
       if (keeps && options.ignoreGuards !== true && !(await core.mayLeave(() => true, options.ignoreGuards))) return undefined;
@@ -716,23 +703,23 @@ export class Navigator {
       this.#away(target.href);
       return undefined;
     }
-    // What a full load the server asks for (a new build) would lose that this visit was allowed to leave already (E64).
+    // What a full load the server asks for (a new build) would lose that this visit was allowed to leave already.
     const consented = options.ignoreGuards === true || (!keeps && level === 0 && options.layer !== true) ? true : options.ignoreGuards;
     // A write changes what pages fetched ahead show: none of them is used after it.
     if (method !== 'get') this.#all('write');
 
     const request = buildRequest(target, method, data);
     pending.url = request.url;
-    // A layer's request (E53): sent as one — and the layers' code, when it is not here yet, loads beside it (E71).
+    // A layer's request: sent as one — and the layers' code, when it is not here yet, loads beside it.
     if (pending.layer) {
       request.headers[REGION_HEADER] = 'layer';
       void this.#layers(true);
     }
     // A plain GET visit — it may take a page fetched ahead (or wait for its request, still under way).
     pending.takes = method === 'get' && partial === undefined && Object.keys(headers).length === 0;
-    // What the features add to it: a page fetched ahead, an instant visit's placeholder (E64), a form's ghost row (E59).
+    // What the features add to it: a page fetched ahead, an instant visit's placeholder, a form's ghost row.
     const parts = this.#all('start', pending).filter(Boolean) as VisitPart[];
-    // A form's optimistic patches (E59) — of the page, a layer or an island: shown while it is under way. The core applies them,
+    // A form's optimistic patches — of the page, a layer or an island: shown while it is under way. The core applies them,
     // whatever is attached: each target keeps its own (the page's are the optimistic feature's, attached where they are made).
     const patched = applyPatches(listOf(options.optimistic));
     const prefetched = parts.find((part) => part.page)?.page;
@@ -753,14 +740,14 @@ export class Navigator {
           );
           // Left meanwhile (a 409 of a request in the background: signed out): the answer is not read — nothing of it is taken.
           if (signal.aborted) return undefined;
-          // What answers a layer's request — a layer, its close — needs the layers' code (E71).
+          // What answers a layer's request — a layer, its close — needs the layers' code.
           if (pending.layer && !(await this.#needLayers(signal, request.url))) return undefined;
           const answered = this.#first('response', response, pending, visit);
           if (answered) return answered;
           page = await this.#read(response, { replace, failed: true, consented }, visit, options);
         }
         if (!page || signal.aborted) return undefined;
-        // The server answered with a layer (E53: it may, to any visit) and nothing loaded the layers yet (E71): their code
+        // The server answered with a layer (it may, to any visit) and nothing loaded the layers yet: their code
         // first — never shown as a page, never dropped.
         if (page.layer && !(await this.#needLayers(signal, page.url))) return undefined;
         if (background && (core.left || core.key !== fromKey || core.transitioning || from?.layer.closed)) return undefined;
@@ -837,7 +824,7 @@ export class Navigator {
     core.scroll.cancelSave();
     core.transitioning = true;
     const keep = preserveState && page.component === core.page.component;
-    // The entry being left (or replaced): the top layer's, when layers are open — a page replaces them too (E53).
+    // The entry being left (or replaced): the top layer's, when layers are open — a page replaces them too.
     const top = core.top();
     // The entry the page goes into: a new one, or the one on screen (then its optimistic patches still show over the answer).
     const key = history === 'push' ? newKey() : top;
@@ -852,7 +839,7 @@ export class Navigator {
     }
     try {
       try {
-        // In a view transition's update when one runs (E185) — the history entry and the scroll follow once it is in.
+        // In a view transition's update when one runs — the history entry and the scroll follow once it is in.
         await this.#draw(core.paint(key, page), { preserveState, owner, layers: [] }, history, keep);
       } catch {
         // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
@@ -880,8 +867,8 @@ export class Navigator {
   // -- Back/Forward -----------------------------------------------------------------------------------------------------
 
   /**
-   * The entry being left keeps where it was scrolled to (under an instant visit's placeholder, E64: where it was before it
-   * showed) — written again as a whole: another script's `history.replaceState` erases the Navigation API's state of an entry.
+   * The entry being left keeps where it was scrolled to (under an instant visit's placeholder: where it was before it showed) —
+   * written again as a whole: another script's `history.replaceState` erases the Navigation API's state of an entry.
    */
   #save(): void {
     const core = this.#core;
@@ -892,11 +879,10 @@ export class Navigator {
   }
 
   /**
-   * The Navigation API's `navigate` (E184): the navigator's own commits (its `info`: the URL changes, nothing loads), and
+   * The Navigation API's `navigate`: the navigator's own commits (its `info`: the URL changes, nothing loads), and
    * Back/Forward to its own entries (same-document, a state of its own) — nothing else: a plain link, a form, another site, an
-   * entry without its state (a fragment's, another script's, one an older client wrote with the History API — never shown from
-   * what it holds) stay the browser's. Back/Forward to the entry on screen (a fragment's that kept its state; the guard going
-   * back to it) changes nothing.
+   * entry without its state (a fragment's, another script's — never shown from what it holds) stay the browser's.
+   * Back/Forward to the entry on screen (a fragment's that kept its state; the guard going back to it) changes nothing.
    */
   readonly #onNavigate = (event: Event): void => {
     const navigate = event as unknown as NavigateEvent;
@@ -906,7 +892,7 @@ export class Navigator {
     if (navigate.navigationType !== 'traverse' || !navigate.canIntercept || core.left || !isHistoryState(state) || state.key === core.top()) return;
     // A traversal a feature caused itself (a layer closing by going back): the visit under way is not cancelled by it.
     const own = this.#first('own') === true;
-    // A feature takes it (E64: the guard cancels it, or goes back when it cannot be cancelled).
+    // A feature takes it (the guard cancels it, or goes back when it cannot be cancelled).
     if (this.#first('navigate', navigate, state, own)) return;
     if (!core.transitioning) this.#save();
     // The browser's loading indicator shows while it runs (`navigation.transition`) — long only when the server is asked.
@@ -919,7 +905,7 @@ export class Navigator {
     if (state.layer) {
       const loading = this.#layers();
       if (loading !== true) {
-        // A layer's entry, and the layers' code is not here (the document was loaded since, E71): it loads first, then the
+        // A layer's entry, and the layers' code is not here (the document was loaded since): it loads first, then the
         // entry is followed — unless Back/Forward went on meanwhile. The visit under way is left, as by any Back.
         this.#inFlight?.abort();
         const loaded = await loading;
@@ -955,13 +941,13 @@ export class Navigator {
       this.#all('page');
       const base = core.cache.peek(stack.page)!;
       core.key = stack.page;
-      // The entry's islands come back with it, from memory — no request (but what their views declare reloads, E58).
+      // The entry's islands come back with it, from memory — no request (but what their views declare reloads).
       const owner = core.ownerOf(stack.page, true);
       this.#switchOwner(owner);
       this.#setPage(base.page);
       this.#all('arrive', stack);
       await this.#arrive(base.page, core.scroll.of(state), owner);
-      // Shown from memory at once — then what the views declare reloads in the background (E58).
+      // Shown from memory at once — then what the views declare reloads in the background.
       if (!own && core.key === stack.page) this.#all('restored', base.page, stack.page);
     } finally {
       this.#all('popped');
@@ -1114,7 +1100,7 @@ export class Navigator {
   #send(url: string, { method, headers, body, signal }: SendInit, onProgress?: (progress: VisitProgress) => void): Promise<Response> {
     const init = {
       method: method.toUpperCase(),
-      // The once props held (E64): the server does not compute them again.
+      // The once props held: the server does not compute them again.
       headers: { [PAGE_HEADER]: 'true', ...(this.#core.version ? { [VERSION_HEADER]: this.#core.version } : {}), ...this.#core.once.headers(), ...headers },
       body,
       signal,
@@ -1157,7 +1143,7 @@ export class Navigator {
     }
   }
 
-  // -- The page on screen, flash messages (E60), pending visits (E64) ---------------------------------------------------
+  // -- The page on screen, flash messages, pending visits ---------------------------------------------------
 
   #setPage(page: PageObject): void {
     this.#core.page = page;
@@ -1173,12 +1159,12 @@ export class Navigator {
 
   /** The page without its flash messages — they go into the inbox, fired once the page (or what it came with) is on screen. */
   #collect(page: PageObject): PageObject {
-    // It follows live channels (W6.10): the core attaches the live feature — server-driven, like the layers (E71); once there, it
+    // It follows live channels: the core attaches the live feature — server-driven, like the layers; once there, it
     // follows the screen itself. A chunk that cannot load: no hints (the page works without them).
     if (page.live) import('./features/live.ts').then((module) => this.use(module.live), () => {});
     const { page: rest, flash } = takeFlash(page);
     if (flash.length > 0) this.#core.inbox.push(...flash);
-    // Once props (E64): kept when they came, put back when the server skipped them (they are held).
+    // Once props: kept when they came, put back when the server skipped them (they are held).
     return this.#core.once.receive(rest);
   }
 
@@ -1190,9 +1176,9 @@ export class Navigator {
 
   /**
    * Renders — the owner on screen and what the features contribute (the layers) filled in — then fires what the rendered answer
-   * brought (E60): the page's layout shows a toast over the new page, not the old. A page taking the screen (`how`: a visit's
+   * brought: the page's layout shows a toast over the new page, not the old. A page taking the screen (`how`: a visit's
    * `push`/`replace`, Back/Forward's `traverse`; `keep`: it keeps its state) may be swapped in by a feature (`swap`: in a view
-   * transition's update, E185) — the history entry and the scroll follow once it is in.
+   * transition's update) — the history entry and the scroll follow once it is in.
    */
   async #draw(page: PageObject, options: DrawOptions, how?: 'push' | 'replace' | 'traverse', keep = false): Promise<void> {
     this.#all('draw');
@@ -1214,7 +1200,7 @@ export class Navigator {
   }
 
   /**
-   * The layers' code (E71): attached already (`true`) — or loading now, the first time the server answers with a layer (or
+   * The layers' code: attached already (`true`) — or loading now, the first time the server answers with a layer (or
    * Back/Forward goes to a layer's entry, or a layer's request is sent: `asked`) and nothing here loaded it before. Resolves with
    * whether it loaded: not, offline or gone after a deployment (asked for again next time).
    */
@@ -1242,7 +1228,7 @@ export class Navigator {
   }
 
   /**
-   * What a visit's answer needs: the layers' code (E71) — false when the answer is dropped: the visit moved on meanwhile (a
+   * What a visit's answer needs: the layers' code — false when the answer is dropped: the visit moved on meanwhile (a
    * newer one, Back), the document was left (a 409), or the code cannot load — then the browser loads `url` (a layer's URL
    * loads with what is beneath it), like a page whose code cannot load: never a half state.
    */

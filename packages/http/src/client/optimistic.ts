@@ -1,11 +1,11 @@
 /**
- * Optimistic UI, model 1 (E59): a typed patch on the props of a page, a layer or a region, shown at once while an action is
+ * Optimistic UI: a typed patch on the props of a page, a layer or a region, shown at once while an action is
  * under way — rolled back when it fails, reconciled with the server's props when it succeeded. UI-free.
  *
  * What is shown is always `the server's props + the patches under way`, computed again whenever either changes: a patch is a
  * function of the props beneath it, so two actions on the same list compose, and taking one out (its action failed) leaves
  * the other's in place — no snapshot of one action can undo another's. The props beneath stay the server's: memory keeps
- * only them (the page cache never holds a patch, nor does `history.state` — it holds no props at all, E36), so Back/Forward
+ * only them (the page cache never holds a patch, nor does `history.state` — it holds no props at all), so Back/Forward
  * after a rollback shows nothing of it.
  */
 import type { DevtoolsGlobal } from './features/devtools.ts';
@@ -20,7 +20,7 @@ export type PropsPatch = (props: Readonly<Record<string, unknown>>) => Readonly<
 /**
  * A reload of some props (`only`), all but some (`except`), or — neither — all of them. It is a revalidation (an action's, Back's):
  * what it brings replaces what was there, also where the server marked a prop `merge()`/`deepMerge()` — a row deleted meanwhile
- * is gone, nothing is appended. `reset` names the merged props it replaces instead (`[]`: it merges them, as before Wave 9).
+ * is gone, nothing is appended. `reset` names the merged props it replaces instead (`[]`: it merges them all).
  */
 export interface ReloadSpec {
   readonly only?: readonly string[];
@@ -97,7 +97,7 @@ export class PatchQueue {
   /** Takes these out; whether any was here. */
   remove(ids: Iterable<number>): boolean {
     const gone = new Set(ids);
-    // Development only (W7 step 9): the devtools' bar marks them settled — gone from a production build.
+    // Development only: the devtools' bar marks them settled — gone from a production build.
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.removed?.(gone);
     const before = this.#patches.length;
     this.#patches = this.#patches.filter((entry) => !gone.has(entry.id));
@@ -132,7 +132,7 @@ function run<T extends Props>(base: T, patches: readonly { readonly id: number; 
   let props = base.props;
   for (const { patch } of patches) {
     try {
-      // Development only (W7 step 9): what each patch changed, for the devtools' bar — a production build calls the patch alone.
+      // Development only: what each patch changed, for the devtools' bar — a production build calls the patch alone.
       props = { ...props, ...(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? observed(patches, patch, props) : patch(props)) };
     } catch (error) {
       // A patch's bug shows nothing of it — and breaks neither the page nor the other patches.
@@ -142,7 +142,7 @@ function run<T extends Props>(base: T, patches: readonly { readonly id: number; 
   return props === base.props ? base : { ...base, props };
 }
 
-/** Development only: `patch` over `props` — reported to the devtools' dev hook (W7 step 9). */
+/** Development only: `patch` over `props` — reported to the devtools' dev hook. */
 function observed(patches: readonly { readonly id: number; readonly patch: PropsPatch }[], patch: PropsPatch, props: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   const changed = patch(props);
   const id = patches.find((entry) => entry.patch === patch)?.id;

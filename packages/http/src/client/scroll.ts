@@ -61,7 +61,7 @@ export class ScrollMemory {
 
   /** Where an entry was scrolled to: from memory (exact), else from the entry itself. */
   of(state: HistoryState): Scroll {
-    // `regions`: what the scroll regions were called before W5b — an entry of an older document of this tab.
+    // `regions`: an earlier name of the scroll regions — an entry an older client of this tab wrote.
     const legacy = (state as { regions?: readonly ScrollPosition[] }).regions;
     return this.#positions.peek(state.key) ?? { scroll: state.scroll ?? TOP.scroll, scrollRegions: [...(state.scrollRegions ?? legacy ?? [])] };
   }

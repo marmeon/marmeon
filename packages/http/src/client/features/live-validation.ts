@@ -1,9 +1,9 @@
 /**
- * Live validation (E62) as a feature: a form's fields checked against the server's request schema while they are filled in,
+ * Live validation as a feature: a form's fields checked against the server's request schema while they are filled in,
  * sent through what actions use of the navigator (`actionHost`). It holds nothing of the server's: each form's
  * `LiveValidation` keeps which fields were touched; the adapter keeps the errors.
  *
- * Prop-driven (E74): an adapter loads it on a form's first use (`loadLiveValidation`, `liveValidationOnFirstUse` in
+ * Prop-driven: an adapter loads it on a form's first use (`loadLiveValidation`, `liveValidationOnFirstUse` in
  * `lazy.ts`) — in a chunk of its own, never in an app's first download.
  */
 import { actionHost } from '../action-host.ts';

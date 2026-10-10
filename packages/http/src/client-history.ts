@@ -2,21 +2,13 @@ import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, 
 import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './page.ts';
 
 /**
- * Ends the browser's page session of this app with the current response — what signing in and out need
- * (`Auth` calls it; so can an app that switches accounts or impersonates). The client keeps the pages it
- * showed in memory, to go back without a request; after `clear()`, none of them may come back:
+ * Ends the browser's page session of this app with the current response — what signing in and out need (`Auth` calls it).
+ * After `clear()`, no page the client keeps in memory may come back: a client-side visit is answered with `409` and
+ * `x-marmeon-location`, so the browser loads the next page fully.
  *
- * - A client-side visit (`x-marmeon`) is answered with `409` and `x-marmeon-location` — the same answer as a
- *   new build (asset versioning) — so the browser loads the next page **fully**. The old document, and the
- *   in-memory page cache with it, is gone; every earlier history entry is fetched from the server again.
- * - With `{ siteData: true }` (sign-out — `Auth.logout()` asks for it, E165), the response also carries
- *   `Clear-Site-Data: "cache", "storage"`: the browser drops what its HTTP cache holds for the site and the site's storage
- *   (`localStorage`, `sessionStorage`, IndexedDB, service workers) — in every tab. `siteData: ['cache']` drops the cache alone
- *   (a language switch); `siteData: false` takes back what an earlier call asked for (the last call wins). Never `"cookies"`
- *   (the response sets the session's own) and never `"executionContexts"` (no browser does it; the other tabs let go of
- *   their memory through the tabSync feature).
- *
- * Inertia's `clearHistory()` / `Inertia::location()`, made automatic.
+ * `{ siteData: true }` (sign-out) also sends `Clear-Site-Data: "cache", "storage"`; `['cache']` drops the cache alone, `false`
+ * takes back an earlier call's. Never `"cookies"` (the response sets the session's own), nor `"executionContexts"` (no browser
+ * does it; tab sync clears the other tabs). See docs/client-features.md#the-browsers-storage-on-sign-out.
  */
 export class ClientHistory {
   #cleared = false;
@@ -38,18 +30,16 @@ export class ClientHistory {
   }
 }
 
-/** What `Clear-Site-Data` may name here: the HTTP cache and the site's storage (E165). */
+/** What `Clear-Site-Data` may name here: the HTTP cache and the site's storage. */
 export type SiteData = 'cache' | 'storage';
 
 /** Headers of a page or redirect that make no sense on the bodiless 409 that replaces it. */
 const DROPPED = ['location', 'content-type', 'content-length', PAGE_HEADER];
 
 /**
- * Applies {@link ClientHistory} to the response — in the `web` group, outside the session, so the session
- * sees the response the route gave (a 303, not a reload: `StartSession` keeps flash data through a 409).
- *
- * The full page load goes where the response was headed: a redirect's `Location`, otherwise the requested
- * page (a GET). Sign in and out with a redirect — what a page rendered on a POST shows is lost in the reload.
+ * Applies {@link ClientHistory} to the response — in the `web` group, outside the session, so the session sees the response
+ * the route gave (a 303, not a reload: `StartSession` keeps flash data through a 409). The full load goes where the response
+ * was headed: a redirect's `Location`, else the requested page — sign in and out with a redirect.
  */
 export class ClearClientHistory {
   readonly #history: ClientHistory;
@@ -65,7 +55,7 @@ export class ClearClientHistory {
     const headers = new Headers(response.headers);
     const siteData = this.#history.siteData;
     if (siteData.length > 0) headers.set('clear-site-data', siteData.map((type) => `"${type}"`).join(', '));
-    // An action (E59) too: signing out through one must not leave the pages in memory either.
+    // An action too: signing out through one must not leave the pages in memory either.
     const action = isActionRequest(ctx.request);
     if (ctx.request.headers.get(PAGE_HEADER) !== 'true' && !action) {
       return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
@@ -78,7 +68,7 @@ export class ClearClientHistory {
     await response.body?.cancel();
     for (const name of DROPPED) headers.delete(name);
     headers.set(LOCATION_HEADER, location);
-    // A document change (E64), never a new build: whatever the response it replaces said (a version check's 409 that ran after a
+    // A document change, never a new build: whatever the response it replaces said (a version check's 409 that ran after a
     // sign-in of this request, say), the client may not postpone this one — `version` is the only cancelable reason.
     headers.set(RELOAD_HEADER, 'history');
     return ownResponse(new Response(null, { status: 409, headers }));

@@ -1,5 +1,5 @@
 /**
- * Page props that are more than a value (E7, Inertia's semantics): left out of the first response, loaded after
+ * Page props that are more than a value (Inertia's semantics): left out of the first response, loaded after
  * it, sent with every partial reload, or merged into what the browser already has.
  *
  * ```ts
@@ -93,7 +93,7 @@ type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4
         : never;
 
 /**
- * Computed once per browser tab (E64): sent with the first page that has it, then kept by the browser — the server skips it
+ * Computed once per browser tab: sent with the first page that has it, then kept by the browser — the server skips it
  * while the browser says it holds it (under the same session). In the view: `T`.
  */
 export interface OnceProp<T> extends PageProp<'once', T> {
@@ -175,18 +175,14 @@ export type CheckOnceValue<T> = [UnstorablePart<T>] extends [never]
   : 'a once prop is kept by the browser as JSON — its value must be plain data (no functions, Map, Set, bigint, undefined or promises inside)';
 
 /**
- * A prop the browser keeps (E64, Inertia's `once()`): computed for the first page that has it, then — while the browser holds
- * it, in memory, for this tab — never again: the client says what it holds (`x-marmeon-once`), the server skips it. For data
- * that is the same on every page and expensive or large: a country list, the supported locales, translations.
+ * A prop the browser keeps: computed for the first page that has it, then skipped while the tab holds it — for data that is
+ * the same on every page, such as a country list. Held only by the document and only for the session it was sent to
+ * (`PageObject.onceScope`). See docs/responses.md#once-props.
  *
  * ```ts
  * share('locales', once(() => this.#locales.supported));                 // the app's: one value for every page
  * countries: once(() => this.#countries.all(), { key: 'countries' }),    // shared by every view that names the key
  * ```
- *
- * Held only by the document: a full load (sign-in or sign-out — the session changes —, a new build, a language switch, a
- * reload) starts over. And only for the session it was sent to (`PageObject.onceScope`): another tab signing someone else in
- * makes the server send it again. Never for something per user that changes while the page is open — that is a normal prop.
  */
 export function once<R>(resolve: () => R & CheckOnceValue<Awaited<R>>, options: OnceOptions = {}): OnceProp<Awaited<R>> {
   return { [PROP]: 'once', resolve, key: options.key, ttl: options.ttl } as unknown as OnceProp<Awaited<R>>;
@@ -202,10 +198,9 @@ function mergeProp(kind: MergeStrategy, value: unknown, match: readonly string[]
 }
 
 /**
- * A prop a partial reload merges into what the browser already shows — arrays are appended, objects merged one
- * level deep, a paginator's `data` appended (`{ data, meta }`: the new `meta`): `links: merge(page.data)` or
- * `people: merge(page).matchOn('data.id')` for "load more". A full response replaces it as usual, and so does a
- * revalidation (an action's reload, a live hint's — E183). `.matchOn('id')` keeps an item from appearing twice.
+ * A prop a partial reload merges into what the browser already shows — arrays are appended, objects merged one level deep,
+ * a paginator's `data` appended: `people: merge(page).matchOn('data.id')` for "load more". A full response replaces it, and
+ * so does a revalidation (an action's reload, a live hint's). See docs/deferred-props.md#merged-props.
  */
 export function merge<V>(value: V): MergeProp<Unlazy<V>, 'merge'> {
   return mergeProp('merge', value, []) as MergeProp<Unlazy<V>, 'merge'>;

@@ -1,5 +1,5 @@
 /**
- * Flash messages (E60), server side: what a controller hands the page the user sees next — once. A message has an id of its
+ * Flash messages, server side: what a controller hands the page the user sees next — once. A message has an id of its
  * own, so the browser fires it exactly once (and twice for the same message flashed twice). Where it waits in between is
  * the session's ({@link Flasher}): until a response the user is shown takes it — a page, a layer, a partial reload, an
  * action's answer. A prefetch, an island or any other read-only request never takes one.
@@ -12,7 +12,7 @@ export interface FlashEntry {
   readonly key: string;
   readonly data: unknown;
   /**
-   * The document whose request flashed it (E165, `x-marmeon-document` — the tabSync feature names it): only a request of that
+   * The document whose request flashed it (`x-marmeon-document` — the tabSync feature names it): only a request of that
    * document, or one naming none (a full page load), takes it. Never sent to the browser.
    */
   readonly document?: string;

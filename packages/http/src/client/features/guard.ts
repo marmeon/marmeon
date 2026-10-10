@@ -1,5 +1,5 @@
 /**
- * The navigation guard and confirmations (E64): unsaved changes a visit, Back/Forward or closing a layer would lose ask
+ * The navigation guard and confirmations: unsaved changes a visit, Back/Forward or closing a layer would lose ask
  * first; closing the tab or reloading gets the browser's own question (`beforeunload`). A full load the server asks for (a
  * 409) is never stopped. Attached where a component guards (React: `useBlocker`, a form's `guard`) — a visit's own
  * confirmation (`confirm`) is the core's, asked with or without it.
@@ -11,7 +11,7 @@ import type { HistoryState, NavigateEvent } from '../history.ts';
 import type { Layer } from '../layer.ts';
 
 /**
- * Unsaved changes that a navigation would lose (E64) — `navigator.use(guard).add({ message })`: while it is registered (and `active()`
+ * Unsaved changes that a navigation would lose — `navigator.use(guard).add({ message })`: while it is registered (and `active()`
  * says so), a visit, Back/Forward or closing its layer asks first, and closing the tab or reloading gets the browser's own
  * question (`beforeunload`). `layer`: the layer it is in — only what takes that layer (or the page beneath) off the screen
  * asks; without one, it is the page's.
@@ -30,7 +30,7 @@ type GuardCore = Pick<FeatureHost, 'window' | 'key' | 'layers' | 'left' | 'start
 /** The guards of one navigator. */
 export class Guards {
   readonly #core: GuardCore;
-  /** Unsaved changes (E64): what a navigation asks about first. */
+  /** Unsaved changes: what a navigation asks about first. */
   readonly #guards = new Set<NavigationGuard>();
   /** The user chose to leave: the traversal to this entry (the Navigation API's key) passes the guards. */
   #passing: string | undefined;
@@ -50,7 +50,7 @@ export class Guards {
   }
 
   /**
-   * Guards unsaved changes (E64) until the returned function lifts it: from now on — while `guard.active()` says so — a visit,
+   * Guards unsaved changes until the returned function lifts it: from now on — while `guard.active()` says so — a visit,
    * Back/Forward or closing its layer asks first (`guard.message`), and closing the tab or reloading asks with the browser's own
    * question. A form passes its own guard when it is sent (`ignoreGuards`); a full page load the server asks for (a 409: signed
    * out, a new build) is never stopped.
@@ -90,7 +90,7 @@ export class Guards {
   }
 
   /**
-   * Back/Forward to `state` (the Navigation API's `navigate`, E184), before the navigator follows it: whether the guard takes it —
+   * Back/Forward to `state` (the Navigation API's `navigate`), before the navigator follows it: whether the guard takes it —
    * unsaved changes on what it would take off the screen. Cancelled where the browser lets it (the same document, with a fresh
    * user activation — or from a script): the URL never changes. Otherwise it goes, and goes back at once to the entry it left
    * (`traverseTo` by the browser's key — no counted index: right after a reload or a session restore too). Then it asks; Leave
@@ -138,7 +138,7 @@ export class Guards {
 }
 
 /**
- * The navigation guard (E64) as a feature: asks before a visit (its confirmation, unsaved changes), cancels (or undoes) a
+ * The navigation guard as a feature: asks before a visit (its confirmation, unsaved changes), cancels (or undoes) a
  * Back/Forward it stops, says what is unsaved to the core (a postponed new build, closing a layer) and the browser's own question. Holds no
  * data — only the guards the app registers.
  */

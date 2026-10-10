@@ -1,7 +1,7 @@
 /**
- * Prefetching (W5.6): a page fetched ahead of its visit (a hovered link) — GET only, `Purpose: prefetch`, in memory only (E36).
+ * Prefetching: a page fetched ahead of its visit (a hovered link) — GET only, `Purpose: prefetch`, in memory only.
  * Used once, by the visit it was fetched for, within its `cacheFor`; dropped when the document is left (signing out) and
- * when a non-GET visit changes what it shows. Its code loads with the first prefetch (E74, `prefetchWith` in `lazy.ts`).
+ * when a non-GET visit changes what it shows. Its code loads with the first prefetch (`prefetchWith` in `lazy.ts`).
  */
 import { FLASH_WAITING_HEADER, PAGE_HEADER, PURPOSE_HEADER, REGION_HEADER, type PageObject } from '../../page.ts';
 import { LruMap } from '../cache.ts';
@@ -129,7 +129,7 @@ export class Prefetches {
       const headers: Record<string, string> = layer ? { [PURPOSE_HEADER]: 'prefetch', [REGION_HEADER]: 'layer' } : { [PURPOSE_HEADER]: 'prefetch' };
       const response = await this.#core.send(url, { method: 'get', headers, signal });
       // 409 (a new build, signing in or out), 5xx, a 4xx page, not a page: the visit asks again and handles it. Flash
-      // messages wait for the page (E60): the prefetch took none — the visit asks, and its answer brings them.
+      // messages wait for the page: the prefetch took none — the visit asks, and its answer brings them.
       if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true' || response.headers.get(FLASH_WAITING_HEADER) === 'true') {
         await response.body?.cancel();
         return undefined;
@@ -157,7 +157,7 @@ export const prefetch = defineFeature('prefetch', (host) => {
   host.on('write', () => prefetches.flush());
   host.on('start', (visit) => {
     if (!visit.takes) return undefined;
-    // An instant visit (E64) shows no placeholder for a page that is here already.
+    // An instant visit shows no placeholder for a page that is here already.
     visit.ready = prefetches.ready(visit.url, visit.layer);
     return { page: prefetches.take(visit.url, visit.layer) };
   });

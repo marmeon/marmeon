@@ -27,7 +27,7 @@ function held() {
 
 const islandRequests = (win: FakeWindow) => win.requests.filter((request) => request.headers[REGION_HEADER] === 'island');
 
-describe('Region — islands in the client core (E48, E50)', () => {
+describe('Region — islands in the client core', () => {
   it('loads an island with the page headers, x-marmeon-region and the asset version — never following a redirect', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     let init: RequestInit | undefined;
@@ -333,7 +333,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
     expect(win.requests).toEqual([]);
   });
 
-  it('a prefetch of a page loads no island (the server does not know them; E52)', async () => {
+  it('a prefetch of a page loads no island (the server does not know them)', async () => {
     const win = new FakeWindow(`${ORIGIN}/people`);
     win.handler = () => pageResponse(page('/dashboard', {}, 'dashboard/Show'));
     const { navigator } = boot(win, page('/people', {}, 'user-profile/People'));
@@ -349,7 +349,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
   });
 });
 
-describe('Region — started with what the server streamed (E49)', () => {
+describe('Region — started with what the server streamed', () => {
   it('shows a streamed island at once and loads nothing — kept in the entry like a loaded one', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const { navigator, owner } = boot(win, page('/dashboard'));

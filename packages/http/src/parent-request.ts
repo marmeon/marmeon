@@ -2,12 +2,10 @@ import type { Container, Key } from '@marmeon/core';
 
 /**
  * The page request an island's request runs inside of — set by the kernel when it resolves an island in-process while
- * the page renders (E49); empty for every other request. Per request (scoped).
+ * the page renders; empty for every other request. Per request (scoped).
  *
- * Middleware that loads per-request state reads it from here instead of loading it again, as a copy — the island sees
- * the page request's state as it was when the island started (its session, with whoever the page signed in), and
- * nothing it does reaches the page (it is read-only anyway, E52). `StartSession` does this; anything else (cookies,
- * locale) works unchanged on the request the kernel builds: it carries the page request's cookies and headers.
+ * Middleware that loads per-request state (`StartSession`) copies it from here instead of loading it again: the island sees
+ * the page request's state as it was when the island started, and nothing it does reaches the page.
  */
 export class ParentRequest {
   #request: Request | undefined;

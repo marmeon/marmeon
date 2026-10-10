@@ -1,5 +1,5 @@
 /**
- * The requests of islands (E52): a GET with the page headers and `x-marmeon-region: island`, never following a redirect. What
+ * The requests of islands: a GET with the page headers and `x-marmeon-region: island`, never following a redirect. What
  * the server answers becomes the region's outcome — never a navigation of the page — except a 409: a new build (or a document
  * change), so the whole page loads again (the island's code of this build may be gone).
  */
@@ -35,7 +35,7 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
     return { kind: 'cancelled' };
   }
   if (response.status === 409 && response.headers.has(LOCATION_HEADER)) {
-    // The whole page loads again (the island's code of this build may be gone) — a new build only when nothing holds it (E64).
+    // The whole page loads again (the island's code of this build may be gone) — a new build only when nothing holds it.
     await core.documentChange.change(response, 'reload');
     return { kind: 'cancelled' };
   }
@@ -60,25 +60,25 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
   return { kind: 'exception', failure: { status: response.status || undefined, message } };
 }
 
-/** What adapters use of islands (E48–E52): the regions of the entries on screen. */
+/** What adapters use of islands: the regions of the entries on screen. */
 export interface IslandsFeature {
   /**
-   * A region of the page — an island (E48, E50): `url` is its route's (same origin), `owner` the entry it belongs to (what
+   * A region of the page — an island: `url` is its route's (same origin), `owner` the entry it belongs to (what
    * `render` handed the adapter; default: the page on screen). The same URL gives the same region (one request for two
    * identical islands); what it loaded stays in the entry's memory, so Back/Forward shows it without a request. `initial`
-   * is a region object the server already sent (streamed with the page). Islands never load ahead (no prefetch, E52).
+   * is a region object the server already sent (streamed with the page). Islands never load ahead (no prefetch).
    */
   region(url: string, options?: { owner?: RegionOwner; initial?: RegionInitial }): Region;
 }
 
 /**
- * Islands (E48–E52) as a feature, attached where an island renders (React: `<Island>`): their regions and how they send their
+ * Islands as a feature, attached where an island renders (React: `<Island>`): their regions and how they send their
  * requests. The owners of the entries on screen are the core's; the regions live on them (`owner.live`, closed with them), and
  * what they loaded in the entries' slots (`REGIONS`, emptied by the core).
  */
 export const islands = defineFeature('islands', (host): IslandsFeature => {
   const sent = regionTransport(host);
-  // An island that follows live channels (W6.10) — loaded, or streamed with the page: the core's live feature follows them too.
+  // An island that follows live channels — loaded, or streamed with the page: the core's live feature follows them too.
   const transport: RegionTransport = { request: (url, headers, signal) => sent.request(url, headers, signal).then((response) => (response.kind === 'region' && follow(host.navigator, response.region), response)) };
   // A page that keeps its state takes the place of the one on screen (a partial reload, a sort link): its islands come along.
   host.on('carry', (from, to) => {

@@ -1,5 +1,5 @@
 /**
- * The live protocol (W6.10, E89, E90, E104) — what the live feature's chunk and the server share. A module of its own (like
+ * The live protocol — what the live feature's chunk and the server share. A module of its own (like
  * `upload-header.ts`): only an app whose pages declare `live` loads the code that uses it, so no first download carries it.
  *
  * - Every request of a tab that follows live hints names its document: {@link CONNECTION_HEADER} — the server leaves that

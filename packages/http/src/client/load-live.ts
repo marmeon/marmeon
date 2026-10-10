@@ -1,5 +1,5 @@
 /**
- * Live props (W6.10) — server-driven like the layers (E71): the core loads the feature when an answer follows a channel
+ * Live props — server-driven like the layers: the core loads the feature when an answer follows a channel
  * (`PageObject.live`: a page, a layer, an island), so no first download carries it. A module of its own (not `lazy.ts`).
  */
 import type { Feature } from './feature.ts';

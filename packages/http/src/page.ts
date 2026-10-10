@@ -102,7 +102,7 @@ export function pageName(path: string): string | undefined {
 export interface SharedProps {}
 
 /**
- * The app's flash messages (E60) — what a controller hands the next page to show once: a toast, a notice. Declared by the
+ * The app's flash messages — what a controller hands the next page to show once: a toast, a notice. Declared by the
  * app, checked where it flashes (`redirect().flash('toast', { kind: 'success', message })`) and where it shows them
  * (`useFlash('toast', (toast) => …)`):
  *
@@ -130,20 +130,20 @@ export type CheckFlashKey<K extends string> = string extends K
     : `'${K}' is not a flash key — the app declares ${JoinNames<FlashKey>} (interface FlashData of @marmeon/http/page)`;
 
 /**
- * One flash message as the browser gets it (E60): its key, its data (as JSON made it, `Serialize`), and an id of its own —
+ * One flash message as the browser gets it: its key, its data (as JSON made it, `Serialize`), and an id of its own —
  * so it fires exactly once: never again for a partial reload, Back/Forward or a page shown from memory, and twice for the
  * same message flashed twice (two saves, two toasts).
  */
 export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? { readonly id: string; readonly key: K; readonly data: Serialize<FlashValue<K>> } : never;
 
 /**
- * With an action's answer (E59, E60): the flash messages it delivers — JSON, URI-encoded (header values are ASCII). An action
+ * With an action's answer: the flash messages it delivers — JSON, URI-encoded (header values are ASCII). An action
  * is shown to the user (`useAction`), so it takes the messages its controller flashed instead of leaving them for later.
  */
 export const FLASH_HEADER = 'x-marmeon-flash';
 
 /**
- * With a prefetch's answer (E60): flash messages wait for the page the user is shown — the prefetch took none. The client does
+ * With a prefetch's answer: flash messages wait for the page the user is shown — the prefetch took none. The client does
  * not show that prefetched page then: the visit asks the server, whose answer delivers them (the toast is not lost).
  */
 export const FLASH_WAITING_HEADER = 'x-marmeon-flash-waiting';
@@ -180,7 +180,7 @@ export interface PageObject {
    */
   matchPropsOn?: string[];
   /**
-   * The page's query, parsed by its request's `query` schema (E55) — only the fields the URL set validly, without
+   * The page's query, parsed by its request's `query` schema — only the fields the URL set validly, without
    * defaults (the canonical query). The browser never parses a URL itself: `useQueryState` reads this. Absent for a
    * route without a query schema.
    */
@@ -188,43 +188,40 @@ export interface PageObject {
   /** What an empty query parses to (the schema's defaults) — left out of the URLs the browser builds for this page. */
   queryDefaults?: Record<string, unknown>;
   /**
-   * Deferred groups the server streams with this document (E49) — computed while the page streams and sent in it, so the
+   * Deferred groups the server streams with this document — computed while the page streams and sent in it, so the
    * browser does not ask for them again. Only on a server-rendered document's page object.
    */
   streamedProps?: string[];
   /**
-   * The page object is a layer's (E53): the view of a route whose controller answered `this.view(…).layer({ base })` — shown
+   * The page object is a layer's: the view of a route whose controller answered `this.view(…).layer({ base })` — shown
    * over the page (or the layers) on screen, with a history entry of its own. Absent for pages.
    */
   layer?: LayerInfo;
   /**
    * The layers over this page, bottom first — only on a server-rendered document's page object, for a deep link (or a reload)
    * of a layer's URL: this page is the layer's declared base (resolved in-process), or the neutral surface ({@link LAYER_BACKDROP})
-   * when the base turned the user away (E54). Never in a client-side navigation's answer.
+   * when the base turned the user away. Never in a client-side navigation's answer.
    */
   layers?: PageObject[];
   /**
-   * The flash messages this response delivers (E60) — a protocol field, not a prop: sent once, only with an answer that is
-   * shown (a page, a layer, a partial reload — never a prefetch or an island), and no answer sends them again. The client
-   * core fires each once (`navigator.on('flash')`, `useFlash`) and keeps none of them: not in memory with the page, never in
-   * `history.state`. On the server, an adapter may render them for browsers without JavaScript (`<noscript>`).
+   * The flash messages this response delivers — a protocol field, not a prop: sent once, only with an answer that is shown
+   * (never a prefetch or an island). The client core fires each once and keeps none of them, never in `history.state`.
    */
   flash?: FlashMessage[];
   /**
-   * The name of the route that answered (E64) — what `<Link activeMatch="user-profile.*">` compares against. Only for a named
+   * The name of the route that answered — what `<Link activeMatch="user-profile.*">` compares against. Only for a named
    * route the browser may know (never an `.internal()` one), and only on its own answer (an error page names none).
    */
   route?: string;
   /**
-   * The page's once props (E64, `once()`), by prop name: under which `key` the browser keeps the value, and until when
+   * The page's once props (`once()`), by prop name: under which `key` the browser keeps the value, and until when
    * (`expiresAt`, ms since the epoch, by the server's clock). A prop listed here but missing from `props` is one the browser
    * said it holds ({@link ONCE_HEADER}) — the client core puts its value back in before anything renders.
    */
   onceProps?: Record<string, OnceInfo>;
   /**
-   * Who the once props are for (E64) — opaque, changing whenever who signs in changes (a new session: sign-in, sign-out). The
-   * browser keeps once props of one scope only and names it when it says what it holds; a value kept under another scope is
-   * never skipped by the server (another tab signed someone else in: the cookie changed, the memory did not).
+   * Who the once props are for — opaque, new with every sign-in and sign-out. The server skips a held value only under the
+   * same scope: another tab may have signed someone else in (the cookie changed, the memory did not).
    */
   onceScope?: string;
   /**
@@ -233,36 +230,32 @@ export interface PageObject {
    */
   csrf?: string;
   /**
-   * The session's epoch (W8 step 8, E148/E165) — opaque (an HMAC keyed from `APP_KEY` over the session's generation, the signed-in
-   * user and the locale), changing whenever someone signs in or out, the session is regenerated or the language changes. The
-   * `tabSync` feature tells the other tabs of the browser when it changes (`BroadcastChannel`), and they let go of what they keep.
-   * Absent without the http provider's `SessionEpoch` (a test kernel), and in a region object (an island).
+   * The session's epoch for tab sync — opaque, new whenever someone signs in or out, the session is regenerated or the
+   * language changes (see `tab-sync-protocol.ts`). Absent without the http provider's `SessionEpoch`, and in a region object.
    */
   epoch?: string;
   /**
-   * The live subscriptions of this page (or island, or layer) — W6.10, E89/E90: what its controller declared
-   * (`this.view(…).live('users.7', { only: ['profile'] })`) and what every page shares (`shared.live(…)`), each with its
-   * channel signed for this session. The client core then loads the live feature, which follows every channel on screen
-   * over one stream per document and reloads `only` when the server hints that a channel changed — never data.
+   * The live subscriptions of this page (or island, or layer): what its controller declared (`.live('users.7', { only })`)
+   * and what every page shares (`shared.live(…)`), each channel signed for this session. See `live-protocol.ts`.
    */
   live?: LiveSubscription[];
 }
 
-/** A channel a page (island, layer) follows (E89, E90) — `PageObject.live`. */
+/** A channel a page (island, layer) follows — `PageObject.live`. */
 export interface LiveSubscription {
   /** The channel's name: `users.7`, `dashboard.sign-ins`. */
   readonly channel: string;
   /** The props a hint on the channel reloads (those of them the hint names) — absent: every prop the hint names, or all. */
   readonly only?: readonly string[];
   /**
-   * The channel signed for the session the page was rendered for (E90: an HMAC over the channel and a hash of the session
+   * The channel signed for the session the page was rendered for (an HMAC over the channel and a hash of the session
    * id) — the stream accepts only this. Whoever may see the page may hear its hints; signing in or out voids it.
    */
   readonly token: string;
 }
 
 /**
- * A hint on a live stream (W6.10): a channel changed — reload `only` of what follows it. Never data: whatever a reload
+ * A hint on a live stream: a channel changed — reload `only` of what follows it. Never data: whatever a reload
  * brings goes through the page's own route (its middleware, policies and props). `only: null` — the props each
  * subscription names (or all); `only: []` — nothing (the request that caused it came from this tab). `seq` counts the
  * channel's hints, so a stream that was away knows whether it missed one.
@@ -274,7 +267,7 @@ export interface LiveHint {
 }
 
 
-/** Where the browser keeps a once prop (E64). */
+/** Where the browser keeps a once prop. */
 export interface OnceInfo {
   /** The key it is kept under — the prop's name for a shared prop, `<view>:<prop>` for a page's own, or `once(fn, { key })`. */
   readonly key: string;
@@ -283,7 +276,7 @@ export interface OnceInfo {
 }
 
 /**
- * The once props the browser holds (E64): their keys, comma-separated — the server does not compute them again (they stay in
+ * The once props the browser holds: their keys, comma-separated — the server does not compute them again (they stay in
  * `onceProps`, without a value). Sent with every page request of the client core, with {@link ONCE_SCOPE_HEADER}.
  */
 export const ONCE_HEADER = 'x-marmeon-once';
@@ -292,17 +285,16 @@ export const ONCE_HEADER = 'x-marmeon-once';
 export const ONCE_SCOPE_HEADER = 'x-marmeon-once-scope';
 
 /**
- * Why a `409` with {@link LOCATION_HEADER} reloads the page (E64): `version` — a new build (asset versioning), which the
- * client may postpone (`navigator.on('version', (event) => event.preventDefault())`) and which respects unsaved changes;
- * anything else — `history`, signing in or out (`ClientHistory.clear()`), or no header at all — is a document change that
- * nothing can stop. Only the exact value `version` is cancelable; `ClearClientHistory` overwrites it on every 409 it makes.
+ * Why a `409` with {@link LOCATION_HEADER} reloads the page: `version` — a new build, which the client may postpone; anything
+ * else (signing in or out, no header at all) is a document change nothing can stop. Only the exact value `version` is
+ * cancelable; `ClearClientHistory` overwrites it on every 409 it makes.
  */
 export const RELOAD_HEADER = 'x-marmeon-reload';
 
-/** What a view's placeholder gets (E64, instant visits): what its controller declares (`declare readonly instant: { name: string }`). */
+/** What a view's placeholder gets (instant visits): what its controller declares (`declare readonly instant: { name: string }`). */
 export type InstantProps<C> = C extends { readonly instant: infer P } ? (P extends object ? P : never) : never;
 
-/** What a layer's page object says about it (E53). */
+/** What a layer's page object says about it. */
 export interface LayerInfo {
   /**
    * Its identity in a stack: an answer of the layer with the same key replaces it in place (a form that failed validation,
@@ -319,17 +311,17 @@ export interface LayerInfo {
   readonly once?: true;
 }
 
-/** How deep layers stack (E53): an answer that would open an eleventh is shown as a page instead. */
+/** How deep layers stack: an answer that would open an eleventh is shown as a page instead. */
 export const MAX_LAYER_DEPTH = 10;
 
 /**
- * The neutral surface under a layer whose base the user may not see (E54) — a deep link to the layer renders it alone over
+ * The neutral surface under a layer whose base the user may not see — a deep link to the layer renders it alone over
  * this page, and the base's data is never loaded. Apps override it with `modules/layers/views/Backdrop.tsx`.
  */
 export const LAYER_BACKDROP = 'layers/Backdrop';
 
 /**
- * The answer of `closeLayer()` to a layer's request (E53): JSON {@link LayerClose} — the client closes that many layers and
+ * The answer of `closeLayer()` to a layer's request: JSON {@link LayerClose} — the client closes that many layers and
  * reloads what is beneath them. (Without a layer — no JavaScript — the same result is a redirect.)
  */
 export const LAYER_CLOSE_HEADER = 'x-marmeon-layer-close';
@@ -346,7 +338,7 @@ export interface LayerClose {
 export const PAGE_HEADER = 'x-marmeon';
 
 /**
- * Sent with an action (E59, `useAction`): a request that does not navigate — answered with data (`this.json(…)`), never with
+ * Sent with an action (`useAction`): a request that does not navigate — answered with data (`this.json(…)`), never with
  * a page. Its redirect is not followed: the server answers `204` with {@link ACTION_REDIRECT_HEADER} instead. Its answer
  * is never cached (`Cache-Control: no-store`): it is about who asked, at that moment.
  */
@@ -355,13 +347,13 @@ export const ACTION_HEADER = 'x-marmeon-action';
 /** With an action's `204`: where its controller redirected to — the client says so (`{ kind: 'redirect' }`), it does not go there. */
 export const ACTION_REDIRECT_HEADER = 'x-marmeon-redirect';
 
-/** Whether `request` is an action's (`x-marmeon-action`, E59). */
+/** Whether `request` is an action's (`x-marmeon-action`). */
 export function isActionRequest(request: Request): boolean {
   return request.headers.get(ACTION_HEADER) === 'true';
 }
 
 /**
- * A live validation (E62, `useForm(…, { validate })`): the route's own request — same method, URL and body — naming the fields
+ * A live validation (`useForm(…, { validate })`): the route's own request — same method, URL and body — naming the fields
  * to check (`name,email`). The server runs the route's middleware, `authorize` and request schema, never its controller, and
  * answers `204` (valid) or `422` with the errors of those fields only. Read-only and never cached. (The same name as the
  * router's `VALIDATE_HEADER` — this module may not import it.)
@@ -372,7 +364,7 @@ export const VALIDATE_HEADER = 'x-marmeon-validate';
 export const VALIDATED_HEADER = 'x-marmeon-validated';
 
 /**
- * Uploads (W6.9, Livewire's three steps): the client asks the form's route for an upload target — the route's own method and
+ * Uploads (Livewire's three steps): the client asks the form's route for an upload target — the route's own method and
  * URL, naming the field (`avatar`), with the file's name, size and type as JSON. The server runs the route's middleware and
  * `authorize`, reads the field's `upload()` rule and answers `{ token, upload: { method, url, fields?, headers? } }`; the file
  * goes there (with progress), and the form sends the token in the field — never the file. The receiving request carries the
@@ -384,7 +376,7 @@ export { UPLOAD_HEADER } from './upload-header.ts';
 export type UploadToken = string & { readonly '~uploadToken': true };
 
 /**
- * A file uploaded ahead (W6.9) — the value of a form field with an `upload()` rule, made by `<FileInput>` (or `upload(…)`): its
+ * A file uploaded ahead — the value of a form field with an `upload()` rule, made by `<FileInput>` (or `upload(…)`): its
  * state and progress, a preview, and `cancel()`. It goes to the server as its token (`toJSON`), which only the client core
  * holds — in memory, emptied when the document is left (signed out, a new build); never kept by remember or in history.state.
  */
@@ -424,10 +416,10 @@ export type CheckUploadField<F, K extends string> = string extends K
       ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)`
       : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
 
-/** What a password field's name looks like to live validation (`/password/i`): it is never sent for a check (E62). */
+/** What a password field's name looks like to live validation (`/password/i`): it is never sent for a check. */
 type PasswordLike<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
 
-/** The fields of form data `F` that live validation may check (E62): every top-level field but passwords. */
+/** The fields of form data `F` that live validation may check: every top-level field but passwords. */
 export type LiveField<F> = keyof { [K in keyof F & string as PasswordLike<K> extends true ? never : K]: true } & string;
 
 /** The explanation when a password field is named for a live validation — shown by the compiler as the expected type. */
@@ -453,8 +445,8 @@ export const VERSION_HEADER = 'x-marmeon-version';
 export const LOCATION_HEADER = 'x-marmeon-location';
 
 /**
- * A partial reload (E7, Inertia's `X-Inertia-Partial-Component`): the component the client shows. The server
- * answers with only some props when it renders this component — and with all of them for any other.
+ * A partial reload (Inertia's `X-Inertia-Partial-Component`): the component the client shows. The server answers with only
+ * some props when it renders this component — and with all of them for any other.
  */
 export const PARTIAL_COMPONENT_HEADER = 'x-marmeon-partial-component';
 
@@ -483,22 +475,21 @@ export function isPrefetch(request: Request): boolean {
 }
 
 /**
- * Sent with the request of a region — `island` for an `<Island route>` (E48–E52): the server answers with the island's
- * region object (a page object of the island route, without the page's locale), never with a page. A request without it
- * never gets an island: a direct hit is a 404, and so is a page's prefetch or visit of the island's URL. Answered with it
- * too, on the island's own JSON (so a cache can tell the two apart: `Vary`).
+ * Sent with the request of a region — `island` for an `<Island route>`: the server answers with the island's region object,
+ * never with a page. A request without it never gets an island (a direct hit, a prefetch or a visit is a 404). Also in
+ * `Vary` of the island's JSON.
  */
 export const REGION_HEADER = 'x-marmeon-region';
 
 /**
  * The kinds of region a request may ask for: `island` — an `<Island route>`; `layer` — a layer's request (opening it, or a visit
- * or a form inside it, E53): a layer route answers with its page object (`layer`), a page route with its page as usual.
+ * or a form inside it): a layer route answers with its page object (`layer`), a page route with its page as usual.
  */
 export type RegionKind = 'island' | 'layer';
 
 /**
  * How a region request ended when it brought no region object — the server answers `204` with this header instead of
- * following a redirect, a 401 or a 403 of the island route (E52: they become the island's fallback, never a navigation
+ * following a redirect, a 401 or a 403 of the island route (they become the island's fallback, never a navigation
  * of the page). Failures (4xx, 5xx) keep their status and say `exception`.
  */
 export const REGION_STATUS_HEADER = 'x-marmeon-region-status';
@@ -521,8 +512,8 @@ export function regionOf(request: Request): RegionKind | undefined {
 export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 
 /**
- * What the server resolved of an island while rendering the page (E49) — streamed into the document inside the island's
- * Suspense boundary, so the browser shows it without a request. The outcomes are a region request's (E52): its region
+ * What the server resolved of an island while rendering the page — streamed into the document inside the island's
+ * Suspense boundary, so the browser shows it without a request. The outcomes are a region request's: its region
  * object, or `unauthorized`/`forbidden` (no data), or `exception`. `browser`: not resolved on the server — the browser
  * loads it as on a client-side visit (a `409` of the island route: the document is out of date, the browser's request
  * reloads the page).
@@ -533,7 +524,7 @@ export type RegionResult =
   | { readonly status: 'exception'; readonly failure: { readonly status?: number; readonly message?: string } }
   | { readonly status: 'browser' };
 
-/** A deferred group as the server streams it (E49): its props, and how they merge — what a partial reload would answer. */
+/** A deferred group as the server streams it: its props, and how they merge — what a partial reload would answer. */
 export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
@@ -576,20 +567,20 @@ export interface SsrRenderOptions {
   /** Stops rendering, e.g. when the client went away. */
   signal?: AbortSignal;
   /**
-   * Per request (E49): resolves an island in-process while the page renders — `url` is its route's (with its query), run
+   * Per request: resolves an island in-process while the page renders — `url` is its route's (with its query), run
    * through that route's own middleware and authorization, read-only, with the page request's session and cookies. The
    * adapter renders it behind a Suspense boundary and streams it with its data; the shell never waits for it. Without
    * it, islands load in the browser.
    */
   resolveIsland?: (url: string) => Promise<RegionResult>;
   /**
-   * Per request (E49): computes a deferred group of the page while it streams — read-only, once the response's headers
+   * Per request: computes a deferred group of the page while it streams — read-only, once the response's headers
    * are sent. `null`: not streamed (it failed or took too long) — the browser loads it as before. Without it, the
    * browser loads every group after showing the page.
    */
   resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
   /**
-   * The response's CSP nonce (E147), when the app sends a policy: the adapter puts it on everything inline it streams —
+   * The response's CSP nonce, when the app sends a policy: the adapter puts it on everything inline it streams —
    * React's scripts that reveal Suspense boundaries, its `<style>` tags — and on the `<Head>`'s scripts and styles.
    */
   nonce?: string;

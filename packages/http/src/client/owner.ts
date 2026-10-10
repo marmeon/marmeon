@@ -9,23 +9,23 @@ import type { RegionObject } from '../page.ts';
 import type { Reloading, ReloadSpec } from './optimistic.ts';
 import { slot } from './feature.ts';
 
-/** A region on screen, as an action sees it: where it is and how it reloads (`reloading({ islands })`, E59). */
+/** A region on screen, as an action sees it: where it is and how it reloads (`reloading({ islands })`). */
 export interface LiveRegion {
   readonly url: string;
   reloading(spec?: ReloadSpec): Reloading;
-  /** What it shows — the channels it follows are in its region object (`live`, W6.10). */
+  /** What it shows — the channels it follows are in its region object (`live`). */
   readonly snapshot: { readonly region: RegionObject | undefined };
   /** Asks the server again — some props (`only`): a live hint's reload. */
   reload(options?: RegionReloadOptions): Promise<void>;
 }
 
-/** What a history entry keeps of its islands (E48): their region objects by id — what Back/Forward shows without a request. */
+/** What a history entry keeps of its islands: their region objects by id — what Back/Forward shows without a request. */
 export const REGIONS = slot('regions', () => new Map<string, KeptRegion>());
 
 export class RegionOwner {
   /** The key of its history entry — where what the entry's components keep lives (`host.entry`: islands, remembered state). */
   readonly entry: string | undefined;
-  /** Its entry came back by Back/Forward: what the views shown from memory declare reloads (E58). */
+  /** Its entry came back by Back/Forward: what the views shown from memory declare reloads. */
   readonly back: boolean;
   /** The regions on screen (islands, by id) — an action reloads some of them by route (`reloading({ islands })`). */
   readonly live = new Map<string, LiveRegion>();

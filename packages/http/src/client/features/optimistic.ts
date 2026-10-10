@@ -1,5 +1,5 @@
 /**
- * Optimistic patches on the pages of history entries (E59): over the props in memory, never in them — gone when their action
+ * Optimistic patches on the pages of history entries: over the props in memory, never in them — gone when their action
  * fails, folded into the props when it succeeded and nothing reloads them, replaced by the server's props when a reload lands.
  * (A layer keeps its own patches, `Layer`.) And a form's patches while its visit is under way (`visit({ optimistic })`).
  */
@@ -105,7 +105,7 @@ export class PagePatches {
 }
 
 /**
- * Optimistic patches (E59) on the pages of history entries, as a feature: painted over the props in memory, never into them —
+ * Optimistic patches on the pages of history entries, as a feature: painted over the props in memory, never into them —
  * `navigator.use(optimistic).target(key)`, attached where a page's patch is made (React: `router.optimistic`). A visit with
  * patches (`visit({ optimistic })`, a form's) shows them until its answer lands, and rolls them back when it fails — the core
  * does that, for patches of any target (a layer and an island keep their own).

@@ -1,5 +1,5 @@
 /**
- * The navigator's memory (E36): ONE least-recently-used map — for the pages of history entries (pinned while on screen),
+ * The navigator's memory: ONE least-recently-used map — for the pages of history entries (pinned while on screen),
  * the scroll positions and the pages fetched ahead. Everything here lives in this tab's memory only: never in
  * `history.state`, never in any storage.
  */

@@ -77,9 +77,9 @@ export { addLive, carryLive, checkedChannel, isLiveChannel, LIVE_CHANNEL, LiveSi
 export type { LiveDeclaration, LiveMethod, LiveOnly, PagePropNames } from './live.ts';
 export { IncomingRequest, ServerClosing } from './server-closing.ts';
 export { NO_REQUEST_INFO, RequestInfo } from './request-info.ts';
-// The live protocol (W6.10) — not re-exported by `page.ts`: what the browser needs of it, only the live feature's chunk imports.
+// The live protocol — not re-exported by `page.ts`: what the browser needs of it, only the live feature's chunk imports.
 export { CONNECTION_HEADER, LIVE_PATH } from './live-protocol.ts';
-// The tab-sync protocol (W8 step 8) — like the live protocol, only the tabSync feature's chunk imports it in the browser.
+// The tab-sync protocol — like the live protocol, only the tabSync feature's chunk imports it in the browser.
 export { DOCUMENT_HEADER, SESSION_PATH, TAB_SYNC_CHANNEL } from './tab-sync-protocol.ts';
 export type { SessionEpochAnswer, TabSyncMessage } from './tab-sync-protocol.ts';
 export { epochOf, epochOfResolver, SessionEpoch, SessionEpochController } from './session-epoch.ts';

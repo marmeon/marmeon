@@ -5,7 +5,7 @@ const JSON_RESULT = Symbol.for('marmeon.json-result');
 
 /**
  * What `this.json(data)` returns: data sent as JSON — typed, so the browser knows what it gets back. The answer of an
- * action (`useAction` of @marmeon/react, E59): `result.data` is `Serialize<T>`, what JSON makes of it (a `Date` is its
+ * action (`useAction` of @marmeon/react): `result.data` is `Serialize<T>`, what JSON makes of it (a `Date` is its
  * string). Also an API's answer.
  */
 export interface JsonResult<T = unknown> {
@@ -16,7 +16,7 @@ export interface JsonResult<T = unknown> {
   readonly status: number;
   readonly headers?: Readonly<Record<string, string>>;
   /**
-   * A flash message delivered with the answer of an action (E60): `this.json({ revoked: id }).flash('toast', { … })` — it
+   * A flash message delivered with the answer of an action: `this.json({ revoked: id }).flash('toast', { … })` — it
    * fires once, when `useAction` gets the answer. An API client (no action) never gets it: it waits for a page.
    */
   readonly flash: FlashMethod<JsonResult<T>>;

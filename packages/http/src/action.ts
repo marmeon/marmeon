@@ -1,5 +1,5 @@
 /**
- * Types of actions (E59) — non-navigating requests by route name (`useAction` of @marmeon/react): what an action sends
+ * Types of actions — non-navigating requests by route name (`useAction` of @marmeon/react): what an action sends
  * (its controller's request schema) and what it gets back (its controller's answer). Types only: erased, so the browser
  * bundle stays free of server code.
  */
@@ -56,7 +56,7 @@ export type ActionQueryOf<N extends string> = QueryParams<N>;
 export type ActionParamsOf<N extends string> = ParamsOf<N>;
 
 /**
- * `N` when an action may call it (E59): a route the browser may know that answers with data or a redirect; otherwise a
+ * `N` when an action may call it: a route the browser may know that answers with data or a redirect; otherwise a
  * message — an island, a page (its controller only returns `this.view(…)`), anything else as {@link CheckBrowserRouteName}.
  */
 export type CheckActionRouteName<N extends string> = string extends N

@@ -16,7 +16,7 @@ export function firstErrors(page: PageObject): Record<string, string> {
 }
 
 /**
- * The fields of a form that differ from where it started (E64) — as paths: `name`, `address.city`, `links.0.url`. Leaves of
+ * The fields of a form that differ from where it started — as paths: `name`, `address.city`, `links.0.url`. Leaves of
  * objects and arrays are compared one by one; an array that changed its length is dirty as a whole (and so are the items
  * that differ). Values compare as JSON would send them (a `Date` by its string); a `File` by identity.
  */
@@ -47,7 +47,7 @@ function comparable(value: unknown): unknown {
   return value === undefined ? undefined : JSON.stringify(value);
 }
 
-// -- Uncontrolled forms (E64, `<Form>`): what a native form element holds ----------------------------------------------
+// -- Uncontrolled forms (`<Form>`): what a native form element holds ----------------------------------------------
 
 /** The fields `<Form>` adds for browsers without JavaScript — never sent by a client-side submit (the header carries them). */
 export const FORM_TOKEN_FIELD = '_token';
@@ -118,7 +118,7 @@ function controlsOf(form: { readonly elements: ArrayLike<unknown> }): Control[] 
 
 /**
  * The entries a form starts with — its controls' defaults (`defaultValue`, `defaultChecked`, the options selected in the
- * markup), as `new FormData(form)` would give them right after a reset. What "dirty" compares against (E64). Files: none.
+ * markup), as `new FormData(form)` would give them right after a reset. What "dirty" compares against. Files: none.
  */
 export function defaultFormEntries(form: { readonly elements: ArrayLike<unknown> }): [string, string][] {
   const entries: [string, string][] = [];
@@ -150,7 +150,7 @@ export function sameEntries(a: readonly (readonly [string, string])[], b: readon
 }
 
 /**
- * Puts entries back into a form's controls — what was remembered (E63): for each name in `names`, text-like controls get their
+ * Puts entries back into a form's controls — what was remembered: for each name in `names`, text-like controls get their
  * values in order, checkboxes and radios are checked when their value is there, options selected. Names not in `names` (left
  * out on purpose — sensitive) keep what they show.
  */

@@ -1,7 +1,7 @@
 /**
- * Row selection (W9 step 6, E183) as a feature: which rows of a table the user ticked — the keys, or "every row that matches" — kept
+ * Row selection as a feature: which rows of a table the user ticked — the keys, or "every row that matches" — kept
  * per history entry in a slot (`SELECTIONS`), so the core empties it with the entry (memory lets go of it, another page replaces it)
- * and with the document (every 409: signed out, a new build). In memory only, never in `history.state` (E36). Attached where a
+ * and with the document (every 409: signed out, a new build). In memory only, never in `history.state`. Attached where a
  * table is used (`@marmeon/table/client`, React's `useTable`).
  *
  * A selection belongs to what the entry shows: a sort, a filter or another page is a visit with an entry of its own, which starts
@@ -107,7 +107,7 @@ export interface SelectionFeature {
   of(table: string, entry?: string): Selection;
 }
 
-/** Row selection (W9 step 6): `navigator.use(selection).of('members', owner.entry)`. */
+/** Row selection: `navigator.use(selection).of('members', owner.entry)`. */
 export const selection = defineFeature(
   'selection',
   (host): SelectionFeature => ({

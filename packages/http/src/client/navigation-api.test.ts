@@ -1,8 +1,8 @@
 /**
- * The navigator on the Navigation API (W9 step 7, E184): it commits its own visits as its own navigations (`info`), follows
+ * The navigator on the Navigation API: it commits its own visits as its own navigations (`info`), follows
  * Back/Forward to its own entries through `navigate`, and leaves everything else to the browser — a plain link, a form, another
  * site. The guard cancels a Back where the browser lets it (a fresh user activation) and otherwise goes back by the browser's key.
- * The fake is modelled on Chrome 154 (spike W9 7a); the suites in navigation.test.ts, layer.test.ts, interaction.test.ts and
+ * The fake is modelled on Chrome 154; the suites in navigation.test.ts, layer.test.ts, interaction.test.ts and
  * security-matrix.test.ts run on this path and on the History fallback's.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +31,7 @@ const settled = async (rounds = 4) => {
   for (let i = 0; i < rounds; i++) await settle();
 };
 
-describe('the navigator on the Navigation API (E184) — only its own navigations', () => {
+describe('the navigator on the Navigation API — only its own navigations', () => {
   it('commits a visit as its own navigation — intercepted, nothing loads, scroll and focus stay its own; history.state stays null', async () => {
     const { win, navigator, visible } = tab();
     await navigator.visit('/b');
@@ -129,7 +129,7 @@ describe('the navigator on the Navigation API (E184) — only its own navigation
   });
 });
 
-describe('the guard on the Navigation API (E184, E64)', () => {
+describe('the guard on the Navigation API', () => {
   it('counter-check: Back right after a click is cancelled — the URL never changes; asked once, Leave goes a task later', async () => {
     const { asked, confirm } = asking(false, true);
     const { win, navigator, visible } = tab('/users/1', { confirm });
@@ -211,7 +211,7 @@ describe('the guard on the Navigation API (E184, E64)', () => {
   });
 });
 
-describe('tab sync writes its epoch through the history writer — no wrapping (W9 step 7, P4, E148)', () => {
+describe('tab sync writes its epoch through the history writer — no wrapping', () => {
   it('every entry holds the epoch it was written under; the writer’s methods stay its own', async () => {
     const win = new FakeWindow(`${ORIGIN}/a`, new FakeChannels(), 'navigation');
     win.handler = (url) => pageResponse({ ...page(new URL(url).pathname), epoch: 'e1' });
@@ -224,7 +224,7 @@ describe('tab sync writes its epoch through the history writer — no wrapping (
   });
 });
 
-describe('without the Navigation API (E184)', () => {
+describe('without the Navigation API', () => {
   const env = process.env.NODE_ENV;
   afterEach(() => {
     process.env.NODE_ENV = env;

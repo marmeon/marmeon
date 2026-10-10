@@ -1,5 +1,5 @@
 /**
- * Full loads the server asks for (E64): a `409` with `x-marmeon-location`. Signing in or out is a document change nothing
+ * Full loads the server asks for: a `409` with `x-marmeon-location`. Signing in or out is a document change nothing
  * stops; a new build (`x-marmeon-reload: version`) is the one the client may postpone — the `version` event, or unsaved
  * changes the user keeps. Postponed, the user's next visit loads fully.
  */
@@ -9,7 +9,7 @@ import type { VersionChange } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';
 import { notify } from './notify.ts';
 
-/** What a new build asks by default when loading it would lose unsaved changes (E64). */
+/** What a new build asks by default when loading it would lose unsaved changes. */
 export const DEFAULT_NEW_VERSION_MESSAGE = 'A new version of this app is available. Load it now? Your unsaved changes will be lost.';
 
 /** How the page loads fully: the URL of the 409 (`assign`, or `replace` the entry), or the page on screen again (`reload`). */
@@ -21,7 +21,7 @@ type DocumentChangeCore = Pick<NavigatorCore, 'window' | 'left' | 'leave' | 'emi
 export class DocumentChange {
   readonly #core: DocumentChangeCore;
   /**
-   * A new build is out, and loading it was postponed (E64: the `version` event prevented, or unsaved changes kept it): where to
+   * A new build is out, and loading it was postponed (the `version` event prevented, or unsaved changes kept it): where to
    * load it. The next visit of the user loads its page fully; background requests stop asking.
    */
   #newVersion: string | undefined;

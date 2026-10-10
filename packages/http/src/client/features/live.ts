@@ -1,25 +1,14 @@
 /**
- * Live props (W6.10, E89, E90, E104) as a feature — loaded by the core when a page, a layer or an island follows a channel
- * (`PageObject.live`), like the layers (E71): ONE `EventSource` per document for every channel on screen; a hint (`{ channel,
- * only, seq }`, never data) becomes a partial reload of what follows the channel, through its own route.
+ * Live props as a feature — loaded by the core when a page, a layer or an island follows a channel (`PageObject.live`):
+ * ONE `EventSource` per document for every channel on screen; a hint (never data) becomes a partial reload of what follows
+ * the channel, through its own route. See docs/realtime.md#sending-hints and docs/realtime.md#catching-up.
  *
- * - **Bursts become one reload per target** (the page, a layer, an island): hints are collected until 250 ms pass without one
- *   (at most 2 s after the first), then each target reloads once — the union of what its subscriptions name.
- * - **Unsaved changes** on screen (a guard holds): no reload — `updates.pending`, until the user applies them (`apply()`).
- * - **Not the tab that caused it**: every request of this document names it (`x-marmeon-connection`) — the server sends that
- *   tab the hint with nothing to reload.
- * - **Always connected** (E104), also in a hidden tab — except a page loaded over HTTP/1.1 (or an unknown protocol), where
- *   the browser allows six connections per host: then only while the tab is visible.
- * - **Catching up**: whenever the stream comes back (an error, a frozen tab, a hidden one over HTTP/1.1), `hello` says where each
- *   channel stands; one that moved since it was last seen (or was never seen on a stream that broke) reloads once.
  * - **In a slot of the document**: the stream, the sequences seen and the hints waiting — a 409 (signed out, a new build) closes
- *   the stream and forgets them (`#leave`).
- * - **Paused while the session changed in another tab** (`stale`, tab sync — W9 step 4): unsaved changes kept the page, the user
- *   is asked (or chose to stay) — the page on screen is of the old session. No stream, no reconnect, no reload until a page of
- *   the new session lands: its tokens were signed for the old one, and what a reload would bring is the new session's.
- * - **Only while the navigator runs** (`start()` → `stop()`): it connects and listens to the document once the navigator took over
- *   the history, and lets go of both when it stops — a second navigator (React builds one after a hydration mismatch) never
- *   opens a stream of its own.
+ *   the stream and forgets them.
+ * - **Paused while the session changed in another tab** (`stale`): the page on screen is of the old session. No stream, no
+ *   reconnect, no reload until a page of the new session lands: its tokens were signed for the old one.
+ * - **Only while the navigator runs** (`start()` → `stop()`): a second navigator (React builds one after a hydration mismatch)
+ *   never opens a stream of its own.
  */
 import { CONNECTION_HEADER, LIVE_PATH } from '../../live-protocol.ts';
 import type { LiveHint, LiveSubscription } from '../../page.ts';
@@ -75,7 +64,7 @@ const LIVE = slot<LiveState>('live', () => ({}), (state) => {
   for (const key of Object.keys(state) as (keyof LiveState)[]) state[key] = undefined;
 });
 
-/** Updates that wait because of unsaved changes (E104 — React: `useLiveUpdates()`). */
+/** Updates that wait because of unsaved changes (React: `useLiveUpdates()`). */
 export interface LiveUpdates {
   /** Hints came while a form on screen had unsaved changes: their reloads wait. */
   readonly pending: boolean;
@@ -101,7 +90,7 @@ export const live = defineFeature('live', (host): LiveFeature => {
   const connection = Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, '0')).join('');
   const state = () => host.document(LIVE);
   const listeners = new Set<() => void>();
-  // E104: over HTTP/1.1 (six connections per host) — or an unknown protocol — a stream only while the tab is visible.
+  // Over HTTP/1.1 (six connections per host) — or an unknown protocol — a stream only while the tab is visible.
   const protocol = (win.performance?.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.nextHopProtocol ?? '';
   const h1 = !/^h[23]/.test(protocol);
   let syncing: ReturnType<typeof setTimeout> | undefined;
@@ -286,7 +275,7 @@ export const live = defineFeature('live', (host): LiveFeature => {
     now.timer = now.first = undefined;
     sync();
   });
-  // Visible again (E104), back from a frozen state, or from the back/forward cache: connect — `hello` says what was missed.
+  // Visible again, back from a frozen state, or from the back/forward cache: connect — `hello` says what was missed.
   const back = () => {
     if (h1 && doc?.visibilityState === 'hidden') return void (state().source && close(state()));
     sync();

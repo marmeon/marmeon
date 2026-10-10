@@ -1,12 +1,11 @@
 /**
- * Remembered state (E63), UI-free: what a form or a component wants back when Back/Forward returns to its history entry —
+ * Remembered state, UI-free: what a form or a component wants back when Back/Forward returns to its history entry —
  * typed input, an open tab, a filter not sent yet. Kept **in memory only**, per history entry (the page's, a layer's), next to
- * the entry's page and islands in the navigator's cache (E36): never in `history.state` (browsers write it to disk for session
+ * the entry's page and islands in the navigator's cache: never in `history.state` (browsers write it to disk for session
  * restore, and it outlives a sign-out), never in `sessionStorage` (restored from disk too).
  *
  * Gone with the entry — evicted from the cache, a layer closed for good — and with the document: a reload, signing in or out,
- * a new build, a language switch (every 409). There is no tab sync (E66): another tab keeps its remembered state after a
- * sign-out here, until it navigates or reloads.
+ * a new build, a language switch (every 409).
  *
  * Sensitive values are never kept: fields named like a password, a token, a secret or a card (`/password|secret|token|card|cvc/i`),
  * at any depth, and files. Passwords never, even when asked; the others when a form names them (`include`).
@@ -52,7 +51,7 @@ export function rememberable(value: unknown, include: readonly string[] = []): u
 }
 
 /**
- * The remembered state of one history entry — a level of the screen: the page, or a layer (E53). Keys are the app's
+ * The remembered state of one history entry — a level of the screen: the page, or a layer. Keys are the app's
  * (`useRemember('tab', …)`, `useForm(…, { remember: 'profile-edit' })`); an island's are prefixed with it by the adapter.
  */
 export class Remembered {
@@ -93,5 +92,5 @@ export class Remembered {
   }
 }
 
-/** What a history entry's components remembered (E63) — a slot of the entry: the core empties it with the entry. */
+/** What a history entry's components remembered — a slot of the entry: the core empties it with the entry. */
 export const REMEMBERED = slot('remembered', () => new Remembered());

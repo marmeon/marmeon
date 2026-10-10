@@ -72,7 +72,7 @@ async function start(options: { target?: (init: RequestInit) => Response | Promi
   return { win, sent, targets, feature, first, states, last: () => states.at(-1) ?? first, navigator };
 }
 
-describe('uploads (W6.9): a target from the form’s route, the bytes with progress, the token in the field', () => {
+describe('uploads: a target from the form’s route, the bytes with progress, the token in the field', () => {
   it('asks the form’s route for a target (its method and URL, the field named), sends the bytes there, and the field then sends the token', async () => {
     const { targets, sent, first, states, last, feature } = await start();
     // At once: uploading, a preview, no token yet.
