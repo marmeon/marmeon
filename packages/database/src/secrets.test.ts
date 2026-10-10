@@ -105,7 +105,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     expect(cte).not.toHaveProperty('totp_secret');
   });
 
-  it('reads one only when asked for by name', async () => {
+  it('reads one only with secret() — explicit wins over select-all in the same query', async () => {
     const ada = await insertAda();
     expect(await accounts.findForLogin('ada@example.com')).toEqual({ id: ada.id, password: HASH });
     // Explicit wins over select-all in the same query.

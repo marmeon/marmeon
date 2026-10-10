@@ -452,18 +452,19 @@ table's relations, so a wrong one is a compile error, and the bound value's type
 
 ```ts title="modules/notes/controllers/ShowNoteController.ts"
 import type { Authenticated } from '@marmeon/auth';
-import type { Row } from '@marmeon/database';
+import type { Tables, WithRelations } from '@marmeon/database';
 import { Controller, type HttpContext } from '@marmeon/http';
 
 export class ShowNoteController extends Controller {
-  handle(ctx: HttpContext<Authenticated, { note: Row<'notes'> & { tags: Row<'tags'>[] } }>) {
+  handle(ctx: HttpContext<Authenticated, { note: WithRelations<Tables, 'notes', 'tags'> }>) {
     return this.view('notes/Show', { note: ctx.params.note, tags: ctx.params.note.tags });
   }
 }
 ```
 
-A scoped binding takes `with` too: `{ scopedBy: 'note', with: ['uploader'] }`. The names come from your routes, never from the
-request.
+`WithRelations<Tables, 'notes', 'tags'>` is the row of `notes` with `tags` loaded, the same type `findOrFail(id, { with: ['tags'] })`
+returns. A scoped binding takes `with` too: `{ scopedBy: 'note', with: ['uploader'] }`. The names come from your routes, never
+from the request.
 
 ### Your own binder
 

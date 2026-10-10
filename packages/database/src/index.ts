@@ -59,9 +59,10 @@ export { Schema } from './schema/schema.ts';
 export { RelationsPlugin } from './relations.ts';
 // Puts `with()`, `withCount()`, `whereHas()`, `withRelation()` and `withTrashed()` on Kysely's select builder — at runtime (this import) and in the types.
 import './chain.ts';
-export type { RelationDefinition, RelationName } from './chain.ts';
+export type { RelationDefinition, RelationName, WithRelations } from './chain.ts';
+export type { LinkWriter, RelatedWriter, RelationWriter, WritableRelationName } from './relation-writes.ts';
 export { cursorPaginate, InvalidCursorError, pageQuery, paginate } from './pagination.ts';
 export type { CheckPageRequest, CursorEncrypter, CursorOptions, CursorPaginated, PageMeta, PageRequest, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
-export type { Exact, KeyOf, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
+export type { Exact, KeyOf, RepositoryBindingWith, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
 export { adaptNodeSqlite } from './sqlite.ts';

@@ -510,8 +510,8 @@ function unresolved(name: string, secret: boolean): string {
     );
   }
   return (
-    'This query loads, counts or filters by relations or leaves out soft-deleted rows (with(), withCount(), whereHas(), withRelation(), ' +
-    "withTrashed(), a repository's query()), which " +
+    "This query loads, counts or filters by relations, leaves out soft-deleted rows or touches a row's timestamps (with(), withCount(), " +
+    "whereHas(), withRelation(), withTrashed(), a repository's query(), update() or delete()), which " +
     `only the app's connection resolves — it was not sent: it runs on the database connection "${name}" without Marmeon's plugins ` +
     '(infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.'
   );

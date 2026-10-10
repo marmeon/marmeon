@@ -4,7 +4,15 @@ import { defineRoutes } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Repository, type ModuleTables } from './index.ts';
+import {
+  Repository,
+  type LinkWriter,
+  type ModuleTables,
+  type RelatedWriter,
+  type RelationWriter,
+  type WithRelations,
+  type WritableRelationName,
+} from './index.ts';
 
 class Posts extends Repository<'posts', FixtureTables> {
   static table = 'posts' as const;
@@ -135,4 +143,13 @@ export async function relationWriteTypes() {
   // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts"'.
   // @ts-expect-error — api_keys is the auth module's, and not even exposed
   void blogUsers.relation(1, 'api_keys');
+}
+
+/** The exported names of what a finder with relations and `relation()` return — for an app's own signatures. */
+export async function namedTypes() {
+  expectTypeOf(await posts.findOrFail(1, { with: ['author', 'tags'] })).toEqualTypeOf<WithRelations<FixtureTables, 'posts', 'author' | 'tags'>>();
+  expectTypeOf(posts.relation(1, 'tags')).toEqualTypeOf<RelationWriter<FixtureTables, 'posts', 'tags'>>();
+  expectTypeOf(posts.relation(1, 'tags')).toEqualTypeOf<LinkWriter<number>>();
+  expectTypeOf(posts.relation(1, 'comments')).toEqualTypeOf<RelatedWriter<FixtureTables, 'comments', 'post_id'>>();
+  expectTypeOf<WritableRelationName<Blog, 'posts'>>().toEqualTypeOf<'comments' | 'post_stats' | 'post_tag' | 'tags'>();
 }

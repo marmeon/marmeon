@@ -82,6 +82,8 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
    * user), only with the token of its current request, only before it expires — and only once: the token is claimed in the same
    * statement that checks it, so two clicks at once change it once. `taken` when another account has the address by now: the
    * unique index decides (`tryUpdate`), and the request is dropped for good. The previous address comes back for the note to it.
+   * Propagated out of an enclosing transaction, the `taken` err rolls the dropped request back — re-mark it with `commitAnyway` (see
+   * docs/transactions.md#returning-an-err).
    */
   async confirmEmailChange(
     id: number,

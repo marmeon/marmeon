@@ -196,6 +196,26 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     expectTypeOf(post!.replies[0]!.by).toEqualTypeOf<{ name: string } | null>();
   });
 
+  it('keeps the default columns when the callback selects a column only under another name — naming one as it is narrows', async () => {
+    const [post] = await db
+      .selectFrom('posts')
+      .select('title')
+      .with('tags', (q) => q.select('slug as label'))
+      .with('tags', { as: 'named' }, (q) => q.select(['slug', 'slug as label']))
+      .where('id', '=', ids.first)
+      .execute();
+    expect(post!.tags.map((tag) => Object.keys(tag).sort())).toEqual([
+      ['id', 'label', 'slug'],
+      ['id', 'label', 'slug'],
+    ]);
+    expect(post!.named.map((tag) => Object.keys(tag).sort())).toEqual([
+      ['label', 'slug'],
+      ['label', 'slug'],
+    ]);
+    expectTypeOf(post!.tags[0]!.id).toEqualTypeOf<number>();
+    expectTypeOf(post!.named[0]!).not.toHaveProperty('id');
+  });
+
   it('loads a relation no foreign key describes with withRelation() — a list, or one row', async () => {
     const [ada] = await db
       .selectFrom('users')
@@ -1072,13 +1092,17 @@ describe.each(drivers)('loading relations on %s', (driver) => {
   });
 
   it('fails with a message that says why on a connection without Marmeon’s plugins — and sends nothing', async () => {
-    const message = `This query loads, counts or filters by relations or leaves out soft-deleted rows (with(), withCount(), whereHas(), withRelation(), withTrashed(), a repository's query()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.`;
+    const message = `This query loads, counts or filters by relations, leaves out soft-deleted rows or touches a row's timestamps (with(), withCount(), whereHas(), withRelation(), withTrashed(), a repository's query(), update() or delete()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.`;
     queries.length = 0;
     await expect(db.withoutPlugins().selectFrom('users').select('name').with('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').with('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withTrashed().execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withCount('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').whereHas('comments').execute()).rejects.toThrow(message);
+    // A repository bound to such a connection: update() stamps updated_at, delete() may only mark a row deleted.
+    const plain = new PostRepository(connections).using(db.withoutPlugins());
+    await expect(plain.update(0, { title: 'never' })).rejects.toThrow(message);
+    await expect(plain.delete(0)).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('api_keys').select((eb) => ['name', secret(eb, 'token')]).execute()).rejects.toThrow(
       `This query reads a column with secret(), which only the app's connection checks — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()), which check no column. Name the column there as it is, or build the query on connections.get() or Database. See docs/migrations.md#secret-columns.`,
     );

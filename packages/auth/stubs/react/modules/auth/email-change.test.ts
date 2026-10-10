@@ -158,6 +158,7 @@ describe('changing the address (private registration) — the default', () => {
     await app.make(Connections).get<any>().deleteFrom('users').where('id', '=', grace.id).execute();
     await session.expectingJson().get(link).assertForbidden().assertExactJson(expired);
     expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null });
+    expect(await pendingOn(session)).toBeNull();
   });
 
   it('a pending address signs nobody in — and gets no reset link', async () => {

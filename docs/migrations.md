@@ -114,11 +114,14 @@ A rollback needs the file of every migration it undoes. One whose file is gone s
 ### Migrating a running app
 
 The app reads what the migrations marked, such as [soft deletes](#timestamps-and-soft-deletes) and
-[secret columns](#secret-columns), from the database, and loads it again after each schema change it makes itself. While a
-migration's transaction is open in the app's own process, every query on another connection that reads rows or depends on those
-marks waits for the migration to end, for at most 10 seconds, and then fails with an error instead of guessing. Two cases remain:
+[secret columns](#secret-columns), from the database, and loads it again after each schema change it makes itself with the schema
+methods. While a migration's transaction is open in the app's own process, every query on another connection that reads rows or
+depends on those marks waits for the migration to end, for at most 10 seconds, and then fails with an error instead of guessing.
+Three cases remain:
 
 - A query built before the migration's first schema change and sent after it uses the schema it was built with.
+- A schema change written as raw SQL, such as `` sql`create view …` ``, is not recognized: the process keeps what it loaded until
+  the next change made with the schema methods, or a restart.
 - A process that did not run the migration does not see it. Restart the app's processes after `marmeon migrate` ran from another
   one, as a deployment does when it runs `migrate --force` before the new version takes requests.
 

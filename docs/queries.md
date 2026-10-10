@@ -148,7 +148,7 @@ condition without a value would match any row. Which row is "first" is up to the
 `query()` yourself when it matters.
 
 `findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
-row's type has them. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed
+row's type has them: `WithRelations<Tables, 'notes', 'author' | 'tags'>` names it. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed
 during the loop do not make it skip others. Rows added meanwhile come at the end or, when another transaction commits them later
 with a lower id, not at all. Its callback narrows what it reads:
 
@@ -270,8 +270,9 @@ related table, and for a belongsToMany its pivot too. The same holds for `withCo
 The callback gets the related table's query. Select, filter, order and limit it like any query, and load its relations with
 `with()` again, to any depth. Its scope is the related table only: refer to the outer row through `sql` or `eb.ref()`, as in
 `` links.where(sql<boolean>`profile_links.label <> users.name`) ``. When it selects columns of that table, the relation holds those
-columns. When it selects none, because it only orders, filters or nests, the relation keeps every column but the secret ones.
-`selectAll()` means the same:
+columns. A column under another name (`'label as title'`) does not count: it comes on top of every column but the secret ones,
+until the callback names one column of the table as it is. When it selects none, because it only orders, filters or nests, the
+relation keeps every column but the secret ones. `selectAll()` means the same:
 
 ```ts
 this.#db
@@ -385,6 +386,9 @@ whose relation you write must be there: a missing or soft-deleted one answers 40
 `relation()`: update its foreign key instead. A pivot with soft deletes is refused, and nested writes, such as creating a row
 with its relations, do not exist: write each relation with a call of its own.
 
+`RelationWriter<Tables, 'notes', 'tags'>` names what `relation()` returns: a `LinkWriter` for a belongsToMany, a `RelatedWriter`
+for a hasMany or a hasOne. `WritableRelationName<Tables, 'notes'>` names the relations it takes.
+
 ### Soft-deleted rows
 
 A relation never loads the rows a table's [soft deletes](migrations.md#timestamps-and-soft-deletes) mark as deleted, and
@@ -428,10 +432,10 @@ is raw SQL of a migration, so a view over a table with secret columns returns wh
 
 The app's connection resolves the relations from its database, where the migrations left the foreign keys and their marks. A
 query built on a connection without Marmeon's plugins, `connections.infrastructure()` or Kysely's `withoutPlugins()`, is refused
-before it is sent:
+before it is sent, and so is a repository's `update()` or `delete()` bound to one with `using()`:
 
 ```text
-This query loads, counts or filters by relations or leaves out soft-deleted rows (with(), withCount(), whereHas(), withRelation(), withTrashed(), a repository's query()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.
+This query loads, counts or filters by relations, leaves out soft-deleted rows or touches a row's timestamps (with(), withCount(), whereHas(), withRelation(), withTrashed(), a repository's query(), update() or delete()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.
 ```
 
 Nested values come back with the same types as the outer row's: booleans, parsed JSON, decimals as strings and timestamps in UTC,
@@ -472,6 +476,12 @@ import { Repository, type ExposedTables, type ModuleTables, type TableOwners, ty
 
 export class ProfileLinkRepository extends Repository<'profile_links', ModuleTables<Tables, TableOwners, ExposedTables, 'user-profile'>> {
   static table = 'profile_links' as const;
+
+  async removeAllOf(userIds: readonly number[]): Promise<number> {
+    if (userIds.length === 0) return 0;
+    const result = await this.db.deleteFrom('profile_links').where('user_id', 'in', userIds).executeTakeFirst();
+    return Number(result.numDeletedRows);
+  }
 }
 ```
 

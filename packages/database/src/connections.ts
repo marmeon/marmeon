@@ -5,7 +5,8 @@ import { channels, messageBase, publishEnded, type DbQueryMessage } from '@marme
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
-import { installChain } from './chain.ts';
+// Puts the relation methods on Kysely's select builder when it loads — every connection made here offers them.
+import './chain.ts';
 import { MarmeonDriver, DatabaseConnectionError, multipleConnections, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { SchemaMetadata } from './metadata.ts';
@@ -63,7 +64,6 @@ export class Connections {
   #destroyed = false;
 
   constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application }) {
-    installChain();
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });

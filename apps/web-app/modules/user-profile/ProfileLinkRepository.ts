@@ -1,7 +1,7 @@
-import { Repository } from '@marmeon/database';
+import { Repository, type ExposedTables, type ModuleTables, type TableOwners, type Tables } from '@marmeon/database';
 
-/** The links on people's profiles — this module's own table. Bound scoped to its user in the routes. */
-export class ProfileLinkRepository extends Repository<'profile_links'> {
+/** The links on people's profiles — this module's own table, seen through the module's view. Bound scoped to its user in the routes. */
+export class ProfileLinkRepository extends Repository<'profile_links', ModuleTables<Tables, TableOwners, ExposedTables, 'user-profile'>> {
   static table = 'profile_links' as const;
 
   /** Removes every link of these users (moderation, the members table) — how many there were. */

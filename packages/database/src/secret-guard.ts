@@ -100,9 +100,8 @@ class Guard {
   readonly #scopes: Source[][] = [];
   /** The common table expressions in scope, by name — innermost last. */
   readonly #ctes: Map<string, Output>[] = [];
-  /** The relation being checked (its label), and whether the next select is its top level. */
+  /** The relation being checked (its label). */
   #relation: string | undefined;
-  #top = false;
 
   readonly #tables: ReadonlyMap<string, Table>;
 
@@ -118,8 +117,6 @@ class Guard {
   }
 
   #select(node: SelectQueryNode): Output {
-    const top = this.#top;
-    this.#top = false;
     const ctes = this.#with(node.with);
     const sources: Source[] = [];
     this.#scopes.push(sources);
@@ -128,7 +125,7 @@ class Guard {
       for (const item of [...(node.from?.froms ?? []), ...(node.joins ?? []).map((join) => join.table)]) this.#add(sources, this.#source(item));
       // Conditions and orders read columns, but nothing of them leaves the database: only their subqueries are checked.
       this.#scan([node.joins?.map((join) => join.on), node.where, node.groupBy, node.having, node.orderBy, node.distinctOn]);
-      const output = this.#selections(node, node.selections ?? [], sources, top);
+      const output = this.#selections(node, node.selections ?? [], sources);
       for (const operation of node.setOperations ?? []) this.#union(output, this.#select(operation.expression as SelectQueryNode));
       return output;
     } finally {
@@ -178,7 +175,7 @@ class Guard {
       // A merge's using clause is a source; only its `on` is a part to scan.
       if (node.kind === 'MergeQueryNode') (rest as { using?: unknown }).using = node.using?.on;
       this.#scan(Object.values(rest));
-      if (returning) this.#selections(returning, returning.selections, sources, false);
+      if (returning) this.#selections(returning, returning.selections, sources);
     } finally {
       this.#scopes.pop();
       if (ctes) this.#ctes.pop();
@@ -316,7 +313,7 @@ class Guard {
   }
 
   /** Checks the selections of a select (or a returning), and records them spelled out where they must be. */
-  #selections(owner: OperationNode, selections: readonly SelectionNode[], sources: readonly Source[], top: boolean): MutableOutput {
+  #selections(owner: OperationNode, selections: readonly SelectionNode[], sources: readonly Source[]): MutableOutput {
     const output: MutableOutput = { names: [], secret: new Set(), known: true };
     const kept: SelectionNode[] = [];
     let changed = false;
@@ -324,8 +321,6 @@ class Guard {
       const { selection } = node;
       const all = selection.kind === 'SelectAllNode' ? sources : ReferenceNode.is(selection) && selection.column.kind === 'SelectAllNode' ? [this.#own(selection.table!.table.identifier.name, sources)] : undefined;
       if (all) {
-        // At a relation's top level the chain spelled it out already: its JSON needs the columns named (SQLite).
-        if (this.#relation !== undefined && top) throw new Error('Relations need explicit columns: q.select([…]) instead of selectAll() — the selection is the type.');
         for (const source of all) if (source.untyped) this.#untyped(source);
         if (all.every((source) => source.secret.size === 0)) {
           kept.push(node);
@@ -427,13 +422,12 @@ class Guard {
   }
 
   #relationOf(node: FunctionNode): void {
-    const [relation, top] = [this.#relation, this.#top];
+    const relation = this.#relation;
     this.#relation = String((node.arguments[1] as ValueNode | undefined)?.value ?? 'A relation');
-    this.#top = true;
     try {
       this.#select(node.arguments[0] as SelectQueryNode);
     } finally {
-      [this.#relation, this.#top] = [relation, top];
+      this.#relation = relation;
     }
   }
 
