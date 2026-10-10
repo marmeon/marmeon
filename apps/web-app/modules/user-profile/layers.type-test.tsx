@@ -1,5 +1,5 @@
 /**
- * Type guarantees of layers (E53) against this app's routes — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never
+ * Type guarantees of layers against this app's routes — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never
  * run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message they get (read with
  * the directive removed).
  */

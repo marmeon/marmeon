@@ -11,6 +11,6 @@ import routes from './routes.ts';
 export default defineModule({
   name: 'notifications',
   routes,
-  // A deleted account's notifications go with it (E203).
+  // A deleted account's notifications go with it.
   listeners: [listen(AccountDeleted, ClearInbox)],
 });

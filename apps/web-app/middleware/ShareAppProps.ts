@@ -19,7 +19,7 @@ declare module '@marmeon/http/page' {
   }
 
   /**
-   * The app's flash messages (E60): `redirect().flash('toast', { kind: 'success', message })` in a controller, a toast in the
+   * The app's flash messages: `redirect().flash('toast', { kind: 'success', message })` in a controller, a toast in the
    * layout (`useFlash('toast', …)`) — exactly once per message. No shared prop: the protocol carries them.
    */
   interface FlashData {
@@ -28,7 +28,7 @@ declare module '@marmeon/http/page' {
 }
 
 /**
- * Shares what every page of the app shows (Inertia's `HandleInertiaRequests::share`).
+ * Shares what every page of the app shows.
  * Lazy: evaluated only when a page renders — redirects and JSON never look up the user.
  */
 export class ShareAppProps {
@@ -56,10 +56,10 @@ export class ShareAppProps {
         const user = await this.#auth.user();
         return user ? { unread: await this.#inbox.count({ type: 'user', id: user.id }) } : null;
       })
-      // The same list on every page (E64): sent with the first page, then kept by the browser — the server skips it while the
+      // The same list on every page: sent with the first page, then kept by the browser — the server skips it while the
       // tab holds it. A language switch or signing in or out is a full load: it comes again then.
       .share('locales', once(() => this.#locales.supported))
-      // Live (W6.10): the bell reloads when a notification arrives (the `live` channel of NewSignInNotification) or one is
+      // Live: the bell reloads when a notification arrives (the `live` channel of NewSignInNotification) or one is
       // read in another tab — no polling. A guest follows nothing.
       .live(
         async () => {

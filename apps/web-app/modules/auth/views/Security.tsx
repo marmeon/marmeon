@@ -9,8 +9,8 @@ type Props = PageProps<ShowSecurityController>;
 export default function Security({ viaRemember, email, emailChangeWaits, pendingEmail, auth }: Props) {
   const t = useTranslation('auth');
   const route = useRoute();
-  // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
-  // is still there after Back/Forward (remembered in memory, E63).
+  // Leaving with a changed address or typed passwords asks first (the navigation guard); the address — never a password —
+  // is still there after Back/Forward (remembered in memory).
   const emailForm = useForm('auth.email.update', {}, { email }, { guard: t('security.unsaved'), remember: true });
   const passwordForm = useForm('auth.password.update', {}, { current_password: '', password: '', password_confirmation: '' }, { guard: t('security.unsaved') });
   const devicesForm = useForm('auth.devices.logout', { password: '' });
@@ -31,7 +31,7 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            // Private registration (E146): the address stays the current one until the link is clicked — the field shows it again
+            // Private registration: the address stays the current one until the link is clicked — the field shows it again
             // (the request waits below). Otherwise the new address is the account's: it stays in the field.
             void emailForm.submit({ onSuccess: () => (emailChangeWaits ? emailForm.reset() : undefined) });
           }}
@@ -135,7 +135,7 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
 
 Security.layout = [AppLayout, SettingsLayout];
 
-/** Passwords and sessions are one thing, API tokens another (like Sanctum): revoking them is done by hand. */
+/** Passwords and sessions are one thing, API tokens another: revoking them is done by hand. */
 function ApiTokensNote() {
   const t = useTranslation('auth');
   return (

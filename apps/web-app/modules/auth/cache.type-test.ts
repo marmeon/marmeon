@@ -1,4 +1,4 @@
-// Type guarantees of the cache, locks and the test clock (W6 step 1) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+// Type guarantees of the cache, locks and the test clock — compiled by `pnpm typecheck` / `marmeon build`, never run.
 import { Cache, Limit, RateLimiter } from '@marmeon/cache';
 import type { TestApp } from '@marmeon/testing';
 

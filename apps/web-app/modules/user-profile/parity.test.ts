@@ -4,7 +4,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-/** Once props, `<Form>` without JavaScript, instant visits and the two 409s — in the web app (W5b step 10, E63/E64). */
+/** Once props, `<Form>` without JavaScript, instant visits and the two 409s — in the web app. */
 
 let app: TestApp;
 afterEach(async () => {
@@ -17,7 +17,7 @@ async function signIn(email: string) {
   return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 }
 
-describe('once props: the locale list (E64)', () => {
+describe('once props: the locale list', () => {
   it('comes with the first page, is skipped while the tab holds it — and comes again for someone else signed in under it', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
@@ -54,7 +54,7 @@ describe('once props: the locale list (E64)', () => {
   });
 });
 
-describe('the two 409s (E64)', () => {
+describe('the two 409s', () => {
   it('a new build answers `version` — signing in answers `history`, never cancelable', async () => {
     app = await createTestApp(application, { database: 'refresh', env: { ASSET_VERSION: 'build-2' } });
     const stale = await app.navigating().withHeaders({ [VERSION_HEADER]: 'build-1' }).get('/login').assertStatus(409);
@@ -65,11 +65,11 @@ describe('the two 409s (E64)', () => {
   });
 });
 
-describe('<Form> without JavaScript (E64)', () => {
-  it('the language switcher is a real form: a guest\'s POST /locale passes by the browser\'s word (E143) — never from elsewhere', async () => {
+describe('<Form> without JavaScript', () => {
+  it('the language switcher is a real form: a guest\'s POST /locale passes by the browser\'s word — never from elsewhere', async () => {
     app = await createTestApp(application, { database: 'refresh', csrf: true });
     const login = await app.navigating().get('/login');
-    // A guest has no session — no token in the page, no cookie (E143).
+    // A guest has no session — no token in the page, no cookie.
     expect(login.page()!.csrf).toBeUndefined();
     expect(login.headers.getSetCookie()).toEqual([]);
     const referer = { referer: 'http://localhost/login' };
@@ -96,7 +96,7 @@ describe('<Form> without JavaScript (E64)', () => {
   });
 });
 
-describe('<Form>: the token form as a browser sends it (E64)', () => {
+describe('<Form>: the token form as a browser sends it', () => {
   it('ticked boxes as `abilities[]` create the token; no box ticked is the app’s own message — not a missing key', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
@@ -109,7 +109,7 @@ describe('<Form>: the token form as a browser sends it (E64)', () => {
   });
 });
 
-describe('instant visits: the view a route renders (E64)', () => {
+describe('instant visits: the view a route renders', () => {
   it('the browser’s routes name the view of a page — not of a layer, an island or an action', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     const routes = browserRoutes(app.make(Router).routes).routes;

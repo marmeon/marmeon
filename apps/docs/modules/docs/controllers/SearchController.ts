@@ -3,14 +3,14 @@ import { rules as r } from '@marmeon/validation';
 import { DocsRepository } from '../DocsRepository.ts';
 
 /**
- * The search's query (E55). Longer than 100 characters is invalid — and an invalid field falls back to its default (E56:
- * a URL never answers 422): `?q=<10 000 characters>` is the empty search, no work at all.
+ * The search's query. Longer than 100 characters is invalid — and an invalid field falls back to its default (a URL never
+ * answers 422): `?q=<10 000 characters>` is the empty search, no work at all.
  */
 export const SearchRequest = defineRequest({
   query: r.query({ q: r.string().trim().max(100).default('') }),
 });
 
-/** `/search?q=…`: a page like any other — the index lives in the DocsRepository on the server (E133), not in the browser. */
+/** `/search?q=…`: a page like any other — the index lives in the DocsRepository on the server, not in the browser. */
 export class SearchController extends Controller {
   static request = SearchRequest;
   readonly #docs: DocsRepository;

@@ -19,7 +19,7 @@ const profile = (user: User) => `/users/${user.id}`;
 const reload = (user: User, only: readonly ('activity' | 'stats' | 'email' | 'errors')[]) =>
   app.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only });
 
-describe('profile page: deferred and optional props (E7)', () => {
+describe('profile page: deferred and optional props', () => {
   it('sends the page without its deferred activity and optional stats — and names the deferred group', async () => {
     const response = await app.actingAs(ada).navigating().get(profile(ada)).assertOk();
     const page = response.page()!;
@@ -70,7 +70,7 @@ describe('profile page: deferred and optional props (E7)', () => {
     expect(page.deferredProps).toEqual({ default: ['activity'] });
   });
 
-  it('a slow deferred prop does not hold up the page (the acceptance of W5): first the page, then the prop', async () => {
+  it('a slow deferred prop does not hold up the page: first the page, then the prop', async () => {
     await app.close(); // one app per test — this one with a slow activity panel (development only, see config.ts)
     const slow = await createTestApp(application, { database: 'refresh', seed: true, env: { PROFILE_ACTIVITY_DELAY: '400' } });
     app = slow;

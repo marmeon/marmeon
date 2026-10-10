@@ -7,9 +7,8 @@ import { WelcomeMail } from '../mail/WelcomeMail.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 /**
- * The welcome mail after a registration — the app's first queued job (W6 step 3; `job.once` since step 4). Like a controller: one class,
- * `handle()`, constructor injection (built per attempt, in its own scope). The payload holds the user's id, never the
- * user: the job reads the account as it is when it runs.
+ * The welcome mail after a registration. Like a controller: one class, `handle()`, constructor injection (built per attempt,
+ * in its own scope). The payload holds the user's id, never the user: the job reads the account as it is when it runs.
  */
 export class SendWelcomeMailJob {
   /** Stable — the queue stores this name, never the class name. */
@@ -35,7 +34,7 @@ export class SendWelcomeMailJob {
   async handle(payload: JobPayload<typeof SendWelcomeMailJob>, job: JobContext): Promise<void> {
     const user = await this.#users.find(payload.userId);
     if (!user) return job.discard('the account no longer exists');
-    // No request here: links from APP_URL, the language the account was made in. Once per account (E85): a retry after
+    // No request here: links from APP_URL, the language the account was made in. Once per account: a retry after
     // the mail went out — the SMTP server answered slowly, the attempt timed out — does not send it again. (A worker
     // that dies between the mail and the marker still would: at-least-once, see JobContext.once.)
     await job.once(`welcome-mail:${user.id}`, () =>

@@ -11,7 +11,7 @@ export class RedirectToOwnProfileController extends Controller {
   }
 
   handle(ctx: HttpContext<Authenticated>) {
-    // Only a hop: data flashed with `with()` belongs to the page after it. (Flash messages — `flash()`, E60 — wait for a shown
+    // Only a hop: data flashed with `with()` belongs to the page after it. (Flash messages — `flash()` — wait for a shown
     // answer anyway: a redirect never takes them.)
     this.#session.reflash();
     return this.redirect().route('user-profile.show', { user: ctx.user.id });

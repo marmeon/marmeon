@@ -15,14 +15,14 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
-// The web app's prune of accounts whose address was never confirmed (E203, the same command as make:auth's): the row and what
-// the other modules keep for it (AccountDeleted) — its avatar file, its data export, its notifications, its profile links and sign-in activity
-// (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — scheduled by this app on purpose
-// (opt-in, E209: the module make:auth writes has the line commented out).
+// The web app's prune of accounts whose address was never confirmed (the same command as make:auth's): the row and what the
+// other modules keep for it (AccountDeleted) — its avatar file, its data export, its notifications, its profile links and
+// sign-in activity (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — this app
+// turns it on (the module make:auth writes has the line commented out).
 
 const DAY = 86_400_000;
 
-describe('pruning accounts whose address was never confirmed (E203)', () => {
+describe('pruning accounts whose address was never confirmed', () => {
   let app: TestApp;
   /** An account made `days` ago (nothing changed since). */
   const made = (days: number, confirmed: boolean, email: string, avatar: string | null = null) => {
@@ -46,7 +46,7 @@ describe('pruning accounts whose address was never confirmed (E203)', () => {
     const old = await made(8, false, 'old@example.com', 'avatars/old.png');
     const kept = await made(30, true, 'kept@example.com', 'avatars/kept.png');
     const young = await made(5, false, 'young@example.com');
-    // Confirmed once, long ago — its new address (AUTH_PRIVATE_REGISTRATION=false) is unconfirmed: it stays all the same (E203, Max).
+    // Confirmed once, long ago — its new address (AUTH_PRIVATE_REGISTRATION=false) is unconfirmed: it stays all the same.
     const longAgo = new Date(app.clock.now() - 400 * DAY).toISOString();
     const onceConfirmed = (await app.factory(UserFactory).create({ email: 'once@example.com', created_at: longAgo, updated_at: longAgo, email_verified_at: null, first_verified_at: longAgo })) as User;
     // Confirmed by code that knows only email_verified_at (an admin tool, an old seeder): confirmed is confirmed.
@@ -109,7 +109,7 @@ describe('pruning accounts whose address was never confirmed (E203)', () => {
     expect(await app.make(UserRepository).find(old.id)).toBeDefined();
   });
 
-  it('the first confirmation is kept for good: confirmed, then changed to an unconfirmed address — never pruned (E203, Max)', async () => {
+  it('the first confirmation is kept for good: confirmed, then changed to an unconfirmed address — never pruned', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
     const kj = await made(30, false, 'kj@example.com');
@@ -128,9 +128,9 @@ describe('pruning accounts whose address was never confirmed (E203)', () => {
     expect(await app.make(UserRepository).find(kj.id), 'an account confirmed once was deleted').toBeDefined();
   });
 
-  it('the verification link records the first confirmation itself — whatever clears the address later (E203)', async () => {
-    // changeEmail() keeps a confirmation too (coalesce, W10 step 9b) and so hides a link that records none in the test above
-    // (W10 step 9c): here the link's own write, before anything else touches the account.
+  it('the verification link records the first confirmation itself — whatever clears the address later', async () => {
+    // changeEmail() keeps a confirmation too (coalesce) and so hides a link that records none in the test above — here the
+    // link's own write, before anything else touches the account.
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
     const kj = await made(30, false, 'kj@example.com');

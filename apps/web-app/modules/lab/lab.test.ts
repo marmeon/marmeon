@@ -20,7 +20,7 @@ async function lab() {
 
 const page = { headers: { accept: 'text/html' } };
 
-describe('the SSR lab (W5 step 7)', () => {
+describe('the SSR lab', () => {
   it('a page that reads `window` while rendering still works: sent without markup for the browser to render, the error logged', async () => {
     const { app, entries } = await lab();
     const response = await app.get('/lab/client-only', page).assertOk();
@@ -52,11 +52,11 @@ describe('the SSR lab (W5 step 7)', () => {
     await app.get('/lab/streaming', page).assertOk().assertServerRendered().assertSee('<p data-slow-part="true">Rendered 1000 ms after the shell.</p>').assertDontSee('Loading the slow part');
   }, 10_000);
 
-  it('renders a Date prop as the browser gets it — an ISO string — so the page renders on the server and hydrates (W5.1 finding)', async () => {
+  it('renders a Date prop as the browser gets it — an ISO string — so the page renders on the server and hydrates', async () => {
     const { app } = await lab();
     const response = await app.get('/lab/streaming', page).assertServerRendered().assertHydrates();
     const { now } = response.page()!.props as { now: string };
-    // `now.slice(…)` in the view: a string on the server too (before W5.7 a Date — "now.slice is not a function").
+    // `now.slice(…)` in the view: a string on the server too.
     response.assertSee(`<time dateTime="${now}">${now.slice(11, 19)}</time>`);
   }, 10_000);
 
@@ -69,7 +69,7 @@ describe('the SSR lab (W5 step 7)', () => {
     expect(entries).toContainEqual(expect.objectContaining({ level: 'error', message: 'Server rendering of [lab/LateError] failed in a Suspense boundary — the browser renders that part' }));
   });
 
-  it('is off unless enabled: 404 with LAB_PAGES=false — and by default anywhere but development (E164)', async () => {
+  it('is off unless enabled: 404 with LAB_PAGES=false — and by default anywhere but development', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
     await app.get('/lab/streaming', page).assertNotFound();
     for (const NODE_ENV of ['test', 'staging', 'production', '']) {
@@ -80,7 +80,7 @@ describe('the SSR lab (W5 step 7)', () => {
   });
 });
 
-describe('the devtools lab (W7 step 9)', () => {
+describe('the devtools lab', () => {
   it('a hydration mismatch on purpose (?mismatch=1): the server renders its own text — the browser renders another (React recovers)', async () => {
     const { app } = await lab();
     await app.get('/lab/devtools?mismatch=1', page).assertOk().assertPage('lab/Devtools').assertSee('Rendered by <!-- -->the server<!-- -->.');

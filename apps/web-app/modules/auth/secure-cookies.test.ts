@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
-// E162: cookies follow APP_URL — `https://` sends every cookie of the app with `Secure` (the session's, the XSRF token, the
+// Cookies follow APP_URL — `https://` sends every cookie of the app with `Secure` (the session's, the XSRF token, the
 // remember-me token, the reset link's, the cookie store's), `http://` without; SESSION_SECURE_COOKIE=true/false decides itself.
 let app: TestApp | undefined;
 afterEach(async () => {
@@ -24,7 +24,7 @@ async function signInRemembered(env: Record<string, string>) {
   return { ...page, ...login };
 }
 
-describe('Secure cookies (E162)', () => {
+describe('Secure cookies', () => {
   it('APP_URL=https://… — the session, XSRF and remember-me cookies are Secure', async () => {
     const cookies = await signInRemembered({ APP_URL: 'https://example.com' });
     for (const name of ['marmeon_session', 'XSRF-TOKEN', 'remember_web']) {

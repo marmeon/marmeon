@@ -5,7 +5,7 @@ import { upload, type TemporaryUpload } from '@marmeon/storage';
 import type { TestApp } from '@marmeon/testing';
 import type { UpdateAvatarRequest } from './controllers/UpdateAvatarController.ts';
 
-// Uploads (W6.9) as types — checked by `pnpm typecheck`, never run.
+// Uploads as types — checked by `pnpm typecheck`, never run.
 
 /** On the server: an upload() field is a verified TemporaryUpload — never the token string. */
 export function serverTypes(ctx: ContextOf<typeof UpdateAvatarRequest>) {

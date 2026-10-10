@@ -27,7 +27,7 @@ function record(app: TestApp, names: readonly ChannelName[]) {
 
 const registration = { name: 'Ada Lovelace', email: 'ada@example.com', password: 'correct horse', password_confirmation: 'correct horse' };
 
-describe('the observation hooks in the web app (E118, E131)', () => {
+describe('the observation hooks in the web app', () => {
   it('a registration: the request, its queries with its id, the welcome job dispatched from it, the job\'s queries with the job\'s id, its mail', async () => {
     const app = await createTestApp(application, { database: 'refresh', mail: 'real' });
     const recorded = record(app, ['http.request', 'db.query', 'queue.job', 'mail.send']);
@@ -47,7 +47,7 @@ describe('the observation hooks in the web app (E118, E131)', () => {
     expect(insert).toMatchObject({ secret: true, connection: 'default' });
     expect(insert!.parameters.some((parameter) => typeof parameter === 'string' && parameter.startsWith('$argon2id$'))).toBe(true);
 
-    // The welcome job knows the request it came from (E131) — its queries carry its own id, not the request's.
+    // The welcome job knows the request it came from — its queries carry its own id, not the request's.
     const welcome = recorded.of<QueueJobMessage>('queue.job').find((job) => job.job === 'auth.send-welcome-mail');
     expect(welcome).toMatchObject({ originRequestId: 'req-register', outcome: 'done', attempt: 1, connection: 'fake' });
     const inJob = queries.filter((query) => query.jobId === welcome!.jobId);
@@ -110,7 +110,7 @@ describe('the observation hooks in the web app (E118, E131)', () => {
   });
 });
 
-describe('Server-Timing in the web app (E129)', () => {
+describe('Server-Timing in the web app', () => {
   it('development: the queries of a page — their time and how many', async () => {
     const app = await createTestApp(application, { database: 'refresh', seed: true, env: { NODE_ENV: 'development' } });
     const ada: User = (await app.make(UserRepository).query().selectAll().orderBy('id').executeTakeFirstOrThrow()) as User;
@@ -126,7 +126,7 @@ describe('Server-Timing in the web app (E129)', () => {
   });
 });
 
-describe('a failed scheduled task (E127)', () => {
+describe('a failed scheduled task', () => {
   it("raises one alert: an error with alert: true, the message masked by the app's Redactor", async () => {
     const entries: { message: string; context: LogContext }[] = [];
     const recording: Logger = {

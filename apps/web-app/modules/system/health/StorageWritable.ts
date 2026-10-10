@@ -2,7 +2,7 @@ import type { HealthCheck } from '@marmeon/core';
 import { Storage } from '@marmeon/storage';
 
 /**
- * Readiness (E126): the private `local` disk takes a file and lets it go — uploads, the data export and the avatars live on
+ * Readiness: the private `local` disk takes a file and lets it go — uploads, the data export and the avatars live on
  * these disks. A full or read-only volume makes `/up/ready` answer 503, and the load balancer sends no more requests here.
  */
 export class StorageWritable implements HealthCheck {

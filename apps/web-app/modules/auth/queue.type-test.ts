@@ -1,4 +1,4 @@
-// Type guarantees of the queue (W6 step 3) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+// Type guarantees of the queue — compiled by `pnpm typecheck` / `marmeon build`, never run.
 import { defineModule } from '@marmeon/core';
 import { Queue, withoutOverlapping, type JobContext, type JobPayload } from '@marmeon/queue';
 import type { TestApp } from '@marmeon/testing';
@@ -60,7 +60,7 @@ export function Assertions(app: TestApp) {
   app.queue.assertDispatched(SendWelcomeMailJob, { userId: 'one' });
 }
 
-// W6 step 4: unique jobs, chains, middleware, job.once.
+// Unique jobs, chains, middleware, job.once.
 export async function Unique(queue: Queue) {
   // A unique dispatch may queue nothing: its id is string | undefined.
   const maybe: string | undefined = await queue.dispatch(RebuildMemberStatsJob, {}, { unique: 'members', uniqueFor: { minutes: 10 }, uniqueUntil: 'processing' });

@@ -11,8 +11,8 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 // Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
-// The web app's schedule (W6 step 6, E88): the nightly token prune (finding 5 — expired API tokens were never deleted),
-// the housekeeping of modules/system and the hourly member numbers — with the test clock (E97).
+// The web app's schedule: the nightly token prune, the housekeeping of modules/system and the hourly member numbers — with
+// the test clock.
 describe('the schedule', () => {
   it('prunes expired reset, remember-me and API tokens at 03:10 Berlin time — valid ones stay', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
@@ -29,7 +29,7 @@ describe('the schedule', () => {
     await app.make(RememberTokenStore).create(alan!.id, new Date(app.clock.now() + 30 * 86_400_000));
     const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { expiresIn: '365d' });
 
-    // (The data exports are cleared every ten minutes — W6.9.)
+    // (The data exports are cleared every ten minutes.)
     // (The changes of address nobody confirmed are cleared at the same time — email-change.test.ts.)
     expect(app.schedule.due('2026-10-05T03:10:00+02:00')).toEqual(['auth:prune-tokens', 'auth.prune-email-changes', 'user-profile.prune-data-exports']);
     expect(app.schedule.due('2026-10-05T03:10:00Z')).toEqual(['user-profile.prune-data-exports']); // 05:10 in Berlin

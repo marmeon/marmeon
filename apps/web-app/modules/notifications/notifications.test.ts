@@ -27,7 +27,7 @@ async function rows(app: TestApp, user: User) {
   return rows;
 }
 
-describe('"New sign-in" (W6.7)', () => {
+describe('"New sign-in"', () => {
   it('a sign-in with a password queues the Login listener, which notifies the user — bell and mail', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     const ada = await app.factory(UserFactory).create({ name: 'Ada', locale: 'en' });
@@ -63,7 +63,7 @@ describe('"New sign-in" (W6.7)', () => {
     app.mail.assertNotQueued(NewSignInMail);
   });
 
-  it('is not sent for a registration — it signs nobody in (private registration, E146)', async () => {
+  it('is not sent for a registration — it signs nobody in (private registration)', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await app.post('/register', { form: { name: 'Katherine Johnson', email: 'kj@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } }).assertRedirect('/register/sent');
     app.events.assertNotDispatched(Login);

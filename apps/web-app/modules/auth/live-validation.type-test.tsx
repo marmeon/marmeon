@@ -1,5 +1,5 @@
 /**
- * Type guarantees of live validation (E62) against this app's routes and request schemas — checked by `tsc` (`pnpm typecheck`,
+ * Type guarantees of live validation against this app's routes and request schemas — checked by `tsc` (`pnpm typecheck`,
  * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message
  * they get (read with the directive removed).
  */

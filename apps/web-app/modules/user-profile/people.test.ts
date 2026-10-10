@@ -15,7 +15,7 @@ beforeEach(async () => {
 const as = (user: User) => app.actingAs(user).navigating();
 const names = (props: { people: { data: { name: string }[] } }) => props.people.data.map((person) => person.name);
 
-describe('the people list (/people): state in the URL, parsed by its query schema (E55, E56)', () => {
+describe('the people list (/people): state in the URL, parsed by its query schema', () => {
   it('is for signed-in people only', async () => {
     await app.get('/people', { headers: { accept: 'text/html' } }).assertRedirect('/login');
   });
@@ -46,7 +46,7 @@ describe('the people list (/people): state in the URL, parsed by its query schem
     expect((await as(ada).get(`/users/${ada.id}`).assertOk()).page()).not.toHaveProperty('query');
   });
 
-  it('counter-check (E56): ?sort=DROP TABLE → the default, 200, no 422 — the valid fields stay', async () => {
+  it('an invalid sort (?sort=DROP TABLE) falls back to the default — 200, no 422, the valid fields stay', async () => {
     const response = await as(ada).get('/people?sort=DROP%20TABLE&q=a').assertOk();
     const page = response.page()!;
     expect(page.query).toEqual({ q: 'a' });

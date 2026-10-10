@@ -25,9 +25,8 @@ const markdown = new MarkdownIt('commonmark', { html: false, linkify: false, typ
 /**
  * The mark of a page still to be written: a paragraph that holds nothing else, outside code — blank lines (or a block's edge)
  * around it, since a line that continues a paragraph is that paragraph's text. A quote's or a loose list's paragraph counts too;
- * a tight list's item does not (markdown-it hides its paragraph). By convention the file's second line. The page is `pending`
- * — the navigation says "draft" — and the paragraph is taken out before the page is built: with `html: false` it would show as
- * text. `check:source` refuses the marker as a line of its own in `docs/` (rule 5), since every page is written.
+ * a tight list's item does not (markdown-it hides its paragraph). The page is `pending` — the navigation says "draft" — and
+ * the paragraph is taken out before the page is built: with `html: false` it would show as text.
  */
 export const PENDING_MARKER = '<!-- docs:pending -->';
 
@@ -232,7 +231,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
         }
         case 'link_open': {
           const target = linkTarget(String(token.attrGet('href') ?? ''), options);
-          // A link to a source file stays code text: the docs have no copy of the code to link to (E10: no remote).
+          // A link to a source file stays code text: the docs have no copy of the code to link to (no remote).
           const link =
             target.kind === 'page'
               ? target.path === ''

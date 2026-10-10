@@ -7,12 +7,11 @@ import { UserRepository } from '../UserRepository.ts';
 const DAY = 86_400_000;
 
 /**
- * `marmeon auth:prune-unverified` (E203): deletes the accounts that never confirmed an address within `AUTH_UNVERIFIED_DAYS` of
+ * `marmeon auth:prune-unverified`: deletes the accounts that never confirmed an address within `AUTH_UNVERIFIED_DAYS` of
  * their sign-up (default 7; `0` keeps them). Whoever signed up with somebody else's address stops holding it, and the data of
  * sign-ups nobody finished goes (pre-hijacked accounts, data minimization). **Never an account that was confirmed once**
- * (`first_verified_at`, Max 07.10.) — with `AUTH_PRIVATE_REGISTRATION=false` a change of address leaves it unconfirmed, and it
- * stays. Through `AccountDeletion`, in batches; the number goes to the log. Scheduled nightly by this app — opt-in (E209,
- * schedule.ts; the module `make:auth` writes leaves the line off). Irreversible: with `AUTH_PRIVATE_REGISTRATION=false` such
+ * (`first_verified_at`), even when a change of address left it unconfirmed. Through `AccountDeletion`, in batches; the number
+ * goes to the log. This app schedules it nightly (schedule.ts). Irreversible: with `AUTH_PRIVATE_REGISTRATION=false` such
  * sign-ups were signed in and may have used the app.
  */
 export class PruneUnverifiedCommand {

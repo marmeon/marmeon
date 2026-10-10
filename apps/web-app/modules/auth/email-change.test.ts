@@ -24,9 +24,9 @@ beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
 });
 
-// The change of address with private registration (E146, W9 step 9 — the default): pending until the link sent to the new address
+// The change of address with private registration (the default): pending until the link sent to the new address
 // is clicked; a free and a taken address get the same answer in the same time; the owner of a taken one gets a note. With
-// AUTH_PRIVATE_REGISTRATION=false (E193) it changes at once and says "taken".
+// AUTH_PRIVATE_REGISTRATION=false it changes at once and says "taken".
 
 type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
@@ -52,7 +52,7 @@ const answer = (response: { status: number; headers: Headers; body: string }) =>
 });
 const pendingOn = async (session: Session) => ((await session.navigating().get('/settings/security').assertPage('auth/Security')).page()!.props as { pendingEmail: string | null }).pendingEmail;
 
-describe('changing the address (private registration, E146)', () => {
+describe('changing the address (private registration)', () => {
   it('keeps the account at its address until the link is clicked — then the new one is confirmed, the old one told', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
     const session = await signIn(kj);
@@ -106,7 +106,7 @@ describe('changing the address (private registration, E146)', () => {
     app.make(RateLimiter).for('email-change', (ctx) => Limit.perMinute(1_000_000).by(String(ctx.user?.id)));
     // A change takes well under a millisecond — a busy machine's noise is larger than that. So a measurement is a run of four changes,
     // and a pair is two runs of each kind in mirrored order (free, taken, taken, free — the next pair the other way round: no "first
-    // of the pair" effect). Twenty-one pairs counted, as for the registration (1492620), the first pair warms up; the median of the
+    // of the pair" effect). Twenty-one pairs counted, as for the registration, the first pair warms up; the median of the
     // paired ratios counts — a busy machine slows both halves of a pair alike, a lone stall moves one ratio, not the median.
     const run = async (kind: 'free' | 'taken', pair: number, n: number) => {
       const started = performance.now();
@@ -265,7 +265,7 @@ describe('changing the address (private registration, E146)', () => {
   });
 });
 
-describe('changing the address with AUTH_PRIVATE_REGISTRATION=false (E193)', () => {
+describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });

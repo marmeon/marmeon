@@ -2,8 +2,8 @@ import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 
 /**
  * The SSR lab: pages that show how server rendering behaves when it is slow or fails (`/lab/…`). On with `NODE_ENV=development`
- * only (E164) — off in production (whatever `APP_ENV` says), without `NODE_ENV` and in tests, unless `LAB_PAGES=true` (the lab's own tests; to
- * measure the production build).
+ * only — off in production (whatever `APP_ENV` says), without `NODE_ENV` and in tests, unless `LAB_PAGES=true` (the lab's own
+ * tests; to measure the production build).
  */
 export const LabConfig = defineConfig('lab', {
   env: env({

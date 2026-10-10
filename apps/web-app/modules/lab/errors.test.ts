@@ -13,7 +13,7 @@ const page = { headers: { accept: 'text/html' } };
  */
 const postgres = process.env.DB_CONNECTION === 'pgsql';
 
-/** What the development error page says for each kind of `/lab/errors/:kind` — its solution's title (E130). */
+/** What the development error page says for each kind of `/lab/errors/:kind` — its solution's title. */
 const SOLUTIONS: Record<Exclude<ErrorKind, 'view' | 'optional-parameter'>, string> = {
   'container-unbound': 'Bind PaymentGateway in a service provider',
   'container-scoped': 'Resolve SharedData inside a scope',
@@ -26,7 +26,7 @@ const SOLUTIONS: Record<Exclude<ErrorKind, 'view' | 'optional-parameter'>, strin
   table: postgres ? 'Run the migrations' : 'Create the table &quot;payments&quot; in a migration',
 };
 
-describe('the lab’s errors on the development error page (E119, E130)', () => {
+describe('the lab’s errors on the development error page', () => {
   for (const [kind, title] of Object.entries(SOLUTIONS)) {
     it(`${kind}: ${ERROR_KINDS[kind as ErrorKind]} — with its solution`, async () => {
       const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
@@ -49,7 +49,7 @@ describe('the lab’s errors on the development error page (E119, E130)', () => 
     expect(response.body).toContain('marmeon migrate');
   });
 
-  it('a defaulted parameter of an injectable type: built with its default, the warning on the page (E128)', async () => {
+  it('a defaulted parameter of an injectable type: built with its default, the warning on the page', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
     const response = await app.get('/lab/errors/optional-parameter', page).assertStatus(500);
     const line = readFileSync(new URL('./errors.ts', import.meta.url), 'utf8').split('\n').findIndex((text) => text.includes('constructor(clock: Clock = new SystemClock())')) + 1;
@@ -67,7 +67,7 @@ describe('the lab’s errors on the development error page (E119, E130)', () => 
     expect(solution).toMatchObject({ title: 'Create modules/lab/views/Missing.tsx', command: 'marmeon route:types' });
   });
 
-  it('the session cookie’s name is redacted like any credential (E125)', async () => {
+  it('the session cookie’s name is redacted like any credential', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
     expect(app.container.make(Redactor).isSensitive('marmeon_session')).toBe(true);
     const response = await app.get('/lab/errors/container-unbound', { headers: { accept: 'text/html', cookie: 'marmeon_session=0123456789abcdef; lang=de' } }).assertStatus(500);
@@ -82,7 +82,7 @@ describe('the lab’s errors on the development error page (E119, E130)', () => 
   });
 });
 
-describe('solutions are text, never actions (E130, CVE-2021-3129)', () => {
+describe('solutions are text, never actions (CVE-2021-3129)', () => {
   it('no framework route under /_marmeon takes a POST — nothing there runs a solution', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
     const internal = app.container.make(Router).routes.filter((route) => route.path.startsWith('/_marmeon'));

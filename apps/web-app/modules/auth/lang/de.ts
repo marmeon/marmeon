@@ -29,7 +29,7 @@ export default {
     checking: 'Wird geprüft …',
     registered: 'Schon registriert?',
     login: 'Anmelden',
-    // Private Registrierung (E146): eine Antwort für neue und bekannte Adressen.
+    // Private Registrierung: eine Antwort für neue und bekannte Adressen.
     confirm_hint: 'Wir schicken dir einen Link, mit dem du deine Adresse bestätigst.',
     sent_title: 'Schau in dein Postfach',
     sent_intro: 'Wir haben eine Nachricht an die eingegebene Adresse geschickt. Klicke auf den Link darin, um die Adresse zu bestätigen — dann melde dich an.',
@@ -71,7 +71,7 @@ export default {
     verified: 'Deine E-Mail-Adresse ist bestätigt.',
     wrong_account: 'Dieser Bestätigungslink gehört nicht zu deinem Konto.',
   },
-  // Private Registrierung (E146): der Link an eine neue Adresse.
+  // Private Registrierung: der Link an eine neue Adresse.
   email_change: {
     wrong_account: 'Dieser Link gehört zu einem anderen Konto. Melde dich mit diesem an und öffne den Link noch einmal.',
     invalid: 'Dieser Link funktioniert nicht mehr — er wurde schon benutzt, ein neuerer hat ihn ersetzt, oder er ist abgelaufen. Ändere deine Adresse noch einmal auf der Sicherheitsseite.',
@@ -91,9 +91,9 @@ export default {
     email: 'E-Mail',
     unconfirmed: '(noch nicht bestätigt)',
     change_email: 'E-Mail ändern',
-    // Mit AUTH_PRIVATE_REGISTRATION=false (E193): die neue Adresse gilt sofort.
+    // Mit AUTH_PRIVATE_REGISTRATION=false: die neue Adresse gilt sofort.
     email_changed: 'E-Mail-Adresse geändert. Bitte bestätige die neue — wir haben dir einen Link geschickt.',
-    // Private Registrierung (E146): eine neue Adresse wartet, bis der Link an sie angeklickt ist.
+    // Private Registrierung: eine neue Adresse wartet, bis der Link an sie angeklickt ist.
     email_change_sent: 'Wir haben dir einen Link an die neue Adresse geschickt. Deine Adresse ändert sich, sobald du ihn dort anklickst — innerhalb von 60 Minuten, angemeldet.',
     email_pending: 'Wartet auf Bestätigung: {email}. Bis der Link dorthin angeklickt ist, bleibt deine Adresse {current}.',
     password_heading: 'Passwort ändern',
@@ -181,7 +181,7 @@ export default {
       button: 'Zu deinem Profil',
       outro: 'Bestätige deine E-Mail-Adresse mit dem Link aus unserer anderen Mail — dann steht dir die App offen.',
     },
-    // Private Registrierung (E146): eine Registrierung mit der Adresse eines bestehenden Kontos.
+    // Private Registrierung: eine Registrierung mit der Adresse eines bestehenden Kontos.
     account_exists: {
       subject: 'Du hast schon ein Konto',
       preview: 'Jemand wollte sich mit deiner Adresse registrieren',
@@ -190,7 +190,7 @@ export default {
       forgot: 'Passwort vergessen? Wähle ein neues:',
       outro: 'Warst du das nicht, ignoriere diese Mail: Es hat sich nichts geändert.',
     },
-    // Private Registrierung (E146): eine Adressänderung — der Link an die neue Adresse oder ein Hinweis an den Inhaber einer vergebenen.
+    // Private Registrierung: eine Adressänderung — der Link an die neue Adresse oder ein Hinweis an den Inhaber einer vergebenen.
     confirm_new_email: {
       subject: 'Bestätige deine neue E-Mail-Adresse',
       preview: 'Ein Klick, und dein Konto nutzt diese Adresse',

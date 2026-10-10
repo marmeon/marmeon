@@ -1,4 +1,4 @@
-// Type guarantees of the scheduler (W6 step 6, E88) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+// Type guarantees of the scheduler — compiled by `pnpm typecheck` / `marmeon build`, never run.
 import { PruneTokensCommand } from '@marmeon/auth';
 import { defineSchedule } from '@marmeon/scheduler';
 import type { TestApp } from '@marmeon/testing';

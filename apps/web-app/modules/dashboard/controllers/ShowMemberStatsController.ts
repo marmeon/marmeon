@@ -4,7 +4,7 @@ import { MemberStats } from '#modules/user-profile';
 import { DashboardConfig } from '../config.ts';
 import { DashboardPolicy } from '../policies/DashboardPolicy.ts';
 
-/** Its own authorization (E48): administrators only. Anyone else gets a 403 — which the island shows as its fallback. */
+/** Its own authorization: administrators only. Anyone else gets a 403 — which the island shows as its fallback. */
 export const MemberStatsRequest = defineRequest({ authorize: can(DashboardPolicy, 'viewMembers') });
 
 /** Island "Members": the member numbers — for administrators with a confirmed address (the route adds `verified()`). */

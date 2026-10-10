@@ -30,7 +30,7 @@ describe('sessions in the database (SESSION_DRIVER=database)', () => {
     expect(responses.filter((response) => response.cookie('marmeon_session') !== undefined || response.cookie('XSRF-TOKEN') !== undefined)).toEqual([]);
     expect(await rows()).toEqual([]);
 
-    // Nor do guests on the login and registration pages (E143): their forms pass by the browser's word, not a session's token.
+    // Nor do guests on the login and registration pages: their forms pass by the browser's word, not a session's token.
     for (let i = 0; i < 100; i++) {
       const page = await app.get(i % 2 === 0 ? '/login' : '/register');
       page.assertOk();
@@ -64,8 +64,8 @@ describe('sessions in the database (SESSION_DRIVER=database)', () => {
   });
 });
 
-// E144: what the sessions table holds signs nobody in — keys are the ids' hashes, payloads encrypted (this app: SESSION_ENCRYPT).
-describe('a leaked sessions table (E144)', () => {
+// What the sessions table holds signs nobody in — keys are the ids' hashes, payloads encrypted (this app: SESSION_ENCRYPT).
+describe('a leaked sessions table', () => {
   let app: TestApp;
   const open = async () => (app = await createTestApp(application, { database: 'refresh', env: { SESSION_DRIVER: 'database' } }));
   const table = async () => (await sql<{ id: string; payload: string }>`select id, payload from sessions`.execute(app.make(Connections).get())).rows;
@@ -112,7 +112,7 @@ describe.runIf(REDIS_URL)('sessions in Redis (SESSION_DRIVER=redis)', () => {
     const sessions = () => redis.command<string[]>(['KEYS', `${redis.prefix}session:*`]);
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     await Promise.all(Array.from({ length: 20 }, () => app!.prefetching().get(`/users/${ada.id}`).then((response) => response.assertRedirect('/login'))));
-    // Guests on the login page leave none either (E143).
+    // Guests on the login page leave none either.
     await Promise.all(Array.from({ length: 20 }, () => app!.get('/login').then((response) => expect(response.headers.getSetCookie()).toEqual([]))));
     expect(await sessions()).toEqual([]);
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertAuthenticated(ada);

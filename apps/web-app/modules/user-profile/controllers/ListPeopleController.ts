@@ -6,8 +6,8 @@ import { rules as r } from '@marmeon/validation';
 import { PEOPLE_SORTS, ProfileDirectory } from '../ProfileDirectory.ts';
 
 /**
- * The query of the people list (E55): parsed on the server, typed everywhere — `ctx.query` here, `useQueryState` and
- * `<Link query>` in the view. An invalid field falls back to its default (E56): `/people?sort=DROP TABLE` is the list
+ * The query of the people list: parsed on the server, typed everywhere — `ctx.query` here, `useQueryState` and
+ * `<Link query>` in the view. An invalid field falls back to its default: `/people?sort=DROP TABLE` is the list
  * by name, never a 422 — links outlive their pages.
  */
 export const ListPeopleRequest = defineRequest({
@@ -22,7 +22,7 @@ export const ListPeopleRequest = defineRequest({
 /** `/people`: everyone, filtered and sorted by the URL — ten to a page (or 25, 50), with links to the pages. */
 export class ListPeopleController extends Controller {
   static request = ListPeopleRequest;
-  /** An instant visit (E64): the list's placeholder needs nothing — `<Link route="user-profile.people" instant>`. */
+  /** An instant visit: the list's placeholder needs nothing — `<Link route="user-profile.people" instant>`. */
   declare readonly instant: {};
 
   readonly #directory: ProfileDirectory;

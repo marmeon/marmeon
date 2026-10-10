@@ -5,7 +5,7 @@ import { UserFactory } from '../auth/factories/UserFactory.ts';
 import type { RaceValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 /**
- * The rules of @marmeon/validation in the app (W10 step 3, E197): `/lab/validation` — a request schema of `rules`, the framework's
+ * The rules of @marmeon/validation in the app: `/lab/validation` — a request schema of `rules`, the framework's
  * messages in the request's language, the fields' names from `attributes`, a database rule that never runs live.
  */
 
@@ -53,7 +53,7 @@ describe('the validation lab', () => {
     });
   });
 
-  it('a taken address: told on submit — never by a live validation, where a free and a taken one get the same answer (E197)', async () => {
+  it('a taken address: told on submit — never by a live validation, where a free and a taken one get the same answer', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     await app.withHeaders({ 'accept-language': 'de', ...json }).post('/lab/validation', { json: valid }).assertUnprocessable().assertInvalid<StoreValidationLabController>({ email: 'Der Wert für E-Mail ist bereits vergeben.' });
     const taken = await app.validating('email').post('/lab/validation', { json: { email: 'ada@example.com' } }).assertLiveValid('email');
@@ -70,12 +70,12 @@ describe('the validation lab', () => {
     await app.post('/lab/validation', { json: { ...valid, vat: 'not looked at' }, headers: json }).assertValid();
   });
 
-  it('an async custom (an invitation code) and exists (the inviting account): on submit — never live (E197)', async () => {
+  it('an async custom (an invitation code) and exists (the inviting account): on submit — never live', async () => {
     await app.factory(UserFactory).create({ email: 'grace@example.com' });
     const wrong = await app.post('/lab/validation', { json: { ...valid, invite: 'NOPE', inviter: 'nobody@example.com' }, headers: json }).assertUnprocessable();
     wrong.assertInvalid<StoreValidationLabController>({ invite: 'This invitation code is unknown.', inviter: 'The selected inviter is invalid.' });
     await app.post('/lab/validation', { json: { ...valid, invite: 'MARMEON-2026', inviter: 'grace@example.com' }, headers: json }).assertValid();
-    // The form's empty fields: the code arrives as '' (E208, a string) and its check lets it pass; the inviter (an address) is missing.
+    // The form's empty fields: the code arrives as '' (a string) and its check lets it pass; the inviter (an address) is missing.
     await app.post('/lab/validation', { json: { ...valid, invite: '', inviter: '' }, headers: json }).assertValid();
     // Live: an unknown code and an unknown inviter get the answer of a known one.
     const live = async (body: Record<string, string>, field: string) => {

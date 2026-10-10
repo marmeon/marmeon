@@ -4,9 +4,9 @@ import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
 
 /**
- * The request path (W8 step 9, E154): a response is copied at most once per request — the framework's own responses (pages,
+ * The request path: a response is copied at most once per request — the framework's own responses (pages,
  * documents, redirects) are changed in place by every middleware that adds a header (cookies, the language, the security headers,
- * the CSP, `no-store`, the request id). Before: four or five copies per page, ≈ 2.5 µs each.
+ * the CSP, `no-store`, the request id).
  */
 
 let app: TestApp;
@@ -35,7 +35,7 @@ async function copies(run: () => PromiseLike<unknown>): Promise<number> {
   return count;
 }
 
-describe('response copies per request (W8 step 9)', () => {
+describe('response copies per request', () => {
   it('none for a page with a session — a visit and a document, with cookies, language, security headers and the CSP', async () => {
     const failed = await app.post('/login', { form: { email: 'nobody@example.com', password: 'wrong' }, headers: referer });
     const guest = app.withCookie('marmeon_session', failed.cookie('marmeon_session')!);

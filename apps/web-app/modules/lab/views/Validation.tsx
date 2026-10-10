@@ -20,8 +20,8 @@ interface Fields {
 type TextField = Exclude<keyof Fields, 'kind' | 'terms'>;
 
 /**
- * The rules of @marmeon/validation (W10 steps 3 and 9b): a form whose schema is `rules` — messages in the request's language, the
- * field's name from `attributes`, a taken address told on submit only (E197); `when` (a company's VAT number), an async `custom`
+ * The rules of @marmeon/validation: a form whose schema is `rules` — messages in the request's language, the
+ * field's name from `attributes`, a taken address told on submit only; `when` (a company's VAT number), an async `custom`
  * (an invitation code), `exists` (an account that invites), `r.date()` and `r.port()`. "As after a race" sends the same form to a
  * route without `unique`: the unique index answers through `failOnDuplicate()`, with the same message.
  */

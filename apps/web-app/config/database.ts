@@ -3,7 +3,7 @@ import { defineConnection } from '@marmeon/database';
 
 /**
  * The `system` connection: a SQLite file of its own for the cache (with rate limits and locks) and the sessions —
- * `CACHE_CONNECTION=system`, `SESSION_CONNECTION=system` (.env.example). They never join the app's transactions (E108); on
+ * `CACHE_CONNECTION=system`, `SESSION_CONNECTION=system` (.env.example). They never join the app's transactions; on
  * a file of their own they also work inside one, while the app's file is locked by it. The tables are migrated there by
  * their migrations in modules/system (they follow CACHE_CONNECTION / SESSION_CONNECTION).
  *

@@ -1,5 +1,5 @@
 /**
- * Type guarantees of flash messages (E60), state attributes, the navigation guard and confirm (E64) against this app's
+ * Type guarantees of flash messages, state attributes, the navigation guard and confirm against this app's
  * `FlashData` and routes — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run. Each `@ts-expect-error` is a
  * mistake an app developer makes; the comment above it is the message they get (read with the directive removed).
  */

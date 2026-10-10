@@ -11,7 +11,7 @@ const MAX_AGE = 300;
 /**
  * The member numbers of the dashboard's "Members" island as a snapshot in the cache — rebuilt by a queued job after a
  * registration (`RefreshMemberStats` → `RebuildMemberStatsJob`) instead of counting all users on every request of the
- * island (W6 step 4).
+ * island.
  */
 export class MemberStats {
   readonly #cache: Cache;

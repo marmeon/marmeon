@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * The stylesheet's phone layout, read as text: the docs tests render on the server and see no layout, and a browser test of the
- * menu would need a browser in CI. What broke (a menu that grew with its content instead of scrolling) is visible in the rules.
+ * menu would need a browser in CI. A menu that grows with its content instead of scrolling is visible in the rules.
  */
 const css = readFileSync(resolve(import.meta.dirname, '../../styles/docs.css'), 'utf8');
 

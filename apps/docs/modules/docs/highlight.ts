@@ -30,8 +30,8 @@ export interface CodeHighlighter {
 
 /**
  * One Shiki per process: it holds only the grammars and themes, nothing of a request — and every instance keeps its compiled
- * grammars in the WebAssembly memory of the regex engine, which all instances share and nothing frees. A test run boots the app
- * dozens of times; with a Shiki each, the engine ran out of memory ("ShikiError" on compiling a grammar's pattern).
+ * grammars in the WebAssembly memory of the regex engine, which all instances share and nothing frees: a Shiki per boot (a test
+ * run boots the app dozens of times) runs the engine out of memory.
  */
 let shared: ReturnType<typeof createHighlighter> | undefined;
 

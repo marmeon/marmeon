@@ -10,11 +10,11 @@ const password = 'warming up the queue';
 const form = { name: 'Warm Up', email: 'warm-up@example.com', password, password_confirmation: password };
 
 /**
- * For a test file's `beforeAll(warmUp, WARM_UP_TIMEOUT)` (W9 step 1): what the file's first tests would otherwise pay inside Vitest's
+ * For a test file's `beforeAll(warmUp, WARM_UP_TIMEOUT)`: what the file's first tests would otherwise pay inside Vitest's
  * 5 s — the worker's database (created and migrated once per worker), the app's modules, a registration (the password hash) and
  * its jobs, through the fakes and through the real database queue and mailer (their drivers, mjml's import and first compile, the
- * mails' translations), and a seeded app in development. Seconds on a loaded machine; afterwards every test pays only for its own work. Each app is closed again:
- * its transaction rolls back, nothing stays.
+ * mails' translations), and a seeded app in development. Seconds on a loaded machine; afterwards every test pays only for its
+ * own work. Each app is closed again: its transaction rolls back, nothing stays.
  */
 export async function warmUp(): Promise<void> {
   const fake = await createTestApp(application, { database: 'refresh' });

@@ -6,7 +6,7 @@ export const ProfileConfig = defineConfig('user-profile', {
     NODE_ENV: env.string().optional(),
     /**
      * Makes the profile's activity panel slow on purpose, in milliseconds — to watch a deferred prop load after the
-     * page (`defer()`). Ignored where the app is protected (production, no `NODE_ENV` — E139).
+     * page (`defer()`). Ignored where the app is protected (production, also without a `NODE_ENV`).
      */
     PROFILE_ACTIVITY_DELAY: env.integer().min(0).max(10_000).default(0),
   }),

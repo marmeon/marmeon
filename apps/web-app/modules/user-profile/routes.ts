@@ -16,7 +16,7 @@ import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
 
 export default defineRoutes((Route) => {
   // Everyone, filtered and sorted by the query string (`ListPeopleRequest`) — state that lives in the URL.
-  // A confirmed address first (private registration, E146): an unconfirmed account sees the verification notice instead.
+  // A confirmed address first (private registration): an unconfirmed account sees the verification notice instead.
   const confirmed = Route.middleware(authenticate()).middleware(verified());
   confirmed.get('/people', ListPeopleController).name('user-profile.people');
 
@@ -28,10 +28,10 @@ export default defineRoutes((Route) => {
   // The profile page reads through the module's own read model; editing goes through auth's repository.
   users.bind('user', ProfileDirectory).get('/:user', ShowUserProfileController).name('show');
   const user = users.bind('user', UserRepository);
-  // A layer over whatever is on screen (E53); its base, for deep links, is the profile.
+  // A layer over whatever is on screen; its base, for deep links, is the profile.
   user.get('/:user/edit', EditUserProfileController).name('edit');
   user.put('/:user', UpdateUserProfileController).name('update');
-  // The picture, from the edit layer: uploaded ahead (W6.9) — this route hands out the upload target for its `avatar` field.
+  // The picture, from the edit layer: uploaded ahead — this route hands out the upload target for its `avatar` field.
   user.put('/:user/avatar', UpdateAvatarController).name('avatar.update');
 
   // A link is looked up *within* its user: another user's link id under this user is a 404 (no IDOR).

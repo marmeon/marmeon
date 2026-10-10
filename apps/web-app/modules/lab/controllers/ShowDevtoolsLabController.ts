@@ -3,7 +3,7 @@ import { rules as r } from '@marmeon/validation';
 import { LabController } from './ShowLabPageController.ts';
 
 /**
- * The devtools' bar at work (W7 step 9): the client hook API (E132) — a link `before` cancels, a form whose errors `invalid`
+ * The devtools' bar at work: the client hook API — a link `before` cancels, a form whose errors `invalid`
  * reports — and, with `?mismatch=1`, markup that differs between the server and the browser on purpose: React recovers (it
  * renders that part again in the browser) and the bar lists the mismatch in its SSR tab (development only).
  */

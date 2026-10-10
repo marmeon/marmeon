@@ -7,7 +7,7 @@ type Props = PageProps<ShowCreateAccessTokenController>;
 
 /**
  * A new token's form — a layer over the list. Validation errors come back into it; the answer replaces it (the plain text).
- * An uncontrolled `<Form>` (E64): the fields are plain named inputs (`form.field('abilities[]')` checks the name against the
+ * An uncontrolled `<Form>`: the fields are plain named inputs (`form.field('abilities[]')` checks the name against the
  * route's schema), sent as the server parses them; without JavaScript a real form with `_token`.
  */
 export default function CreateAccessToken({ abilities }: Props) {

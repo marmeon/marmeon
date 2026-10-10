@@ -259,11 +259,7 @@ export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
  * once its comments are clean. What readers see first in them — the package cards, the stubs, the starter's template and the
  * apps' READMEs and `.env` files — is read all the same.
  */
-export const PENDING_AREAS: readonly string[] = [
-  'apps/web-app/',
-  'apps/docs/',
-  'apps/blank-app/',
-];
+export const PENDING_AREAS: readonly string[] = [];
 /** Read even inside a pending area. */
 const READER_TEXTS = [PACKAGE_CARDS, APP_COPIES, APP_TEXTS];
 

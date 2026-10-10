@@ -9,7 +9,7 @@ export const ConfirmRemoveLinkRequest = defineRequest({
 });
 
 /**
- * "Remove this link?" — a layer (E53) over whatever is on screen: the profile (depth 1), or the edit layer (depth 2). A deep
+ * "Remove this link?" — a layer over whatever is on screen: the profile (depth 1), or the edit layer (depth 2). A deep
  * link stacks it on its base, the edit layer — and that one on the profile.
  */
 export class ConfirmRemoveLinkController extends Controller {

@@ -2,10 +2,11 @@ import { env } from '@marmeon/core';
 import { defineStorage } from '@marmeon/storage';
 
 /**
- * The app's disks (E91). `local` is private — its files only ever leave through a signed, expiring URL (`temporaryUrl()`,
+ * The app's disks. `local` is private — its files only ever leave through a signed, expiring URL (`temporaryUrl()`,
  * e.g. the data export on the security page); `public` is served under `/storage` with safe headers (raster images
- * inline, everything else as a download) — the avatars; `uploads` is private too: where an upload waits for its form (W6.9). `s3` is there for S3 or an S3-compatible store — it needs the S3_* variables
- * (.env.example) and `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`; nothing uses it until then.
+ * inline, everything else as a download) — the avatars; `uploads` is private too: where an upload waits for its form. `s3` is
+ * there for S3 or an S3-compatible store — it needs the S3_* variables (.env.example) and
+ * `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`; nothing uses it until then.
  */
 export const AppStorage = defineStorage({
   env: env({

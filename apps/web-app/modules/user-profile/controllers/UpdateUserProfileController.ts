@@ -11,7 +11,7 @@ import { profileChannel } from '../live.ts';
 export const UpdateUserProfileRequest = defineRequest({
   schema: r.object({
     name: r.string().trim().min(2).max(60),
-    // E208: an empty string is a string — a bio cleared on purpose arrives as '' and empties the column; left out (a client that
+    // An empty string is a string — a bio cleared on purpose arrives as '' and empties the column; left out (a client that
     // changes the name only) it is undefined, and the bio stays as it is (`update()` skips undefined).
     bio: r.string().trim().max(200).optional(),
   }),
@@ -37,7 +37,7 @@ export class UpdateUserProfileController extends Controller {
   async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
     // ctx.body is { name: string; bio?: string } — validated and trimmed; bio '' clears it, no bio keeps it
     await this.#users.update(ctx.params.user.id, ctx.body);
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
+    // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     // Saved from the edit layer: it closes, and what is beneath shows the new name (and the message). Without JavaScript
     // (or the form opened as a page): to the profile.

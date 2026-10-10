@@ -16,14 +16,14 @@ beforeEach(async () => {
 
 const profile = (user: User) => `/users/${user.id}`;
 
-describe('editing a profile is a layer (E53)', () => {
+describe('editing a profile is a layer', () => {
   it('opens as a layer: its page object says so — the base for deep links is the profile', async () => {
     const response = await app.actingAs(ada).layer('user-profile.edit', { user: ada.id }).assertOk();
     response.assertLayer<EditUserProfileController>('user-profile/Edit', { profile: { name: 'Ada Lovelace' } });
     expect(response.page()!.layer).toEqual({ key: 'user-profile/Edit', base: profile(ada) });
   });
 
-  it('counter-check: the layer’s own authorization holds — someone else’s edit layer is a 403, wherever it opens', async () => {
+  it('the layer’s own authorization holds — someone else’s edit layer is a 403, wherever it opens', async () => {
     await app.actingAs(alan).layer('user-profile.edit', { user: ada.id }).assertForbidden();
     await app.actingAs(alan).get(`${profile(ada)}/edit`, { headers: { accept: 'text/html' } }).assertForbidden();
   });
@@ -48,7 +48,7 @@ describe('editing a profile is a layer (E53)', () => {
       .layering()
       .put(profile(ada), { json: { name: 'Ada King', bio: 'Countess' } })
       .assertLayerClosed({ reload: ['profile'] })
-      // The close is shown: it delivers the message itself (E60) — nothing waits in the session for the reload.
+      // The close is shown: it delivers the message itself — nothing waits in the session for the reload.
       .assertFlash('toast', { kind: 'success', message: 'Profile saved.' });
     await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King' });
     await app.actingAs(ada).put(profile(ada), { form: { name: 'Ada', bio: '' } }).assertRedirect(profile(ada));
@@ -76,7 +76,7 @@ describe('editing a profile is a layer (E53)', () => {
   });
 });
 
-describe('creating an API token is a layer shown once (E53)', () => {
+describe('creating an API token is a layer shown once', () => {
   it('a deep link of the form: the list under it — and reloading after creating shows the list, never the plain text', async () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } });
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);

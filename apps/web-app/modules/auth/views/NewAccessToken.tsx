@@ -5,7 +5,7 @@ import type { CreateAccessTokenController } from '../controllers/CreateAccessTok
 type Props = PageProps<CreateAccessTokenController>;
 
 /**
- * The new token's plain text — the answer of creating it, a layer shown once (E53): closed (this button, Escape, Back), it
+ * The new token's plain text — the answer of creating it, a layer shown once: closed (this button, Escape, Back), it
  * is gone from the tab's memory as well, and the list beneath reloads with the token in it.
  */
 export default function NewAccessToken({ name, plainText }: Props) {

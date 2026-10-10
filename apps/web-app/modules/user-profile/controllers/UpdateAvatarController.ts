@@ -9,7 +9,7 @@ import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { profileChannel } from '../live.ts';
 
 /**
- * The avatar (W6.9): the file was uploaded ahead (`<FileInput>` in the edit layer, to the private `uploads` disk) — the form
+ * The avatar: the file was uploaded ahead (`<FileInput>` in the edit layer, to the private `uploads` disk) — the form
  * sends its token. The rule checks it on submit: this session, this route and field, not expired, not used; at most 2 MB;
  * PNG, JPEG or WebP **by its bytes** (an HTML file named `.png` is refused, SVG never). The same policy as the profile: the
  * upload target was handed out by this route's `authorize` too.
@@ -42,7 +42,7 @@ export class UpdateAvatarController extends Controller {
     // Uses the upload up (once — a second submit of the same token is a 422) and moves it: avatars/<random>.<its type>.
     const path = await ctx.body.avatar.store(disk, 'avatars');
     await this.#users.update(user.id, { avatar_path: path });
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
+    // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(user.id), { only: ['profile'] });
     // The picture it replaces goes (a failure here leaves a file nobody links to — nothing worse).
     if (previous) await disk.delete(previous).catch(() => false);

@@ -18,7 +18,7 @@ const profile = (user: User) => `/users/${user.id}`;
 /** A tab of `user` — its requests name its document (x-marmeon-connection), as the client core's do. */
 const tab = (user: User, connection: string) => app.actingAs(user).withHeaders({ 'x-marmeon-connection': connection });
 
-describe('live props in the web app (W6.10)', () => {
+describe('live props in the web app', () => {
   it('the profile follows users.<id> (profile, activity) and the bell its notifications — signed for the session', async () => {
     const page = (await app.actingAs(ada).navigating().get(profile(ada)).assertOk()).page()!;
     expect(page.live).toEqual([
@@ -97,7 +97,7 @@ describe('live props in the web app (W6.10)', () => {
     expect(stream.status).toBe(200);
   });
 
-  it('one browser keeps 16 tabs connected; the 17th is refused (429) — another user’s tab still connects, and a hint still arrives (W9 step 4)', async () => {
+  it('one browser keeps 16 tabs connected; the 17th is refused (429) — another user’s tab still connects, and a hint still arrives', async () => {
     const ada$ = app.actingAs(ada); // one browser — one session
     const live = (await ada$.navigating().get(profile(ada))).page()!.live!;
     const tabs = [];

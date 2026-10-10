@@ -13,8 +13,8 @@ import { WARM_UP_TIMEOUT, warmUp } from '../auth/warm-up.ts';
 // Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
-// The devtools (W7, E115–E116, E131): what a registration does — the request, its queries, the jobs it queued, the mails a
-// worker sent for it — tied together by the request id, and nothing of the password on record (E125).
+// The devtools: what a registration does — the request, its queries, the jobs it queued, the mails a
+// worker sent for it — tied together by the request id, and nothing of the password on record.
 describe('the devtools', () => {
   it('record a registration: request, queries, jobs and mails — tied by the request id', async () => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true });
@@ -39,13 +39,13 @@ describe('the devtools', () => {
     expect(queued).toEqual(expect.arrayContaining(['marmeon.listener queued', 'auth.send-welcome-mail queued']));
     app.devtools.assertRecorded('event', (event) => event.name === 'auth.registered');
 
-    // A worker runs them — in other batches, still tied to the request (E131) — and sends the mails.
+    // A worker runs them — in other batches, still tied to the request — and sends the mails.
     await app.queue.work();
     await app.devtools.settled();
     const attempts = app.devtools.entries('job').filter((entry) => entry.content.status === 'done');
     expect(attempts.length).toBeGreaterThanOrEqual(2);
     expect(attempts.every((entry) => entry.requestId === requestId && entry.batch !== request.batch)).toBe(true);
-    // The listener's payload is encrypted (E105): only "[encrypted]" is on record.
+    // The listener's payload is encrypted: only "[encrypted]" is on record.
     expect(attempts.find((entry) => entry.content.name === 'marmeon.listener')?.content.payload).toBe('[encrypted]');
     const mails = app.devtools.entries('mail').filter((entry) => entry.requestId === requestId);
     expect(mails.map((entry) => entry.content.mailable).sort()).toEqual(expect.arrayContaining(['VerifyEmailMail', 'WelcomeMail']));
@@ -61,14 +61,14 @@ describe('the devtools', () => {
 
   // The sessions in the database too: their statements (`sessions.payload` is a secret column) carry the session id.
   // A whole account's life in one test — registration, two sign-ins, sign-out, a password reset through the worker, an API token — and
-  // every file the recorder wrote: 0.1 s here, past 5 s on a fully loaded machine (W9 step 1); its own time, like the page test below.
-  it.each(['memory', 'database'])('keep none of a session’s secrets — registration, login, reset, API token — in what they write (E125; sessions: %s)', { timeout: 20_000 }, async (driver) => {
+  // every file the recorder wrote: 0.1 s here, past 5 s on a fully loaded machine; its own time, like the page test below.
+  it.each(['memory', 'database'])('keep none of a session’s secrets — registration, login, reset, API token — in what they write (sessions: %s)', { timeout: 20_000 }, async (driver) => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true, env: { SESSION_DRIVER: driver } });
     const email = 'ada@example.com';
     const [password, newPassword] = ['correct horse battery', 'brand new staple 42'];
     const registered = await app.post('/register', { form: { name: 'Ada Lovelace', email, password, password_confirmation: password }, headers: { referer: 'http://localhost/register' } }).assertRedirect('/register/sent');
-    expect(registered.headers.getSetCookie()).toEqual([]); // private registration (E146): no session
-    // The app opens for a confirmed address only (E146) — confirmed here directly; the link's own path is tested in the auth module.
+    expect(registered.headers.getSetCookie()).toEqual([]); // private registration: no session
+    // The app opens for a confirmed address only — confirmed here directly; the link's own path is tested in the auth module.
     const users = app.make(UserRepository);
     await users.markEmailVerified((await users.findByEmail(email))!.id);
     const first = await app.post('/login', { form: { email, password } }).assertRedirect('/users/me');
@@ -113,15 +113,15 @@ describe('the devtools', () => {
     }
   });
 
-  // The pages (W7 step 8): the registration as a visit, its queries, the jobs it queued, then what the worker did for it; the
-  // sign-in after it — the protocol's 409 reload across the sign-in boundary, no failure; the scheduler's lock warning (E123).
-  // Two password hashes, a worker and seven pages (the first ones render cold): 0.13 s here, 7–8 s on a fully loaded machine (W9 step 1).
+  // The pages: the registration as a visit, its queries, the jobs it queued, then what the worker did for it; the
+  // sign-in after it — the protocol's 409 reload across the sign-in boundary, no failure; the scheduler's lock warning.
+  // Two password hashes, a worker and seven pages (the first ones render cold): 0.13 s here, 7–8 s on a fully loaded machine.
   it('show a registration in /_marmeon/devtools: the request, its queries, then the jobs and mails a worker ran for it', { timeout: 20_000 }, async () => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true });
     const password = 'correct horse battery';
     const browser = { referer: 'http://localhost/register', 'sec-fetch-site': 'same-origin' };
     const registered = await app.navigating().post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password }, headers: browser });
-    expect(registered.status).toBe(303); // private registration (E146): "check your inbox", nobody signed in
+    expect(registered.status).toBe(303); // private registration: "check your inbox", nobody signed in
     const response = await app.navigating().post('/login', { form: { email: 'ada@example.com', password }, headers: browser });
     expect(response.status).toBe(409);
     await app.queue.work();
@@ -157,7 +157,7 @@ describe('the devtools', () => {
     expect((await app.get('/_marmeon/devtools/schedule').assertOk()).body).toContain('marmeon schedule:test session:prune');
     await app.get('/_marmeon/devtools/queue').assertOk();
     await app.close();
-    // A test without the opt-in has no such pages (E115).
+    // A test without the opt-in has no such pages.
     await (await createTestApp(application)).get('/_marmeon/devtools').assertNotFound();
   });
 

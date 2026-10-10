@@ -11,7 +11,7 @@ import { LoginActivityRepository } from '../user-profile/LoginActivityRepository
 import type { ShowMemberStatsController } from './controllers/ShowMemberStatsController.ts';
 import type { ShowRecentSignInsController } from './controllers/ShowRecentSignInsController.ts';
 
-/** An island that writes the session — what E52 forbids. */
+/** An island that writes the session — what an island must not do. */
 class WritesSessionIsland extends Controller {
   readonly #session: Session;
   constructor(session: Session) {
@@ -73,7 +73,7 @@ beforeEach(async () => {
   [ada, alan] = users as [User, User];
 });
 
-describe('the dashboard: a page of islands (E48)', () => {
+describe('the dashboard: a page of islands', () => {
   it('is a page that loads nothing itself — each panel is an island route', async () => {
     await app.actingAs(ada).navigating().get('/dashboard').assertOk().assertPage('dashboard/Show', {});
   });
@@ -93,7 +93,7 @@ describe('the dashboard: a page of islands (E48)', () => {
     expect([region.query, region.queryDefaults]).toEqual([{ range: '7d' }, { range: '30d', limit: 5 }]);
     expect(response.headers.get('cache-control')).toBe('no-store, private');
     expect(response.headers.getSetCookie()).toEqual([]);
-    // All time: both, newest first — an invalid limit falls back to its default (E56).
+    // All time: both, newest first — an invalid limit falls back to its default.
     await app
       .actingAs(ada)
       .island('dashboard.sign-ins', {}, { range: 'all' })
@@ -101,20 +101,20 @@ describe('the dashboard: a page of islands (E48)', () => {
     await app.actingAs(ada).islanding().get('/dashboard/islands/sign-ins?limit=999').assertIsland('dashboard/RecentSignIns');
   });
 
-  it('counter-check: a direct hit is a 404 — the browser never shows an island as a page (E52)', async () => {
+  it('a direct hit is a 404 — the browser never shows an island as a page', async () => {
     await app.actingAs(ada).get('/dashboard/islands/sign-ins', { headers: { accept: 'text/html' } }).assertNotFound();
     await app.actingAs(ada).navigating().get('/dashboard/islands/sign-ins').assertNotFound();
     await app.actingAs(ada).prefetching().get('/dashboard/islands/sign-ins').assertNotFound();
   });
 
-  it('counter-check: a guest’s island is `unauthorized` (204) — no redirect to the login, nothing remembered for after it', async () => {
+  it('a guest’s island is `unauthorized` (204) — no redirect to the login, nothing remembered for after it', async () => {
     const response = await app.island('dashboard.sign-ins').assertStatus(204).assertIslandStatus('unauthorized');
     expect(response.headers.get('location')).toBeNull();
     // The session is not written at all (no cookie): no "intended" URL that would send the user to an island after login.
     expect(response.headers.getSetCookie()).toEqual([]);
   });
 
-  it('counter-check: the island’s own authorization holds — not an administrator: `forbidden`, and no number of it reaches the browser', async () => {
+  it('the island’s own authorization holds — not an administrator: `forbidden`, and no number of it reaches the browser', async () => {
     const response = await app.actingAs(alan).island('dashboard.members').assertStatus(204).assertIslandStatus('forbidden');
     expect(response.body).toBe('');
     await app.actingAs(ada).island('dashboard.members').assertIsland<ShowMemberStatsController>('dashboard/MemberStats', { stats: { members: 3, verified: 3 } });
@@ -123,13 +123,13 @@ describe('the dashboard: a page of islands (E48)', () => {
     await app.actingAs(unverified).island('dashboard.members').assertStatus(204).assertIslandStatus('unauthorized');
   });
 
-  it('counter-check: a failing island is its own `exception` — the page answers as always', async () => {
+  it('a failing island is its own `exception` — the page answers as always', async () => {
     app.container.instance(ProfileDirectory, { memberStats: () => Promise.reject(new Error('database down')) } as unknown as ProfileDirectory);
     await app.actingAs(ada).island('dashboard.members').assertStatus(500).assertIslandStatus('exception');
     await app.actingAs(ada).navigating().get('/dashboard').assertOk().assertPage('dashboard/Show');
   });
 
-  it('counter-check: an island is read-only (E52) — writing the session, flashing or deferring work throws in development', async () => {
+  it('an island is read-only — writing the session, flashing or deferring work throws in development', async () => {
     const login = await app.actingAs(ada).navigating().get('/dashboard').assertOk();
     const browser = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     const wrote = await browser.islanding().get('/fixtures/islands/writes-session').assertStatus(500).assertIslandStatus('exception');
@@ -138,11 +138,11 @@ describe('the dashboard: a page of islands (E48)', () => {
     await browser.islanding().get('/fixtures/islands/defers').assertStatus(500).assertIslandStatus('exception');
     // Nothing of it reached the session.
     (await browser.navigating().get('/dashboard').assertOk()).assertSessionMissing('island_wrote').assertNoFlash();
-    // (The message, with debug on: "session.put('island_wrote') in an island request (GET …): an island is read-only (E52) …" —
+    // (The message, with debug on: "session.put('island_wrote') in an island request (GET …): an island is read-only …" —
     // see packages/server/src/islands.test.ts.)
   });
 
-  it('counter-check: an island never signs in by the remember-me cookie — the token stays for the page (not "stolen")', async () => {
+  it('an island never signs in by the remember-me cookie — the token stays for the page (not "stolen")', async () => {
     const kj = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { email: kj.email, password: 'password', remember: 'on' } });
     // A new browser session: only the remember-me cookie. An island comes first (a poll) — for it, nobody is signed in.
@@ -152,7 +152,7 @@ describe('the dashboard: a page of islands (E48)', () => {
     await remembered.navigating().get('/dashboard').assertOk().assertAuthenticated(kj);
   });
 
-  it('counter-check: islands consume no flash message — two polls between a redirect and its page leave the message for the page', async () => {
+  it('islands consume no flash message — two polls between a redirect and its page leave the message for the page', async () => {
     const login = await app.actingAs(ada).navigating().get('/dashboard').assertOk();
     const browser = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     await browser.post('/fixtures/save').assertRedirect('/dashboard');

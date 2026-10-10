@@ -37,7 +37,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 
   async markEmailVerified(id: number): Promise<void> {
     const now = new Date();
-    // The first confirmation is kept for good (E203): a later unconfirmed change of address never makes the account prunable.
+    // The first confirmation is kept for good: a later unconfirmed change of address never makes the account prunable.
     await this.db
       .updateTable('users')
       .set({ email_verified_at: now, first_verified_at: sql<Date>`coalesce(first_verified_at, ${now.toISOString()})`, updated_at: now })
@@ -46,11 +46,11 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * A new address at once, unverified — `'duplicate'` when another account has it. Only with `AUTH_PRIVATE_REGISTRATION=false`
-   * (E193): the default keeps a change pending (`requestEmailChange`) until its link is clicked.
+   * A new address at once, unverified — `'duplicate'` when another account has it. Only with `AUTH_PRIVATE_REGISTRATION=false`:
+   * the default keeps a change pending (`requestEmailChange`) until its link is clicked.
    */
   async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
-    // A confirmed account stays one (E203): what confirmed it — its link, or `email_verified_at` alone (an import, a seeder, an
+    // A confirmed account stays one: what confirmed it — its link, or `email_verified_at` alone (an import, a seeder, an
     // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so the nightly prune never takes it.
     // (A taken address changes nothing else: the account was confirmed all the same.)
     await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
@@ -58,7 +58,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * A change of address, pending (private registration, E146): the new address waits beside the account's own — with the hash of
+   * A change of address, pending (private registration): the new address waits beside the account's own — with the hash of
    * its link's token and when it expires — until the link is clicked. A newer request replaces it (and so its link). Written the
    * same for a free address and a taken one: whether another account has it is never asked here.
    */
@@ -101,7 +101,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
         return 'taken';
       }
       if (!changed) return 'invalid';
-      // A confirmed address — the first one, if the account had none before (E203: kept for good).
+      // A confirmed address — the first one, if the account had none before (kept for good).
       await users.db.updateTable('users').set({ first_verified_at: now }).where('id', '=', id).where('first_verified_at', 'is', null).execute();
       return { user: changed, previous: claimed.email };
     });
@@ -124,7 +124,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 
   /**
    * Up to `limit` accounts (oldest first) that never confirmed an address and were made before `since` — what
-   * `auth:prune-unverified` deletes (E203). Never one that was confirmed once (`first_verified_at`): with
+   * `auth:prune-unverified` deletes. Never one that was confirmed once (`first_verified_at`): with
    * `AUTH_PRIVATE_REGISTRATION=false` a change of address leaves it unconfirmed, and it stays all the same.
    */
   async unconfirmedSince(since: Date, limit: number): Promise<number[]> {

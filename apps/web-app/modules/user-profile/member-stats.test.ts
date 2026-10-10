@@ -10,7 +10,7 @@ const post = (app: Awaited<ReturnType<typeof createTestApp>>, email: string) =>
   app.post('/register', { form: { name: 'New Member', email, password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } });
 const register = (app: Awaited<ReturnType<typeof createTestApp>>, email: string) => post(app, email).assertRedirect('/register/sent');
 
-// The dashboard's member numbers as a snapshot, rebuilt by a unique job after registrations (W6 step 4, E85).
+// The dashboard's member numbers as a snapshot, rebuilt by a unique job after registrations.
 describe('the member numbers snapshot', () => {
   it('a burst of registrations queues ONE rebuild (unique) — and the snapshot follows once it ran', async () => {
     const app = await createTestApp(application, { database: 'refresh' });

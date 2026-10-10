@@ -1,5 +1,5 @@
 /**
- * Type guarantees of server rendering per page (W5 step 7) — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run.
+ * Type guarantees of server rendering per page — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run.
  */
 import type { SsrRender, SsrRenderOptions } from '@marmeon/http/page';
 import type { PageComponent, PageSsr } from '@marmeon/react';

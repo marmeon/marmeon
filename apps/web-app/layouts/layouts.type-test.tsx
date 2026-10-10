@@ -1,5 +1,5 @@
 /**
- * Type guarantees of layouts (E35) — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run.
+ * Type guarantees of layouts — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run.
  * A page gets its layout as a plain property: no cast, no wrapper.
  */
 import { Link, type DefaultLayout, type LayoutProps, type PageComponent, type PageLayout } from '@marmeon/react';

@@ -171,7 +171,7 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(asAlan).not.toContain('data-export');
   });
 
-  it('CSRF holds for the table\'s POSTs (the page\'s `web` group, E143): another site is refused', async () => {
+  it('CSRF holds for the table\'s POSTs (the page\'s `web` group): another site is refused', async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', seed: true, csrf: true });
     const [admin, member] = await people();

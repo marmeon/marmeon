@@ -6,7 +6,7 @@ import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 
 /**
- * Flash messages on the server (E60): a protocol field, taken only by an answer the user is shown — a page, a partial reload,
+ * Flash messages on the server: a protocol field, taken only by an answer the user is shown — a page, a partial reload,
  * a layer, an action — never by a prefetch or an island; delivered once. (In a tab, with the real navigator: back-button.test.ts.)
  */
 
@@ -27,8 +27,8 @@ async function saved() {
   return app.withCookie('marmeon_session', response.cookie('marmeon_session')!);
 }
 
-describe('flash messages: taken only by an answer that is shown (E60)', () => {
-  it('counter-check: a prefetch takes none — it says one waits, and the page it leads to delivers it', async () => {
+describe('flash messages: taken only by an answer that is shown', () => {
+  it('a prefetch takes none — it says one waits, and the page it leads to delivers it', async () => {
     const browser = await saved();
     const prefetched = await browser.prefetching().get('/people').assertOk().assertNoFlash();
     expect(prefetched.headers.get(FLASH_WAITING_HEADER)).toBe('true');
@@ -38,14 +38,14 @@ describe('flash messages: taken only by an answer that is shown (E60)', () => {
     expect((await browser.prefetching().get('/people')).headers.get(FLASH_WAITING_HEADER)).toBeNull();
   });
 
-  it('counter-check: a partial reload delivers what waits — whatever props it asks for (a form sent with `only` lost it, W5)', async () => {
+  it('a partial reload delivers what waits — whatever props it asks for (a form sent with `only` lost it)', async () => {
     const browser = await saved();
     const partial = await browser.reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(profile(ada)).assertOk();
     expect(Object.keys(partial.page()!.props).sort()).toEqual(['activity', 'errors']);
     partial.assertFlash('toast', { message: 'Profile saved.' });
   });
 
-  it('counter-check: delivered once — the next page, partial reload or deferred load brings it no more (Inertia #3015)', async () => {
+  it('delivered once — the next page, partial reload or deferred load brings it no more', async () => {
     const browser = await saved();
     await browser.navigating().get(profile(ada)).assertFlash('toast');
     await browser.reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(profile(ada)).assertNoFlash();
@@ -60,13 +60,13 @@ describe('flash messages: taken only by an answer that is shown (E60)', () => {
     expect(document.layers().map((layer) => layer.flash)).toEqual([undefined]);
   });
 
-  it('counter-check: a response with a message is never kept by a cache — a document from the HTTP cache would fire it again', async () => {
+  it('a response with a message is never kept by a cache — a document from the HTTP cache would fire it again', async () => {
     const out = await app.actingAs(ada).post('/logout').assertRedirect('/login');
     const login = await app.withCookie('marmeon_session', out.cookie('marmeon_session')!).get('/login', { headers: { accept: 'text/html' } }).assertOk();
     login.assertFlash('toast', { message: 'You have been signed out.' }).assertHeader('cache-control', 'no-store');
   });
 
-  it('an island takes none — read-only (E52): the message stays for the page', async () => {
+  it('an island takes none — read-only: the message stays for the page', async () => {
     const browser = await saved();
     await browser.island('dashboard.sign-ins').assertOk().assertNoFlash();
     await browser.navigating().get('/dashboard').assertFlash('toast');

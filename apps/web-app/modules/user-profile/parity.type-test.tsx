@@ -1,5 +1,5 @@
 /**
- * Type guarantees of remembered state (E63), once props, `<Form>` and instant visits (E64) against this app's routes — checked
+ * Type guarantees of remembered state, once props, `<Form>` and instant visits against this app's routes — checked
  * by `tsc` (`pnpm typecheck`, `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the
  * comment above it is the message they get (read with the directive removed).
  */
@@ -20,7 +20,7 @@ export function Remembered() {
   // Said so: kept (never a password).
   useRemember('card_number', '', { sensitive: true });
   // Argument of type '"password"' is not assignable to parameter of type '"'password' looks like a password — passwords are
-  // never remembered (E63): they stay in the field until the page is left"'.
+  // never remembered: they stay in the field until the page is left"'.
   // @ts-expect-error
   useRemember('password', '', { sensitive: true });
 
@@ -31,9 +31,9 @@ export function Remembered() {
   // @ts-expect-error
   useForm('auth.register.store', {}, { name: '', email: '', password: '', password_confirmation: '' }, { remember: { include: ['password'] } });
 
-  // Step 9's finding, fixed: params forgotten — "No overload matches this call. The last overload gave the following error. …
+  // Params forgotten — "No overload matches this call. The last overload gave the following error. …
   // Type '{ name: string; bio: string; }' is not assignable to type '"'user-profile.update' takes route parameters — pass them
-  // before the initial data: useForm('user-profile.update', params, initial)"'." (before: "'string' is not assignable to 'object'")
+  // before the initial data: useForm('user-profile.update', params, initial)"'."
   // @ts-expect-error
   useForm('user-profile.update', { name: '', bio: '' });
   return null;

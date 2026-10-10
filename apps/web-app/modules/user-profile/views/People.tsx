@@ -62,15 +62,15 @@ export default function People({ people, now }: Props) {
         <ul>
           {people.data.map((person) => (
             <li key={person.id}>
-              {/* The avatar (W6.9), from the public disk — decorative next to the name, so no alt text of its own. The profile shows
-                  the same one (E185): a view transition moves it there and back. */}
+              {/* The avatar, from the public disk — decorative next to the name, so no alt text of its own. The profile shows
+                  the same one: a view transition moves it there and back. */}
               {person.avatar && (
                 <ViewTransition name={`avatar-${person.id}`} share="avatar">
                   <img src={person.avatar} alt="" width={24} height={24} loading="lazy" className="avatar avatar-small" />
                 </ViewTransition>
               )}{' '}
-              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once, the avatar moving into it (E185).
-                  No instant placeholder here (E64): it would take the list's place at once, before the transition — and the avatar
+              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once, the avatar moving into it.
+                  No instant placeholder here: it would take the list's place at once, before the transition — and the avatar
                   with it (the main navigation's links have one). */}
               <Link route="user-profile.show" params={{ user: person.id }} prefetch>
                 {person.name}
@@ -85,7 +85,7 @@ export default function People({ people, now }: Props) {
       <Pagination meta={people.meta} />
       <aside aria-labelledby="recent-sign-ins">
         <h2 id="recent-sign-ins">{t('people.recent')}</h2>
-        {/* The dashboard's island, reused (E48): the same route, its own query. Typing and sorting above reload the page's
+        {/* The dashboard's island, reused: the same route, its own query. Typing and sorting above reload the page's
             `people` only — the island stays as it is (no request). */}
         <Island route="dashboard.sign-ins" query={{ limit: 3, range: 'all' }} fallback={<p aria-busy="true">…</p>} />
       </aside>
@@ -96,7 +96,7 @@ export default function People({ people, now }: Props) {
   );
 }
 
-/** The list before its answer (E64, an instant visit from the main navigation). */
+/** The list before its answer (an instant visit from the main navigation). */
 function PeoplePlaceholder() {
   const t = useTranslation('user-profile');
   return (

@@ -30,7 +30,7 @@ afterAll(() => {
 const dump = (span: ReadableSpan) => JSON.stringify({ name: span.name, attributes: span.attributes, events: span.events, status: span.status });
 const parentOf = (span: ReadableSpan | undefined) => span?.parentSpanContext?.spanId;
 
-describe('OpenTelemetry in the web app (E120)', () => {
+describe('OpenTelemetry in the web app', () => {
   it('a registration: `POST /register` with its queries (no parameters), the welcome job in the same trace, its mail; trace ids in the log', async () => {
     const lines: Record<string, unknown>[] = [];
     const stream = new Writable({
@@ -64,14 +64,14 @@ describe('OpenTelemetry in the web app (E120)', () => {
     expect(insert.name).toBe('INSERT users');
     expect(parentOf(insert)).toBe(request.spanContext().spanId);
 
-    // The welcome job ran in the request's trace (through the job's traceparent, E131), its mail inside it.
+    // The welcome job ran in the request's trace (through the job's traceparent), its mail inside it.
     const job = spans.find((span) => span.name === 'process auth.send-welcome-mail')!;
     expect(job.spanContext().traceId).toBe(traceId);
     const mail = spans.find((span) => span.name === 'mail WelcomeMail')!;
     expect(parentOf(mail)).toBe(job.spanContext().spanId);
     expect(mail.attributes).toMatchObject({ 'marmeon.mail.mode': 'send', 'marmeon.mail.recipients': 1 });
 
-    // Nothing secret in any span (E125): the password, its hash, the address, the session.
+    // Nothing secret in any span: the password, its hash, the address, the session.
     const everything = spans.map(dump).join('\n');
     expect(everything).not.toContain(password);
     expect(everything).not.toMatch(/\$argon2id\$/);

@@ -20,7 +20,7 @@ const register = (app: Awaited<ReturnType<typeof createTestApp>>, language = 'en
     headers: { 'accept-language': language },
   });
 
-// The web app's first queued job (W6 step 3): the welcome mail after a registration — queued in the request, sent by a worker.
+// The welcome mail after a registration — queued in the request, sent by a worker.
 describe('the welcome mail', () => {
   it('is queued by the registration (QueueFake), not sent in the request — and sent when the job runs, in the account language', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
@@ -31,7 +31,7 @@ describe('the welcome mail', () => {
     app.mail.assertNotSent(WelcomeMail);
 
     // The welcome mail, the dashboard's member numbers (user-profile, a unique job) and the queued verification listener —
-    // nobody signs in with a registration (private registration, E146): no Login listener.
+    // nobody signs in with a registration (private registration): no Login listener.
     expect(await app.queue.work()).toMatchObject({ processed: 3, failed: 0 });
     const [sent] = app.mail.sent(WelcomeMail);
     expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei Marmeon' });
@@ -63,7 +63,7 @@ describe('the welcome mail', () => {
     await app.assertDatabaseCount('jobs', 0);
   });
 
-  it('is part of the registration transaction (E107): a failing listener leaves no account, no job, no mail', async () => {
+  it('is part of the registration transaction: a failing listener leaves no account, no job, no mail', async () => {
     const app = await createTestApp(application, { database: 'refresh', queue: 'real' });
     // A third listener on Registered, after the two of the auth module, fails.
     app.make(EventRegistry).listen(Registered, () => {
@@ -79,7 +79,7 @@ describe('the welcome mail', () => {
     const ok = await createTestApp(application, { database: 'refresh', queue: 'real' });
     await register(ok).assertRedirect('/register/sent');
     await ok.assertDatabaseHas('users', { email: 'kj@example.com' });
-    // The welcome and member-stats jobs and the verification listener — all three in the transaction (E109).
+    // The welcome and member-stats jobs and the verification listener — all three in the transaction.
     await ok.assertDatabaseCount('jobs', 3);
     await ok.assertDatabaseHas('jobs', { queue: 'mail' });
     ok.mail.assertNotQueued(VerifyEmailMail); // composed by the worker
@@ -87,7 +87,7 @@ describe('the welcome mail', () => {
     ok.mail.assertQueued(VerifyEmailMail);
   });
 
-  it('is sent once per account (job.once, E85): a second job for the same account — or a retry after the mail went out — sends nothing', async () => {
+  it('is sent once per account (job.once): a second job for the same account — or a retry after the mail went out — sends nothing', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await register(app).assertRedirect('/register/sent');
     const user = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;

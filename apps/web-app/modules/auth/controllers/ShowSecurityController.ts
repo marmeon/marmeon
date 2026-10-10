@@ -20,8 +20,8 @@ export class ShowSecurityController extends Controller {
     return this.view('auth/Security', {
       viaRemember: this.#auth.viaRemember(),
       email: ctx.user.email,
-      // Private registration (E146, the default): a change of address waits for its link — the field shows the current address
-      // again after a request. With AUTH_PRIVATE_REGISTRATION=false (E193) the new address is the account's at once.
+      // Private registration (the default): a change of address waits for its link — the field shows the current address
+      // again after a request. With AUTH_PRIVATE_REGISTRATION=false the new address is the account's at once.
       emailChangeWaits: this.#private,
       // The address that waits for its link — what this user typed, free or taken alike.
       pendingEmail: this.#private && pending && expires && new Date(expires).getTime() > this.#clock.now() ? pending : null,

@@ -1,5 +1,5 @@
 /**
- * Type guarantees of the merged, paginated list (W9 step 3) against this app's notifications — checked by `tsc` (`pnpm typecheck`,
+ * Type guarantees of the merged, paginated list against this app's notifications — checked by `tsc` (`pnpm typecheck`,
  * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message
  * they get (read with the directive removed).
  */
@@ -9,7 +9,7 @@ import type { ShowNotificationsController } from './controllers/ShowNotification
 
 export function MergedList() {
   const router = useRouter<ShowNotificationsController>();
-  // A reload after an action replaces what it brings (E183) — `reset` names fewer props, `[]` merges them (appends) as before.
+  // A reload after an action replaces what it brings — `reset` names fewer props, `reset: []` keeps merging them (appending).
   router.reloading({ only: ['notifications', 'bell'] });
   router.reloading({ only: ['notifications'], reset: [] });
   // Type '"notifcations"' is not assignable to type '"auth" | "bell" | "errors" | "locales" | "notifications"'. Did you mean '"notifications"'?

@@ -11,7 +11,7 @@ async function signedIn(app: TestApp, user: User) {
   return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 }
 
-describe('"Download my data" (W6.8: a private disk and a signed, expiring URL)', () => {
+describe('"Download my data" (a private disk and a signed, expiring URL)', () => {
   it('writes the export to the private disk and redirects to a signed download that works for five minutes', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
@@ -38,7 +38,7 @@ describe('"Download my data" (W6.8: a private disk and a signed, expiring URL)',
     await app.get(location).assertForbidden(); // expired
   });
 
-  it('counter-check: the private file is never public — not under /storage, not with a tampered or foreign signature', async () => {
+  it('the private file is never public — not under /storage, not with a tampered or foreign signature', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     const ada = await app.factory(UserFactory).create();
     const bob = await app.factory(UserFactory).create();

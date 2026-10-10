@@ -1,5 +1,5 @@
 /**
- * Type guarantees of partial reloads and deferred props (W5.3, E7) against this app's profile page — checked by
+ * Type guarantees of partial reloads and deferred props against this app's profile page — checked by
  * `tsc` (`pnpm typecheck`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment
  * above it is the message they get (read with the directive removed).
  */

@@ -6,10 +6,10 @@ import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
 /**
- * Signing out while another request of the same browser is still running — since W5 step 5 the normal case: every
+ * Signing out while another request of the same browser is still running — the normal case: every
  * profile page loads its deferred activity right after it is shown, so a quick "Sign out" overtakes that request.
  * The request that started before the sign-out must not bring the session back — on every server-side session store
- * (E45: the store's atomic compare-and-set — `gone`, E145): `memory` (.env.test), `database` (this app's, .env.example) and `redis`.
+ * (the store's atomic compare-and-set — `gone`): `memory` (.env.test), `database` (this app's, .env.example) and `redis`.
  */
 
 /** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */

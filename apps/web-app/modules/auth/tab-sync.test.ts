@@ -7,11 +7,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
-// The tabs below are browsers without the Navigation API (History, popstate): the History fallback, as createMarmeonApp attaches it (E184).
+// The tabs below are browsers without the Navigation API (History, popstate): the History fallback, as createMarmeonApp attaches it.
 const HISTORY = await loadHistoryFallback();
 
 /**
- * Tab sync (W8 step 8, E148, E165) against the real app: the session's epoch on every page and at `/_marmeon/session`, flash
+ * Tab sync against the real app: the session's epoch on every page and at `/_marmeon/session`, flash
  * messages bound to the document that flashed them — and two tabs of one browser (one cookie jar, one set of channels), each
  * document running the real client navigator with the `tabSync` feature, as `createMarmeonApp` attaches it.
  */
@@ -36,7 +36,7 @@ async function signIn(email = 'ada@example.com'): Promise<TestApp> {
   return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 }
 
-describe('the session’s epoch (E165)', () => {
+describe('the session’s epoch', () => {
   it('opaque, and the same for every page of one signed-in session — flash messages and other writes leave it as it is', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
@@ -102,7 +102,7 @@ describe('/_marmeon/session is read-only', () => {
   });
 });
 
-describe('flash messages stay with the document that flashed them (E165)', () => {
+describe('flash messages stay with the document that flashed them', () => {
   it('another tab’s poll does not take a message this tab’s save flashed — this tab’s next answer does', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
@@ -336,7 +336,7 @@ class Tab {
   }
 }
 
-describe('two tabs of one browser (W8 step 8)', () => {
+describe('two tabs of one browser', () => {
   async function signedInTwice() {
     const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
     const browser = new Browser(createHttpKernel(app.application));

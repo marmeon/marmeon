@@ -15,7 +15,7 @@ export class RecordLastLogin {
 
   async handle(event: Login): Promise<void> {
     await this.#activity.record(event.user.id, event.at);
-    // Live (W6.10): the "Recent sign-ins" island on every open dashboard (and /people) reloads — after the commit, if any.
+    // Live: the "Recent sign-ins" island on every open dashboard (and /people) reloads — after the commit, if any.
     await this.#broadcast.refresh(SIGN_INS_CHANNEL);
   }
 }

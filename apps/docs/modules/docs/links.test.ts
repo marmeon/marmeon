@@ -10,7 +10,7 @@ import { DocsRepository } from './DocsRepository.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 /**
- * The link check (instead of checking a static export, E133): every page — the start page and the docs — renders on the server,
+ * The link check (instead of checking a static export): every page — the start page and the docs — renders on the server,
  * and every link on it that stays in the docs leads to a page that exists — and to an anchor that exists on it. A link of a page
  * that breaks on GitHub breaks here; a link to a package README (a card for npm, no page) is "no such page".
  */
@@ -57,7 +57,7 @@ describe('every page', () => {
     policies.add(response.headers.get('content-security-policy'));
   }, SSR_TEST_TIMEOUT);
 
-  it("runs no inline script — the 'self' policy of a publicly cached page holds without a nonce (E147)", () => {
+  it("runs no inline script — the 'self' policy of a publicly cached page holds without a nonce", () => {
     expect(inline.size).toBe(PAGES.length);
     expect([...inline].filter(([, found]) => found.length > 0)).toEqual([]);
     // One policy for every page, without a nonce: the body — and so the ETag — is the same for everybody.
@@ -91,7 +91,7 @@ describe('every page', () => {
     expect(internal).toBeGreaterThan(7_340);
   });
 
-  it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link: E10) — no directory', () => {
+  it('names only files that exist where a page points at the code (`src/kernel.ts` — code text, no link) — no directory', () => {
     // A directory is no file to name: a link to `../packages/queue/` would stay code text that says nothing — link the docs page.
     const what = (file: string) => (!existsSync(join(repo, file)) ? 'no such file' : statSync(join(repo, file)).isFile() ? undefined : 'a directory, not a file');
     const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.flatMap((file) => (what(file) ? [`${page.file}: ${file} — ${what(file)}`] : [])));

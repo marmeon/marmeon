@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 
-// Server rendering in tests (W5 step 7): through the app's Vite setup, so markup and <Head> are testable.
+// Server rendering in tests: through the app's Vite setup, so markup and <Head> are testable.
 let app: TestApp;
 let ada: User, alan: User;
 beforeEach(async () => {
@@ -16,16 +16,16 @@ beforeEach(async () => {
 const page = { headers: { accept: 'text/html' } };
 
 describe('the profile page, rendered on the server', () => {
-  it('hydrates: what the server rendered is what the browser renders from the page object — dates included (W5.1 finding)', async () => {
-    // A sign-in leaves a timestamp with milliseconds: before W5.7 the server rendered it from a Date
-    // ("29 seconds ago" vs "28" in the browser, and a `dateTime` the browser never sees).
+  it('hydrates: what the server rendered is what the browser renders from the page object — dates included', async () => {
+    // A sign-in leaves a timestamp with milliseconds: rendered from a Date, the server would say "29 seconds ago" where the
+    // browser says "28" (and write a `dateTime` the browser never sees).
     await app.post('/login', { form: { email: alan.email, password: 'password' } }).assertRedirect('/users/me');
     const response = await app.actingAs(ada).get(`/users/${alan.id}`, page).assertOk().assertServerRendered().assertHydrates();
     const { lastLoginAt } = response.page()!.props as { lastLoginAt: string };
     expect(response.body).toContain(`<time dateTime="${lastLoginAt}"`);
   });
 
-  it('puts the page’s <Head> into the document head — title through the template, meta tags (Merkposten W2)', async () => {
+  it('puts the page’s <Head> into the document head — title through the template, meta tags', async () => {
     await app
       .actingAs(ada)
       .get(`/users/${alan.id}`, page)
@@ -48,7 +48,7 @@ describe('the profile page, rendered on the server', () => {
   });
 });
 
-describe('view transitions (E185): the avatars the list and the profile share, rendered on the server', () => {
+describe('view transitions: the avatars the list and the profile share, rendered on the server', () => {
   it('without inline styles — view-transition-name only through the CSSOM (React, during a transition): a strict style-src blocks none', async () => {
     await app.make(UserRepository).update(ada.id, { avatar_path: 'avatars/ada.png' });
     for (const url of ['/people', `/users/${ada.id}`]) {
@@ -62,21 +62,21 @@ describe('view transitions (E185): the avatars the list and the profile share, r
   });
 });
 
-describe('the app’s pages, rendered on the server (W9 step 10b)', () => {
-  it('counter-check: carry no style attribute — the views name classes of styles/app.css (a strict style-src would block one)', async () => {
+describe('the app’s pages, rendered on the server', () => {
+  it('carry no style attribute — the views name classes of styles/app.css (a strict style-src would block one)', async () => {
     // Signed in for real: a fresh sign-in counts as a confirmed password (the settings pages are in sudo mode).
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me');
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     for (const url of ['/dashboard', '/people', `/users/${ada.id}`, `/users/${ada.id}/edit`, '/members', '/notifications', '/settings/security', '/settings/tokens']) {
       const { body } = await session.get(url, page).assertOk().assertServerRendered();
-      // The framework's LayerDialog too (W10 step 7, E202): its look is classes of @marmeon/react/styles.css.
+      // The framework's LayerDialog too: its look is classes of @marmeon/react/styles.css.
       const styled = body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
       expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
     }
   });
 });
 
-describe('the people list, rendered on the server — its query state included (E55)', () => {
+describe('the people list, rendered on the server — its query state included', () => {
   it('renders the filtered, sorted list from the URL, and it hydrates: useQueryState reads the parsed query of the page', async () => {
     const response = await app.actingAs(ada).get('/people?q=a&sort=-name', page).assertServerRendered().assertHydrates();
     expect(response.body).toContain('value="a"'); // the search field holds the query
@@ -94,7 +94,7 @@ describe('the people list, rendered on the server — its query state included (
   });
 });
 
-describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
+describe('a deep link of a layer, rendered on the server', () => {
   it('renders the edit layer over the profile in one document — and it hydrates', async () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}/edit`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<dialog open="" data-marmeon-layer="user-profile/Edit"');
@@ -106,7 +106,7 @@ describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
     expect(response.body.match(/<dialog open="" data-marmeon-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
-    // Their frames carry no style attribute (W10 step 7, E202): classes of @marmeon/react/styles.css, linked by the built index.html.
+    // Their frames carry no style attribute: classes of @marmeon/react/styles.css, linked by the built index.html.
     const styled = response.body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
     expect(styled, `inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
     expect(response.body).toMatch(/<dialog open="" data-marmeon-layer="user-profile\/Edit"[^>]* class="marmeon-layer marmeon-layer--(modal|slideover)[ "]/);

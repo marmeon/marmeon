@@ -7,15 +7,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
-// The tab below is a browser without the Navigation API (History, popstate): the History fallback, as createMarmeonApp attaches it (E184).
+// The tab below is a browser without the Navigation API (History, popstate): the History fallback, as createMarmeonApp attaches it.
 const HISTORY = await loadHistoryFallback();
 
 /**
- * Back after signing out (W5 step 3, E36) — the real app behind a simulated browser tab that keeps what a
+ * Back after signing out — the real app behind a simulated browser tab that keeps what a
  * browser keeps: history entries with their serialized `history.state` (on disk for session restore),
  * one live document per "document state" (pushState entries share their document), the back/forward cache
- * for documents that were not `no-store`, and an HTTP cache that Back/Forward prefers (Chromium does — a
- * document without `Cache-Control` came back from it, without a request, in the browser check).
+ * for documents that were not `no-store`, and an HTTP cache that Back/Forward prefers (Chromium does).
  * Each document runs the real client navigator of @marmeon/react against the app's kernel.
  */
 
@@ -37,7 +36,7 @@ interface Doc {
   readonly listeners: Map<string, Set<(event: Event) => void>>;
   /** What the tab shows: the page the navigator rendered last. */
   visible: PageObject;
-  /** The layers over it (E53), as the navigator rendered them last. */
+  /** The layers over it, as the navigator rendered them last. */
   layers: PageObject[];
   /** The document's response said `no-store`: it never enters the back/forward cache. */
   readonly noStore: boolean;
@@ -56,7 +55,7 @@ class FakeTab {
   #pending: Promise<unknown>[] = [];
   /** What the server was asked, in order (`GET /x` for documents, `GET /x (visit)` for page JSON). */
   readonly requests: string[] = [];
-  /** The flash messages the tab's documents fired (E60), in order — `toast: <message>`: what the toasts would show. */
+  /** The flash messages the tab's documents fired, in order — `toast: <message>`: what the toasts would show. */
   readonly toasts: string[] = [];
 
   /** Whether documents that may be stored enter the back/forward cache (Chromium: not with an open WebSocket, …). */
@@ -71,7 +70,7 @@ class FakeTab {
     return this.#current!.visible;
   }
 
-  /** The layers on screen over the page (E53). */
+  /** The layers on screen over the page. */
   get layers(): PageObject[] {
     return this.#current!.layers;
   }
@@ -81,14 +80,14 @@ class FakeTab {
     return this.#current!.navigator;
   }
 
-  /** An action of the current document (E59): no navigation — then everything it started has finished. */
+  /** An action of the current document: no navigation — then everything it started has finished. */
   async action(url: string, options?: ActionOptions) {
     const outcome = await this.navigator.use(actions).run(url, options);
     await this.idle();
     return outcome;
   }
 
-  /** A patch of the page on screen for an action (E59) — the patches of its history entry, as the adapter makes them. */
+  /** A patch of the page on screen for an action — the patches of its history entry, as the adapter makes them. */
   optimistic(patch: PropsPatch): OptimisticUpdate {
     return { target: this.navigator.use(optimistic).target(this.navigator.regionOwner.entry!), patch };
   }
@@ -100,7 +99,7 @@ class FakeTab {
 
   /**
    * A form sent in another tab of the same browser, whose redirect that tab has not followed yet: what it flashed waits in the
-   * session (E60) for whichever answer the user is shown next.
+   * session for whichever answer the user is shown next.
    */
   async submitElsewhere(method: string, path: string, form: Record<string, string>): Promise<void> {
     const cookie = [...this.#cookies].map(([name, value]) => `${name}=${value}`).join('; ');
@@ -137,7 +136,7 @@ class FakeTab {
 
   /** A hovered `<Link prefetch>` in the current document. */
   async prefetch(url: string): Promise<void> {
-    // As `<Link prefetch>` does: the prefetch code loads with the first one (E74).
+    // As `<Link prefetch>` does: the prefetch code loads with the first one.
     await prefetchWith(this.#current!.navigator, url);
     await this.idle();
   }
@@ -228,8 +227,8 @@ class FakeTab {
       layers: page.layers ?? [],
       navigator: new Navigator({
         initialPage: page,
-        // A deep link's document: the layers attached before it is shown, as an adapter does (createMarmeonApp loads them first,
-        // E71). Any other document loads them when an answer is a layer.
+        // A deep link's document: the layers attached before it is shown, as an adapter does (createMarmeonApp loads them
+        // first). Any other document loads them when an answer is a layer.
         features: page.layers ? [HISTORY, layers] : [HISTORY],
         window: this.#window(listeners),
         render: async (next, { layers }) => {
@@ -265,7 +264,7 @@ class FakeTab {
         replaceState(state: unknown, _title: string, url?: string | URL | null) {
           tab.entries[tab.index] = { ...entry(), url: new URL(url ?? entry().url, entry().url).href, state: JSON.stringify(state) };
         },
-        // Closing a layer goes back (E53) — a task later, like the browser's.
+        // Closing a layer goes back — a task later, like the browser's.
         go(delta: number) {
           if (delta === -1) tab.#pending.push(new Promise((resolve) => setTimeout(resolve, 0)).then(() => tab.back()));
         },
@@ -356,7 +355,7 @@ async function createTokenThenSignOut() {
   await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
   expect(tab.visible.component).toBe('user-profile/Show');
   await tab.visit('/settings/tokens');
-  // The form is a layer over the list; its answer — the plain text — replaces it, shown once (E53).
+  // The form is a layer over the list; its answer — the plain text — replaces it, shown once.
   await tab.visit('/settings/tokens/create', { layer: true });
   await tab.layerVisit('/settings/tokens', { method: 'post', data: { name: 'Backup script', abilities: ['users:read'] } });
   expect(tab.layers.map((layer) => layer.component)).toEqual(['auth/NewAccessToken']);
@@ -373,11 +372,11 @@ const leaks = (page: PageObject, plainText: string) => {
   return [plainText, 'ada@example.com', 'Ada Lovelace'].filter((secret) => shown.includes(secret));
 };
 
-describe('Back after signing out (E36)', () => {
+describe('Back after signing out', () => {
   it.each([
     ['with the back/forward cache', true],
     ['without it — Back takes documents from the HTTP cache', false],
-  ])('counter-check of the attack (%s): Back after signing out shows neither the token nor the profile — the login page', async (_, bfcache) => {
+  ])('the attack (%s): Back after signing out shows neither the token nor the profile — the login page', async (_, bfcache) => {
     tab = new FakeTab(createHttpKernel(app.application), { bfcache });
     const { plainText } = await createTokenThenSignOut();
     // Back through every entry: the token layer's (the plain text), the list, the profile, /login.
@@ -391,7 +390,7 @@ describe('Back after signing out (E36)', () => {
   it.each([
     ['with the back/forward cache', true],
     ['without it — Back takes documents from the HTTP cache', false],
-  ])('counter-check, full page loads (%s): Back to a page loaded fully before signing out asks the server again', async (_, bfcache) => {
+  ])('full page loads (%s): Back to a page loaded fully before signing out asks the server again', async (_, bfcache) => {
     tab = new FakeTab(createHttpKernel(app.application), { bfcache });
     const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
     await tab.open('/login');
@@ -410,7 +409,7 @@ describe('Back after signing out (E36)', () => {
     expect(tab.requests.slice(asked)).toEqual(expect.arrayContaining([`GET /users/${ada.id}`, 'GET /settings/security']));
   });
 
-  it('a page prefetched while signed in (W5 step 6) is gone with the sign-out — neither Back nor a visit shows it', async () => {
+  it('a page prefetched while signed in is gone with the sign-out — neither Back nor a visit shows it', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
     await tab.open('/login');
     await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
@@ -439,7 +438,7 @@ describe('Back after signing out (E36)', () => {
       expect(state).not.toContain(plainText);
       expect(state).not.toContain('ada@example.com');
       // A layer's entry adds its depth and the keys beneath it — never what it shows.
-      // `index`: the entry's position (E64, the navigation guard) — a number.
+      // `index`: the entry's position (the navigation guard) — a number.
       if (state !== 'null') expect(Object.keys(JSON.parse(state)).filter((key) => key !== 'layer').sort()).toEqual(['component', 'index', 'key', 'scroll', 'url']);
     }
   });
@@ -519,7 +518,7 @@ describe('Cache headers', () => {
   });
 });
 
-describe('Layers in a tab (E53) — the real app, the real navigator', () => {
+describe('Layers in a tab — the real app, the real navigator', () => {
   /** Signed in on Ada's profile, its deferred activity loaded. */
   async function onProfile() {
     const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
@@ -529,7 +528,7 @@ describe('Layers in a tab (E53) — the real app, the real navigator', () => {
     return ada;
   }
 
-  it('counter-check: Back closes the layer, not the page — no request, the profile’s deferred props not asked again; Forward opens it from memory', async () => {
+  it('Back closes the layer, not the page — no request, the profile’s deferred props not asked again; Forward opens it from memory', async () => {
     const ada = await onProfile();
     const entries = tab.entries.length;
     const asked = tab.requests.length;
@@ -552,7 +551,7 @@ describe('Layers in a tab (E53) — the real app, the real navigator', () => {
     const ada = await onProfile();
     await tab.visit('/people');
     await tab.visit(`/users/${ada.id}/edit`, { layer: true });
-    expect(tab.visible.component).toBe('user-profile/People'); // opened over the page on screen (Max, 02.10.)
+    expect(tab.visible.component).toBe('user-profile/People'); // opened over the page on screen
 
     const asked = tab.requests.length;
     await tab.reload();
@@ -570,11 +569,11 @@ describe('Layers in a tab (E53) — the real app, the real navigator', () => {
     expect(tab.layers).toEqual([]);
     expect(tab.index).toBe(entries - 1);
     expect(tab.visible.props).toMatchObject({ profile: { name: 'Ada King' } });
-    // The close delivered it (E60): once, though the profile beneath reloaded after it.
+    // The close delivered it: once, though the profile beneath reloaded after it.
     expect(tab.toasts).toEqual(['toast: Profile saved.']);
   });
 
-  it('counter-check: after signing out, Back shows no layer — neither the plain text of a token nor the profile form', async () => {
+  it('after signing out, Back shows no layer — neither the plain text of a token nor the profile form', async () => {
     const ada = await onProfile();
     await tab.visit(`/users/${ada.id}/edit`, { layer: true });
     // Signed out underneath (the page's visit, as the session expiring would): a full page load.
@@ -588,7 +587,7 @@ describe('Layers in a tab (E53) — the real app, the real navigator', () => {
   });
 });
 
-describe('Actions in a tab (E59) — the real app, the real navigator', () => {
+describe('Actions in a tab — the real app, the real navigator', () => {
   type Link = { id: number; label: string };
   const linksOf = (page: PageObject) => (page.props as { profile: { links: Link[] } }).profile.links.map((link) => link.label);
   const without = (label: string) => (props: Readonly<Record<string, unknown>>) => {
@@ -636,7 +635,7 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
     expect(notes).toBeDefined();
   });
 
-  it('counter-check: signed out in another tab, the action is a 401 — its patch goes and stays gone (Back, Forward), nothing is retried', async () => {
+  it('signed out in another tab, the action is a 401 — its patch goes and stays gone (Back, Forward), nothing is retried', async () => {
     const { ada, notes } = await onProfileWithLinks();
     await tab.visit('/people');
     await tab.back();
@@ -658,7 +657,7 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
 });
 
 
-describe('Flash in a tab (E60) — exactly once, from whichever answer is shown', () => {
+describe('Flash in a tab — exactly once, from whichever answer is shown', () => {
   async function onProfile() {
     const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com', email_verified_at: new Date() });
     await tab.open('/login');
@@ -682,14 +681,14 @@ describe('Flash in a tab (E60) — exactly once, from whichever answer is shown'
     expect(tab.toasts).toEqual(['toast: Profile saved.']);
   });
 
-  it('counter-check: two saves with the same message are two toasts', async () => {
+  it('two saves with the same message are two toasts', async () => {
     const ada = await onProfile();
     await save(ada, 'Ada King');
     await save(ada, 'Ada King');
     expect(tab.toasts).toEqual(['toast: Profile saved.', 'toast: Profile saved.']);
   });
 
-  it('counter-check: a hover-prefetch while a message waits takes none — the click asks the server, and the toast comes with that page', async () => {
+  it('a hover-prefetch while a message waits takes none — the click asks the server, and the toast comes with that page', async () => {
     const ada = await onProfile();
     // Another tab saved; its redirect not followed yet: the message waits in the session.
     await tab.submitElsewhere('PUT', `/users/${ada.id}`, { name: 'Ada King', bio: '' });
@@ -701,7 +700,7 @@ describe('Flash in a tab (E60) — exactly once, from whichever answer is shown'
     expect(tab.toasts).toEqual(['toast: Profile saved.']);
   });
 
-  it('counter-check: a layer’s answer delivers a waiting message too — the toast shows over the layer, not lost in it', async () => {
+  it('a layer’s answer delivers a waiting message too — the toast shows over the layer, not lost in it', async () => {
     const ada = await onProfile();
     await tab.submitElsewhere('PUT', `/users/${ada.id}`, { name: 'Ada King', bio: '' });
     await tab.visit(`/users/${ada.id}/edit`, { layer: true });
@@ -711,7 +710,7 @@ describe('Flash in a tab (E60) — exactly once, from whichever answer is shown'
     expect(tab.toasts).toEqual(['toast: Profile saved.']);
   });
 
-  it('counter-check: an action delivers its message with the answer — and no reload after it brings it again', async () => {
+  it('an action delivers its message with the answer — and no reload after it brings it again', async () => {
     const ada = await onProfile();
     const outcome = await tab.action(`/users/${ada.id}/links`, { data: { label: 'Blog', url: 'https://blog.example' }, reload: tab.reloading({ only: ['profile'] }) });
     expect(outcome).toMatchObject({ ok: true, kind: 'redirect', flash: [{ key: 'toast', data: { kind: 'success', message: 'Link added.' } }] });

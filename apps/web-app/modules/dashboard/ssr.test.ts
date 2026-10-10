@@ -3,10 +3,10 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
-// Islands in the SSR stream (E49): resolved in-process while the page renders — rendered completely here, as for a bot.
+// Islands in the SSR stream: resolved in-process while the page renders — rendered completely here, as for a bot.
 let app: TestApp;
 let ada: User, alan: User;
 beforeEach(async () => {
@@ -20,7 +20,7 @@ const document = { headers: { accept: 'text/html' } };
 const islandsIn = (html: string) =>
   [...html.matchAll(/<script type="application\/json" id="marmeon-island-[^"]*">(.*?)<\/script>/g)].map(([, json]) => JSON.parse(json!) as { status: string; region?: { component: string; props: Record<string, unknown> } });
 
-describe('the dashboard, rendered on the server with its islands (E49)', () => {
+describe('the dashboard, rendered on the server with its islands', () => {
   it('has every eager island in the HTML — with its data, for the browser to show without a request — and hydrates', async () => {
     const response = await app.actingAs(ada).get('/dashboard', document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toMatch(/data-island="dashboard\.sign-ins" data-status="ready"/);
@@ -32,14 +32,14 @@ describe('the dashboard, rendered on the server with its islands (E49)', () => {
     expect(islands.find((island) => island.region?.component === 'dashboard/MemberStats')!.region!.props).toMatchObject({ stats: { members: 3, verified: 3 } });
   });
 
-  it('counter-check: an island its route refuses streams no data — the fallback, only its outcome', async () => {
+  it('an island its route refuses streams no data — the fallback, only its outcome', async () => {
     const response = await app.actingAs(alan).get('/dashboard', document).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toMatch(/data-island="dashboard\.members" data-status="forbidden"/);
     expect(islandsIn(response.body)).toContainEqual({ status: 'forbidden' });
     expect(response.body).not.toContain('"stats"');
   });
 
-  it('counter-check: concurrent pages of two users never mix their islands — each request its own scope and session copy', async () => {
+  it('concurrent pages of two users never mix their islands — each request its own scope and session copy', async () => {
     const responses = await Promise.all(Array.from({ length: 8 }, (_, index) => app.actingAs(index % 2 === 0 ? ada : alan).get('/dashboard', document)));
     responses.forEach((response, index) => {
       const admin = index % 2 === 0;

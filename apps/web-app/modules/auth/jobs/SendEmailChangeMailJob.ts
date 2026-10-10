@@ -11,10 +11,10 @@ import { EmailInUseMail } from '../mail/EmailInUseMail.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 /**
- * Private registration (E146): a user asked to change their address. The request only wrote the pending change and queued this
+ * Private registration: a user asked to change their address. The request only wrote the pending change and queued this
  * job — the same for every address —, so here, in a worker, it is decided what goes out: to a free address the link that confirms
  * it (signed, for this account and this request, expiring with it); to the owner of a taken one a note that someone wanted to use
- * it — nothing changes for anybody then. The address and the token are personal data: the payload is encrypted (E105).
+ * it — nothing changes for anybody then. The address and the token are personal data: the payload is encrypted.
  */
 export class SendEmailChangeMailJob {
   static readonly job = 'auth.send-email-change-mail';

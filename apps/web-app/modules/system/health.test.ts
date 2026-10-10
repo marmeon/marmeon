@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { StorageWritable } from './health/StorageWritable.ts';
 
-describe('health in the web app (E126)', () => {
+describe('health in the web app', () => {
   it('/up answers before the `web` group: no session cookie, no CSRF, no request id — a sign-in beside it gets them', async () => {
     const app = await createTestApp(application, { database: 'refresh', csrf: true });
     const up = await app.get('/up');

@@ -13,7 +13,7 @@ import { ResetPasswordMail } from '../mail/ResetPasswordMail.ts';
  * composed in the account's language, with a link from APP_URL; the mail itself is queued once more (`marmeon.mail`) —
  * so an SMTP failure retries the mail with *this* token, and never asks the broker for a second one (it would refuse
  * within AUTH_RESET_THROTTLE, and the mail would be lost). The address is a personal datum: the payload is encrypted;
- * the token never is in plain text anywhere in the queue (E105).
+ * the token never is in plain text anywhere in the queue.
  */
 export class SendPasswordResetLinkJob {
   static readonly job = 'auth.send-password-reset-link';

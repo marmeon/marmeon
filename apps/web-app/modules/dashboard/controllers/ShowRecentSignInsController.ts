@@ -9,7 +9,7 @@ export const SIGN_IN_RANGES = ['7d', '30d', 'all'] as const;
 const DAY = 86_400_000;
 
 /**
- * The island's query (E55): its own, typed — `useIsland<ShowRecentSignInsController>().reload({ query: { range: '7d' } })`
+ * The island's query: its own, typed — `useIsland<ShowRecentSignInsController>().reload({ query: { range: '7d' } })`
  * in the view, `<Island route="dashboard.sign-ins" query={{ limit: 3 }}>` on the page. Invalid values fall back.
  */
 export const RecentSignInsRequest = defineRequest({
@@ -37,7 +37,7 @@ export class ShowRecentSignInsController extends Controller {
     const since = range === 'all' ? undefined : new Date(Date.now() - (range === '7d' ? 7 : 30) * DAY);
     const rows = await this.#directory.recentSignIns({ since, limit });
     return this.island('dashboard/RecentSignIns', {
-      // The island's own projection (E61): each entry with `can.update` — "Edit profile" next to your own name only.
+      // The island's own projection: each entry with `can.update` — "Edit profile" next to your own name only.
       entries: this.#gate.withAbilities(
         rows.map((row) => ({ id: row.id, name: row.name, at: row.last_login_at })),
         ProfilePolicy,
@@ -46,7 +46,7 @@ export class ShowRecentSignInsController extends Controller {
       // The server's clock for "5 minutes ago".
       now: new Date(),
     })
-      // Live (W6.10): someone signs in — the island reloads on every open dashboard (and /people), no polling.
+      // Live: someone signs in — the island reloads on every open dashboard (and /people), no polling.
       .live(SIGN_INS_CHANNEL);
   }
 }

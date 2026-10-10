@@ -6,8 +6,8 @@ import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
 import { MemberPolicy } from '../policies/MemberPolicy.ts';
 
 /**
- * The members (E183): everyone with a confirmed address — an unconfirmed account is no member yet, and with private registration
- * (E146) its address must not show anywhere. Every page, action, bulk action ("all matching" too) and export starts from this query.
+ * The members: everyone with a confirmed address — an unconfirmed account is no member yet, and with private registration
+ * its address must not show anywhere. Every page, action, bulk action ("all matching" too) and export starts from this query.
  * The e-mail column exists for administrators only: for everyone else it is not selected, not in the props, not in the export.
  */
 export const MembersTable = defineTable({

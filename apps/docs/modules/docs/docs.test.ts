@@ -14,7 +14,7 @@ import { PENDING_MARKER } from './markdown.ts';
 import type { SearchResult } from './search.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 const repo = resolve(import.meta.dirname, '../../../..');
@@ -41,7 +41,7 @@ const SECTIONS = [
 
 const results = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResult[] }).results;
 
-describe('the search (a server route, E133)', () => {
+describe('the search (a server route)', () => {
   it('finds onOneServer() on the scheduling page and "missed runs" under its heading — anchors into the section', async () => {
     const hits = results(await app.navigating().get('/search?q=onOneServer').assertOk().assertPage('docs/Search'));
     const scheduling = hits.find((result) => result.href.startsWith('/docs/scheduling#'));
@@ -69,7 +69,7 @@ describe('the search (a server route, E133)', () => {
     expect(Object.keys(response.page()!.props)).toEqual(['results']);
   });
 
-  it('a query over 100 characters is invalid and falls back to the empty search (E56: no 422, no 500, no work)', async () => {
+  it('a query over 100 characters is invalid and falls back to the empty search (no 422, no 500, no work)', async () => {
     const response = await app.navigating().get(`/search?q=${'onOneServer'.repeat(910)}`).assertOk();
     expect(results(response)).toEqual([]);
     // The invalid value is dropped: the page's query is empty, its default the empty search.

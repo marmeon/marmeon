@@ -28,7 +28,7 @@ export class DeleteProfileLinkController extends Controller {
 
   async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number }; link: Row<'profile_links'> } }) {
     await this.#links.delete(ctx.params.link.id);
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
+    // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     // Confirmed in its layer: it closes, and what is beneath (the profile, or the edit layer) loses the link.
     return this.closeLayer({ reload: ['profile'] })

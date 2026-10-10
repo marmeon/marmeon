@@ -1,5 +1,5 @@
 /**
- * Type guarantees of typed routes and views (W5.2, E34/E40) against this app's generated `bootstrap/routes.ts` —
+ * Type guarantees of typed routes and views against this app's generated `bootstrap/routes.ts` —
  * checked by `tsc` (`pnpm typecheck`), never run. Each `@ts-expect-error` is a mistake an app developer makes;
  * the comment above it is the message they get (read with the directive removed).
  */
@@ -32,14 +32,14 @@ export function InTheBrowser() {
   // ... '"'api.users.index' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server"'.
   // @ts-expect-error
   route('api.users.index');
-  // E57: an .internal() route (modules/auth/routes.ts) is a compile error in the browser — and the build refuses it too.
+  // An .internal() route (modules/auth/routes.ts) is a compile error in the browser — and the build refuses it too.
   // ... '"'auth.verification.verify' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server"'.
   // @ts-expect-error
   route('auth.verification.verify', { id: 1, hash: 'x' });
   // @ts-expect-error — the same for <Link route> and useForm(name, …)
   void (<Link route="auth.verification.verify" params={{ id: 1, hash: 'x' }} />);
 
-  // E40: method, URL and fields from the route name.
+  // Method, URL and fields from the route name.
   const form = useForm('user-profile.update', { user: 7 }, { name: '', bio: '' });
   void form.submit();
   // Argument of type '"bioo"' is not assignable to parameter of type '"bio" | "name"'.
@@ -50,8 +50,7 @@ export function InTheBrowser() {
   // @ts-expect-error
   useForm('user-profile.update', { user: 7 }, { name: '', bioo: '' });
   // … Type '{ name: string; bio: string; }' is not assignable to type '"'user-profile.update' takes route parameters — pass them
-  // before the initial data: useForm('user-profile.update', params, initial)"'. (W5b.10; W5b.7–9 said "Argument of type 'string'
-  // is not assignable to parameter of type 'object'" — two arguments fit only the controller form's overload then.)
+  // before the initial data: useForm('user-profile.update', params, initial)"'.
   // @ts-expect-error — the route needs { user }
   useForm('user-profile.update', { name: '', bio: '' });
   // ... '"'auth.logout' has no request schema to type a form with — give its controller `static request = defineRequest(…)`"'.

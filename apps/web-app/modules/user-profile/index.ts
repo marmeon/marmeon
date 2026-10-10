@@ -25,7 +25,7 @@ export default defineModule({
   name: 'user-profile',
   providers: [UserProfileServiceProvider],
   config: [ProfileConfig],
-  // A deleted account (E203, AccountDeleted of the auth module): its avatar file and its data export go after the commit.
+  // A deleted account (AccountDeleted of the auth module): its avatar file and its data export go after the commit.
   listeners: [listen(Login, RecordLastLogin), listen(Registered, RefreshMemberStats), listen(AccountDeleted, DeleteAvatar), listen(AccountDeleted, DeleteDataExport)],
   // The dashboard's member numbers, rebuilt in the background after a registration (unique, withoutOverlapping).
   jobs: [RebuildMemberStatsJob],

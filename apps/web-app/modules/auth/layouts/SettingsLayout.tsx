@@ -2,7 +2,7 @@ import { Link, useTranslation, type LayoutProps } from '@marmeon/react';
 
 /**
  * The settings pages (`/settings/*`), inside the app layout: `Page.layout = [AppLayout, SettingsLayout]`. The link to the
- * page on screen marks itself (`aria-current="page"`, `data-current` — E64); the tokens link also while a token is created.
+ * page on screen marks itself (`aria-current="page"`, `data-current`); the tokens link also while a token is created.
  */
 export function SettingsLayout({ children }: LayoutProps) {
   const t = useTranslation('auth');

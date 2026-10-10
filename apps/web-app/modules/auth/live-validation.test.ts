@@ -7,8 +7,8 @@ import type { RegisterController } from './controllers/RegisterController.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
 /**
- * Live validation on the server (E62): the form's own route, as far as its validation — middleware, `authorize`, the schema —
- * never its controller; read-only, rate-limited, CSRF-protected. Each test names the measure whose absence turns it red.
+ * Live validation on the server: the form's own route, as far as its validation — middleware, `authorize`, the schema —
+ * never its controller; read-only, rate-limited, CSRF-protected.
  */
 
 let app: TestApp;
@@ -21,8 +21,8 @@ afterEach(async () => {
 
 const registration = { name: 'Ada Lovelace', email: 'ada@example.com' };
 
-describe('live validation of the registration (E62)', () => {
-  it('answers 204 for valid fields — and never registers anyone (Gegenprobe: without the router’s stop, an account exists)', async () => {
+describe('live validation of the registration', () => {
+  it('answers 204 for valid fields — and never registers anyone', async () => {
     await app.validating('name', 'email').post('/register', { json: registration }).assertLiveValid('name', 'email');
     await app.assertDatabaseMissing('users', { email: 'ada@example.com' });
     app.mail.assertNothingSent();
@@ -37,7 +37,7 @@ describe('live validation of the registration (E62)', () => {
     expect(response.body).not.toContain('nope');
   });
 
-  it('never tells whether an address has an account — like the submit (private registration, E146)', async () => {
+  it('never tells whether an address has an account — like the submit (private registration)', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const known = await app.validating('email').post('/register', { json: { email: ' ADA@example.com ' } }).assertLiveValid('email');
     const unknown = await app.validating('email').post('/register', { json: { email: 'grace@example.com' } }).assertLiveValid('email');
@@ -68,8 +68,8 @@ describe('live validation of the registration (E62)', () => {
   });
 });
 
-describe('live validation changes nothing (E62, read-only)', () => {
-  it('never writes the session nor sets a cookie — a waiting flash message stays for the page (Gegenprobe: without read-only it is gone)', async () => {
+describe('live validation changes nothing (read-only)', () => {
+  it('never writes the session nor sets a cookie — a waiting flash message stays for the page', async () => {
     const ada = await app.factory(UserFactory).create();
     const saved = await app.actingAs(ada).put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect(`/users/${ada.id}`);
     const browser = app.withCookie('marmeon_session', saved.cookie('marmeon_session')!);
@@ -81,22 +81,22 @@ describe('live validation changes nothing (E62, read-only)', () => {
     await browser.navigating().get('/people').assertOk().assertFlash('toast', { message: 'Profile saved.' });
   });
 
-  it("never touches the login's throttle: checks of the sign-in form leave all its tries (Gegenprobe: handle() would count them)", async () => {
+  it("never touches the login's throttle: checks of the sign-in form leave all its tries", async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     for (let i = 0; i < 6; i++) await app.validating('email', 'password').post('/login', { json: { email: 'ada@example.com', password: 'wrong' } }).assertLiveValid();
     expect(await app.make(RateLimiter).attempts('login:ada@example.com|unknown')).toBe(0);
     await app.post('/login', { form: { email: 'ada@example.com', password: 'password' } }).assertRedirect('/users/me').assertAuthenticated(ada);
   });
 
-  it("never counts against a route's throttle: the reset form's five tries a minute stay (Gegenprobe: throttle() would count)", async () => {
+  it("never counts against a route's throttle: the reset form's five tries a minute stay", async () => {
     for (let i = 0; i < 6; i++) await app.validating('email').post('/forgot-password', { json: { email: 'ada@example.com' } }).assertLiveValid();
     for (let i = 0; i < 5; i++) await app.post('/forgot-password', { form: { email: 'ada@example.com' }, headers: { referer: 'http://localhost/forgot-password' } }).assertRedirect();
     await app.post('/forgot-password', { form: { email: 'ada@example.com' } }).assertStatus(429);
   });
 });
 
-describe('live validation is held to the route’s rules (E62)', () => {
-  it('authorization first: checking another person’s profile is a 403 — no field errors (Gegenprobe: without authorize, the errors)', async () => {
+describe('live validation is held to the route’s rules', () => {
+  it('authorization first: checking another person’s profile is a 403 — no field errors', async () => {
     const ada = await app.factory(UserFactory).create();
     const alan = await app.factory(UserFactory).create();
     const response = await app.actingAs(ada).validating('name').put(`/users/${alan.id}`, { json: { name: 'A', bio: '' } }).assertForbidden();
@@ -116,7 +116,7 @@ describe('live validation is held to the route’s rules (E62)', () => {
     await app.post('/register', { form: { ...registration, password: 'correct horse', password_confirmation: 'correct horse' }, headers: { referer: 'http://localhost/register' } }).assertRedirect('/register/sent');
   });
 
-  it('is held to CSRF like the submit (E143): the browser\'s word or the token — a guest from elsewhere gets 403', async () => {
+  it('is held to CSRF like the submit: the browser\'s word or the token — a guest from elsewhere gets 403', async () => {
     await app.close();
     app = await createTestApp(application, { csrf: true, database: 'refresh' });
     const page = await app.navigating().get('/register');

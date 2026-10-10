@@ -9,7 +9,7 @@ const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 // The app's rate limits run on the store CACHE_DRIVER names — in production `database` (this app, see .env.example) or
 // `redis`; the other tests use `memory` (.env.test). Here they run on the real stores, with requests sent at once:
-// counting and deciding is one atomic step of the store (E103), so no burst gets past a limit.
+// counting and deciding is one atomic step of the store, so no burst gets past a limit.
 type Driver = ['database' | 'redis', () => Record<string, string>];
 const drivers: Driver[] = [['database', () => ({})]];
 if (REDIS_URL) drivers.push(['redis', () => ({ REDIS_URL, REDIS_PREFIX: `web-app-test-${crypto.randomUUID().slice(0, 8)}:` })]);

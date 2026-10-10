@@ -29,7 +29,7 @@ const en = {
     checking: 'Checking …',
     registered: 'Already registered?',
     login: 'Sign in',
-    // Private registration (E146): one answer for new and known addresses.
+    // Private registration: one answer for new and known addresses.
     confirm_hint: 'We send you a link to confirm your address.',
     sent_title: 'Check your inbox',
     sent_intro: 'We sent a message to the address you entered. Click the link in it to confirm your address — then sign in.',
@@ -71,7 +71,7 @@ const en = {
     verified: 'Your e-mail address is verified.',
     wrong_account: 'This verification link is not for your account.',
   },
-  // Private registration (E146): the link to a new address.
+  // Private registration: the link to a new address.
   email_change: {
     wrong_account: 'This link is for another account. Sign in with that one, then open the link again.',
     invalid: 'This link no longer works — it was used, a newer one replaced it, or it expired. Change your address again on the security page.',
@@ -91,9 +91,9 @@ const en = {
     email: 'E-mail',
     unconfirmed: '(not confirmed yet)',
     change_email: 'Change e-mail',
-    // With AUTH_PRIVATE_REGISTRATION=false (E193): the new address is the account's at once.
+    // With AUTH_PRIVATE_REGISTRATION=false: the new address is the account's at once.
     email_changed: 'E-mail address changed. Please confirm the new one — we sent you a link.',
-    // Private registration (E146): a new address is pending until the link sent to it is clicked.
+    // Private registration: a new address is pending until the link sent to it is clicked.
     email_change_sent: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.',
     email_pending: 'Waiting for confirmation: {email}. Until the link we sent there is clicked, your address stays {current}.',
     password_heading: 'Change password',
@@ -181,7 +181,7 @@ const en = {
       button: 'Open your profile',
       outro: 'Confirm your e-mail address with the link from our other mail — then the app is open to you.',
     },
-    // Private registration (E146): a sign-up with the address of an existing account.
+    // Private registration: a sign-up with the address of an existing account.
     account_exists: {
       subject: 'You already have an account',
       preview: 'Someone tried to sign up with your address',
@@ -190,7 +190,7 @@ const en = {
       forgot: 'Forgot your password? Choose a new one:',
       outro: 'If that was not you, ignore this mail: nothing has changed.',
     },
-    // Private registration (E146): a change of address — the link to the new one, or a note to the owner of a taken one.
+    // Private registration: a change of address — the link to the new one, or a note to the owner of a taken one.
     confirm_new_email: {
       subject: 'Confirm your new e-mail address',
       preview: 'One click, and your account uses this address',

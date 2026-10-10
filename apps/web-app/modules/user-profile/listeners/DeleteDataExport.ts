@@ -4,7 +4,7 @@ import type { AccountDeleted } from '#modules/auth';
 import { dataExportKey } from '../controllers/ExportMyDataController.ts';
 
 /**
- * A deleted account's data export ("Download my data" — its address, name and links as JSON on the private disk) goes too (E203) —
+ * A deleted account's data export ("Download my data" — its address, name and links as JSON on the private disk) goes too —
  * after the deletion committed, like the avatar; `PruneDataExports` would take it within a quarter of an hour, this does not wait.
  */
 export class DeleteDataExport {

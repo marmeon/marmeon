@@ -22,7 +22,7 @@ export const CreateAccessTokenRequest = defineRequest({
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
-/** The two steps of creating a token share one layer: the answer replaces the form in place (E53). */
+/** The two steps of creating a token share one layer: the answer replaces the form in place. */
 const LAYER = { base: 'auth.tokens', key: 'tokens.create' } as const;
 
 /** The form for a new token — a layer over the list (`<Link route="auth.tokens.create" layer>`). */
@@ -41,7 +41,7 @@ export class ShowCreateAccessTokenController extends Controller {
 
 /**
  * A new token. Its plain text is in this one response — rendered, not redirected, so it never sits in the session (a
- * flash would store it); the database keeps only its hash. It is a layer answered by a POST, so it is shown once (E53):
+ * flash would store it); the database keeps only its hash. It is a layer answered by a POST, so it is shown once:
  * it replaces the form, and when it closes — the button, Escape, Back — it is gone from the tab's memory too (Forward asks
  * the server, whose GET is the list), and the list beneath reloads with the new token in it.
  */

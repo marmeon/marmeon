@@ -16,12 +16,11 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 // Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
-// Slow under load: five rounds of a worker on the real database queue — 5–6 s on a fully loaded machine even after the warm-up
-// (W9 step 1; until then 15 s on CI runners only, W8 step 1).
+// Slow under load: five rounds of a worker on the real database queue — 5–6 s on a fully loaded machine even after the warm-up.
 const heavyTimeout = 15_000;
 
-// W6 step 5: the auth mails leave the request — a queued listener (verification), queued mails (verification, address
-// change, reset), composed in the recipient's language, encrypted in the queue (E105), sent by a worker.
+// The auth mails leave the request — a queued listener (verification), queued mails (verification, address
+// change, reset), composed in the recipient's language, encrypted in the queue, sent by a worker.
 
 /** An SMTP server: down (it throws) or slow — the request must not care. */
 class TestTransport implements MailTransport {
@@ -87,7 +86,7 @@ describe('the verification mail through the queue', () => {
     await app.assertDatabaseCount('failed_jobs', 0);
   }, heavyTimeout);
 
-  // No clock (W9 step 1: "under 1 000 ms" broke on a loaded machine): the mail server never answers — a request that waited for it
+  // No clock ("under 1 000 ms" broke on a loaded machine): the mail server never answers — a request that waited for it
   // would never return; one that reached it at all fails at once.
   it('the registration answers without waiting for the mail server (one that never answers)', async () => {
     const transport = new TestTransport();
@@ -99,7 +98,7 @@ describe('the verification mail through the queue', () => {
     expect(transport.sent).toEqual([]);
   });
 
-  it('is never queued for a registration that is rolled back (E109: part of the transaction) — and a rolled-back dispatch leaves no job', async () => {
+  it('is never queued for a registration that is rolled back (part of the transaction) — and a rolled-back dispatch leaves no job', async () => {
     const app = await realApp(new TestTransport());
     const kj = await app.factory(UserFactory).state('unverified').create();
     await expect(
@@ -136,7 +135,7 @@ describe('the verification mail through the queue', () => {
     app.queue.assertListenerQueued(SendEmailVerification);
   });
 
-  it('a faked event (EventFake, W6.7) is recorded, its listeners neither run nor are queued', async () => {
+  it('a faked event (EventFake) is recorded, its listeners neither run nor are queued', async () => {
     // Login is faked too: its queued listener (the "new sign-in" notice) would be queued by the sign-in after registering.
     const app = await createTestApp(application, { database: 'refresh', events: [Registered, Login] });
     await app.post('/register', { form: form() }).assertRedirect('/register/sent');
@@ -145,7 +144,7 @@ describe('the verification mail through the queue', () => {
   });
 });
 
-describe('the reset link through the queue (E105)', () => {
+describe('the reset link through the queue', () => {
   it('keeps the plaintext token out of jobs and failed_jobs — it is only in the mail', async () => {
     const transport = new TestTransport();
     transport.down = true;
@@ -173,7 +172,7 @@ describe('the reset link through the queue (E105)', () => {
   });
 });
 
-describe('registration is throttled (E100)', () => {
+describe('registration is throttled', () => {
   it('the 11th registration a minute from one address gets 429 — live validation does not count, the next minute registers again', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     for (let i = 1; i <= 10; i++) {
@@ -181,7 +180,7 @@ describe('registration is throttled (E100)', () => {
     }
     await app.post('/register', { form: form('user11@example.com') }).assertStatus(429);
     await app.assertDatabaseMissing('users', { email: 'user11@example.com' });
-    // Live validation (E62) of the form is no attempt.
+    // Live validation of the form is no attempt.
     await app.validating('email').post('/register', { json: form('user11@example.com') }).assertStatus(429);
     app.travel({ seconds: 61 });
     await app.post('/register', { form: form('user11@example.com') }).assertRedirect('/register/sent');
@@ -193,15 +192,15 @@ describe('mails without a request', () => {
     await expect(createTestApp(application, { env: { APP_URL: undefined } })).rejects.toThrow(/APP_URL/);
   });
 
-  it('show in the development preview (E106): /_marmeon/mail lists them, a preview renders sample data in a language', async () => {
-    // Development only (E115): a test app (NODE_ENV=test) has no previews unless it runs as development.
+  it('show in the development preview: /_marmeon/mail lists them, a preview renders sample data in a language', async () => {
+    // Development only: a test app (NODE_ENV=test) has no previews unless it runs as development.
     await (await createTestApp(application)).get('/_marmeon/mail').assertNotFound();
     const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development' } });
     const index = await app.get('/_marmeon/mail').assertOk();
     for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail', 'auth/ConfirmNewEmailMail', 'auth/EmailInUseMail']) {
       expect(index.body).toContain(`/_marmeon/mail/${name}`);
     }
-    // The change of address (private registration, E146): the link to the new address, the note to the owner of a taken one.
+    // The change of address (private registration): the link to the new address, the note to the owner of a taken one.
     expect((await app.get('/_marmeon/mail/auth/ConfirmNewEmailMail?locale=de').assertOk()).body).toContain('<th>Subject</th><td>Bestätige deine neue E-Mail-Adresse</td>');
     expect((await app.get('/_marmeon/mail/auth/EmailInUseMail').assertOk()).body).toContain('<th>Subject</th><td>Someone wanted to use your e-mail address</td>');
     const preview = await app.get('/_marmeon/mail/auth/VerifyEmailMail?locale=de').assertOk();
@@ -212,7 +211,7 @@ describe('mails without a request', () => {
     await app.assertDatabaseCount('users', 0); // sample data is made, never stored
   });
 
-  it('answer only localhost and the host of APP_URL (E200, DNS rebinding) — any other Host gets 403, without Vite in front', async () => {
+  it('answer only localhost and the host of APP_URL (DNS rebinding) — any other Host gets 403, without Vite in front', async () => {
     const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development', APP_URL: 'http://shop.test:3960' } });
     const paths = ['/_marmeon/mail', '/_marmeon/mail/auth/VerifyEmailMail'];
     for (const path of paths) {

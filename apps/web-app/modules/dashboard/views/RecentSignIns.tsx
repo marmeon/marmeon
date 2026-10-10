@@ -30,14 +30,14 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
         <ul>
           {entries.map((entry) => (
             <li key={entry.id}>
-              {/* Links inside an island navigate the page (E51). */}
+              {/* Links inside an island navigate the page. */}
               <Link route="user-profile.show" params={{ user: entry.id }}>
                 {entry.name}
               </Link>{' '}
               <small>
                 <time dateTime={entry.at}>{t.format.relative(entry.at, now)}</time>
               </small>
-              {/* Projected by the island's controller (E61) — the edit layer checks the policy again. */}
+              {/* Projected by the island's controller — the edit layer checks the policy again. */}
               {entry.can.update && (
                 <>
                   {' '}
@@ -54,5 +54,5 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
   );
 }
 
-// Back/Forward to the dashboard or `/people` shows this island from memory at once, then refreshes who signed in (E58).
+// Back/Forward to the dashboard or `/people` shows this island from memory at once, then refreshes who signed in.
 RecentSignIns.revalidateOnBack = ['entries', 'now'] as const satisfies RevalidateOnBack<ShowRecentSignInsController>;

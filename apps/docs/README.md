@@ -24,7 +24,7 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   server only" — then how often the prose has the word, and last whether a code block uses it: a section that explains a word
   comes before an example that only calls it.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
-  marks "draft" in the navigation; no `docs/*.md` carries it any more, and `pnpm check:source` refuses it.
+  marks "draft" in the navigation; `pnpm check:source` refuses it in `docs/`.
 - **The text speaks to app developers.** `pnpm check:source` rule 5 refuses comparisons with another framework in the pages,
   the package READMEs, the root's README, the three policies, the starter's template, the packages' stubs and the apps' READMEs
   and `.env` files; rule 7 refuses decision numbers, wave references, personal dates and paths into the maintainers' notes in
@@ -86,5 +86,4 @@ IPv4 and IPv6 — with IPv6 on the network every visitor keeps their address for
 `tmpfs` for `/tmp` and a `storage` volume, and Caddy waits for them to be healthy. Next to the file, a `.env` holds `DOCS_DOMAIN`
 and `APP_KEY` (never committed); then `docker compose up -d --build` — `DOCS_TAG=$(git rev-parse --short HEAD)` names the build,
 and an older tag still on the machine starts again without one (the way back). The guide for a server — firewall, DNS, updates,
-rollback — is [deployment](../../docs/deployment.md#one-server-with-compose) for any app; the steps for this one live with the
-maintainers.
+rollback — is [deployment](../../docs/deployment.md#one-server-with-compose).

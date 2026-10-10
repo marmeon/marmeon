@@ -1,7 +1,7 @@
 import { Inbox } from '@marmeon/notifications';
 import type { AccountDeleted } from '#modules/auth';
 
-/** A deleted account's notifications go with it (E203) — in the deletion's transaction (the table is the app's own data). */
+/** A deleted account's notifications go with it — in the deletion's transaction (the table is the app's own data). */
 export class ClearInbox {
   readonly #inbox: Inbox;
 

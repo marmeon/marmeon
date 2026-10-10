@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import type { ShowDevtoolsLabController } from '../controllers/ShowDevtoolsLabController.ts';
 
 /**
- * The devtools' bar at work (W7 step 9). With `?mismatch=1` the server renders another text than the browser — a hydration
- * mismatch on purpose, listed in the bar's SSR tab. Below, the client hook API (E132) — a feature, so it is used where the page
+ * The devtools' bar at work. With `?mismatch=1` the server renders another text than the browser — a hydration
+ * mismatch on purpose, listed in the bar's SSR tab. Below, the client hook API — a feature, so it is used where the page
  * runs in the browser (after it mounted): `before` cancels every visit to `blocked`, `invalid` lists the fields a form got back.
  */
 export default function Devtools({ blocked, mismatch }: PageProps<ShowDevtoolsLabController>) {

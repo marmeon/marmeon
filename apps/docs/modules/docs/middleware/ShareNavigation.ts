@@ -12,7 +12,7 @@ declare module '@marmeon/http/page' {
 }
 
 /**
- * Shares the navigation with every page of the `docs` group — once (E64): sent with the first page of a tab, then kept by
+ * Shares the navigation with every page of the `docs` group — once: sent with the first page of a tab, then kept by
  * the browser; the server skips it while the tab holds it.
  */
 export class ShareNavigation {

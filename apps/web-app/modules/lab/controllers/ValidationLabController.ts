@@ -29,7 +29,7 @@ export class LabInvites {
   }
 }
 
-/** The rules of @marmeon/validation at work (W10 step 3, E197): one form, every kind of message, in English and German. */
+/** The rules of @marmeon/validation at work: one form, every kind of message, in English and German. */
 export class ShowValidationLabController extends LabController {
   handle() {
     this.enabled();
@@ -47,15 +47,15 @@ const fields = {
   // A date as `<input type="date">` sends it, a port as a form spells it.
   starts: r.date().optional(),
   port: r.port().optional(),
-  // Asked asynchronously (a table, a service): on submit only — an async check never runs live unless it says .live() (E197). An empty
-  // field reaches the check as '' (E208: a string's empty value is a value) — no code, nothing to ask.
+  // Asked asynchronously (a table, a service): on submit only — an async check never runs live unless it says .live(). An empty
+  // field reaches the check as '' (a string's empty value is a value) — no code, nothing to ask.
   invite: r.string().trim().custom(async (code, { request }) => code === '' || (await request!.resolve(LabInvites).valid(code)) || 'This invitation code is unknown.').optional(),
-  // An account the form names: it must exist — on submit only, like every database rule (no enumeration while typing, E197).
+  // An account the form names: it must exist — on submit only, like every database rule (no enumeration while typing).
   inviter: r.email().exists(UserRepository, 'email').optional(),
   kind: r.in(['person', 'company']).default('person'),
 };
 
-/** A company needs its VAT number — checked only for one (`when`, Laravel's `required_if`). */
+/** A company needs its VAT number — checked only for one (`when`). */
 const company = (data: { kind: 'person' | 'company' }) => data.kind === 'company';
 const vat = { vat: r.string().trim().required().regex(/^[A-Z]{2}[0-9A-Z]{8,12}$/, 'A VAT number: two letters, then 8 to 12 letters or digits.') };
 // The fields' names in messages, by key — the registration's labels (`Das Feld E-Mail …`).
@@ -70,7 +70,7 @@ export const ValidationLabRequest = defineRequest({
 /**
  * The same form without the friendly `unique` — as if a second request had raced past it: the unique index answers, and
  * `failOnDuplicate()` turns its conflict into the same 422, in the request's language and with its `attributes` (the router lends
- * them, W10 step 9b).
+ * them).
  */
 export const RaceValidationLabRequest = defineRequest({
   schema: r.object(fields).when(company, vat),

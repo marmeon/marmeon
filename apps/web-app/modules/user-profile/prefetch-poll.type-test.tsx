@@ -1,5 +1,5 @@
 /**
- * Type guarantees of prefetching, polling, `<WhenVisible>` and merging (W5 step 6) against this app's profile page —
+ * Type guarantees of prefetching, polling, `<WhenVisible>` and merging against this app's profile page —
  * checked by `tsc` (`pnpm typecheck`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the
  * comment above it is the message they get (read with the directive removed).
  */
@@ -75,7 +75,7 @@ export const props = {
   // Argument of type '"uid"' is not assignable to parameter of type '"id" | "url"'.
   // @ts-expect-error
   badKey: merge([{ id: 1, url: 'x' }]).matchOn('uid'),
-  // merge() appends a top-level array, or a paginator's data (W9) — its items' keys under `data.`:
+  // merge() appends a top-level array, or a paginator's data — its items' keys under `data.`:
   shallow: merge(people).matchOn('data.id'),
   // Argument of type '"data.uid"' is not assignable to parameter of type '"data.id" | "data.name"'.
   // @ts-expect-error

@@ -8,9 +8,9 @@ type Props = PageProps<ShowDashboardController>;
 const ACTIVITY_POLL = 15_000;
 
 /**
- * A page of islands (E48): the page renders at once, each panel loads by itself — in parallel, each through its own
+ * A page of islands: the page renders at once, each panel loads by itself — in parallel, each through its own
  * route's middleware and authorization. On a full load the server resolves them in-process and streams them into the
- * same response (E49: no request from the browser); after a client-side visit the browser loads them. Back/Forward shows
+ * same response (no request from the browser); after a client-side visit the browser loads them. Back/Forward shows
  * them from memory, without a request.
  */
 export default function Show(_props: Props) {
@@ -36,7 +36,7 @@ export default function Show(_props: Props) {
       <p>
         <Link route="user-profile.people">{t('people')}</Link>
         {' · '}
-        {/* By URL, not by route name: a name client code writes goes into the route manifest of the first download (W9.5). */}
+        {/* By URL, not by route name: a name client code writes goes into the route manifest of the first download. */}
         <Link href="/members">{t('members_table')}</Link>
       </p>
       {/* Further down on purpose: it loads once it scrolls into view, then polls (paused while the tab is hidden). */}
@@ -48,7 +48,7 @@ export default function Show(_props: Props) {
   );
 }
 
-/** The dashboard before its answer (E64, an instant visit from the main navigation): its title, the panels as they load. */
+/** The dashboard before its answer (an instant visit from the main navigation): its title, the panels as they load. */
 function DashboardPlaceholder() {
   const t = useTranslation('dashboard');
   return (

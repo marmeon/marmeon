@@ -43,12 +43,12 @@ export class ShowNotificationsController extends Controller {
   handle(ctx: ContextOf<typeof ShowNotificationsRequest> & Authenticated) {
     const me = { type: 'user', id: ctx.user.id } as const;
     // A partial reload with `?cursor=…` appends (`merge()` of a paginator: its `data`, matched on the id); a revalidation — the
-    // reload after an action, a live hint — replaces the list (E183): a notification deleted meanwhile is gone.
+    // reload after an action, a live hint — replaces the list: a notification deleted meanwhile is gone.
     const notifications = merge(async () => {
       const page = await this.#inbox.page(me, { cursor: ctx.query.cursor, perPage: NOTIFICATIONS_PER_PAGE, encrypter: this.#encrypter });
       return { data: page.data.map((row) => this.#present(row)), meta: page.meta };
     }).matchOn('data.id');
-    // Live (W6.10): a new notification — or one read or deleted in another tab — reloads the list (the bell is the layout's, shared).
+    // Live: a new notification — or one read or deleted in another tab — reloads the list (the bell is the layout's, shared).
     return this.view('notifications/Index', { notifications }).live(notificationsChannel(me), { only: ['notifications'] });
   }
 
@@ -59,7 +59,7 @@ export class ShowNotificationsController extends Controller {
     if (signIn) {
       return { ...base, title: t.get('notifications.new_sign_in.title'), body: t.get('notifications.new_sign_in.body', { ip: signIn.ip ?? '—', browser: signIn.browser ?? '—' }) };
     }
-    // A kind this app no longer shows (or a row a deploy changed): still listed, to be marked read.
+    // A kind this app does not show (a type it does not know, a row a deploy changed): still listed, to be marked read.
     return { ...base, title: t.get('notifications.unknown'), body: '' };
   }
 }

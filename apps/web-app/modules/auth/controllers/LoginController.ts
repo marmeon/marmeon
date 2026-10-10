@@ -7,7 +7,7 @@ import { rules as r } from '@marmeon/validation';
 
 export const LoginRequest = defineRequest({
   schema: r.object({
-    // The identifier is normalized here (W2 rule): the throttle key and the lookup see the same value.
+    // The identifier is normalized here: the throttle key and the lookup see the same value.
     email: r.string().trim().lowercase().required().max(255).email(),
     // Never trimmed: spaces belong to the password. The hasher normalizes Unicode itself.
     password: r.string().required().max(4096),
@@ -17,7 +17,7 @@ export const LoginRequest = defineRequest({
   messages: { 'email.required': 'auth.validation.email_required', 'email.email': 'auth.validation.email_invalid', 'password.required': 'auth.validation.password_required' },
 });
 
-/** Five failed attempts per minute for one e-mail from one address (Laravel Breeze's default). */
+/** Five failed attempts per minute for one e-mail from one address. */
 const MAX_ATTEMPTS = 5;
 const DECAY_SECONDS = 60;
 
@@ -39,7 +39,7 @@ export class LoginController extends Controller {
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password, remember } = ctx.body;
-    // Keyed on the *validated* e-mail, after validation — never on raw input (Breeze's ensureIsNotRateLimited).
+    // Keyed on the *validated* e-mail, after validation — never on raw input.
     const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
     // Counted BEFORE the password is checked, in one atomic step: guesses sent at once can never all get past the limit
     // (checking first and counting after a failure lets every request that checks before the others through).
@@ -50,7 +50,7 @@ export class LoginController extends Controller {
     }
 
     // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify). The attempt stays counted.
-    // The Login event carries the request's address and browser by itself (RequestInfo, E169) — the "new sign-in" notice shows them.
+    // The Login event carries the request's address and browser by itself (RequestInfo) — the "new sign-in" notice shows them.
     if (!(await this.#auth.attempt(email, password, { remember }))) {
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }

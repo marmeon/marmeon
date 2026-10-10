@@ -12,10 +12,10 @@ import { SendWelcomeMailJob } from '../auth/jobs/SendWelcomeMailJob.ts';
 
 class Rollback extends Error {}
 
-// This app's own setup (.env.example, E108): the cache — with the rate limits and locks — and the sessions live on the
+// This app's own setup (.env.example): the cache — with the rate limits and locks — and the sessions live on the
 // `system` connection, a SQLite file of their own (config/database.ts). They never join the app's transactions; the queue
 // does (a job is part of the transaction that dispatched it). The other tests keep the memory stores (.env.test).
-describe('the system connection (E108)', () => {
+describe('the system connection', () => {
   let directory: string | undefined;
   afterEach(() => {
     if (directory) rmSync(directory, { recursive: true, force: true });

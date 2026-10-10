@@ -8,7 +8,7 @@ import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileDirectory } from '../ProfileDirectory.ts';
 
 /**
- * Editing a profile — a layer (E53): opened from a page, it shows over that page (a modal), with a history entry of its own
+ * Editing a profile — a layer: opened from a page, it shows over that page (a modal), with a history entry of its own
  * (Back closes it). A deep link or a reload of `/users/:user/edit` shows its base, the profile, under it.
  */
 export class EditUserProfileController extends Controller {
@@ -31,7 +31,7 @@ export class EditUserProfileController extends Controller {
     await this.#gate.authorize(ProfilePolicy, 'update', user);
 
     return this.view('user-profile/Edit', {
-      // The layer's own projection (E61): each link with `can.delete` — a region asks its own policies.
+      // The layer's own projection: each link with `can.delete` — a region asks its own policies.
       profile: {
         id: user.id,
         name: user.name,

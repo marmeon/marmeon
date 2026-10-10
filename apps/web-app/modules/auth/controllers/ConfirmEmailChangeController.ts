@@ -8,11 +8,11 @@ import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 /**
- * The link from ConfirmNewEmailMail (private registration, E146) — behind authenticate() and signed(): made by the app and
+ * The link from ConfirmNewEmailMail (private registration) — behind authenticate() and signed(): made by the app and
  * unexpired. It works for the signed-in account it names, with the token of that account's current request, once: then the
  * pending address is the account's (confirmed — the click came from its inbox) and the old address is told. Whoever clicks it
  * signed in as somebody else changes nothing: the address someone typed never joins another account. With
- * `AUTH_PRIVATE_REGISTRATION=false` (E193) no change waits for a link: 404, as if the route were not there.
+ * `AUTH_PRIVATE_REGISTRATION=false` no change waits for a link: 404, as if the route were not there.
  */
 export class ConfirmEmailChangeController extends Controller {
   readonly #users: UserRepository;

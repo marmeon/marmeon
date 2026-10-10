@@ -15,28 +15,27 @@ export const DOCS_GROUP = 'docs';
 
 /**
  * The docs' Content-Security-Policy in production: scripts from this origin only. The pages are cached publicly
- * (`CachePublicly`), and a nonce — one per response (E147) — must never reach a shared cache, where everybody would get the
+ * (`CachePublicly`), and a nonce — one per response — must never reach a shared cache, where everybody would get the
  * same one. They need none: the server renders no inline script (the page object is inert JSON, nothing streams, the code
- * blocks are spans), and the entry, its chunks and tab sync's chunk come from `/assets/` — `'self'`. The links test proves the
- * first for every page, the browser check the rest (0 violations).
+ * blocks are spans), and the entry, its chunks and tab sync's chunk come from `/assets/` — `'self'`.
  */
 export const DOCS_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], frameAncestors: ["'none'"] };
 
 /**
  * In development Vite's client, React Refresh's preamble and the devtools' bar are inline scripts: the strict default with a
- * nonce (E147) — pages are `no-cache` there, nothing is shared.
+ * nonce — pages are `no-cache` there, nothing is shared.
  */
 export const DOCS_DEV_CSP: ContentSecurityPolicyOptions = { frameAncestors: ["'none'"] };
 
 /**
  * Loads the routes into a group of their own (while registering) and reads the pages while the app boots (a missing or
- * unlisted one stops the start). A group of their own: `web` would encrypt cookies and — with @marmeon/session — start a session and set its cookie and the CSRF
- * cookie on every page. Public pages need none of it: the `docs` group checks the asset version (a client of an old build
- * reloads, E36-safe), shares the navigation and marks the answers cacheable.
+ * unlisted one stops the start). Not `web`: it would encrypt cookies and — with @marmeon/session — set the session's and the
+ * CSRF cookie on every page. The `docs` group checks the asset version (a client of an old build reloads), shares the
+ * navigation and marks the answers cacheable.
  */
 export class DocsServiceProvider implements ServiceProvider {
   register(container: Container): void {
-    // The routes while registering, not in boot(): `marmeon build` writes the route types from an app that boots nothing (E187).
+    // The routes while registering, not in boot(): `marmeon build` writes the route types from an app that boots nothing.
     container.make(Router).load({ group: DOCS_GROUP }, routes);
     container.singleton(DocsRepository, (c) => {
       const config = c.make(DocsConfig);

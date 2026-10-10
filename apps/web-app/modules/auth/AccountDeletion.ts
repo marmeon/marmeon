@@ -6,7 +6,7 @@ import type { User } from './users.ts';
 import { UserRepository } from './UserRepository.ts';
 
 /**
- * An account was deleted — dispatched inside the deletion's transaction, once per account: a listener's writes join it (E107)
+ * An account was deleted — dispatched inside the deletion's transaction, once per account: a listener's writes join it
  * and go with it if it rolls back. Other modules listen to clear what belongs to the account (`listen(AccountDeleted, …)` in
  * their module); files go after the commit (`afterCommit`).
  */
@@ -24,7 +24,7 @@ export class AccountDeleted {
 }
 
 /**
- * The one way an account is deleted (E203) — the unconfirmed ones `auth:prune-unverified` clears every night, and any deletion the
+ * The one way an account is deleted — the unconfirmed ones `auth:prune-unverified` clears every night, and any deletion the
  * app adds (a "delete my account" page): the row (its remember-me and API tokens go with it — the foreign keys cascade, a pending
  * change of address lives on the row), its password reset token, what other modules keep ({@link AccountDeleted}) — in one
  * transaction — then its sessions (`UserSessions`: the `database` driver removes them; with the others they end at their next

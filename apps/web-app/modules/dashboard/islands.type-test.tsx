@@ -1,5 +1,5 @@
 /**
- * Type guarantees of islands (E48, E51, E52) against this app's dashboard — checked by `tsc` (`pnpm typecheck`,
+ * Type guarantees of islands against this app's dashboard — checked by `tsc` (`pnpm typecheck`,
  * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the
  * message they get (read with the directive removed).
  */
@@ -59,7 +59,7 @@ export function TheIsland(props: IslandProps<ShowRecentSignInsController>) {
 export const routes = defineRoutes((Route) => {
   const signedIn = Route.middleware(authenticate());
   signedIn.get('/islands/activity', ShowMyActivityController);
-  // An island reads (E52):
+  // An island reads:
   // Argument of type 'typeof ShowMyActivityController' is not assignable to parameter of type '"this.island(…) answers GET requests
   // only — an island reads, it never changes anything: register it with Route.get"'.
   // @ts-expect-error

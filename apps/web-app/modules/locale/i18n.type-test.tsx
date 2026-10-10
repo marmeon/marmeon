@@ -1,4 +1,4 @@
-// Type guarantees of the translations (E38) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+// Type guarantees of the translations — compiled by `pnpm typecheck` / `marmeon build`, never run.
 import type { Messages } from '@marmeon/i18n/messages';
 import { trans, type Translator } from '@marmeon/i18n';
 import { useTranslation } from '@marmeon/react';

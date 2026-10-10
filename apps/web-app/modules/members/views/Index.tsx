@@ -9,12 +9,12 @@ type Props = PageProps<ListMembersController>;
 
 /**
  * The page's path — links by URL, not by route name (`<Link route="members.index">`): a name client code writes goes into the route
- * manifest of the app's first download, and this page must not make that any larger (W9.5).
+ * manifest of the app's first download, and this page must not make that any larger.
  */
 const PAGE = '/members';
 
 /**
- * The members table on the headless `useTable` (W9.6): a native `<table>` with a `<caption>`, `aria-sort` only on the sorted heading,
+ * The members table on the headless `useTable`: a native `<table>` with a `<caption>`, `aria-sort` only on the sorted heading,
  * the sort as a link in the heading, the member's name as each row's header, the list's count (and page) in a live region and what an
  * action did in another, every checkbox and button named after its row — the name starting with the button's visible text (WCAG
  * 2.5.3). Sorting, filtering and paging are visits of the page's URL; the selection lives with the history entry; actions are action

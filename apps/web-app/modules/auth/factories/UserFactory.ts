@@ -2,8 +2,8 @@ import { defineFactory } from '@marmeon/database';
 
 /**
  * `password`, hashed once — at the test costs of `.env.test`, so factory users sign in without
- * a rehash in tests. Like Laravel's former factory constant: hashing per row would make every
- * `count(50)` cost 50 hashes. (The seeder hashes with the configured costs instead.)
+ * a rehash in tests; hashing per row would make every `count(50)` cost 50 hashes. (The seeder
+ * hashes with the configured costs instead.)
  */
 export const FACTORY_PASSWORD_HASH = '$argon2id$v=19$m=1024,t=1,p=1$4Xhubcoo37TNJTsjeD4YIg$tLK1IR1zuYLJNCVRYJaBxiXR+EuI6aAXP5Wt1Ha2xlQ';
 
@@ -15,7 +15,7 @@ export const UserFactory = defineFactory(
     password: FACTORY_PASSWORD_HASH,
     bio: '',
     email_verified_at: new Date().toISOString(),
-    // Confirmed once (E203): never deleted by auth:prune-unverified.
+    // Confirmed once: never deleted by auth:prune-unverified.
     first_verified_at: new Date().toISOString(),
   }),
   { states: { unverified: { email_verified_at: null, first_verified_at: null } } },

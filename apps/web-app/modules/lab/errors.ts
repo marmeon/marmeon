@@ -2,7 +2,7 @@ import { Clock, SystemClock, token } from '@marmeon/core';
 import type { LabConfig } from './config.ts';
 
 /**
- * Classes that go wrong on purpose — for the lab's "trigger an error" page (`/lab/errors`, E119/E130): each one makes the
+ * Classes that go wrong on purpose — for the lab's "trigger an error" page (`/lab/errors`): each one makes the
  * container fail in its own way, so the development error page shows its solution.
  */
 
@@ -53,7 +53,7 @@ export class Invoices {
 Orders.inject = [Invoices];
 
 /**
- * The W6.6 mistake (E128): a defaulted parameter of an injectable type is never injected — a test's clock would not reach
+ * A common mistake: a defaulted parameter of an injectable type is never injected — a test's clock would not reach
  * it. The container builds it with the default and warns (development log, error page).
  */
 export class ReminderSchedule {

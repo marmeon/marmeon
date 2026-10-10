@@ -11,8 +11,8 @@ export default defineModule({
   migrations: new URL('./migrations/', import.meta.url),
   // Housekeeping of these tables, by the scheduler (marmeon schedule:work).
   schedule,
-  // Every failed scheduled task of the app (any module's) raises an alert (E127).
+  // Every failed scheduled task of the app (any module's) raises an alert.
   listeners: [listen(ScheduledTaskFailed, AlertOnFailedTask)],
-  // `/up/ready` (E126) checks the database, cache and queue through their packages — and, here, that the disks take files.
+  // `/up/ready` checks the database, cache and queue through their packages — and, here, that the disks take files.
   health: [StorageWritable],
 });

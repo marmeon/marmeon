@@ -100,7 +100,7 @@ describe('user-profile module', () => {
       await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King', bio: 'Countess.' });
     });
 
-    it("clears the bio on purpose — '' is a value, not a missing field (E208); a request without a bio keeps it", async () => {
+    it("clears the bio on purpose — '' is a value, not a missing field; a request without a bio keeps it", async () => {
       await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: 'Countess.' } }).assertRedirect(profile(ada));
       // JSON: the bio cleared, as a page builder or an API client sends it.
       await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: '' } }).assertRedirect(profile(ada)).assertValid();
@@ -134,7 +134,7 @@ describe('user-profile module', () => {
         .assertSessionHas('_old_input', { name: 'A', bio: 'ok' });
     });
 
-    it('counter-check (E65): fields in the query string of a PUT change nothing — only the body is validated', async () => {
+    it('fields in the query string of a PUT change nothing — only the body is validated', async () => {
       await app.actingAs(ada).expectingJson().put(`${profile(ada)}?name=Mallory`, { json: { bio: 'Countess.' } }).assertUnprocessable().assertInvalid<UpdateUserProfileController>(['name']);
       await app.actingAs(ada).put(`${profile(ada)}?name=Mallory&bio=pwned`, { json: { name: 'Ada King', bio: 'Countess.' } }).assertRedirect(profile(ada));
       await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King', bio: 'Countess.' });
@@ -147,7 +147,7 @@ describe('user-profile module', () => {
   });
 
   describe('shared props', () => {
-    it('gives every page the signed-in user and validation errors — flash messages are no prop (E60)', async () => {
+    it('gives every page the signed-in user and validation errors — flash messages are no prop', async () => {
       const page = await as(alan).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', {
         auth: { user: { id: alan.id, name: 'Alan Turing' } },
         errors: {},
@@ -293,7 +293,7 @@ describe('user-profile module', () => {
 });
 
 describe('policies (ProfilePolicy, ProfileLinkPolicy)', () => {
-  it('tell the page what it may offer — an explicit `abilities` projection (E61), and the e-mail only to its owner', async () => {
+  it('tell the page what it may offer — an explicit `abilities` projection, and the e-mail only to its owner', async () => {
     await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', { abilities: { update: true }, email: 'ada@example.com' });
     await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', { abilities: { update: false }, email: null });
   });
@@ -369,7 +369,7 @@ export function TypedForm() {
   form.set('bio', 1);
   // @ts-expect-error — `name` is required by the schema.
   useForm<UpdateUserProfileController>({ bio: '' });
-  // `bio` is optional (E208: left out it keeps the saved bio, '' clears it).
+  // `bio` is optional (left out it keeps the saved bio, '' clears it).
   useForm<UpdateUserProfileController>({ name: 'Ada' });
   const nameError: string | undefined = form.errors.name;
   // @ts-expect-error — the schema has no `email`, so there is no such error either.

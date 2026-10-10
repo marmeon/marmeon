@@ -4,7 +4,7 @@ import { Notifications } from '@marmeon/notifications';
 import { NewSignInNotification } from '../notifications/NewSignInNotification.ts';
 
 /**
- * A sign-in with a password tells the user — a queued listener (E86): the sign-in only queues it, a worker sends the
+ * A sign-in with a password tells the user — a queued listener: the sign-in only queues it, a worker sends the
  * notification. Not for the sign-in right after registering (`via: 'login'`, the app signs the new account in) nor for
  * a remember-me cookie (the same browser, continued).
  */

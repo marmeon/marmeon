@@ -32,7 +32,7 @@ async function setUp() {
 const send = (as: TestApp, user: User, avatar: unknown) => as.expectingJson().put(`/users/${user.id}/avatar`, { json: { avatar } });
 const uploadRows = async () => (await app.make(Connections).get().selectFrom(UPLOADS_TABLE as never).selectAll().execute()) as { id: string; consumed_at: unknown }[];
 
-describe('the avatar (W6.9: uploaded ahead, a token in the form, checked by its bytes)', () => {
+describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)', () => {
   it('uploads to the private uploads disk, then the form stores it on the public disk under a random name — shown on the profile and in the list', async () => {
     const { ada, as } = await setUp();
     const token = await as.upload(ROUTE, 'avatar', png(), { user: ada.id });
@@ -220,7 +220,7 @@ describe('the avatar (W6.9: uploaded ahead, a token in the form, checked by its 
     await send(as, ada, fresh).assertRedirect(); // an hour old: kept by the prune, and it still works
   });
 
-  it('uploads:prune --hours below UPLOADS_LIFETIME refuses without --force — a token that still works keeps its file (W10 step 8)', async () => {
+  it('uploads:prune --hours below UPLOADS_LIFETIME refuses without --force — a token that still works keeps its file', async () => {
     const { ada, as } = await setUp();
     app.freeze();
     const token = await as.upload(ROUTE, 'avatar', png('open-form.png'), { user: ada.id });
@@ -249,8 +249,8 @@ describe('the avatar (W6.9: uploaded ahead, a token in the form, checked by its 
   });
 });
 
-// The table is infrastructure (E108): written on its own connection, never in the app's transaction.
-describe('a used token stays used when the transaction around it rolls back (E108)', () => {
+// The table is infrastructure: written on its own connection, never in the app's transaction.
+describe('a used token stays used when the transaction around it rolls back', () => {
   class Rollback extends Error {}
   let directory: string | undefined;
   afterEach(() => {
@@ -272,7 +272,7 @@ describe('a used token stays used when the transaction around it rolls back (E10
 
   // On Postgres (a pool of its own, never the transaction): packages/storage/src/uploads-database.test.ts — a test app's
   // database is isolated (one physical connection), so there the loud error below applies on both drivers.
-  it('in a test app (one isolated connection) on the app’s database: inside a transaction a loud error (E108) — never a silent join', async () => {
+  it('in a test app (one isolated connection) on the app’s database: inside a transaction a loud error — never a silent join', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     const { inside } = await consumeAndRollBack();
     await expect(inside).rejects.toThrow(InfrastructureTransactionError);

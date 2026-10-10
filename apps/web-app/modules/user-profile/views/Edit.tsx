@@ -6,7 +6,7 @@ import type { EditUserProfileController } from '../controllers/EditUserProfileCo
 type Props = PageProps<EditUserProfileController>;
 
 /**
- * A layer (E53) — the same view whether it opens over the profile, over the people list, or by a deep link over its base.
+ * A layer — the same view whether it opens over the profile, over the people list, or by a deep link over its base.
  * The form submits as the layer: a validation error comes back into it, saving closes it (`closeLayer()` on the server).
  */
 export default function Edit({ profile, old }: Props) {
@@ -15,19 +15,19 @@ export default function Edit({ profile, old }: Props) {
   const layer = useLayer<EditUserProfileController>();
   // Ids of its own: a layer shares the document with the page beneath (and maybe another layer).
   const id = useId();
-  // E40: method, URL and fields from the route name — user-profile.update → UpdateUserProfileRequest's schema (its input type).
-  // `guard` (E64): with changes not saved, closing the layer, Back, a link elsewhere or closing the tab asks first.
-  // `validate` (E62): a field is checked against the server's schema when you leave it — "too short" before you save.
-  // `remember` (E63): typed, closed by Back, opened again by Forward — the input (and its errors) is still there, still dirty.
+  // Method, URL and fields from the route name — user-profile.update → UpdateUserProfileRequest's schema (its input type).
+  // `guard`: with changes not saved, closing the layer, Back, a link elsewhere or closing the tab asks first.
+  // `validate`: a field is checked against the server's schema when you leave it — "too short" before you save.
+  // `remember`: typed, closed by Back, opened again by Forward — the input (and its errors) is still there, still dirty.
   // In memory only, with the layer's history entry: a reload, signing out or a new build start over.
   const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved'), validate: true, remember: true });
 
-  // The picture (W6.9): a file input that uploads at once — to a target this route hands out for `avatar` (its policy decides),
+  // The picture: a file input that uploads at once — to a target this route hands out for `avatar` (its policy decides),
   // with progress and cancel; the form sends only the token. On the server the file is checked again by its size and its
   // bytes (PNG, JPEG, WebP — an SVG or a renamed HTML file is refused) and moved to the public disk under a random name.
   const avatarForm = useForm('user-profile.avatar.update', { user: profile.id }, { avatar: null });
   const avatar = avatarForm.data.avatar;
-  // Live (W6.10): the profile beneath follows `users.<id>` — while this form has unsaved changes (its guard), a change from
+  // Live: the profile beneath follows `users.<id>` — while this form has unsaved changes (its guard), a change from
   // another tab reloads nothing; it waits here until it is applied.
   const updates = useLiveUpdates();
 
@@ -138,7 +138,7 @@ export default function Edit({ profile, old }: Props) {
             {profile.links.map((link) => (
               <li key={link.id}>
                 {link.label}{' '}
-                {/* A second layer over this one (depth 2): "Remove this link?" — offered when the policy allows it (E61). */}
+                {/* A second layer over this one (depth 2): "Remove this link?" — offered when the policy allows it. */}
                 {link.can.delete && (
                   <Link route="user-profile.links.remove" params={{ user: profile.id, link: link.id }} layer aria-label={t('show.remove_label', { label: link.label })}>
                     {t('show.remove')}

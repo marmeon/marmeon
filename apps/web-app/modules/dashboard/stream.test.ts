@@ -6,7 +6,7 @@ import application from '../../bootstrap/app.ts';
 import { ProfileActivity } from '../user-profile/ProfileActivity.ts';
 import { ProfileDirectory } from '../user-profile/ProfileDirectory.ts';
 
-// The dashboard as a browser gets it (E49): the shell first, the islands — and deferred props — later in the same response.
+// The dashboard as a browser gets it: the shell first, the islands — and deferred props — later in the same response.
 // "Members" is slow on purpose here (DASHBOARD_ISLAND_DELAY), the profile's activity too (PROFILE_ACTIVITY_DELAY).
 const DELAY = 400;
 let app: TestApp;
@@ -42,8 +42,8 @@ async function follow(started: number, response: Response, markers: Record<strin
   return { headers, html, at, end: performance.now() - started };
 }
 
-describe('the dashboard as it streams (E49)', () => {
-  it('counter-check: a slow island does not hold the shell back — it arrives later in the same response', async () => {
+describe('the dashboard as it streams', () => {
+  it('a slow island does not hold the shell back — it arrives later in the same response', async () => {
     const started = performance.now();
     const response = await app.actingAs(ada).stream('/dashboard');
     const { headers, at, end } = await follow(started, response, {
@@ -59,7 +59,7 @@ describe('the dashboard as it streams (E49)', () => {
     expect(end).toBeGreaterThanOrEqual(DELAY);
   });
 
-  it('streams under the strict CSP (E147): React\'s scripts that reveal the late islands carry the response\'s nonce — every script does', async () => {
+  it('streams under the strict CSP: React\'s scripts that reveal the late islands carry the response\'s nonce — every script does', async () => {
     const response = await app.actingAs(ada).stream('/dashboard');
     const html = await response.text();
     const nonce = /'nonce-([^']+)'/.exec(response.headers.get('content-security-policy') ?? '')?.[1];
@@ -85,7 +85,7 @@ describe('the dashboard as it streams (E49)', () => {
     expect(html).not.toContain('$RC');
   });
 
-  it('counter-check: an island that writes the session after the headers throws in development — nothing reaches the session', async () => {
+  it('an island that writes the session after the headers throws in development — nothing reaches the session', async () => {
     const real = app.make(ProfileDirectory);
     app.container.scoped(ProfileDirectory, (container) =>
       Object.assign(Object.create(real) as ProfileDirectory, {
@@ -105,7 +105,7 @@ describe('the dashboard as it streams (E49)', () => {
   });
 });
 
-describe('deferred props in the first response (E49 bonus)', () => {
+describe('deferred props in the first response', () => {
   it('streams the profile’s activity with the page — the page object says so, the browser does not ask again', async () => {
     const started = performance.now();
     const response = await app.actingAs(ada).stream(`/users/${ada.id}`);
@@ -116,7 +116,7 @@ describe('deferred props in the first response (E49 bonus)', () => {
     expect(at.activity!).toBeGreaterThanOrEqual(150);
   });
 
-  it('counter-check: a deferred prop that writes the session once the headers are out throws in development — the browser loads the group', async () => {
+  it('a deferred prop that writes the session once the headers are out throws in development — the browser loads the group', async () => {
     const real = app.make(ProfileActivity);
     app.container.scoped(ProfileActivity, (container) =>
       Object.assign(Object.create(real) as ProfileActivity, {
@@ -136,14 +136,14 @@ describe('deferred props in the first response (E49 bonus)', () => {
   });
 });
 
-describe('a deep link of a layer, streamed (E53, E71)', () => {
+describe('a deep link of a layer, streamed', () => {
   it('the layer renders in the shell over its base — with the page, not a boundary streamed later', async () => {
     const started = performance.now();
     const streamed = await app.actingAs(ada).stream(`/users/${ada.id}/edit`);
     const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-marmeon-layer="user-profile\/Edit"/ });
     // In the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first: no later than the profile's
     // deferred activity (150 ms) would take, counted from the shell — not from the request, whose shell a loaded machine
-    // can hold back on its own (W6.11: 228 ms under a full `test:pgsql`).
+    // can hold back on its own (228 ms under a full `test:pgsql`).
     expect(at.layer! - at.shell!).toBeLessThan(150);
     expect(html.indexOf('data-marmeon-layer')).toBeGreaterThan(html.indexOf('<h1>Ada Lovelace</h1>'));
     // Not a part streamed after the shell (React sends those as hidden segments).

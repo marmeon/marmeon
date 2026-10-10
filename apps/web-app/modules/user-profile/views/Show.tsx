@@ -32,18 +32,18 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
   const ago = (iso: string) => t.format.relative(iso, now);
   const utc = (iso: string) => `${t.format.date(iso, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`;
   const router = useRouter<ShowUserProfileController>();
-  // Removing a link (E59): an action — no page change. The link goes at once (a patch over the props, typed against this
+  // Removing a link: an action — no page change. The link goes at once (a patch over the props, typed against this
   // page); a failure brings it back. Once it succeeded, the profile reloads and the patch goes with the server's answer.
   const remove = useAction('user-profile.links.destroy');
-  // Links being added, from any form: ghost rows until the real ones are there (model 2 — nothing to roll back).
+  // Links being added, from any form: ghost rows until the real ones are there (nothing to roll back).
   const adding = usePendingSubmissions('user-profile.links.store');
   const removeLink = (id: number, label: string) =>
     void remove.submit({
       params: { user: profile.id, link: id },
-      // Asked first (E64) — a no sends nothing, and nothing disappears.
+      // Asked first — a no sends nothing, and nothing disappears.
       confirm: { message: t('show.remove_confirm', { label }), confirmLabel: t('show.remove'), destructive: true },
       optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== id) } })),
-      // Its "Link removed." comes with the action's answer (E60) — a toast, once.
+      // Its "Link removed." comes with the action's answer — a toast, once.
       reload: router.reloading({ only: ['profile'] }),
     });
   return (
@@ -51,7 +51,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
       <Head title={profile.name}>
         <meta name="description" content={profile.bio} />
       </Head>
-      {/* The avatar the list showed small (E185): it moves here and grows — and back to the list with Back. */}
+      {/* The avatar the list showed small: it moves here and grows — and back to the list with Back. */}
       {profile.avatar && (
         <ViewTransition name={`avatar-${profile.id}`} share="avatar">
           <img src={profile.avatar} alt={t('show.avatar', { name: profile.name })} width={96} height={96} className="avatar" />
@@ -86,8 +86,8 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
           {t('show.verify')} <Link route="auth.verification.send">{t('show.verify_again')}</Link>
         </div>
       )}
-      {/* Offered only when the policy allows it (`abilities`, E61) — plain booleans, the server checks again on submit. A
-          layer (E53): the profile stays under it, with its activity and statistics as loaded. */}
+      {/* Offered only when the policy allows it (`abilities`) — plain booleans, the server checks again on submit. A
+          layer: the profile stays under it, with its activity and statistics as loaded. */}
       {abilities.update && (
         <p>
           <Link route="user-profile.edit" params={{ user: profile.id }} layer prefetch>
@@ -135,7 +135,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
                 <a href={link.url} rel="nofollow noopener" target="_blank">
                   {link.label}
                 </a>
-                {/* Per link (E61): the controller projected `can.delete` onto every link. */}
+                {/* Per link: the controller projected `can.delete` onto every link. */}
                 {link.can.delete && (
                   <>
                     {' '}
@@ -160,7 +160,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
       <nav>
         <ul>
           <li>
-            {/* The list of everyone lives on its own page now, its filters in the URL (useQueryState). */}
+            {/* The list of everyone lives on its own page, its filters in the URL (useQueryState). */}
             <Link route="user-profile.people" prefetch>
               {t('show.people')}
             </Link>
@@ -176,11 +176,11 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
   );
 }
 
-// What Back/Forward reloads when it shows the profile from memory (E58): the activity — the rest shows as it was.
+// What Back/Forward reloads when it shows the profile from memory: the activity — the rest shows as it was.
 Show.revalidateOnBack = ['activity'] as const satisfies RevalidateOnBack<ShowUserProfileController>;
 
 /**
- * The profile before its answer (E64, an instant visit from `<Link instant={{ name }}>`): the name the link knew at once, the
+ * The profile before its answer (an instant visit from `<Link instant={{ name }}>`): the name the link knew at once, the
  * rest as a skeleton — typed by the controller's `instant`, never the page's props (they are on their way).
  */
 function ShowPlaceholder({ name }: { name: string }) {
@@ -196,14 +196,14 @@ function ShowPlaceholder({ name }: { name: string }) {
 Show.placeholder = ShowPlaceholder satisfies Placeholder<ShowUserProfileController>;
 
 /**
- * Adding a link — an action (E59): the input moves into the list as a ghost row while it is sent (`usePendingSubmissions`);
+ * Adding a link — an action: the input moves into the list as a ghost row while it is sent (`usePendingSubmissions`);
  * invalid input comes back into the fields, with the errors by field.
  */
 function AddLink({ userId }: { userId: number }) {
   const t = useTranslation('user-profile');
   const router = useRouter<ShowUserProfileController>();
   const add = useAction('user-profile.links.store', { user: userId });
-  // Remembered (E63): a link half typed is still there after Back/Forward — in memory only, gone with a reload.
+  // Remembered: a link half typed is still there after Back/Forward — in memory only, gone with a reload.
   const [label, setLabel] = useRemember('add-link.label', '');
   const [url, setUrl] = useRemember('add-link.url', '');
   return (

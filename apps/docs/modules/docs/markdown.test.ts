@@ -32,11 +32,11 @@ describe('the markdown of a page', () => {
 
   it('gives headings GitHub’s anchors — duplicates numbered — and builds the table of contents from H2 and H3', () => {
     const { title, toc, anchors } = render(
-      '# @marmeon/x\n\n## Diagnostics: `@marmeon/core/diagnostics` (E118)\n\n### The pages: `/_marmeon/devtools`\n\n## Auth & Mail\n\n#### Deep\n\n## Auth & Mail',
+      '# @marmeon/x\n\n## Diagnostics: `@marmeon/core/diagnostics` (V118)\n\n### The pages: `/_marmeon/devtools`\n\n## Auth & Mail\n\n#### Deep\n\n## Auth & Mail',
     );
     expect(title).toBe('@marmeon/x');
     expect(toc).toEqual([
-      { depth: 2, text: 'Diagnostics: @marmeon/core/diagnostics (E118)', id: 'diagnostics-marmeoncorediagnostics-e118' },
+      { depth: 2, text: 'Diagnostics: @marmeon/core/diagnostics (V118)', id: 'diagnostics-marmeoncorediagnostics-v118' },
       { depth: 3, text: 'The pages: /_marmeon/devtools', id: 'the-pages-_marmeondevtools' },
       { depth: 2, text: 'Auth & Mail', id: 'auth--mail' },
       { depth: 2, text: 'Auth & Mail', id: 'auth--mail-1' },

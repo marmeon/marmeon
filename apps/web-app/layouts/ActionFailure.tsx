@@ -1,7 +1,7 @@
 import type { ActionException } from '@marmeon/react';
 import { useTranslation } from '@marmeon/react';
 
-/** Why an action failed, for the message — 401/419 mean the session is gone: reload, nothing is retried by itself (E59). */
+/** Why an action failed, for the message — 401/419 mean the session is gone: reload, nothing is retried by itself. */
 export function failureReason(exception: ActionException): 'signed_out' | 'expired' | 'offline' | 'forbidden' | 'other' {
   if (exception.type === 'network') return 'offline';
   if (exception.status === 401) return 'signed_out';

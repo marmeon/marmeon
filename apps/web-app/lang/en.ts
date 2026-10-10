@@ -15,11 +15,11 @@ const en = {
   register: 'Create an account',
   close: 'Close',
   language: 'Language',
-  // An action that failed (E59): shown where it was started — never retried by itself.
+  // An action that failed: shown where it was started — never retried by itself.
   action_failed:
     '{reason, select, signed_out {You are signed out — reload the page to sign in again.} expired {Your session has expired — reload the page.} offline {The server could not be reached — please try again.} forbidden {You may not do that.} other {That did not work — please try again.}}',
   unsaved: 'You have unsaved changes. Leave this page anyway?',
-  // A new build is out (E64) — shown instead of reloading while you have unsaved changes.
+  // A new build is out — shown instead of reloading while you have unsaved changes.
   new_version: 'A new version of this app is available.',
   new_version_reload: 'Reload now',
   confirm: {

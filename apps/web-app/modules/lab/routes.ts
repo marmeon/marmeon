@@ -18,13 +18,13 @@ export default defineRoutes((Route) => {
   lab.get('/client-only', ShowClientOnlyLabController);
   lab.get('/browser-only', ShowBrowserOnlyLabController);
   lab.get('/late-error', ShowLateErrorLabController);
-  // Errors on purpose, one per kind — the development error page with its solutions (E119, E130).
+  // Errors on purpose, one per kind — the development error page with its solutions.
   lab.get('/errors', ShowErrorsLabController);
   lab.get('/errors/:kind', TriggerErrorLabController);
-  // The devtools' bar (W7 step 9): the client hook API (E132), and a hydration mismatch on purpose (`?mismatch=1`).
+  // The devtools' bar: the client hook API, and a hydration mismatch on purpose (`?mismatch=1`).
   lab.get('/devtools', ShowDevtoolsLabController);
   lab.post('/devtools', SendDevtoolsLabController);
-  // The rules of @marmeon/validation (W10 step 3, E197): messages in the request's language, a taken address on submit only —
+  // The rules of @marmeon/validation: messages in the request's language, a taken address on submit only —
   // and the same form without `unique`, where the unique index answers (`failOnDuplicate`, as after a race).
   lab.get('/validation', ShowValidationLabController);
   lab.post('/validation', StoreValidationLabController);

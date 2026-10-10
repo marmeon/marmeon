@@ -46,7 +46,7 @@ interface Term {
 }
 
 /**
- * The search over every section of every page — in memory, built with the pages (E133: a server route, no index in the
+ * The search over every section of every page — in memory, built with the pages (a server route, no index in the
  * browser). Words are matched as parts of words, case-insensitively, all of them in one section; a match in the page's name
  * weighs most, then the heading — also a heading with the words of a name (`onOneServer` → "One server only") — then how
  * often the prose has it, and last that a code block uses it: a section that explains a word comes before an example that

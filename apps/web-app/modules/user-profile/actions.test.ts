@@ -12,8 +12,8 @@ beforeEach(async () => {
 
 const verified = () => app.factory(UserFactory).create({ email_verified_at: new Date() });
 
-describe('profile links as actions (E59) — what useAction sends and gets back', () => {
-  it('adds a link: the redirect is reported, not followed — the action delivers its flash message itself (E60)', async () => {
+describe('profile links as actions — what useAction sends and gets back', () => {
+  it('adds a link: the redirect is reported, not followed — the action delivers its flash message itself', async () => {
     const ada = await verified();
     const session = app.actingAs(ada);
     await session
@@ -21,7 +21,7 @@ describe('profile links as actions (E59) — what useAction sends and gets back'
       .post(`/users/${ada.id}/links`, { json: { label: 'Blog', url: 'https://blog.example' } })
       .assertActionRedirect(`/users/${ada.id}`)
       .assertHeader('cache-control', 'no-store')
-      // With the answer (`x-marmeon-flash`): `useAction` fires it once — no reload of a `flash` prop needed (W5b.6 finding).
+      // With the answer (`x-marmeon-flash`): `useAction` fires it once — no reload of a `flash` prop needed.
       .assertFlash('toast', { kind: 'success', message: 'Link added.' });
     await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog' });
     // The action's `reload: router.reloading({ only: ['profile'] })` — the new link, nothing else computed.
@@ -39,7 +39,7 @@ describe('profile links as actions (E59) — what useAction sends and gets back'
     await app.assertDatabaseCount('profile_links', 0);
   });
 
-  it('counter-checks: an unverified address (403), someone else’s profile (403), someone else’s link (404) — answers, never redirects', async () => {
+  it('an unverified address (403), someone else’s profile (403), someone else’s link (404) — answers, never redirects', async () => {
     const unverified = await app.factory(UserFactory).create({ email_verified_at: null });
     await app.actingAs(unverified).acting().post(`/users/${unverified.id}/links`, { json: { label: 'x', url: 'https://x.example' } }).assertForbidden();
     const ada = await verified();

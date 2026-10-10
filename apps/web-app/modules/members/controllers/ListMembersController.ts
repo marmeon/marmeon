@@ -4,7 +4,7 @@ import { Tables } from '@marmeon/table';
 import { MembersTable } from '../tables/MembersTable.ts';
 
 /**
- * The query of `/members`: the table's state — sort, page, page size, search, filters (E183). Stricter than other lists (E55/E56):
+ * The query of `/members`: the table's state — sort, page, page size, search, filters. Stricter than other lists:
  * a sort, a filter or a page size the table does not have is a 400.
  */
 export const ListMembersRequest = defineRequest({ query: MembersTable.query });

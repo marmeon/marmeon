@@ -11,7 +11,7 @@ const en = {
     edit: 'Edit profile',
     activity: 'Recent activity',
     activity_loading: 'Loading activity…',
-    // The profile's placeholder (E64, an instant visit): its name at once, the rest when it arrives.
+    // The profile's placeholder (an instant visit): its name at once, the rest when it arrives.
     loading: 'Loading the profile…',
     activity_entry: '{kind, select, link {Added the link “{label}”} signed-in {Signed in} other {Joined}}',
     stats: 'Statistics',
@@ -58,7 +58,7 @@ const en = {
     avatar_uploading: 'Uploading {percent} %',
     avatar_ready: 'Ready — save to use it.',
     avatar_cancel: 'Cancel upload',
-    // Live (W6.10): the profile changed in another tab while this form has unsaved changes — nothing was reloaded over them.
+    // Live: the profile changed in another tab while this form has unsaved changes — nothing was reloaded over them.
     updates: 'This profile changed meanwhile.',
     updates_apply: 'Show the changes',
     avatar_save: 'Save picture',

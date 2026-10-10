@@ -51,14 +51,14 @@ export class ShowLateErrorLabController extends LabController {
   }
 }
 
-/** What `/lab/errors/:kind` can make go wrong — each with the solution the development error page shows (E119, E130). */
+/** What `/lab/errors/:kind` can make go wrong — each with the solution the development error page shows. */
 export const ERROR_KINDS = {
   'container-unbound': 'A service needs an interface nobody bound',
   'container-scoped': 'A per-request service resolved outside a request',
   'container-no-list': 'A constructor parameter the container cannot inject (a number)',
   'container-circular': 'Two services that need each other',
   'injection-import-type': 'A constructor parameter whose type is imported with "import type"',
-  'optional-parameter': 'A defaulted parameter of an injectable type (a warning, E128) — then an error',
+  'optional-parameter': 'A defaulted parameter of an injectable type (a warning) — then an error',
   config: 'Invalid configuration (a variable missing)',
   'app-key': 'A missing APP_KEY',
   route: 'A route name that is not defined',

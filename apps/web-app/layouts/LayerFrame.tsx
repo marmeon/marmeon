@@ -2,10 +2,10 @@ import { LayerDialog, useTranslation, type LayerFrameProps } from '@marmeon/reac
 import type { CSSProperties } from 'react';
 
 /**
- * Around every layer's view (E53): the framework's native modal `<dialog>` — focus kept inside, Escape and the backdrop
+ * Around every layer's view: the framework's native modal `<dialog>` — focus kept inside, Escape and the backdrop
  * close it, focus back to what opened it — with the close button in the app's language. Shared by the client and SSR entries.
  * Its look: `@marmeon/react/styles.css` and `.app-layer` (styles/app.css). The depth goes in as a CSS variable through the
- * `style` prop, which LayerDialog writes through the CSSOM once mounted (E202) — never a `style` attribute a strict
+ * `style` prop, which LayerDialog writes through the CSSOM once mounted — never a `style` attribute a strict
  * `style-src` would block; a nested modal sits a little lower and to the side of the one beneath.
  */
 export function LayerFrame(props: LayerFrameProps) {

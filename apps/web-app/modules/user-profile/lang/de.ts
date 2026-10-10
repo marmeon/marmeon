@@ -59,7 +59,7 @@ export default {
     avatar_uploading: 'Wird hochgeladen: {percent} %',
     avatar_ready: 'Bereit — speichern, um es zu verwenden.',
     avatar_cancel: 'Hochladen abbrechen',
-    // Live (W6.10): das Profil hat sich in einem anderen Tab geändert, während dieses Formular ungespeicherte Änderungen hat.
+    // Live: das Profil hat sich in einem anderen Tab geändert, während dieses Formular ungespeicherte Änderungen hat.
     updates: 'Updates verfügbar: Dieses Profil wurde inzwischen geändert.',
     updates_apply: 'Änderungen anzeigen',
     avatar_save: 'Bild speichern',

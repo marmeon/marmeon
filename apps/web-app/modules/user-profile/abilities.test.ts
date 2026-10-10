@@ -51,7 +51,7 @@ const profile = (user: User) => `/users/${user.id}`;
 type Link = { id: number; label: string; can: { delete: boolean } };
 const linksOf = (props: object) => (props as { profile: { links: Link[] } }).profile.links;
 
-describe('abilities in the frontend (E61) — an explicit, typed projection', () => {
+describe('abilities in the frontend — an explicit, typed projection', () => {
   it('the profile projects `abilities` and every link’s `can` — booleans, from the policies', async () => {
     const own = (await app.actingAs(ada).navigating().get(profile(ada)).assertOk()).page()!;
     expect(own.props.abilities).toEqual({ update: true });
@@ -71,7 +71,7 @@ describe('abilities in the frontend (E61) — an explicit, typed projection', ()
     expect(asked.sort()).toEqual(['link.delete', 'link.delete', 'profile.update', 'profile.viewEmail']);
   });
 
-  it('counter-check: a partial reload for other props runs no projection (lazy props)', async () => {
+  it('a partial reload for other props runs no projection (lazy props)', async () => {
     await app.actingAs(alan).reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(profile(ada)).assertOk();
     // `viewEmail` stays: the e-mail prop is decided eagerly in the controller (it is no projection) — every request pays it.
     expect(asked).toEqual(['profile.viewEmail']);
@@ -81,7 +81,7 @@ describe('abilities in the frontend (E61) — an explicit, typed projection', ()
     expect(asked.sort()).toEqual(['profile.update', 'profile.viewEmail']);
   });
 
-  it('counter-check: a forged client still gets 403 — the projection is the UI’s hint, the server checks every action', async () => {
+  it('a forged client still gets 403 — the projection is the UI’s hint, the server checks every action', async () => {
     const [theirs] = linksOf((await app.actingAs(alan).navigating().get(profile(ada)).assertOk()).page()!.props);
     expect(theirs!.can.delete).toBe(false);
     // The devtools flip `can.delete` to true, or a script sends the request without the UI: refused all the same.

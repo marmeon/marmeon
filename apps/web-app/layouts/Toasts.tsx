@@ -11,7 +11,7 @@ interface Toast {
 }
 
 /**
- * The app's toasts (E60): every `toast` flash message, once — from a redirect's page, an action's answer, a layer's close.
+ * The app's toasts: every `toast` flash message, once — from a redirect's page, an action's answer, a layer's close.
  * A live region that is always there, so screen readers read what appears; an error is an alert. Without JavaScript, the
  * page's messages show in a `<noscript>` (rendered on the server only — the browser fires them as toasts instead).
  */

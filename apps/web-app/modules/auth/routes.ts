@@ -34,9 +34,9 @@ export default defineRoutes((Route) => {
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.post('/login', LoginController).name('auth.login.store');
   guests.get('/register', ShowRegisterController).name('auth.register');
-  // A few sign-ups per minute and address (E100) — live validation of the form does not count (E62).
+  // A few sign-ups per minute and address — live validation of the form does not count.
   guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
-  // Private registration (E146, the default): every sign-up ends here — a new address and a known one alike (404 with
+  // Private registration (the default): every sign-up ends here — a new address and a known one alike (404 with
   // AUTH_PRIVATE_REGISTRATION=false: a sign-up signs in then).
   guests.get('/register/sent', ShowRegistrationSentController).name('auth.register.sent');
   guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
@@ -46,9 +46,9 @@ export default defineRoutes((Route) => {
 
   const signedIn = Route.middleware(authenticate());
   signedIn.post('/logout', LogoutController).name('auth.logout');
-  // Private registration (E146, the default): the app is for confirmed addresses only — whoever signed up with somebody else's
+  // Private registration (the default): the app is for confirmed addresses only — whoever signed up with somebody else's
   // address (it was free then) signs in, but sees nothing but the notice until the link from that inbox is clicked while signed
-  // in. With AUTH_PRIVATE_REGISTRATION=false (E193) the settings stay open to an unconfirmed address (a typo in a new address can be
+  // in. With AUTH_PRIVATE_REGISTRATION=false the settings stay open to an unconfirmed address (a typo in a new address can be
   // fixed); the other modules ask for a confirmed one either way (`verified()`).
   const confirmed = signedIn.middleware(ConfirmedAddress);
   confirmed.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
@@ -56,16 +56,16 @@ export default defineRoutes((Route) => {
   // "Sudo mode": the security page asks for the password again unless it was typed within 15 minutes.
   confirmed.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
   // A new hash in the database and its fingerprint in the session must stay a pair: one of these requests per session at a
-  // time (block(), E145) — two at once could leave the session with the other's fingerprint, and sign it out.
+  // time (block()) — two at once could leave the session with the other's fingerprint, and sign it out.
   confirmed.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
   confirmed.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();
-  // Private registration (E146): a new address is pending until the link sent to it is clicked — the same answer for every
+  // Private registration: a new address is pending until the link sent to it is clicked — the same answer for every
   // address; a few requests a minute per user (each one sends a mail somewhere). With AUTH_PRIVATE_REGISTRATION=false it changes at once.
   confirmed.middleware(confirmedPassword()).middleware(throttle('email-change')).put('/settings/email', UpdateEmailController).name('auth.email.update');
   // API tokens: as good as a session — sudo mode for all of it.
   const sudo = confirmed.middleware(confirmedPassword());
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
-  // Creating one is a layer over the list (E53); its answer — the plain text — replaces it, shown once.
+  // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');
   sudo.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
@@ -75,7 +75,7 @@ export default defineRoutes((Route) => {
   signedIn.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
   signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
   signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
-  // The link to a new address (private registration, E146): signed, expiring, for its own user and request only — internal too
+  // The link to a new address (private registration): signed, expiring, for its own user and request only — internal too
   // (404 with AUTH_PRIVATE_REGISTRATION=false).
   signedIn.middleware(signed()).get('/email/change/:id/:token', ConfirmEmailChangeController).name('auth.email.confirm').internal();
 });

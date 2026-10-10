@@ -4,10 +4,10 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
-// Server rendering with the language files: the SSR entry loads the page's locale before rendering (streaming, W5.5).
+// Server rendering with the language files: the SSR entry loads the page's locale before rendering (streaming).
 let app: TestApp;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh', ssr: true });
@@ -48,7 +48,7 @@ describe('translated pages, rendered on the server', () => {
   });
 });
 
-describe('a path without a route (W7.11)', () => {
+describe('a path without a route', () => {
   it('is a 404 page in the layout — no group ran, so no shared props: the layout renders without them, on the server and in the browser', async () => {
     const response = await app.get('/gibt-es-nicht', html('en')).assertNotFound().assertServerRendered().assertHydrates();
     expect(response.body).toContain('Not Found');

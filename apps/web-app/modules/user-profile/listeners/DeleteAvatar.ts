@@ -3,7 +3,7 @@ import { Storage } from '@marmeon/storage';
 import type { AccountDeleted } from '#modules/auth';
 
 /**
- * A deleted account's avatar goes too (E203) — after the deletion committed: a rollback keeps the account, and with it the
+ * A deleted account's avatar goes too — after the deletion committed: a rollback keeps the account, and with it the
  * picture. Its profile links and sign-in activity go with the row (the foreign keys cascade).
  */
 export class DeleteAvatar {

@@ -7,7 +7,7 @@ const nameOf = (locale: string) => new Intl.DisplayNames([locale], { type: 'lang
 
 /**
  * Around every page (the default in `bootstrap/layouts.ts`): navigation, the language switcher and flash messages.
- * It stays mounted while you navigate (E35) — the account menu stays open, nothing re-renders from scratch.
+ * It stays mounted while you navigate — the account menu stays open, nothing re-renders from scratch.
  */
 export function AppLayout({ children }: LayoutProps) {
   const { props, locale } = usePage();
@@ -22,10 +22,10 @@ export function AppLayout({ children }: LayoutProps) {
         <strong>
           {user ? <Link route="user-profile.me">{t('name')}</Link> : <Link route="auth.login">{t('name')}</Link>}
         </strong>
-        {/* The link to the page on screen gets aria-current="page" and data-current by itself (E64). */}
+        {/* The link to the page on screen gets aria-current="page" and data-current by itself. */}
         {user && (
           <nav aria-label={t('main')} className="row">
-            {/* Instant visits (E64): the page's placeholder shows at once, inside this layout — then the page. */}
+            {/* Instant visits: the page's placeholder shows at once, inside this layout — then the page. */}
             <Link route="dashboard.show" instant>
               {t('dashboard')}
             </Link>
@@ -36,7 +36,7 @@ export function AppLayout({ children }: LayoutProps) {
           </nav>
         )}
         {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. An uncontrolled
-            `<Form>` (E64): the pressed button's `locale` is the field — without JavaScript a real form (`_token` included). */}
+            `<Form>`: the pressed button's `locale` is the field — without JavaScript a real form (`_token` included). */}
         {locales && (
           <Form route="locale.update" aria-label={t('language')} className="row row-tight">
             {(form) =>
@@ -87,17 +87,17 @@ export function AppLayout({ children }: LayoutProps) {
         )}
       </header>
       <NewVersionBanner />
-      {/* The page, apart from the layout (E185): it slides on a page change — forward or back (styles/app.css). */}
+      {/* The page, apart from the layout: it slides on a page change — forward or back (styles/app.css). */}
       <ViewTransition name="page">{children}</ViewTransition>
-      {/* Flash messages (E60): each once, as a toast. */}
+      {/* Flash messages: each once, as a toast. */}
       <Toasts />
     </>
   );
 }
 
 /**
- * A new build is out (E64). Nothing typed is lost: with unsaved changes (a guarded form), the page does not reload — this says
- * so instead, and the next visit loads the new version anyway. Without unsaved changes it reloads at once, as before.
+ * A new build is out. Nothing typed is lost: with unsaved changes (a guarded form), the page does not reload — this says
+ * so instead, and the next visit loads the new version anyway. Without unsaved changes it reloads at once.
  */
 function NewVersionBanner() {
   const t = useTranslation('app');

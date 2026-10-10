@@ -7,7 +7,7 @@ import type { User } from './users.ts';
 
 /**
  * Queues the verification mail — after registration (from the queued listener), on request, after a change of address.
- * Composed here, sent by a worker (E105: the signed link travels encrypted).
+ * Composed here, sent by a worker (the signed link travels encrypted).
  */
 export class VerificationMailer {
   readonly #verification: EmailVerification;

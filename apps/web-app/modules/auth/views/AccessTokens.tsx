@@ -12,10 +12,10 @@ export default function AccessTokens({ tokens }: Props) {
   // In UTC: the server and the browser render the same text (no time zone of either side).
   const at = (iso: string) => t.format.date(iso, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
   const router = useRouter<ShowAccessTokensController>();
-  // Revoking is an action (E59): the token leaves the list at once — a snapshot patch of `tokens`, rolled back if the server
+  // Revoking is an action: the token leaves the list at once — a snapshot patch of `tokens`, rolled back if the server
   // says no (someone else's id: 404; the password confirmation ran out: 423). It succeeded: the patch is the list now.
   const revoke = useAction('auth.tokens.destroy');
-  // Type-to-confirm (E64): the token's name, typed exactly — a wrong text sends nothing. "Token revoked." comes as a toast (E60).
+  // Type-to-confirm: the token's name, typed exactly — a wrong text sends nothing. "Token revoked." comes as a toast.
   const revokeToken = (id: number, name: string) =>
     void revoke.submit({
       params: { token: id },
@@ -28,7 +28,7 @@ export default function AccessTokens({ tokens }: Props) {
     <main>
       <Head title={t('tokens.title')} />
       <h1>{t('tokens.title')}</h1>
-      {/* A layer over this list (E53): the form, then — replacing it — the new token's plain text, shown once. */}
+      {/* A layer over this list: the form, then — replacing it — the new token's plain text, shown once. */}
       <p>
         <Link route="auth.tokens.create" layer>
           {t('tokens.create')}

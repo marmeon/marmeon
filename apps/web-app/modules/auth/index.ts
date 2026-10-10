@@ -32,7 +32,7 @@ export default defineModule({
   notifications: [NewSignInNotification],
   recipients: { user: UserRecipients },
   // Queued work of this module — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
-  // SendAccountExistsMailJob: private registration (E146) — the note to an account's owner that someone signed up with its address;
+  // SendAccountExistsMailJob: private registration — the note to an account's owner that someone signed up with its address;
   // SendEmailChangeMailJob: the link to a new address, or the note to the owner of a taken one.
   jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob],
   migrations: new URL('./migrations/', import.meta.url),
@@ -42,7 +42,7 @@ export default defineModule({
   routes,
   // Scheduled work: the nightly prune of tokens, expired changes of address and unconfirmed accounts (marmeon schedule:work).
   schedule,
-  // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (E203; the schedule runs it nightly).
+  // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (the schedule runs it nightly).
   // Other modules clear what belongs to a deleted account by listening to AccountDeleted (user-profile: the avatar; notifications).
   commands: [PruneUnverifiedCommand],
 });

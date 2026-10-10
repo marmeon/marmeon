@@ -27,8 +27,8 @@ export default defineApplication({
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {
-    // A strict Content-Security-Policy on every document (E147): scripts only with the response's nonce ('strict-dynamic'),
-    // no plugins, no foreign <base>; framed by nobody. Styles (E202): stylesheets of the app's origin and <style> elements with
+    // A strict Content-Security-Policy on every document: scripts only with the response's nonce ('strict-dynamic'),
+    // no plugins, no foreign <base>; framed by nobody. Styles: stylesheets of the app's origin and <style> elements with
     // the nonce (Vite's in development, the devtools' bar) — no 'unsafe-inline': not one `style` attribute in the markup.
     global: [SecurityHeaders, contentSecurityPolicy({ styleSrc: ["'self'", NONCE], frameAncestors: ["'none'"] })],
     web: [ShareAppProps],

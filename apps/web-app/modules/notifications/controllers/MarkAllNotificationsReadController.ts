@@ -16,7 +16,7 @@ export class MarkAllNotificationsReadController extends Controller {
 
   async handle(ctx: HttpContext<Authenticated>) {
     const read = await this.#inbox.markAllRead({ type: 'user', id: ctx.user.id });
-    // The user's other tabs (W6.10) — not this one (x-marmeon-connection): its action reloads the bell and the list itself.
+    // The user's other tabs — not this one (x-marmeon-connection): its action reloads the bell and the list itself.
     if (read > 0) await this.#broadcast.refresh(notificationsChannel({ type: 'user', id: ctx.user.id }));
     return this.json({ read });
   }

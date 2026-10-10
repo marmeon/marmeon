@@ -6,7 +6,7 @@ export const DashboardConfig = defineConfig('dashboard', {
     NODE_ENV: env.string().optional(),
     /**
      * Makes the "Members" island slow on purpose, in milliseconds — to watch it load after the others (each island is a
-     * request of its own; the slow one blocks nobody). Ignored where the app is protected (production, no `NODE_ENV` — E139).
+     * request of its own; the slow one blocks nobody). Ignored where the app is protected (production, also without a `NODE_ENV`).
      */
     DASHBOARD_ISLAND_DELAY: env.integer().min(0).max(10_000).default(0),
     /** Who sees the "Members" island: e-mail addresses, comma-separated, in any case (the demo's: Ada). */
