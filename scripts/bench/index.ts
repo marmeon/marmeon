@@ -1,11 +1,11 @@
 /**
- * `pnpm bench <scenario> [options]` — measurements kept in the repository (E166), never a gate: no part of `pnpm run ci`.
+ * `pnpm bench <scenario> [options]` — measurements kept in the repository, never a gate: no part of `pnpm run ci`.
  *
- *   pnpm bench boot --app apps/web-app                 # marmeon start → GET /up 200: median of 7 and a breakdown (W8 step 3)
- *   pnpm bench login --base f785159 --without w8       # the request path: /login A/B against a base, Wave 8's measures off (W8 step 9)
+ *   pnpm bench boot --app apps/web-app                 # marmeon start → GET /up 200: median of 7 and a breakdown
+ *   pnpm bench login --base f785159 --without all      # the request path: /login A/B against a base, the four security measures off
  *   pnpm bench people                                  # GET /people signed in
  *   pnpm bench login --profile --base f785159          # CPU profiles of the measured requests, top lists and their diff
- *   pnpm bench fanout [--streams 50000]                # one live hint among N open streams: the channel index (W9 step 4)
+ *   pnpm bench fanout [--streams 50000]                # one live hint among N open streams: the channel index
  *
  * See `boot.ts` and `requests.ts` for every option.
  */

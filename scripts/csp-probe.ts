@@ -1,5 +1,5 @@
 /**
- * The CSP probe (W10 step 7, E202): a built app in headless Chrome under a strict style policy — every document gets a second
+ * The CSP probe: a built app in headless Chrome under a strict style policy — every document gets a second
  * `Content-Security-Policy: style-src 'self'` (no `'unsafe-inline'`, no nonce; both policies apply) — and a counter of
  * `securitypolicyviolation` events installed before the first script. Green when nothing is blocked and the framework's look
  * arrived (from `@marmeon/react/styles.css`, not from inline styles):
@@ -7,7 +7,7 @@
  *   node scripts/csp-probe.ts --app apps/web-app [--build]               # builds (with --build), starts `marmeon start`, probes
  *   node scripts/csp-probe.ts --app <kit> --profile kit [--build]        # a starter kit (pack:smoke --keep, create-marmeon)
  *   node scripts/csp-probe.ts --url http://127.0.0.1:3961 --profile web-app   # a server that already runs
- *   node scripts/csp-probe.ts --app apps/web-app --build --throwaway     # a fresh checkout (the acceptance's git worktree, W10 step 9c)
+ *   node scripts/csp-probe.ts --app apps/web-app --build --throwaway     # a fresh checkout (a new git worktree)
  *
  * `--app` starts the app as it is: its `.env` and its database (seeded — the profile signs in). `--throwaway` needs neither: a
  * generated `APP_NAME`, `APP_URL` and `APP_KEY`, and SQLite files in a temporary directory (`DB_DATABASE`, `SYSTEM_DB_DATABASE`),
@@ -65,7 +65,7 @@ const PROFILES: Record<string, Profile> = {
   },
 };
 
-/** The policy added to every document: what a strict app sets (E202). */
+/** The policy added to every document: what a strict app sets. */
 const STRICT = "style-src 'self'";
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36';
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));

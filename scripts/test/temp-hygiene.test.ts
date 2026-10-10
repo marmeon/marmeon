@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { abandonedRuns, leftovers } from './temp-hygiene.ts';
 
-describe("the test run's temporary directory (E187)", () => {
+describe("the test run's temporary directory", () => {
   it('names every marmeon-* entry a test left — but not the run-scoped worker databases and bundle workspace', () => {
     const entries = [
       'marmeon-env-x9laHo',

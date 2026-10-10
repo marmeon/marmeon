@@ -1,5 +1,5 @@
 /**
- * Vitest global setup of the repository (`vitest.config.ts`, E187): every run gets a temporary directory of its own — `TMPDIR` points
+ * Vitest global setup of the repository (`vitest.config.ts`): every run gets a temporary directory of its own — `TMPDIR` points
  * into it for the workers and every process a test starts, so `os.tmpdir()` is the run's — and at the end the run fails when a test
  * left a `marmeon-*` entry in it, with the list. Then the directory goes, whatever it holds.
  *

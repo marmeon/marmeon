@@ -1,23 +1,23 @@
 /**
- * `pnpm pack:smoke` — the framework as a stranger gets it (E158, E150): the tarballs of every package, and a new app made
+ * `pnpm pack:smoke` — the framework as a stranger gets it: the tarballs of every package, and a new app made
  * from them OUTSIDE the monorepo by the `create-marmeon` tarball — twice. A part of `pnpm run ci`.
  *
  *   create-marmeon without a directory and without a terminal → exit 2 at once (never a prompt that waits)
  *   create-marmeon app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
- *     → migrate (development from .env) → vitest run → lint → build without .env (E187: no key; nothing shaped like an APP_KEY and
+ *     → migrate (development from .env) → vitest run → lint → build without .env (no key; nothing shaped like an APP_KEY and
  *     not the app's own in dist/ or .marmeon/) → start → GET /login 200
  *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
- *     .br, immutable), GET / 200, a sign-up with a known address answered like a new one (private registration, E146) → start
- *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns (E193) → pnpm install --prod → node_modules/.bin/marmeon → start → GET /login 200
- *     → SMTP from the production install (nodemailer comes with @marmeon/mail, E198) → pnpm add @marmeon/redis @marmeon/storage (their
+ *     .br, immutable), GET / 200, a sign-up with a known address answered like a new one (private registration) → start
+ *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns → pnpm install --prod → node_modules/.bin/marmeon → start → GET /login 200
+ *     → SMTP from the production install (nodemailer comes with @marmeon/mail) → pnpm add @marmeon/redis @marmeon/storage (their
  *     tarballs, nothing else), build: start with CACHE_DRIVER=redis SESSION_DRIVER=redis on the Redis of compose.yaml (`redis` came with
  *     @marmeon/redis — the app's package.json has none) → an S3 default disk without the AWS SDK: the start fails with the exact command
  *   create-marmeon app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
- *     node_modules finds every package the pnpm app's does (E151)
+ *     node_modules finds every package the pnpm app's does
  *
- * Every `marmeon start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
+ * Every `marmeon start` must be exactly one Node process (no launcher in front of the server — signals, exit codes and
  * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group — and must load neither oxc-parser (the
- * injection lists come from `marmeon build`, E138) nor pino-pretty (JSON logs), with no "build artifacts" warning: a preloaded
+ * injection lists come from `marmeon build`) nor pino-pretty (JSON logs), with no "build artifacts" warning: a preloaded
  * hook records every module the start loads.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
@@ -48,11 +48,11 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
 export const SKIPPED = 75;
 export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode|ENOTCACHED/;
-/** The Redis of compose.yaml (marmeon-redis) — the driver step of the starter kit talks to it (E198). */
+/** The Redis of compose.yaml (marmeon-redis) — the driver step of the starter kit talks to it. */
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL ?? 'redis://127.0.0.1:56379';
-/** What a missing AWS SDK says (E198: optional peers, the exact command with the tested major). */
+/** What a missing AWS SDK says (optional peers, the exact command with the tested major). */
 const S3_COMMAND = 'pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3';
-/** What create-marmeon says without a directory and without a terminal (E167). */
+/** What create-marmeon says without a directory and without a terminal. */
 const NO_DIRECTORY = 'create-marmeon needs a directory: create-marmeon <dir> [--yes]';
 
 export class SmokeError extends Error {}
@@ -127,7 +127,7 @@ export function scaffold(bin: string, cwd: string, args: string[], { tarballs, e
 
 /**
  * The generated package.json: every `@marmeon/*` and the CLI `marmeon` from its vendored tarball — never `workspace:`, never a floating
- * range; `@marmeon/validation` and no `valibot` (E197).
+ * range; `@marmeon/validation` and no `valibot`.
  */
 export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Record<string, any> {
   const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as Record<string, any>;
@@ -139,9 +139,9 @@ export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Reco
       }
     }
   }
-  // Validation is @marmeon/validation's (E197): Valibot is its engine, never the app's to install.
+  // Validation is @marmeon/validation's: Valibot is its engine, never the app's to install.
   const engines = ['dependencies', 'devDependencies'].filter((field) => 'valibot' in ((manifest[field] ?? {}) as Record<string, string>));
-  if (engines.length > 0) throw new SmokeError(`package.json ${engines.join(' and ')} list valibot — a new app validates with @marmeon/validation and installs no engine (E197).`);
+  if (engines.length > 0) throw new SmokeError(`package.json ${engines.join(' and ')} list valibot — a new app validates with @marmeon/validation and installs no engine.`);
   if (!manifest.dependencies?.['@marmeon/validation']) throw new SmokeError('package.json has no @marmeon/validation — the rules of config/app.ts come from it.');
   if (packageManager === 'pnpm' && !/^pnpm@12\.\d+\.\d+$/.test(manifest.packageManager ?? '')) throw new SmokeError(`package.json pins no pnpm 12: ${manifest.packageManager}`);
   if (packageManager === 'npm' && (manifest.packageManager || existsSync(join(app, 'pnpm-workspace.yaml')) || existsSync(join(app, 'pnpm-lock.yaml')))) {
@@ -162,7 +162,7 @@ const KEY_SHAPE = /base64:[A-Za-z0-9+/]{43}=/;
 
 /**
  * Every place in what `marmeon build` wrote (`dist/`, `.marmeon/`) that holds something shaped like an `APP_KEY` or one of
- * `values` — the app's own secrets (E187: the build has none, so none may end up there). Compressed copies are skipped: their
+ * `values` — the app's own secrets (the build has none, so none may end up there). Compressed copies are skipped: their
  * originals are read.
  */
 export function secretsIn(app: string, values: readonly string[]): string[] {
@@ -316,7 +316,7 @@ class Smoke {
   }
 
   /**
-   * `marmeon build` as an image builds it (E187): without the app's `.env` — no key, no name, no database — then what it wrote must
+   * `marmeon build` as an image builds it: without the app's `.env` — no key, no name, no database — then what it wrote must
    * hold no secret: neither the app's `APP_KEY` nor anything shaped like one (a placeholder a build phase might have used).
    */
   buildWithoutEnv(): string {
@@ -337,7 +337,7 @@ class Smoke {
 
   /**
    * `marmeon start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
-   * answers, its process group must be exactly one process, and that one Node (E159).
+   * answers, its process group must be exactly one process, and that one Node.
    */
   async serve(path: string, check?: (base: string, output: () => string) => Promise<void>, env: NodeJS.ProcessEnv = {}): Promise<void> {
     const port = await freePort();
@@ -352,7 +352,7 @@ class Smoke {
     rmSync(loaded, { force: true });
     const child = spawn(join(this.app, 'node_modules/.bin/marmeon'), ['start'], {
       cwd: this.app,
-      // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example (E170).
+      // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example.
       env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}`, ...env },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -424,7 +424,7 @@ class Smoke {
     return { code, output };
   }
 
-  /** After SIGTERM: what the start loaded (E138) — no oxc-parser, no pino-pretty — and no "build artifacts" warning. */
+  /** After SIGTERM: what the start loaded — no oxc-parser, no pino-pretty — and no "build artifacts" warning. */
   async #checkLoads(child: ChildProcess, exited: Promise<void>, loaded: string, output: () => string): Promise<void> {
     this.#stop(child);
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
@@ -448,15 +448,6 @@ class Smoke {
   }
 }
 
-/**
- * The production HTTP defaults of the starter kit (E147, E162): `/login` under its CSP — one nonce in the header and on the
- * entry script — and never compressed, for a guest without a cookie (E143), a cross-site post refused; the entry script as the
- * `.br` `marmeon build` wrote, kept a year (`immutable`); the home page.
- */
-/**
- * The look comes from stylesheets the built index.html links (E202): `@marmeon/react/styles.css` — resolved from the packed
- * package's `exports` — and, in the kit, the auth module's `auth.css`. No inline style needed under a strict `style-src`.
- */
 /** The built browser files that keep a development branch: the client core calls the devtools hook only there. */
 function developmentBranchesIn(client: string): string[] {
   const found: string[] = [];
@@ -471,15 +462,24 @@ function developmentBranchesIn(client: string): string[] {
   return found;
 }
 
+/**
+ * The look comes from stylesheets the built index.html links: `@marmeon/react/styles.css` — resolved from the packed
+ * package's `exports` — and, in the kit, the auth module's `auth.css`. No inline style needed under a strict `style-src`.
+ */
 function checkStyles(app: string, classes: readonly string[]): void {
   const client = join(app, 'dist/client');
   const html = readFileSync(join(client, 'index.html'), 'utf8');
   const linked = [...html.matchAll(/<link rel="stylesheet"[^>]* href="\/([^"]+\.css)"/g)].map((match) => match[1]!);
   const css = linked.map((file) => readFileSync(join(client, file), 'utf8')).join('\n');
   const missing = classes.filter((name) => !css.includes(`.${name}`));
-  if (missing.length > 0) throw new SmokeError(`the built index.html links ${linked.join(', ') || 'no stylesheet'} — without ${missing.map((name) => `.${name}`).join(', ')} (E202).`);
+  if (missing.length > 0) throw new SmokeError(`the built index.html links ${linked.join(', ') || 'no stylesheet'} — without ${missing.map((name) => `.${name}`).join(', ')}.`);
 }
 
+/**
+ * The production HTTP defaults of the starter kit: `/login` under its CSP — one nonce in the header and on the
+ * entry script — and never compressed, for a guest without a cookie, a cross-site post refused; the entry script as the
+ * `.br` `marmeon build` wrote, kept a year (`immutable`); the home page.
+ */
 async function checkProductionHttp(base: string): Promise<void> {
   const home = await fetch(`${base}/`, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(5_000) });
   const homeHtml = await home.text();
@@ -490,11 +490,11 @@ async function checkProductionHttp(base: string): Promise<void> {
   const nonce = /'nonce-([^']+)'/.exec(policy)?.[1];
   if (!nonce || !policy.includes("'strict-dynamic'")) throw new SmokeError(`GET /login has no strict CSP with a nonce: ${policy || '(no header)'}`);
   if (page.headers.get('content-encoding')) throw new SmokeError(`GET /login was compressed (${page.headers.get('content-encoding')}) — documents never are (BREACH).`);
-  // A guest's page keeps no session (E143): no cookie — and a post from another site is refused before the token is asked for.
-  if (page.headers.getSetCookie().length > 0) throw new SmokeError(`GET /login of a guest set cookies (E143: no session for a guest): ${page.headers.getSetCookie().join(' | ')}`);
+  // A guest's page keeps no session: no cookie — and a post from another site is refused before the token is asked for.
+  if (page.headers.getSetCookie().length > 0) throw new SmokeError(`GET /login of a guest set cookies (no session for a guest): ${page.headers.getSetCookie().join(' | ')}`);
   const forged = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', headers: { 'sec-fetch-site': 'cross-site', 'content-type': 'application/x-www-form-urlencoded' }, body: 'email=a%40example.com&password=x', signal: AbortSignal.timeout(5_000) });
   await forged.arrayBuffer();
-  if (forged.status !== 403) throw new SmokeError(`A cross-site POST /login answered ${forged.status}, expected 403 (E143, Fetch Metadata).`);
+  if (forged.status !== 403) throw new SmokeError(`A cross-site POST /login answered ${forged.status}, expected 403 (Fetch Metadata).`);
   const entry = /<script type="module"[^>]*\ssrc="(\/assets\/[^"]+\.js)"[^>]*>/.exec(html);
   if (!entry || !entry[0].includes(`nonce="${nonce}"`)) throw new SmokeError(`The entry script of /login does not carry the response's nonce: ${entry?.[0] ?? '(no entry script)'}`);
   const asset = await fetch(`${base}${entry[1]}`, { headers: { 'accept-encoding': 'br' }, signal: AbortSignal.timeout(5_000) });
@@ -504,7 +504,7 @@ async function checkProductionHttp(base: string): Promise<void> {
 }
 
 /**
- * The registration of the starter kit (E146, E193): private by default — a sign-up with an address that has an account is answered
+ * The registration of the starter kit: private by default — a sign-up with an address that has an account is answered
  * like one with a new address (303 to /register/sent); with `AUTH_PRIVATE_REGISTRATION=false` the second sign-up with an address is
  * told "already registered", and the boot of a production server warns once.
  */
@@ -527,9 +527,9 @@ function checkRegistration(privately: boolean) {
     const where = (response: Response) => `${response.status} → ${response.headers.get('location')}`;
     if (privately) {
       for (const response of [first, second]) {
-        if (response.status !== 303 || !response.headers.get('location')?.endsWith('/register/sent')) throw new SmokeError(`A sign-up answered ${where(response)}, expected 303 → /register/sent for a new and a known address alike (E146).`);
+        if (response.status !== 303 || !response.headers.get('location')?.endsWith('/register/sent')) throw new SmokeError(`A sign-up answered ${where(response)}, expected 303 → /register/sent for a new and a known address alike.`);
       }
-      if (second.headers.getSetCookie().length > 0) throw new SmokeError('A sign-up with a known address set a cookie — the private registration answers without a session (E146).');
+      if (second.headers.getSetCookie().length > 0) throw new SmokeError('A sign-up with a known address set a cookie — the private registration answers without a session.');
       return;
     }
     if (first.status !== 303 || !first.headers.get('location')?.endsWith('/dashboard')) throw new SmokeError(`With AUTH_PRIVATE_REGISTRATION=false a sign-up answered ${where(first)}, expected 303 → /dashboard (signed in).`);
@@ -537,12 +537,12 @@ function checkRegistration(privately: boolean) {
     const cookie = second.headers.getSetCookie().map((line) => line.split(';')[0]).join('; ');
     const page = await fetch(`${base}/register`, { headers: { accept: 'text/html', cookie }, signal: AbortSignal.timeout(5_000) });
     if (!(await page.text()).includes('This e-mail address is already registered.')) throw new SmokeError('With AUTH_PRIVATE_REGISTRATION=false the form did not say "already registered" for a known address.');
-    if (!output().includes('AUTH_PRIVATE_REGISTRATION=false outside development and tests')) throw new SmokeError(`A production start with AUTH_PRIVATE_REGISTRATION=false did not warn (E193):\n${output()}`);
+    if (!output().includes('AUTH_PRIVATE_REGISTRATION=false outside development and tests')) throw new SmokeError(`A production start with AUTH_PRIVATE_REGISTRATION=false did not warn:\n${output()}`);
   };
 }
 
 /**
- * The production install sends a mail over SMTP — nodemailer is a dependency of @marmeon/mail (E198), the app never names it. A
+ * The production install sends a mail over SMTP — nodemailer is a dependency of @marmeon/mail, the app never names it. A
  * local server without TLS, so `requireTls: false` (MAIL_REQUIRE_TLS=false, as for Mailpit).
  */
 async function checkSmtp(smoke: Smoke): Promise<void> {
@@ -620,14 +620,14 @@ async function main(): Promise<number> {
     const tarballs = await pnpmApp.step('pnpm pack (all packages)', () => new Map(packAll(root, tarballDir).map((tarball) => [tarball.name, tarball])));
     const bin = unpackScaffolder(tarballs, join(work, 'create-marmeon'));
 
-    // Without a directory and without a terminal: exit 2 and the reason — at once, never a prompt that waits for an answer (E167).
+    // Without a directory and without a terminal: exit 2 and the reason — at once, never a prompt that waits for an answer.
     await pnpmApp.step('create-marmeon without a directory, no terminal → exit 2', () => {
       const result = spawnSync(process.execPath, [bin], { cwd: work, env: cleanEnvironment(), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 15_000 });
       if (result.error) throw new SmokeError(`create-marmeon without a directory did not end within 15 s (waiting for an answer?): ${result.error.message}`);
       if (result.status !== 2 || !result.stderr.includes(NO_DIRECTORY)) throw new SmokeError(`create-marmeon without a directory ended with ${result.status}, expected 2 and "${NO_DIRECTORY}":\n${result.stdout}${result.stderr}`);
     });
 
-    // ── The starter kit with pnpm (the defaults — its registration private, E146/E193) ──
+    // ── The starter kit with pnpm (the defaults — its registration private) ──
     const app = pnpmApp.app;
     await pnpmApp.step('create-marmeon app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
       const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
@@ -644,7 +644,7 @@ async function main(): Promise<number> {
       const leaked = tracked.filter((file) => /^(\.env$|node_modules\/|dist\/|\.marmeon\/)|\.sqlite$|^storage\/(?!.*\.gitignore$)/.test(file));
       if (leaked.length > 0) throw new SmokeError(`the first commit carries ${leaked.join(', ')}.`);
     });
-    // As a developer migrates: NODE_ENV=development from the .env (E170) — no --force there.
+    // As a developer migrates: NODE_ENV=development from the .env — no --force there.
     await pnpmApp.step('marmeon migrate (development from .env)', () => {
       const output = pnpmApp.marmeon('migrate');
       if (!output.includes('Environment: development (APP_ENV=local, NODE_ENV from .env)')) throw new SmokeError(`marmeon migrate did not take NODE_ENV=development from .env:\n${output}`);
@@ -653,14 +653,14 @@ async function main(): Promise<number> {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
       if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);
       if (!/modules\/auth\/email-change\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the change of address's tests (email-change.test.ts):\n${output}`);
-      if (!/AUTH_PRIVATE_REGISTRATION=false/.test(output)) throw new SmokeError(`vitest did not run the tests with AUTH_PRIVATE_REGISTRATION=false (E193):\n${output}`);
+      if (!/AUTH_PRIVATE_REGISTRATION=false/.test(output)) throw new SmokeError(`vitest did not run the tests with AUTH_PRIVATE_REGISTRATION=false:\n${output}`);
       return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
     await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));
-    await pnpmApp.step('marmeon build without .env (no key, E187) → no secret in dist/ or .marmeon/, the stylesheets linked (E202)', () => {
+    await pnpmApp.step('marmeon build without .env (no key) → no secret in dist/ or .marmeon/, the stylesheets linked', () => {
       pnpmApp.buildWithoutEnv();
       checkStyles(app, ['marmeon-layer', 'marmeon-failure', 'auth-header']);
-      // The injection lists of the app (E138): the auth module's controllers take their services through the constructor.
+      // The injection lists of the app: the auth module's controllers take their services through the constructor.
       const injections = JSON.parse(readFileSync(join(app, '.marmeon/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
       if (listed.length < 5) throw new SmokeError(`marmeon build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
@@ -671,19 +671,19 @@ async function main(): Promise<number> {
         await checkRegistration(true)(base, output);
       }),
     );
-    await pnpmApp.step('marmeon start with AUTH_PRIVATE_REGISTRATION=false → "already registered", a boot warning (E193)', () =>
+    await pnpmApp.step('marmeon start with AUTH_PRIVATE_REGISTRATION=false → "already registered", a boot warning', () =>
       pnpmApp.serve('/login', checkRegistration(false), { AUTH_PRIVATE_REGISTRATION: 'false' }),
     );
     const discovered = await pnpmApp.step('marmeon discover (pnpm, nothing hoisted)', () => discoveredPackages(pnpmApp.marmeon('discover')));
-    // Production installs without the dev dependencies (E159): `marmeon` is a dependency, and the app starts without the rest.
+    // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
     await pnpmApp.step('pnpm install --prod → node_modules/.bin/marmeon', () => {
       pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);
       if (existsSync(join(app, 'node_modules/vitest'))) throw new SmokeError('pnpm install --prod left the dev dependency vitest in node_modules.');
       if (!existsSync(join(app, 'node_modules/.bin/marmeon'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/marmeon — marmeon must be a dependency of the app.');
     });
     await pnpmApp.step('marmeon start (production install) → GET /login 200', () => pnpmApp.serve('/login'));
-    // ── The driver rule (E198) as an app meets it ──
-    await pnpmApp.step('SMTP from the production install (nodemailer comes with @marmeon/mail, E198)', () => checkSmtp(pnpmApp));
+    // ── The driver rule as an app meets it ──
+    await pnpmApp.step('SMTP from the production install (nodemailer comes with @marmeon/mail)', () => checkSmtp(pnpmApp));
     await pnpmApp.step('pnpm add @marmeon/redis @marmeon/storage (their tarballs — nothing else) → marmeon build', () => {
       const tarball = (name: string) => {
         const packed = tarballs.get(name);
@@ -693,12 +693,12 @@ async function main(): Promise<number> {
       pnpmApp.run('pnpm', ['add', tarball('@marmeon/redis'), tarball('@marmeon/storage'), ...pnpmFlags, '--reporter', 'append-only']);
       const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
       const drivers = Object.keys(manifest.dependencies).filter((name) => name === 'redis' || name.startsWith('@aws-sdk/'));
-      if (drivers.length > 0) throw new SmokeError(`the kit's package.json lists ${drivers.join(', ')} — the driver step must show what @marmeon/redis brings by itself (E198).`);
+      if (drivers.length > 0) throw new SmokeError(`the kit's package.json lists ${drivers.join(', ')} — the driver step must show what @marmeon/redis brings by itself.`);
       if (!manifest.dependencies['@marmeon/redis'] || !manifest.dependencies['@marmeon/storage']) throw new SmokeError('pnpm add did not add @marmeon/redis and @marmeon/storage.');
-      // New packages, new injection lists: built as before a deploy (the start must not parse anything, E138).
+      // New packages, new injection lists: built as before a deploy (the start must not parse anything).
       pnpmApp.buildWithoutEnv();
     });
-    await pnpmApp.step('marmeon start with CACHE_DRIVER=redis SESSION_DRIVER=redis — redis came with @marmeon/redis (E198)', async () => {
+    await pnpmApp.step('marmeon start with CACHE_DRIVER=redis SESSION_DRIVER=redis — redis came with @marmeon/redis', async () => {
       const prefix = `marmeon-smoke-${process.pid}-${Date.now()}:`;
       try {
         await pnpmApp.serve('/login', (base) => checkRedisDrivers(base, prefix), { CACHE_DRIVER: 'redis', SESSION_DRIVER: 'redis', REDIS_URL, REDIS_PREFIX: prefix });
@@ -706,7 +706,7 @@ async function main(): Promise<number> {
         await redisCommand(REDIS_URL, ['EVAL', "for _, key in ipairs(redis.call('KEYS', ARGV[1])) do redis.call('DEL', key) end return 0", '0', `${prefix}*`]).catch(() => undefined);
       }
     });
-    await pnpmApp.step('an S3 default disk without the AWS SDK → the start fails with the exact command (E198)', async () => {
+    await pnpmApp.step('an S3 default disk without the AWS SDK → the start fails with the exact command', async () => {
       const bootstrap = join(app, 'bootstrap/app.ts');
       const original = readFileSync(bootstrap, 'utf8');
       if (!original.includes('config: [AppConfig],')) throw new SmokeError('bootstrap/app.ts of the kit has no "config: [AppConfig]," to add the storage configuration to.');
@@ -725,19 +725,19 @@ async function main(): Promise<number> {
       }
     });
 
-    // ── A blank app with npm (E151: npm's flat node_modules) ──
+    // ── A blank app with npm (npm's flat node_modules) ──
     await npmApp.step('create-marmeon app-npm --minimal --npm --no-git (install, migrate)', () => {
       scaffold(bin, work, ['app-npm', '--minimal', '--npm', '--no-git'], { tarballs: tarballDir, env: installEnv });
       checkManifest(npmApp.app, 'npm');
       if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
     });
-    await npmApp.step('marmeon build without .env (E187), the framework\'s stylesheet linked (E202)', () => {
+    await npmApp.step('marmeon build without .env, the framework\'s stylesheet linked', () => {
       npmApp.buildWithoutEnv();
       checkStyles(npmApp.app, ['marmeon-layer']);
     });
-    // The README's way on a developer's machine: `npm run build` next to the .env of .env.example (NODE_ENV=development, E170) —
-    // the browser code must still be production's (W10 step 9b): no development branch, no devtools hook.
+    // The README's way on a developer's machine: `npm run build` next to the .env of .env.example (NODE_ENV=development) —
+    // the browser code must still be production's: no development branch, no devtools hook.
     await npmApp.step('npm run build with the development .env → a production client (no development branch in dist/client)', () => {
       if (!/^NODE_ENV=development$/m.test(readFileSync(join(npmApp.app, '.env'), 'utf8'))) throw new SmokeError('the app\'s .env has no NODE_ENV=development (from .env.example).');
       const output = npmApp.run('npm', ['run', 'build']);
@@ -745,7 +745,7 @@ async function main(): Promise<number> {
       if (leaked.length > 0) throw new SmokeError(`npm run build with the development .env built a development client — ${leaked.join(', ')} carry __MARMEON_DEVTOOLS_HOOK__.`);
       if (!output.includes('marmeon build builds for production')) throw new SmokeError(`npm run build did not say that it builds for production:\n${output}`);
     });
-    // The client is production's unless the environment says development (E217): NODE_ENV=test builds it for production too, and a
+    // The client is production's unless the environment says development: NODE_ENV=test builds it for production too, and a
     // NODE_ENV that is none of development, test, production builds nothing.
     await npmApp.step('NODE_ENV=test npm run build → a production client; NODE_ENV=staging npm run build → the start error', () => {
       const output = npmApp.run('npm', ['run', 'build'], { NODE_ENV: 'test' });
@@ -758,7 +758,7 @@ async function main(): Promise<number> {
         throw new SmokeError(`NODE_ENV=staging npm run build should stop with the start error (exit ${staging.status}):\n${said}`);
       }
     });
-    // The staging probe (E217): production, named by APP_ENV — and NODE_ENV=staging does not start.
+    // The staging probe: production, named by APP_ENV — and NODE_ENV=staging does not start.
     await npmApp.step('marmeon start with NODE_ENV=production APP_ENV=staging → the start line names it; NODE_ENV=staging → the start error', async () => {
       await npmApp.serve(
         '/up',
@@ -774,7 +774,7 @@ async function main(): Promise<number> {
     });
     await npmApp.step('marmeon start → GET /up 200', () => npmApp.serve('/up'));
     const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');
-    // Discovery walks node_modules as Node resolves (E151): in npm's flat layout it finds every package pnpm's finds.
+    // Discovery walks node_modules as Node resolves: in npm's flat layout it finds every package pnpm's finds.
     await npmApp.step('marmeon discover (npm) finds what pnpm\'s finds', () => {
       // The same packages, and in them the same providers and injectable classes (a constructor's types resolve from the package's
       // own dependencies — another place where a lookup could assume pnpm's layout).

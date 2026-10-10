@@ -1,18 +1,18 @@
 /**
- * `pnpm bench … --without <measures>` (E154): switches Wave 8's four security measures off in a measured process — and counts how
+ * `pnpm bench … --without <measures>`: switches the request path's four security measures off in a measured process — and counts how
  * often each one runs, so that "off" is proven, not assumed (`requests.ts` aborts when a measure that is off ran even once).
  * Preloaded into the worker (`--import`) of the checkout being measured; nothing of this exists outside `pnpm bench`.
  *
  * Each measure is a small rewrite of one source file as it is loaded (a `module.registerHooks` load hook): the measure's code is
  * routed through `globalThis.__marmeonBench.run(measure, original, args)`, which counts the call and runs the original — or,
- * when the measure is off, returns what the code did before Wave 8 without running it. An anchor that is no longer found exactly
- * once in its file stops the process (the code moved: update the anchor here).
+ * when the measure is off, returns what the code gives without the measure, without running it. An anchor that is no longer
+ * found exactly once in its file stops the process (the code moved: update the anchor here).
  *
- *   session-hash    (W8 step 7, E144)  stores key a session by SHA-256(id) — off: by the id itself, as before
- *   fetch-metadata  (W8 step 6, E143)  VerifyCsrfToken's Fetch Metadata/Origin stage — off: every unsafe request needs the token
- *   csp             (W8 step 4, E147)  contentSecurityPolicy() with its nonce — off: the worker leaves the middleware out of the app
- *                                      (this file only counts its calls)
- *   epoch           (W8 step 8, E165)  PageObject.epoch, an HMAC per page — off: no epoch, as before
+ *   session-hash     stores key a session by SHA-256(id) — off: by the plain id
+ *   fetch-metadata   VerifyCsrfToken's Fetch Metadata/Origin stage — off: every unsafe request needs the token
+ *   csp              contentSecurityPolicy() with its nonce — off: the worker leaves the middleware out of the app
+ *                    (this file only counts its calls)
+ *   epoch            PageObject.epoch, an HMAC per page — off: no epoch at all
  */
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';
@@ -21,13 +21,13 @@ import { pathToFileURL } from 'node:url';
 export const MEASURES = ['session-hash', 'fetch-metadata', 'csp', 'epoch'] as const;
 export type Measure = (typeof MEASURES)[number];
 
-/** `w8` is all four. */
+/** `all` is all four. */
 export function parseMeasures(values: readonly string[]): Measure[] {
   const measures = new Set<Measure>();
   for (const value of values.flatMap((value) => value.split(',')).filter(Boolean)) {
-    if (value === 'w8') for (const measure of MEASURES) measures.add(measure);
+    if (value === 'all') for (const measure of MEASURES) measures.add(measure);
     else if ((MEASURES as readonly string[]).includes(value)) measures.add(value as Measure);
-    else throw new Error(`Unknown measure "${value}" — one of w8, ${MEASURES.join(', ')}.`);
+    else throw new Error(`Unknown measure "${value}" — one of all, ${MEASURES.join(', ')}.`);
   }
   return [...measures];
 }
@@ -65,7 +65,7 @@ const REWRITES: Record<Measure, Rewrite> = {
   },
 };
 
-/** What the code did before the measure — returned instead of running it. `csp` is never routed here (see above). */
+/** What the code gives without the measure — returned instead of running it. `csp` is never routed here (see above). */
 const BEFORE: Record<Measure, (args: unknown[]) => unknown> = {
   'session-hash': ([id]) => id,
   'fetch-metadata': () => 'unknown',

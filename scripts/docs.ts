@@ -1,11 +1,11 @@
 /**
- * The docs app (`apps/docs`, E114/E133 — a normal Marmeon app, no static export):
+ * The docs app (`apps/docs`, a normal Marmeon app, no static export):
  *
  *   pnpm docs:dev       # marmeon dev on http://localhost:3970 (PORT wins); writes apps/docs/.env with a fresh APP_KEY first
  *   pnpm docs:check     # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
- * The smoke test asks the running production build what the acceptance asks: the start page, every page of the docs'
+ * The smoke test asks the running production build for the start page, every page of the docs'
  * sections (`/docs/<slug>`: `docs/*.md`, `UPGRADING.md`, …) (200, server-rendered, the static `'self'`
  * Content-Security-Policy without a nonce), the search (`onOneServer` → the scheduling page, `afterRollback` → transactions,
  * `SHUTDOWN_DELAY` → the deployment page), `/up`, no `Set-Cookie` on any public page, caching headers (`public`, `ETag`,
@@ -97,7 +97,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     expect(response.status === 200, `${path}: status ${response.status}, expected 200`);
     expect(body.includes(contains), `${path}: the server-rendered page lacks "${contains}"`);
     expect(!response.headers.has('set-cookie'), `${path}: sets a cookie (${response.headers.get('set-cookie')})`);
-    // Cached publicly, so no nonce (E147): scripts from this origin only — and the document carries no nonce attribute.
+    // Cached publicly, so no nonce: scripts from this origin only — and the document carries no nonce attribute.
     const policy = response.headers.get('content-security-policy');
     expect(policy === DOCS_POLICY, `${path}: Content-Security-Policy is "${policy}", expected "${DOCS_POLICY}"`);
     expect(!/<[a-z]+ [^>]*\bnonce=/.test(body), `${path}: a tag carries a nonce attribute`);

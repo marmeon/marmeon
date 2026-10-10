@@ -4,10 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { tempDir } from '../test/temp-dir.js';
 import { ensureImportable, importProblem, removeNodeModules } from './integrity.ts';
 
-/**
- * The bench's checkouts are smoke-tested before a run (W8.13: a snapshot under $TMPDIR lost files of its node_modules, and the run
- * died with ERR_MODULE_NOT_FOUND). A fixture checkout with one installed package stands in for a worktree.
- */
+/** A fixture checkout with one installed package stands in for a bench worktree. */
 function checkout(): string {
   const dir = tempDir('marmeon-bench-fixture-');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', private: true, type: 'module' }));

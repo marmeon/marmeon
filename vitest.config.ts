@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [marmeon({ test: true })],
   test: {
     include: ['packages/*/src/**/*.test.{ts,tsx}', 'apps/*/modules/**/*.test.ts', 'scripts/**/*.test.ts'],
-    // A temporary directory per run (TMPDIR for every worker and process), and a red run when a test leaves a `marmeon-*` entry in it (E187).
+    // A temporary directory per run (TMPDIR for every worker and process), and a red run when a test leaves a `marmeon-*` entry in it.
     // With Postgres: drops the test databases the run left behind (only `<database>_test_*` on MARMEON_TEST_PGSQL_URL's server).
     globalSetup: ['scripts/test/temp-hygiene.ts', 'packages/database/src/__fixtures__/test-databases.ts'],
   },

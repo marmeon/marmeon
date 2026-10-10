@@ -1,4 +1,4 @@
-# The docs (apps/docs) on one server behind Caddy (E142): Caddy fetches the certificate for DOCS_DOMAIN and speaks HTTP/1.1, 2 and 3;
+# The docs (apps/docs) on one server behind Caddy: Caddy fetches the certificate for DOCS_DOMAIN and speaks HTTP/1.1, 2 and 3;
 # the docs answer only Caddy. Run it from this directory, next to a .env with the two settings below (never in the repository —
 # .gitignore and the image's .dockerignore keep it out):
 #
@@ -8,7 +8,7 @@
 #   docker compose up -d --build        # build the image from this checkout and start both containers
 #   docker compose logs -f docs         # the docs' JSON log
 #
-# Updates, rollback, backups: the deployment guide in the vault (Marmeon/Doku-App-Deployment.md) and docs/deployment.md.
+# Updates, rollback, backups: docs/deployment.md.
 name: marmeon-docs
 
 services:
@@ -19,9 +19,9 @@ services:
     # DOCS_TAG names a build (e.g. the commit): DOCS_TAG=$(git rev-parse --short HEAD) docker compose up -d --build; an older tag
     # that is still on the machine starts again without a build (the rollback).
     image: marmeon-docs:${DOCS_TAG:-latest}
-    # No `init: true`: the image's PID 1 is tini (E187) — it passes signals on and reaps orphans.
+    # No `init: true`: the image's PID 1 is tini — it passes signals on and reaps orphans.
     restart: unless-stopped
-    # The image's files cannot change (E160: the discovery manifest is built in); only storage/ and /tmp are writable.
+    # The image's files cannot change (the discovery manifest is built in); only storage/ and /tmp are writable.
     read_only: true
     tmpfs:
       - /tmp
@@ -29,7 +29,7 @@ services:
       APP_KEY: ${APP_KEY:?set APP_KEY in deploy/docs/.env (marmeon key:generate --show)}
       APP_URL: https://${DOCS_DOMAIN:?set DOCS_DOMAIN in deploy/docs/.env, e.g. docs.example.com}
       APP_NAME: Marmeon docs
-      # Only Caddy shares the network below with the docs — so its X-Forwarded-For/-Proto/-Host count (E162): the search's rate
+      # Only Caddy shares the network below with the docs — so its X-Forwarded-For/-Proto/-Host count: the search's rate
       # limit sees each visitor's address, not Caddy's. Change the subnets together with the network.
       TRUSTED_PROXIES: 172.30.80.0/24,fd5b:c0de:d0c5::/64
     volumes:

@@ -1,5 +1,5 @@
 /**
- * `pnpm template:sync` — the blank app becomes the template of `create-marmeon` (E167: the blank app is what
+ * `pnpm template:sync` — the blank app becomes the template of `create-marmeon` (the blank app is what
  * `create-marmeon --minimal` writes). Edit `apps/blank-app`, then sync: its files (tracked and new, never ignored ones like
  * `.env`) go to `packages/create-marmeon/template/base/`, with three differences —
  *

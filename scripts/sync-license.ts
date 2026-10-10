@@ -1,5 +1,5 @@
 /**
- * `pnpm license:sync` — copies the repository's `LICENSE` into every framework package (E157): a tarball carries its own
+ * `pnpm license:sync` — copies the repository's `LICENSE` into every framework package: a tarball carries its own
  * licence text (MIT asks for it in every copy), and only pnpm would fall back to the root file.
  *
  *   pnpm license:sync            # write the copies

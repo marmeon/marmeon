@@ -1,5 +1,5 @@
 /**
- * `pnpm pack:check` — are the tarballs fit to publish (E156, E157, E158)? A part of `pnpm run ci`.
+ * `pnpm pack:check` — are the tarballs fit to publish? A part of `pnpm run ci`.
  *
  *   pnpm pack:check                          # clean build → pnpm pack of every package → the rules below → publint → attw
  *   node scripts/pack-check.ts --no-build    # the tarballs of the current dist/ (quicker; CI always builds clean)
@@ -12,15 +12,15 @@
  *     source map's sources are in the tarball (declaration and source maps point to `src/`, which ships for them);
  *   - `LICENSE` (the root's, byte for byte — `pnpm license:sync`) and `README.md`;
  *   - the packed manifest without the `@marmeon/source` condition and without `workspace:` ranges; every internal
- *     dependency (also optional peers) at exactly the package's own version (lockstep, E152 — the exact peers name the release);
+ *     dependency (also optional peers) at exactly the package's own version (lockstep — the exact peers name the release);
  *   - every `exports`/`bin` target in the tarball, none of them TypeScript source (Node does not strip types under node_modules);
  *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
- *   - the driver rule (E198, `checkDriverRule` in scripts/packages.ts): one wrapped driver is a dependency, one of several an optional
+ *   - the driver rule (`checkDriverRule` in scripts/packages.ts): one wrapped driver is a dependency, one of several an optional
  *     peer, a library the app must share one instance of (OpenTelemetry API, React, Vite) a peer;
  * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
  * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported); a package with
  * only a bin (create-marmeon) has no entry point for attw to check.
- * `create-marmeon` besides (E167): no dependencies at all (it is the first thing a stranger runs — no supply chain behind
+ * `create-marmeon` besides: no dependencies at all (it is the first thing a stranger runs — no supply chain behind
  * it), and its template has no `.env` and no `APP_KEY` with a value (a new app gets a fresh one).
  * Also: the root `tsconfig.json` references every package.
  */
@@ -104,7 +104,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
     }
   }
 
-  // The driver rule (E198): which third-party library is a dependency, an optional peer or a shared peer.
+  // The driver rule: which third-party library is a dependency, an optional peer or a shared peer.
   for (const problem of checkDriverRule(pkg.short, manifest)) problems.push(problem);
 
   for (const [where, target] of exportTargets(manifest)) {
@@ -129,7 +129,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
 }
 
 /**
- * `create-marmeon` (E167): no dependencies — the first thing a stranger runs pulls in nothing else; its template carries no
+ * `create-marmeon`: no dependencies — the first thing a stranger runs pulls in nothing else; its template carries no
  * `.env` and no `APP_KEY` with a value (each app gets its own).
  */
 function checkScaffolder(packed: PackedPackage, dir: string, manifest: Record<string, any>): string[] {
@@ -137,7 +137,7 @@ function checkScaffolder(packed: PackedPackage, dir: string, manifest: Record<st
   for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies']) {
     const list = manifest[field] as Record<string, string> | string[] | undefined;
     const names = Array.isArray(list) ? list : Object.keys(list ?? {});
-    if (names.length > 0) problems.push(`${field}: ${names.join(', ')} — create-marmeon has no dependencies (prompts over node:readline, E167)`);
+    if (names.length > 0) problems.push(`${field}: ${names.join(', ')} — create-marmeon has no dependencies (prompts over node:readline)`);
   }
   for (const file of packed.files.filter((name) => name.startsWith('template/'))) {
     if (/(^|\/)\.env$/.test(file)) problems.push(`${file} is a .env — the template never carries one (the app's .env is written with a fresh APP_KEY)`);
@@ -176,7 +176,7 @@ async function lint(packed: PackedPackage): Promise<string[]> {
   return messages.map((message) => `publint: ${formatMessage(message, pkg, { color: false }) ?? message.code}`);
 }
 
-/** The stylesheets a package exports (`@marmeon/react/styles.css`, E202) — no types to check there; publint checks that they ship. */
+/** The stylesheets a package exports (`@marmeon/react/styles.css`) — no types to check there; publint checks that they ship. */
 export function stylesheetEntrypoints(manifest: Record<string, unknown>): string[] {
   const exports = manifest.exports;
   if (typeof exports !== 'object' || exports === null) return [];

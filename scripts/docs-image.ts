@@ -1,11 +1,11 @@
 /**
- * `pnpm docs:image` — the docs as the image they are deployed with (E142, E160; part of the `image` part of `pnpm run ci`, after the
+ * `pnpm docs:image` — the docs as the image they are deployed with (part of the `image` part of `pnpm run ci`, after the
  * starter kit's image): `apps/docs/Dockerfile` built from this checkout, then
  *
  *   the image: runs as a user other than root · no .env*, no test, no other app's code, no config of the build (vite, vitest,
  *   tsconfig) · no dev dependency · every page of the docs in /app/content, and no package README · a command besides start (route:types --check, no
  *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and marmeon gives the
- *   source condition only inside the workspace (E187) · tini is PID 1 and reaps an orphaned process
+ *   source condition only inside the workspace · tini is PID 1 and reaps an orphaned process
  *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page
  *   and every page of the docs 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
  *   reaps an orphan · no warning in the log · SIGTERM → exit 0
@@ -107,7 +107,7 @@ for (const pid of fs.readdirSync('/proc')) {
 console.log(JSON.stringify(found));`;
 
 /**
- * tini is PID 1 and reaps an orphan (E187): a process whose parent ended is handed to PID 1 — `sh -c 'sleep … &'` through
+ * tini is PID 1 and reaps an orphan: a process whose parent ended is handed to PID 1 — `sh -c 'sleep … &'` through
  * `docker exec` leaves one. Node as PID 1 never waits for it: it stays a zombie (`<defunct>`) until the container ends.
  */
 export async function assertReapsOrphans(run: (args: string[]) => { output: string }, container: string): Promise<void> {
@@ -209,14 +209,14 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       built = true;
       return (performance.now() - begin) / 1000;
     });
-    await step('non-root; no .env, no test, no other app, no dev dependency; every page in content/; route:types --check without a key (dist/, E187)', () => {
+    await step('non-root; no .env, no test, no other app, no dev dependency; every page in content/; route:types --check without a key (dist/)', () => {
       const uid = docker(['run', '--rm', '--entrypoint', 'id', image, '-u']).output.trim();
       if (uid === '0' || !/^\d+$/.test(uid)) throw new SmokeError(`the container runs as uid ${uid} — the Dockerfile must switch to USER node.`);
       const found = JSON.parse(docker(['run', '--rm', '--entrypoint', 'node', image, '-e', INSPECT]).output.trim().split('\n').at(-1)!) as Inspection;
       const problems = inspectionProblems(found);
       if (problems.length > 0) throw new SmokeError(`the image:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);
-      // A command besides start in the pnpm deploy copy (W8.12): the framework's manifests keep the workspace's source condition —
-      // marmeon must not take the copy for the monorepo (E187), or Node refuses the TypeScript under node_modules. No APP_KEY given:
+      // A command besides start in the pnpm deploy copy: the framework's manifests keep the workspace's source condition —
+      // marmeon must not take the copy for the monorepo, or Node refuses the TypeScript under node_modules. No APP_KEY given:
       // route:types registers the app without booting it (the build phase).
       const types = docker(['run', '--rm', '-e', 'NODE_ENV=production', image, 'route:types', '--check'], { expect: 'any' });
       if (types.code !== 0) throw new SmokeError(`marmeon route:types --check in the image ended with ${types.code}:\n${types.output}`);
@@ -245,7 +245,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       const code = docker(['wait', name]).output.trim();
       const output = logs(name)();
       if (code !== '0') throw new SmokeError(`the docs container ended with ${code} after SIGTERM:\n${output}`);
-      // pino levels: 40 warn, 50 error — a read-only start that wanted to write (a stale manifest, E160) warns.
+      // pino levels: 40 warn, 50 error — a read-only start that wanted to write (a stale manifest) warns.
       const loud = output.split('\n').filter((line) => /"level":(4|5|6)0/.test(line) || /EROFS|EACCES/.test(line));
       if (loud.length > 0) throw new SmokeError(`the docs container warned:\n${loud.join('\n')}`);
       docker(['rm', '-f', '-v', name]);

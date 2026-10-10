@@ -1,17 +1,17 @@
 /**
- * `pnpm image:smoke` — the app as an image (E158, E140, E141, E163): `create-marmeon app --docker` from the tarballs (as in
+ * `pnpm image:smoke` — the app as an image: `create-marmeon app --docker` from the tarballs (as in
  * `pack:smoke`: outside the monorepo, the framework from its tarballs inside the app's `vendor/` — the build context) — the
  * starter kit with the files of `marmeon make:docker` — is built with Docker; then the container's life:
  *
  *   compose.production.yaml valid · docker build → runs as a user other than root · no .env* in the image (.env and
  *   .env.production are in the context) · migrate --force · start → GET /up 200, /login 200
  *   (sessions written to the storage volume) · the image's health check turns healthy · SIGTERM with SHUTDOWN_DELAY=1 →
- *   /up/ready 503 at once, exit 0 after the delay — all without `docker run --init`: tini is the image's PID 1 (E187) · tini reaps
- *   an orphaned process (no zombie) · a read-only root file system starts (E160) · start --workers=2 → SIGTERM → exit 0 · a worker
+ *   /up/ready 503 at once, exit 0 after the delay — all without `docker run --init`: tini is the image's PID 1 · tini reaps
+ *   an orphaned process (no zombie) · a read-only root file system starts · start --workers=2 → SIGTERM → exit 0 · a worker
  *   with a stuck job ends the container with 70 · the image's size
  *
  * Then the docs' image (`scripts/docs-image.ts`, `pnpm docs:image` alone): `apps/docs/Dockerfile` built from this checkout, its
- * contents, the container read-only, and `deploy/docs/compose.yaml` behind Caddy over HTTP/2 (E142).
+ * contents, the container read-only, and `deploy/docs/compose.yaml` behind Caddy over HTTP/2.
  *
  * Containers, the volume and the image are named `marmeon-image-smoke-…` and removed afterwards (Docker's build cache
  * stays — the next build reuses the dependency layers). Without Docker, or when the build cannot reach the registry, the run
@@ -83,7 +83,7 @@ async function status(url: string): Promise<number | undefined> {
   return response.status;
 }
 
-/** A job that never ends (timeout 1 s): the worker gives up on it after --stop-timeout and exits with 70 (E83). */
+/** A job that never ends (timeout 1 s): the worker gives up on it after --stop-timeout and exits with 70. */
 function addStuckJob(app: string): void {
   mkdirSync(join(app, 'modules/smoke/jobs'), { recursive: true });
   writeFileSync(
@@ -141,7 +141,7 @@ async function main(): Promise<number> {
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-image-smoke-')));
   const app = join(work, 'app');
   const key = `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
-  // The app with its node_modules is kept only when asked — a red run says how to keep it (E187: red runs piled up in $TMPDIR).
+  // The app with its node_modules is kept only when asked — a red run says how to keep it, so red runs do not pile up in $TMPDIR.
   const keep = values.keep === true;
   let built = false;
   const step = async <T>(name: string, work: () => Promise<T> | T): Promise<T> => {
@@ -195,7 +195,7 @@ async function main(): Promise<number> {
       const leaked = listed.filter((file) => file.startsWith('.env'));
       if (leaked.length > 0) throw new SmokeError(`the image contains ${leaked.join(', ')} — .dockerignore must keep every .env* out.`);
       if (!listed.includes('dist') || !listed.includes('.marmeon')) throw new SmokeError(`the image has no build (dist/, .marmeon/): ${listed.join(' ')}`);
-      // Production dependencies only (E159): the dev dependencies of the build stage are not in the image, not even unlinked.
+      // Production dependencies only: the dev dependencies of the build stage are not in the image, not even unlinked.
       const store = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "const fs = require('fs'); console.log([...(fs.existsSync('node_modules/.pnpm') ? fs.readdirSync('node_modules/.pnpm') : []), ...fs.readdirSync('node_modules')].join('\\n'))"]).output.split('\n');
       // npm keeps the optional peers of production packages that a dev dependency brought (vite, typescript, @vitejs) — only what
       // nothing in production names may be missing there; pnpm leaves out all of them.
@@ -291,7 +291,7 @@ async function main(): Promise<number> {
 
 if (import.meta.main) {
   const app = await main();
-  // Then the docs' image (E142, scripts/docs-image.ts — alone: pnpm docs:image); not with --npm, the manual variant of the app.
+  // Then the docs' image (scripts/docs-image.ts — alone: pnpm docs:image); not with --npm, the manual variant of the app.
   const docs = process.argv.includes('--npm') ? 0 : await docsImage({ keep: process.argv.includes('--keep') });
   process.exitCode = app !== 0 && app !== SKIPPED ? app : docs !== 0 && docs !== SKIPPED ? docs : app === SKIPPED || docs === SKIPPED ? SKIPPED : 0;
 }

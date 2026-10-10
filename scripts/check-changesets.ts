@@ -1,5 +1,5 @@
 /**
- * `pnpm check-changesets` — the release rules (E152, E153, E157, E168), a part of `pnpm run ci`. Exit 1 names every broken rule.
+ * `pnpm check-changesets` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule.
  *
  *   1. **One fixed group** — `.changeset/config.json` has exactly one `fixed` group, and it covers every published package
  *      (`@marmeon/*`, `marmeon`, `create-marmeon`) and no private one; public access, `main`, private packages unversioned.
@@ -10,14 +10,14 @@
  *      stages the packages, staged with pnpm (`pnpm stage publish` through `release:stage`) after `pack:check`, never `npm publish`,
  *      a plain `pnpm publish` or an npm token; the version pull request through Changesets; a GitHub-hosted runner.
  *   5. **`scripts/npm-trust.sh`** names every package (`node scripts/npm-trust.ts` writes it) and allows staged publishing only.
- *   6. **`UPGRADING.md`** — before the first release (E216) a short page without entries: an entry needs a release to stand under.
+ *   6. **`UPGRADING.md`** — before the first release a short page without entries: an entry needs a release to stand under.
  *      From the first release on, every release's section (`## Upgrading to 0.2.0 from 0.1.0`, steps as `###` inside it) has its
  *      entries listed in {@link UPGRADING_ANCHORS}, and every listed entry stands under its release — each with an impact and its
  *      likelihood, and no placeholder left. The first section switches the requirement on: it is refused until its entries are listed.
  *      A release's section must be headed exactly `## Upgrading to <version> from <version>` (level 2, the version as x.y.z): under
  *      any other heading the check sees no release — entries there are refused as standing under no release, and a section
  *      without entries goes unnoticed.
- *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode", E153), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
+ *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode"), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
  *      private vulnerability reporting, the deprecation policy in the root README.
  * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).
  */
@@ -34,7 +34,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * The entries UPGRADING.md must keep, by release — the version of its section (`## Upgrading to 0.2.0 from 0.1.0` → `'0.2.0'`) to
  * GitHub's anchors of its entries (`#### Medium: …`). A reworded heading changes its anchor: update it here.
  *
- * Empty until the first release (E216): there is nothing to upgrade from, and the page says so. The requirement switches on by
+ * Empty until the first release: there is nothing to upgrade from, and the page says so. The requirement switches on by
  * itself — the first `## Upgrading to …` section of UPGRADING.md is refused until its entries are listed here, and from then on every
  * listed entry must stand under its release.
  */
@@ -88,7 +88,7 @@ interface ChangesetConfig {
 export function checkGroup(repository: string, packages: readonly FrameworkPackage[]): string[] {
   const problems: string[] = [];
   const file = join(repository, '.changeset/config.json');
-  if (!existsSync(file)) return ['.changeset/config.json is missing — the release needs Changesets (E152)'];
+  if (!existsSync(file)) return ['.changeset/config.json is missing — the release needs Changesets'];
   const config = readJson<ChangesetConfig>(file);
   const published = packages.map((pkg) => pkg.name);
   const workspace = workspacePackages(repository);
@@ -103,13 +103,13 @@ export function checkGroup(repository: string, packages: readonly FrameworkPacka
 
   const groups = config.fixed ?? [];
   if (groups.length !== 1) {
-    problems.push(`.changeset/config.json: ${groups.length} "fixed" groups — exactly one holds every package (lockstep, E152)`);
+    problems.push(`.changeset/config.json: ${groups.length} "fixed" groups — exactly one holds every package (lockstep)`);
   } else {
     const tests = groups[0]!.map(globTest);
     const inGroup = (name: string) => tests.some((test) => test(name));
     const outside = published.filter((name) => !inGroup(name));
     if (outside.length > 0) {
-      problems.push(`${outside.join(', ')} ${outside.length === 1 ? 'is' : 'are'} outside the fixed group of .changeset/config.json — every published package shares one version (E152)`);
+      problems.push(`${outside.join(', ')} ${outside.length === 1 ? 'is' : 'are'} outside the fixed group of .changeset/config.json — every published package shares one version`);
     }
     for (const glob of groups[0]!) {
       if (![...workspace.keys()].some(globTest(glob))) problems.push(`.changeset/config.json: the fixed group's "${glob}" matches no package`);
@@ -154,7 +154,7 @@ export function checkChangesets(repository: string, packages: readonly Framework
       if (!['patch', 'minor', 'major'].includes(bump)) problems.push(`.changeset/${file}: ${name} has the bump "${bump}" — patch, minor or major`);
       if (bump === 'major' && Number(version.split('.')[0]) < 1) {
         problems.push(
-          `.changeset/${file}: "${name}": major below 1.0.0 (now ${version}) — Changesets would jump to 1.0.0. In 0.x a breaking change is a minor, with its entry in UPGRADING.md (E152).`,
+          `.changeset/${file}: "${name}": major below 1.0.0 (now ${version}) — Changesets would jump to 1.0.0. In 0.x a breaking change is a minor, with its entry in UPGRADING.md.`,
         );
       }
     }
@@ -183,7 +183,7 @@ function jobsOf(workflow: string): Map<string, string> {
 /** 4 · the release workflow. */
 export function checkWorkflow(repository: string): string[] {
   const file = join(repository, '.github/workflows/release.yml');
-  if (!existsSync(file)) return ['.github/workflows/release.yml is missing (E152)'];
+  if (!existsSync(file)) return ['.github/workflows/release.yml is missing'];
   const problems: string[] = [];
   const workflow = readFileSync(file, 'utf8');
   const code = workflow.replace(/(^|\s)#.*$/gm, '$1'); // comments say what must not happen — read only the YAML
@@ -192,7 +192,7 @@ export function checkWorkflow(repository: string): string[] {
   if (!/^permissions:\s*\n\s+contents:\s*read\s*$/m.test(code)) problems.push(`${where}: the workflow's default "permissions:" must be "contents: read" — each job asks for what it needs`);
   if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @marmeon/source condition; pnpm stages the packages`);
   if (/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|registry-url:/.test(code)) problems.push(`${where}: an npm token or registry-url — trusted publishing (OIDC) needs no token, and none may sit in the repository`);
-  if (/\bpnpm\s+(?:-r\s+|--recursive\s+)?publish\b/.test(code)) problems.push(`${where}: a plain "pnpm publish" — every release is staged (pnpm stage publish) and waits for a maintainer's 2FA approval (E152)`);
+  if (/\bpnpm\s+(?:-r\s+|--recursive\s+)?publish\b/.test(code)) problems.push(`${where}: a plain "pnpm publish" — every release is staged (pnpm stage publish) and waits for a maintainer's 2FA approval`);
   if (!/changesets\/action\/version@v2/.test(code)) problems.push(`${where}: the version pull request comes from changesets/action/version@v2`);
 
   const jobs = jobsOf(code);
@@ -227,7 +227,7 @@ export function checkTrust(repository: string): string[] {
 /** 6 · `UPGRADING.md`: nothing before the first release; from then on every listed entry under its release. */
 export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS): string[] {
   const file = join(repository, 'UPGRADING.md');
-  if (!existsSync(file)) return ['UPGRADING.md is missing (E168)'];
+  if (!existsSync(file)) return ['UPGRADING.md is missing'];
   const problems: string[] = [];
   const text = readFileSync(file, 'utf8');
   /** Entry anchor → the release it stands under (`undefined`: before any release section) and its text. */
@@ -280,16 +280,16 @@ export function checkPolicies(repository: string): string[] {
   const read = (file: string) => (existsSync(join(repository, file)) ? readFileSync(join(repository, file), 'utf8') : undefined);
   const license = read('LICENSE');
   if (!license?.startsWith('MIT License') || !/^Copyright \(c\) \d{4}(?:-\d{4})? BespokeCode\b/m.test(license)) {
-    problems.push('LICENSE: MIT with "Copyright (c) <year> BespokeCode" (E153 — the exact company name is for Max to confirm)');
+    problems.push('LICENSE: MIT with "Copyright (c) <year> BespokeCode"');
   }
   const contributing = read('CONTRIBUTING.md');
   if (!contributing || !/Developer Certificate of Origin/.test(contributing) || !/Signed-off-by:/.test(contributing) || !/git commit -s\b/.test(contributing)) {
-    problems.push('CONTRIBUTING.md: the DCO — "Developer Certificate of Origin", the Signed-off-by line, git commit -s (E153)');
+    problems.push('CONTRIBUTING.md: the DCO — "Developer Certificate of Origin", the Signed-off-by line, git commit -s');
   }
   const security = read('SECURITY.md');
-  if (!security || !/private\s+vulnerability\s+reporting/i.test(security)) problems.push('SECURITY.md: reports go through GitHub private vulnerability reporting (E168)');
+  if (!security || !/private\s+vulnerability\s+reporting/i.test(security)) problems.push('SECURITY.md: reports go through GitHub private vulnerability reporting');
   const readme = read('README.md');
-  if (!readme || !/^## Versions and deprecations$/m.test(readme)) problems.push('README.md: the deprecation policy, "## Versions and deprecations" (E168)');
+  if (!readme || !/^## Versions and deprecations$/m.test(readme)) problems.push('README.md: the deprecation policy, "## Versions and deprecations"');
   return problems;
 }
 

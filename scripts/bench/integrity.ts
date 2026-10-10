@@ -1,7 +1,7 @@
 /**
  * Before a measurement: can the checkout still import what a measured process imports? The worktrees of `pnpm bench` live under
  * `$TMPDIR/marmeon-bench/` and are kept between runs — and macOS cleans `$TMPDIR` file by file, so a snapshot's `node_modules` can
- * lose files while its lockfile marker stays (W8.13: `ERR_MODULE_NOT_FOUND` in the middle of a run). A smoke test imports the
+ * lose files while its lockfile marker stays (`ERR_MODULE_NOT_FOUND` in the middle of a run). A smoke test imports the
  * modules first; a missing module removes every `node_modules` of the checkout and installs again, once.
  */
 import { spawnSync } from 'node:child_process';

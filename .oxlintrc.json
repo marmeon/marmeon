@@ -1,5 +1,5 @@
 // The repository's lint: `pnpm lint` (oxlint), part of `pnpm run ci`. The apps carry their own `.oxlintrc.json` — the preset
-// `marmeon make:lint-config` writes (E121) — which oxlint takes for their files instead of this one.
+// `marmeon make:lint-config` writes — which oxlint takes for their files instead of this one.
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": { "correctness": "error" },

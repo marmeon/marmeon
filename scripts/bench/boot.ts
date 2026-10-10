@@ -1,5 +1,5 @@
 /**
- * `pnpm bench boot` — how long `marmeon start` takes until `GET /up` answers 200 (E161: measured and documented, no gate).
+ * `pnpm bench boot` — how long `marmeon start` takes until `GET /up` answers 200 (measured and documented, no gate).
  *
  *   pnpm bench boot --app apps/web-app                       # median of 7 starts + a breakdown from one profiled start
  *   pnpm bench boot --app <dir A> --app <dir B> [--runs 9]   # A/B: the apps start alternately (fair under changing load)
@@ -63,7 +63,7 @@ function environment(port: number, extra: Record<string, string> = {}): NodeJS.P
   for (const [key, value] of Object.entries(process.env)) {
     if (!/^(npm_|PNPM_|MARMEON_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) env[key] = value;
   }
-  // On the address /up is asked at (W9.2): on every interface the server could start beside a program holding the port on 127.0.0.1.
+  // On the address /up is asked at: on every interface the server could start beside a program holding the port on 127.0.0.1.
   return { ...env, HOST: '127.0.0.1', PORT: String(port), ...extra };
 }
 

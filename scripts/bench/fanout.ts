@@ -1,5 +1,5 @@
 /**
- * `pnpm bench fanout` — what one live hint costs the process that holds the streams (W9 step 4: the channel index). In-process:
+ * `pnpm bench fanout` — what one live hint costs the process that holds the streams (the channel index). In-process:
  * a `LiveHub` with the memory backend and N open streams, each following a channel of its own and one channel they all share;
  * every stream's `hello` read, then hints:
  *

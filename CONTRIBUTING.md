@@ -149,7 +149,7 @@ runs) would make a gate flaky:
 
 ```sh
 pnpm bench boot --app apps/web-app                    # marmeon start → /up 200: median of 7, a breakdown from a CPU profile
-pnpm bench login --base f785159 --without w8          # the request path, A/B: this checkout against a commit, each side in a git worktree
+pnpm bench login --base f785159 --without all         # the request path, A/B: this checkout against a commit, each side in a git worktree
 pnpm bench people                                     # GET /people signed in
 pnpm bench login --profile --base f785159             # CPU profiles of the measured requests: top lists (self, inclusive) and their diff
 ```
@@ -159,7 +159,7 @@ kernel as a browser would — the cookies as the server set them, the body read;
 side runs from a `git worktree` under `$TMPDIR/marmeon-bench/` (this checkout as a snapshot with its uncommitted changes; before a
 run each one must import what a measured process imports — a missing module reinstalls its `node_modules`), the sides
 alternate in fresh processes, and the report gives the median, the mean's 95 % confidence interval and Welch's test per pair.
-`--without <measure>` (`session-hash`, `fetch-metadata`, `csp`, `epoch`; `w8` for all four) switches one of the request path's
+`--without <measure>` (`session-hash`, `fetch-metadata`, `csp`, `epoch`; `all` for all four) switches one of the request path's
 security measures off in one variant — counted, and refused when one still runs — so its cost shows on its own.
 
 What one request cost the server at `0dd3448`, measured with `pnpm bench login` and `pnpm bench people` (`SESSION_ENCRYPT=false`;

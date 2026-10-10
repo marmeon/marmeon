@@ -2,7 +2,7 @@
  * One measured process of `pnpm bench login|people` (see `requests.ts`): boots the web app of the checkout `argv[2]` in-process —
  * `createTestApp` of that checkout, SQLite in memory and seeded, `SESSION_DRIVER=memory` as its `.env.test` says — and sends the
  * scenarios' requests one after the other through the kernel, as the tests do. The checkout may be an older commit (a base in a
- * `git worktree`): this file only uses what every checkout since Wave 7 has.
+ * `git worktree`): this file uses only what every checkout from `f785159` on has — the base CONTRIBUTING's numbers compare against.
  *
  * Started by `requests.ts` with the cwd `<checkout>/apps/web-app`, `NODE_ENV=test`, the source condition and the checkout's injection
  * hook. Environment: `BENCH_SCENARIOS` (comma-separated), `BENCH_ROUNDS` (rounds per scenario, the median counts), `BENCH_REQUESTS`
@@ -16,10 +16,10 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const SCENARIOS = {
-  /** E154's `/login`: a JSON visit of `GET /login` with a guest session (a failed sign-in made it) — read, written back, CSRF token. */
+  /** The budget's `/login`: a JSON visit of `GET /login` with a guest session (a failed sign-in made it) — read, written back, CSRF token. */
   login: 'JSON visit of GET /login with a guest session',
-  /** `GET /login` without a cookie: since Wave 8 step 6 no session at all. */
-  'login-guest': 'JSON visit of GET /login without a cookie (no session since W8 step 6)',
+  /** `GET /login` without a cookie: no session at all. */
+  'login-guest': 'JSON visit of GET /login without a cookie (no session)',
   /** The document (HTML, server-rendered) of `GET /login` with a guest session — where the CSP nonce is made. */
   'login-document': 'document GET /login with a guest session (HTML: CSP nonce)',
   /** A signed-in page: session, auth, queries, shared props. */
@@ -46,7 +46,7 @@ async function run(repo: string): Promise<void> {
   const { UserRepository } = await imp(auth);
   const { createHttpKernel } = await imp(server);
 
-  // Without the CSP measure (W8 step 4): the app as it was before — no contentSecurityPolicy() among its global middleware.
+  // Without the CSP measure: no contentSecurityPolicy() among the app's global middleware.
   const definition =
     without.has('csp') && application.middleware?.global
       ? { ...application, middleware: { ...application.middleware, global: application.middleware.global.filter((m: { name?: string }) => m.name !== 'ContentSecurityPolicy') } }

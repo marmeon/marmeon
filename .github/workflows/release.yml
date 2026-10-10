@@ -1,4 +1,4 @@
-# Releases (E152): Changesets with one fixed group, published by pnpm with trusted publishing — and never live without a maintainer.
+# Releases: Changesets with one fixed group, published by pnpm with trusted publishing — and never live without a maintainer.
 #
 #   push to main with changesets   → "version": the Version packages pull request (changeset version — the versions and changelogs)
 #   push to main without changesets, with versions npm does not have yet (the merged pull request)
