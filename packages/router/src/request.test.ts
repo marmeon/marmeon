@@ -149,7 +149,7 @@ describe('ctx.query and ctx.expectsJson()', () => {
     expect(createRequestState(new Request(`${URL_BASE}/users?page=2&q=a+b`)).query.get('q')).toBe('a b');
   });
 
-  it('recognises API clients like Laravel', () => {
+  it('recognises API clients', () => {
     const accept = (value: string, headers: Record<string, string> = {}) =>
       expectsJson(new Request(URL_BASE, { headers: { accept: value, ...headers } }));
 

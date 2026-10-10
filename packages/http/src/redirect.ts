@@ -176,8 +176,8 @@ export const OLD_INPUT_KEY = '_old_input';
 export const INTENDED_KEY = '_intended_url';
 
 /**
- * Like Laravel's `$dontFlash`, but by pattern: no field with "password" in its name is ever kept in
- * the session (`password`, `password_confirmation`, `current_password`, `new_password`, …).
+ * No field with "password" in its name is ever kept in the session (`password`, `password_confirmation`, `current_password`,
+ * `new_password`, …).
  */
 const DONT_FLASH = /password/i;
 

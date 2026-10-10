@@ -10,7 +10,7 @@ declare module '@marmeon/http/page' {
 }
 
 /**
- * Shares the flashed validation errors with every page of the `web` group (the Inertia pattern) — with every
+ * Shares the flashed validation errors with every page of the `web` group — with every
  * partial reload, too (`always`): a form sent with `only` that fails comes back with its errors.
  */
 export class ShareErrorsFromSession {

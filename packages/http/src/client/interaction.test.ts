@@ -51,7 +51,7 @@ describe('flash messages in the core', () => {
     expect(fired).toEqual(['same Saved.']);
   });
 
-  it('two saves with the same message fire twice (two ids) — no "only when it changed" (Inertia #2783)', async () => {
+  it('two saves with the same message fire twice (two ids) — no "only when it changed"', async () => {
     const { win, fired, navigator } = tab(page('/users/1'));
     let id = 0;
     win.handler = () => pageResponse(withFlash(page('/users/1'), toast(`save-${++id}`)));

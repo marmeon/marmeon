@@ -65,7 +65,7 @@ const KEY = /^([^[\]]+)((?:\[[^[\]]*\])*)$/;
 type Tree = { [key: string]: Tree | FormDataEntryValue };
 
 /**
- * A form's entries as the data the server would build from them (bracket notation, like PHP and the router): `user[name]` →
+ * A form's entries as the data the server would build from them (bracket notation, like the router): `user[name]` →
  * `{ user: { name } }`, `tags[]` → a list, `links[0][url]` → a list of objects. Later entries win, an empty file field is left
  * out, `__proto__` never becomes a key. The same data a submit without JavaScript sends.
  */

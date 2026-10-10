@@ -90,7 +90,7 @@ export function showProgress(navigator: Pick<Navigator, 'on'>, { delay = DEFAULT
   };
 
   const stops = [
-    // Background requests (loading deferred props) show no bar — like Inertia's async requests.
+    // Background requests (loading deferred props) show no bar.
     navigator.on('start', (visit) => {
       if (visit.async) return;
       running++;

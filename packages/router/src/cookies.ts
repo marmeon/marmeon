@@ -12,14 +12,14 @@ export interface CookieOptions {
    * which follows `APP_URL` (`https:` → `true`) — else `false`. `false` here turns it off for this cookie.
    */
   secure?: boolean;
-  /** Defaults to `true` — scripts cannot read the cookie (like Laravel). */
+  /** Defaults to `true` — scripts cannot read the cookie. */
   httpOnly?: boolean;
   /** Defaults to `lax`. `none` requires `secure`. */
   sameSite?: 'lax' | 'strict' | 'none';
 }
 
 /**
- * What every cookie of a request gets unless its `set` says otherwise (Laravel's `CookieJar` defaults): the kernel takes them
+ * What every cookie of a request gets unless its `set` says otherwise: the kernel takes them
  * from the container (`CookieDefaults`, bound by `@marmeon/session` from its config).
  */
 export interface CookieDefaults {
@@ -77,7 +77,7 @@ export interface CookieCodec {
 
 /**
  * The cookies of one request: reads what the client sent, queues what the
- * response should set (Laravel's `Cookie::queue`). Queued cookies are added to
+ * response should set. Queued cookies are added to
  * whatever response the request ends with — a view, a redirect or an error page.
  *
  * `get` only sees cookies the client sent, not ones queued in this request.

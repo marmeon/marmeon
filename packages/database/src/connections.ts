@@ -98,9 +98,9 @@ export class Connections {
   /**
    * The connection for infrastructure — the cache with its rate limits and locks, sessions: it NEVER joins the app's
    * transactions, so a rate-limit hit or a lock survives a rollback and other processes see a lock at once. On Postgres a
-   * small pool of its own; on SQLite (and a test's isolated connection) the file's one connection, where every statement
-   * inside an open transaction throws `InfrastructureTransactionError` (`usage.remedy` says what to do) — never a silent
-   * join. Runs single statements only. See `docs/database.md#infrastructure-connections`.
+   * small pool of its own; on SQLite the file's one connection, and in a test's isolated connection its one physical
+   * connection — there every statement inside an open transaction throws `InfrastructureTransactionError` (`usage.remedy`
+   * says what to do) — never a silent join. Runs single statements only. See `docs/database.md#infrastructure-connections`.
    */
   infrastructure<DB = any>(name = 'default', usage?: InfrastructureUsage): Kysely<DB> {
     const key = `${name}\0${usage?.system ?? ''}`;

@@ -40,9 +40,9 @@ export class InfrastructureTransactionError extends TransactionError {
 /**
  * The driver of an infrastructure connection: every statement runs on a connection of its own, never inside the app's
  * ambient transaction. On Postgres a small pool of its own (`infrastructurePoolMax`), so transactions waiting for a rate
- * limit never use up the pool the rate limit needs; on SQLite (and a test's isolated connection) the one shared connection,
- * where a statement inside an open transaction of the same file throws {@link InfrastructureTransactionError} instead of
- * joining or hanging. Single statements only: no transactions of its own.
+ * limit never use up the pool the rate limit needs; on SQLite the file's one connection, and in a test's isolated
+ * connection its one physical connection — there a statement inside an open transaction on it throws
+ * {@link InfrastructureTransactionError} instead of joining or hanging. Single statements only: no transactions of its own.
  */
 export class InfrastructureDriver implements Driver {
   readonly #main: MarmeonDriver;

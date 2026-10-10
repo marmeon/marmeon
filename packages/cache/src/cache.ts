@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { SystemClock, token, type Clock } from '@marmeon/core';
 
 /**
- * A key-value store with expiry (Laravel's `Cache` repository). Values must survive `JSON.stringify`. `add`, `increment`
+ * A key-value store with expiry. Values must survive `JSON.stringify`. `add`, `increment`
  * and locks are atomic in every store — across processes for `file`, `database` and `redis`.
  */
 export interface Cache {
@@ -85,7 +85,7 @@ export class LockTimeoutError extends Error {
 }
 
 /**
- * One atomic lock (Laravel's `Lock`), made by `cache.lock(name, seconds)`. Its owner token is random per lock object:
+ * One atomic lock, made by `cache.lock(name, seconds)`. Its owner token is random per lock object:
  * only the object that took the lock (or one restored with the same `owner`) can release it.
  */
 export class Lock {

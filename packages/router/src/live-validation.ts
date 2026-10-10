@@ -1,7 +1,7 @@
 import type { StandardIssue } from './request-definition.ts';
 
 /**
- * Live validation (Laravel's Precognition): the form's own request plus `x-marmeon-validate: name,email`. The route runs as far
+ * Live validation: the form's own request plus `x-marmeon-validate: name,email`. The route runs as far
  * as its validation and answers `204` or `422`; its controller's `handle` never runs, and the kernel makes the request
  * read-only. See docs/validation.md#live-validation.
  *

@@ -5,7 +5,7 @@ import { isUniqueViolation } from './errors.ts';
 import { paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
 import type { Tables } from './types.ts';
 
-/** `findOrFail` found nothing: answers 404 like Laravel's ModelNotFoundException — without telling the client what was looked up. */
+/** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
 export class RecordNotFoundError extends HttpError {
   override name = 'RecordNotFoundError';
   readonly table: string;

@@ -177,7 +177,7 @@ function walkDependencies(root: string): PackageInfo[] {
     if (pkg.json.marmeon) ordered.push(pkg);
   };
 
-  // Like Composer, the app's dev dependencies count too — they are simply absent in production installs.
+  // The app's dev dependencies count too — they are simply absent in production installs.
   for (const dep of [...dependencyNames(rootJson), ...Object.keys(rootJson.devDependencies ?? {})]) {
     const found = findPackage(dep, root);
     if (found) visit(found, root);

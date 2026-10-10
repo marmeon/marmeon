@@ -46,7 +46,7 @@ export interface LimiterContext {}
 export type LimiterCallback = (ctx: HttpContext & LimiterContext) => Limit | readonly Limit[] | Promise<Limit | readonly Limit[]>;
 
 /**
- * Counts attempts in the cache (Laravel's `RateLimiter`). Named limiters are
+ * Counts attempts in the cache. Named limiters are
  * defined once — in a provider's boot — and applied with `throttle(name)`.
  *
  * Counting and deciding are ONE atomic step of the cache store (`hit` returns the new count, `attempt` decides on
@@ -143,7 +143,7 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
       let fewest = Number.POSITIVE_INFINITY;
       for (const limit of limits) {
         // The window is part of the counter's key: two limits with the same `by` (per minute and per
-        // second) must not share one counter — Laravel leaves that to unique `by` values.
+        // second) must not share one counter.
         const key = `${name}:${limit.decaySeconds}:${limit.key}`;
         // A live validation of the route is no attempt: it is held to the route's limit, but does not count against it — a
         // form checked field by field must not use up the tries of sending it (it has its own limit: `LimitLiveValidation`).

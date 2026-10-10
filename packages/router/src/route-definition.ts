@@ -1,7 +1,7 @@
 import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
 /**
- * A single registered route (Laravel's `Illuminate\Routing\Route`).
+ * A single registered route.
  * Created by the `Route` registrar; only its name remains mutable after registration.
  */
 export class RouteDefinition {
@@ -70,7 +70,7 @@ export class RouteDefinition {
   }
 
   /**
-   * Runs the route's requests one at a time per session (Laravel's `block()`): `StartSession` holds an atomic lock (needs
+   * Runs the route's requests one at a time per session: `StartSession` holds an atomic lock (needs
    * `@marmeon/cache`) from loading the session until it is saved. A second request of the same browser waits up to
    * `waitSeconds` (then 423); a crashed request's lock expires after `lockSeconds`. See docs/routing.md#one-request-at-a-time.
    *

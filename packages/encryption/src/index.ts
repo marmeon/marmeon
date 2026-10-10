@@ -2,8 +2,7 @@ import { createCipheriv, createDecipheriv, createSecretKey, randomBytes, type Ke
 import { defineConfig, defineSolutions, env, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 
 /**
- * Symmetric, authenticated encryption with the application key (Laravel's
- * `Encrypter`). Payloads cannot be read or changed without the key.
+ * Symmetric, authenticated encryption with the application key. Payloads cannot be read or changed without the key.
  *
  * `context` binds a payload to its use: a value encrypted for the cookie
  * `session` does not decrypt as the cookie `remember` (additional authenticated data).

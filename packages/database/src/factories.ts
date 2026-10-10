@@ -8,7 +8,7 @@ export interface FactoryContext {
   readonly sequence: number;
   /**
    * Another factory, for a foreign key: `user_id: factory(UserFactory)` creates the user when this
-   * row is created and uses its id (Laravel's `User::factory()` in a definition).
+   * row is created and uses its id.
    */
   factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
 }
@@ -128,7 +128,7 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
     for (const attributes of this.#times(() => this.#attributes(overrides))) {
       const values: Record<string, unknown> = {};
       for (const [column, value] of Object.entries(attributes)) {
-        // A related factory: create its row first and use its id (Laravel's `User::factory()` in a definition).
+        // A related factory: create its row first and use its id.
         if (value instanceof PendingFactory) {
           const related = (await (value.#pending.db ? value : value.using(db as never)).create()) as { id: unknown };
           values[column] = related.id;

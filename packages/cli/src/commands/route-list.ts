@@ -1,7 +1,7 @@
 import { isMiddlewareClass, Router, type AnyAction, type AnyMiddleware } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 
-/** Laravel's `route:list`. */
+/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, action. */
 export class RouteListCommand {
   static command = 'route:list';
   static description = 'List all registered routes';

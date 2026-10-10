@@ -1,7 +1,7 @@
 /** The methods an HTML form can stand for with a `_method` field (it can only send GET and POST itself). */
 const OVERRIDES = new Set(['PUT', 'PATCH', 'DELETE']);
 
-/** The body field that names the method — Laravel's `_method` (`<Form>` renders it for PUT, PATCH and DELETE routes). */
+/** The body field that names the method (`<Form>` renders it for PUT, PATCH and DELETE routes). */
 export const METHOD_FIELD = '_method';
 
 /**
@@ -11,7 +11,7 @@ export const METHOD_FIELD = '_method';
 export const METHOD_FIELD_WINDOW = 16 * 1024;
 
 /**
- * Method spoofing (Laravel's `_method`): a plain HTML form — `<Form>` without JavaScript — can only POST, so a PUT, PATCH
+ * Method spoofing: a plain HTML form — `<Form>` without JavaScript — can only POST, so a PUT, PATCH
  * or DELETE route gets a POST with `_method=PUT` in its body. The request becomes that method before it is routed.
  *
  * Only from the body of a POST that a form sends (`application/x-www-form-urlencoded`, `multipart/form-data`), never from the

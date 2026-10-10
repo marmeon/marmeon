@@ -184,7 +184,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(own).toEqual(['start', 'success', 'finish']);
     });
 
-    it('reports validation errors as `error` (Inertia’s meaning) — the page with them is shown', async () => {
+    it('reports validation errors as `error` — the page with them is shown', async () => {
       const win = new FakeWindow(`${ORIGIN}/edit`);
       // A failed form: the server redirects back, the page carries the errors.
       win.handler = () => pageResponse(page('/edit', { errors: { name: ['The name is required.'] } }));

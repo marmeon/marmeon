@@ -229,7 +229,7 @@ export class MakeMiddlewareCommand {
 const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /**
- * Laravel's `make:migration`. The name decides the template: `create_users_table` creates the
+ * Creates a migration in a module. The name decides the template: `create_users_table` creates the
  * table, `add_bio_to_users_table` (…_to_/_from_/_in_…_table) changes it, anything else is blank.
  */
 export class MakeMigrationCommand {

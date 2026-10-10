@@ -22,7 +22,7 @@ async function afterMigrating(generator: TypeGenerator, input: CommandInput, typ
   await writeTypes(generator, input.output, input.root);
 }
 
-/** Laravel's `migrate`: runs every pending migration of every module, in one batch, then updates the table types. */
+/** Runs every pending migration of every module, in one batch, then updates the table types. */
 export class MigrateCommand {
   static command = 'migrate';
   static description = 'Run the pending migrations';

@@ -218,6 +218,6 @@ export function typeLevelTests(): void {
     static readonly queue = { queue: 'mail', afterCommit: false };
     handle(_payload: EventPayload<typeof OrderShipped>): void {}
   }
-  // @ts-expect-error — afterCommit is gone: queued listeners always join the transaction.
+  // @ts-expect-error — no afterCommit option: queued listeners always join the transaction.
   listen(OrderShipped, WithAfterCommit);
 }

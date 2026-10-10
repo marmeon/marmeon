@@ -584,7 +584,7 @@ export function createHttpKernel(
     else if (live) response = await toLiveValidationResponse(response);
     // An action's redirect is reported, not followed — and its answer is never cached.
     else if (isActionRequest(request)) response = await toActionResponse(response);
-    // Cookies queued during the request reach the client whatever the outcome (like Laravel).
+    // Cookies queued during the request reach the client whatever the outcome.
     const final = await withQueuedCookies(response, state.cookies);
 
     if (terminable.length > 0) {

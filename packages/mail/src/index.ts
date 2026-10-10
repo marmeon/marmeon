@@ -61,7 +61,7 @@ export type MailConfig = ConfigOf<typeof MailConfig>;
 /**
  * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV`) runs on the
  * `log` mailer — the default when `MAIL_MAILER` is not set.
- * The log mailer stays as it is everywhere (Laravel's too): in development the links of a mail are clicked from the log.
+ * The log mailer stays as it is everywhere: in development the links of a mail are clicked from the log.
  */
 export const LOG_MAILER_WARNING =
   'MAIL_MAILER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password ' +

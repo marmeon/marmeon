@@ -38,7 +38,7 @@ interface FlashState {
 }
 
 /**
- * The session of the current request (Laravel's `Session\Store`). Scoped: one per
+ * The session of the current request. Scoped: one per
  * request, injected into controllers, middleware and listeners alike.
  * `StartSession` loads it before the route and saves it afterwards.
  *

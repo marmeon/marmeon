@@ -1,5 +1,5 @@
 /**
- * The events of the navigator's requests (Inertia's names): `start`, `progress`, then `success`, `error`, `exception`
+ * The events of the navigator's requests: `start`, `progress`, then `success`, `error`, `exception`
  * or `cancel`, and always `finish` — per visit (`onStart`, …) and for every request (`navigator.on`). Plus `flash` and
  * `version`.
  */
@@ -28,7 +28,7 @@ export interface VisitProgress {
 }
 
 /**
- * A visit that failed (`exception`, as in Inertia) — the page stays as it is (nothing typed is lost) and the
+ * A visit that failed (`exception`) — the page stays as it is (nothing typed is lost) and the
  * app shows a fallback:
  * - `network`: the server could not be reached (offline, the server is down, the connection broke).
  * - `server`: the server answered with a 5xx — its error page (`page`, with the exception in debug mode) or, from
@@ -42,7 +42,7 @@ export type VisitException =
 
 /**
  * The events of a visit, in order: `start`, `progress` (uploads), then one of `success`, `error`, `exception` or
- * `cancel`, and always `finish` — Inertia's names and meanings. Back/Forward to a page that is not in memory
+ * `cancel`, and always `finish`. Back/Forward to a page that is not in memory
  * and loading deferred props report `start`, `exception`/`cancel` and `finish` only (they are no visits of the
  * app's own); an `async` visit of the app (a poll) reports all of them. Prefetches report nothing.
  */

@@ -360,7 +360,7 @@ describe('session stores', () => {
     await store.write('b'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
     const past = new Date(Date.now() - 3_600_000);
     utimesSync(join(dir, 'b'.repeat(64)), past, past);
-    expect(await store.gc(60)).toBe(1); // by modification time, like Laravel's file handler
+    expect(await store.gc(60)).toBe(1); // by modification time
     expect(existsSync(join(dir, 'a'.repeat(64)))).toBe(true); // expired by its data, collected once it is old
     expect(existsSync(join(dir, 'b'.repeat(64)))).toBe(false);
   });

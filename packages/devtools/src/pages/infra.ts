@@ -1,7 +1,7 @@
 import { outsideTransaction, type Application, type Redactor } from '@marmeon/core';
 
 /**
- * The queue and the scheduler as they are now (Horizon's idea, development only, read-only) — read through their own
+ * The queue and the scheduler as they are now (development only, read-only) — read through their own
  * APIs: `QueueConnections` (the queue's own connections, never a transaction of the app: every read runs outside of one)
  * and the `Scheduler`. Both packages are optional: an app without them gets a note. Nothing here writes; retrying or
  * forgetting a failed job is a command to copy.

@@ -151,7 +151,7 @@ const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
 
 /**
- * An uncontrolled form for a named route (Inertia's `<Form>`): it reads its fields from the DOM — any input with a `name` — and
+ * An uncontrolled form for a named route: it reads its fields from the DOM — any input with a `name` — and
  * sends them like `useForm` does. Without JavaScript it is a real `<form>` (`_method`, the CSRF token as `_token`); only a GET
  * route's form writes its fields into the URL, any other sends them in the body. See docs/forms.md#forms-without-state.
  */

@@ -46,7 +46,7 @@ export class HttpError extends Error {
   }
 }
 
-/** Laravel's `abort(404)`: stops handling and answers with that status — from controllers or middleware. */
+/** Stops handling and answers with that status (`abort(404)`) — from controllers or middleware. */
 export function abort(status: number, message?: string, headers?: Record<string, string>): never {
   throw new HttpError(status, message, headers);
 }

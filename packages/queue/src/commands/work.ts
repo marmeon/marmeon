@@ -16,7 +16,7 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 
 /**
  * `marmeon queue:work`: processes jobs until stopped — one at a time, each in its own container scope. Without `--queue`
- * it takes every queue fairly; `--queue=mail,default` narrows it down, in strict priority order (Laravel's). On
+ * it takes every queue fairly; `--queue=mail,default` narrows it down, in strict priority order. On
  * SIGTERM/SIGINT the running job may finish for `--stop-timeout` seconds; a job that ignores its timeout ends the worker
  * (code 70) — run workers under a supervisor. See `docs/queues.md#running-workers`.
  */

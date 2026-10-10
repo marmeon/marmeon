@@ -84,7 +84,7 @@ export interface CloseLayerOptions {
 }
 
 /**
- * What `closeLayer()` returns (Inertia's `close()`): to a layer's request, "close" — the client closes the layer (and
+ * What `closeLayer()` returns: to a layer's request, "close" — the client closes the layer (and
  * `layers - 1` beneath it), then reloads what is under them (`reload`). To any other request — a form without JavaScript, a
  * layer's view opened as a page — it is the redirect it also is: `closeLayer().route('user-profile.show', { user })`,
  * by default back (to the `Referer`). A flash message (`.flash()`) goes with the close to the layer's client — it fires

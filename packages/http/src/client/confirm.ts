@@ -5,7 +5,7 @@
  * means: a type-to-confirm question (`prompt`) is answered yes only by the text typed exactly, whatever the dialog does.
  */
 
-/** What a confirmation asks: `confirm="Remove this link?"`, or with a title, labels — and a text to type (Livewire's `.prompt`). */
+/** What a confirmation asks: `confirm="Remove this link?"`, or with a title, labels — and a text to type. */
 export interface ConfirmOptions {
   /** The question. */
   readonly message: string;

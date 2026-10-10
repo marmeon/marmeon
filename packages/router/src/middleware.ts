@@ -17,16 +17,15 @@ export interface PipelineOptions<TCtx> {
   /** Called with every layer that ran and has a `terminate` hook, and the context it saw. */
   onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: TCtx) => void;
   /**
-   * Turns an error into a response *at the layer where it was thrown* (Laravel's
-   * routing pipeline does the same). Outer middleware then sees a normal
-   * response — security headers, the session and cookies apply to error pages too.
+   * Turns an error into a response *at the layer where it was thrown*. Outer
+   * middleware then sees a normal response — security headers, the session and cookies apply to error pages too.
    * Without it, errors propagate to the caller.
    */
   onError?: (error: unknown, ctx: TCtx) => Response | Promise<Response>;
 }
 
 /**
- * Runs `ctx` through the middleware onion (Laravel's `Pipeline`). Each layer may
+ * Runs `ctx` through the middleware onion. Each layer may
  * short-circuit by returning a Response, or extend the context via `next({...})`.
  * Contexts are copied, never mutated, so a layer only sees what came before it.
  */

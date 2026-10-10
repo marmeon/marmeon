@@ -298,7 +298,7 @@ describe('failed visits', () => {
   });
 });
 
-describe('form callbacks (Inertia’s meanings)', () => {
+describe('form callbacks', () => {
   it('onError gets the validation errors (first message per field), onException a failed request', async () => {
     calls.length = 0;
     server = () => respond(page('Form', '/form', { errors: { name: ['The name is required.', 'Too short.'] } }));

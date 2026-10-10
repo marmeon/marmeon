@@ -5,7 +5,7 @@ import type { HealthCheckClass } from './health.ts';
 import type { SolutionDefinition } from './solutions.ts';
 
 /**
- * Registers and boots a module's or package's services — Laravel's ServiceProvider.
+ * Registers and boots a module's or package's services.
  *
  * `register` binds things into the container and must not resolve anything yet,
  * because other providers may not have registered. `boot` runs after *every*

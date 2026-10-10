@@ -47,7 +47,7 @@ export class CsrfProtection {
     return this;
   }
 
-  /** Turns verification off — what `@marmeon/testing` does by default, like Laravel. Never in production. */
+  /** Turns verification off — what `@marmeon/testing` does by default. Never in production. */
   disable(): this {
     this.#enabled = false;
     return this;
@@ -95,7 +95,7 @@ export class VerifyCsrfToken {
     // A read-only request (an island) sets no cookie: the page's own requests keep the browser's token current. A
     // session that is not kept (a guest's, nothing in it) has no token worth sending: it would not be valid next time.
     if (this.#session.readOnly || !this.#session.persists) return response;
-    const { lifetime, secure, sameSite } = this.#sessionConfig; // lives as long as the session, like Laravel's
+    const { lifetime, secure, sameSite } = this.#sessionConfig; // lives as long as the session
     // The token is made here if nothing needed it before: a kept session always gets its cookie.
     ctx.cookies.set(XSRF_COOKIE, this.#session.token(), { httpOnly: false, maxAge: lifetime * 60, secure, sameSite });
     return response;

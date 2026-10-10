@@ -12,8 +12,6 @@ import { BroadcastRecorder } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
 
-// Live props: a page follows signed channels, the server hints a change over one Server-Sent-Events stream per tab, and the
-// browser reloads through the page's own route.
 export { Broadcaster, CONNECTION_ID, LiveBroadcaster } from './broadcaster.ts';
 export type { LiveBroadcasterDependencies, RefreshOptions } from './broadcaster.ts';
 export { MemoryLiveBackend, parseMessage } from './backend.ts';

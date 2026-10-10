@@ -28,8 +28,7 @@ export function defineConfig<const Schema extends StandardSchemaV1, T>(
 export { ConfigError };
 
 /**
- * Reads `.env`, then `.env.{mode}` on top (e.g. `.env.test`, like Laravel's
- * `.env.testing`); variables from the real environment win over both.
+ * Reads `.env`, then `.env.{mode}` on top (e.g. `.env.test`); variables from the real environment win over both.
  * Parsed with `util.parseEnv`, so `process.env` itself is never modified.
  *
  * `NODE_ENV` follows the one resolution of `@marmeon/core/environment`: the real environment's, else the base

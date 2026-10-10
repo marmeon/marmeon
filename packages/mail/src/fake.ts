@@ -9,7 +9,7 @@ type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
 /**
  * Records mail instead of sending it — `@marmeon/testing` puts it in place of the `Mailer` (`app.mail`). Every mail is
  * still composed, so a broken template fails the test. Mails sent now and queued ones are kept apart: `assertSent` sees
- * the first, `assertQueued` the second (Laravel's `Mail::assertQueued`); a queued mail is not put on the queue.
+ * the first, `assertQueued` the second; a queued mail is not put on the queue.
  * See `docs/fakes.md#mail`.
  */
 export class MailFake implements Mailer {

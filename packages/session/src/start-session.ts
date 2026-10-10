@@ -7,7 +7,7 @@ import { Session } from './session.ts';
 import { SESSION_ID, sessionKey, SessionStore } from './store.ts';
 
 /**
- * The chance that a request cleans up expired sessions after its response (Laravel's lottery): `SESSION_LOTTERY` — or 0
+ * The chance that a request cleans up expired sessions after its response: `SESSION_LOTTERY` — or 0
  * when the app's scheduler runs `session:prune` (then that is the one sweeper, not the requests).
  */
 export class SessionLottery {

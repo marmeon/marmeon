@@ -3,8 +3,9 @@ import { writeManifest } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 
 /**
- * Composer's dump-autoload + Laravel's package:discover. Also runs automatically when dependencies change. Writes the manifest of
- * this process's conditions: `.marmeon/manifest.json` in an installed app, `.marmeon/manifest.source.json` in the monorepo.
+ * Finds the providers and injection lists of the installed packages. Also runs automatically when dependencies change.
+ * Writes the manifest of this process's conditions: `.marmeon/manifest.json` in an installed app,
+ * `.marmeon/manifest.source.json` in the monorepo.
  */
 export class DiscoverCommand {
   static command = 'discover';

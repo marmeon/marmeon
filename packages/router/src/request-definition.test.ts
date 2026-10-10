@@ -68,7 +68,7 @@ describe('request validation (REPR)', () => {
     await expect(put('1', { name: '' }, '2')).rejects.toMatchObject({ status: 403, message: 'This action is unauthorized.' });
   });
 
-  it('collects field errors like Laravel (422, first message + count)', async () => {
+  it('collects field errors (422, first message + count)', async () => {
     const error = (await put('1', { name: 'A', bio: 'far too long' }).catch((e: unknown) => e)) as ValidationError;
     expect(error).toBeInstanceOf(ValidationError);
     expect(error).toBeInstanceOf(HttpError);

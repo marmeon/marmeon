@@ -80,7 +80,7 @@ export class FileSessionStore implements SessionStore {
     await rm(this.#path(key), { force: true });
   }
 
-  /** By modification time (the last write, on the store's clock), like Laravel's file handler: no file is read. */
+  /** By modification time (the last write, on the store's clock): no file is read. */
   async gc(lifetimeSeconds: number): Promise<number> {
     let removed = 0;
     for (const name of await readdir(this.#directory)) {

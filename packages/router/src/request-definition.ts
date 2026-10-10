@@ -42,9 +42,9 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
    * scope — how `can(Policy, …)` of @marmeon/auth gets its policy without the router knowing a container.
    */
   readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
-  /** Own messages for the framework's rules, Laravel's `messages()` — see {@link ValidationLabels}. */
+  /** Own messages for the framework's rules — see {@link ValidationLabels}. */
   readonly messages?: Readonly<Record<string, string>> | undefined;
-  /** Names of the fields in messages (`:attribute`), Laravel's `attributes()` — see {@link ValidationLabels}. */
+  /** Names of the fields in messages (`{attribute}`) — see {@link ValidationLabels}. */
   readonly attributes?: Readonly<Record<string, string>> | undefined;
   /**
    * `true`: a live validation runs a body schema of **another library** too (Zod, ArkType …). Fail-closed without it: such a
@@ -55,7 +55,7 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
 }
 
 /**
- * How a request's validation messages read — Laravel's `messages()` and `attributes()` of a form request. Values are
+ * How a request's validation messages read: own texts for rules (`messages`), names for fields (`attributes`). Values are
  * translation keys or plain texts. See docs/validation.md#messages.
  *
  * ```ts
@@ -245,7 +245,7 @@ function issueParams(issue: StandardIssue): Record<string, unknown> {
 }
 
 /**
- * A field as messages name it (`{attribute}`), Laravel's rule: its path with underscores as spaces — `password_confirmation` →
+ * A field as messages name it (`{attribute}`): its path with underscores as spaces — `password_confirmation` →
  * "password confirmation", `links.0.url` → "links.0.url". (An issue without a path — a schema of one value — names it "value".)
  */
 export function attributeName(field: string): string {

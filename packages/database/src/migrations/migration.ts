@@ -11,7 +11,7 @@ export type MigrationConnection = string | ((container: Resolver) => string);
 /** A migration: `up` changes the schema, `down` undoes it (optional — without it, rollback stops there). */
 export interface Migration {
   /**
-   * Another connection than `default` (Laravel's `$connection`). The migrator keeps its record of the migration on
+   * Another connection than `default`. The migrator keeps its record of the migration on
    * `default`, and the table's owner and secret columns on the connection the table is on.
    */
   readonly connection?: MigrationConnection;

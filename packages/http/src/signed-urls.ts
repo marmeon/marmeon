@@ -136,7 +136,7 @@ function canonical(path: string, query: URLSearchParams): string {
   return `${path}?${new URLSearchParams(pairs).toString()}`;
 }
 
-/** Only for signed links (Laravel's `signed` middleware): a missing, wrong or expired signature answers 403. */
+/** Middleware that lets only signed links through: a missing, wrong or expired signature answers 403. */
 export class ValidateSignature {
   readonly #signer: UrlSigner;
 

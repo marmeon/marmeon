@@ -33,13 +33,13 @@ export const SessionConfig = defineConfig('session', {
     SESSION_SAME_SITE: env.in(['lax', 'strict', 'none']).default('lax'),
     /**
      * Encrypt the session data in its store — the file, the `payload` column, the Redis value — with the app's key
-     * (`APP_KEY`; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Off by default (like Laravel); the store's keys are
+     * (`APP_KEY`; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Off by default; the store's keys are
      * hashes of the session ids either way. Turning it on or off signs everybody out once. The `cookie` driver's data is always
      * encrypted (it is a cookie).
      */
     SESSION_ENCRYPT: BOOLEAN.default('false'),
     /**
-     * Chance that a request also cleans up expired sessions, after the response (Laravel's lottery). `0/1` turns it off —
+     * Chance that a request also cleans up expired sessions, after the response. `0/1` turns it off —
      * for apps that run `marmeon session:prune` from a scheduler or cron instead.
      */
     SESSION_LOTTERY: env.string().regex(/^\d+\/[1-9]\d*$/, 'Expected a chance like 2/100').default('2/100'),

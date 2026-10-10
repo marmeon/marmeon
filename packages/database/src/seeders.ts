@@ -27,7 +27,7 @@ declare module '@marmeon/core' {
   }
 }
 
-/** Runs the modules' seeders — Laravel's DatabaseSeeder, per module. */
+/** Runs the modules' seeders, in module order. */
 export class Seeding {
   readonly #app: Application;
   readonly #container: Container;

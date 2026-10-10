@@ -19,10 +19,8 @@ export class CookieEncryption {
 }
 
 /**
- * Encrypts every cookie the app sets and decrypts the ones it receives (Laravel's
- * `EncryptCookies`). Each value is bound to its cookie name, so an encrypted value
- * cannot be moved to another cookie. Tampered, foreign or unencrypted values are
- * treated as absent.
+ * Encrypts every cookie the app sets and decrypts the ones it receives. Each value is bound to its cookie name, so an
+ * encrypted value cannot be moved to another cookie. Tampered, foreign or unencrypted values are treated as absent.
  */
 export class EncryptCookies {
   readonly #encrypter: Encrypter;

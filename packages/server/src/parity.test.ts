@@ -187,7 +187,7 @@ describe('method spoofing — a form without JavaScript sends PUT, PATCH and DEL
     expect(await (await form(JSON.stringify({ _method: 'DELETE' }), '/api/links/1', 'application/json')).text()).toBe('post');
   });
 
-  it('`_method` next to `_token` (a form written by hand, Laravel’s @csrf @method) counts too — in any order at the start', async () => {
+  it('`_method` next to `_token` (a form written by hand) counts too — in any order at the start', async () => {
     expect(await (await form('_token=abc&_method=PUT&label=Blog')).text()).toBe('put');
     const multipart = new FormData();
     multipart.set('_token', 'abc');

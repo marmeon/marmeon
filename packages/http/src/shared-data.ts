@@ -3,7 +3,7 @@ import { resolveProp, type SharedValue } from './props.ts';
 import { checkedChannel, type LiveDeclaration, type LiveOnly } from './live.ts';
 
 /**
- * The shared props of the current request (Inertia's `share`), scoped: middleware shares, the response factory merges the
+ * The shared props of the current request, scoped: middleware shares, the response factory merges the
  * values into every page it renders. A function is evaluated only when a page that includes it renders, at most once per
  * request; the wrappers of page props work here too. See docs/responses.md#shared-props.
  *

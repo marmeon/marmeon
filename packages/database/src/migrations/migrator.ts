@@ -41,9 +41,8 @@ interface Bookkeeping {
 }
 
 /**
- * Runs the migrations of every module, ordered by their timestamp — Laravel's migrator, with
- * batches, plus a record of which module's migration created which table and which
- * columns are secret.
+ * Runs the migrations of every module in batches, ordered by their timestamp, and records which module's
+ * migration created which table and which columns are secret.
  *
  * A migration may run on another connection (`connection` in `defineMigration`, e.g. the cache's own SQLite
  * file): its record stays on `default` (one order, one batch number for all), the table's owner and secret columns go

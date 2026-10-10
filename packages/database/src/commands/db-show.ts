@@ -3,7 +3,7 @@ import { sql } from 'kysely';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';
 
-/** Laravel's `db:show`: where a connection points, the server version and its tables. */
+/** Shows where a connection points, the server version and its tables. */
 export class DbShowCommand {
   static command = 'db:show';
   static description = 'Show the database connection and its tables';

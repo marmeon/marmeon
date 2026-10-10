@@ -22,7 +22,7 @@ interface ColumnSpec {
 
 /**
  * One column, fluently: `table.string('email').unique()`. Columns are NOT NULL unless marked
- * `nullable()` (Laravel's default, not SQL's). `T` is the column's value type, so a default is
+ * `nullable()` (unlike SQL's default). `T` is the column's value type, so a default is
  * checked against it.
  */
 export class Column<T> {
@@ -100,7 +100,7 @@ export class ConstrainedColumn<T> extends Column<T> {
 type IndexSpec = { readonly columns: readonly string[]; readonly unique: boolean; readonly name: string };
 
 /**
- * Describes a table the way Laravel's Blueprint does, and compiles it for SQLite or Postgres.
+ * Describes a table's columns, indexes and foreign keys, and compiles them for SQLite or Postgres.
  * The declared types are chosen so the type generator (and the SQLite adapter) recognize them:
  * `boolean`, `json`, `datetime`/`timestamptz` stay recognizable on both drivers.
  */

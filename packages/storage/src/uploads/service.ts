@@ -80,7 +80,7 @@ export function uploadError(field: string, key: string, message: string, params:
 }
 
 /**
- * Temporary uploads (Livewire's model): the table of tokens and the private disk their files wait on. A target is
+ * Temporary uploads: the table of tokens and the private disk their files wait on. A target is
  * handed out for one route's field and one session; the bytes arrive once, cut off at the field's `maxBytes`; on submit the
  * token is verified (signature, session, route and field, expiry, not used) and the file's type read from its bytes; storing
  * it uses the token up — one `UPDATE … WHERE consumed_at IS NULL`, so of two submits racing exactly one wins.

@@ -34,7 +34,7 @@ interface Entry {
 }
 
 /**
- * Named middleware groups (Laravel's `web` / `api`) plus the global stack.
+ * Named middleware groups (`web`, `api`) plus the global stack.
  * Execution order for a route: global → its group → the route's own middleware.
  */
 export class MiddlewareGroups {

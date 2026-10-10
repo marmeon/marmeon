@@ -197,9 +197,7 @@ export class MarmeonDriver implements Driver {
   /**
    * Runs every following query on one connection, inside a transaction — until `rollback()` undoes
    * all of it. Transactions the code opens meanwhile become savepoints. The basis of per-test
-   * isolation (Laravel's `RefreshDatabase`).
-   *
-   * Like Laravel's single test connection, concurrent transactions (two requests at once) share it.
+   * isolation. Concurrent transactions (two requests at once) share the one connection.
    */
   async isolate(): Promise<{ rollback(): Promise<void> }> {
     if (this.#pinned) throw new Error(`The database connection "${this.#context.name}" is already isolated.`);

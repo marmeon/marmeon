@@ -27,7 +27,7 @@ declare module '@marmeon/core' {
 
   interface ApplicationOptions {
     /**
-     * App middleware, added after the framework's own (Laravel's `withMiddleware`):
+     * App middleware, added after the framework's own:
      * `global` runs for every request — unmatched ones included — `web` / `api` for their routes.
      */
     readonly middleware?: {
@@ -49,7 +49,7 @@ declare module '@marmeon/core' {
 
 /**
  * Registers the router and the exception handler, sets up the `web` and `api` middleware groups and loads every module's
- * routes (while registering) — Laravel's RouteServiceProvider.
+ * routes (while registering).
  *
  * Order within `web`, whatever order packages boot in (lower priority first):
  * EncryptCookies (100) → ClearClientHistory (150) → StartSession (200) → NoStoreWhenSignedIn (210, auth)

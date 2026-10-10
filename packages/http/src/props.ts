@@ -1,5 +1,5 @@
 /**
- * Page props that are more than a value (Inertia's semantics): left out of the first response, loaded after it, sent with every
+ * Page props that are more than a value: left out of the first response, loaded after it, sent with every
  * partial reload, or merged into what the browser already has. A plain function is a prop too, called only when the response
  * includes it. See docs/responses.md#props-that-load-later.
  */

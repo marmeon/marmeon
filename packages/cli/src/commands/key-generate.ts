@@ -4,7 +4,7 @@ import { generateKey } from '@marmeon/encryption';
 import type { CommandInput } from '../command.ts';
 
 /**
- * Writes a new `APP_KEY` into `.env` (Laravel's `key:generate`). Runs without
+ * Writes a new `APP_KEY` into `.env`. Runs without
  * booting the app — a missing key is exactly why it cannot boot.
  *
  * `--force` replaces a key that is set — and moves the old one to the front of `APP_PREVIOUS_KEYS`, so what it encrypted

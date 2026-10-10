@@ -45,7 +45,7 @@ export class SessionServiceProvider implements ServiceProvider {
 
     const config = container.make(SessionConfig);
     // Every cookie of a request gets `Secure` with the session's — the reset cookie, the cookie store's, an app's own —
-    // unless its `set` says otherwise (Laravel's cookie jar defaults).
+    // unless its `set` says otherwise.
     container.instance(CookieDefaults, { secure: config.secure });
     container.singleton(SessionLottery, () => new SessionLottery(config.lottery));
     // SESSION_ENCRYPT: payloads encrypted in the store — the cookie driver's are encrypted as a cookie already.

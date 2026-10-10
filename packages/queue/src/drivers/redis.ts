@@ -4,7 +4,7 @@ import type { QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob 
 
 /**
  * Moves the due members of the sorted set `from` (score ≤ now) to the end of the list `to` — delayed jobs whose time has
- * come, claimed jobs whose claim expired (their worker died). Laravel's `migrateExpiredJobs`.
+ * come, claimed jobs whose claim expired (their worker died).
  */
 const MIGRATE = `local function migrate(from, to, now)
   local due = redis.call('zrangebyscore', from, '-inf', now)
@@ -108,14 +108,14 @@ return 1`,
 export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnection>);
 
 /**
- * Jobs in Redis (`QUEUE_CONNECTION=redis`) — Laravel's model: a list of waiting jobs per queue (`<prefix>queues:<queue>`),
+ * Jobs in Redis (`QUEUE_CONNECTION=redis`): a list of waiting jobs per queue (`<prefix>queues:<queue>`),
  * sorted sets of delayed (`:delayed`) and claimed jobs (`:reserved`, scored by when the claim expires), and the names of
  * the queues (`<prefix>queues`).
  *
  * A job is the member `<id>:<attempts>:<payload>`. **The claim is one Lua script**, atomic, so two workers never hold the
  * same job. Acknowledging removes exactly the claimed member: once another worker took the job (`attempts` counted up),
- * a late ack, release or fail changes nothing. Times come from the queue's {@link Clock} (passed to the scripts), like
- * Laravel's — not from Redis. A dispatch inside `connections.transaction()` is pushed after the commit, dropped on a rollback.
+ * a late ack, release or fail changes nothing. Times come from the queue's {@link Clock} (passed to the scripts), not
+ * from Redis. A dispatch inside `connections.transaction()` is pushed after the commit, dropped on a rollback.
  */
 export class RedisQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<RedisConnection>;

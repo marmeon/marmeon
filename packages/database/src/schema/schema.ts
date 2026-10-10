@@ -16,7 +16,7 @@ export interface SchemaRecorder {
 }
 
 /**
- * Laravel's `Schema` facade as an object — what a migration gets:
+ * Creates, changes, renames and drops tables — what a migration gets:
  *
  * ```ts
  * up: (schema) => schema.create('users', (table) => { table.id(); table.string('email').unique(); table.timestamps(); })
@@ -54,7 +54,7 @@ export class Schema {
   }
 
   /**
-   * Changes a table (Laravel's `Schema::table`). Every change runs as its own statement, because
+   * Changes a table. Every change runs as its own statement, because
    * SQLite's ALTER TABLE takes one change at a time. On SQLite a new NOT NULL column needs a default.
    */
   async alter(table: string, build: (table: Blueprint) => void): Promise<void> {

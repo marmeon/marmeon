@@ -9,7 +9,7 @@ import { RequestNonce } from './nonce.ts';
 export type Input = Record<string, unknown>;
 
 export interface RequestStateOptions {
-  /** Largest accepted body in bytes. Defaults to 8 MiB (PHP's `post_max_size`). */
+  /** Largest accepted body in bytes. Defaults to 8 MiB. */
   maxBodySize?: number;
   /** The client's IP address, as the server determined it (see the kernel's trusted proxies). */
   ip?: string | undefined;
@@ -30,7 +30,7 @@ export interface RequestState {
    */
   readonly query: URLSearchParams;
   /**
-   * The body — and only the body: unlike Laravel's `$request->all()`, the query is never merged in, so no
+   * The body — and only the body: the query is never merged in, so no
    * field can be set through the URL (read it from `ctx.query`). A GET or HEAD request has no body: `{}`.
    * JSON, `application/x-www-form-urlencoded` and `multipart/form-data` (files are
    * `File`s) are parsed alike. Parsed once and cached: a request body can only be
@@ -84,8 +84,8 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
  * The client's address behind proxies: the right-most `X-Forwarded-For` entry that
  * is not a trusted proxy. Left entries are whatever the client claimed, so they
  * count only once every hop to their right is trusted. `'*'` trusts the direct peer
- * only — whoever connects is the proxy, and the address it saw is the right-most entry
- * (Laravel's and Symfony's `*`): what anybody wrote further left never counts.
+ * only — whoever connects is the proxy, and the address it saw is the right-most entry:
+ * what anybody wrote further left never counts.
  *
  * `trusted`: the proxies' addresses (`'*'` for all), or a check — the server's, which also knows CIDR ranges
  * (`TRUSTED_PROXIES=10.0.0.0/8`). Addresses reach it without the IPv4-mapped `::ffff:` prefix.
@@ -107,7 +107,7 @@ export function clientIp(remote: string | undefined, forwardedFor: string | null
   return normalize(remote);
 }
 
-/** Laravel's `expectsJson()`: JSON is the first accepted type, or an XHR that accepts anything. */
+/** Whether the client expects JSON: JSON is the first accepted type, or an XHR that accepts anything. */
 export function expectsJson(request: Request): boolean {
   const accept = request.headers.get('accept') ?? '';
   const first = accept.split(',')[0]!.split(';')[0]!.trim().toLowerCase();
@@ -198,9 +198,8 @@ type Node = { [key: string]: Node | string | File };
 const KEY = /^([^[\]]+)((?:\[[^[\]]*\])*)$/;
 
 /**
- * Builds nested input from form entries, like PHP. Later entries win, an empty
- * file field (no file chosen) is skipped, and objects whose keys are exactly
- * `0…n-1` become arrays — so sparse indices can never allocate huge arrays.
+ * Builds nested input from form entries. Later entries win, an empty file field (no file chosen) is skipped, and
+ * objects whose keys are exactly `0…n-1` become arrays — so sparse indices can never allocate huge arrays.
  */
 function build(entries: Iterable<[string, string | File]>): Input {
   const root: Node = Object.create(null);

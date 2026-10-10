@@ -125,7 +125,7 @@ export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, 
 // ---------------------------------------------------------------------------
 
 /**
- * Turns a route parameter into what the controller works with (Laravel's route model binding).
+ * Turns a route parameter into what the controller works with.
  * The router stays free of any database: repositories — or any injectable class — implement it.
  * Returning `undefined` answers 404.
  */

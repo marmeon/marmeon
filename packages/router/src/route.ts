@@ -89,7 +89,7 @@ export function joinPaths(...segments: string[]): string {
 }
 
 /**
- * Fluent, immutable route registrar (Laravel's `RouteRegistrar`): every attribute call returns a *new* registrar, so the
+ * Fluent, immutable route registrar: every attribute call returns a *new* registrar, so the
  * accumulated context type (`TState`) and path parameters (`TParams`) flow into nested groups. See docs/routing.md#route-groups.
  */
 export class Route<TState extends object = EmptyObject, TParams extends object = EmptyObject, TBindings extends object = EmptyObject> {
@@ -124,7 +124,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   /**
-   * Resolves the route parameter `param` with `binder` (Laravel's route model binding): the action gets the record instead of
+   * Resolves the route parameter `param` with `binder`: the action gets the record instead of
    * the string, a missing one answers 404. Registered before the route, like middleware, so the type reaches `handle`. A scoped
    * binding (`scopedBy`) looks the child up *within* its parent (`team_id = team.id`, or `column`), so an id from somewhere else
    * is a 404 — insecure direct object references cannot happen by forgetting a check. See docs/routing.md#scoped-bindings.

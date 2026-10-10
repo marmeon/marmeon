@@ -126,7 +126,7 @@ function flatten<T>(value: T | readonly T[] | readonly (T | readonly T[])[] | un
 }
 
 /**
- * A non-navigating request to a named route — Inertia's `useHttp`, React Router's `useFetcher` — typed by the route: the body
+ * A non-navigating request to a named route, typed by the route: the body
  * by its controller's request schema, the result by what its controller returns. An ordinary request of its route: middleware,
  * CSRF, authorization and validation run as for a form. It never touches the history; its answer is never cached; a redirect
  * is reported, not followed. See docs/actions.md#sending.
@@ -215,7 +215,7 @@ const noSubscription = () => () => {};
 
 /**
  * The calls under way to route `N` — of every component, actions and route forms (`useForm(name, …)`) alike, oldest first:
- * ghost rows derived from what is being sent (React Router's pending UI), with nothing to roll back. A call is listed until
+ * ghost rows derived from what is being sent, with nothing to roll back. A call is listed until
  * the props it reloads have landed, so its row never blinks out before the real one is there.
  *
  * ```tsx

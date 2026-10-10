@@ -8,7 +8,7 @@ import { view } from './view.ts';
 export { abort, HttpError } from '@marmeon/router';
 
 /**
- * Decides what happens with errors — Laravel's exception handler. Bound as a
+ * Decides what happens with errors: reports and renders them. Bound as a
  * token, so apps replace it by binding their own class.
  */
 export interface ExceptionHandler {
@@ -61,7 +61,7 @@ export class DefaultExceptionHandler implements ExceptionHandler {
         : translator?.has(raw)
           ? translator.text(raw)
           : raw;
-    // A deliberate abort(4xx) is not a bug: no stack trace, not even in debug mode (like Laravel).
+    // A deliberate abort(4xx) is not a bug: no stack trace, not even in debug mode.
     const exception = debug && status >= 500 ? asError(error) : null;
     const headers = error instanceof HttpError ? error.headers : {};
 
@@ -76,7 +76,7 @@ export class DefaultExceptionHandler implements ExceptionHandler {
 /**
  * Invalid input: clients that expect JSON get 422 with the field errors; everyone
  * else goes back to the form, with the errors and the old input in the session —
- * the form shows them next to the fields (Laravel's rule, and the Inertia pattern).
+ * the form shows them next to the fields.
  */
 function renderInvalid(error: ValidationError, request: Request): unknown {
   if (expectsJson(request)) {

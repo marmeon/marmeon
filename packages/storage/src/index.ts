@@ -52,7 +52,7 @@ export { TEMPORARY_PREFIX } from './temporary.ts';
 export type { TemporaryUrls } from './temporary.ts';
 export { StorageSetup } from './setup.ts';
 
-// Uploads (Livewire's model): a target per route field, the bytes to a private disk, a token in the form, verified on submit.
+// Uploads: a target per route field, the bytes to a private disk, a token in the form, verified on submit.
 export { upload, uploadFields, uploadRuleOf, formatBytes, UPLOAD_RULE } from './uploads/rule.ts';
 export type { CheckUploadMime, UploadInput, UploadRule, UploadSchema } from './uploads/rule.ts';
 export { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';

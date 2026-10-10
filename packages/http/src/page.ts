@@ -349,7 +349,7 @@ export const VALIDATE_HEADER = 'x-marmeon-validate';
 export const VALIDATED_HEADER = 'x-marmeon-validated';
 
 /**
- * Uploads (Livewire's three steps): the client asks the form's route for an upload target — the route's own method and
+ * Uploads go in three steps: the client asks the form's route for an upload target — the route's own method and
  * URL, naming the field (`avatar`), with the file's name, size and type as JSON. The server runs the route's middleware and
  * `authorize`, reads the field's `upload()` rule and answers `{ token, upload: { method, url, fields?, headers? } }`; the file
  * goes there (with progress), and the form sends the token in the field — never the file. The receiving request carries the
@@ -420,17 +420,17 @@ export type CheckLiveField<F, K extends string> = K extends LiveField<F>
     ? `'${K}' — ${PasswordNeverLive}`
     : `'${K}' is not a field of this form — it has ${JoinNames<LiveField<F>>}`;
 
-/** The asset version the client was built with; a mismatch answers 409 (Inertia's `X-Inertia-Version`). */
+/** The asset version the client was built with; a mismatch answers 409. */
 export const VERSION_HEADER = 'x-marmeon-version';
 
 /**
- * With a 409: where the client loads fully (Inertia's `X-Inertia-Location`) — after a deployment (asset version)
+ * With a 409: where the client loads fully — after a deployment (asset version)
  * and after signing in or out (`ClientHistory`), so no page kept in memory outlives either.
  */
 export const LOCATION_HEADER = 'x-marmeon-location';
 
 /**
- * A partial reload (Inertia's `X-Inertia-Partial-Component`): the component the client shows. The server answers with only
+ * A partial reload: the component the client shows. The server answers with only
  * some props when it renders this component — and with all of them for any other.
  */
 export const PARTIAL_COMPONENT_HEADER = 'x-marmeon-partial-component';

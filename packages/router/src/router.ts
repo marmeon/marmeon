@@ -84,7 +84,7 @@ export interface LoadOptions {
   prefix?: string;
 }
 
-/** Laravel's `Router::toResponse` in miniature: strings become HTML, everything else JSON. */
+/** Turns an action's result into a response: a `Response` as it is, nothing as 204, strings as HTML, everything else as JSON. */
 export const defaultToResponse: ResponseFactory = (result) => {
   if (result instanceof Response) return result;
   if (result === undefined || result === null) return new Response(null, { status: 204 });
@@ -150,7 +150,7 @@ export class Router {
 
   /**
    * Everything a route runs, in order: global middleware, its group's, then its own.
-   * Listed twice (a group's and the route's), a middleware runs once, at its first place — like Laravel.
+   * Listed twice (a group's and the route's), a middleware runs once, at its first place.
    */
   middlewareFor(route: RouteDefinition): readonly AnyMiddleware[] {
     // Worked out once per route (every request of it needs the same list) — again only after a group changed.
@@ -165,7 +165,7 @@ export class Router {
   readonly #middlewareOf = new WeakMap<RouteDefinition, { readonly version: number; readonly list: readonly AnyMiddleware[] }>();
 
   /**
-   * The URL of a named route (Laravel's `route()`): path parameters filled in, the rest — and `query` —
+   * The URL of a named route: path parameters filled in, the rest — and `query` —
    * in the query string. Names and parameters are checked against the generated `Routes`.
    *
    * ```ts
@@ -188,7 +188,7 @@ export class Router {
       this.middlewareFor(route),
       async (afterMiddleware) => {
         // Bindings after the middleware (authentication answers before a 404 could tell what exists),
-        // before `authorize` (which may look at the bound record) — Laravel's middleware priority.
+        // before `authorize` (which may look at the bound record).
         const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
         const { action } = route;
         // An interceptor or a live validation: the controller is never built, `handle` never runs.

@@ -2,7 +2,7 @@ import type { CommandInput } from 'marmeon';
 import { Seeding } from '../seeders.ts';
 import { confirmed } from './confirm.ts';
 
-/** Laravel's `db:seed`: runs the modules' seeders (`--module=auth`, `--class=DemoUsersSeeder`). */
+/** Runs the modules' seeders (`--module=auth`, `--class=DemoUsersSeeder`). */
 export class DbSeedCommand {
   static command = 'db:seed';
   static description = 'Seed the database with the modules’ seeders';

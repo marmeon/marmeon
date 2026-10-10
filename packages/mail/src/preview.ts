@@ -47,7 +47,7 @@ const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,3}$/;
 
 /**
  * The preview pages — only ever registered with `NODE_ENV=development`. The HTML is shown in a sandboxed frame (no script
- * of a template runs), and a name finds a mail in the list of found mails — never a file path from the URL.
+ * of a template runs), and a name finds one of the mails found under `modules/<module>/mail` — never a file path from the URL.
  * See `docs/mail.md#previews`.
  */
 export class MailPreviews {

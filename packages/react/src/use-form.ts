@@ -89,7 +89,7 @@ export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
 }
 
 /**
- * How a form is sent — the visit's callbacks with Inertia's meanings: `onError` gets the *validation* errors
+ * How a form is sent — the visit's callbacks: `onError` gets the *validation* errors
  * (here the first message per field), `onException` a request that failed (offline, 5xx — the app also shows it over
  * the page), and `onFinish` runs after every submit.
  */

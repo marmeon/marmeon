@@ -34,7 +34,7 @@ export interface SessionWrite {
 export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 
 /**
- * Where session data lives (Laravel's session handlers): `file`, `database`, `redis`, `memory` and `cookie` implement this
+ * Where session data lives: `file`, `database`, `redis`, `memory` and `cookie` implement this
  * contract (`stores/`).
  *
  * Every method takes the session's **key** — `sessionKey(id)`, the SHA-256 of the id the cookie carries — never the id:
@@ -76,7 +76,7 @@ export function createSessionId(): string {
 }
 
 /**
- * The key a session is stored under: the SHA-256 of its id, hex — like Rack's `private_id`. The id itself (240 random
+ * The key a session is stored under: the SHA-256 of its id, hex. The id itself (240 random
  * bits) stays in the cookie; a store that leaks yields keys nobody can sign in with, and nothing can be worked back from them.
  */
 export function sessionKey(id: string): string {
