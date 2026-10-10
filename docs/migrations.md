@@ -291,6 +291,9 @@ A secret column is written like any other, but:
   are checked as a whole, whatever their order, and one named like a table or like an expression around it is refused (rename
   it: which of the two a reference means differs between databases). A [relation](queries.md#relations-and-secret-columns)
   never loads one;
+- names count without regard to case, as SQLite reads them: `TOKEN` is the secret column `token`. Two names of a query that
+  differ only in case — an alias `K` inside a query on `k`, a common table expression `USERS` — are refused, since Postgres tells
+  them apart;
 - a subquery that selects it in a `where()` is refused too, although its value stays in the database. Filter on a key instead:
   `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`.
 

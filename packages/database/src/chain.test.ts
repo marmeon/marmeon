@@ -775,6 +775,97 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       );
     });
 
+    it('are found by a name in another case — SQLite reads TOKEN as token, API_KEYS as api_keys', async () => {
+      const any = db as unknown as Kysely<any>;
+      queries.length = 0;
+      // Postgres would fail on these names; SQLite reads the secret column — refused on both.
+      await expect(any.selectFrom('api_keys').select(['name', 'TOKEN']).execute()).rejects.toThrow(unasked('api_keys.TOKEN'));
+      await expect(any.selectFrom('api_keys').select(sql.ref('api_keys.TOKEN').as('t')).execute()).rejects.toThrow(unasked('api_keys.TOKEN'));
+      await expect(db.selectFrom('api_keys').select(sql.ref('TOKEN').as('t')).execute()).rejects.toThrow(unasked('api_keys.TOKEN'));
+      await expect(any.selectFrom('API_KEYS').select('token').execute()).rejects.toThrow(unasked('API_KEYS.token'));
+      await expect(any.selectFrom('api_keys as K').select('k.token').execute()).rejects.toThrow(unasked('api_keys.token'));
+      const derived = any.selectFrom((eb) => eb.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]).as('D'));
+      await expect(derived.select('d.token').execute()).rejects.toThrow(unasked('D.token'));
+      const cte = any.with('k', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]));
+      await expect(cte.selectFrom('k').select('K.token').execute()).rejects.toThrow(unasked('k.token'));
+      await expect(cte.selectFrom('K').select('k.token').execute()).rejects.toThrow(unasked('K.token'));
+      await expect(any.updateTable('api_keys').set({ name: 'cli' }).returning('TOKEN').execute()).rejects.toThrow(unasked('api_keys.TOKEN'));
+      expect(queries).toEqual([]);
+      // A selectAll() of the table in another case is spelled out without the secret column.
+      const all = any.selectFrom('API_KEYS').selectAll();
+      const returned = any.updateTable('API_KEYS').set({ name: 'cli' }).returningAll();
+      expect(sent(all)).not.toContain('token');
+      expect(sent(returned)).not.toContain('token');
+      if (driver === 'sqlite') {
+        expect(await all.execute()).toEqual([{ id: expect.any(Number), user_id: ids.ada, name: 'cli' }]);
+        expect(await returned.execute()).toEqual([{ id: expect.any(Number), user_id: ids.ada, name: 'cli' }]);
+      }
+    });
+
+    it('are found by a name in another case inside a relation too', async () => {
+      const comments = (callback: (c: any) => any) => db.selectFrom('posts').select('title').with('comments', callback as never).where('id', '=', ids.first).execute();
+      await expect(comments((c) => c.innerJoin('API_KEYS as k', 'k.user_id', 'comments.user_id').select(['body', 'k.token']))).rejects.toThrow(refused(`with('comments')`, 'API_KEYS.token'));
+      await expect(comments((c) => c.innerJoin('api_keys as k', 'k.user_id', 'comments.user_id').select(['body', 'k.TOKEN']))).rejects.toThrow(refused(`with('comments')`, 'api_keys.TOKEN'));
+      await expect(comments((c) => c.innerJoin('api_keys as k', 'k.user_id', 'comments.user_id').select(['body', sql.ref('k.TOKEN').as('t')]))).rejects.toThrow(
+        refused(`with('comments')`, 'api_keys.TOKEN'),
+      );
+      await expect(comments((c) => c.innerJoin('api_keys as K', 'K.user_id', 'comments.user_id').select(['body', 'k.token']))).rejects.toThrow(refused(`with('comments')`));
+      // A selectAll() of the joined table in another case leaves the secret column out.
+      const [post] = await db
+        .selectFrom('posts')
+        .select('title')
+        .with('comments', ((c: any) => c.innerJoin('API_KEYS as k', 'k.user_id', 'comments.user_id').select('comments.body').selectAll('k')) as never)
+        .where('id', '=', ids.first)
+        .execute()
+        .catch(() => [{ comments: [] }]); // Postgres: no table "API_KEYS"
+      expect(JSON.stringify(post)).not.toContain('the-secret-token');
+    });
+
+    it('refuse a common table expression named like a table or an outer one in another case — SQLite would read the one for the other', async () => {
+      const any = db as unknown as Kysely<any>;
+      const shadows = (name: string, what: string) =>
+        `This query names a common table expression "${name}", which is also ${what} — rename the expression: whether a reference means the one or the other differs between databases, so the check for secret columns cannot follow it. See docs/migrations.md#secret-columns.`;
+      const users = (target: Kysely<any>) => target.with('USERS(id, name)', ((q: Kysely<any>) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)])) as never);
+      await expect(users(any).selectFrom('users').select('name').execute()).rejects.toThrow(shadows('USERS', 'a table of the migrations'));
+      await expect(
+        users(any)
+          .selectFrom('posts')
+          .select('title')
+          .with('comments', (c: any) => c.innerJoin('users', 'users.id', 'comments.user_id').select(['body', 'users.name']))
+          .execute(),
+      ).rejects.toThrow(shadows('USERS', 'a table of the migrations'));
+      // An inner `K` that asked for the token, read as `k`: SQLite reads the inner one.
+      await expect(
+        any.with('K', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)])).selectFrom('k').select(['k.user_id', 'k.token']).execute(),
+      ).rejects.toThrow(unasked('k.token'));
+      const inner = any.with('K', (q) => q.selectFrom('posts').select('id as user_id')).selectFrom('k').select('k.user_id');
+      const outer = any.with('k', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]));
+      await expect(outer.selectFrom(inner.as('x')).select('x.user_id').execute()).rejects.toThrow(shadows('K', 'a common table expression around it'));
+      const asked = any.with('b', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]));
+      await expect(asked.selectFrom('b').select('B.token').execute()).rejects.toThrow(unasked('b.token'));
+      await expect(
+        asked
+          .selectFrom('posts')
+          .select('title')
+          .with('comments', (c: any) => c.innerJoin('B', 'B.user_id', 'comments.user_id').select(['body', 'b.token']))
+          .execute(),
+      ).rejects.toThrow(refused(`with('comments')`, 'B.token'));
+    });
+
+    it('refuse two names in scope that differ only in case — Postgres tells them apart, SQLite does not', async () => {
+      const any = db as unknown as Kysely<any>;
+      const apart = (a: string, b: string) =>
+        `This query names "${a}" and "${b}", which differ only in case — rename one: some databases tell them apart and some do not, so the check for secret columns cannot follow them. See docs/migrations.md#secret-columns.`;
+      // On Postgres `k.token` below is the outer api_keys' token; on SQLite the inner tags' — the check cannot follow either way.
+      const inner = (target: Kysely<any>) => target.selectFrom('tags as K').select((eb) => eb.ref('k.token').as('t')).limit(1);
+      await expect(any.selectFrom('api_keys as k').select(['name', inner(any).as('t')]).execute()).rejects.toThrow(apart('k', 'K'));
+      await expect(any.selectFrom(['tags as K', 'api_keys as k']).select('k.name').execute()).rejects.toThrow(apart('K', 'k'));
+      // The same name in nested scopes means the inner one on every database.
+      expect(await any.selectFrom('api_keys as k').select((eb) => ['k.name', eb.selectFrom('tags as k').select('k.slug').orderBy('k.id').limit(1).as('slug')]).execute()).toEqual([
+        { name: 'cli', slug: 'kysely' },
+      ]);
+    });
+
     it('spell out a selectAll() as the last pass over a with clause sees it — the model and the SQL agree', async () => {
       // `a` reads all of `b`, defined after it: the first pass knows no secret in `b`, the last one does.
       const query = (db as unknown as Kysely<any>)

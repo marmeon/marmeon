@@ -24,6 +24,8 @@ import { MANY, ONE, SECRET } from './placeholders.ts';
 // A secret column leaves the database only where a query asks for it with `secret()`. Every source of a query — a table, a common
 // table expression, a subquery — carries the secret columns it outputs; any reference to one of them, or to a whole row of a source
 // that carries one, is refused unless its selection is `secret()`, at every level that passes it on, and never in a relation.
+// Names are compared without ASCII case, as SQLite does (`TOKEN` is `token` there); names in scope that differ only in case are
+// refused, since Postgres tells them apart.
 
 /**
  * What a select (a subquery, a common table expression) outputs: its columns by position (`undefined` for one without a name), and
@@ -31,6 +33,7 @@ import { MANY, ONE, SECRET } from './placeholders.ts';
  */
 interface Output {
   readonly names: readonly (string | undefined)[];
+  /** Folded ({@link fold}), like every set of secret columns here. */
   readonly secret: ReadonlySet<string>;
   readonly known: boolean;
   /** A statement's `returning` as a common table expression: not followed. */
@@ -93,8 +96,11 @@ class Guard {
   #relation: string | undefined;
   #top = false;
 
+  readonly #tables: ReadonlyMap<string, Table>;
+
   constructor(metadata: SchemaMetadata) {
     this.#metadata = metadata;
+    this.#tables = tablesOf(metadata);
   }
 
   root(node: RootOperationNode): void {
@@ -111,7 +117,7 @@ class Guard {
     this.#scopes.push(sources);
     try {
       // A joined subquery may refer to the sources before it (lateral): each sees the ones already known.
-      for (const item of [...(node.from?.froms ?? []), ...(node.joins ?? []).map((join) => join.table)]) sources.push(this.#source(item));
+      for (const item of [...(node.from?.froms ?? []), ...(node.joins ?? []).map((join) => join.table)]) this.#add(sources, this.#source(item));
       // Conditions and orders read columns, but nothing of them leaves the database: only their subqueries are checked.
       this.#scan([node.joins?.map((join) => join.on), node.where, node.groupBy, node.having, node.orderBy, node.distinctOn]);
       const output = this.#selections(node, node.selections ?? [], sources, top);
@@ -139,10 +145,10 @@ class Guard {
       );
     }
     other.names.forEach((name, at) => {
-      if (name === undefined || !other.secret.has(name)) return;
+      if (name === undefined || !other.secret.has(fold(name))) return;
       const own = output.names[at];
       if (own === undefined) this.#refuse(`${name} of a union, under no name`);
-      output.secret.add(own);
+      output.secret.add(fold(own));
     });
   }
 
@@ -159,7 +165,7 @@ class Guard {
     const sources: Source[] = [];
     this.#scopes.push(sources);
     try {
-      for (const item of items) if (item) sources.push(this.#source(item));
+      for (const item of items) if (item) this.#add(sources, this.#source(item));
       const { returning, with: _, ...rest } = node as typeof node & { returning?: ReturningNode };
       // A merge's using clause is a source; only its `on` is a part to scan.
       if (node.kind === 'MergeQueryNode') (rest as { using?: unknown }).using = node.using?.on;
@@ -186,7 +192,7 @@ class Guard {
     for (const { name, expression } of node.expressions) {
       const table = name.table.table.identifier.name;
       const named = name.columns?.map((column) => column.column.name);
-      const shadows = this.#metadata.kinds.has(table) ? 'a table of the migrations' : this.#cte(table) ? 'a common table expression around it' : undefined;
+      const shadows = this.#tables.has(fold(table)) ? 'a table of the migrations' : this.#cte(table) ? 'a common table expression around it' : undefined;
       if (shadows) {
         throw new Error(
           `${this.#relation ?? 'This query'} names a common table expression "${table}", which is also ${shadows} — rename the expression: whether a ` +
@@ -196,13 +202,13 @@ class Guard {
       if (!SelectQueryNode.is(expression)) {
         // A statement with `returning` as a common table expression: its columns are not followed — it cannot be read from.
         this.#scan(expression);
-        ctes.set(table, { names: [], secret: new Set(), known: false, untyped: true });
+        ctes.set(fold(table), { names: [], secret: new Set(), known: false, untyped: true });
         continue;
       }
       // Its own name inside its body (a recursive one): columns that carry nothing yet.
       const self: Output = { names: named ?? [], secret: new Set(), known: named !== undefined };
-      ctes.set(table, self);
-      bodies.push({ name: table, expression, named, self, mentions: tablesIn(expression) });
+      ctes.set(fold(table), self);
+      bodies.push({ name: fold(table), expression, named, self, mentions: tablesIn(expression) });
     }
     const recursive = new Set(bodies.filter((body) => reaches(body.name, body.name, bodies)).map((body) => body.name));
     for (let pass = 0; ; pass++) {
@@ -225,9 +231,9 @@ class Guard {
         // Grows from pass to pass; the first starts from nothing (`self` is only how its own body sees it).
         const secret = new Set(previous === self ? [] : previous.secret);
         output.names.forEach((own, at) => {
-          if (own !== undefined && output.secret.has(own) && names[at] !== undefined) secret.add(names[at]!);
+          if (own !== undefined && output.secret.has(fold(own)) && names[at] !== undefined) secret.add(fold(names[at]!));
         });
-        if (recursive.has(name) && secret.size) for (const column of names) if (column !== undefined) secret.add(column);
+        if (recursive.has(name) && secret.size) for (const column of names) if (column !== undefined) secret.add(fold(column));
         const known = output.known && names.length === output.names.length;
         if (secret.size === previous.secret.size && known === previous.known && names.length === previous.names.length && names.every((column, at) => column === previous.names[at])) continue;
         ctes.set(name, { names, secret, known });
@@ -254,8 +260,8 @@ class Guard {
       const ref = alias ?? name;
       const cte = this.#cte(name);
       if (cte) return { ref, ...(cte.known ? { names: cte.names } : {}), secret: cte.secret, ...(cte.untyped ? { untyped: true } : {}) };
-      const kinds = this.#metadata.kinds.get(name);
-      return { ref, table: name, ...(kinds ? { names: [...kinds.keys()] } : {}), secret: this.#metadata.secrets.get(name) ?? new Set() };
+      const known = this.#table(name);
+      return { ref, table: name, ...(known?.names ? { names: known.names } : {}), secret: known?.secret ?? new Set() };
     }
     if (SelectQueryNode.is(node)) {
       const output = this.#select(node);
@@ -267,10 +273,38 @@ class Guard {
 
   #cte(name: string): Output | undefined {
     for (const ctes of this.#ctes.toReversed()) {
-      const cte = ctes.get(name);
+      const cte = ctes.get(fold(name));
       if (cte) return cte;
     }
     return undefined;
+  }
+
+  /** A table of the migrations by a name in any case: its columns as named exactly, if one is, and the secret ones of every match. */
+  #table(name: string): { readonly names?: readonly string[]; readonly secret: ReadonlySet<string> } | undefined {
+    const table = this.#tables.get(fold(name));
+    if (!table) return undefined;
+    const exact = this.#metadata.kinds.get(name);
+    return { ...(exact ? { names: [...exact.keys()] } : table.names ? { names: table.names } : {}), secret: table.secret };
+  }
+
+  /**
+   * Adds a source to the select's. Two names in scope that differ only in case would mean one source on SQLite and two on
+   * Postgres — a reference to one could read the other's secret column on either: refused.
+   */
+  #add(sources: Source[], source: Source): void {
+    if (source.ref) {
+      const key = fold(source.ref);
+      for (const scope of this.#scopes) {
+        const other = scope.find((candidate) => candidate.ref !== source.ref && fold(candidate.ref) === key);
+        if (other) {
+          throw new Error(
+            `${this.#relation ?? 'This query'} names "${other.ref}" and "${source.ref}", which differ only in case — rename one: some databases tell ` +
+              'them apart and some do not, so the check for secret columns cannot follow them. See docs/migrations.md#secret-columns.',
+          );
+        }
+      }
+    }
+    sources.push(source);
   }
 
   /** Checks the selections of a select (or a returning), and records them spelled out where they must be. */
@@ -307,7 +341,7 @@ class Guard {
           if (!source.names) this.#wholeRow(source);
           for (const column of source.names) {
             if (column === undefined) this.#refuse(`a column of ${source.ref} without a name, next to a secret one`);
-            if (source.secret.has(column)) continue;
+            if (source.secret.has(fold(column))) continue;
             kept.push(SelectionNode.create(ReferenceNode.create(ColumnNode.create(column), TableNode.create(source.ref))));
             output.names.push(column);
             columns++;
@@ -326,7 +360,7 @@ class Guard {
       if (column) {
         // Asked for: it leaves this select as a secret column — and a relation's JSON never holds one.
         if (this.#relation !== undefined) this.#read(column);
-        if (name !== undefined) output.secret.add(name);
+        if (name !== undefined) output.secret.add(fold(name));
       } else {
         this.#read(selection);
       }
@@ -341,7 +375,7 @@ class Guard {
 
   /** The source `selectAll('name')` names — one of this select's own. */
   #own(name: string, sources: readonly Source[]): Source {
-    const source = sources.find((candidate) => candidate.ref === name);
+    const source = sources.find((candidate) => fold(candidate.ref) === fold(name));
     if (!source) throw new Error(`${this.#relation ?? 'This query'} selects all columns of "${name}", which is no table, subquery or alias of its own.`);
     return source;
   }
@@ -401,7 +435,7 @@ class Guard {
     if (qualifier === undefined) return this.#name(node.column.column.name);
     const source = this.#resolve(qualifier);
     if (source.untyped) this.#untyped(source);
-    if (source.secret.has(node.column.column.name)) this.#refuse(`${source.table ?? source.ref}.${node.column.column.name}`);
+    if (source.secret.has(fold(node.column.column.name))) this.#refuse(`${source.table ?? source.ref}.${node.column.column.name}`);
   }
 
   /** A name without a table: any source in scope may have it as a column (over-strict on purpose) — or be it, as a whole row. */
@@ -409,8 +443,8 @@ class Guard {
     for (const sources of this.#scopes.toReversed()) {
       for (const source of sources) {
         if (source.untyped) this.#untyped(source);
-        if (source.secret.has(name)) this.#refuse(`${source.table ?? source.ref}.${name}`);
-        if (source.ref === name) this.#row(name);
+        if (source.secret.has(fold(name))) this.#refuse(`${source.table ?? source.ref}.${name}`);
+        if (fold(source.ref) === fold(name)) this.#row(name);
       }
     }
   }
@@ -431,12 +465,12 @@ class Guard {
   /** The source a name refers to: innermost scope first, then a common table expression; an unknown name is taken as a table's. */
   #resolve(name: string): Source {
     for (const sources of this.#scopes.toReversed()) {
-      const source = sources.find((candidate) => candidate.ref === name);
+      const source = sources.find((candidate) => fold(candidate.ref) === fold(name));
       if (source) return source;
     }
     const cte = this.#cte(name);
     if (cte) return { ref: name, names: cte.names, secret: cte.secret, ...(cte.untyped ? { untyped: true } : {}) };
-    return { ref: name, table: name, secret: this.#metadata.secrets.get(name) ?? new Set() };
+    return { ref: name, table: name, secret: this.#table(name)?.secret ?? new Set() };
   }
 
   #refuse(what: string): never {
@@ -460,6 +494,38 @@ class Guard {
   }
 }
 
+/** A table of the migrations, under its folded name: the columns of one spelling, and the folded secret columns of every spelling. */
+interface Table {
+  /** Unknown for a table with secret columns the catalog does not list (none, unless the books and the schema disagree). */
+  readonly names?: readonly string[];
+  readonly secret: ReadonlySet<string>;
+}
+
+/** A name as SQLite compares it: ASCII letters in lower case (only those — SQLite folds no other letter by default). */
+function fold(name: string): string {
+  return /[A-Z]/.test(name) ? name.replace(/[A-Z]/g, (letter) => letter.toLowerCase()) : name;
+}
+
+/** The tables of the metadata by folded name — once per load (the metadata replaces its maps when it loads). */
+const folded = new WeakMap<object, { readonly kinds: object; readonly tables: ReadonlyMap<string, Table> }>();
+function tablesOf(metadata: SchemaMetadata): ReadonlyMap<string, Table> {
+  const cached = folded.get(metadata.secrets);
+  if (cached?.kinds === metadata.kinds) return cached.tables;
+  const tables = new Map<string, { names?: readonly string[]; secret: Set<string> }>();
+  const entry = (name: string) => {
+    let table = tables.get(fold(name));
+    if (!table) {
+      const kinds = metadata.kinds.get(name);
+      tables.set(fold(name), (table = { ...(kinds ? { names: [...kinds.keys()] } : {}), secret: new Set() }));
+    }
+    return table;
+  };
+  for (const name of metadata.kinds.keys()) entry(name);
+  for (const [name, columns] of metadata.secrets) for (const column of columns) entry(name).secret.add(fold(column));
+  folded.set(metadata.secrets, { kinds: metadata.kinds, tables });
+  return tables;
+}
+
 interface MutableOutput {
   readonly names: (string | undefined)[];
   readonly secret: Set<string>;
@@ -469,7 +535,7 @@ interface MutableOutput {
 /** Every table name a node mentions — a source, a qualifier, a whole row — at any depth (more rather than fewer, on purpose). */
 function tablesIn(node: unknown, into = new Set<string>()): Set<string> {
   if (node === null || typeof node !== 'object') return into;
-  if (TableNode.is(node as OperationNode)) into.add((node as TableNode).table.identifier.name);
+  if (TableNode.is(node as OperationNode)) into.add(fold((node as TableNode).table.identifier.name));
   else for (const value of Object.values(node)) if (value !== null && typeof value === 'object') tablesIn(value, into);
   return into;
 }

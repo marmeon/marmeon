@@ -510,8 +510,12 @@ describe('schema metadata, unit', () => {
     ['-- undo\nrollback to savepoint sp', true],
     ['rollback transaction to savepoint sp', true],
     ['rollback work to sp', true],
+    ['select 1; rollback to sp', true],
+    ['; rollback to sp', true],
+    // Any statement that says it: a false alarm costs one load.
+    ["select 'rollback to savepoint sp'", true],
     ['release savepoint sp', false],
-    ["select 'rollback to savepoint sp'", false],
+    ['select 1', false],
   ])('loads again after a hand-written %j while the transaction changed the schema: %s', async (statement, undone) => {
     const metadata = new SchemaMetadata('sqlite');
     const sent: string[] = [];

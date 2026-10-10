@@ -1,5 +1,5 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
-import { CompiledQuery, RawNode, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
+import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, type SchemaMetadata } from './metadata.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
 
@@ -328,8 +328,9 @@ export class MarmeonDriver implements Driver {
    * transaction's own uncommitted view: not fresh until then.
    */
   #ran(connection: DatabaseConnection, query: CompiledQuery, metadata: SchemaMetadata): void {
-    // A savepoint rolled back by hand (`sql\`rollback to savepoint …\``, a repository bound with using(trx)).
-    if (RawNode.is(query.query) && ROLLBACK_TO.test(query.sql)) return this.#undone(connection);
+    // A savepoint rolled back by hand (`sql\`rollback to savepoint …\``, a repository bound with using(trx)). Postgres runs several
+    // statements of SQL sent without parameters, so a `rollback` anywhere in any statement counts.
+    if (metadata.holds(connection) && ROLLBACK.test(query.sql)) metadata.invalidate();
     if (!changesSchema(query.query)) return;
     metadata.invalidate();
     if ((this.#depth.get(connection) ?? 0) > 0) metadata.hold(connection);
@@ -360,8 +361,8 @@ export class MarmeonDriver implements Driver {
 }
 
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
-/** `rollback [work | transaction] to [savepoint] name`, after leading comments — a match while nothing was undone only reloads. */
-const ROLLBACK_TO = /^\s*(?:(?:--[^\n]*\n|\/\*[\s\S]*?\*\/)\s*)*rollback\s+(?:(?:work|transaction)\s+)?to\b/i;
+/** A statement that may roll a savepoint back — a false alarm (the word in a string) costs one load, and only after a schema change. */
+const ROLLBACK = /rollback/i;
 
 /** How long a query that needs the schema metadata waits for another connection's open schema change (a migration) to end. */
 const SCHEMA_CHANGE_WAIT_MS = 10_000;
