@@ -1,9 +1,9 @@
 import { hash } from 'node:crypto';
 
 /**
- * The scope of a session (E64, E90): a hash of its id — never the id, which is a secret. It changes with every sign-in and
+ * The scope of a session: a hash of its id — never the id, which is a secret. It changes with every sign-in and
  * sign-out (the id is regenerated) and tells nothing about the session it came from. Once props are kept under it, and live
- * subscriptions (W6.10) are signed for it.
+ * subscriptions are signed for it.
  */
 export function sessionScope(id: string): string {
   return hash('sha256', `marmeon-once-scope:${id}`, 'base64url').slice(0, 22);
@@ -13,7 +13,7 @@ export function sessionScope(id: string): string {
 export type SessionEndedListener = (scope: string) => void | Promise<void>;
 
 /**
- * Who wants to know when a session ends (W6.10) — signed out (`invalidate()`) or signed in (`regenerate()`): its old id is
+ * Who wants to know when a session ends — signed out (`invalidate()`) or signed in (`regenerate()`): its old id is
  * destroyed when the request saves the session, and the listeners hear its scope ({@link sessionScope}). The live package closes
  * the streams of that session, in every process. One per application.
  */

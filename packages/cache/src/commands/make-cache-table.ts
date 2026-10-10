@@ -6,7 +6,7 @@ export const CACHE_MIGRATION = new URL('../../stubs/migrations/create_cache_tabl
 
 /**
  * `marmeon make:cache-table [--module=system]`: writes the migration of the `database` cache driver's tables into an app
- * module (E96 — the tables are the app's, `db:types` sees them like any other). Then `marmeon migrate`.
+ * module (the tables are the app's, `db:types` sees them like any other). Then `marmeon migrate`.
  */
 export class MakeCacheTableCommand {
   static command = 'make:cache-table';

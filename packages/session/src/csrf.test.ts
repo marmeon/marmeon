@@ -56,7 +56,7 @@ class RememberController extends Controller {
   }
 }
 
-/** What the session of the last `/peek` held as its CSRF token once its page was made — `undefined`: none was drawn (E203). */
+/** What the session of the last `/peek` held as its CSRF token once its page was made — `undefined`: none was drawn. */
 const peeked: { token?: string | undefined; persists?: boolean } = {};
 
 /** Looks at the session after the route's response is made — the page's props asked for the token by then. */
@@ -75,7 +75,7 @@ class Peek {
 
 const routes = defineRoutes((Route) => {
   Route.middleware(Peek).get('/peek', () => view('shop/Page', {}));
-  // A page whose request writes the session (a guest's first data): kept — its page carries the token it makes now (E203).
+  // A page whose request writes the session (a guest's first data): kept — its page carries the token it makes now.
   Route.get('/count', CountController);
   Route.get('/remember', RememberController);
   Route.get('/form', FormController);
@@ -152,7 +152,7 @@ describe('VerifyCsrfToken', () => {
     expect((await send('/save', form({ _token: 'x'.repeat(40) }))).status).toBe(419);
   });
 
-  it('never takes the token from the query string — it would end up in logs and Referers (E65)', async () => {
+  it('never takes the token from the query string — it would end up in logs and Referers', async () => {
     const { send, token } = await boot();
     await send('/form');
     expect((await send(`/save?_token=${token()}`, form({}))).status).toBe(419);
@@ -175,7 +175,7 @@ describe('VerifyCsrfToken', () => {
     expect((await send('/save', { method: 'POST', headers: { 'x-xsrf-token': token() } })).status).toBe(200);
   });
 
-  describe('stage 1 — Fetch Metadata (E143)', () => {
+  describe('stage 1 — Fetch Metadata', () => {
     it('lets a same-origin request through without a token — and without a session (a guest signing in)', async () => {
       const { send } = await boot();
       const response = await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' } });
@@ -237,7 +237,7 @@ describe('VerifyCsrfToken', () => {
     });
   });
 
-  describe('guests get no session for the token (E143)', () => {
+  describe('guests get no session for the token', () => {
     it('a page for a guest carries no token and sets no cookie — 100 times', async () => {
       const { send } = await boot();
       for (let i = 0; i < 100; i++) {
@@ -247,7 +247,7 @@ describe('VerifyCsrfToken', () => {
       }
     });
 
-    it('a page for a guest draws no token at all (E203) — the session that is not kept never makes one', async () => {
+    it('a page for a guest draws no token at all — the session that is not kept never makes one', async () => {
       const { send } = await boot();
       const response = await send('/peek', { headers: { 'x-marmeon': 'true' } });
       expect(response.status).toBe(200);
@@ -259,7 +259,7 @@ describe('VerifyCsrfToken', () => {
       expect((await send('/save', form({ _token: 'undefined' }))).status).toBe(419);
     });
 
-    it('a page whose request keeps the session carries the token it makes — the same the XSRF-TOKEN cookie gets (E203)', async () => {
+    it('a page whose request keeps the session carries the token it makes — the same the XSRF-TOKEN cookie gets', async () => {
       const { send, token } = await boot();
       const response = await send('/count', { headers: { 'x-marmeon': 'true' } });
       const page = (await response.json()) as PageObject;
@@ -269,7 +269,7 @@ describe('VerifyCsrfToken', () => {
       expect((await send('/save', form({ _token: page.csrf! }))).status).toBe(200);
     });
 
-    it('a kept session whose request never asked for the token still gets it in its XSRF-TOKEN cookie — made then (E203)', async () => {
+    it('a kept session whose request never asked for the token still gets it in its XSRF-TOKEN cookie — made then', async () => {
       const { send, token } = await boot();
       await send('/remember');
       expect(token(), 'the XSRF-TOKEN cookie of a kept session carries no token').toMatch(/^[\w-]{40}$/);

@@ -40,20 +40,20 @@ export class SessionServiceProvider implements ServiceProvider {
     container.scoped(Session);
     // `redirect().with(…)` flashes into the request's session.
     container.scoped(Flasher, (c) => c.make(Session));
-    // What a page knows of the session (E64): the CSRF token for forms without JavaScript, and a scope for once props.
+    // What a page knows of the session: the CSRF token for forms without JavaScript, and a scope for once props.
     container.scoped(PageSession, (c) => pageSessionOf(c.make(Session)));
 
     const config = container.make(SessionConfig);
-    // Every cookie of a request gets `Secure` with the session's (E162) — the reset cookie, the cookie store's, an app's own —
+    // Every cookie of a request gets `Secure` with the session's — the reset cookie, the cookie store's, an app's own —
     // unless its `set` says otherwise (Laravel's cookie jar defaults).
     container.instance(CookieDefaults, { secure: config.secure });
     container.singleton(SessionLottery, () => new SessionLottery(config.lottery));
-    // SESSION_ENCRYPT (E144): payloads encrypted in the store — the cookie driver's are encrypted as a cookie already.
+    // SESSION_ENCRYPT: payloads encrypted in the store — the cookie driver's are encrypted as a cookie already.
     container.singleton(SessionCodec, (c) => (config.encrypt && config.driver !== 'cookie' ? new EncryptedSessionCodec(c.make(Encrypter)) : plainSessionCodec));
     // The cookie store works on the request's cookie jar: one per request. The others are shared.
     if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
     else container.singleton(SessionStore, (c) => storeFor(config, c));
-    // A user's sessions as a whole (E203: a deleted account's) — the shared store's; the cookie driver's live in the browsers.
+    // A user's sessions as a whole (a deleted account's) — the shared store's; the cookie driver's live in the browsers.
     container.singleton(UserSessions, (c) => new UserSessions(config.driver === 'cookie' ? undefined : () => c.make(SessionStore)));
   }
 
@@ -64,13 +64,13 @@ export class SessionServiceProvider implements ServiceProvider {
       .append('web', VerifyCsrfToken, MiddlewarePriority.verifyCsrfToken)
       .append('web', ShareErrorsFromSession, MiddlewarePriority.shareProps);
     app.container.make(CookieEncryption).except(XSRF_COOKIE); // the browser's JavaScript reads it
-    // The session cookie's value is the session — never shown or recorded (E125), whatever its name.
+    // The session cookie's value is the session — never shown or recorded, whatever its name.
     if (app.container.has(Redactor)) app.container.make(Redactor).addKeys(app.container.make(SessionConfig).cookie);
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.
     const { driver, connection, secure, secureFrom } = app.container.make(SessionConfig);
-    // Protected (E139: production, no NODE_ENV) and cookies without Secure (E162): said once, at boot.
+    // Protected (production, no NODE_ENV) and cookies without Secure: said once, at boot.
     if (app.container.make(SessionConfig).protected && !secure) app.container.make(Logger).warn(insecureCookieWarning(secureFrom), { secureFrom });
     if (driver === 'redis') {
       const redis = await importRedis();
@@ -116,7 +116,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string, driver: s
   }
 }
 
-/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file (E108). */
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file. */
 const SESSION_INFRASTRUCTURE = {
   system: 'The session store (SESSION_DRIVER=database)',
   remedy:
@@ -144,7 +144,7 @@ function storeFor(config: SessionConfig, container: Resolver): SessionStore {
     case 'memory':
       return new MemorySessionStore(clock);
     case 'database':
-      // Its own connection, never the app's transaction (E108): a session written inside one survives its rollback.
+      // Its own connection, never the app's transaction: a session written inside one survives its rollback.
       return new DatabaseSessionStore(
         async () => ({ db: container.make((await importDatabase()).Connections).infrastructure(config.connection, SESSION_INFRASTRUCTURE) }),
         lifetime,
@@ -162,7 +162,7 @@ function storeFor(config: SessionConfig, container: Resolver): SessionStore {
 }
 
 /**
- * The session as a page sees it (E64): the CSRF token of a session that is kept (E143). The scope is a hash of the session id —
+ * The session as a page sees it: the CSRF token of a session that is kept. The scope is a hash of the session id —
  * never the id, which is a secret — so it changes with every sign-in and sign-out (the id is regenerated) and tells nothing about
  * the session it came from.
  */
@@ -175,9 +175,9 @@ export function pageSessionOf(session: Session): PageSession {
     }
   };
   return {
-    // Only a session that is kept has a token worth putting into the page (E143): a guest's new session, with nothing in it,
+    // Only a session that is kept has a token worth putting into the page: a guest's new session, with nothing in it,
     // gets none — and is not kept just for it. Its forms pass by the browser's word (Fetch Metadata, Origin).
-    // Made now if the session has none yet (E203) — but never by a read-only request (an island): a token it made would never be
+    // Made now if the session has none yet — but never by a read-only request (an island): a token it made would never be
     // saved; it gives the one the session has, if any.
     csrfToken: () => started(() => (!session.exists ? undefined : session.readOnly ? session.currentToken() : session.token())),
     scope: (options) => {
@@ -188,7 +188,7 @@ export function pageSessionOf(session: Session): PageSession {
       });
       return id ? sessionScope(id) : undefined;
     },
-    // The tab-sync epoch's part (E165): a signed-in user's session — its scope (new with every regenerated id) and the user's id.
+    // The tab-sync epoch's part: a signed-in user's session — its scope (new with every regenerated id) and the user's id.
     // A guest's is none: their session (a failed login's flash data) does not make the other tabs reload.
     generation: () =>
       started(() => {

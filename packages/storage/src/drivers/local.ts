@@ -29,17 +29,12 @@ function isMissing(error: unknown): boolean {
 }
 
 /**
- * Files in a directory (E91). Two independent measures keep every access inside the root:
- *
- * 1. **The key** is checked by {@link normalizeKey} (no `..`, no absolute path, no backslash, no NUL).
- * 2. **The root jail:** every path is resolved by `realpath` and must lie inside the root's own real path — a symlink that
- *    leads out of the root (to a file, or to a directory a new file would be written into) is refused. Reads open the
- *    resolved path with `O_NOFOLLOW`, so the file cannot be swapped for a symlink between the check and the open; writes
- *    go to a temporary file in the checked directory (`O_EXCL`, which never follows a link) and are renamed into place —
- *    `rename` replaces a link instead of writing through it, and readers never see half a file.
- *
- * Symlinks inside the root are followed. What stays open is a race on a *directory* between its check and use — it needs
- * someone who can already create symlinks inside the root.
+ * Files in a directory, kept inside the root by two independent measures: the key check ({@link normalizeKey}) and a root
+ * jail — every path is resolved by `realpath` and must lie inside the root's real path, so a symlink out of the root (to a
+ * file, or to a directory a new file would go into) is refused. Reads open the resolved path with `O_NOFOLLOW`, so no symlink
+ * is swapped in after the check; writes go to a temporary file in the checked directory (`O_EXCL`) and are renamed into
+ * place, which replaces a link instead of writing through it. Symlinks inside the root are followed; a race on a
+ * *directory* between check and use stays open to someone who can already create symlinks inside the root.
  */
 export class LocalDisk implements Disk {
   readonly name: string;

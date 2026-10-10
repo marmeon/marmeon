@@ -114,7 +114,7 @@ function kindOf(type: string): ColumnKind {
 const DDL = new Set(['CreateTableNode', 'AlterTableNode', 'DropTableNode']);
 
 function changesSchema(node: RootOperationNode): boolean {
-  // Raw DDL (`sql\`alter table …\``) is not recognized — like before, the next blueprint change reloads.
+  // Raw DDL (`sql\`alter table …\``) is not recognized: the next blueprint change reloads.
   if (DDL.has(node.kind)) return true;
   if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
   const target = node.kind === 'InsertQueryNode' ? node.into : node.kind === 'UpdateQueryNode' ? node.table : node.from.froms[0];

@@ -2,7 +2,7 @@ import { sql, type Kysely } from 'kysely';
 import { Blueprint, compileColumn, type Driver } from './blueprint.ts';
 
 /**
- * Keeps the migrator's books: which module owns which table (E20, `table_owners`) and which
+ * Keeps the migrator's books: which module owns which table (`table_owners`) and which
  * columns are secret (`secret_columns`).
  */
 export interface SchemaRecorder {

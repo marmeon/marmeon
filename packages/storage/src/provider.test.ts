@@ -76,7 +76,7 @@ describe('serving public disks', () => {
     ['data.xml', 'application/xml'],
     ['notes.txt', 'text/plain'],
     ['noext', 'application/octet-stream'],
-  ])('counter-check: %s goes out as a download in a sandbox — never rendered on the app’s origin', async (key, type) => {
+  ])('%s goes out as a download in a sandbox — never rendered on the app’s origin', async (key, type) => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('public').put(key, '<html><script>alert(document.cookie)</script></html>');
@@ -88,7 +88,7 @@ describe('serving public disks', () => {
     expect(response.headers.get('content-security-policy')).toBe('sandbox');
   });
 
-  it('counter-check: HTML in a ".png" stays an image/png (nosniff: the browser does not guess HTML)', async () => {
+  it('HTML in a ".png" stays an image/png (nosniff: the browser does not guess HTML)', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('public').put('fake.png', '<html><script>alert(1)</script></html>');
@@ -96,7 +96,7 @@ describe('serving public disks', () => {
     expect([response.headers.get('content-type'), response.headers.get('x-content-type-options')]).toEqual(['image/png', 'nosniff']);
   });
 
-  it('counter-check: traversal through the URL — "%2e%2e/", "..%2f", backslash, NUL, absolute — 404, the private file is not read', async () => {
+  it('traversal through the URL — "%2e%2e/", "..%2f", backslash, NUL, absolute — 404, the private file is not read', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('local').put('secret.txt', 'private');
@@ -119,7 +119,7 @@ describe('serving public disks', () => {
     expect(await (await kernel!.request('/storage/ok.txt')).text()).toBe('ok');
   });
 
-  it('counter-check: a symlink in the public root that leads to the private disk — 404', async () => {
+  it('a symlink in the public root that leads to the private disk — 404', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('local').put('secret.txt', 'private');
@@ -129,7 +129,7 @@ describe('serving public disks', () => {
     expect(response.status).toBe(404);
   });
 
-  it('counter-check: private disks have no route — their files are never public', async () => {
+  it('private disks have no route — their files are never public', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('local').put('exports/7.json', '{"secret":true}');
@@ -169,7 +169,7 @@ describe('temporary URLs of local disks', () => {
     expect((await kernel!.request(url)).status).toBe(403); // expired
   });
 
-  it('counter-check: a tampered URL — another file, another disk, a longer expiry, another file name, no signature — 403', async () => {
+  it('a tampered URL — another file, another disk, a longer expiry, another file name, no signature — 403', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('local').put('exports/7.json', 'mine');
@@ -217,7 +217,7 @@ describe('temporary URLs of local disks', () => {
 });
 
 describe('configuration', () => {
-  it('without defineStorage: local (private), public (/storage) and uploads (private, W6.9) under storage/app', async () => {
+  it('without defineStorage: local (private), public (/storage) and uploads (private) under storage/app', async () => {
     const { storage, app } = await boot();
     expect(storage.names).toEqual(['local', 'public', 'uploads']);
     await storage.disk('public').put('a.png', 'x');
@@ -234,7 +234,7 @@ describe('configuration', () => {
     expect(() => storage.named('pubic')).toThrow('No disk "pubic" — the disks: local, public, cdn, bucket. Did you mean "public"?');
   });
 
-  it('counter-check: the disk of temporary uploads must be private — a public one fails the start (W6.9)', async () => {
+  it('the disk of temporary uploads must be private — a public one fails the start', async () => {
     const base = freshDirectory();
     const config = defineStorage({
       default: 'local',
@@ -243,7 +243,7 @@ describe('configuration', () => {
     await expect(boot(config)).rejects.toThrow('The disk "uploads" holds temporary uploads (UPLOADS_DISK) but is public');
   });
 
-  it('counter-check: a private disk inside (or around, or on) a public one fails the start', async () => {
+  it('a private disk inside (or around, or on) a public one fails the start', async () => {
     const base = freshDirectory();
     const variants = [
       { local: join(base, 'public', 'private'), public: join(base, 'public') },
@@ -268,7 +268,7 @@ describe('configuration', () => {
     await expect(boot(aliased)).rejects.toThrow(StorageSetupError);
   });
 
-  it('counter-check: a private S3 disk whose prefix nests with a public one in the same bucket fails the start (W9 step 10b)', async () => {
+  it('a private S3 disk whose prefix nests with a public one in the same bucket fails the start', async () => {
     const s3 = (root: string | undefined, visibility: 'public' | 'private', bucket = 'files') => ({ driver: 's3' as const, bucket, root, visibility });
     for (const [closed, open] of [
       ['private', undefined],
@@ -306,7 +306,7 @@ describe('configuration', () => {
     );
   });
 
-  it('an S3 default disk (or UPLOADS_DISK) without the AWS SDK fails the start with the exact command (E198) — another S3 disk on first use', async () => {
+  it('an S3 default disk (or UPLOADS_DISK) without the AWS SDK fails the start with the exact command — another S3 disk on first use', async () => {
     const { checkS3Sdk } = await import('./index.ts');
     const { missingPackages } = await import('./drivers/s3.ts');
     const s3 = { driver: 's3', bucket: 'b' } as const;
@@ -329,7 +329,7 @@ describe('configuration', () => {
       'uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: pnpm add @aws-sdk/s3-presigned-post@^3',
     );
     expect(() => checkS3Sdk({ default: 'files', disks: { files: s3, uploads: local } }, 'uploads', noPost)).not.toThrow();
-    // An S3 disk the app may never use (Laravel's config has one too) does not stop the start.
+    // An S3 disk the app may never use does not stop the start.
     expect(() => checkS3Sdk({ default: 'local', disks: { local, uploads: local, s3 } }, 'uploads', gone)).not.toThrow();
     // Resolved, not loaded: a missing package is "missing", any other failure passes through.
     const notFound = Object.assign(new Error("Cannot find module '@aws-sdk/client-s3'"), { code: 'MODULE_NOT_FOUND' });

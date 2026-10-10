@@ -13,11 +13,11 @@ const silent = Object.assign(new ConsoleLogger(), { debug() {}, info() {}, warn(
 class Rollback extends Error {}
 
 /**
- * The table of temporary uploads is infrastructure (E108): the provider writes it on its own connection — on Postgres a pool of
+ * The table of temporary uploads is infrastructure: the provider writes it on its own connection — on Postgres a pool of
  * its own — never in the app's transaction. A token used inside a transaction that rolls back stays used: a rollback never makes
  * a second `store()` of the same upload possible. (Not isolated like a test app's database: a real pool, a real transaction.)
  */
-describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s transactions (E108)', () => {
+describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s transactions', () => {
   const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   let app: Application;

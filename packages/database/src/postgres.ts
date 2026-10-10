@@ -50,7 +50,7 @@ export function createPostgresDialect(options: PostgresOptions): PostgresDialect
   });
 }
 
-/** What to install for Postgres — an optional peer (E198: SQLite needs nothing, `pg` is one of the drivers), with the tested major. */
+/** What to install for Postgres — an optional peer (SQLite needs nothing, `pg` is one of the drivers), with the tested major. */
 export const PG_INSTALL = 'pnpm add pg@^8';
 
 /**

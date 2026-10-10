@@ -103,14 +103,14 @@ describe('SESSION_DRIVER', () => {
     const again = await kernel.request('/count', { headers: { accept: 'application/json', cookie: sessionCookie(counted)!.split(';')[0]! } });
     expect(await again.json()).toEqual({ visits: 2 });
     expect(await rows()).toHaveLength(2);
-    // Each row is keyed by the SHA-256 of the id its cookie carries (E144) — no id in the table.
+    // Each row is keyed by the SHA-256 of the id its cookie carries — no id in the table.
     const id = await cookieValue(app, sessionCookie(counted)!);
     expect((await rows()).map((row) => row.id)).toContain(sessionKey(id));
     expect((await rows()).map((row) => row.id)).not.toContain(id);
     await app.shutdown();
   });
 
-  it('SESSION_ENCRYPT=true: the payload column holds ciphertext bound to the session — the app reads it as before (E144)', async () => {
+  it('SESSION_ENCRYPT=true: the payload column holds ciphertext bound to the session — the app reads it as before', async () => {
     const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:', SESSION_ENCRYPT: 'true' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     expect(app.container.make(SessionCodec)).toBeInstanceOf(EncryptedSessionCodec);
@@ -125,7 +125,7 @@ describe('SESSION_DRIVER', () => {
     await app.shutdown();
   });
 
-  it('a new APP_KEY with the old one in APP_PREVIOUS_KEYS keeps encrypted sessions — without it, everybody starts afresh (E169)', async () => {
+  it('a new APP_KEY with the old one in APP_PREVIOUS_KEYS keeps encrypted sessions — without it, everybody starts afresh', async () => {
     const directory = tempDir('marmeon-session-rotation-');
     const [oldKey, newKey] = [generateKey(), generateKey()];
     const files = { SESSION_DRIVER: 'file', SESSION_FILES: directory, SESSION_ENCRYPT: 'true' };
@@ -182,7 +182,7 @@ describe('SESSION_DRIVER', () => {
     expect(await redis.command<string[]>(['KEYS', `${prefix}session:*`])).toEqual([]);
     await kernel.request('/count', { headers: { accept: 'application/json' } });
     const [key] = await redis.command<string[]>(['KEYS', `${prefix}session:*`]);
-    expect(key).toMatch(new RegExp(`^${prefix}session:[0-9a-f]{64}$`)); // the hash of the id (E144)
+    expect(key).toMatch(new RegExp(`^${prefix}session:[0-9a-f]{64}$`)); // the hash of the id
     const ttl = await redis.command<number>(['TTL', key!]);
     expect(ttl).toBeGreaterThan(1790);
     expect(ttl).toBeLessThanOrEqual(1800);
@@ -191,7 +191,7 @@ describe('SESSION_DRIVER', () => {
   });
 });
 
-describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', () => {
+describe('SESSION_DRIVER=database never joins the app’s transactions', () => {
   class Rollback extends Error {}
   const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) });
   const DATA = JSON.stringify({ _token: 'x'.repeat(40), visits: 1 });
@@ -298,7 +298,7 @@ describe('make:session-table', () => {
     return root;
   }
 
-  it('writes the migration into the system module (E96), next to the cache tables', async () => {
+  it('writes the migration into the system module, next to the cache tables', async () => {
     const root = app();
     mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/system/index.ts'), "export default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });");

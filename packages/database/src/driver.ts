@@ -17,24 +17,12 @@ export interface DriverContext {
 }
 
 /**
- * Wraps a dialect's driver with what every Marmeon connection needs:
- *
- * - **Nested transactions become savepoints.** When a connection is already inside a transaction,
- *   beginning another one starts a savepoint instead (commit → release, rollback → rollback to it) —
- *   Laravel's transaction level. That is what lets a test wrap everything in one transaction
- *   ({@link MarmeonDriver.isolate}) while the code under test opens its own.
- * - **The ambient transaction (E107).** Inside `connections.transaction(callback)` every query of this
- *   connection — from a repository, the queue, any `db` — gets the transaction's connection; a transaction
- *   opened inside it becomes a savepoint on it. After the transaction finished, work of its call chain is
- *   refused ({@link TransactionFinishedError}) instead of running outside it.
- * - **One connection at a time on SQLite** — Kysely's lock, moved here so a query inside the transaction
- *   does not wait for the transaction that holds the lock (the hang W3 warned about).
- * - **One query at a time per connection.** A transaction's connection (and a test's isolated one) is
- *   shared by everything inside it — `Promise.all` over a page's props, two requests of a test — so its
- *   queries take turns: a driver like `pg` must not be sent a query while another is under way.
- * - **Connection failures say which connection** failed and where it points.
- * - **Schema metadata is loaded on the connection being handed out** — never through the pool,
- *   which a transaction may be holding.
+ * Wraps a dialect's driver with what every Marmeon connection needs: nested transactions become savepoints (so a test can
+ * wrap everything in one, {@link MarmeonDriver.isolate}); inside `connections.transaction(callback)` every query of the
+ * connection gets the transaction's connection, and work after it finished is refused ({@link TransactionFinishedError});
+ * SQLite's one-connection lock lives here, so a query inside a transaction never waits for the transaction that holds it;
+ * the queries of a shared connection take turns (`pg` must not get a query while another runs); a failure names the
+ * connection; schema metadata is loaded on the connection being handed out, never through the pool a transaction may hold.
  */
 export function withMarmeonDriver(dialect: Dialect, context: DriverContext): { dialect: Dialect; driver: MarmeonDriver } {
   const adapter = dialect.createAdapter();
@@ -71,7 +59,7 @@ export class MarmeonDriver implements Driver {
    */
   readonly #holders = new Map<DatabaseConnection, number>();
 
-  /** A pool that never joins an ambient transaction: an infrastructure connection's own pool (E108). */
+  /** A pool that never joins an ambient transaction: an infrastructure connection's own pool. */
   readonly #detached: boolean;
   /** Each connection of the dialect's driver as handed out here: its queries take turns ({@link serialQueries}). */
   readonly #serial = new WeakMap<DatabaseConnection, DatabaseConnection>();
@@ -97,7 +85,7 @@ export class MarmeonDriver implements Driver {
   }
 
   /**
-   * @internal — for infrastructure connections (E108): a connection of its own, never the ambient transaction's (on a
+   * @internal — for infrastructure connections: a connection of its own, never the ambient transaction's (on a
    * shared physical connection, the caller has made sure no transaction of its call chain holds it).
    */
   acquireDetached(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {

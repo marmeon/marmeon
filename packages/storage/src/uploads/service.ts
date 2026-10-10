@@ -9,7 +9,7 @@ import { formatBytes, type UploadRule } from './rule.ts';
 import { SNIFF_BYTES, sniff } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
 
-/** The table `marmeon make:uploads-table` creates (E96: the app owns the migration; this package types it itself). */
+/** The table `marmeon make:uploads-table` creates (the app owns the migration; this package types it itself). */
 export const UPLOADS_TABLE = 'temporary_uploads';
 
 interface UploadRow {
@@ -54,7 +54,7 @@ export interface TargetRequest {
 }
 
 export interface UploadsOptions {
-  /** The infrastructure connection of `temporary_uploads` (E108) — resolved on first use. */
+  /** The infrastructure connection of `temporary_uploads` — resolved on first use. */
   readonly db: () => Kysely<Tables>;
   /** The private disk of temporary uploads. */
   readonly disk: () => Disk;
@@ -80,12 +80,12 @@ export function uploadError(field: string, key: string, message: string, params:
 }
 
 /**
- * Temporary uploads (W6.9, Livewire's model): the table of tokens and the private disk their files wait on. A target is
+ * Temporary uploads (Livewire's model): the table of tokens and the private disk their files wait on. A target is
  * handed out for one route's field and one session; the bytes arrive once, cut off at the field's `maxBytes`; on submit the
  * token is verified (signature, session, route and field, expiry, not used) and the file's type read from its bytes; storing
  * it uses the token up — one `UPDATE … WHERE consumed_at IS NULL`, so of two submits racing exactly one wins.
  *
- * The table is infrastructure (E108): the statements run on their own connection and never join the app's transaction —
+ * The table is infrastructure: the statements run on their own connection and never join the app's transaction —
  * a rollback after `store()` never makes a used token usable again (a second store of the same upload).
  */
 export class TemporaryUploads {

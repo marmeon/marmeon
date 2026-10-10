@@ -28,7 +28,7 @@ function randomName(): string {
 }
 
 /**
- * A file uploaded ahead and verified (W6.9) — what an `upload()` field is in `ctx.body`. Its type comes from its bytes, its
+ * A file uploaded ahead and verified — what an `upload()` field is in `ctx.body`. Its type comes from its bytes, its
  * name from the browser (for showing only). `store()` uses it up — once — and moves the file where it belongs, under a random
  * name with the extension of its real type:
  *

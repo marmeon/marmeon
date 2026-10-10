@@ -16,7 +16,7 @@ import { createSqliteDialect } from './sqlite.ts';
 /**
  * The default connection, typed by the app's tables: `constructor(db: Database)`.
  *
- * Module boundaries are opt-in (E20, revised): with a module's name — `Database<'user-profile'>` —
+ * Module boundaries are opt-in: with a module's name — `Database<'user-profile'>` —
  * the module sees its own tables for everything, and other modules' `exposes` tables for reading and
  * joins only. At runtime it is the same connection either way; the boundary is a type.
  */
@@ -43,25 +43,17 @@ export interface QueryEvent {
   readonly error?: unknown;
 }
 
-/**
- * The app's database connections — opened on first use, closed on shutdown.
- *
- * ```ts
- * constructor(connections: Connections) {
- *   this.#reporting = connections.get<ReportingTables>('reporting');
- * }
- * ```
- */
+/** The app's database connections — opened on first use, closed on shutdown: `connections.get<ReportingTables>('reporting')`. */
 export class Connections {
   readonly #options: ReadonlyMap<string, ConnectionOptions>;
   readonly #root: string;
   readonly #logger: Logger;
-  /** The app the queries are reported for on the `db.query` channel (E118) — none: not reported (scratch connections). */
+  /** The app the queries are reported for on the `db.query` channel — none: not reported (scratch connections). */
   readonly #app: Application | undefined;
   /** What a connection's failure is masked with in the log: the app's (the names its packages add count too). */
   readonly #redactor: Redactor;
   readonly #instances = new Map<string, Instance>();
-  /** Infrastructure handles (E108), per connection and user. */
+  /** Infrastructure handles, per connection and user. */
   readonly #infrastructure = new Map<string, Kysely<any>>();
   /** Postgres: the infrastructure's own pool, per connection. */
   readonly #pools = new Map<string, MarmeonDriver>();
@@ -82,31 +74,10 @@ export class Connections {
   }
 
   /**
-   * Runs `callback` in a transaction — and everything it awaits with it (E107): repositories, the database queue,
-   * in-process event listeners and any `db` of this connection join the transaction on their own, no `using(trx)`
-   * needed. It commits when the callback resolves and rolls back when it throws (rethrowing the error).
-   *
-   * ```ts
-   * const user = await this.#connections.transaction(async () => {
-   *   const user = await this.#users.insert({ … });
-   *   await this.#profiles.insert({ user_id: user.id });
-   *   await this.#queue.dispatch(SendWelcomeMailJob, { userId: user.id });   // a row in the same transaction
-   *   return user;
-   * });
-   * ```
-   *
-   * - **Nested** `transaction()` calls (here, in a repository, in Kysely's own `db.transaction()`) become savepoints:
-   *   an inner rollback keeps the outer writes. One at a time — not several at once in a `Promise.all`.
-   * - **After the commit:** work for the outside world (a job on a non-database queue, a mail) waits for the outermost
-   *   commit with `afterCommit(fn)` and is dropped on a rollback. **Outside:** `outsideTransaction(fn)` for writes that
-   *   must survive a rollback.
-   * - **Await everything.** Work started inside that runs after the transaction finished (an un-awaited promise, a timer)
-   *   throws `TransactionFinishedError` — it never runs outside the transaction by accident.
-   * - The context follows this call chain only (AsyncLocalStorage): other requests and jobs running meanwhile never see
-   *   it. Framework boundaries (work after the response, jobs, the worker) start outside of it.
-   *
-   * `callback` also receives the transaction as a Kysely `Transaction` — for code outside this call chain, or a
-   * repository's `using(trx)`. `isolationLevel` applies to an outermost transaction only.
+   * Runs `callback` in a transaction — and everything it awaits with it: repositories, the database queue, in-process event
+   * listeners and any `db` of this connection join on their own. It commits when the callback resolves and rolls back when it
+   * throws (rethrowing the error); a nested call is a savepoint. Work that runs after the transaction finished throws
+   * `TransactionFinishedError` instead of running outside it. See `docs/transactions.md#running-a-transaction`.
    */
   async transaction<R>(callback: (trx: Transaction<Tables>) => R | PromiseLike<R>, options: TransactionOptions = {}): Promise<R> {
     const name = options.connection ?? 'default';
@@ -125,20 +96,11 @@ export class Connections {
   }
 
   /**
-   * The connection for infrastructure — the cache with its rate limits and locks, sessions (E108): it NEVER joins the
-   * app's transactions. A rate-limit hit or a lock inside a transaction that rolls back stays, and a lock is visible to
-   * every other process at once — as it must be.
-   *
-   * - **Postgres:** a pool of its own to the same database (`infrastructurePoolMax`, `DB_INFRA_POOL_MAX`, default 4),
-   *   opened on first use. Nothing to configure.
-   * - **SQLite:** a second connection to the same file would wait for an open transaction's write lock — forever, if
-   *   that transaction waits for it. So the handle shares the file's one connection: outside of transactions (the normal
-   *   case) that is all it takes; inside an open transaction of that file every statement throws an
-   *   `InfrastructureTransactionError` that says what to do (`usage.remedy`) — never a silent join. Full separation on
-   *   SQLite means a connection with a file of its own (e.g. `defineConnection('system', …)` and `CACHE_CONNECTION=system`).
-   * - In a test's isolated connection (`database: 'refresh'`) there is one physical connection, as on SQLite.
-   *
-   * Runs single statements — no transactions of its own.
+   * The connection for infrastructure — the cache with its rate limits and locks, sessions: it NEVER joins the app's
+   * transactions, so a rate-limit hit or a lock survives a rollback and other processes see a lock at once. On Postgres a
+   * small pool of its own; on SQLite (and a test's isolated connection) the file's one connection, where every statement
+   * inside an open transaction throws `InfrastructureTransactionError` (`usage.remedy` says what to do) — never a silent
+   * join. Runs single statements only. See `docs/database.md#infrastructure-connections`.
    */
   infrastructure<DB = any>(name = 'default', usage?: InfrastructureUsage): Kysely<DB> {
     const key = `${name}\0${usage?.system ?? ''}`;
@@ -169,7 +131,7 @@ export class Connections {
     return db as Kysely<DB>;
   }
 
-  /** Whether the current call chain runs inside a `transaction()` of this connection (E107). */
+  /** Whether the current call chain runs inside a `transaction()` of this connection. */
   inTransaction(name = 'default'): boolean {
     const instance = this.#instances.get(name);
     return instance !== undefined && transactionOf(instance.driver) !== undefined;
@@ -177,7 +139,7 @@ export class Connections {
 
   /**
    * Runs every query of a connection inside one transaction until `rollback()` undoes all of it;
-   * transactions opened meanwhile become savepoints. The basis of per-test isolation (E21).
+   * transactions opened meanwhile become savepoints. The basis of per-test isolation.
    */
   isolate(name = 'default'): Promise<{ rollback(): Promise<void> }> {
     return this.#instance(name).driver.isolate();
@@ -296,7 +258,7 @@ export class Connections {
     // Parameters stay out of the log line — they may hold password hashes or tokens.
     this.#logger.debug(query.error ? 'Query failed' : 'Query', { connection, sql: query.sql, durationMs: Math.round(query.durationMs * 100) / 100 });
     for (const listener of this.#listeners) listener(query);
-    // Called where the query was awaited: the request's or job's context is the current one (E118).
+    // Called where the query was awaited: the request's or job's context is the current one.
     if (this.#app && queries.hasSubscribers) {
       const message: DbQueryMessage = {
         ...messageBase(this.#app),
@@ -325,7 +287,7 @@ interface Instance {
 }
 
 /**
- * Whether a statement touches a table with secret columns (E125: its parameters may hold a password hash or a token) —
+ * Whether a statement touches a table with secret columns (its parameters may hold a password hash or a token) —
  * every table the query builder named, and for raw SQL (`sql\`…\``, in whole or in part) any secret table's name in
  * the text. When in doubt, yes.
  */

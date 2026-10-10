@@ -12,11 +12,7 @@ export type FakeDisk<N extends string> = DiskFor<N> & Pick<MemoryDisk, 'assertEx
  * The storage of a test app (default in `createTestApp`, like the mail and queue fakes): every configured disk is a
  * {@link MemoryDisk} with the configured name, visibility and URL — nothing touches the file system or S3, and each test
  * starts empty. Keys are checked as on every disk; `temporaryUrl()` signs real URLs the app's routes serve from memory.
- *
- * ```ts
- * await app.post('/users/me/export').assertRedirect();
- * app.storage.disk('local').assertExists(`exports/user-${ada.id}.json`);
- * ```
+ * Assert with `app.storage.disk('local').assertExists(key)`.
  */
 export class StorageFake extends StorageManager {
   constructor(container: Container) {

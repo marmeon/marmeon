@@ -2,7 +2,7 @@ import type { CommandInput } from 'marmeon';
 import { environment } from '@marmeon/core';
 
 /**
- * Destructive commands ask for `--force` wherever the app is protected (E139, E164): `production` — a missing `NODE_ENV` too,
+ * Destructive commands ask for `--force` wherever the app is protected: `production` — a missing `NODE_ENV` too,
  * and whatever `APP_ENV` says (a staging server is `NODE_ENV=production APP_ENV=staging`), like Laravel's confirmation in
  * production. Each names the environment it assumed.
  */

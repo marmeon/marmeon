@@ -21,16 +21,11 @@ export function createSqliteDialect(path: string): SqliteDialect {
 }
 
 /**
- * Adapts `DatabaseSync` to the shape Kysely's `SqliteDialect` expects (better-sqlite3's), and
- * makes values honest in both directions:
- *
- * - **In:** node:sqlite reads an object as a bag of *named* parameters, so a `Date` would bind
- *   nothing and store NULL — silently. Dates become ISO-8601 UTC, booleans 0/1, and anything else
- *   that SQLite cannot store throws.
- * - **Out:** SQLite has no boolean, JSON or exact decimal type. Columns *declared* `boolean`, `json`/`jsonb`
- *   or `numeric(p, s)` come back as `true`/`false`, parsed JSON and `'12.50'`, like on Postgres. Unnamed expressions (e.g. the
- *   subqueries of `jsonArrayFrom`) that return a JSON array or object are parsed as well — but a
- *   declared text column never is, even if its value happens to look like JSON.
+ * Adapts `DatabaseSync` to the shape Kysely's `SqliteDialect` expects (better-sqlite3's), and makes values honest both ways.
+ * In: node:sqlite reads an object as *named* parameters, so a `Date` would silently store NULL — dates become ISO-8601 UTC,
+ * booleans 0/1, and anything else SQLite cannot store throws. Out: columns *declared* `boolean`, `json`/`jsonb` or
+ * `numeric(p, s)` come back as `true`/`false`, parsed JSON and `'12.50'`, like on Postgres; unnamed expressions that return
+ * a JSON array or object (the subqueries of `jsonArrayFrom`) are parsed too, a declared text column never.
  */
 export function adaptNodeSqlite(db: DatabaseSync): SqliteDatabase {
   return {

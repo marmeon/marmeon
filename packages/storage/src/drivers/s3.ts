@@ -11,7 +11,7 @@ import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.t
 import { contentDisposition, isInlineType, mimeTypeOf } from '../mime.ts';
 
 /**
- * What the CLI or a disk prints when the SDK is missing — optional peers (E198: S3 is one of several drivers, the local one needs
+ * What the CLI or a disk prints when the SDK is missing — optional peers (S3 is one of several drivers, the local one needs
  * nothing), with the major this package is tested with.
  */
 export const S3_INSTALL = 'pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3';
@@ -31,7 +31,7 @@ const importModules: ImportS3 = async () => ({
   presigner: require('@aws-sdk/s3-request-presigner') as typeof Presigner,
 });
 
-/** What uploads straight to S3 need (W6.9: presigned POST with a size limit) — installed only by apps that upload there. */
+/** What uploads straight to S3 need (presigned POST with a size limit) — installed only by apps that upload there. */
 export const S3_UPLOADS_INSTALL = 'pnpm add @aws-sdk/s3-presigned-post@^3';
 
 /** `@aws-sdk/s3-presigned-post`, or how to install it. */
@@ -105,7 +105,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * Files in S3 or an S3-compatible store (E91), through `@aws-sdk/client-s3` (an optional peer, loaded on first use).
+ * Files in S3 or an S3-compatible store, through `@aws-sdk/client-s3` (an optional peer, loaded on first use).
  * Keys are checked like on every disk — some S3-compatible stores map keys onto paths, where `..` would mean something.
  * `temporaryUrl()` is a presigned GET (signing time from the app's `Clock`), a download unless the file is a raster
  * image. Visibility is the disk's, not the object's: a public disk needs a bucket (or prefix) that its policy makes
@@ -261,7 +261,7 @@ export class S3Disk implements Disk {
   }
 
   /**
-   * A presigned POST for the browser to send one file to `key` (W6.9): a policy the store checks — this key, at most `maxBytes`
+   * A presigned POST for the browser to send one file to `key`: a policy the store checks — this key, at most `maxBytes`
    * (`content-length-range`), until it expires (seconds). The browser posts `fields`, then the file as `file`. (The bucket
    * needs a CORS rule that allows the app's origin to POST.)
    */

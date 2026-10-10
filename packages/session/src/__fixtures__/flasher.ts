@@ -1,4 +1,4 @@
-// One of several processes flashing into ONE session at the same moment (`processes.test.ts`, E145). Opens the store named by
+// One of several processes flashing into ONE session at the same moment (`processes.test.ts`). Opens the store named by
 // argv[2] (a JSON StoreTarget), says "ready", waits for "go" on stdin, then runs argv[4] requests of the session argv[3] at
 // once — each queues the flash message `<argv[5]>-<n>` and saves — and prints how many saves landed. Run with
 // `node --conditions=@marmeon/source`.

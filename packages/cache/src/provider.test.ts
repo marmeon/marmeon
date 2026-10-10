@@ -88,7 +88,7 @@ describe('CACHE_DRIVER', () => {
   });
 });
 
-describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', () => {
+describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
   class Rollback extends Error {}
   /** A connection with a SQLite file of its own for the cache (as the web app's `system`). */
   const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) });
@@ -211,7 +211,7 @@ describe('make:cache-table', () => {
     return { input: { root, args: [], options, output, spawn: async () => 0 } as never, lines };
   }
 
-  it('writes the migration into the system module (E96), creating and registering the module', async () => {
+  it('writes the migration into the system module, creating and registering the module', async () => {
     const root = app();
     const { input: first, lines } = input(root);
     expect(await new MakeCacheTableCommand().handle(first)).toBe(0);

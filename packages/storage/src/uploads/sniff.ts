@@ -1,5 +1,5 @@
 /**
- * What a file is, by its first bytes (W6.9) — never by the name the browser sent or the `Content-Type` it claimed: both are
+ * What a file is, by its first bytes — never by the name the browser sent or the `Content-Type` it claimed: both are
  * the uploader's word. Only formats with a reliable signature are recognised; anything else is `application/octet-stream`.
  * Markup that a browser would render — HTML, SVG, XML — is recognised so it can be refused (it can carry script).
  */

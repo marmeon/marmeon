@@ -1,4 +1,4 @@
-// Server-driven tables (W9 step 5, E183): defineTable, the resolution per request, row and bulk actions, CSV export.
+// Server-driven tables: defineTable, the resolution per request, row and bulk actions, CSV export.
 export { action, bulk, column, Column, DEFAULT_BULK_MAX, defineTable, exportCsv, filter, Filter, BulkAction, RowAction, TableExport } from './define.ts';
 export type {
   AnyBulkAction,

@@ -6,7 +6,7 @@ export const SESSIONS_MIGRATION = new URL('../../stubs/migrations/create_session
 
 /**
  * `marmeon make:session-table [--module=system]`: writes the migration of the `database` session driver's table into an app
- * module (E96 — the table is the app's, `db:types` sees it like any other). Then `marmeon migrate`.
+ * module (the table is the app's, `db:types` sees it like any other). Then `marmeon migrate`.
  */
 export class MakeSessionTableCommand {
   static command = 'make:session-table';

@@ -59,17 +59,17 @@ export class StartSession {
   async handle(ctx: HttpContext, next: Next<{}>) {
     const { cookie, lifetime, secure, sameSite } = this.#config;
     if (this.#readOnly.active) {
-      // An island resolved while its page renders (E49) reads the page request's session as it is now — whoever the page
+      // An island resolved while its page renders reads the page request's session as it is now — whoever the page
       // signed in (a remember-me sign-in included, which the cookie does not know yet) — as a copy.
       const page = this.#parent.resolve(Session);
       if (page?.started) this.#session.adopt(page);
       else await this.#session.start(ctx.cookies.get(cookie));
-      // An island (E52): it reads the session, never writes it — no save, no cookie, flash data stays for the page.
+      // An island: it reads the session, never writes it — no save, no cookie, flash data stays for the page.
       this.#session.lock((what) => this.#readOnly.permit(what));
       return next();
     }
     const id = ctx.cookies.get(cookie);
-    // A route that blocks (E145): one request of this session at a time — from before it is read until it is saved.
+    // A route that blocks: one request of this session at a time — from before it is read until it is saved.
     const lock = ctx.route?.blocking ? await this.#block(ctx, id) : undefined;
     try {
       await this.#session.start(id);
@@ -87,9 +87,9 @@ export class StartSession {
             route: ctx.route?.routeName ?? ctx.route?.path,
           });
         }
-        // Signed in or out: the old session is gone — whoever listened through it stops (W6.10: its live streams, everywhere).
+        // Signed in or out: the old session is gone — whoever listened through it stops (its live streams, everywhere).
         for (const ended of this.#session.ended) await this.#endings.ended(sessionScope(ended));
-        // Saved: nothing that still runs in this request — a streamed page's deferred props (E49) — reaches the store any
+        // Saved: nothing that still runs in this request — a streamed page's deferred props — reaches the store any
         // more. Once the headers are out, the kernel makes the request read-only, and a write throws (or is dropped).
         this.#session.lock((what) => this.#readOnly.permit(what));
       }
@@ -99,8 +99,8 @@ export class StartSession {
   }
 
   /**
-   * The session's lock for a route that `block()`s (E145) — taken before the session is read, through the app's cache (atomic
-   * locks, E103), keyed by the session's store key (never its id). Nothing to lock without a session cookie: a new session is
+   * The session's lock for a route that `block()`s — taken before the session is read, through the app's cache (atomic
+   * locks), keyed by the session's store key (never its id). Nothing to lock without a session cookie: a new session is
    * nobody else's.
    */
   async #block(ctx: HttpContext, id: string | undefined): Promise<{ release(): Promise<boolean> } | undefined> {

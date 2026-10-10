@@ -30,7 +30,7 @@ async function request(store: SessionStore, id: string | undefined, use: (sessio
   return session;
 }
 
-/** The payload stored for the session `id` (under its key, E144), as JSON. */
+/** The payload stored for the session `id` (under its key), as JSON. */
 async function stored(store: SessionStore, id: string): Promise<SessionPayload | undefined> {
   const record = await store.read(sessionKey(id));
   return record ? (JSON.parse(record.data) as SessionPayload) : undefined;
@@ -71,7 +71,7 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.get('status')).toBeUndefined());
   });
 
-  it('keeps flash messages (E60) until a response takes them — not aged by the requests in between; a 409 puts them back', async () => {
+  it('keeps flash messages until a response takes them — not aged by the requests in between; a 409 puts them back', async () => {
     const store = new MemorySessionStore();
     const message = (id: string) => ({ id, key: 'toast', data: { message: 'Saved.' } });
     const { id } = await request(store, undefined, (session) => session.queueFlash(message('1')));
@@ -96,7 +96,7 @@ describe('Session', () => {
     expect(island.all()).toEqual({});
   });
 
-  it('binds a flash message to the document whose request flashed it (E165): another document leaves it, a full load takes it', async () => {
+  it('binds a flash message to the document whose request flashed it: another document leaves it, a full load takes it', async () => {
     const store = new MemorySessionStore();
     const message = (id: string, document?: string) => ({ id, key: 'toast', data: { message: 'Saved.' }, ...(document ? { document } : {}) });
     const { id } = await request(store, undefined, (session) => {
@@ -229,7 +229,7 @@ describe('Session', () => {
     expect(writes).toHaveLength(4);
   });
 
-  it('draws a CSRF token only when something needs it (E203) — a new session that hands none out has none; sign-in renews it', async () => {
+  it('draws a CSRF token only when something needs it — a new session that hands none out has none; sign-in renews it', async () => {
     const store = new MemorySessionStore();
     // A guest's request: no token made, none stored.
     const guest = await request(store, undefined, (session) => expect(session.currentToken(), 'a new session drew a token at start').toBeUndefined());
@@ -245,7 +245,7 @@ describe('Session', () => {
     const token = (await stored(store, kept.id))!._token;
     expect(token).toBe(handed.currentToken());
     await request(store, kept.id, (session) => expect(session.token()).toBe(token)); // and kept
-    // A sign-in (regenerate) and a sign-out (invalidate) renew it at once, as before.
+    // A sign-in (regenerate) and a sign-out (invalidate) renew it at once.
     const signedIn = await request(store, kept.id, (session) => session.regenerate());
     expect(signedIn.currentToken()).toMatch(/^[A-Za-z0-9_-]{40}$/);
     expect(signedIn.currentToken()).not.toBe(token);
@@ -274,7 +274,7 @@ describe('Session', () => {
     expect(await store.read(sessionKey(id))).toBeUndefined();
   });
 
-  it('a session other requests write without pause: save() gives up after a while — no endless retry, nothing written, said (E145)', async () => {
+  it('a session other requests write without pause: save() gives up after a while — no endless retry, nothing written, said', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => session.put('visits', 1));
     let writes = 0;
@@ -299,7 +299,7 @@ describe('Session', () => {
     expect(JSON.parse((await store.read(sessionKey(id)))!.data)).toMatchObject({ visits: 1 });
   });
 
-  it('stores a session under the SHA-256 of its id — never the id (E144)', async () => {
+  it('stores a session under the SHA-256 of its id — never the id', async () => {
     const store = new MemorySessionStore();
     const keys: string[] = [];
     const watched: SessionStore = { read: (key) => store.read(key), write: (key, data, options) => (keys.push(key), store.write(key, data, options)), destroy: (key) => store.destroy(key), gc: () => store.gc() };
@@ -408,12 +408,12 @@ describe('session stores', () => {
     const next = new CookieSessionStore(new CookieJar(cookie!.split(';')[0]!), 'app_session');
     expect(await next.read()).toEqual({ data: '{"user_id":"1"}', version: 0 });
     await expect(store.write('x', JSON.stringify({ big: 'x'.repeat(3000) }), { expectedVersion: 0, lifetimeSeconds: 60 })).rejects.toThrow('too large for the cookie driver');
-    // It cannot know what another request destroyed or wrote (E46): a write back always writes.
+    // It cannot know what another request destroyed or wrote: a write back always writes.
     expect(await new CookieSessionStore(new CookieJar(null), 'app_session').write('gone', '{}', { expectedVersion: 7, lifetimeSeconds: 60 })).toBe('written');
   });
 });
 
-describe('Session — read-only (an island, E52)', () => {
+describe('Session — read-only (an island)', () => {
   it('asks before every write: a lenient lock drops it (production), the session is never saved', async () => {
     const store = new MemorySessionStore();
     const id = (await request(store, undefined, (session) => session.flash('visits', 1))).id;
@@ -447,9 +447,9 @@ describe('Session — read-only (an island, E52)', () => {
   });
 });
 
-// Type guarantees (never called — checked by the build): a store says what its compare-and-set did (E145).
+// Type guarantees (never called — checked by the build): a store says what its compare-and-set did.
 function storeContract() {
-  // @ts-expect-error -- the store contract before W8 (writeIfExists, payload objects) is not a SessionStore any more
+  // @ts-expect-error -- a store with writeIfExists and payload objects is no SessionStore
   const legacy: SessionStore = { read: async () => undefined, write: async () => {}, writeIfExists: async () => true, destroy: async () => {}, gc: async () => 0 };
   const store: SessionStore = new MemorySessionStore();
   // @ts-expect-error -- a payload is text (JSON, or encrypted) — the store never sees an object

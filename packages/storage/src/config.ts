@@ -59,24 +59,9 @@ export interface StorageDefinition<D extends Readonly<Record<string, DiskOptions
 const NO_ENV = env({});
 
 /**
- * The app's disks (E91). List the definition in the app's `config` and register its types once:
- *
- * ```ts
- * // config/storage.ts
- * export const Storage = defineStorage({
- *   env: env({ S3_BUCKET: env.string().optional(), S3_REGION: env.string().optional() }),
- *   default: 'local',
- *   disks: (e) => ({
- *     local: { driver: 'local', root: 'storage/app/private' },
- *     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
- *     s3: { driver: 's3', bucket: e.S3_BUCKET, region: e.S3_REGION },
- *   }),
- * });
- * declare module '@marmeon/storage' { interface StorageTypes { storage: typeof Storage } }
- * ```
- *
- * Without a definition the app has `local` (private, `storage/app/private`) and `public` (`storage/app/public` under
- * `/storage`) — Laravel's defaults — and `uploads` (private, `storage/app/uploads`), where uploaded files wait for their form.
+ * The app's disks: a config definition to list in the app's `config`, with its types registered once through
+ * {@link StorageTypes}. Without one the app has `local` (private, the default), `public` (served under `/storage`) and
+ * `uploads` (private, where uploaded files wait for their form). See `docs/storage.md#configuration`.
  */
 export function defineStorage<const D extends Readonly<Record<string, DiskOptions>>, const Default extends keyof D & string, const Schema extends StandardSchemaV1 = typeof NO_ENV>(definition: {
   readonly env?: Schema;
@@ -106,7 +91,7 @@ export const DEFAULT_STORAGE: StorageOptions = {
   disks: {
     local: { driver: 'local', root: 'storage/app/private' },
     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
-    // Temporary uploads (W6.9, UPLOADS_DISK): private — a file waits here until a form checked and stored it.
+    // Temporary uploads (UPLOADS_DISK): private — a file waits here until a form checked and stored it.
     uploads: { driver: 'local', root: 'storage/app/uploads' },
   },
 };

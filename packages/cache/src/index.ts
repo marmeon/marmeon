@@ -45,7 +45,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string, driver: s
   }
 }
 
-/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file (E108). */
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file. */
 const CACHE_INFRASTRUCTURE = {
   system: 'The cache (CACHE_DRIVER=database — also rate limits and locks)',
   remedy:
@@ -68,7 +68,7 @@ const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marme
 /** Registers the `Cache` (`CACHE_DRIVER`) and the `RateLimiter`, and `make:cache-table`. Found by `marmeon discover`. */
 export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
-  /** The cache takes and frees a key, for `/up/ready` (E126). */
+  /** The cache takes and frees a key, for `/up/ready`. */
   static health = [CacheHealthCheck];
 
   register(container: Container): void {
@@ -78,7 +78,7 @@ export class CacheServiceProvider implements ServiceProvider {
   }
 
   async boot(app: Application): Promise<void> {
-    // Live validations (E62) are limited on every route — in the global stack, before anything else runs for them.
+    // Live validations are limited on every route — in the global stack, before anything else runs for them.
     if (app.container.has(Router)) app.container.make(Router).middleware.append(GLOBAL, LimitLiveValidation, MiddlewarePriority.limitLiveValidation);
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.
@@ -114,7 +114,7 @@ function storeFor(config: CacheConfig, container: Resolver): CacheStore {
       return new DatabaseStore(async () => {
         const { Connections } = await importDatabase();
         const connections = container.make(Connections);
-        // Its own connection, never the app's transaction (E108): a rate-limit hit or a lock survives a rollback.
+        // Its own connection, never the app's transaction: a rate-limit hit or a lock survives a rollback.
         return { db: connections.infrastructure(config.connection, CACHE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
       }, clock);
     case 'redis':

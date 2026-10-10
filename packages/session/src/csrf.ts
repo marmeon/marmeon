@@ -64,23 +64,11 @@ export class CsrfProtection {
 }
 
 /**
- * Laravel's `VerifyCsrfToken` — with the browser's word first (decision E143, Laravel 13's model). A request that may change
- * something (not GET, HEAD, OPTIONS) passes the first of these stages that decides:
- *
- * 1. **Fetch Metadata.** `Sec-Fetch-Site: same-origin` passes — the browser says this app's own page sent it, and no page can
- *    forge the header. `same-site` and `cross-site` are refused (403) unless their `Origin` is trusted (`CSRF_TRUSTED_ORIGINS`).
- * 2. **Origin** — when the browser sends no Fetch Metadata (plain HTTP outside localhost, older browsers, other clients) or
- *    says `none` (a navigation the user started, which never posts): the app's own origin or a trusted one passes, any other
- *    is refused (403) — `null` too (a sandboxed frame, a redirect across sites).
- * 3. **The token** — neither header: the session's token must come along, as `_token` field, `X-CSRF-TOKEN` header or
- *    `X-XSRF-TOKEN` header (copied from the `XSRF-TOKEN` cookie). Without it, or without a session, 419 "Page Expired".
- *
- * So a guest needs no session to sign in (no token is handed out just for that, E143), and a client without a browser — a
- * script, a test — sends the token or its `Origin`. The app's own origin is the one the request reaches it at (scheme and host
- * from `X-Forwarded-*` of a trusted proxy, `TRUSTED_PROXIES`) and `APP_URL`'s.
- *
- * Every response of the `web` group whose session is kept (`session.persists`) refreshes the readable `XSRF-TOKEN` cookie — a
- * guest without a session gets none, and their session draws no token at all (E203: made on demand).
+ * CSRF protection with the browser's word first: a request that may change something (not GET, HEAD, OPTIONS) passes the first
+ * stage that decides — **Fetch Metadata** (`same-origin` passes; `same-site`/`cross-site` are a 403 unless their `Origin` is
+ * trusted), then the **Origin** (the app's own or a trusted one; any other, `null` too, is a 403), then **the session's token**
+ * (`_token`, `X-CSRF-TOKEN` or `X-XSRF-TOKEN`; without it, or without a session, 419). A kept session's responses refresh the
+ * readable `XSRF-TOKEN` cookie. See `docs/csrf.md#how-a-request-is-checked`.
  */
 export class VerifyCsrfToken {
   readonly #session: Session;
@@ -104,11 +92,11 @@ export class VerifyCsrfToken {
     }
     // After the route: the token may have been rotated (login, logout).
     const response = await next();
-    // A read-only request (an island, E52) sets no cookie: the page's own requests keep the browser's token current. A
+    // A read-only request (an island) sets no cookie: the page's own requests keep the browser's token current. A
     // session that is not kept (a guest's, nothing in it) has no token worth sending: it would not be valid next time.
     if (this.#session.readOnly || !this.#session.persists) return response;
     const { lifetime, secure, sameSite } = this.#sessionConfig; // lives as long as the session, like Laravel's
-    // The token is made here if nothing needed it before (E203): a kept session always gets its cookie.
+    // The token is made here if nothing needed it before: a kept session always gets its cookie.
     ctx.cookies.set(XSRF_COOKIE, this.#session.token(), { httpOnly: false, maxAge: lifetime * 60, secure, sameSite });
     return response;
   }
@@ -133,7 +121,7 @@ export class VerifyCsrfToken {
   async #tokenMatches(ctx: HttpContext): Promise<boolean> {
     const header = ctx.request.headers.get('x-csrf-token') ?? ctx.request.headers.get('x-xsrf-token');
     const field = header ?? (await ctx.input())._token;
-    // Compared, not handed out (and never made here, E203): a refused request does not make a new session worth keeping, and
+    // Compared, not handed out (and never made here): a refused request does not make a new session worth keeping, and
     // a session without a token matches nothing.
     const token = this.#session.currentToken();
     return typeof field === 'string' && token !== undefined && constantTimeEquals(field, token);

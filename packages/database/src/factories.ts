@@ -35,13 +35,7 @@ export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S e
 /**
  * A factory for one table: default values for every required column — typed against the table's
  * insert type, so a new NOT NULL column makes every factory that misses it a compile error.
- *
- * ```ts
- * export const UserFactory = defineFactory('users', ({ sequence }) => ({
- *   name: `User ${sequence}`,
- *   email: `user${sequence}@example.com`,
- * }), { states: { admin: { is_admin: true } } });
- * ```
+ * See `docs/seeding.md#defining-factories`.
  */
 export function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(
   table: T,

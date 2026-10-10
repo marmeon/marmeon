@@ -2,8 +2,8 @@ import { token } from '@marmeon/core';
 import type { Encrypter } from '@marmeon/encryption';
 
 /**
- * Turns a session's JSON into what its store keeps, and back: as it is (the default), or encrypted (`SESSION_ENCRYPT=true`,
- * E144). `key` is the session's store key — an encrypted payload is bound to it.
+ * Turns a session's JSON into what its store keeps, and back: as it is (the default), or encrypted (`SESSION_ENCRYPT=true`).
+ * `key` is the session's store key — an encrypted payload is bound to it.
  */
 export interface SessionCodec {
   /** Whether payloads are encrypted. */

@@ -28,9 +28,9 @@ import { Connections, Database } from './connections.ts';
  */
 export class DatabaseServiceProvider implements ServiceProvider {
   static config = [DatabaseConfig];
-  /** A missing table → the pending migrations, on the development error page (E130). */
+  /** A missing table → the pending migrations, on the development error page. */
   static solutions = databaseSolutions;
-  /** Every connection answers `select 1`, for `/up/ready` (E126). */
+  /** Every connection answers `select 1`, for `/up/ready`. */
   static health = [DatabaseHealthCheck];
 
   register(container: Container): void {

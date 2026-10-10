@@ -3,7 +3,7 @@ import { missingTable } from './errors.ts';
 import { Migrator } from './migrations/migrator.ts';
 
 /**
- * Solutions for database errors (E130): a missing table — with the migrations that have not run yet (`migrate:status`).
+ * Solutions for database errors: a missing table — with the migrations that have not run yet (`migrate:status`).
  * Text only: the error page shows the command, it never runs it.
  */
 export const databaseSolutions = defineSolutions([

@@ -17,17 +17,12 @@ const STALE_GUARD_MS = 2_000;
 const GUARD_TIMEOUT_MS = 10_000;
 
 /**
- * One file per session (Laravel's default), named by the session's key (the SHA-256 of its id, E144). Survives restarts.
- *
- * - **New keys** go to a temporary file hard-linked into place: a reader sees all of a session or none, and `link` fails when
- *   the name is taken — a new session never replaces one.
- * - **Writing back** compares the version (E145) under a per-session guard (`<key>.guard`, created with `open(…, 'wx')`, which
- *   the file system grants to one process at a time), then overwrites the file in place through a handle opened before the
- *   check: a session deleted meanwhile fails the `open` (ENOENT) — or, deleted after it, takes the write with it (the open
- *   handle writes to the unlinked file). Nothing ever brings a destroyed session back; `destroy` needs no guard.
- *
- * The record is ONE line of JSON; what follows the first line break is ignored. An in-place write never truncates (the file
- * keeps its largest size until the key changes), and a reader that meets a write in progress (a torn line) reads again.
+ * One file per session, named by the session's key (the SHA-256 of its id). A new key is written to a temporary file and
+ * hard-linked into place, so it never replaces a session. Writing back compares the version under a per-session guard
+ * (`<key>.guard`, `open(…, 'wx')`, granted to one process at a time) and overwrites through a handle opened before the check:
+ * a session deleted before the `open` fails it (ENOENT), one deleted after takes the write with it — nothing brings a destroyed
+ * session back, and `destroy` needs no guard. The record is ONE line of JSON: an in-place write never truncates, and a reader
+ * that meets a torn line reads again.
  */
 export class FileSessionStore implements SessionStore {
   readonly #directory: string;

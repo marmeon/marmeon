@@ -13,7 +13,7 @@ export interface SeedContext {
 
 /**
  * A seeder: a class with `handle`, built by the container (constructor injection, like controllers,
- * commands and listeners — E11). Listed by its module: `defineModule({ seeders: [DemoUsersSeeder] })`.
+ * commands and listeners). Listed by its module: `defineModule({ seeders: [DemoUsersSeeder] })`.
  */
 export interface Seeder {
   handle(context: SeedContext): void | Promise<void>;

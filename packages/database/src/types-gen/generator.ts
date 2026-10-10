@@ -9,7 +9,7 @@ import { renderTypes, type Rendered, type SchemaSnapshot } from './render.ts';
 declare module '@marmeon/core' {
   interface ModuleDefinition {
     /**
-     * Own tables other modules may read and join (never write) — E20:
+     * Own tables other modules may read and join (never write):
      * `defineModule({ name: 'auth', exposes: ['users'] })`. Everything else stays private to the module.
      */
     readonly exposes?: readonly string[];
@@ -60,7 +60,7 @@ export class TypeGenerator {
   }
 
   async #snapshot(scratch: Connections): Promise<SchemaSnapshot> {
-    // One scratch database for every table, also those of migrations on another connection (E108): one `Tables`.
+    // One scratch database for every table, also those of migrations on another connection: one `Tables`.
     const migrator = new Migrator(this.#app, scratch).onOneConnection();
     await migrator.migrate();
     const db = scratch.get<any>();

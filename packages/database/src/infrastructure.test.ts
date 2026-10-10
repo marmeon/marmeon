@@ -8,7 +8,7 @@ import { Connections, InfrastructureTransactionError, outsideTransaction, Transa
 import type { ConnectionOptions } from './config.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-// The infrastructure connection (E108): the cache, rate limits, locks and sessions never join the app's transactions.
+// The infrastructure connection: the cache, rate limits, locks and sessions never join the app's transactions.
 
 class Rollback extends Error {}
 

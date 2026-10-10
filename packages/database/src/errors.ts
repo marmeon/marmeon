@@ -51,14 +51,8 @@ const DUPLICATE = 'The {attribute} has already been taken.';
  * Runs `work` — an insert or an update — and turns a violation of a unique index on one of `fields` into a **422 at that field**,
  * with the message of the `unique` rule of @marmeon/validation (`marmeon.validation.unique`, in the request's language): the rule
  * gives the friendly message before the insert, the index is the truth when two requests race past it. A violation of another
- * index stays what it is (a 500 — a bug, not the user's input). `fields` maps columns to form fields when their names differ.
- *
- * ```ts
- * await failOnDuplicate('email', () => this.#users.update(ctx.user.id, { email: ctx.body.email }), ctx.body);
- * ```
- *
- * In a transaction the 422 rolls it back (on Postgres the failed statement has aborted it anyway). `input` goes back to the form
- * for `old()`.
+ * index stays what it is (a 500 — a bug, not the user's input). `fields` maps columns to form fields when their names differ;
+ * `input` goes back to the form for `old()`. See `docs/validation.md#the-unique-index-is-the-truth`.
  */
 export async function failOnDuplicate<T>(fields: string | readonly string[] | Readonly<Record<string, string>>, work: () => Promise<T>, input: Record<string, unknown> = {}): Promise<T> {
   try {

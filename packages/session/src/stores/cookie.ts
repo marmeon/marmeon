@@ -7,7 +7,7 @@ import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } fr
  * ~4 KB. Scoped: it works on the request's cookie jar, so the key it is given does not matter.
  *
  * It cannot know whether another request destroyed or wrote the session meanwhile — the data travels with each response, so
- * every write is `written` (E46: apps with sign-in log a warning at boot), and every read is version 0.
+ * every write is `written` (apps with sign-in log a warning at boot), and every read is version 0.
  */
 export class CookieSessionStore implements SessionStore {
   readonly #cookies: CookieJar;

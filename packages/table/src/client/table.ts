@@ -1,13 +1,8 @@
 /**
- * The headless table (W9 step 6, E183), UI-free: what a table's props let the user do in the browser — sort, filter, search and page
- * through the page's URL (query state, E55: the server parses it again, strictly), select rows (a slot of the history entry, emptied
- * with it and with the document), run row and bulk actions (the actions feature, E59: an action request, then the table's prop
- * reloaded — a revalidation, so it **replaces** what the page had, W9 step 3) and download an export. Adapters render it: React's
- * `useTable` (`@marmeon/react/table`), a plain-DOM one in this package's tests.
- *
- * Everything it sends comes from the props: a sort is a column's alias (`column.name`), a filter's key is the one the props name
- * (`filter[role]`, with the table's prefix), an action goes to the URL the props carry — the browser never names a database column,
- * and asking for anything the props do not offer is a programming error (thrown before a request goes out).
+ * The headless table, UI-free: sort, filter, search and page through the page's URL, select rows, run row and bulk actions and
+ * download an export — the adapters (React's `useTable`) render it. Everything it sends comes from the props (a column's alias,
+ * the filter keys and URLs they name): the browser never names a database column, and asking for anything the props do not
+ * offer throws before a request goes out.
  */
 import { pageQuery, queryState, queryUrl, selection, type ActionOutcome, type Confirm, type Navigator, type QueryState, type Selection, type SelectionKey } from '@marmeon/http/client';
 import type { PageObject } from '@marmeon/http/page';
@@ -28,14 +23,14 @@ export type ActionOf<T extends AnyTableData> = T['actions'][number]['name'];
 export type BulkOf<T extends AnyTableData> = T['bulk'][number]['name'];
 export type ExportOf<T extends AnyTableData> = T['exports'][number]['name'];
 
-/** How a row or bulk action ended — an action's outcome (E59), its data what the table's endpoint answers. */
+/** How a row or bulk action ended — an action's outcome, its data what the table's endpoint answers. */
 export type TableRunOutcome =
   | { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: TableActionResult }
   | Exclude<ActionOutcome, { readonly ok: true; readonly kind: 'data' }>;
 
 /** What one run of an action does besides sending. */
 export interface TableRunOptions {
-  /** Ask first (E64) — for an action defined with `.confirm()` the table asks anyway, with this text (default: {@link TableController.confirmText}). */
+  /** Ask first — for an action defined with `.confirm()` the table asks anyway, with this text (default: {@link TableController.confirmText}). */
   confirm?: Confirm;
   /** Aborts the run (it ends `cancelled`). */
   signal?: AbortSignal;
@@ -51,8 +46,9 @@ export interface TableControllerOptions {
 }
 
 /**
- * Thrown for anything the props do not offer — in production a code and the table's name (docs/errors.md#error-codes):
- * call it as `refuse('[marmeon:C9]', name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && …)` (E201: positive, so anything but development and test gets the code only), so a production build drops the explanation (E80).
+ * Thrown for anything the props do not offer — in production a code and the table's name (docs/errors.md#error-codes). Call it
+ * as `refuse('[marmeon:C9]', name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && …)`: written
+ * positively, so any other build gets the code only and drops the explanation.
  */
 function refuse(code: `[marmeon:${string}]`, table: string, explanation: string | false): never {
   throw new Error(`${code} ${explanation || table}`);

@@ -80,7 +80,7 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(await users.tryUpdate(ada.id + 999, { name: 'Nobody' })).toBeUndefined();
   });
 
-  it('counter-check: a plain insert-and-catch inside a Postgres transaction leaves it unusable', async () => {
+  it('a plain insert-and-catch inside a Postgres transaction leaves it unusable', async () => {
     await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const after = await users
       .transaction(async (inTransaction) => {

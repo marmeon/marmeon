@@ -42,7 +42,7 @@ export type Row<T extends keyof Tables> = Selectable<Tables[T]>;
 export type NewRow<T extends keyof Tables> = Insertable<Tables[T]>;
 export type RowUpdate<T extends keyof Tables> = Updateable<Tables[T]>;
 
-// --- Module boundaries (E20, opt-in via `Database<'module'>`) -------------------------------
+// --- Module boundaries (opt-in via `Database<'module'>`) -------------------------------
 
 type ReadOnlyTable<T> = { [C in keyof T]: ColumnType<Selectable<T>[C & keyof Selectable<T>], never, never> };
 
@@ -61,7 +61,7 @@ type WriteMethods = 'insertInto' | 'replaceInto' | 'updateTable' | 'deleteFrom' 
 /**
  * The database as module `M` sees it: its own tables for everything, other modules' exposed tables
  * for reading and joins. Writes take only an own table as target — insert, update and delete
- * (restricting the columns alone would not stop `insert` or `delete`, see the E20 spike).
+ * (restricting the columns alone would not stop `insert` or `delete`).
  */
 export type ModuleDatabase<All, Owners, Exposed, M extends string> = Omit<Kysely<ModuleTables<All, Owners, Exposed, M>>, WriteMethods> & {
   insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, InsertResult>;

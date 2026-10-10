@@ -11,7 +11,7 @@ function run(root: string, options: Record<string, string> = {}) {
 }
 
 describe('make:uploads-table', () => {
-  it('writes the migration of temporary_uploads into the system module (E96), next to the cache and session tables', async () => {
+  it('writes the migration of temporary_uploads into the system module, next to the cache and session tables', async () => {
     const root = tempDir('marmeon-uploads-table-');
     mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/system/index.ts'), "export default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });");
@@ -22,7 +22,7 @@ describe('make:uploads-table', () => {
     const migration = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_create_temporary_uploads_table.ts'))!;
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_temporary_uploads_table\.ts$/);
     const contents = readFileSync(join(root, 'modules/system/migrations', migration), 'utf8');
-    // Exactly the file the package's own tests migrate with; the table follows UPLOADS_CONNECTION (E108: infrastructure).
+    // Exactly the file the package's own tests migrate with; the table follows UPLOADS_CONNECTION (infrastructure).
     expect(contents).toBe(readFileSync(UPLOADS_MIGRATION, 'utf8'));
     expect(contents).toContain('connection: uploadsTableConnection');
     expect(first.lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);

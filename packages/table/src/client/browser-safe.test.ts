@@ -7,7 +7,7 @@ const packages = fileURLToPath(new URL('../../../', import.meta.url));
 
 /**
  * The page contract and the client core — the only code outside `table/src/client/` the table's browser half may run (it imports
- * `http/page` and `http/client`, W9 step 6), never the server's.
+ * `http/page` and `http/client`), never the server's.
  */
 const ALLOWED = ['http/src/page.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
 const CLIENT_CORE = 'http/src/client/';

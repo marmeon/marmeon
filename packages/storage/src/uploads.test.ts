@@ -14,7 +14,7 @@ import { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';
 const bytes = (...values: (number | string)[]) => new Uint8Array(values.flatMap((value) => (typeof value === 'string' ? [...value].map((c) => c.charCodeAt(0)) : [value])));
 const text = (value: string) => new TextEncoder().encode(value);
 
-describe('sniff — a file’s type by its first bytes (W6.9), never by its name', () => {
+describe('sniff — a file’s type by its first bytes, never by its name', () => {
   it('recognises the formats with a signature', () => {
     expect(sniff(bytes(0x89, 'PNG', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0))).toEqual({ mime: 'image/png', extension: 'png' });
     expect(sniff(bytes(0xff, 0xd8, 0xff, 0xe0))).toEqual({ mime: 'image/jpeg', extension: 'jpg' });
@@ -82,7 +82,7 @@ describe('upload() — the rule of an upload field', () => {
   });
 });
 
-/** Against the S3-compatible test container (`pnpm test:s3`): the presigned POST of an upload (W6.9). */
+/** Against the S3-compatible test container (`pnpm test:s3`): the presigned POST of an upload. */
 describe.skipIf(!S3_ENDPOINT)('uploads straight to S3: a presigned POST with a size limit', () => {
   const disks: S3Disk[] = [];
   const make = async () => {
@@ -108,7 +108,7 @@ describe.skipIf(!S3_ENDPOINT)('uploads straight to S3: a presigned POST with a s
     expect(await disk.size('tmp/1')).toBe(100);
   });
 
-  it('counter-check: one byte over content-length-range — the store refuses it, nothing lands', async () => {
+  it('one byte over content-length-range — the store refuses it, nothing lands', async () => {
     const disk = await make();
     const target = await disk.presignedPost('tmp/2', { maxBytes: 100, expiresIn: 60 });
     const response = await post(target, new Uint8Array(101));
@@ -116,7 +116,7 @@ describe.skipIf(!S3_ENDPOINT)('uploads straight to S3: a presigned POST with a s
     expect(await disk.exists('tmp/2')).toBe(false);
   });
 
-  it('counter-check: another key than the policy names — refused', async () => {
+  it('another key than the policy names — refused', async () => {
     const disk = await make();
     const target = await disk.presignedPost('tmp/3', { maxBytes: 100, expiresIn: 60 });
     const response = await post(target, new Uint8Array(10), target.fields.key!.replace('tmp/3', 'tmp/elsewhere'));

@@ -48,7 +48,7 @@ type Row = Record<string, unknown>;
 const ActionBody = v.object({ key: v.union([v.pipe(v.number(), v.safeInteger()), v.pipe(v.string(), v.minLength(1), v.maxLength(200))]) });
 
 /**
- * Resolves tables per request (E183): the page's prop (`resolve`), and the work of the endpoints `tableRoutes` registers — row actions,
+ * Resolves tables per request: the page's prop (`resolve`), and the work of the endpoints `tableRoutes` registers — row actions,
  * bulk actions, exports. Built per request (the policies are the request user's).
  *
  * The order is the security model: **who may see the table** (`authorize`) → **what they may see** (column, filter, action and
@@ -256,7 +256,7 @@ export class Tables {
     const lines = (batchRows: readonly Row[]) => batchRows.map((row) => csvLine(names.map((alias) => row[alias]))).join('');
     // The first batch before the answer: a failing query is an error page, not a cut-off file.
     const first = await batch(null);
-    // Later batches run once the handler has answered — a framework boundary (E107): in the request's context (its log context, its
+    // Later batches run once the handler has answered — a framework boundary: in the request's context (its log context, its
     // request id) but outside any transaction that was open around the handler (it may have finished by then).
     const inRequest = AsyncLocalStorage.snapshot();
     let next = first.meta.nextCursor;
@@ -467,7 +467,7 @@ function checkState(definition: TableDefinition, state: TableState, view: View):
   if (state.search && !view.columns.some(([, col]) => col.isSearchable)) throw new HttpError(400, `${keys.search}: the table "${definition.name}" has no such field.`);
 }
 
-/** The page's route must parse the table's state (its query schema): the browser gets the state from the page object (E55). */
+/** The page's route must parse the table's state (its query schema): the browser gets the state from the page object. */
 function assertQuerySchema(definition: TableDefinition, ctx: HttpContext): void {
   const query = (ctx as { query?: unknown }).query;
   const key = queryKeys(definition).perPage;

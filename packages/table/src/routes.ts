@@ -52,21 +52,9 @@ type RegistrarContext<R> = R extends Route<infer TState, infer TParams, infer TB
 type CheckRegistrar<R, T> = T extends Table<any, infer Ctx> ? (RegistrarContext<R> extends Ctx ? T : { readonly 'the table needs more of the request than these routes have — register them on the registrar of its page, after its middleware (authenticate(), …)': Ctx }) : T;
 
 /**
- * Registers a table's endpoints **on the registrar of its page** — so they run the same middleware (authentication, `verified()`,
- * the tenant, rate limits), the same route bindings and the same group (`web`: sessions, CSRF on the POSTs, E143) as the page:
- *
- * ```ts
- * const members = Route.prefix('/members').middleware(authenticate()).middleware(verified());
- * members.get('/', ListMembersController).name('members.index');
- * tableRoutes(members, MembersTable);
- * //   POST /members/_tables/members/actions/:tableAction   a row action  ({ key })
- * //   POST /members/_tables/members/bulk/:tableBulk        a bulk action ({ keys } | { all: true, query })
- * //   GET  /members/_tables/members/export/:tableExport    an export     (?sort=…&filter[…]=…)
- * ```
- *
- * Not the page controller's `authorize`: a table that needs one says so itself (`defineTable({ authorize })` — checked on the page
- * and in every endpoint). A registrar whose routes lack what the table's query needs (`ctx.user` without `authenticate()`) is a
- * compile error. The routes have no names: the page's prop carries their URLs (with the page's own path parameters filled in).
+ * Registers a table's endpoints **on the registrar of its page**, so they run the same middleware, route bindings and group as the
+ * page — but not the page controller's `authorize`: a table that needs one says so itself (`defineTable({ authorize })`). A
+ * registrar whose routes lack what the table's query needs is a compile error. See `docs/tables.md#the-controller-and-the-routes`.
  */
 export function tableRoutes<R extends Route<any, any, any>, T extends Table>(Route: R, table: T & CheckRegistrar<R, T>): void {
   const { definition } = table;

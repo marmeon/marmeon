@@ -6,15 +6,9 @@ import { SessionConfig } from './config.ts';
 import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
 
 /**
- * Typed session keys. Apps and packages declare what they store:
- *
- * ```ts
- * declare module '@marmeon/session' {
- *   interface SessionData { user_id: string }
- * }
- * ```
- *
- * Declared keys are checked (`put('user_id', 1)` is an error); other keys are `unknown`.
+ * Typed session keys, declared by apps and packages through declaration merging:
+ * `declare module '@marmeon/session' { interface SessionData { user_id: string } }`. Declared keys are checked
+ * (`put('user_id', 1)` is an error); other keys are `unknown`.
  */
 export interface SessionData {
   /** Validation errors of the previous request (flashed by a failed page request). */
@@ -24,16 +18,16 @@ export interface SessionData {
 type Value<K extends string> = K extends keyof SessionData ? SessionData[K] : unknown;
 
 const FLASH = '_flash';
-/** Flash messages (E60) waiting for a response that is shown. */
+/** Flash messages waiting for a response that is shown. */
 const MESSAGES = '_flash_messages';
 /** At most this many wait: an app that never shows them does not grow the session without end (the oldest go). */
 const MAX_MESSAGES = 20;
 const TOKEN = '_token';
 const OLD_INPUT = OLD_INPUT_KEY; // what `redirect().withInput()` flashes
 /**
- * How long `save()` keeps writing back a session that other requests write at the same time (E145): each conflict waits a
+ * How long `save()` keeps writing back a session that other requests write at the same time: each conflict waits a
  * random moment (up to 2, 4, 8, … 64 ms — so writers that collided do not collide again in step), reads it again and merges.
- * Every round lets at least one writer through, so 20 requests of one session at once all land (W5b.7) — on a slow store
+ * Every round lets at least one writer through, so 20 requests of one session at once all land — on a slow store
  * under load too; the bound only stops a request from waiting on a session that is written without pause.
  */
 const SAVE_PATIENCE_MS = 2_000;
@@ -55,26 +49,26 @@ export class Session {
   readonly #config: SessionConfig;
   readonly #codec: SessionCodec;
   #id = '';
-  /** The store key of `#id` (its SHA-256, E144) — made when first needed. */
+  /** The store key of `#id` (its SHA-256) — made when first needed. */
   #key: string | undefined;
   #data: SessionPayload = {};
   #started = false;
   /** The session came from the store (it is not new in this request). */
   #loaded = false;
-  /** The version the store had when the session was loaded — what a write back compares (E145). */
+  /** The version the store had when the session was loaded — what a write back compares. */
   #version: number | undefined;
   /** The session's JSON as loaded: what this request changed is measured against it when a write back meets a conflict. */
   #base = '{}';
-  /** The last `save()` met concurrent writes on every attempt and gave up (E145). */
+  /** The last `save()` met concurrent writes on every attempt and gave up. */
   #abandoned = false;
   readonly #obsolete: string[] = [];
-  /** Set for a read-only request (an island, E52): asked before every write. */
+  /** Set for a read-only request (an island): asked before every write. */
   #permit: ((what: string) => boolean) | undefined;
-  /** The flash messages this request took (E60) — put back by `reflash()` (a 409: the page is requested again). */
+  /** The flash messages this request took — put back by `reflash()` (a 409: the page is requested again). */
   #taken: FlashEntry[] = [];
   /** Something bound to this session was handed out (its CSRF token, a live subscription — `persist()`): a new session is kept. */
   #issued = false;
-  /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (W6.10: their live streams close). */
+  /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (their live streams close). */
   #ended: string[] = [];
 
   constructor(store: SessionStore, config: SessionConfig, codec: SessionCodec) {
@@ -88,7 +82,7 @@ export class Session {
   }
 
   /**
-   * Whether this request may not change the session — an island's (E52, `StartSession` locks it). Writes then throw in
+   * Whether this request may not change the session — an island's (`StartSession` locks it). Writes then throw in
    * development and are dropped in production; the session is never saved. Framework code that would write as a side
    * effect (a remember-me sign-in, the page a guest wanted) skips that instead.
    */
@@ -112,7 +106,7 @@ export class Session {
   }
 
   /**
-   * Loads the session `id` (from the cookie) — looked up by its key, `sessionKey(id)` (E144) — or starts a new one if it is unknown,
+   * Loads the session `id` (from the cookie) — looked up by its key, `sessionKey(id)` — or starts a new one if it is unknown,
    * expired or unreadable (an encrypted payload that does not decrypt).
    */
   async start(id?: string): Promise<void> {
@@ -136,17 +130,17 @@ export class Session {
     this.#data = data ?? {};
     this.#loaded = data !== undefined;
     this.#started = true;
-    // No CSRF token yet (E203): it is made when something needs it — `token()`, a page of a session that is kept, the
+    // No CSRF token yet: it is made when something needs it — `token()`, a page of a session that is kept, the
     // `XSRF-TOKEN` cookie. A guest's request that keeps no session never draws one.
   }
 
   /**
-   * @internal — `StartSession` of an island the server resolves in-process while the page renders (E49): a copy of the
+   * @internal — `StartSession` of an island the server resolves in-process while the page renders: a copy of the
    * page request's session as it is now — whoever it signed in, its flash data — never shared with it. The island's
    * session is read-only and never saved.
    */
   adopt(page: Session): void {
-    // The page's token first (E203: made on demand) — the island hands out the same one, never one of its own that is never saved.
+    // The page's token first (made on demand) — the island hands out the same one, never one of its own that is never saved.
     if (page.exists && !page.readOnly) page.#ensureToken();
     this.#id = page.id;
     this.#key = page.#key;
@@ -210,7 +204,7 @@ export class Session {
   }
 
   /**
-   * Keeps all flash data for one more request — and puts back the flash messages this request took (E60): its answer is
+   * Keeps all flash data for one more request — and puts back the flash messages this request took: its answer is
    * not shown after all (a 409 that loads the page again).
    */
   reflash(): void {
@@ -227,7 +221,7 @@ export class Session {
   }
 
   /**
-   * Keeps a flash message (E60, `redirect().flash()`) until a response the user is shown takes it — not aged by the
+   * Keeps a flash message (`redirect().flash()`) until a response the user is shown takes it — not aged by the
    * requests in between (a prefetch, an island, an API call).
    */
   queueFlash(message: FlashEntry): void {
@@ -245,7 +239,7 @@ export class Session {
   }
 
   /**
-   * `document`: the document the request names (E165) — a message bound to another one (another tab's request flashed it) stays;
+   * `document`: the document the request names — a message bound to another one (another tab's request flashed it) stays;
    * without one (a full page load), every message is taken.
    */
   takeFlash(document?: string): FlashEntry[] {
@@ -288,11 +282,11 @@ export class Session {
   // -- Security --------------------------------------------------------------
 
   /**
-   * The CSRF token of this session — made the first time something needs it (E203: a session that never hands one out never
+   * The CSRF token of this session — made the first time something needs it (a session that never hands one out never
    * draws one) and handed out: a new session whose token an app puts into a response itself is saved,
    * so the token is still valid when the browser sends it back. Pages do not need to: `PageObject.csrf` (what `<Form>`
    * renders, `usePage().csrf`) carries the token of a session that is kept anyway, and a guest's forms pass without one by
-   * the browser's word (Fetch Metadata, Origin — E143). So a guest's page creates no session.
+   * the browser's word (Fetch Metadata, Origin). So a guest's page creates no session.
    */
   token(): string {
     this.#ensureStarted();
@@ -302,8 +296,8 @@ export class Session {
 
   /**
    * Keeps this session even with nothing in it — something the browser got is bound to it: its CSRF token (`token()`), a live
-   * subscription a page signed (W6.10). A guest's page that lets them upload files persists it too (an upload belongs to a
-   * session, W6.9). Nothing changes for a session that is kept anyway; a read-only request (an island) keeps none.
+   * subscription a page signed. A guest's page that lets them upload files persists it too (an upload belongs to a
+   * session). Nothing changes for a session that is kept anyway; a read-only request (an island) keeps none.
    */
   persist(): void {
     this.#ensureStarted();
@@ -311,7 +305,7 @@ export class Session {
   }
 
   /**
-   * @internal — the token without handing it out (and without making one, E203): what `VerifyCsrfToken` compares a request's
+   * @internal — the token without handing it out (and without making one): what `VerifyCsrfToken` compares a request's
    * token against. `undefined` for a session that never needed one — no token matches it.
    */
   currentToken(): string | undefined {
@@ -323,7 +317,7 @@ export class Session {
    * Whether `save()` writes this session (and `StartSession` sends its cookie). Always for a session that came from the
    * store. A NEW session only once something is written: data, flash messages or errors (a failed form), a sign-in — or
    * something bound to it went out: its CSRF token handed out explicitly (`token()`), a live subscription (`persist()`). A
-   * request that leaves nothing — a guest's page (E143), a health check, an API call, a bot's redirect, a JSON endpoint that
+   * request that leaves nothing — a guest's page, a health check, an API call, a bot's redirect, a JSON endpoint that
    * never touches the session — leaves no session behind either (no row, no file, no cookie).
    */
   get persists(): boolean {
@@ -348,7 +342,7 @@ export class Session {
     data[TOKEN] = newToken();
   }
 
-  /** The session's token — made now if it has none yet (E203). Not a write the app asked for: no read-only check. */
+  /** The session's token — made now if it has none yet. Not a write the app asked for: no read-only check. */
   #ensureToken(): string {
     const data = this.#ensureStarted();
     const token = data[TOKEN];
@@ -378,20 +372,11 @@ export class Session {
   // -- Persistence -----------------------------------------------------------
 
   /**
-   * Ages flash data and writes the session. `StartSession` calls this after the route. Returns whether it wrote — false
-   * for a read-only request, for a new session with nothing worth keeping (`persists`), and for a session another
-   * request destroyed meanwhile.
-   *
-   * That other request was a sign-out (`invalidate()`) or a sign-in (`regenerate()`) of the same browser, which
-   * overtook this one — say, while a page's deferred props were still loading. Writing the old session back would
-   * undo the sign-out (its data still has the user). So a loaded session is written back over the version it was loaded
-   * at — compare-and-set, one atomic step of the store (E45, E145): a destroyed one stays destroyed (`gone`), and the browser
-   * keeps the cookie it got from the faster request. (The cookie driver cannot know: its data travels with each response.)
-   *
-   * Another request that wrote the session meanwhile is a `conflict`: the session is read again and this request's changes
-   * are applied to it — key by key, what this request changed wins (last write wins); the flash messages are merged by their
-   * ids, so none is lost and none a faster request showed comes back (W5b.7). A request that changed nothing stops there: the
-   * newer session already holds everything.
+   * Ages flash data and writes the session (`StartSession` calls it after the route). Returns whether it wrote — false for a
+   * read-only request, a new session with nothing worth keeping (`persists`), and a session another request destroyed meanwhile.
+   * A loaded session is written back over the version it was loaded at (compare-and-set): a sign-out or sign-in that overtook
+   * this request stays (`gone`) — writing the old session back would undo it. A `conflict` (another request wrote meanwhile) is
+   * read again and merged ({@link mergeSession}). See `docs/session.md#how-sessions-are-stored`.
    */
   async save(): Promise<boolean> {
     this.#ensureStarted();
@@ -420,7 +405,7 @@ export class Session {
     return true;
   }
 
-  /** Whether the last `save()` gave up: other requests wrote the session on every attempt (E145). Nothing was written. */
+  /** Whether the last `save()` gave up: other requests wrote the session on every attempt. Nothing was written. */
   get abandoned(): boolean {
     return this.#abandoned;
   }
@@ -491,7 +476,7 @@ function parsePayload(json: string): SessionPayload | undefined {
   }
 }
 
-/** Whether a request naming `document` takes `message` (E165): one bound to no document, or to this one — or no document named. */
+/** Whether a request naming `document` takes `message`: one bound to no document, or to this one — or no document named. */
 function mayTake(message: FlashEntry, document: string | undefined): boolean {
   return document === undefined || message.document === undefined || message.document === document;
 }
@@ -504,11 +489,11 @@ function userIdOf(data: SessionPayload): string | null {
 
 /**
  * Applies what one request changed (`ours`, against `base` — the session as it loaded it) to the session as another request
- * left it (`theirs`), E145:
+ * left it (`theirs`):
  *
  * - every key this request changed, added or removed: as this request has it — last write wins, key by key;
  * - every other key: as the other request left it;
- * - flash messages (`_flash_messages`) by their ids (W5b.7): the other request's list, minus the messages this request took
+ * - flash messages (`_flash_messages`) by their ids: the other request's list, minus the messages this request took
  *   (shown), plus the messages it added — none is lost, and none a faster request showed comes back;
  * - the flash bookkeeping (`_flash`): this request's, plus the keys the other request flashed.
  */

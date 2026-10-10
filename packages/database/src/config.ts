@@ -2,7 +2,7 @@ import { defineConfig, env, type ConfigDefinition, type ConfigOf, type StandardS
 
 /**
  * Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. `pgsql`: a URL, the size of its
- * pool, and the size of the small pool its infrastructure (the cache, sessions — `connections.infrastructure()`, E108)
+ * pool, and the size of the small pool its infrastructure (the cache, sessions — `connections.infrastructure()`)
  * opens on first use.
  */
 export type ConnectionOptions =
@@ -52,19 +52,9 @@ function connectionOptions(name: string, options: ConnectionDefinitionOptions): 
 export const DEFAULT_INFRASTRUCTURE_POOL_MAX = 4;
 
 /**
- * The default connection, from the environment — the server and the account in parts, or the whole address in `DB_URL`:
- *
- * ```sh
- * DB_CONNECTION=sqlite                   # sqlite (default) | pgsql
- * DB_DATABASE=storage/database.sqlite    # SQLite file, or the Postgres database name (default marmeon)
- * DB_HOST=127.0.0.1                      # pgsql: the server …
- * DB_PORT=5432
- * DB_USERNAME=postgres                   # … and the account
- * DB_PASSWORD=
- * DB_URL=postgres://user:secret@localhost:5432/app   # pgsql: or one URL — then the four above and DB_DATABASE are not read
- * DB_POOL_MAX=10                         # pgsql: the pool
- * DB_INFRA_POOL_MAX=4                    # pgsql: the infrastructure's own pool (cache, sessions — E108)
- * ```
+ * The default connection, from the environment: `DB_CONNECTION` (`sqlite` by default, or `pgsql`), the server and the account
+ * in parts (`DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`) or the whole address in `DB_URL`, which wins.
+ * See `docs/database.md#configuration`.
  */
 export const DatabaseConfig = defineConfig('database', {
   env: env({
@@ -77,7 +67,7 @@ export const DatabaseConfig = defineConfig('database', {
     DB_PASSWORD: env.string().default(''),
     /** Largest number of pooled Postgres connections. */
     DB_POOL_MAX: env.integer().min(1).default(10),
-    /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions — E108). */
+    /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions). */
     DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
   }),
   resolve: (e): { default: ConnectionOptions } => {
@@ -105,31 +95,9 @@ export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions
 }
 
 /**
- * Another connection, e.g. a reporting database. List it with the app's (or a module's) `config`;
- * its variables are validated at startup like all configuration. A Postgres connection takes the server and the account in
- * parts or one URL ({@link PostgresConnection}) — the URL wins when both are given:
- *
- * ```ts
- * export const Reporting = defineConnection('reporting', {
- *   env: env({
- *     REPORTING_DB_HOST: env.string().default('127.0.0.1'),
- *     REPORTING_DB_DATABASE: env.string().default('reporting'),
- *     REPORTING_DB_USERNAME: env.string(),
- *     REPORTING_DB_PASSWORD: env.string(),
- *     REPORTING_DB_URL: env.url({ protocols: ['postgres', 'postgresql'] }).optional(),
- *   }),
- *   resolve: (e) => ({
- *     driver: 'pgsql',
- *     url: e.REPORTING_DB_URL,
- *     host: e.REPORTING_DB_HOST,
- *     database: e.REPORTING_DB_DATABASE,
- *     username: e.REPORTING_DB_USERNAME,
- *     password: e.REPORTING_DB_PASSWORD,
- *   }),
- * });
- * defineApplication({ config: [Reporting], … });
- * connections.get('reporting')
- * ```
+ * Another connection, e.g. a reporting database: list it in the app's (or a module's) `config` and get it with
+ * `connections.get(name)`. A Postgres connection takes the server and the account in parts or one URL
+ * ({@link PostgresConnection}) — the URL wins when both are given. See `docs/database.md#more-connections`.
  */
 export function defineConnection<const Schema extends StandardSchemaV1>(
   name: string,

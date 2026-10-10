@@ -15,7 +15,7 @@ const boot = (url: string) =>
     override: (container) => container.instance(Logger, silent),
   });
 
-describe('the redis health check (E126)', () => {
+describe('the redis health check', () => {
   it('checks only the connections the app uses — a configured Redis nobody talks to is no reason to be "not ready"', async () => {
     await using app = await boot('redis://127.0.0.1:1');
     const report = await app.container.make(HealthChecks).run(app.container);

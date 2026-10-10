@@ -6,7 +6,7 @@ export type SessionPayload = Record<string, unknown>;
 /** A session as its store keeps it: the payload as text (JSON, or encrypted with `SESSION_ENCRYPT`) and its version. */
 export interface StoredSession {
   readonly data: string;
-  /** Goes up by one with every write — what `write` compares (compare-and-set, E145). */
+  /** Goes up by one with every write — what `write` compares (compare-and-set). */
   readonly version: number;
 }
 
@@ -29,7 +29,7 @@ export interface SessionWrite {
  * - `conflict` — another request wrote the session since it was read (or, for a new key, something is stored under it): nothing
  *   was written, read it again;
  * - `gone` — the session no longer exists (destroyed by a sign-out or sign-in of the same browser, or expired): nothing was
- *   written, and nothing ever brings it back (E45).
+ *   written, and nothing ever brings it back.
  */
 export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 
@@ -37,11 +37,11 @@ export type SessionWriteResult = 'written' | 'conflict' | 'gone';
  * Where session data lives (Laravel's session handlers): `file`, `database`, `redis`, `memory` and `cookie` implement this
  * contract (`stores/`).
  *
- * Every method takes the session's **key** — `sessionKey(id)`, the SHA-256 of the id the cookie carries (E144) — never the id:
+ * Every method takes the session's **key** — `sessionKey(id)`, the SHA-256 of the id the cookie carries — never the id:
  * whoever reads the store (a leaked backup, a replica, a shared Redis) gets no cookie that works. The payload is text the
  * store keeps as it is.
  *
- * `write` is ONE atomic step of the store — compare-and-set on the version (E145): there is no moment between "it is at
+ * `write` is ONE atomic step of the store — compare-and-set on the version: there is no moment between "it is at
  * version n" and "store version n + 1" in which another request's write or `destroy` could slip.
  */
 export interface SessionStore {
@@ -76,7 +76,7 @@ export function createSessionId(): string {
 }
 
 /**
- * The key a session is stored under (E144): the SHA-256 of its id, hex — like Rack's `private_id`. The id itself (240 random
+ * The key a session is stored under: the SHA-256 of its id, hex — like Rack's `private_id`. The id itself (240 random
  * bits) stays in the cookie; a store that leaks yields keys nobody can sign in with, and nothing can be worked back from them.
  */
 export function sessionKey(id: string): string {

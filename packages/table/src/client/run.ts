@@ -1,6 +1,6 @@
 /**
- * A table's row or bulk action as an action request (E59), then the table's prop reloaded — loaded with a table's first run (W9 step
- * 6): the actions feature and the page's reloads are a chunk of their own, so a page that only shows a table carries neither.
+ * A table's row or bulk action as an action request, then the table's prop reloaded. A chunk of its own, loaded with a table's
+ * first run: a page that only shows a table carries neither the actions feature nor the page's reloads.
  */
 import { actions, optimistic, type ActionOutcome, type Confirm, type Navigator } from '@marmeon/http/client';
 
@@ -18,7 +18,7 @@ export function runTableAction(navigator: Navigator, { url, body, confirm, signa
     data: body,
     ...(confirm !== undefined ? { confirm } : {}),
     ...(signal ? { signal } : {}),
-    // A revalidation (W9 step 3): what the server says now replaces what the page had — a row gone stays gone, merged or not.
+    // A revalidation: what the server says now replaces what the page had — a row gone stays gone, merged or not.
     reload: { target: navigator.use(optimistic).page, spec: only ? { only } : {} },
   });
 }

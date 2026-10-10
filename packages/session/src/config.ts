@@ -8,12 +8,12 @@ export const SessionConfig = defineConfig('session', {
     /**
      * `file` (default: one machine, survives restarts), `database` (the app's database — `marmeon make:session-table`
      * writes the migration), `redis` (needs @marmeon/redis and redis), `memory` (tests) or `cookie` (the data in the
-     * encrypted cookie — not for apps with sign-in, E46).
+     * encrypted cookie — not for apps with sign-in).
      */
     SESSION_DRIVER: env.in(['file', 'database', 'redis', 'memory', 'cookie']).default('file'),
     /**
      * Which database or Redis connection the `database`/`redis` driver uses. The database driver never joins the app's
-     * transactions (E108): on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
+     * transactions: on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
      * own here, or sessions cannot be written inside a transaction.
      */
     SESSION_CONNECTION: env.string().default('default'),
@@ -23,7 +23,7 @@ export const SessionConfig = defineConfig('session', {
     /** Where the `file` driver keeps sessions, relative to the app root. */
     SESSION_FILES: env.string().default('storage/framework/sessions'),
     /**
-     * Send the session's cookies — and every other cookie the app sets without saying (E162) — over HTTPS only. Unset (or
+     * Send the session's cookies — and every other cookie the app sets without saying — over HTTPS only. Unset (or
      * empty): follows `APP_URL` — `https://…` → on, `http://…` → off. `true`/`false` decide it themselves.
      */
     SESSION_SECURE_COOKIE: BOOLEAN.optional(),
@@ -32,7 +32,7 @@ export const SessionConfig = defineConfig('session', {
     NODE_ENV: env.string().optional(),
     SESSION_SAME_SITE: env.in(['lax', 'strict', 'none']).default('lax'),
     /**
-     * Encrypt the session data in its store (E144) — the file, the `payload` column, the Redis value — with the app's key
+     * Encrypt the session data in its store — the file, the `payload` column, the Redis value — with the app's key
      * (`APP_KEY`; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Off by default (like Laravel); the store's keys are
      * hashes of the session ids either way. Turning it on or off signs everybody out once. The `cookie` driver's data is always
      * encrypted (it is a cookie).
@@ -46,9 +46,9 @@ export const SessionConfig = defineConfig('session', {
   }),
   resolve: (e) => ({
     driver: e.SESSION_DRIVER,
-    /** Where `secure` comes from: `SESSION_SECURE_COOKIE`, or `APP_URL`'s protocol (E162). */
+    /** Where `secure` comes from: `SESSION_SECURE_COOKIE`, or `APP_URL`'s protocol. */
     secureFrom: (e.SESSION_SECURE_COOKIE === undefined ? 'APP_URL' : 'SESSION_SECURE_COOKIE') as 'APP_URL' | 'SESSION_SECURE_COOKIE',
-    /** Protected environment (E139: not development, not test) — cookies without `Secure` there are warned about at boot. */
+    /** Protected environment (not development, not test) — cookies without `Secure` there are warned about at boot. */
     protected: environment.isProtected(e),
     connection: e.SESSION_CONNECTION,
     lifetime: e.SESSION_LIFETIME,
@@ -78,7 +78,7 @@ function isHttps(url: string | undefined): boolean {
 }
 
 /**
- * The boot warning of a protected environment (E139) whose cookies go without `Secure` (E162): over plain HTTP a session cookie
+ * The boot warning of a protected environment whose cookies go without `Secure`: over plain HTTP a session cookie
  * can be read and replayed by anybody on the way.
  */
 export function insecureCookieWarning(from: 'APP_URL' | 'SESSION_SECURE_COOKIE'): string {

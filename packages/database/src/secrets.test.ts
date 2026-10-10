@@ -115,7 +115,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     expect(both).not.toHaveProperty('password');
   });
 
-  it('counter-check: without the connection plugin, select-all would hand out the hash', async () => {
+  it('without the connection plugin, select-all would hand out the hash', async () => {
     await insertAda();
     const raw = await db.withoutPlugins().selectFrom('accounts').selectAll().executeTakeFirstOrThrow();
     expect(raw).toMatchObject({ password: HASH });
@@ -133,13 +133,13 @@ describe.each(drivers)('secret columns on %s', (driver) => {
 });
 
 describe.each(drivers)('schema metadata inside transactions on %s', (driver) => {
-  it('is loaded on the connection a transaction holds — a first relation query inside one no longer hangs (W3 bug)', async () => {
+  it('is loaded on the connection a transaction holds — a first relation query inside one does not hang', async () => {
     const { connections, close } = await freshConnections(driver);
     try {
       await migrator(connections).migrate();
       const db = connections.get<AccountTables>();
       await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).execute();
-      // Before: the plugin looked up column kinds through the pool — which the transaction holds (SQLite: forever).
+      // A lookup through the pool would wait for the connection the transaction holds (SQLite: forever).
       const run = db.transaction().execute((trx) =>
         trx
           .selectFrom('users')
@@ -182,7 +182,7 @@ export async function secretTypes() {
   // @ts-expect-error — `accounts` is not in this query
   accountsDb.selectFrom('users').select((eb) => secret(eb, 'accounts.password'));
 
-  // Finding: Kysely's `selectAll()` type keeps the key as `never` (the runtime drops it).
+  // Kysely's `selectAll()` type keeps the key as `never` (the runtime drops it).
   const all = await accountsDb.selectFrom('accounts').selectAll().executeTakeFirstOrThrow();
   expectTypeOf(all.password).toEqualTypeOf<never>();
 }

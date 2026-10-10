@@ -35,16 +35,9 @@ export interface OpenedFile {
 }
 
 /**
- * A disk (E91): files under keys (`avatars/7.webp`), on the local file system, in S3 or in memory. Every key is checked
+ * A disk: files under keys (`avatars/7.webp`), on the local file system, in S3 or in memory. Every key is checked
  * ({@link normalizeKey}): no `..`, no absolute path, no backslash, no NUL. Reading a missing file throws
- * `FileNotFoundError`.
- *
- * ```ts
- * const disk = this.#storage.disk('public');
- * await disk.put('avatars/7.webp', file, { contentType: 'image/webp' });
- * disk.url('avatars/7.webp');                                                      // public disks only
- * await this.#storage.disk('local').temporaryUrl('exports/7.json', { expiresIn: { minutes: 5 } });
- * ```
+ * `FileNotFoundError`. See `docs/storage.md#using-a-disk`.
  */
 export interface Disk {
   /** The disk's name in the configuration. */

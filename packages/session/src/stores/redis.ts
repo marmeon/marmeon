@@ -31,9 +31,9 @@ return 'written'`,
 export type RedisSessionConnection = RedisConnection | (() => Promise<RedisConnection>);
 
 /**
- * Sessions in Redis (`SESSION_DRIVER=redis`): `<prefix>session:<key>` (the SHA-256 of the session id, E144) is a hash holding
+ * Sessions in Redis (`SESSION_DRIVER=redis`): `<prefix>session:<key>` (the SHA-256 of the session id) is a hash holding
  * the payload (`d`) and its version (`v`) and expires on its own (`EXPIRE`, Redis' clock — `app.travel()` does not move it),
- * so `gc` has nothing to do. Writing is a Lua script — compare the version, write, renew — one atomic step (E145): a session a
+ * so `gc` has nothing to do. Writing is a Lua script — compare the version, write, renew — one atomic step: a session a
  * sign-out deleted meanwhile stays deleted, one another request wrote meanwhile is a conflict.
  */
 export class RedisSessionStore implements SessionStore {

@@ -10,7 +10,7 @@ export const CacheConfig = defineConfig('cache', {
     CACHE_DRIVER: env.in(['file', 'memory', 'database', 'redis']).default('file'),
     /**
      * Which database or Redis connection the `database`/`redis` driver uses. The database driver never joins the app's
-     * transactions (E108): on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
+     * transactions: on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
      * own here, or rate limits and locks cannot be used inside a transaction.
      */
     CACHE_CONNECTION: env.string().default('default'),

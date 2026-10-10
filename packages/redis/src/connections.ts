@@ -9,15 +9,8 @@ export interface RedisConnectionOptions {
 }
 
 /**
- * A Lua script, run atomically by Redis. Defined once (module scope), run by name and hash: `EVALSHA`, and the
- * script itself only when this Redis does not know it yet (after a restart or `SCRIPT FLUSH`).
- *
- * ```ts
- * const release = defineRedisScript('lock.release', `
- *   if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end
- *   return 0`);
- * await connection.run(release, [connection.key('lock:report')], [owner]);
- * ```
+ * A Lua script, run atomically by Redis. Defined once at module scope and run by its hash (`EVALSHA`); the script itself
+ * is sent only when this Redis does not know it yet (after a restart or `SCRIPT FLUSH`). See `docs/redis.md#using-redis-yourself`.
  */
 export interface RedisScript {
   readonly name: string;
@@ -46,10 +39,7 @@ interface ClientModule {
   createClient(options: Record<string, unknown>): Client;
 }
 
-/**
- * node-redis — a dependency of this package (E198: it wraps exactly this one driver, so `pnpm add @marmeon/redis` is all an
- * app installs), imported on first use: an app whose drivers never talk to Redis never loads it.
- */
+/** node-redis, a dependency of this package, imported on first use: an app whose drivers never talk to Redis never loads it. */
 async function loadClient(): Promise<ClientModule> {
   const module = (await import('redis')) as unknown as Partial<ClientModule> & { default?: Partial<ClientModule> };
   const createClient = module.createClient ?? module.default?.createClient;
@@ -167,9 +157,9 @@ export class RedisConnection {
         reconnectStrategy: (retries: number, cause: Error) => (connected ? Math.min(50 * 2 ** retries, 2_000) : cause),
       },
     });
-    // Without a listener, a connection error would crash the process; logged once per failure.
+    // Without a listener, a connection error would crash the process.
     client.on('error', (error) => {
-      // The driver's text masked by the app's Redactor, like every error line of the framework.
+      // The driver's text is masked by the app's Redactor, like every error line of the framework.
       if (connected) this.#logger.warn('The Redis connection failed; reconnecting', { connection: this.name, error: this.#redactor.text(error.message) });
     });
     try {
@@ -200,14 +190,8 @@ export function describeRedisUrl(url: string): string {
 }
 
 /**
- * The app's Redis connections — opened on first use, closed on shutdown. `default` comes from `REDIS_URL`, others from
- * {@link defineRedisConnection}.
- *
- * ```ts
- * constructor(redis: RedisConnections) {
- *   this.#redis = redis.get();            // or .get('queue')
- * }
- * ```
+ * The app's Redis connections, opened on first use and closed on shutdown: `redis.get()` is `default` (from `REDIS_URL`),
+ * `redis.get('queue')` one of {@link defineRedisConnection}.
  */
 export class RedisConnections {
   readonly #options: ReadonlyMap<string, RedisConnectionOptions>;

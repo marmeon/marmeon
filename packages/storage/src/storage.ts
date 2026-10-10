@@ -10,13 +10,8 @@ import { didYouMean, StorageError, StorageSetupError } from './errors.ts';
 import type { TemporaryUrls } from './temporary.ts';
 
 /**
- * The app's disks (E91) — `constructor(storage: Storage)`, then:
- *
- * ```ts
- * const disk = this.#storage.disk('public');          // typed by the app's StorageTypes: a wrong name is a type error
- * await disk.put('avatars/7.webp', file);
- * this.#storage.disk();                                // the default disk
- * ```
+ * The app's disks, injected as `Storage`: `storage.disk('public')` (typed by the app's `StorageTypes`, so a wrong name is a
+ * type error), or `storage.disk()` for the default disk.
  */
 export interface Storage {
   /** The disk `name` — built on first use (default: the configured default disk). */

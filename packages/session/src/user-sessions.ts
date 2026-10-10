@@ -1,7 +1,7 @@
 import type { SessionStore } from './store.ts';
 
 /**
- * The sessions of a user, as a whole — for an account that is deleted (E203: `auth:prune-unverified`, a "delete my account"
+ * The sessions of a user, as a whole — for an account that is deleted (`auth:prune-unverified`, a "delete my account"
  * page). A singleton: inject it anywhere, also in a command or a scheduled task.
  *
  * `end(id)` removes the user's sessions from a store that knows whose a session is (`database`: the `user_id` column). Every

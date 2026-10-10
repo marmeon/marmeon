@@ -145,7 +145,7 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
         // The window is part of the counter's key: two limits with the same `by` (per minute and per
         // second) must not share one counter — Laravel leaves that to unique `by` values.
         const key = `${name}:${limit.decaySeconds}:${limit.key}`;
-        // A live validation (E62) of the route is no attempt: it is held to the route's limit, but does not count against it — a
+        // A live validation of the route is no attempt: it is held to the route's limit, but does not count against it — a
         // form checked field by field must not use up the tries of sending it (it has its own limit: `LimitLiveValidation`).
         // Every other request counts and is decided on its own count, in one atomic step (`hit`).
         const attempts = live ? await this.#limiter.attempts(key) : await this.#limiter.hit(key, limit.decaySeconds);
@@ -196,15 +196,9 @@ export const LIVE_VALIDATION_LIMITER = 'live-validation';
 export const DEFAULT_LIVE_VALIDATION_LIMIT = 30;
 
 /**
- * The limit of live validations (E62), in the global stack: every request naming fields to check (`x-marmeon-validate`) counts
- * once against its own counter per route — `live-validation:<route>` — by the client's address: 30 a minute (a form checked on
- * blur needs a few), then `429` until the window passes. Never the route's own counters (`throttle(name)` holds a live
- * validation to them without counting it), never the session's. An app sets its own with
- * `limiter.for('live-validation', (ctx) => Limit.perMinute(60).by(ctx.ip ?? ''))` — `Limit.none()` turns it off.
- *
- * A live validation never asks the database (E197: `unique`/`exists`/async rules stay out unless `.live()`; a schema of another
- * library runs only with `live: true`, E206) — what it may still tell (a `.live()` rule's "taken", a format) this limit keeps
- * from being a faster way to ask than submitting.
+ * The limit of live validations, in the global stack: 30 a minute per route and client address, then `429`; a limiter named
+ * `live-validation` replaces it. It keeps what a live validation may still tell (a `.live()` rule's "taken") from being a
+ * faster way to ask than submitting. See `docs/rate-limiting.md#live-validations`.
  */
 export class LimitLiveValidation {
   readonly #limiter: RateLimiter;

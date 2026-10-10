@@ -18,7 +18,7 @@ const inRequest = (users: UserRepository, ctx: object = {}, live = false) => ({
   libraryOptions: { marmeon: { resolve: () => users, ctx, live } as unknown as ValidationContext },
 });
 
-describe.each(drivers)('the unique index is the truth — on %s (E197)', (driver) => {
+describe.each(drivers)('the unique index is the truth — on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;

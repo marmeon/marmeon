@@ -39,7 +39,7 @@ async function race(target: StoreTarget, operation: 'hit' | 'add', count: number
   return Promise.all(contenders.map(({ result }) => result()));
 }
 
-// The Gegenproben of E103 across processes: what a single process cannot show — two Node processes on one store.
+// What a single process cannot show: two Node processes on one store.
 // (The memory store is one process by nature: its 100 concurrent attempts are in stores.test.ts.)
 describe.each(storeKinds.filter((kind): kind is Exclude<StoreKind, 'memory'> => kind !== 'memory'))('the %s store, from two processes', (kind) => {
   it('lets exactly 10 of 2 × 100 concurrent attempts through a limit of 10', { timeout: 30_000 }, async () => {

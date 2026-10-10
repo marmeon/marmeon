@@ -13,7 +13,7 @@ export function uploadsTableConnection(container: Resolver): string {
   return container.make(UploadsConfig).connection;
 }
 
-/** `marmeon make:uploads-table [--module=system]`: the migration of `temporary_uploads` into an app module (E96). */
+/** `marmeon make:uploads-table [--module=system]`: the migration of `temporary_uploads` into an app module. */
 export class MakeUploadsTableCommand {
   static command = 'make:uploads-table';
   static description = 'Create the migration for temporary uploads (temporary_uploads)';

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { afterCommit, afterRollback, inTransaction, outsideTransaction, Repository, TransactionError, TransactionFinishedError, type Connections } from './index.ts';
 
-// The ambient transaction context (E107): `connections.transaction(callback)` and everything awaited inside it.
+// The ambient transaction context: `connections.transaction(callback)` and everything awaited inside it.
 
 interface NoteTables {
   notes: { id: Generated<number>; title: string };
@@ -24,7 +24,7 @@ class NoteRepository extends Repository<'notes', NoteTables> {
 
 class Rollback extends Error {}
 
-/** A hang is a failure, not a stuck suite: the W3 pitfall (a second transaction on SQLite's one connection) hangs forever. */
+/** A hang is a failure, not a stuck suite: a second transaction on SQLite's one connection hangs forever. */
 function within<T>(promise: Promise<T>, ms = 3000): Promise<T> {
   return Promise.race([promise, sleep(ms).then(() => Promise.reject(new Error(`hung for ${ms} ms`)))]);
 }
@@ -110,7 +110,7 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
           }),
         ).rejects.toBeInstanceOf(Rollback);
         await connections.transaction(() => notes.insert({ title: 'inner, kept' }));
-        // Kysely's own transaction inside the ambient one: a savepoint as well (W3: it used to hang SQLite).
+        // Kysely's own transaction inside the ambient one: a savepoint as well.
         await db.transaction().execute((trx) => trx.insertInto('notes').values({ title: 'kysely' }).execute());
       }),
     );
@@ -188,7 +188,7 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
     expect(seen).toEqual(['no transaction: at once', 'callback done', 'outer: in transaction false, sees kept', 'savepoint, committed with the outer']);
   });
 
-  it('runs afterRollback work right after a rollback, outside the transaction — and never after a commit (E108)', async () => {
+  it('runs afterRollback work right after a rollback, outside the transaction — and never after a commit', async () => {
     const seen: string[] = [];
     await afterRollback(() => seen.push('no transaction: never'));
     await within(
@@ -284,7 +284,7 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
 
   it('keeps the context to its own call chain: concurrent transactions never see each other (AsyncLocalStorage)', async () => {
     // On Postgres the three run at once (three connections): each step waits for the others to have looked — not for a
-    // guessed time, which a loaded machine overran (W7.1). On SQLite (one connection) they queue: b and the plain chain
+    // guessed time, which a loaded machine overran. On SQLite (one connection) they queue: b and the plain chain
     // start a moment later and wait for a's commit.
     const signal = () => {
       let open!: () => void;

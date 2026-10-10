@@ -113,7 +113,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('migrations on another connection (%s, E108)', (driver) => {
+describe.each(drivers)('migrations on another connection (%s)', (driver) => {
   const system: ModuleDefinition = { name: 'system', migrations: fixtures('system') };
   let connections: Connections;
   let drops: (() => Promise<void>)[];

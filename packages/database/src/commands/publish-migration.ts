@@ -4,11 +4,11 @@ import type { CommandInput } from 'marmeon';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
-/** The module a driver's tables go to unless `--module` names another (E96). */
+/** The module a driver's tables go to unless `--module` names another. */
 export const SYSTEM_MODULE = 'system';
 
 /**
- * Writes a framework driver's migration into an app module (E96: the tables belong to the app, like `make:auth`'s) —
+ * Writes a framework driver's migration into an app module (the tables belong to the app, like `make:auth`'s) —
  * `make:cache-table`, `make:session-table`, `make:queue-table`, …. The module is `--module`, by default `system`, which is
  * created (with its `migrations` directory) and registered in `bootstrap/app.ts` when it does not exist yet.
  *

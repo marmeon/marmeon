@@ -4,8 +4,8 @@ import { Cache } from './cache.ts';
 import { CacheConfig } from './config.ts';
 
 /**
- * Readiness (E126): the cache takes a key and lets it go again — `add` + `forget` through the store of `CACHE_DRIVER`, so on
- * the infrastructure connection a database store writes through (E108). Registered by the `CacheServiceProvider` for `/up/ready`.
+ * Readiness: the cache takes a key and lets it go again — `add` + `forget` through the store of `CACHE_DRIVER`, so on
+ * the infrastructure connection a database store writes through. Registered by the `CacheServiceProvider` for `/up/ready`.
  */
 export class CacheHealthCheck implements HealthCheck {
   static check = 'cache';

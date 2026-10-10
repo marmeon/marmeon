@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Cache } from './cache.ts';
 import { CacheServiceProvider } from './index.ts';
 
-describe('the cache health check (E126)', () => {
+describe('the cache health check', () => {
   it('adds a key and forgets it again — through the store of CACHE_DRIVER', async () => {
     await using app = await createApplication({ root: import.meta.dirname, discover: false, env: { CACHE_DRIVER: 'memory' }, providers: [CacheServiceProvider] });
     const report = await app.container.make(HealthChecks).run(app.container);

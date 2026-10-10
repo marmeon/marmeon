@@ -3,7 +3,7 @@ import { SystemClock, token, type Clock } from '@marmeon/core';
 
 /**
  * A key-value store with expiry (Laravel's `Cache` repository). Values must survive `JSON.stringify`. `add`, `increment`
- * and locks are atomic in every store (E103) — across processes for `file`, `database` and `redis`.
+ * and locks are atomic in every store — across processes for `file`, `database` and `redis`.
  */
 export interface Cache {
   get<T = unknown>(key: string): Promise<T | undefined>;
@@ -32,16 +32,8 @@ export interface Cache {
    */
   prune(): Promise<number | undefined>;
   /**
-   * An atomic lock, held for at most `seconds` (it expires, so a crashed holder cannot block forever):
-   *
-   * ```ts
-   * const lock = cache.lock(`avatar:${user.id}`, 10);
-   * if (!(await lock.get())) abort(423);
-   * try { … } finally { await lock.release(); }         // frees it only if this lock still holds it
-   * await cache.lock('report', 60).block(5, () => …);    // waits up to 5 s, then LockTimeoutError
-   * ```
-   *
-   * `owner` restores a lock taken elsewhere (another request, a job) to release it: `cache.lock(name, seconds, owner)`.
+   * An atomic lock, held for at most `seconds` (it expires, so a crashed holder cannot block forever). `owner` restores a
+   * lock taken elsewhere (another request, a job) to release it. See `docs/cache.md#locks`.
    */
   lock(name: string, seconds: number, owner?: string): Lock;
 }
@@ -55,8 +47,8 @@ export interface Entry {
 
 /**
  * The storage behind a cache (memory, file, database, redis). Every operation that decides on what is stored — `add`,
- * `increment`, `lock`, `unlock` — is one atomic step of the store, never read-then-write in the cache above it
- * (E103). Expiry is the store's: it reads the time from its {@link Clock} (Redis from its own clock, `PX`).
+ * `increment`, `lock`, `unlock` — is one atomic step of the store, never read-then-write in the cache above it.
+ * Expiry is the store's: it reads the time from its {@link Clock} (Redis from its own clock, `PX`).
  */
 export interface CacheStore {
   /** The entry, if present and not expired. */

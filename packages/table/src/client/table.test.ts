@@ -10,7 +10,7 @@ import { loadHistoryFallback, Navigator, selection } from '@marmeon/http/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TableController, tableStatus, type TableData } from './index.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 type Row = { id: number; name: string; joined: string; email?: string };
@@ -59,7 +59,7 @@ function members(query: URLSearchParams, rows = live): Members {
 let live: Row[] = [];
 const requests: { method: string; url: string; headers: Record<string, string>; body: unknown }[] = [];
 
-/** A "load more" page marks the table's prop deep-merged — a revalidation must still replace it (W9 step 3). */
+/** A "load more" page marks the table's prop deep-merged — a revalidation must still replace it. */
 const MERGED: Pick<PageObject, 'deepMergeProps' | 'matchPropsOn'> = { deepMergeProps: ['members'], matchPropsOn: ['members.rows.id', 'members.columns.name', 'members.filters.name', 'members.actions.name', 'members.bulk.name', 'members.exports.name'] };
 
 function pageOf(url: URL): PageObject {

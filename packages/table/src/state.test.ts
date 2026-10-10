@@ -42,7 +42,7 @@ describe('the table\'s state in the URL', () => {
     expect(stateQuery(members, parseState(members, search('sort=name')))).toEqual({});
   });
 
-  it('is a query schema that throws the 400 out of the router\'s parsing — no per-field fallback (E56) for a table', async () => {
+  it('is a query schema that throws the 400 out of the router\'s parsing — no per-field fallback for a table', async () => {
     const parsed = await parseQuery(MembersTable.query, search('sort=-joined&tab=x'));
     expect(parsed.value).toEqual({ sort: '-joined', page: 1, per_page: 2, search: '' });
     expect(parsed.canonical).toEqual({ sort: '-joined' });

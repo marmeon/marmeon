@@ -15,7 +15,7 @@ import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './tempo
 import { encodeKey } from './keys.ts';
 import { secondsOf } from './contents.ts';
 
-// Storage (E91): disks — local (with a root jail), S3 (an optional peer) and memory (the fake) — behind one contract;
+// Storage: disks — local (with a root jail), S3 (an optional peer) and memory (the fake) — behind one contract;
 // public disks served with safe headers, private ones only through signed, expiring URLs.
 export { defineStorage, DEFAULT_STORAGE, isStorageDefinition } from './config.ts';
 export type {
@@ -52,7 +52,7 @@ export { TEMPORARY_PREFIX } from './temporary.ts';
 export type { TemporaryUrls } from './temporary.ts';
 export { StorageSetup } from './setup.ts';
 
-// Uploads (W6.9, Livewire's model): a target per route field, the bytes to a private disk, a token in the form, verified on submit.
+// Uploads (Livewire's model): a target per route field, the bytes to a private disk, a token in the form, verified on submit.
 export { upload, uploadFields, uploadRuleOf, formatBytes, UPLOAD_RULE } from './uploads/rule.ts';
 export type { CheckUploadMime, UploadInput, UploadRule, UploadSchema } from './uploads/rule.ts';
 export { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';
@@ -80,7 +80,7 @@ export async function diskAttachment(disk: Disk, key: string, options: { filenam
   return { filename: options.filename ?? key.slice(key.lastIndexOf('/') + 1), content, contentType };
 }
 
-/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file (E108). */
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file. */
 const UPLOADS_INFRASTRUCTURE = {
   system: 'Temporary uploads (temporary_uploads)',
   remedy:
@@ -97,14 +97,8 @@ function storageOptions(container: Resolver): StorageOptions {
 }
 
 /**
- * Registers `Storage` (the app's disks, built on first use), checks the configuration at startup (a private disk never
- * shares a directory with a public one), and — with @marmeon/http — signs temporary URLs with its `UrlSigner` and
- * serves public disks under their path (`/storage/…`) and temporary URLs under `/_marmeon/storage/…`, with safe headers.
- * Found by `marmeon discover`.
- */
-/**
  * The disks the app is sure to use — the default disk and the uploads' (UPLOADS_DISK) — fail the start when they are on S3 and
- * the AWS SDK is missing (optional peers, E198): the exact command at the start, not an error on the first request. Uploads on S3
+ * the AWS SDK is missing (optional peers): the exact command at the start, not an error on the first request. Uploads on S3
  * go straight to the store (a presigned POST) and need `@aws-sdk/s3-presigned-post` too. Other S3 disks say it when first used.
  */
 export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing: (names: readonly string[]) => string[] = missingPackages): void {
@@ -119,6 +113,12 @@ export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing
   }
 }
 
+/**
+ * Registers `Storage` (the app's disks, built on first use), checks the configuration at startup (a private disk never
+ * shares a directory with a public one), and — with @marmeon/http — signs temporary URLs with its `UrlSigner` and
+ * serves public disks under their path (`/storage/…`) and temporary URLs under `/_marmeon/storage/…`, with safe headers.
+ * Found by `marmeon discover`.
+ */
 export class StorageServiceProvider implements ServiceProvider {
   static config = [UploadsConfig];
 
@@ -142,7 +142,7 @@ export class StorageServiceProvider implements ServiceProvider {
       this.#manager = new StorageManager(setup.options, setup.dependencies);
       return this.#manager;
     });
-    // Temporary uploads (W6.9): built on first use — the disk looked up per use (the test fake replaces `Storage`).
+    // Temporary uploads: built on first use — the disk looked up per use (the test fake replaces `Storage`).
     container.singleton(TemporaryUploads, (c) => {
       if (!this.#uploads) {
         throw new StorageSetupError('Uploads need @marmeon/http, @marmeon/database and @marmeon/encryption in the app (and their providers: marmeon discover).');
@@ -205,7 +205,7 @@ export class StorageServiceProvider implements ServiceProvider {
       const key = container.make(encryption.EncryptionConfig);
       const connections = container.make(database.Connections);
       this.#uploads = {
-        // Infrastructure (E108): never the app's transaction — a rollback after store() never makes a used token usable again.
+        // Infrastructure: never the app's transaction — a rollback after store() never makes a used token usable again.
         db: () => connections.infrastructure(uploads.connection, UPLOADS_INFRASTRUCTURE),
         keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
         receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),

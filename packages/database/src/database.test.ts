@@ -80,7 +80,7 @@ describe.each(drivers)('a %s connection', (driver) => {
   });
 
   it('isolates a connection in a transaction, where the code’s own transactions become savepoints', async () => {
-    // What a test wrapped in a transaction (E21) looks like to the code under test.
+    // What a test wrapped in a transaction looks like to the code under test.
     const isolation = await connections.isolate();
     await db.insertInto('posts').values({ user_id: 1, title: 'Undone with the test' }).execute();
     await expect(
@@ -288,7 +288,7 @@ describe('DatabaseServiceProvider', () => {
   });
 });
 
-describe('pg (an optional peer, E198)', () => {
+describe('pg (an optional peer)', () => {
   it('without pg, DB_CONNECTION=pgsql says what to install — with the tested major; a broken install passes through', async () => {
     const { importPg } = await import('./postgres.ts');
     const missing = Object.assign(new Error("Cannot find package 'pg' imported from /app/node_modules/@marmeon/database/dist/postgres.js"), { code: 'ERR_MODULE_NOT_FOUND' });

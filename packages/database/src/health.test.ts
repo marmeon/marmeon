@@ -21,7 +21,7 @@ const boot = (extra: ReturnType<typeof defineConnection>[] = []) =>
     override: (container) => container.instance(Logger, silent),
   });
 
-describe('the database health check (E126)', () => {
+describe('the database health check', () => {
   it('is registered by the provider and answers `select 1` on every connection the app uses — never opens one it does not', async () => {
     const file = join(root, 'system.sqlite');
     await using app = await boot([defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) })]);

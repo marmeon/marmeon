@@ -23,7 +23,7 @@ export type KeyOf<T extends keyof DB, DB = Tables> = Selectable<DB[T]> extends {
 
 /** What a repository class declares statically, next to `extends Repository<'users'>`. */
 export interface RepositoryStatics {
-  /** The table — a runtime value, like `static request` on controllers (E13). */
+  /** The table — a runtime value, like `static request` on controllers. */
   readonly table: string;
   /** Default connection name. */
   readonly connection?: string;
@@ -50,20 +50,9 @@ let savepoints = 0;
 export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never };
 
 /**
- * Optional base for a table's repository — a Data Mapper: rows in, rows out, no Active Record,
- * no identity map, no lazy loading, no dirty tracking, nothing happens on save that you did not call.
- *
- * ```ts
- * export class UserRepository extends Repository<'users'> {
- *   static table = 'users' as const;
- *   findByEmail(email: string) {
- *     return this.query().selectAll().where('email', '=', email).executeTakeFirst();
- *   }
- * }
- * ```
- *
- * Repositories are ordinary injectable classes: data access only, their only dependency is the
- * connection (that is what lets {@link using} bind one to a transaction).
+ * Optional base for a table's repository — rows in, rows out: no identity map, no lazy loading, no dirty tracking. Declare
+ * the table again as a value (`static table = 'users' as const`); the only dependency is the connection, which is what lets
+ * {@link using} bind one to a transaction. See `docs/queries.md#repositories`.
  */
 export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
   readonly #db: Kysely<DB>;
@@ -101,14 +90,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
 
   /**
    * The same repository, working inside `trx` — explicitly. Inside `connections.transaction(…)` a repository joins the
-   * transaction by itself (E107); `using(trx)` is for transactions you control yourself (Kysely's
-   * `db.startTransaction()`, a second connection at the same time, code outside the transaction's call chain):
-   *
-   * ```ts
-   * const trx = await db.startTransaction().execute();
-   * await this.#users.using(trx).insert({ … });
-   * await trx.commit().execute();
-   * ```
+   * transaction by itself; `using(trx)` is for transactions you control yourself (Kysely's
+   * `db.startTransaction()`, a second connection at the same time, code outside the transaction's call chain).
    */
   using(trx: Transaction<DB> | Kysely<DB>): this {
     // A real instance (a copy via Object.create would lack the private fields and methods of its class),
@@ -124,7 +107,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * Runs `callback` in a transaction of the repository's connection — `connections.transaction()` (E107): everything
+   * Runs `callback` in a transaction of the repository's connection — `connections.transaction()`: everything
    * awaited inside joins it, other repositories too. Inside another transaction it becomes a savepoint (also for a
    * repository bound with `using(trx)` — Kysely itself refuses a transaction in a transaction).
    */

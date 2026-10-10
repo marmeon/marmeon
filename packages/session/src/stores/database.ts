@@ -2,7 +2,7 @@ import { SystemClock, type Clock } from '@marmeon/core';
 import type { Kysely } from '@marmeon/database';
 import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
-/** The table `marmeon make:session-table` creates (E96: the app owns the migration; the store types it itself). */
+/** The table `marmeon make:session-table` creates (the app owns the migration; the store types it itself). */
 export const SESSIONS_TABLE = 'sessions';
 
 /** A connection of @marmeon/database. */
@@ -14,12 +14,12 @@ type Sql = (typeof import('@marmeon/database'))['sql'];
 
 /**
  * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
- * session id (`id`, E144), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's
+ * session id (`id`), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's
  * id in `user_id` (null for guests), the time of the last write in `last_activity` (epoch milliseconds) and a `version` that
  * goes up with every write. A session lives for the store's lifetime (`SESSION_LIFETIME`) after its last activity, like
  * Laravel's database handler.
  *
- * Writing back is ONE statement, `UPDATE … WHERE id = ? AND version = ? AND last_activity > ?` (compare-and-set, E145): a row a
+ * Writing back is ONE statement, `UPDATE … WHERE id = ? AND version = ? AND last_activity > ?` (compare-and-set): a row a
  * sign-out deleted meanwhile — or another request wrote meanwhile — matches nothing, on Postgres and SQLite alike, across any
  * number of processes. A new session is `INSERT … ON CONFLICT DO NOTHING`: it never replaces a row.
  */
@@ -70,7 +70,7 @@ export class DatabaseSessionStore implements SessionStore {
     await sql`delete from sessions where id = ${key}`.execute(db);
   }
 
-  /** Every session of the user `userId` — a deleted account's (E203). */
+  /** Every session of the user `userId` — a deleted account's. */
   async destroyUser(userId: string): Promise<number> {
     const { db, sql } = await this.#use();
     const result = await sql`delete from sessions where user_id = ${userId}`.execute(db);

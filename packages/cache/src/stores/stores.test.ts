@@ -5,7 +5,7 @@ import { RateLimiter } from '../rate-limiter.ts';
 import { FileStore } from './file.ts';
 import { storeKinds, storeUnderTest, type StoreUnderTest } from '../__fixtures__/stores.ts';
 
-// ONE suite for every store (E103): memory, file, database on SQLite — and on Postgres (`pnpm test:pgsql`) and Redis
+// ONE suite for every store: memory, file, database on SQLite — and on Postgres (`pnpm test:pgsql`) and Redis
 // (`pnpm test:redis`). What a store decides — add, increment, locks — must behave the same everywhere.
 describe.each(storeKinds)('the %s store', (kind) => {
   let current: StoreUnderTest | undefined;

@@ -99,7 +99,7 @@ describe.each(DISK_KINDS.map((kind) => [kind.name, kind] as const))('the %s disk
     }
   });
 
-  it.skipIf(kind.skip)('counter-check: refuses keys that leave their directory — on every operation', async () => {
+  it.skipIf(kind.skip)('refuses keys that leave their directory — on every operation', async () => {
     const disk = await make();
     await disk.put('ok.txt', 'ok');
     for (const key of ['../../.env', 'a/../../x', '/etc/passwd', 'a\u0000.png', '..\\x', 'a//b', '']) {

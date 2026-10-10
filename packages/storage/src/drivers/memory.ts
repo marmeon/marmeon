@@ -25,7 +25,7 @@ export interface MemoryDiskConfig {
 export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: { contentType: string }) => boolean);
 
 /**
- * Files in memory (E91) — the disk of the storage fake (`app.storage.disk('public')` in tests), with the same key checks
+ * Files in memory — the disk of the storage fake (`app.storage.disk('public')` in tests), with the same key checks
  * as every disk and the same URLs (a public disk's `url()`, signed `temporaryUrl()`s the app's routes serve). Its
  * assertions: `assertExists(key, contents?)`, `assertMissing(key)`, `assertCount(n, directory?)`.
  */

@@ -17,7 +17,7 @@ const UNNAMED: InfrastructureUsage = {
 
 /**
  * An infrastructure system (the cache, rate limits, locks, sessions) was used inside an open transaction of a connection
- * whose only physical connection that transaction holds — SQLite, or a test's isolated connection (E108). Joining would
+ * whose only physical connection that transaction holds — SQLite, or a test's isolated connection. Joining would
  * roll its writes back with the transaction (a rate limit undone, a lock nobody else sees); waiting would never end.
  */
 export class InfrastructureTransactionError extends TransactionError {
@@ -38,17 +38,11 @@ export class InfrastructureTransactionError extends TransactionError {
 }
 
 /**
- * The driver of an infrastructure connection (E108): every statement runs on a connection of its own, never inside the
- * app's ambient transaction — a rate-limit counter or a lock taken inside a transaction that rolls back stays, and other
- * processes see a lock at once.
- *
- * - **Postgres:** a small pool of its own (`infrastructurePoolMax`) to the same database, opened on first use — also so
- *   that transactions waiting for a rate limit can never use up the pool the rate limit needs.
- * - **SQLite, and a test's isolated connection:** one physical connection for everyone, shared with the connection's
- *   other users. Outside of transactions that is all it takes; inside an open transaction of the same file — which holds
- *   that connection — every statement throws {@link InfrastructureTransactionError} instead of joining or hanging.
- *
- * It runs single statements only: no transactions of its own.
+ * The driver of an infrastructure connection: every statement runs on a connection of its own, never inside the app's
+ * ambient transaction. On Postgres a small pool of its own (`infrastructurePoolMax`), so transactions waiting for a rate
+ * limit never use up the pool the rate limit needs; on SQLite (and a test's isolated connection) the one shared connection,
+ * where a statement inside an open transaction of the same file throws {@link InfrastructureTransactionError} instead of
+ * joining or hanging. Single statements only: no transactions of its own.
  */
 export class InfrastructureDriver implements Driver {
   readonly #main: MarmeonDriver;

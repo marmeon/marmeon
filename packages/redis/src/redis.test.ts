@@ -13,7 +13,7 @@ function connections(prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`
 }
 
 describe('RedisConnections without a server', () => {
-  it('loads its client at the start without connecting — node-redis comes with this package (E198), the app installs nothing else', async () => {
+  it('loads its client at the start without connecting — node-redis comes with this package, the app installs nothing else', async () => {
     const redis = connections('x:', 'redis://127.0.0.1:1');
     await expect(redis.verify()).resolves.toBeUndefined();
     await redis.close();

@@ -125,7 +125,7 @@ describe.each(drivers)('pagination on %s', (driver) => {
   it('encrypts the cursor: no value of the last row can be read from it', async () => {
     const byEmail = db.selectFrom('users').select(['id', 'email']).where('email', 'like', 'u%@example.com');
     const { meta } = await cursorPaginate(byEmail, { column: 'email', perPage: 1, encrypter });
-    // The base64url text of the cursor (what the format before Wave 9 was) holds no value of the row it ends at.
+    // The cursor read as plain base64url holds no value of the row it ends at.
     const readable = Buffer.from(meta.nextCursor!, 'base64url').toString('latin1');
     expect(readable, 'the cursor shows the last row').not.toContain('"u10@example.com"');
     expect(readable).not.toContain('@example.com');
@@ -151,7 +151,7 @@ describe.each(drivers)('pagination on %s', (driver) => {
     expect((await cursorPaginate(byEmail, { column: 'email', perPage: 1, cursor, encrypter })).data).toHaveLength(1);
   });
 
-  it('a named list takes only its own cursors — another list with the same order is a 400 (W10 step 8)', async () => {
+  it('a named list takes only its own cursors — another list with the same order is a 400', async () => {
     const byEmail = db.selectFrom('users').select(['id', 'email']).where('email', 'like', 'u%@example.com');
     const page = (list: string | undefined, cursor?: string) =>
       cursorPaginate(byEmail, { column: 'email', perPage: 1, encrypter, ...(list === undefined ? {} : { name: list }), ...(cursor ? { cursor } : {}) });

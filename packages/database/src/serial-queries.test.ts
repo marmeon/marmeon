@@ -5,7 +5,7 @@ import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { MarmeonDriver, serialQueries } from './driver.ts';
 import type { Connections } from './index.ts';
 
-// One query at a time per connection (W9 step 10b): a transaction's connection and a test's isolated one are shared by everything
+// One query at a time per connection: a transaction's connection and a test's isolated one are shared by everything
 // running inside them — `Promise.all` over a page's props, two requests of a test. `pg` warns about a query sent while another is
 // under way ("client.query() when the client is already executing a query") and pg 9 refuses it.
 
@@ -54,7 +54,7 @@ class CountingConnection implements DatabaseConnection {
 const raw = (text: string) => CompiledQuery.raw(text);
 
 describe('serialQueries()', () => {
-  it('counter-check: runs the queries of one connection one at a time, in the order they were sent', async () => {
+  it('runs the queries of one connection one at a time, in the order they were sent', async () => {
     const log: string[] = [];
     const inner = new CountingConnection(log);
     const connection = serialQueries(inner);

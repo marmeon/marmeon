@@ -1,4 +1,4 @@
-// Type guarantees of pagination (W9 step 3) — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
+// Type guarantees of pagination — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
 // compiler shows them, are quoted in the comments.
 import { defineRequest, type ContextOf } from '@marmeon/router';
 import type { Kysely } from 'kysely';

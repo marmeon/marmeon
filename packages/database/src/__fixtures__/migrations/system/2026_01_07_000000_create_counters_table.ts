@@ -1,6 +1,6 @@
 import { defineMigration } from '../../../index.ts';
 
-// On the connection the app's configuration names (like the cache's tables follow CACHE_CONNECTION, E108).
+// On the connection the app's configuration names (like the cache's tables follow CACHE_CONNECTION).
 export default defineMigration({
   connection: (container) => container.make<string>('counter connection' as never),
   up: (schema) =>

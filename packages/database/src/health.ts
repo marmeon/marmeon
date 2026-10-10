@@ -3,7 +3,7 @@ import { sql } from 'kysely';
 import { Connections } from './connections.ts';
 
 /**
- * Readiness (E126): every connection the app uses answers `select 1` — the app's pool, as requests use it (`Connections.used()`:
+ * Readiness: every connection the app uses answers `select 1` — the app's pool, as requests use it (`Connections.used()`:
  * `default` and what was asked for; one nothing uses is never opened). Registered by the `DatabaseServiceProvider` for `/up/ready`.
  */
 export class DatabaseHealthCheck implements HealthCheck {

@@ -37,7 +37,7 @@ async function stored(current: StoreUnderTest, writes: number): Promise<number> 
   }
 }
 
-// E143: a guest's page keeps no session — on every store (W8.6). A failed form is the first write.
+// A guest's page keeps no session — on every store. A failed form is the first write.
 describe.each(storeKinds)('guests and the %s session store', (kind) => {
   let current: StoreUnderTest | undefined;
   afterEach(async () => {

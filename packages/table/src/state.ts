@@ -4,8 +4,8 @@ import type { TableQueryKeys } from './client/index.ts';
 import type { TableDefinition, TableQuerySchema } from './define.ts';
 
 /**
- * A table's state in the URL — parsed strictly (E183): the table's own keys allow exactly what it defines, anything else is a **400**.
- * Deliberately stricter than other query fields, which fall back per field (E55/E56): a table says out loud what it cannot do, and a
+ * A table's state in the URL — parsed strictly: the table's own keys allow exactly what it defines, anything else is a **400**.
+ * Deliberately stricter than other query fields, which fall back per field: a table says out loud what it cannot do, and a
  * raw identifier never gets near `orderBy`/`where` — a sort or a filter is an alias, looked up in the definition.
  */
 export interface TableState {
@@ -179,7 +179,7 @@ function strict(definition: TableDefinition, key: string, fallback?: string | nu
 /**
  * The table's state as a query schema (rules of @marmeon/validation) — what `MembersTable.query` is; its `entries` spread into
  * another query (`r.query({ ...MembersTable.query.entries, tab: … })`). Its fields parse what {@link parseState} parses and
- * **throw** the 400 instead of reporting an issue: the router's query parsing falls back per field on issues (E56), a table must not.
+ * **throw** the 400 instead of reporting an issue: the router's query parsing falls back per field on issues, a table must not.
  * Defaults are filled in (sort, page, per_page), so the browser leaves them out of URLs it builds.
  */
 export function querySchema(definition: TableDefinition): TableQuerySchema {

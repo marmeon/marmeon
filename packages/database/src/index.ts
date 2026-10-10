@@ -1,11 +1,9 @@
-// Data access on Kysely (E6): connections, the typed `Database`, and — in the next steps —
-// migrations per module, generated table types, repositories and factories.
 // Kysely's SQL template, so apps write raw SQL without depending on Kysely themselves.
 export { sql } from 'kysely';
 export type { Insertable, Kysely, Selectable, Transaction, Updateable } from 'kysely';
 export { Connections, Database } from './connections.ts';
 export type { QueryEvent, TransactionOptions } from './connections.ts';
-// The ambient transaction context (E107) lives in core — the queue, events and the HTTP kernel use it without depending
+// The ambient transaction context lives in core — the queue, events and the HTTP kernel use it without depending
 // on the database; apps import it from here, next to `connections.transaction()`.
 export { afterCommit, afterRollback, inTransaction, outsideTransaction, TransactionError, TransactionFinishedError } from '@marmeon/core';
 export type {

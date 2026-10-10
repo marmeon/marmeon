@@ -269,10 +269,10 @@ export function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unkno
   return new BulkAction(handler);
 }
 
-/** An export — built by {@link exportCsv}. */
 /** The most rows an export takes by default — more is refused (422), never cut short. */
 export const DEFAULT_EXPORT_MAX = 10_000;
 
+/** An export — built by {@link exportCsv}. */
 export class TableExport {
   readonly format = 'csv' as const;
   readonly visibility: Visibility | undefined;
@@ -345,7 +345,7 @@ export interface TableDefinition {
 const TABLE_TYPES = Symbol.for('marmeon.table.types');
 
 /**
- * A table (E183): its definition, and its types for the client — `TableProps<typeof MembersTable>`. Use it with
+ * A table: its definition, and its types for the client — `TableProps<typeof MembersTable>`. Use it with
  * `tables.resolve(MembersTable, ctx)` (the page's prop) and `tableRoutes(Route, MembersTable)` (its actions and exports).
  */
 export interface Table<
@@ -365,7 +365,7 @@ export interface Table<
    * The table's state in the URL as a query schema (rules of @marmeon/validation): `?sort=`, `?page=` (or `?cursor=`), `?per_page=`,
    * `?search=`, `?filter[name]=` — with the table's prefix. Give it to the page's request: `defineRequest({ query: MembersTable.query })`,
    * or spread its fields next to the page's own: `r.query({ ...MembersTable.query.entries, tab: … })`. Stricter than other query
-   * fields (E55): an unknown sort, a filter that is none, a page size the table does not offer is a **400**, never a quiet default.
+   * fields: an unknown sort, a filter that is none, a page size the table does not offer is a **400**, never a quiet default.
    */
   readonly query: TableQuerySchema<QV>;
 }
@@ -591,27 +591,8 @@ type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P exten
 >;
 
 /**
- * A server-driven table (E183), typed from the query's tables: wrong column names, a secret column, a sort that is not sortable or an
- * action whose policy takes another row are compile errors.
- *
- * ```ts
- * export const MembersTable = defineTable({
- *   name: 'members',
- *   query: (db, ctx: TableContext<Authenticated>) => db.selectFrom('users').where('team_id', '=', ctx.user.team_id),
- *   key: 'id',
- *   columns: {
- *     name: column('name').sortable().searchable(),
- *     email: column('email').visible(MemberPolicy, 'viewEmails'),
- *     joined: column('created_at').sortable(),
- *   },
- *   filters: { role: filter.select('role', ['admin', 'member']), joined: filter.dateRange('created_at') },
- *   defaultSort: '-joined',
- *   pagination: { perPage: [25, 50, 100] },
- *   actions: { deactivate: action(DeactivateMember).authorize(MemberPolicy, 'deactivate').confirm() },
- *   bulk: { deactivate: bulk(DeactivateMembers).authorize(MemberPolicy, 'deactivate').max(1000) },
- *   export: { csv: exportCsv().authorize(MemberPolicy, 'export') },
- * });
- * ```
+ * A server-driven table, typed from the query's tables: wrong column names, a secret column, a sort that is not sortable or an
+ * action whose policy takes another row are compile errors. See `docs/tables.md#defining-a-table`.
  */
 export function defineTable<
   Q extends TableQuery,

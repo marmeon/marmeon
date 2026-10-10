@@ -124,7 +124,7 @@ const feed = (name: string) =>
   });
 export const FeedTable = feed('feed');
 
-/** Another list with the same order and the same keys (W10 step 8): a cursor of the feed is no cursor of this one. */
+/** Another list with the same order and the same keys: a cursor of the feed is no cursor of this one. */
 export const FeedCopyTable = feed('feed-copy');
 
 /** A base query that selects a column itself (it should not): the props still carry only the visible columns. */

@@ -20,7 +20,7 @@ function setup() {
 }
 
 describe('the local disk keeps every access inside its root', () => {
-  it('counter-check: "../../.env", an absolute path, NUL, a backslash — refused, nothing read', async () => {
+  it('"../../.env", an absolute path, NUL, a backslash — refused, nothing read', async () => {
     const { disk, root } = setup();
     await disk.put('public/avatar.png', 'png');
     for (const key of ['../.env', 'public/../../.env', `${root}/../.env`, '/etc/passwd', '.env\u0000.png', '..\\.env']) {
@@ -28,14 +28,14 @@ describe('the local disk keeps every access inside its root', () => {
     }
   });
 
-  it('counter-check (key normalization alone): "avatars/../secret.txt" stays inside the root, yet is refused — a prefix is a boundary', async () => {
+  it('the key check alone: "avatars/../secret.txt" stays inside the root, yet is refused — a prefix is a boundary', async () => {
     const { disk } = setup();
     await disk.put('secret.txt', 'root-level secret');
     // The realpath jail cannot refuse this (it stays inside the root): only the key check does.
     await expect(disk.get('avatars/../secret.txt')).rejects.toThrow('".." segment');
   });
 
-  it('counter-check (realpath jail alone): a symlink to a file outside the root — refused for every read', async () => {
+  it('the realpath jail alone: a symlink to a file outside the root — refused for every read', async () => {
     const { disk, root, base } = setup();
     symlinkSync(join(base, '.env'), join(root, 'env-link.txt')); // a valid key; only the jail stops it
     for (const read of [() => disk.get('env-link.txt'), () => disk.open('env-link.txt'), () => disk.size('env-link.txt'), () => disk.exists('env-link.txt'), () => disk.copy('env-link.txt', 'copy.txt'), () => disk.move('env-link.txt', 'moved.txt')]) {
@@ -44,7 +44,7 @@ describe('the local disk keeps every access inside its root', () => {
     expect(existsSync(join(root, 'copy.txt'))).toBe(false);
   });
 
-  it('counter-check (realpath jail alone): a symlinked directory leading out — no write through it, no read from it', async () => {
+  it('the realpath jail alone: a symlinked directory leading out — no write through it, no read from it', async () => {
     const { disk, root, base } = setup();
     symlinkSync(join(base, 'outside'), join(root, 'uploads'));
     await expect(disk.put('uploads/evil.txt', 'x')).rejects.toThrow('leads out of the root');

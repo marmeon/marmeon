@@ -171,7 +171,7 @@ describe('StartSession', () => {
     expect(await (await send('/count')).json()).toMatchObject({ status: 'Saved.' }); // still there after the reload
   });
 
-  it('block(): requests of one session run one at a time — a read-modify-write keeps every increment (E145)', async () => {
+  it('block(): requests of one session run one at a time — a read-modify-write keeps every increment', async () => {
     const { send } = await boot({}, {}, { providers: [CacheServiceProvider] });
     await send('/count'); // the session exists: visits 1
     const responses = await Promise.all(Array.from({ length: 5 }, () => send('/slow/blocked', { method: 'POST' })));

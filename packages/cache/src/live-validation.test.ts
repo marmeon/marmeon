@@ -52,7 +52,7 @@ async function statuses(app: Awaited<ReturnType<typeof boot>>, path: string, cou
   return result;
 }
 
-describe('LimitLiveValidation (E62)', () => {
+describe('LimitLiveValidation', () => {
   it(`allows ${DEFAULT_LIVE_VALIDATION_LIMIT} live validations a minute per address and route, then 429 with Retry-After`, async () => {
     const app = await boot();
     const answers = await statuses(app, '/api/subscribe', DEFAULT_LIVE_VALIDATION_LIMIT);
@@ -68,7 +68,7 @@ describe('LimitLiveValidation (E62)', () => {
 
   it("never counts against the route's own limit (the login's tries stay) — but is held to it", async () => {
     const app = await boot();
-    // Gegenprobe: five checks of the login form, then the three sign-ins its limit allows — none used up by the checks.
+    // Five checks of the login form, then the three sign-ins its limit allows — none used up by the checks.
     expect(await statuses(app, '/api/login', 5)).toEqual([204, 204, 204, 204, 204]);
     expect(await statuses(app, '/api/login', 4, false)).toEqual([200, 200, 200, 429]);
     // The login's limit is used up: a check is refused too (no way around a limit).

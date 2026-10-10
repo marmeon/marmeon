@@ -27,18 +27,10 @@ export interface CursorPaginated<T> {
 type PageSizes<P extends number> = P | readonly [P, ...P[]];
 
 /**
- * The page of a list as query fields, rules of @marmeon/validation — spread into a route's query schema (E55): `?page=` (a whole
+ * The page of a list as query fields, rules of @marmeon/validation — spread into a route's query schema: `?page=` (a whole
  * number ≥ 1, default 1) and `?per_page=` (one of `perPage`, default its first). Like every query field, an invalid value falls
  * back to its default (`?page=-1`, `?per_page=100000`), never a 422; the default is left out of URLs the browser builds.
- *
- * ```ts
- * static request = defineRequest({
- *   query: r.query({ ...pageQuery({ perPage: [25, 50, 100] }), sort: r.in(['name', '-name']).default('name') }),
- * });
- * handle(ctx: ContextOf<typeof ListUsersRequest>) {
- *   return this.#users.paginate(this.#users.query().select(['id', 'name']).orderBy('name').orderBy('id'), ctx.query);   // ctx.query.per_page: 25 | 50 | 100
- * }
- * ```
+ * See `docs/pagination.md#pages-by-number`.
  */
 export function pageQuery<const P extends number = 15>({ perPage }: { perPage?: PageSizes<P> } = {}) {
   const sizes = (Array.isArray(perPage) ? perPage : [perPage ?? 15]) as unknown as readonly [P, ...P[]];
@@ -113,8 +105,8 @@ export interface CursorEncrypter {
 }
 
 /**
- * A cursor that is not one of this list's (tampered with, written by another list, encrypted with a key that is gone, or in the
- * format before Wave 9): answers 400 — never quietly the first page again, which would make "load more" start over forever.
+ * A cursor that is not one of this list's (tampered with, written by another list, or encrypted with a key that is gone):
+ * answers 400 — never quietly the first page again, which would make "load more" start over forever.
  */
 export class InvalidCursorError extends HttpError {
   override name = 'InvalidCursorError';
@@ -160,20 +152,10 @@ function cursorContext(name: string | undefined, direction: 'asc' | 'desc', colu
 }
 
 /**
- * Keyset pagination for large tables and "load more": rows after the cursor, ordered by `column` and then the unique `key` —
- * no count, no offset, stable while rows are added.
- *
- * - **Ties and NULLs:** the key column (`id` by default) is always the last order, so equal names keep one order. A sort column
- *   may be nullable: NULLs come last (`NULLS LAST`, in both directions, SQLite and Postgres alike) and a row whose value is
- *   NULL is a cursor like any other — the next page goes on among the NULLs instead of starting over.
- * - **Its own order:** an `orderBy` the query had is taken out — the cursor follows these columns only.
- * - **Encrypted:** the cursor is the last row's values, encrypted and authenticated with the app key (`encrypter`, its own
- *   context per columns and direction — and per list with `name`) — a hidden sort column's values do not leak into URLs, and a
- *   cursor cannot be made up. One that does not decrypt answers 400 ({@link InvalidCursorError}).
- *
- * ```ts
- * cursorPaginate(query, { column: 'name', cursor: ctx.query.cursor, perPage: 10, encrypter: this.#encrypter });   // by (name, id)
- * ```
+ * Keyset pagination for large tables and "load more": rows after the cursor, ordered by `column` and then the unique `key`
+ * (NULLs last) — no count, no offset, stable while rows are added. An `orderBy` the query had is taken out. The cursor is the
+ * last row's values, encrypted with the app key, so a hidden sort column's values never reach a URL and a cursor cannot be
+ * made up; one that does not decrypt answers 400 ({@link InvalidCursorError}). See `docs/pagination.md#cursors`.
  */
 export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<string, unknown>>(
   query: SelectQueryBuilder<DB, TB, O>,
@@ -191,7 +173,7 @@ export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<s
   page = page.limit(perPage + 1);
   if (cursor) {
     const after = await decodeCursor(encrypter, cursor, context, columns.length);
-    // Not one of this list's (changed, made up, another list's or key's, the format before Wave 9): a 400 — never page 1 again.
+    // Not one of this list's (changed, made up, another list's or key's): a 400 — never page 1 again.
     if (!after) throw new InvalidCursorError();
     page = page.where((eb) => rowsAfter(eb, columns, after, direction));
   }

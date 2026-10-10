@@ -4,16 +4,10 @@ import { InvalidKeyError } from './errors.ts';
 export const MAX_KEY_BYTES = 1024;
 
 /**
- * Checks a storage key and returns it unchanged — or throws {@link InvalidKeyError}. Every disk runs every key through it
- * (also the memory disk of tests), so a key means the same file everywhere:
- *
- * - relative, `/`-separated segments: `avatars/7.webp` — no leading `/`, no drive letter (`C:`), no empty segment (`a//b`);
- * - no `.` or `..` segment — a key never leaves its directory, there is nothing to resolve;
- * - no backslash (a separator on Windows, and in some proxies), no NUL byte and no other control character.
- *
- * Nothing is "cleaned up": a key that needs it is refused, so two spellings never name one file. The local driver
- * additionally keeps every path inside its root by `realpath` (symlinks out of the root are refused) — a second,
- * independent measure.
+ * Checks a storage key and returns it unchanged, or throws {@link InvalidKeyError}: relative `/`-separated segments, no
+ * leading `/` or drive letter (`C:`), no empty, `.` or `..` segment, no backslash (a separator on Windows and in some
+ * proxies), no NUL or other control character. Every disk runs every key through it, so a key means the same file
+ * everywhere. Nothing is cleaned up: a key that needs it is refused, so two spellings never name one file.
  */
 export function normalizeKey(key: string): string {
   if (typeof key !== 'string' || key === '') throw new InvalidKeyError(String(key), 'a key is a non-empty string');

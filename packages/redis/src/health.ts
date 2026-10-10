@@ -2,7 +2,7 @@ import type { HealthCheck } from '@marmeon/core';
 import { RedisConnections } from './connections.ts';
 
 /**
- * Readiness (E126): every Redis connection the app uses (one a driver asked for — the cache, sessions, the queue, live
+ * Readiness: every Redis connection the app uses (one a driver asked for — the cache, sessions, the queue, live
  * hints) answers `PING`. A configured connection nothing uses is not checked: `REDIS_URL` has a default, and an app on the
  * database drivers must not be "not ready" for a Redis it never talks to. Registered by the `RedisServiceProvider`.
  */

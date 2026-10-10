@@ -2,8 +2,7 @@ import { Application, defineConfig, env, Logger, Redactor, type ConfigDefinition
 import { RedisConnections, type RedisConnectionOptions } from './connections.ts';
 import { RedisHealthCheck } from './health.ts';
 
-// Redis (E87): connections like database connections — lazy per name, closed on shutdown — on the official client
-// `redis` (node-redis), this package's dependency (E198). The cache, session, queue and live drivers build on it.
+// Redis connections on node-redis, opened per name on first use: the cache, session, queue and live drivers build on them.
 export { defineRedisScript, describeRedisUrl, RedisConnection, RedisConnections } from './connections.ts';
 export type { RedisConnectionOptions, RedisScript } from './connections.ts';
 export { RedisHealthCheck } from './health.ts';
@@ -41,17 +40,8 @@ export interface RedisConnectionDefinition extends ConfigDefinition<RedisConnect
 }
 
 /**
- * Another Redis connection, e.g. a separate instance for the queue. List it with the app's (or a module's) `config`;
- * its variables are validated at startup like all configuration:
- *
- * ```ts
- * export const QueueRedis = defineRedisConnection('queue', {
- *   env: env({ QUEUE_REDIS_URL: env.url({ protocols: ['redis', 'rediss'] }) }),
- *   resolve: (e) => ({ url: e.QUEUE_REDIS_URL, prefix: 'myapp:' }),
- * });
- * defineApplication({ config: [QueueRedis], … });
- * redis.get('queue')
- * ```
+ * Another Redis connection, e.g. a separate instance for the queue: list it in the app's (or a module's) `config` and get it
+ * with `redis.get(name)`. Throws for the name `default`. See `docs/redis.md#more-connections`.
  */
 export function defineRedisConnection<const Schema extends StandardSchemaV1>(
   name: string,
@@ -68,7 +58,7 @@ export function isRedisConnectionDefinition(value: unknown): value is RedisConne
 /** Registers `RedisConnections` and closes every connection on shutdown. Found by `marmeon discover`. */
 export class RedisServiceProvider implements ServiceProvider {
   static config = [RedisConfig];
-  /** The connections in use answer `PING`, for `/up/ready` (E126). */
+  /** The connections in use answer `PING`, for `/up/ready`. */
   static health = [RedisHealthCheck];
 
   register(container: Container): void {

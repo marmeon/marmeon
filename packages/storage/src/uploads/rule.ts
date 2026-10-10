@@ -63,21 +63,10 @@ export function formatBytes(bytes: number): string {
 const label = (mime: string) => UPLOAD_TYPES[mime as UploadMime]?.toUpperCase() ?? mime;
 
 /**
- * A file uploaded ahead (W6.9, Livewire's model) — a rule of a form field (@marmeon/validation):
- *
- * ```ts
- * export const UpdateAvatarRequest = defineRequest({
- *   schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
- * });
- * // ctx.body.avatar is a TemporaryUpload: await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars')
- * ```
- *
- * The browser uploads the file first (`<FileInput>`: to a target the route hands out for this field) and the form sends
- * only its token. On submit the token is checked — its signature, the session it was made for, the route and field, its
- * expiry, that it was not used — and the file itself: its size, and its type **by its bytes** (`mime`; never the name or
- * the `Content-Type` the browser sent). HTML, SVG and XML are never accepted, whatever `mime` says. Nothing chosen (`null`,
- * missing) is "Choose a file." — `upload(…).nullable()` for an optional file. The rule carries its limits as a mark
- * ({@link uploadRuleOf}): the upload target and the submit find the field by it, through `.nullable()` and `.custom()` too.
+ * A file uploaded ahead, as the rule of a form field: `upload({ maxBytes: 2_000_000, mime: ['image/png'] })`. The form sends
+ * the upload's token; on submit the token and the file are checked (its size, and its type **by its bytes**, never the name
+ * or the `Content-Type` the browser sent), and the controller gets a {@link TemporaryUpload}. HTML, SVG and XML are never
+ * accepted, whatever `mime` says; `upload(…).nullable()` makes the file optional. See `docs/storage.md#uploads`.
  */
 export function upload<const M extends string = UploadMime>(options: { readonly maxBytes: number; readonly mime?: readonly CheckUploadMime<M>[] }): UploadSchema {
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) throw new RangeError(`upload() needs maxBytes > 0, not ${String(options.maxBytes)}.`);

@@ -20,14 +20,14 @@ async function request(store: SessionStore, id: string | undefined, use: (sessio
   return session;
 }
 
-/** The payload stored for the session `id` — under its key (E144), as JSON. */
+/** The payload stored for the session `id` — under its key, as JSON. */
 async function payload(store: SessionStore, id: string): Promise<SessionPayload | undefined> {
   const stored = await store.read(sessionKey(id));
   return stored ? (JSON.parse(stored.data) as SessionPayload) : undefined;
 }
 
 /**
- * The store, with a sign-out landing at the worst moment of another request's `save()` (E45): right after the store answered a
+ * The store, with a sign-out landing at the worst moment of another request's `save()`: right after the store answered a
  * read of `key`, or right before a write of `key` — once, when armed. A read-then-write `save()` resurrects the session here; a
  * compare-and-set cannot.
  */
@@ -55,8 +55,8 @@ function signOutDuringSave(store: SessionStore, key: string, signOut: () => Prom
 }
 
 // ONE suite for every session store: memory, file, database on SQLite — and on Postgres (`pnpm test:pgsql`) and Redis
-// (`pnpm test:redis`). Above all: a write compares the version in one atomic step (E145) and never brings back a session a
-// sign-out destroyed (E45); keys are the ids' hashes (E144).
+// (`pnpm test:redis`). Above all: a write compares the version in one atomic step and never brings back a session a
+// sign-out destroyed; keys are the ids' hashes.
 describe.each(storeKinds)('the %s session store', (kind) => {
   let current: StoreUnderTest | undefined;
   afterEach(async () => {
@@ -84,7 +84,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(await store.read(k)).toBeUndefined();
   });
 
-  it("ends a user's sessions as a whole where it knows whose they are (database) — a deleted account's (E203); others keep them", async () => {
+  it("ends a user's sessions as a whole where it knows whose they are (database) — a deleted account's; others keep them", async () => {
     const { store } = await open();
     const ada = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, 7));
     const adaPhone = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, 7));
@@ -172,7 +172,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect((await store.read(k))!.version).toBe(2);
   });
 
-  it('keeps the session under the hash of its id — the id itself is in no key (E144)', async () => {
+  it('keeps the session under the hash of its id — the id itself is in no key', async () => {
     const { store } = await open();
     const session = await request(store, undefined, (s) => s.put(SESSION_USER_KEY, '7'));
     expect(await payload(store, session.id)).toMatchObject({ [SESSION_USER_KEY]: '7' });
@@ -180,14 +180,14 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(sessionKey(session.id)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('a key read from the store, sent as the cookie, is no session (E144)', async () => {
+  it('a key read from the store, sent as the cookie, is no session', async () => {
     const { store } = await open();
     const session = await request(store, undefined, (s) => s.put(SESSION_USER_KEY, '7'));
     const replay = await request(store, sessionKey(session.id));
     expect(replay.get(SESSION_USER_KEY)).toBeUndefined();
   });
 
-  it('a sign-out landing inside another request’s save stays a sign-out (E45) — compare-and-set never revives it', async () => {
+  it('a sign-out landing inside another request’s save stays a sign-out — compare-and-set never revives it', async () => {
     const { store } = await open();
     const signedIn = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, '7'));
     let signedOut: Session | undefined;
@@ -219,7 +219,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(await payload(store, signedIn.id)).toMatchObject({ cart: ['book'], [SESSION_USER_KEY]: '7' } satisfies SessionPayload);
   });
 
-  it('20 requests that flash at once: all 20 messages arrive (E145, W5b.7)', async () => {
+  it('20 requests that flash at once: all 20 messages arrive', async () => {
     const { store } = await open();
     const { id } = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, '7'));
     const sessions = await Promise.all(
@@ -238,7 +238,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(messages.toSorted()).toEqual(Array.from({ length: 20 }, (_, i) => `m${i}`).toSorted());
   });
 
-  it('a message a faster request showed does not come back with a slower request’s copy (W5b.7)', async () => {
+  it('a message a faster request showed does not come back with a slower request’s copy', async () => {
     const { store } = await open();
     const { id } = await request(store, undefined, (session) => session.queueFlash({ id: 'saved', key: 'toast', data: 'Saved.' }));
     // B — a prefetch — loads the session while the message waits …
@@ -264,7 +264,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(((await payload(store, id))!._flash_messages as { id: string }[]).map((message) => message.id)).toEqual(['m2']);
   });
 
-  it('a conflict whose second read finds the session signed out stays signed out (E45)', async () => {
+  it('a conflict whose second read finds the session signed out stays signed out', async () => {
     const { store } = await open();
     const signedIn = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, '7'));
     const key = sessionKey(signedIn.id);
@@ -312,7 +312,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     const ada = await request(store, undefined, (s) => (s.put(SESSION_USER_KEY, 'user-ada-17'), s.queueFlash({ id: 'x', key: 'toast', data: 'Welcome back, Ada' })), codec);
     const stored = (await store.read(sessionKey(ada.id)))!;
     // What the plaintext would hold, in forms a ciphertext cannot (base64url has no quote, space or comma): a short word alone
-    // turns up in random ciphertext now and then ("Ada" did, once in a thousand runs).
+    // can turn up in random ciphertext.
     expect(stored.data).not.toMatch(/Welcome back, Ada|user-ada-17|"_token"|"toast"/);
     expect((await request(store, ada.id, () => {}, codec)).get(SESSION_USER_KEY)).toBe('user-ada-17');
     // Mallory's own session, Ada's ciphertext copied into its place: bound to Ada's key, it does not decrypt as Mallory's.

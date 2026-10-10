@@ -145,7 +145,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(first.query.cursor).toBe('feed_cursor');
       const cursor = (first.page as { nextCursor: string }).nextCursor;
       // A plain cursor would be the row's values as JSON (`["Ada",1]`); quotes are outside the ciphertext's alphabet — a bare `Ada` is not
-      // (it turned up at random in an encrypted cursor once).
+      // (it can turn up at random in a ciphertext).
       expect(cursor, 'the cursor holds the row in plain text').not.toContain('"Ada"');
       const second = (await feed(`feed_cursor=${encodeURIComponent(cursor)}`)).feed!;
       expect(names(second)).toEqual(['Edsger', 'Alan']);
@@ -153,14 +153,14 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect((await feed('feed_cursor=bm90LWEtY3Vyc29y')).status).toBe(400);
       // The table's keys carry its prefix: an unprefixed `page` is the page's business, a prefixed one the table's (a cursor table has none).
       expect((await feed('feed_page=2')).status).toBe(400);
-      // Another table with the same order and keys takes none of this one's cursors (W10 step 8: the cursor's context names the table).
+      // Another table with the same order and keys takes none of this one's cursors (the cursor's context names the table).
       const copy = await application.request(`/teams/1/feed-copy?feed_cursor=${encodeURIComponent(cursor)}`, { user: ALAN });
       expect(copy.status, "another table's cursor was taken").toBe(400);
       expect((await application.request('/teams/1/feed-copy', { user: ALAN })).status).toBe(200);
     });
   });
 
-  describe('the URL is parsed strictly (E183): what the table does not allow is a 400 — never a quiet default', () => {
+  describe('the URL is parsed strictly: what the table does not allow is a 400 — never a quiet default', () => {
     it.each([
       ['an unknown sort', 'sort=unknown'],
       ['a raw column name', 'sort=password'],
@@ -179,7 +179,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(status, `${query} answered ${status}`).toBe(400);
     });
 
-    it('counter-check: a filter on a hidden column is hidden with it (400) — its counts would tell the values (W9 step 10b)', async () => {
+    it('a filter on a hidden column is hidden with it (400) — its counts would tell the values', async () => {
       const application = await app(driver);
       const hidden = await application.request('/teams/1/leaky?filter[since]=2026-02-01..', { user: ALAN });
       expect(hidden.status, 'a filter on a hidden column was used').toBe(400);
@@ -414,7 +414,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(await response.text()).toContain('More than 3 rows match');
     });
 
-    it('streams its later batches outside the transaction the handler answered in (a framework boundary, E107)', async () => {
+    it('streams its later batches outside the transaction the handler answered in (a framework boundary)', async () => {
       const application = await app(driver);
       await application.insert(Array.from({ length: 1203 }, (_, index) => ({ ...MEMBERS[1]!, id: 100 + index, name: `Bulk ${index}`, email: `b${index}@example.com` })));
       const response = await application.request('/teams/1/export-in-transaction', { user: ADA });

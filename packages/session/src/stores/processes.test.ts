@@ -32,8 +32,8 @@ async function flasher(target: StoreTarget, id: string, count: number, prefix: s
   };
 }
 
-// The flash Gegenprobe of E145 across processes (W5b.7: before, the later writer's copy won): 4 Node processes × 5 requests of one
-// session, all at once — every message arrives. (Memory is one process by nature: its 20 writers are in stores.test.ts.)
+// 4 Node processes × 5 requests of one session, all flashing at once — every message arrives, none is lost to a later
+// writer's copy. (Memory is one process by nature: its 20 writers are in stores.test.ts.)
 describe.each(storeKinds.filter((kind): kind is Exclude<StoreKind, 'memory'> => kind !== 'memory'))('the %s session store, from four processes', (kind) => {
   it('20 requests of one session flash at once — all 20 messages arrive', { timeout: 60_000 }, async () => {
     const { target, drop } = await freshTarget(kind);
