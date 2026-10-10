@@ -49,7 +49,7 @@ describe('@marmeon/log', () => {
     ]);
   });
 
-  it('writes JSON with the message and context', () => {
+  it('writes JSON with the message and context, message first', () => {
     const { lines, logger } = capture();
     logger.info('User signed in', { userId: '1' });
     expect(lines[0]).toMatchObject({ level: 30, msg: 'User signed in', userId: '1' });

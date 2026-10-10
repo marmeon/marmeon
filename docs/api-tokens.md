@@ -222,6 +222,9 @@ Tokens live in the `personal_access_tokens` table by default, through `DatabaseA
 hash of each secret, never the secret. `revokeAll(userId)` deletes every token of the user and returns how many; a new password
 calls it inside its transaction, so a store on the database joins it.
 
+A `personal_access_tokens` table of your own needs what the starter kit's migration gives it: `token_hash` as a 64-character
+`secret()` column, `abilities` as JSON, and `user_id` with `cascadeOnDelete()`, so a deleted user's tokens go with the account.
+
 ## Configuration
 
 | Variable | Default | Effect |

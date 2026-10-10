@@ -255,7 +255,9 @@ gets a cookie, `remember_web`, that is encrypted, `HttpOnly`, and `Secure` and `
 `AUTH_REMEMBER_DAYS` days from the sign-in, 30 by default, and using it never extends it.
 
 The cookie is consulted only when the session has no user. It holds a selector and a secret validator. The `remember_tokens`
-table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in.
+table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. A table of your
+own needs what the starter kit's migration gives it: a unique `selector` of up to 32 characters, the validator hashes as
+64-character `secret()` columns, and `user_id` with `cascadeOnDelete()`, so a deleted user's tokens go with the account.
 
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
   value within 60 seconds of the rotation still passes.

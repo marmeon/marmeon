@@ -192,8 +192,8 @@ export class SetLocale {
 /**
  * A validation message by key, for a rule that takes one — in the request's language when validation fails:
  * `r.string().regex(/^[a-z0-9-]+$/, trans('teams.validation.slug'))`. The key is checked like `translator.get()`'s;
- * placeholders come from `params`, the field's name (`{attribute}`) and the rule's parameters (`{min}`, and Valibot's
- * `{requirement}` where another library's schema takes it as its message function). See `docs/validation.md#messages`.
+ * placeholders come from `params`, the field's name (`{attribute}`) and the rule's parameters (`{min}`, and `{requirement}`
+ * when a Valibot schema takes `trans()` as its message function). See `docs/validation.md#messages`.
  */
 export function trans<K extends TranslationKey | (string & {})>(
   key: CheckTranslationKey<K>,
