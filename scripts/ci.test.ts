@@ -300,7 +300,15 @@ describe('rule 7: no references to the private record', () => {
     expect(what('# the Docker image, since Wa·ve 10', '.github/workflows/ci.yml')).toEqual(['a wave reference']);
     expect(what('// done in W·12 step 4b', 'vitest.config.ts')).toEqual(['a wave reference']);
     expect(what('// red without the lock (G·12b)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
-    expect(what('// red without the lock (Gegenprobe G·3)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
+    expect(what('// red without the lock (Gegen·probe G·3)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
+    expect(what('// the island (E·7)')).toEqual(['a decision number']);
+    expect(what('as E·1 says')).toEqual(['a decision number']);
+    for (const wave of ['W·5b', 'W·5b.10', 'W·5c.6', 'Wa·ve 5c', 'Wa·ve 5c step 4', 'W·12 step 4b']) {
+      expect(what(`// added in ${wave}`), wave).toEqual(['a wave reference']);
+    }
+    for (const word of ["it('counter-·check: refuses it')", '// see the Counter-·Checks at the end', '// a Gegen·probe', '// the Gegen·proben of the step']) {
+      expect(what(word), word).toEqual(['a wave reference']);
+    }
     expect(what('kept for good (Ma·x, 07.·10.)', 'deploy/docs/compose.yaml')).toEqual(['a personal date']);
     // A day and a month with their dots count in a test's title too: write the month's name (`29 March`, below).
     expect(what("it('runs once on the day the clocks go forward (29.·03.)', () => {});", 'scripts/bench/stats.test.ts')).toEqual(['a personal date']);
@@ -314,13 +322,20 @@ describe('rule 7: no references to the private record', () => {
     const text = [
       'W3C, HTTP/2, AW3 and W-9',
       'Set-Cookie: a=b; Max-Age=60',
-      'E164, E.164 numbers, E2E tests, E1 and E1000',
+      'E164, E.164 numbers, E2E tests and E1000',
+      'https://example.test/?q=%E2%82%AC and %E0%A4%A',
       '`0xE12`, `#E1234`, 1E10 and 2e10, BE12, E12a, the E-mail',
       "const day = '10.10.2026';",
       "it('runs once on the day the clocks go forward (29 March)', () => {});",
       'Math.max(a, b); max-width: 40rem; max 255; Marmeon 0.2.0; 127.0.0.1 or 10.0.0.0/8',
     ].join('\n');
     expect(privateRecordHits([{ path: 'scripts/check-source.ts', text }], [])).toEqual([]);
+  });
+
+  it('reads no integrity hash of the lockfile — base64 holds a decision number or a wave by chance', () => {
+    const text = ref('    resolution: {integrity: sha512-dLJDGaLZ1D4H+E·8/d1g+W·5b/x3TU==}');
+    expect(privateRecordHits([{ path: 'pnpm-lock.yaml', text }], [])).toEqual([]);
+    expect(privateRecordHits([{ path: 'scripts/lock.yaml', text }], []).map((hit) => hit.split(': ')[1])).toEqual(['a decision number', 'a wave reference']);
   });
 
   it('leaves the files under a pending area alone — but reads what readers see first there: the cards, the stubs, the template, the apps\' READMEs and .env files', () => {

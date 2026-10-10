@@ -176,6 +176,8 @@ const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
 const APP_TEXTS = /^apps\/[^/]+\/(?:README\.md|\.env\.[^/]+)$/;
 /** Every file. */
 const ALL_TRACKED = /^/;
+/** Every file but the lockfile: its integrity hashes are base64, which holds a decision number or a wave by chance. */
+const WRITTEN = /^(?!pnpm-lock\.yaml$)/;
 
 /** Rule 5: the docs speak to their readers — no page still to be written, no other framework. */
 export const DOC_TEXT_RULES: readonly TextRule[] = [
@@ -216,17 +218,24 @@ export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): strin
 export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
   {
     what: 'a decision number',
-    // A word of its own: `0xE12`, `#E1234`, `1E10`, `E2E`, `E.164` and the phone format `E164` are none.
-    pattern: /\bE(?!164\b)\d{2,3}\b/,
-    files: [ALL_TRACKED],
+    // A word of its own, one to three digits: `0xE12`, `#E1234`, `1E10`, `E2E`, `E.164`, the phone format `E164` and a
+    // percent-encoded byte (`%E2%82%AC`) are none.
+    pattern: /(?<!%)\bE(?!164\b)\d{1,3}\b/,
+    files: [WRITTEN],
     why: 'say what holds, not which decision made it',
   },
   {
     what: 'a wave reference',
-    // A wave or a step — a `W` and its number, a point release and a step with their letters, or "wave" and a number — or a
-    // counter-probe's id (a `G`, a number and a letter, or any after "Gegenprobe"); `W3C` is none.
-    pattern: /\b(?:W\d+(?:\.\d+[a-z]?)?(?:\s+step\s+\d+[a-z]?)?|[Ww]ave \d+|G\d{1,2}[a-z])\b|\bGegenprobe\s+G\d{1,2}[a-z]?\b/,
-    files: [ALL_TRACKED],
+    // A wave or a step — a `W` or "wave" and its number, each with its letter, a point release and a step — a counter-probe's
+    // id (a `G`, a number and a letter) or the words of the abolished method, in any case (spelled in parts: this file passes
+    // its own rule); `W3C` is none.
+    pattern: new RegExp(
+      [
+        String.raw`\b(?:W\d+[a-z]?(?:\.\d+[a-z]?)?(?:\s+step\s+\d+[a-z]?)?|[Ww]ave \d+[a-z]?(?:\s+step\s+\d+[a-z]?)?|G\d{1,2}[a-z])\b`,
+        String.raw`\b(?i:${'counter'}-${'checks'}?|${'Gegen'}${'proben'}?)\b`,
+      ].join('|'),
+    ),
+    files: [WRITTEN],
     why: 'describe the code as it is, not when it changed — UPGRADING.md says that, by version',
   },
   {
