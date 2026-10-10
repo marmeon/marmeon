@@ -283,7 +283,9 @@ A secret column is written like any other, but:
 
 - `Row<'users'>` leaves it out, so it cannot reach a page's props by accident;
 - the connection removes it from every `selectAll()` and `returningAll()` result, also inside a subquery;
-- a query names it on purpose with `secret(eb, 'password')`, in the one place that needs it.
+- a query names it on purpose with `secret(eb, 'password')`, in the one place that needs it;
+- a whole row of the table as one value, such as `eb.table('users')` in a function, is refused, and so is any secret column inside a
+  [relation](queries.md#relations-and-secret-columns).
 
 The starter kit's `UserRepository` is that place. It checks a password at sign-in, and the hash travels next to the user, never
 inside it:

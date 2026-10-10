@@ -226,7 +226,8 @@ Argument of type '"profile_link"' is not assignable to parameter of type '"login
 ```
 
 `with()` is a method of every select of the app's connection: a repository's `query()`, `Database`, a transaction, a subquery.
-In a query that joins tables, it offers the relations of each table, except a name two of them share. A module's
+In a query that joins tables, it offers the relations of each table, except a name two of them share. Relations are offered on a
+table's own name, `selectFrom('users')`, not on an alias such as `selectFrom('users as u')`. A module's
 `Database<'user-profile'>` offers only relations to tables the module sees: its own, and the tables other modules expose.
 
 > [!NOTE]
@@ -236,7 +237,8 @@ In a query that joins tables, it offers the relations of each table, except a na
 ### Narrowing and nesting
 
 The callback gets the related table's query. Select, filter, order and limit it like any query, and load its relations with
-`with()` again, to any depth. Its scope is the related table only. When it selects columns of that table, the relation holds those
+`with()` again, to any depth. Its scope is the related table only: refer to the outer row through `sql` or `eb.ref()`, as in
+`` links.where(sql<boolean>`profile_links.label <> users.name`) ``. When it selects columns of that table, the relation holds those
 columns. When it selects none, because it only orders, filters or nests, the relation keeps every column but the secret ones.
 `selectAll()` means the same:
 
@@ -255,7 +257,8 @@ the related row may be missing, and the type says so. A hasOne may always be mis
 ### Relations without a foreign key
 
 `withRelation(name, definition, callback?)` loads rows no foreign key describes, or a relation in a shape of its own: the rows of
-`table` whose `foreignKey` holds the outer row's `localKey`, which is `id` unless you name another column. With `one: true` it
+`table` whose `foreignKey` holds the outer row's `localKey`, which is `id` unless you name another column of the query's tables (the
+first table that has it). With `one: true` it
 loads the first row the callback's order gives, or `null`:
 
 ```ts
@@ -279,19 +282,21 @@ this.query().withTrashed().selectAll().with('attachments', (attachments) => atta
 ```
 
 `withTrashed()` works on the level it is called on: the relations below it still leave deleted rows out unless their callbacks
-call it too. A table you join yourself, inside a callback or anywhere else, is your query: soft-deleted rows are not filtered
+call it too. On a plain `db.selectFrom()`, which filters nothing, it has nothing to keep. A table you join yourself, inside a callback or anywhere else, is your query: soft-deleted rows are not filtered
 there.
 
 ### Relations and secret columns
 
 A secret column never comes back through a relation. It is not among the columns `with()` loads, and naming one inside a relation
-is refused when the query runs: by name, with `secret(eb, …)`, under an alias, from a table the callback joins, or deeper down.
+is refused when the query runs: by name, with `secret(eb, …)` or `sql.ref()`, under an alias, from a table the callback joins, from
+the outer query, or deeper down. So is a whole row of a table with secret columns, such as `eb.table('users')` in a function, in a
+relation and at the top level of any query.
 
 ```text
 with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
 ```
 
-Raw SQL is not checked: a column named inside `` sql`…` `` is the query's own choice.
+The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice.
 
 ### The app's connection
 

@@ -7,6 +7,7 @@ import {
   FunctionNode,
   OperationNodeTransformer,
   OperatorNode,
+  ParensNode,
   RawNode,
   ReferenceNode,
   TableNode,
@@ -31,7 +32,6 @@ import {
 import type { SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, RELATION, SOFT_DELETE, SOFT_DELETE_FILTER, sourcesOf, TOUCH_COLUMN, WITH_TRASHED, type Source } from './placeholders.ts';
 import { relationQuery, type RelationsPlugin } from './relations.ts';
-import { selectsAll } from './secrets.ts';
 
 // Placeholders for what only the schema metadata knows — whether a table has soft deletes or timestamps, which relations its
 // foreign keys describe and which columns they may load. A query is built synchronously, often before anything was loaded (the
@@ -75,9 +75,9 @@ export function withTrashed(): Expression<SqlBool> {
 
 /**
  * Resolves the placeholders while compiling when the metadata is fresh; otherwise it leaves them for the connection
- * ({@link SchemaResolver.deferred}, {@link SchemaResolver.resolve}), which loads the metadata first. A query that strips secret
- * columns from its result (`selectAll()`, `returningAll()`) waits the same way while the metadata is not fresh: its strip list
- * must be the one of the schema it runs against.
+ * ({@link SchemaResolver.deferred}, {@link SchemaResolver.resolve}), which loads the metadata first. A query that reads rows (a
+ * select, a `returning`) waits the same way while the metadata is not fresh: its secret columns must be the ones of the schema it
+ * runs against.
  */
 export class SchemaResolver implements KyselyPlugin {
   readonly #metadata: SchemaMetadata;
@@ -98,7 +98,8 @@ export class SchemaResolver implements KyselyPlugin {
 
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
     if (!hasPlaceholder(node)) {
-      if (!this.#metadata.fresh && selectsAll(node)) this.#deferred.add(queryId);
+      // What it reads is checked against the secret columns (`checkSecrets`) and stripped of them: with the schema it runs against.
+      if (!this.#metadata.fresh && readsRows(node)) this.#deferred.add(queryId);
       return node;
     }
     // A soft delete turns the DELETE into an UPDATE, which a plugin may not do (Kysely checks the kind): the connection does it.
@@ -187,18 +188,18 @@ class Resolver extends OperationNodeTransformer {
   protected override transformSelectQuery(node: SelectQueryNode, queryId?: QueryId): SelectQueryNode {
     this.#frames.push({ sources: sourcesOf(node), trashed: hasPlaceholder(node.where, WITH_TRASHED, true) });
     try {
-      return withoutNothing(super.transformSelectQuery(node, queryId));
+      return withoutNothing(super.transformSelectQuery(isolated(node), queryId));
     } finally {
       this.#frames.pop();
     }
   }
 
   protected override transformDeleteQuery(node: DeleteQueryNode, queryId?: QueryId): DeleteQueryNode {
-    return withoutNothing(super.transformDeleteQuery(node, queryId));
+    return withoutNothing(super.transformDeleteQuery(isolated(node), queryId));
   }
 
   protected override transformUpdateQuery(node: UpdateQueryNode, queryId?: QueryId): UpdateQueryNode {
-    const transformed = withoutNothing(super.transformUpdateQuery(node, queryId));
+    const transformed = withoutNothing(super.transformUpdateQuery(isolated(node), queryId));
     const updates = transformed.updates ?? [];
     const touch = updates.find((update) => ColumnNode.is(update.column) && update.column.column.name === TOUCH_COLUMN);
     if (!touch) return transformed;
@@ -210,6 +211,11 @@ class Resolver extends OperationNodeTransformer {
         : updates.filter((update) => update !== touch);
     return { ...transformed, updates: kept };
   }
+}
+
+function readsRows(node: RootOperationNode): boolean {
+  if (node.kind === 'SelectQueryNode') return true;
+  return (node.kind === 'InsertQueryNode' || node.kind === 'UpdateQueryNode' || node.kind === 'DeleteQueryNode') && node.returning !== undefined;
 }
 
 function notDeleted(table: string): OperationNode {
@@ -228,7 +234,32 @@ function withoutNothing<N extends { readonly where?: WhereNode }>(node: N): N {
   return { ...node, where: WhereNode.create(where) };
 }
 
+/**
+ * The statement with the conditions next to its soft-delete filter in parentheses: `where(sql\`a or b\`)` after `query()` must stay
+ * `deleted_at is null and (a or b)`, never `deleted_at is null and a or b`.
+ */
+function isolated<N extends { readonly where?: WhereNode }>(node: N): N {
+  if (!node.where) return node;
+  const operands: OperationNode[] = [];
+  const flatten = (operand: OperationNode): void => {
+    if (AndNode.is(operand)) {
+      flatten(operand.left);
+      flatten(operand.right);
+    } else operands.push(operand);
+  };
+  flatten(node.where.where);
+  const marks = operands.filter((operand) => FunctionNode.is(operand) && (operand.func === SOFT_DELETE_FILTER || operand.func === WITH_TRASHED || operand.func === SOFT_DELETE));
+  const rest = operands.filter((operand) => !marks.includes(operand));
+  if (marks.length === 0 || rest.length === 0) return node;
+  const conditions = rest.reduce((left, right) => AndNode.create(left, right));
+  return { ...node, where: WhereNode.create([...marks, ParensNode.create(conditions)].reduce((left, right) => AndNode.create(left, right))) };
+}
+
 function drop(node: OperationNode): OperationNode {
+  if (ParensNode.is(node)) {
+    const inner = drop(node.node);
+    return inner === NOTHING ? NOTHING : inner === node.node ? node : ParensNode.create(inner);
+  }
   if (!AndNode.is(node)) return node;
   const left = drop(node.left);
   const right = drop(node.right);

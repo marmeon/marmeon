@@ -36,7 +36,7 @@ type RelationQuery<DB, T extends keyof DB> = SelectQueryBuilder<DB, T, {}>;
 export interface RelationDefinition<DB, TB extends keyof DB, T extends keyof DB, One extends boolean> {
   readonly table: T;
   readonly foreignKey: keyof DB[T] & string;
-  /** A column of the query's first table (default `id`). */
+  /** A column of the query's tables — of the first one that has it (default `id`). */
   readonly localKey?: AnyColumn<DB, TB>;
   readonly one?: One;
 }
@@ -107,12 +107,21 @@ export function installChain(): void {
   installed = true;
 }
 
-/** @internal — puts the methods on `prototype`, or throws when it has one of their names. */
+/** Marks the methods as ours — another copy of this module (two versions of the package on one Kysely) leaves them in place. */
+const OWN = Symbol.for('@marmeon/database:relation-method');
+for (const method of Object.values(methods)) Object.defineProperty(method, OWN, { value: true });
+
+/** @internal — puts the methods on `prototype`, or throws when it has one of their names that is not ours. */
 export function installOn(prototype: object): void {
+  const existing = (name: string) => (prototype as Record<string, unknown>)[name] as { [OWN]?: boolean } | undefined;
   for (const name of Object.keys(methods)) {
-    if (name in prototype) throw new Error(`Kysely's select builder has a "${name}" method of its own — @marmeon/database cannot add its relation method of that name.`);
+    if (name in prototype && existing(name)?.[OWN] !== true) {
+      throw new Error(`Kysely's select builder has a "${name}" method of its own — @marmeon/database cannot add its relation method of that name.`);
+    }
   }
-  for (const [name, method] of Object.entries(methods)) Object.defineProperty(prototype, name, { value: method, configurable: true, writable: true, enumerable: false });
+  for (const [name, method] of Object.entries(methods)) {
+    if (!(name in prototype)) Object.defineProperty(prototype, name, { value: method, configurable: true, writable: true, enumerable: false });
+  }
 }
 
 // Wherever the types offer the methods, they exist: also on a Kysely the app's `Connections` did not make (a test's own).

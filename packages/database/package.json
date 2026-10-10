@@ -24,7 +24,10 @@
     "node": ">=26.10"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/chain.ts",
+    "./dist/chain.js"
+  ],
   "exports": {
     ".": {
       "@marmeon/source": "./src/index.ts",

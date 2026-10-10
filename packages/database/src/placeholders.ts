@@ -1,4 +1,4 @@
-import { AliasNode, IdentifierNode, TableNode, type ColumnNode, type FunctionNode, type SelectQueryNode } from 'kysely';
+import { AliasNode, IdentifierNode, TableNode, type ColumnNode, type FunctionNode, type OperationNode, type SelectQueryNode } from 'kysely';
 
 // The names of the placeholders the chain and the repository put into a query for what only the schema metadata knows (see
 // `SchemaResolver`). They all start with one prefix, which nothing else in a query does: a connection without Marmeon's
@@ -47,6 +47,8 @@ export interface Source {
   readonly table?: string;
   /** The name the select refers to it by: its alias, or the table's name. */
   readonly ref: string;
+  /** A subquery's node. */
+  readonly query?: OperationNode;
 }
 
 /** The tables of a select's FROM and joins. */
@@ -55,7 +57,7 @@ export function sourcesOf(node: SelectQueryNode): Source[] {
   return items.flatMap((item): Source[] => {
     if (TableNode.is(item)) return [{ table: item.table.identifier.name, ref: item.table.identifier.name }];
     if (AliasNode.is(item) && IdentifierNode.is(item.alias)) {
-      return [TableNode.is(item.node) ? { table: item.node.table.identifier.name, ref: item.alias.name } : { ref: item.alias.name }];
+      return [TableNode.is(item.node) ? { table: item.node.table.identifier.name, ref: item.alias.name } : { ref: item.alias.name, query: item.node }];
     }
     return [];
   });

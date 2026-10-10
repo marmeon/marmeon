@@ -7,7 +7,7 @@ import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { installChain, installOn } from './chain.ts';
-import { Connections, cursorPaginate, hasMany, Migrator, paginate, Repository, secret, type ConnectionOptions, type Json, type QueryEvent } from './index.ts';
+import { Connections, cursorPaginate, hasMany, Migrator, paginate, Repository, secret, sql, type ConnectionOptions, type Json, type QueryEvent } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
@@ -322,6 +322,61 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     }
   });
 
+  it('normalizes nested values by their own relation — a nested relation of the same name never shadows the outer one', async () => {
+    const [comment] = await db
+      .selectFrom('comments')
+      .select('body')
+      .with('user')
+      .with('post', (q) => q.select('title').with('comments', (c) => c.select('body').orderBy('id').with('user', (u) => u.select('name'))))
+      .where('body', '=', 'two')
+      .execute();
+    expect(comment!.user).toEqual(expect.objectContaining({ name: 'Ada', is_admin: true, settings: { theme: 'dark' }, balance: '12.50', created_at: expect.stringMatching(ISO_UTC) }));
+    expect(comment!.post.comments.map((c) => c.user)).toEqual([{ name: 'Alan' }, { name: 'Ada' }]);
+    const [post] = await db
+      .selectFrom('posts')
+      .select('title')
+      .with('author')
+      .with('comments', (c) => c.select('body').orderBy('id').with('user', { as: 'author' }, (u) => u.select('name')))
+      .where('id', '=', ids.first)
+      .execute();
+    expect(post!.author).toEqual(expect.objectContaining({ is_admin: true, settings: { theme: 'dark' }, created_at: expect.stringMatching(ISO_UTC) }));
+    expect(post!.comments.map((c) => c.author)).toEqual([{ name: 'Alan' }, { name: 'Ada' }]);
+  });
+
+  it('keeps a raw `or` of a callback inside parentheses — no other row’s, no deleted relation rows', async () => {
+    const posts = await db
+      .selectFrom('posts')
+      .select('id')
+      .with('comments', (q) => q.select('body').where(sql<boolean>`body = 'deleted' or approved = ${true}`))
+      .orderBy('id')
+      .execute();
+    expect(posts).toEqual([
+      { id: ids.first, comments: [{ body: 'one' }] },
+      { id: ids.second, comments: [] },
+    ]);
+    class Comments extends Repository<'comments', FixtureTables> {
+      static table = 'comments' as const;
+    }
+    const comments = await new Comments(connections).query().select('body').where(sql<boolean>`body = 'deleted' or approved = ${true}`).execute();
+    expect(comments).toEqual([{ body: 'one' }]);
+  });
+
+  it('relates withRelation() through the first of the query’s tables that has the local key', async () => {
+    const [row] = await db
+      .selectFrom('users')
+      .innerJoin('posts', 'posts.author_id', 'users.id')
+      .select('users.name')
+      .withRelation('their_comments', { table: 'comments', foreignKey: 'user_id', localKey: 'author_id' }, (q) => q.select('body').orderBy('id'))
+      .execute();
+    expect(row).toEqual({ name: 'Ada', their_comments: [{ body: 'two' }] });
+  });
+
+  it('asks for the query it gave when a callback returns another one', () => {
+    expect(() => db.selectFrom('posts').with('comments', () => db.selectFrom('users').select('name') as never)).toThrow(
+      `The callback of with('comments') returns something else than the query it was given — return the query: (q) => q.select(…).`,
+    );
+  });
+
   describe('secret columns', () => {
     const refused = (label: string, column = 'api_keys.token') =>
       `${label} selects ${column}, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.`;
@@ -361,10 +416,84 @@ describe.each(drivers)('loading relations on %s', (driver) => {
           .execute(),
       ).rejects.toThrow(refused(`with('comments')`));
       // A joined table's selectAll() is spelled out without its secret columns.
-      const [post] = await comments()
-        .with('comments', (q) => q.innerJoin('api_keys as k', 'k.user_id', 'comments.user_id').select('comments.body').select((eb) => eb.ref('k.name').as('key')).orderBy('comments.id'))
+      const { result: [post], sql: sent } = await logged(() =>
+        comments().with('comments', (q) => q.innerJoin('api_keys as k', 'k.user_id', 'comments.user_id').select('comments.body').selectAll('k').orderBy('comments.id')).execute(),
+      );
+      expect(post!.comments).toEqual([{ body: 'two', id: expect.any(Number), user_id: ids.ada, name: 'cli' }]);
+      expect(Object.keys(post!.comments[0]!).sort()).toEqual(['body', 'id', 'name', 'user_id']);
+      expect(sent[0]).not.toContain('token');
+      // Below a relation's top level — a subquery of its callback — selectAll() is spelled out the same way.
+      const [nested] = await comments()
+        .with('comments', (q) =>
+          q
+            .innerJoin((eb) => eb.selectFrom('api_keys').selectAll().as('k'), (join) => join.onRef('k.user_id', '=', 'comments.user_id'))
+            .select(['comments.body', 'k.name'])
+            .orderBy('comments.id'),
+        )
         .execute();
-      expect(post!.comments).toEqual([{ body: 'two', key: 'cli' }]);
+      expect(nested!.comments).toEqual([{ body: 'two', name: 'cli' }]);
+    });
+
+    const row = (label: string, table = 'api_keys') =>
+      `${label} reads the whole row of ${table}, secret columns included — name the columns it needs, and read a secret one with secret(eb, …) in a query of its own. See docs/queries.md#relations-and-secret-columns.`;
+
+    it('are refused in a whole row — of the relation’s table, a joined one, a name that is a table’s — before the database sees it', async () => {
+      const users = () => db.selectFrom('users').select('name').where('id', '=', ids.ada);
+      queries.length = 0;
+      await expect(users().with('api_keys', (k) => k.select((eb) => eb.fn('to_jsonb', [eb.table('api_keys')]).as('row'))).execute()).rejects.toThrow(row(`with('api_keys')`));
+      await expect(users().with('api_keys', (k) => k.select((eb) => eb.fn('row_to_json', [eb.table('api_keys')]).as('row'))).execute()).rejects.toThrow(row(`with('api_keys')`));
+      await expect(
+        db
+          .selectFrom('posts')
+          .select('title')
+          .with('comments', (q) => q.innerJoin('api_keys', 'api_keys.user_id', 'comments.user_id').select((eb) => eb.fn('jsonb_agg', [eb.table('api_keys')]).as('keys')).groupBy('comments.id'))
+          .execute(),
+      ).rejects.toThrow(row(`with('comments')`));
+      await expect(users().with('api_keys', (k) => k.select((eb) => eb.ref('api_keys' as never).as('row'))).execute()).rejects.toThrow(row(`with('api_keys')`));
+      await expect(users().with('api_keys', (k) => k.select(sql.ref('api_keys').as('row'))).execute()).rejects.toThrow(row(`with('api_keys')`));
+      await expect(users().with('api_keys', (k) => k.select(sql`to_jsonb(${sql.ref('api_keys')})`.as('row'))).execute()).rejects.toThrow(row(`with('api_keys')`));
+      expect(queries).toEqual([]); // refused before it was sent
+    });
+
+    it('are refused from the outer query too — aliased, or named without its table', async () => {
+      await expect(
+        db
+          .selectFrom('api_keys as k')
+          .select('k.name')
+          .with('user' as never, (u: any) => u.select(['name', sql.ref('k.token').as('pw')]))
+          .execute(),
+      ).rejects.toThrow(refused(`with('user')`));
+      await expect(
+        db
+          .selectFrom('api_keys')
+          .select('api_keys.name')
+          .with('user', (u) => u.select(['name', sql<string>`${sql.ref('token')}`.as('pw')]))
+          .execute(),
+      ).rejects.toThrow(refused(`with('user')`));
+    });
+
+    it('are refused in a whole row on the first query of a process — before anything was loaded', async () => {
+      const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      try {
+        await expect(cold.get<FixtureTables>().selectFrom('api_keys').select((eb) => eb.fn('to_jsonb', [eb.table('api_keys')]).as('row')).execute()).rejects.toThrow(row('This query'));
+      } finally {
+        await cold.destroy();
+      }
+    });
+
+    it('are refused at the top level in a whole row — a named one stays readable on purpose', async () => {
+      await expect(db.selectFrom('api_keys').select((eb) => eb.fn('to_jsonb', [eb.table('api_keys')]).as('row')).execute()).rejects.toThrow(row('This query'));
+      await expect(
+        db
+          .selectFrom('users')
+          .select((eb) => ['name', eb.selectFrom('api_keys').select((inner) => inner.fn('row_to_json', [inner.table('api_keys')]).as('k')).limit(1).as('key')])
+          .execute(),
+      ).rejects.toThrow(row('This query'));
+      await expect(
+        db.insertInto('api_keys').values({ user_id: ids.alan, name: 'x', token: 'y' }).returning((eb) => eb.fn('to_jsonb', [eb.table('api_keys')]).as('row')).execute(),
+      ).rejects.toThrow(row('This query'));
+      const [key] = await db.selectFrom('api_keys').select((eb) => ['name', secret(eb, 'token')]).execute();
+      expect(key).toEqual({ name: 'cli', token: 'the-secret-token' });
     });
 
     it('are refused in a relation of the free helpers too', async () => {
@@ -424,7 +553,10 @@ describe("the relation methods on Kysely's select builders", () => {
     const builder = { orderBy() {}, withTrashed() {} };
     expect(() => installOn(builder)).toThrow(`Kysely's select builder has a "withTrashed" method of its own — @marmeon/database cannot add its relation method of that name.`);
     expect(Object.keys(builder)).toEqual(['orderBy', 'withTrashed']); // nothing added
-    const prototype = Object.getPrototypeOf(db.selectFrom('t')) as object;
-    expect(() => installOn(prototype)).toThrow(`Kysely's select builder has a "with" method of its own`);
+    // Our own methods (another copy of the package on the same Kysely) are left in place.
+    const prototype = Object.getPrototypeOf(db.selectFrom('t')) as Record<string, unknown>;
+    const own = prototype['with'];
+    installOn(prototype);
+    expect(prototype['with']).toBe(own);
   });
 });

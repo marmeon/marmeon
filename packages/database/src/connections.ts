@@ -224,7 +224,7 @@ export class Connections {
       const base = this.#dialect(options, name);
       const relations = new RelationsPlugin(options.driver, metadata);
       const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations);
-      const { dialect, driver } = withMarmeonDriver(base, { name, target: describeConnection(options), metadata, deferred: resolver });
+      const { dialect, driver } = withMarmeonDriver(base, { name, target: describeConnection(options), metadata, deferred: resolver, results: relations });
       // In this order: placeholders resolved, then the relations' JSON built, then the result stripped of secret columns.
       const plugins = [resolver, relations, new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });

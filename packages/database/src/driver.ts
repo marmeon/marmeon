@@ -17,6 +17,8 @@ export interface DriverContext {
   readonly metadata?: SchemaMetadata;
   /** Queries compiled before the metadata was fresh: resolved on the connection that runs them, after it loaded the metadata. */
   readonly deferred?: DeferredQueries;
+  /** What the rows of a query get once it ran — the relations' nested values converted (`RelationsPlugin.convert`). */
+  readonly results?: { convert(query: CompiledQuery, result: QueryResult<unknown>): void };
 }
 
 /** What the connection's plugins left unresolved while compiling (see `SchemaResolver`). */
@@ -304,8 +306,9 @@ export class MarmeonDriver implements Driver {
   #serialOf(connection: DatabaseConnection): DatabaseConnection {
     let serial = this.#serial.get(connection);
     if (!serial) {
-      const { metadata, deferred } = this.#context;
+      const { metadata, deferred, results } = this.#context;
       const hooks: SerialHooks = { name: this.#context.name };
+      if (results) hooks.result = (query, result) => results.convert(query, result);
       if (deferred) {
         hooks.deferred = (query) => deferred.deferred(query);
         hooks.resolve = async (query, own) => {
@@ -372,6 +375,8 @@ export interface SerialHooks {
   ran?(query: CompiledQuery): void;
   /** The connection's name, for the message when a query holds placeholders nobody resolves. */
   name?: string;
+  /** The rows of a query that ran (or of each chunk of a stream), with the query as it ran. */
+  result?(query: CompiledQuery, result: QueryResult<unknown>): void;
 }
 
 /**
@@ -442,15 +447,23 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
     if (query.sql.includes(PREFIX)) return Promise.reject(new Error(unresolved(hooks.name ?? 'default')));
     return undefined;
   };
-  const resolvedExecute =
-    (inner: Execute): Execute =>
-    (query, ...rest) => {
+  const { result: after } = hooks;
+  const finished = (inner: Execute): Execute =>
+    after ? (query, ...rest) => inner(query, ...rest).then((result) => (after(query, result), result)) : inner;
+  const resolvedExecute = (logged: Execute): Execute => {
+    const inner = finished(logged);
+    return (query, ...rest) => {
       const pending = resolving(query);
       return pending ? pending.then((resolved) => inner(resolved, ...rest)) : inner(query, ...rest);
     };
+  };
   const resolvedStream = (inner: Stream): Stream =>
     async function* (query, ...rest) {
-      yield* inner((await resolving(query)) ?? query, ...rest);
+      const resolved = (await resolving(query)) ?? query;
+      for await (const chunk of inner(resolved, ...rest)) {
+        after?.(resolved, chunk);
+        yield chunk;
+      }
     };
   const executeQuery = resolvedExecute(turned);
   const streamQuery = resolvedStream(turnedStream);
