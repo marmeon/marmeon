@@ -42,9 +42,9 @@ const restrict = (patterns: Pattern[]) => ({ 'no-restricted-imports': ['error', 
 const levels = (depth: number) => '*/'.repeat(depth);
 
 /**
- * The oxlint config `marmeon make:lint-config` writes (E121). Client files may import controllers, repositories, providers and
+ * The oxlint config `marmeon make:lint-config` writes. Client files may import controllers, repositories, providers and
  * module entries as types only (`no-restricted-imports` with `allowTypeImports`), and `import { type X }` must be
- * `import type { X }` — it would load the module otherwise (`verbatimModuleSyntax`). `boundaries` (opt-in, Leitprinzip 5):
+ * `import type { X }` — it would load the module otherwise (`verbatimModuleSyntax`). `boundaries` (opt-in):
  * a module imports another one only through its entry. oxlint matches specifiers as text, and a later override replaces an
  * earlier one's options for the same rule — so the boundary rule has one override per folder depth, and client files get
  * both rules in theirs.

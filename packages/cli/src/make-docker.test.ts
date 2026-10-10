@@ -37,7 +37,7 @@ const pnpmApp = () =>
     'pnpm-workspace.yaml': 'overrides:\n  "@marmeon/http": "file:./vendor/fw/http.tgz"\n  "left-pad": "file:../outside/left-pad.tgz"\n',
   });
 
-// `marmeon make:docker` (E140, E141, E163): the image, its context, the roles, the proxies.
+// `marmeon make:docker`: the image, its context, the roles, the proxies.
 describe('marmeon make:docker', () => {
   it('writes a multi-stage Dockerfile for a pnpm app: pinned pnpm, frozen lockfile, build, production install, non-root, health check, marmeon as the process', () => {
     const root = pnpmApp();
@@ -56,11 +56,11 @@ describe('marmeon make:docker', () => {
     expect(dockerfile).toContain('&& node_modules/.bin/marmeon discover');
     expect(dockerfile).toMatch(/ENV NODE_ENV=production HOST=0\.0\.0\.0 PORT=3000/);
     expect(dockerfile).toMatch(/\nUSER node\n/);
-    // tini as PID 1 (E187): signals passed on, orphans reaped — installed in the final stage, the entrypoint in front of marmeon.
+    // tini as PID 1: signals passed on, orphans reaped — installed in the final stage, the entrypoint in front of marmeon.
     expect(dockerfile).toContain('apt-get install -y --no-install-recommends tini');
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]\nCMD ["start"]\n');
     expect(dockerfile).toContain('chown -R node:node storage');
-    // The image has no .env: every one stays out of the context — the build needs none, nor a key (E187).
+    // The image has no .env: every one stays out of the context — the build needs none, nor a key.
     expect(result.file('.dockerignore')).toMatch(/^\.env\*\n/m);
     expect(result.file('.dockerignore')).not.toContain('!.env.example');
     expect(dockerfile).toContain('RUN NODE_ENV=production node_modules/.bin/marmeon build\n');
@@ -71,7 +71,7 @@ describe('marmeon make:docker', () => {
     expect(compose).toContain('image: shop');
     expect(compose).not.toMatch(/^\s*init: true/m); // tini is PID 1 already
     expect(compose).toContain("command: ['start']");
-    // Every queue (E199): a worker without --queue — no list that forgets a queue.
+    // Every queue: a worker without --queue — no list that forgets a queue.
     expect(compose).toContain("command: ['queue:work']");
     expect(compose).not.toContain("'--queue");
     expect(compose).toContain("command: ['schedule:work']");
@@ -131,7 +131,7 @@ describe('marmeon make:docker', () => {
     expect(conf).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
     expect(conf).not.toContain('X-Forwarded-For $proxy_add_x_forwarded_for');
     expect(conf).toContain('proxy_read_timeout 75s;');
-    // nginx closes an idle connection to the app before the app does (W9 step 4): the other way round, it would send a request on
+    // nginx closes an idle connection to the app before the app does: the other way round, it would send a request on
     // one the app is just closing — a 502 now and then. The app's default (KEEP_ALIVE_TIMEOUT) is longer than nginx's.
     const upstreamIdle = Number(/^\s*keepalive_timeout (\d+)s;/m.exec(conf)?.[1]);
     const app = await createApplication({ root: repo, discover: false, env: {}, providers: [ServerServiceProvider] });
@@ -171,7 +171,7 @@ describe('marmeon make:docker', () => {
   });
 });
 
-// The image's HEALTHCHECK (E126): healthy on 200 from /up only — a draining server (503) or none at all is unhealthy.
+// The image's HEALTHCHECK: healthy on 200 from /up only — a draining server (503) or none at all is unhealthy.
 describe('the health check of the image', () => {
   async function serve(status: number): Promise<Server> {
     const server = createServer((req, res) => {

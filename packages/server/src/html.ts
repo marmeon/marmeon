@@ -15,7 +15,7 @@ export const FALLBACK_TEMPLATE = `<!doctype html>
 const NONCE_ATTRIBUTE = ` nonce="${CSP_NONCE_PLACEHOLDER}"`;
 
 /**
- * The template with the response's CSP nonce (E147) in place of {@link CSP_NONCE_PLACEHOLDER} — which Vite's `html.cspNonce`
+ * The template with the response's CSP nonce in place of {@link CSP_NONCE_PLACEHOLDER} — which Vite's `html.cspNonce`
  * (set by `marmeon()`) put on every script, style and preload tag, and `DevDocument`'s HTML carries — or, for a response
  * without one, with those `nonce` attributes taken out.
  */
@@ -75,7 +75,7 @@ const encoder = new TextEncoder();
  *
  * The shell is read before the stream is handed over (the SSR entry resolved with it ready), so the head and the shell
  * are both there for the server's first write: a server that waits a tick for more when a body is not complete yet
- * (`@hono/node-server` does) would otherwise send the headers only after it — while the islands' requests run (E49).
+ * (`@hono/node-server` does) would otherwise send the headers only after it — while the islands' requests run.
  */
 export async function documentOf(
   template: string,
@@ -83,7 +83,7 @@ export async function documentOf(
   ssr: SsrResult,
   onCancel?: (reason: unknown) => void,
 ): Promise<string | ReadableStream<Uint8Array>> {
-  // The deferred groups the render streams: the browser waits for them instead of asking (E49).
+  // The deferred groups the render streams: the browser waits for them instead of asking.
   const sent = ssr.streamedProps && ssr.streamedProps.length > 0 ? { ...page, streamedProps: ssr.streamedProps } : page;
   if (typeof ssr.html === 'string') return renderDocument(template, sent, { html: ssr.html, head: ssr.head });
   const { before, after } = documentAround(template, sent, ssr.head);

@@ -32,7 +32,7 @@ function marmeon(args: readonly string[], env: Record<string, string>): Run {
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-/** `marmeon tinker` with piped input (W6.4: `stdin.end(…)`, or the REPL never sees the end of its input). */
+/** `marmeon tinker` with piped input (`stdin.end(…)`, or the REPL never sees the end of its input). */
 function session(args: readonly string[], env: Record<string, string>, input: string): Promise<Run> {
   const child = spawn(process.execPath, [bin, 'tinker', ...args], { cwd: webApp, env: environment(env) });
   let stdout = '';
@@ -212,7 +212,7 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(count()).toBe(before);
   });
 
-  it('says why the cache cannot write on the app’s SQLite file inside the sandbox (E108) — instead of waiting', () => {
+  it('says why the cache cannot write on the app’s SQLite file inside the sandbox — instead of waiting', () => {
     const { code, stderr } = marmeon(['tinker', '--sandbox', '-e', "await make('Cache').put('greeting', 'hello', 60)"], { ...env, CACHE_DRIVER: 'database', CACHE_CONNECTION: 'default' });
     expect(code).toBe(1);
     expect(stderr).toContain('✗ InfrastructureTransactionError: The cache (CACHE_DRIVER=database');
@@ -243,7 +243,7 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(script.stdout).toBe('2\n');
     expect(script.stderr).toContain('PRODUCTION — NODE_ENV=production, APP_ENV=production, db sqlite');
     expect(script.stderr).toContain('changes are rolled back at the end (--sandbox).');
-    // A staging server (E217): production, named by APP_ENV — and APP_ENV=local unprotects nothing.
+    // A staging server: production, named by APP_ENV — and APP_ENV=local unprotects nothing.
     const staging = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'production', APP_ENV: 'staging' });
     expect(staging.stderr).toContain('PRODUCTION — NODE_ENV=production, APP_ENV=staging, db sqlite');
     const local = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'production', APP_ENV: 'local' });

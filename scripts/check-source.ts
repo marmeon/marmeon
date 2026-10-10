@@ -260,12 +260,6 @@ export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
  * apps' READMEs and `.env` files — is read all the same.
  */
 export const PENDING_AREAS: readonly string[] = [
-  'packages/core/',
-  'packages/server/',
-  'packages/cli/',
-  'packages/devtools/',
-  'packages/create-marmeon/',
-  'packages/encryption/',
   'packages/database/',
   'packages/table/',
   'packages/storage/',

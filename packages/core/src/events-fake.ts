@@ -6,7 +6,7 @@ import { isQueuedListener, type EventClass, type EventObserver, type EventRegist
 export type EventMatch<E extends object> = Partial<E> | ((event: E) => boolean);
 
 /**
- * Records every dispatched event — `@marmeon/testing` binds it in each test app (`app.events`, W6.7):
+ * Records every dispatched event — `@marmeon/testing` binds it in each test app (`app.events`):
  *
  * ```ts
  * await app.post('/register', { form }).assertRedirect();

@@ -19,13 +19,13 @@ import { createHttpKernel } from './kernel.ts';
 const JSON_HEADERS = { accept: 'application/json', 'content-type': 'application/json' };
 const live = (...fields: string[]) => ({ ...JSON_HEADERS, [VALIDATE_HEADER]: fields.join(',') });
 
-describe('createHttpKernel — live validation (E62)', async () => {
+describe('createHttpKernel — live validation', async () => {
   const handled: string[] = [];
   const after: string[] = [];
 
   /**
    * A rule that needs the app (a uniqueness check): the schema is built per request with `resolve`. A schema of another library
-   * (Valibot here) runs live only with `live: true` (E206) — the request's word that what it checks is no secret.
+   * (Valibot here) runs live only with `live: true` — the request's word that what it checks is no secret.
    */
   class Directory {
     static taken = ['ada@example.com'];
@@ -115,7 +115,7 @@ describe('createHttpKernel — live validation (E62)', async () => {
   const post = (path: string, body: unknown, headers: Record<string, string>, kernel = app) =>
     kernel.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
 
-  it('answers 204 for valid fields — and never runs the controller (Gegenprobe: no sign-up is handled)', async () => {
+  it('answers 204 for valid fields — and never runs the controller — no sign-up is handled', async () => {
     handled.length = 0;
     const response = await post('/sign-up', { name: 'Ada', email: 'grace@example.com', password: 'secret-pass' }, live('name', 'email'));
     expect(response.status).toBe(204);
@@ -157,7 +157,7 @@ describe('createHttpKernel — live validation (E62)', async () => {
     expect(((await response.json()) as { errors: unknown }).errors).toEqual({ 'address.city': ['A city.'] });
   });
 
-  it('authorization first: a forbidden route answers 403 — no field errors (Gegenprobe of the order, E13)', async () => {
+  it('authorization first: a forbidden route answers 403 — no field errors', async () => {
     handled.length = 0;
     const response = await strict.request('/profile', { method: 'PUT', headers: live('name'), body: JSON.stringify({ name: 'A' }) });
     expect(response.status).toBe(403);
@@ -180,7 +180,7 @@ describe('createHttpKernel — live validation (E62)', async () => {
     expect(response.headers.get('set-cookie')).toBeNull();
     await app.settle();
     expect(after).toEqual([]);
-    // Gegenprobe: the same route, submitted — the cookie and the deferred work happen.
+    // The same route, submitted: the cookie and the deferred work happen.
     await post('/tracked', { name: 'Ada', email: 'grace@example.com', password: 'secret-pass' }, JSON_HEADERS);
     await app.settle();
     expect(after).toEqual(['/tracked']);

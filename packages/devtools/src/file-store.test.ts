@@ -21,7 +21,7 @@ function diskBytes(path: string): number {
   return readdirSync(path).reduce((sum, name) => sum + statSync(join(path, name)).size, 0);
 }
 
-describe('FileStore (E116)', () => {
+describe('FileStore', () => {
   it('writes NDJSON — one file per process and hour — and reads it back: newest first, by type, batch, request, tag, text and page', async () => {
     const path = directory();
     const store = new FileStore({ directory: path });

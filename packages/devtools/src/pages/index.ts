@@ -14,7 +14,7 @@ import { batchPage, entryPage, listPage, listQuery, overviewPage, queuePage, sch
 export { BASE } from './layout.ts';
 export { MAIL_CSP, PAGE_CSP } from './assets.ts';
 
-/** The version of the JSON API and the stream (E117: documented, so the in-page bar and later adapters build on it). */
+/** The version of the JSON API and the stream (documented, so the in-page bar and later adapters build on it). */
 export const API_VERSION = 1;
 
 /** Entries per page of a list. */
@@ -27,17 +27,17 @@ export interface PagesOptions {
   readonly app: Application;
   readonly store: DevtoolsStore;
   readonly redactor: Redactor;
-  /** The hosts the pages answer (E115 + DNS rebinding): loopback names and `APP_URL`'s. */
+  /** The hosts the pages answer (DNS rebinding): loopback names and `APP_URL`'s. */
   readonly hosts: ReadonlySet<string>;
   /** The ring's size, for the overview. */
   readonly maxBytes?: number;
 }
 
 /**
- * Registers `/_marmeon/devtools` (W7 step 8, E113, E115, E117) — only ever called where the devtools run (`NODE_ENV=development`
+ * Registers `/_marmeon/devtools` — only ever called where the devtools run (`NODE_ENV=development`
  * or a test's opt-in): in production the routes do not exist (404). Every route:
  *
- * - **GET only** — there is no endpoint that writes or runs anything (E113, E130): retrying a job is a command to copy;
+ * - **GET only** — there is no endpoint that writes or runs anything: retrying a job is a command to copy;
  * - outside every middleware group — **no session, no cookies, no CSRF**;
  * - behind a **host check** (403 for any host but `localhost`, `127.0.0.1`, `[::1]` and `APP_URL`'s — DNS rebinding);
  * - with `Cache-Control: no-store`, a CSP (`default-src 'none'`, the inline style and script by hash, `frame-ancestors 'self'`),
@@ -58,11 +58,11 @@ export async function registerDevtoolsPages(options: PagesOptions): Promise<bool
   const http = await import('@marmeon/http').catch(() => undefined);
   const closing = () => (http && app.container.has(http.ServerClosing) ? app.container.make(http.ServerClosing).signal : undefined);
   const pages = new DevtoolsPages(options, () => app.container.make(router.Router).routes.some((route) => route.path === '/_marmeon/mail'), closing);
-  // The guard of every development route (E200, `@marmeon/core/dev`): 403 for another host, the dev headers on every answer.
+  // The guard of every development route (`@marmeon/core/dev`): 403 for another host, the dev headers on every answer.
   const guard = router.defineMiddleware('DevtoolsGuard', devOnly(options.hosts, (_ctx: HttpContext, next: Next<EmptyObject>) => next()));
 
   app.container.make(router.Router).load(
-    // No group: no session, no cookies (E115). The guard runs for every route here.
+    // No group: no session, no cookies. The guard runs for every route here.
     router.defineRoutes((Route) => {
       Route.middleware(guard)
         .prefix(BASE)
@@ -142,7 +142,7 @@ class DevtoolsPages {
     this.#closing = closing;
   }
 
-  /** The app's `APP_ENV` for the header (E217) — informative, as everywhere. */
+  /** The app's `APP_ENV` for the header — informative, as everywhere. */
   #environment(): { environment?: string } {
     return this.#app.container.has(EnvironmentConfig) ? { environment: this.#app.container.make(EnvironmentConfig).app } : {};
   }
@@ -317,7 +317,7 @@ class DevtoolsPages {
     return entry ? jsonResponse({ entry }) : jsonResponse({ error: 'not found' }, 404);
   }
 
-  /** Everything of one request (E131): its own batch and what its jobs recorded in a worker — oldest first. */
+  /** Everything of one request: its own batch and what its jobs recorded in a worker — oldest first. */
   async apiRequest(requestId: string): Promise<Response> {
     const entries = oldestFirst(await this.#store.list({ requestId, limit: MAX_LIMIT }));
     return jsonResponse({ requestId, entries, batches: [...new Set(entries.map((entry) => entry.batch))] });
@@ -331,7 +331,7 @@ class DevtoolsPages {
     return jsonResponse(await queueSnapshot(this.#app, this.#redactor));
   }
 
-  /** Where a controller (`?controller=ShowUserController`) or a view (`?view=users/Show`) is — for "open in editor" (W7 step 9). */
+  /** Where a controller (`?controller=ShowUserController`) or a view (`?view=users/Show`) is — for "open in editor". */
   async apiSource(url: URL): Promise<Response> {
     const controller = url.searchParams.get('controller');
     const view = url.searchParams.get('view');

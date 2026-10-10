@@ -1,29 +1,15 @@
 /**
- * What `NODE_ENV` means to the framework — the one place that decides it (E115, E139, E217), and where it comes from (E170).
+ * What `NODE_ENV` means to the framework, and where it comes from — the one place that decides both.
  *
- * `NODE_ENV` is `development`, `test` or `production` — nothing else: any other value stops the start ({@link environment.check},
- * called by `marmeon` before a command loads, by `createApplication` and by `startServer`), with the hint to set
- * `NODE_ENV=production` and name the environment in `APP_ENV`. A missing `NODE_ENV` is `production`. Two rules, and they are
- * not mirror images of each other:
- * - **Development tools** (Vite's dev server, the error page's details, the devtools, `Server-Timing`, the mail previews,
- *   pretty logs, regenerated table types) run **only** with `NODE_ENV=development` — never with "anything but production".
- * - **Protections** (JSON logs, `migrate` asking for `--force`, the boot warnings, no lab pages) apply to `production` — and,
- *   fail-closed, to everything but `development` and `test`: a missing `NODE_ENV`, and any other value a check let through.
+ * `NODE_ENV` is `development`, `test` or `production` (missing = `production`); any other value stops the start. The two rules
+ * are not mirror images of each other:
+ * - **Development tools** run **only** with `NODE_ENV=development` — never with "anything but production".
+ * - **Protections** apply to `production` and, fail-closed, to everything but `development` and `test`.
  *
- * **`APP_ENV`** names the app's environment — `local`, `staging`, `production` or a name of your own; without it `development`
- * is `local`, `test` is `testing` and `production` is `production` ({@link environment.app}). It is shown — the start line, a
- * field of every JSON log entry, the spans' `deployment.environment.name`, the devtools' header — and it selects the scheduled
- * tasks (`.environments(…)`, E221). It never weakens a protection or enables a development tool — a staging server is
- * `NODE_ENV=production APP_ENV=staging`.
+ * `APP_ENV` only names the environment (and selects scheduled tasks): it never weakens a protection or enables a development
+ * tool. See docs/configuration.md#the-environment-node_env.
  *
- * **Where `NODE_ENV` comes from** ({@link resolveEnvironment}, E170): the process's `NODE_ENV` — else the one in the app's `.env`
- * (only the base file: `.env.{NODE_ENV}` is chosen by it and cannot define it) — else none, which is production (`marmeon start`
- * and `marmeon build` then set `production`). The resolved value is written to `process.env.NODE_ENV` once, at the start of the
- * process, so config definitions, the CLI and the server all read the same one; a value taken from `.env` is marked as such and
- * named wherever the environment is shown (`development (APP_ENV=local, NODE_ENV from .env)`).
- *
- * Every function reads `process.env` unless given the environment a config definition resolves from (`env` of `defineConfig`).
- * This module has no dependencies besides Node: `marmeon` loads it (`@marmeon/core/environment`) before the injection hook.
+ * No dependencies besides Node: `marmeon` loads this module (`@marmeon/core/environment`) before the injection hook.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -64,7 +50,7 @@ export const environment = {
     return nodeEnv(env);
   },
 
-  /** `NODE_ENV=development`: the development tools run (E115) — and only here. */
+  /** `NODE_ENV=development`: the development tools run — and only here. */
   isDevelopment(env: NodeEnvironment = process.env): boolean {
     return nodeEnv(env) === 'development';
   },
@@ -75,7 +61,7 @@ export const environment = {
   },
 
   /**
-   * Protections apply (E139): `production` — and, fail-closed, every `NODE_ENV` but `development` and `test`, a missing one too.
+   * Protections apply: `production` — and, fail-closed, every `NODE_ENV` but `development` and `test`, a missing one too.
    * Check this on the protecting side, never `=== 'production'`. `APP_ENV` plays no part.
    */
   isProtected(env: NodeEnvironment = process.env): boolean {
@@ -86,7 +72,7 @@ export const environment = {
   /**
    * The app's environment (`APP_ENV`): its own name — `staging`, `production`, one of the app's — else the one that goes with
    * `NODE_ENV`: `local` (development), `testing` (test), `production` (production, or none). Shown, and it selects the scheduled
-   * tasks (E221) — never ask it whether to protect something or to run a development tool.
+   * tasks — never ask it whether to protect something or to run a development tool.
    */
   app(env: NodeEnvironment = process.env): string {
     const own = env.APP_ENV || undefined; // an empty APP_ENV is a missing one
@@ -95,7 +81,7 @@ export const environment = {
     return known(name) ? APP_ENVIRONMENTS[name] : 'production';
   },
 
-  /** Whether `NODE_ENV` was taken from the app's `.env` (E170) rather than set in the process's environment. */
+  /** Whether `NODE_ENV` was taken from the app's `.env` rather than set in the process's environment. */
   fromDotEnv(env: NodeEnvironment = process.env): boolean {
     const name = nodeEnv(env);
     return name !== undefined && env[DOTENV_MARKER] === name;
@@ -144,7 +130,7 @@ export const environment = {
 
   /**
    * The warning a production command (`marmeon start`, `queue:work`, `schedule:work`) logs when it runs as `development`
-   * because a `.env` says so (E170) — a developer's `.env` copied to a server turns the development tools on. Undefined otherwise.
+   * because a `.env` says so — a developer's `.env` copied to a server turns the development tools on. Undefined otherwise.
    */
   dotEnvDevelopmentWarning(command: string, env: NodeEnvironment = process.env): string | undefined {
     if (!environment.isDevelopment(env) || !environment.fromDotEnv(env)) return undefined;
@@ -160,7 +146,7 @@ export const environment = {
  * `NODE_ENV` for `marmeon build`, once {@link resolveEnvironment} decided it (into `env`): what the build bakes into `dist/client`.
  * Vite builds the browser code with the process's `NODE_ENV` — anything but `production` keeps every development branch and
  * React's development build — so the build runs with `NODE_ENV=production` unless the environment itself says `development`:
- * a missing one, `test`, and a `NODE_ENV=development` **from `.env`** (a developer's, E170 — the commands of this machine) all
+ * a missing one, `test`, and a `NODE_ENV=development` **from `.env`** (a developer's, for the commands of this machine) all
  * build for production. Set, not just removed: Vite reads the `.env` files itself and takes their `NODE_ENV=development`
  * whenever the process has none. A `NODE_ENV=development` set in the environment is respected, with a warning. Any other value
  * stops the build ({@link environment.check}). Returns the lines to print.
@@ -203,7 +189,7 @@ export function readEnvFile(path: string): Record<string, string | undefined> {
 }
 
 /**
- * Resolves `NODE_ENV` for the app in `root` and writes it into `env` (`process.env`) — the one place that decides it (E170):
+ * Resolves `NODE_ENV` for the app in `root` and writes it into `env` (`process.env`) — the one place that decides it:
  * the process's own value wins; else the base `.env`'s (marked {@link DOTENV_MARKER}); else `fallback` (`marmeon start`:
  * `production`, `marmeon dev`: `development`); else none (production). A `.env.{NODE_ENV}` that sets `NODE_ENV` is ignored, with a
  * warning. A `NODE_ENV` that is none of `development`, `test`, `production` throws ({@link environment.check}) — the start error.
@@ -230,7 +216,7 @@ export function resolveEnvironment(root: string, { fallback, env = process.env }
       source = 'unset';
     }
   }
-  // Nothing reads the environment before it is known to be one (E217): an unknown NODE_ENV stops here.
+  // Nothing reads the environment before it is known to be one: an unknown NODE_ENV stops here.
   environment.check(env);
   const name = env.NODE_ENV || undefined;
   const warnings: string[] = [];

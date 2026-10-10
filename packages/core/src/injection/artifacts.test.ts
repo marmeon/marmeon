@@ -17,7 +17,7 @@ const controller = [
   '}',
 ].join('\n');
 
-describe('injection artifacts (E138)', () => {
+describe('injection artifacts', () => {
   let root: string;
   const write = (path: string, source: string) => {
     mkdirSync(dirname(join(root, path)), { recursive: true });

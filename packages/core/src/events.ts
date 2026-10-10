@@ -28,7 +28,7 @@ export interface Listener<TEvent> {
 export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | ((event: TEvent) => void | Promise<void>);
 
 /**
- * Where and how a queued listener runs (E86, E109) — its class's `static queue`:
+ * Where and how a queued listener runs — its class's `static queue`:
  *
  * ```ts
  * export class SendEmailVerification {
@@ -37,7 +37,7 @@ export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | 
  * }
  * ```
  *
- * Its job is dispatched like any other (E107, E109): inside `connections.transaction()` it exists only once the
+ * Its job is dispatched like any other: inside `connections.transaction()` it exists only once the
  * transaction commits and is gone after a rollback — a `database` queue writes it into the transaction itself (atomic
  * with the data), every other connection holds it until the commit. There is no `afterCommit` switch: it is always on.
  */
@@ -55,7 +55,7 @@ export interface QueuedListenerOptions {
 }
 
 /**
- * The static side of an event that queued listeners can listen to (E86): a stable name and the schema of what is queued
+ * The static side of an event that queued listeners can listen to: a stable name and the schema of what is queued
  * of it — the event's own fields, as JSON (IDs, not records):
  *
  * ```ts
@@ -128,7 +128,7 @@ export interface ListenerBinding {
  * defineModule({ name: 'user-profile', listeners: [listen(UserLoggedIn, RecordLastLogin)] });
  * ```
  *
- * A listener class with `static queue` is **queued** (E86): the dispatch queues it as a job (`marmeon.listener`, needs
+ * A listener class with `static queue` is **queued**: the dispatch queues it as a job (`marmeon.listener`, needs
  * @marmeon/queue) and a worker runs it — with the event's payload (`EventPayload<typeof E>`, its `static schema`),
  * not the event object. Such an event needs `static event` and `static schema`.
  */
@@ -173,7 +173,7 @@ export class EventRegistry {
 }
 
 /**
- * Queues a queued listener (E86) — bound by @marmeon/queue. The dispatcher hands it the event, the class the
+ * Queues a queued listener — bound by @marmeon/queue. The dispatcher hands it the event, the class the
  * listener was registered for and the listener.
  */
 export interface ListenerQueue {
@@ -181,7 +181,7 @@ export interface ListenerQueue {
 }
 export const ListenerQueue = token<ListenerQueue>('ListenerQueue');
 
-/** Whether a listener is queued: a class with `static queue` (E86). */
+/** Whether a listener is queued: a class with `static queue`. */
 export function isQueuedListener(listener: unknown): listener is QueuedListenerClass {
   return typeof listener === 'function' && typeof (listener as { queue?: unknown }).queue === 'object' && (listener as { queue?: unknown }).queue !== null;
 }
@@ -201,7 +201,7 @@ export interface EventDispatcherOptions {
   /** Queues queued listeners — the app's {@link ListenerQueue}, if it has one. */
   readonly queue?: () => ListenerQueue | undefined;
   readonly observer?: EventObserver;
-  /** The app its dispatches are reported for on the `marmeon:event` channel (E118) — the devtools record them there. */
+  /** The app its dispatches are reported for on the `marmeon:event` channel — the devtools record them there. */
   readonly app?: Application;
 }
 
@@ -218,8 +218,8 @@ function listenerName(listener: ListenerBinding['listener']): string {
 }
 
 /**
- * Dispatches events: listeners run in registration order, each awaited. A queued listener (`static queue`, E86) is
- * queued at its place in that order — like any dispatch, part of the transaction around it (E107, E109) — and runs
+ * Dispatches events: listeners run in registration order, each awaited. A queued listener (`static queue`) is
+ * queued at its place in that order — like any dispatch, part of the transaction around it — and runs
  * later in a worker.
  *
  * An error stops the dispatch and propagates to the caller — in a request, the exception handler. The listeners after

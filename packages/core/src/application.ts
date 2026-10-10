@@ -17,7 +17,7 @@ import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 
 /**
- * What an app boots for (E187). `run` — serving, working a queue, a command: every configuration validated, every provider
+ * What an app boots for. `run` — serving, working a queue, a command: every configuration validated, every provider
  * registered and booted. `build` — what `marmeon build` needs of the app (the route types): every provider registered, **none
  * booted** (no connection, no check of a driver), and configuration that does not validate — the runtime secrets: `APP_KEY`,
  * database passwords, mail credentials — left out instead of failing: reading it then throws. So the build needs no `.env`
@@ -40,7 +40,7 @@ export interface ApplicationOptions {
   listeners?: readonly ListenerBinding[];
   /** App-level configuration; modules can contribute their own through `config`. */
   config?: readonly ConfigDefinition<any>[];
-  /** App-level readiness checks for `/up/ready` (E126); packages and modules bring their own through `health`. */
+  /** App-level readiness checks for `/up/ready`; packages and modules bring their own through `health`. */
   health?: readonly HealthCheckClass[];
   /**
    * Environment to validate the configuration against. Default: `.env`, then
@@ -48,7 +48,7 @@ export interface ApplicationOptions {
    */
   env?: Readonly<Record<string, string | undefined>>;
   /**
-   * `build`: registered, not booted, without the configuration that does not validate (E187) — what `marmeon build` boots the
+   * `build`: registered, not booted, without the configuration that does not validate — what `marmeon build` boots the
    * app with (`static boots = 'build'` on a built-in command). Default: `run`.
    */
   phase?: ApplicationPhase;
@@ -89,7 +89,7 @@ export class Application {
   readonly packages: readonly string[];
   /** What the app was defined with — packages read their app-level settings from here (e.g. http's `middleware`). */
   readonly options: ApplicationOptions;
-  /** `build`: registered, never booted (E187) — see {@link ApplicationPhase}. */
+  /** `build`: registered, never booted — see {@link ApplicationPhase}. */
   readonly phase: ApplicationPhase;
   readonly #providers: ServiceProvider[] = [];
   #shutdown: Promise<void> | undefined;
@@ -158,7 +158,7 @@ export class Application {
   }
 }
 
-/** Set by the primary of `marmeon start --workers=N` for its workers (E140): the boot's warnings were said once, by the primary. */
+/** Set by the primary of `marmeon start --workers=N` for its workers: the boot's warnings were said once, by the primary. */
 export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 
 /**
@@ -203,17 +203,17 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),
   ]);
-  // NODE_ENV resolved once for the process (E170): the environment's, else the app's .env — `marmeon` did it already; a script
+  // NODE_ENV resolved once for the process: the environment's, else the app's .env — `marmeon` did it already; a script
   // that boots the app itself gets the same answer here. An app given its own `env` (a test fixture) decides for itself.
   const resolved = options.env ? undefined : resolveEnvironment(options.root);
   const env = options.env ?? loadEnv(options.root);
-  // An unknown NODE_ENV stops the start before anything asks it (E217) — also for an app given its own `env`.
+  // An unknown NODE_ENV stops the start before anything asks it — also for an app given its own `env`.
   environment.check(env);
   const phase = options.phase ?? 'run';
   const { resolved: config, problems } = await validateConfig([...definitions], env);
   if (problems.size > 0 && phase === 'run') throw invalidConfiguration(problems);
   for (const [definition, value] of config) container.instance(definition, value);
-  // The build phase (E187) goes on without them — the runtime secrets a build has no business with. Whoever reads one learns why.
+  // The build phase goes on without them — the runtime secrets a build has no business with. Whoever reads one learns why.
   for (const [definition, issues] of problems) {
     container.bind(definition, () => {
       throw unavailableWhileBuilding(definition, issues);
@@ -227,18 +227,17 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.instance(LogContextSources, new LogContextSources());
   // Fallback until a logging package (e.g. @marmeon/log) binds its own.
   container.singleton(Logger, () => new ConsoleLogger({}, app));
-  // The time (E97); tests bind a `TestClock` they can move.
   container.singleton(Clock, () => new SystemClock());
-  // What may be shown or recorded of a value (E125) — packages add names (the session's cookie) while booting.
+  // What may be shown or recorded of a value — packages add names (the session's cookie) while booting.
   container.instance(Redactor, new Redactor());
-  // The solutions the development error page shows (E130): every provider's `static solutions` (the specific ones), then the core's.
+  // The solutions the development error page shows: every provider's `static solutions` (the specific ones), then the core's.
   container.instance(ErrorSolutions, new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]));
-  // The readiness checks of `/up/ready` (E126): the packages' (database, redis, cache, queue), then the app's and its modules'.
+  // The readiness checks of `/up/ready`: the packages' (database, redis, cache, queue), then the app's and its modules'.
   container.instance(
     HealthChecks,
     new HealthChecks([...providers.flatMap((Provider) => Provider.health ?? []), ...(options.health ?? []), ...modules.flatMap((module) => module.health ?? [])]),
   );
-  // A defaulted or optional constructor parameter of an injectable type is never injected (E128): said once per class, in
+  // A defaulted or optional constructor parameter of an injectable type is never injected: said once per class, in
   // development — `container.warnings` keeps them for the error page.
   if (environment.isDevelopment(env)) {
     container.onWarning((warning) => container.make(Logger).warn(`Injection: ${warning.message}`, { class: warning.className }));
@@ -249,7 +248,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     .add(options.listeners ?? [])
     .add(modules.flatMap((module) => module.listeners ?? []));
   container.instance(EventRegistry, events);
-  // Queued listeners (E86) go to the app's ListenerQueue (@marmeon/queue); a test's EventFake sees every event first.
+  // Queued listeners go to the app's ListenerQueue (@marmeon/queue); a test's EventFake sees every event first.
   container.bind(
     EventDispatcher,
     (resolver) =>
@@ -262,19 +261,17 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
 
   app.register(providers);
   options.override?.(container);
-  // The build phase ends here (E187): registered, not booted — no connection, no driver check, no secret needed.
+  // The build phase ends here: registered, not booted — no connection, no driver check, no secret needed.
   if (phase === 'build') return app;
-  // A worker of `marmeon start --workers=N` (E140): its primary booted the same app with the same configuration and said the
-  // boot's warnings (log mailer, cookies without Secure, stale build artifacts) — the workers keep them to themselves instead of
-  // repeating them N times. Warnings after the boot are theirs as always.
-  // Only in a worker of node:cluster: the variable left in an operator's environment must not silence a single process.
+  // A worker of `marmeon start --workers=N` keeps the boot's warnings to itself: its primary said them once. Only in a
+  // node:cluster worker — the variable left in an operator's environment must not silence a single process.
   const quiet = process.env[CLUSTER_WORKER] === '1' && cluster.isWorker ? quietWhileBooting(container) : undefined;
   try {
     await app.boot();
-    // An out-of-date manifest in a read-only .marmeon/ (E160): discovered in memory — said once per process, in the app's log.
+    // An out-of-date manifest in a read-only .marmeon/: discovered in memory — said once per process, in the app's log.
     if (discovered?.warning) container.make(Logger).warn(discovered.warning);
     for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);
-    // Modules that changed since `marmeon build` (E138): their injection lists were derived at start — said once per process.
+    // Modules that changed since `marmeon build`: their injection lists were derived at start — said once per process.
     const staleInjections = takeInjectionWarning();
     if (staleInjections) container.make(Logger).warn(staleInjections);
   } finally {
@@ -286,7 +283,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   return app;
 }
 
-/** Reading configuration the build phase left out (E187): which variables, and why the build does not have them. */
+/** Reading configuration the build phase left out: which variables, and why the build does not have them. */
 function unavailableWhileBuilding(definition: ConfigDefinition<unknown>, issues: readonly string[]): ConfigError {
   const error = new ConfigError(
     `The configuration "${definition.name}" is not available while building — the build boots the app without runtime secrets:\n${issues.join('\n')}\n` +

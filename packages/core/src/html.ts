@@ -1,6 +1,6 @@
 /**
  * The escaping `html` template — for HTML the server writes itself: mails (@marmeon/mail re-exports it), the devtools'
- * pages (W7 step 8). Moved here from @marmeon/mail so a package that renders HTML does not need the mail package.
+ * pages. In the core, so a package that renders HTML does not need the mail package.
  */
 
 /** HTML that is already safe — what the `html` template returns; nested, it is not escaped again. */

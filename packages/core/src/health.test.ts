@@ -36,7 +36,7 @@ class SlowCheck implements HealthCheck {
   }
 }
 
-describe('HealthChecks (E126)', () => {
+describe('HealthChecks', () => {
   it('runs every check at once: ok with notes, failing with the error, a timeout after its time', async () => {
     const container = new Container();
     container.instance(Pinger, { ping: async () => {} });

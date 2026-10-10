@@ -7,7 +7,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const dir = tempDir('marmeon-precompress-');
 
-describe('marmeon build — precompressed assets (E162)', () => {
+describe('marmeon build — precompressed assets', () => {
   it('writes .br and .gz next to the compressible files — the same bytes once decompressed; never for images or what does not shrink', async () => {
     const script = `export const text = ${JSON.stringify('lorem ipsum '.repeat(300))};`;
     mkdirSync(join(dir, 'nested'));

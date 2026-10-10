@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+// Slow under load: more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -53,7 +53,7 @@ describe('marmeon (in the web app)', () => {
     expect(stderr).not.toMatch(/triggerUncaughtException|node:internal/);
   });
 
-  it('says how to fix an error the app cannot start with — the solutions as text (E130)', () => {
+  it('says how to fix an error the app cannot start with — the solutions as text', () => {
     const { code, stdout } = marmeon(webApp, ['route:list'], { APP_KEY: '' });
     expect(code).toBe(1);
     // The installed package's solution (encryption) first, then the core's.
@@ -81,12 +81,12 @@ describe('marmeon (in the web app)', () => {
     const ran = [...migrate.stdout.matchAll(/^✓ Migrated (\d{4}_\d\d_\d\d_\d{6}_\w+) \(([\w-]+)\) [\d.]+ ms$/gm)].map((match) => match[1]!);
     expect(ran.slice(0, 3)).toEqual(['2026_10_01_120000_create_users_table', '2026_10_01_120100_create_login_activity_table', '2026_10_01_120101_create_profile_links_table']);
     expect(ran).toEqual(ran.toSorted());
-    // It names the environment it assumed — and a test writes no table types (E164: development only).
+    // It names the environment it assumed — and a test writes no table types (development only).
     expect(migrate.stdout).toMatch(/^Environment: test \(APP_ENV=testing\)\n/);
     expect(migrate.stdout).not.toContain('database.d.ts');
   });
 
-  it('asks for --force wherever the app is protected — APP_ENV=local on production too — and writes table types in development only (E139, E164, E217)', () => {
+  it('asks for --force wherever the app is protected — APP_ENV=local on production too — and writes table types in development only', () => {
     const memory = { DB_DATABASE: ':memory:' };
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
     const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
@@ -95,7 +95,7 @@ describe('marmeon (in the web app)', () => {
     const development = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
     expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
     expect(marmeon(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (APP_ENV=production)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
-    // APP_ENV names the environment and protects or opens nothing (E217): APP_ENV=local on production asks for --force; with it,
+    // APP_ENV names the environment and protects or opens nothing: APP_ENV=local on production asks for --force; with it,
     // it migrates — and writes no types (development only).
     const local = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'production', APP_ENV: 'local' });
     expect(local.code, 'APP_ENV=local on production migrated without --force').toBe(1);
@@ -137,7 +137,7 @@ describe('marmeon (in the web app)', () => {
     expect(code).toBe(0);
   });
 
-  it('writes the route types without a secret — route:types registers the app and boots nothing, as marmeon build runs it (E187)', () => {
+  it('writes the route types without a secret — route:types registers the app and boots nothing, as marmeon build runs it', () => {
     // What a Docker build has: no .env of the app's (CI has none anyway), no key, no name — here emptied over whatever .env holds.
     const withoutSecrets = { NODE_ENV: 'production', APP_KEY: '', APP_PREVIOUS_KEYS: '', APP_NAME: '', APP_URL: '' };
     const types = marmeon(webApp, ['route:types', '--check'], withoutSecrets);
@@ -221,7 +221,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(marmeon(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain('jobs: [SendInvoiceReminderJob]');
     expect(marmeon(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain('notifications: [InvoiceOverdueNotification]');
     expect(marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
-    // A reading endpoint is a GET, and a GET has no body (E65): its request validates the query.
+    // A reading endpoint is a GET, and a GET has no body: its request validates the query.
     expect(marmeon(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
     // A writing endpoint answers with a redirect: it renders no page — --view goes with a reading name, nothing is written.
     const writing = marmeon(app, ['make:controller', 'ArchiveInvoice', '--module=billing', '--request', '--view']);
@@ -242,10 +242,10 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(controller).toContain("return this.view('billing/ShowInvoice', {});");
     expect(readFileSync(join(app, 'modules/billing/events/InvoicePaid.ts'), 'utf8')).toContain('readonly #event = true;');
     const job = readFileSync(join(app, 'modules/billing/jobs/SendInvoiceReminderJob.ts'), 'utf8');
-    expect(job).toContain("static readonly job = 'billing.send-invoice-reminder';"); // stable, from the class name once (E84)
+    expect(job).toContain("static readonly job = 'billing.send-invoice-reminder';"); // stable, from the class name once
     expect(job).toContain('async handle(payload: JobPayload<typeof SendInvoiceReminderJob>, job: JobContext): Promise<void> {');
     const notification = readFileSync(join(app, 'modules/billing/notifications/InvoiceOverdueNotification.ts'), 'utf8');
-    expect(notification).toContain("static readonly notification = 'billing.invoice-overdue';"); // stable, like a job's (E92)
+    expect(notification).toContain("static readonly notification = 'billing.invoice-overdue';"); // stable, like a job's
     expect(notification).toContain('toDatabase(data: NotificationData<typeof InvoiceOverdueNotification>): DatabaseInput<typeof InvoiceOverdueNotification> {');
     // The generated class passes the checks where a notification is sent (channels, toDatabase against static database).
     writeFileSync(
@@ -281,7 +281,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
-  }, 30_000); // thirteen CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
+  }, 30_000); // thirteen CLI processes — seconds under a full parallel run
 
   it('refuses to overwrite and explains missing modules', () => {
     marmeon(app, ['make:module', 'shop']);
@@ -293,7 +293,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: marmeon make:module cart');
   }, ciTimeout);
 
-  it('generates the application key into .env — without booting, never silently replacing one, rotating with --force (E169)', () => {
+  it('generates the application key into .env — without booting, never silently replacing one, rotating with --force', () => {
     writeFileSync(join(app, '.env.example'), 'APP_NAME=Shop\nAPP_KEY=\n');
     expect(marmeon(app, ['key:generate']).code).toBe(0);
     const env = readFileSync(join(app, '.env'), 'utf8');
@@ -307,7 +307,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     );
     expect(readFileSync(join(app, '.env'), 'utf8')).toBe(env);
 
-    // --force rotates (E169): the old key moves to APP_PREVIOUS_KEYS — what it encrypted stays readable.
+    // --force rotates: the old key moves to APP_PREVIOUS_KEYS — what it encrypted stays readable.
     const first = /^APP_KEY=(.*)$/m.exec(env)![1]!;
     const rotated = marmeon(app, ['key:generate', '--force']);
     expect(rotated.code).toBe(0);
@@ -338,11 +338,11 @@ describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
     const app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-deployed-')));
     try {
       const cli = join(app, 'node_modules/marmeon');
-      // As pnpm deploy writes it: a workspace of the app alone — the copy under node_modules is none of its packages (E187).
+      // As pnpm deploy writes it: a workspace of the app alone — the copy under node_modules is none of its packages.
       writeFileSync(join(app, 'pnpm-workspace.yaml'), "packages:\n- '.'\ninjectWorkspacePackages: false\n");
       // The CLI copied with its workspace manifest and sources; its dependencies as installed (here: links to the built packages).
       for (const part of ['bin', 'src', 'dist', 'package.json']) cpSync(join(repo, 'packages/cli', part), join(cli, part), { recursive: true });
-      mkdirSync(join(app, 'node_modules/@marmeon'), { recursive: true }); // the CLI is unscoped (E195): nothing made the scope's directory
+      mkdirSync(join(app, 'node_modules/@marmeon'), { recursive: true }); // the CLI is unscoped: nothing made the scope's directory
       for (const name of ['core', 'server', 'http', 'router', 'encryption', 'log']) symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@marmeon', name), 'dir');
       expect(readFileSync(join(cli, 'package.json'), 'utf8')).toContain('"@marmeon/source"');
       const { MARMEON_CHILD: _child, NODE_OPTIONS: _options, ...parent } = process.env;
@@ -355,7 +355,7 @@ describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
     }
   }, 30_000);
 
-  it('knows the monorepo by its workspace, not by a manifest: a pnpm-workspace.yaml above the package lists its directory (E187)', async () => {
+  it('knows the monorepo by its workspace, not by a manifest: a pnpm-workspace.yaml above the package lists its directory', async () => {
     const { inWorkspace, listedIn } = (await import(new URL('../bin/workspace.js', import.meta.url).href)) as { inWorkspace(dir: string): boolean; listedIn(yaml: string, path: string): boolean };
     expect(inWorkspace(join(repo, 'packages/cli'))).toBe(true);
     expect(inWorkspace(join(webApp, 'node_modules/marmeon'))).toBe(true); // the app's link resolves to the workspace package
@@ -389,7 +389,7 @@ describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
 });
 
 /**
- * `marmeon start` (E139, E159, E217): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
+ * `marmeon start`: one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
  * it — and the `NODE_ENV` it is given (a missing one becomes production; one that is none of development, test, production does not
  * start), with `APP_ENV` naming the environment (a staging server: `NODE_ENV=production APP_ENV=staging`). An app of its own
  * that resolves the framework's built `dist/` like an installed one (`start` never uses the source condition).
@@ -410,7 +410,7 @@ describe('marmeon start', () => {
     symlinkSync(join(repo, 'packages/react'), join(app, 'node_modules/@marmeon/react'), 'dir');
     mkdirSync(join(app, 'bootstrap'));
     mkdirSync(join(app, 'services'));
-    // A class built by the container at boot: what it was injected with is in the output (E138).
+    // A class built by the container at boot: what it was injected with is in the output.
     writeFileSync(join(app, 'services/Greeter.ts'), greeter(['clock: Clock']));
     writeFileSync(
       join(app, 'bootstrap/app.ts'),
@@ -429,9 +429,9 @@ describe('marmeon start', () => {
         '    bootLogger = app.container.make(Logger);',
         '  }',
         '}',
-        '// A request that takes a while — in flight when SIGTERM comes, it must still be answered (E102).',
+        '// A request that takes a while — in flight when SIGTERM comes, it must still be answered.',
         '// A library loaded after the server listens — Rolldown, when Vite 8\'s dev server starts — with signal-exit: it re-raises a signal',
-        '// when it finds itself the only listener (W10 step 9c, finding D).',
+        '// when it finds itself the only listener.',
         'function loadSignalExit() {',
         "  for (const signal of ['SIGINT', 'SIGTERM'] as const) {",
         '    const listener = () => {',
@@ -464,9 +464,9 @@ describe('marmeon start', () => {
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
   /**
-   * `marmeon start` until `servers` servers listen, on the address the requests go to: `HOST=127.0.0.1` (W9.2). On every interface
+   * `marmeon start` until `servers` servers listen, on the address the requests go to: `HOST=127.0.0.1`. On every interface
    * (`::`, no HOST) macOS lets the server — even with the port the system picked for it (`PORT=0`) — listen beside another program
-   * that holds the same port on 127.0.0.1 only (1Password on 127.0.0.1:39127, W8.13); a request to 127.0.0.1 then reaches that
+   * that holds the same port on 127.0.0.1 only; a request to 127.0.0.1 then reaches that
    * program (a 404, a 501 from `/up`). Bound to 127.0.0.1 the start fails instead (EADDRINUSE). The requests go to `base`: the
    * address and port the start line names.
    */
@@ -494,7 +494,7 @@ describe('marmeon start', () => {
     return { child, port, base: `http://${host}:${port}`, exited, output: () => output };
   }
 
-  it('is one process, runs a staging server as production named by APP_ENV — JSON logs with appEnv — and drains on SIGTERM (E139, E159, E102, E217)', async () => {
+  it('is one process, runs a staging server as production named by APP_ENV — JSON logs with appEnv — and drains on SIGTERM', async () => {
     const server = await start({ NODE_ENV: 'production', APP_ENV: 'staging' });
     try {
       // No launcher, no child: the process that was started is the server.
@@ -510,14 +510,14 @@ describe('marmeon start', () => {
     expect(server.output()).toContain('SIGTERM received, shutting down');
   }, 30_000);
 
-  it('a library that re-raises a signal it is alone with (signal-exit, under Vite 8) does not end the server before its shutdown (W10 step 9c)', async () => {
+  it('a library that re-raises a signal it is alone with (signal-exit, under Vite 8) does not end the server before its shutdown', async () => {
     const server = await start({ NODE_ENV: 'production' });
     try {
       expect((await fetch(`${server.base}/api/signal-exit`)).status).toBe(200);
     } finally {
       server.child.kill('SIGTERM');
     }
-    // Before: the process ended by the signal (exit code null) without "shutting down" — `marmeon dev` then left its worker and scheduler.
+    // Not ended by the signal (exit code null) without "shutting down" — `marmeon dev` would leave its worker and scheduler.
     expect(await server.exited, server.output()).toBe(0);
     expect(server.output()).toContain('SIGTERM received, shutting down');
   }, 30_000);
@@ -548,7 +548,7 @@ describe('marmeon start', () => {
     }
   }, 30_000);
 
-  it('--workers=2 (E140): a primary and two servers on one port; SIGTERM reaches both, each drains its request, exit 0', async () => {
+  it('--workers=2: a primary and two servers on one port; SIGTERM reaches both, each drains its request, exit 0', async () => {
     // Without the build's injection lists every process boots with a warning — said once, by the primary, not by each worker.
     rmSync(join(app, '.marmeon/injections.json'), { force: true });
     const server = await start({ NODE_ENV: 'production' }, ['--workers=2'], 2);
@@ -578,9 +578,9 @@ describe('marmeon start', () => {
     expect(output.split('warned at runtime').length - 1).toBe(1);
   }, 30_000);
 
-  it('a program on 127.0.0.1 at the server\'s port: the start fails (EADDRINUSE) — never a server beside it that the requests miss (W9.2)', async () => {
-    // What made `--workers=2` flaky: the server on every interface started beside a program holding its port on 127.0.0.1, and
-    // `/up` reached that program (501). The helper binds the address it asks.
+  it('a program on 127.0.0.1 at the server\'s port: the start fails (EADDRINUSE) — never a server beside it that the requests miss', async () => {
+    // On every interface the server could start beside a program holding its port on 127.0.0.1, and `/up` would reach that
+    // program (501). The helper binds the address it asks.
     const program = createHttpServer((_request, response) => {
       response.statusCode = 501;
       response.end();
@@ -614,8 +614,7 @@ describe('marmeon start', () => {
   it('a worker that cannot start stops the cluster with its exit code; --workers needs a number', async () => {
     const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
     // A cluster that hangs (the bug this test is for) must not outlive the test: each runs in a process group of its own, killed
-    // whole when the test ends — also after a timeout, when the awaits below never return (W10 step 9c: a hung primary with its
-    // workers stayed behind after every red run of W9.4 G7c).
+    // whole when the test ends — also after a timeout, when the awaits below never return.
     const groups: number[] = [];
     onTestFinished(() => {
       for (const pid of groups) {
@@ -645,7 +644,7 @@ describe('marmeon start', () => {
     } finally {
       busy.close();
     }
-    // A worker whose app fails to boot (a provider throws — LIVE_DRIVER=memory with --workers, W9 step 4): it ends, and so does
+    // A worker whose app fails to boot (a provider throws — LIVE_DRIVER=memory with --workers): it ends, and so does
     // the cluster — it neither hangs on its channel to the primary nor forks again.
     const booting = await new Promise<{ code: number | null; output: string }>((resolve) => {
       const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, detached: true, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', NODE_ENV: 'production', GREETER_FAILS: '1' } });
@@ -664,7 +663,7 @@ describe('marmeon start', () => {
     expect(wrong.stderr).toContain('--workers expects a number of processes from 1, like --workers=4 (got 0).');
   }, 30_000);
 
-  it('SHUTDOWN_DELAY=1 (E163): after SIGTERM /up/ready 503 and requests answered for a second, then the drain; SIGINT skips it', async () => {
+  it('SHUTDOWN_DELAY=1: after SIGTERM /up/ready 503 and requests answered for a second, then the drain; SIGINT skips it', async () => {
     const server = await start({ NODE_ENV: 'production', SHUTDOWN_DELAY: '1' });
     const base = server.base;
     const signalled = performance.now();
@@ -684,7 +683,7 @@ describe('marmeon start', () => {
     expect(performance.now() - stopped).toBeLessThan(3000);
   }, 30_000);
 
-  it('takes NODE_ENV=development from .env when the process has none — and says loudly that start runs as development (E170)', () => {
+  it('takes NODE_ENV=development from .env when the process has none — and says loudly that start runs as development', () => {
     writeFileSync(join(app, '.env'), 'NODE_ENV=development\n');
     mkdirSync(join(app, 'modules')); // what development watches for new views
     try {
@@ -692,7 +691,7 @@ describe('marmeon start', () => {
       // Development serves through Vite's dev server, which this app does not have — the warning comes first, before the server.
       const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info' } });
       expect(`${result.stdout}${result.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: marmeon start runs with the development tools');
-      // …and the failed start ends (the route-types watcher kept it alive until it was killed).
+      // …and the failed start ends (the route-types watcher does not keep it alive).
       expect(result.stderr).toContain('Vite is not installed in this app.');
       expect(result.status).toBe(1);
     } finally {
@@ -701,7 +700,7 @@ describe('marmeon start', () => {
     }
   }, 30_000);
 
-  it('the process NODE_ENV wins over .env — production stays production, no warning (E170); APP_ENV of .env names it', async () => {
+  it('the process NODE_ENV wins over .env — production stays production, no warning; APP_ENV of .env names it', async () => {
     writeFileSync(join(app, '.env'), 'NODE_ENV=development\nAPP_ENV=staging\n');
     try {
       const server = await start({ NODE_ENV: 'production' });
@@ -721,7 +720,7 @@ describe('marmeon start', () => {
     expect(server.output()).toContain('Marmeon in production (APP_ENV=production) on http://127.0.0.1:');
   }, 30_000);
 
-  it('does not start with any other NODE_ENV — the start error names the way: NODE_ENV=production and APP_ENV (E217)', () => {
+  it('does not start with any other NODE_ENV — the start error names the way: NODE_ENV=production and APP_ENV', () => {
     const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
     const run = (env: Record<string, string>) =>
       spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', ...env } });
@@ -741,7 +740,7 @@ describe('marmeon start', () => {
     }
   }, 30_000);
 
-  it('a staging server (NODE_ENV=production APP_ENV=staging) streams a late server-rendering error as its digest only — no message, no stack (E217)', async () => {
+  it('a staging server (NODE_ENV=production APP_ENV=staging) streams a late server-rendering error as its digest only — no message, no stack', async () => {
     // A real SSR bundle: React's server renderer, chosen by the process's NODE_ENV when it loads — the page's boundary fails after the shell.
     const ssr = join(app, 'dist/server/ssr.js');
     const template = join(app, 'dist/client/index.html');
@@ -800,7 +799,7 @@ describe('marmeon start', () => {
     return { output: server.output(), loaded: (name: string) => loaded.some((url) => url.includes(`/node_modules/${name}/`) || url.includes(`/${name}@`)) };
   }
 
-  it('applies the injection lists of marmeon build: no oxc-parser, no pino-pretty for JSON logs, and a compile cache (E138)', async () => {
+  it('applies the injection lists of marmeon build: no oxc-parser, no pino-pretty for JSON logs, and a compile cache', async () => {
     rmSync(join(app, 'storage'), { recursive: true, force: true });
     // What `marmeon build` leaves: the injection lists and the discovery manifest (discovering would parse .d.ts files with oxc).
     writeInjectionArtifacts({ root: app });
@@ -815,7 +814,7 @@ describe('marmeon start', () => {
     expect(readdirSync(cache).flatMap((version) => readdirSync(join(cache, version))).length).toBeGreaterThan(50);
   }, 30_000);
 
-  it('derives the lists of a module changed after the build — on every start, with the compile cache warm — and says so once (E138)', async () => {
+  it('derives the lists of a module changed after the build — on every start, with the compile cache warm — and says so once', async () => {
     writeInjectionArtifacts({ root: app });
     await startOnce(); // warms the compile cache with the module as built
     writeFileSync(join(app, 'services/Greeter.ts'), greeter(['clock: Clock', 'redactor: Redactor']));
@@ -831,7 +830,7 @@ describe('marmeon start', () => {
     }
   }, 60_000);
 
-  it('analyses what marmeon build never saw — a missing file, a module not in it — instead of failing (E138)', async () => {
+  it('analyses what marmeon build never saw — a missing file, a module not in it — instead of failing', async () => {
     rmSync(join(app, '.marmeon/injections.json'), { force: true });
     const { output } = await startOnce();
     expect(output).toContain('greeter: SystemClock');
@@ -853,10 +852,10 @@ describe('marmeon start', () => {
 });
 
 /**
- * Where NODE_ENV comes from (E170): the process's, else the app's `.env` — what a developer's machine has (`NODE_ENV=development`
+ * Where NODE_ENV comes from: the process's, else the app's `.env` — what a developer's machine has (`NODE_ENV=development`
  * from `.env.example`). A copy of the blank app with a `.env` of its own; the commands run without a NODE_ENV of the process.
  */
-describe('marmeon dev: its companions (W10 step 9c)', () => {
+describe('marmeon dev: its companions', () => {
   let app: string;
 
   beforeAll(() => {
@@ -935,7 +934,7 @@ describe('marmeon dev: its companions (W10 step 9c)', () => {
   }, 40_000);
 });
 
-describe('NODE_ENV from the app’s .env (E170)', () => {
+describe('NODE_ENV from the app’s .env', () => {
   let app: string;
   const blank = join(repo, 'apps/blank-app');
   const config = (dir: string) => `APP_NAME=Blank\nAPP_URL=http://localhost\nAPP_KEY=base64:${Buffer.alloc(32, 5).toString('base64')}\nDB_DATABASE=${join(dir, 'db.sqlite')}\nMAIL_MAILER=array\n`;

@@ -1,7 +1,7 @@
 import { token } from './token.ts';
 
 /**
- * The time, injected (E97): services that expire, schedule or wait take a `Clock` instead of calling `Date.now()`, so a
+ * The time, injected: services that expire, schedule or wait take a `Clock` instead of calling `Date.now()`, so a
  * test can move time (`app.travel({ minutes: 5 })`, `app.freeze()`) without fake timers.
  *
  * ```ts

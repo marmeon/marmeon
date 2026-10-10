@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 /**
- * The pages' only script (E117: no client framework, nothing of it in the app's bundle): the live tail (an `EventSource` on
+ * The pages' only script (no client framework, nothing of it in the app's bundle): the live tail (an `EventSource` on
  * `/_marmeon/devtools/stream`, rows rendered and escaped by the server), filters that submit on change, copy buttons for
  * commands. The pages work without it — lists reload, commands can be selected.
  */
@@ -58,7 +58,7 @@ export const SCRIPT = `(() => {
   start();
 })();`;
 
-/** The pages' CSS — light and dark after the system, like the error page (E119). */
+/** The pages' CSS — light and dark after the system, like the error page. */
 export const STYLE = `
 :root{color-scheme:light dark;--bg:#f6f6f4;--panel:#fff;--text:#1c1f24;--muted:#646b76;--border:#e3e3df;--accent:#2457c5;--accent-soft:#e8eefb;--ok:#15724c;--ok-soft:#e5f4ec;--warn:#9a5b00;--warn-soft:#fbf1dd;--bad:#b4361b;--bad-soft:#fbeee9;--info:#5b4bb7;--info-soft:#efecfb;--code:#f1f1ee;--fresh:#fff6cc;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 @media (prefers-color-scheme:dark){:root{--bg:#121314;--panel:#1a1c1e;--text:#e7e8e9;--muted:#9a9fa6;--border:#2c2f33;--accent:#7aa2ff;--accent-soft:#1b2440;--ok:#6fd3a8;--ok-soft:#14261f;--warn:#f0b75a;--warn-soft:#2c2312;--bad:#f07a5a;--bad-soft:#2b1b16;--info:#b3a6ff;--info-soft:#221d3a;--code:#151618;--fresh:#3a3412}}
@@ -133,8 +133,8 @@ export function cspHash(source: string): string {
 
 /**
  * The pages' Content-Security-Policy: nothing but their own inline style and script (by hash), requests to this origin (the
- * stream, the mail frame), images from here, and only this origin may frame them (`frame-ancestors 'self'`, the in-page bar of
- * step 9). Forms go nowhere else; no `<base>`.
+ * stream, the mail frame), images from here, and only this origin may frame them (`frame-ancestors 'self'`, the in-page
+ * bar). Forms go nowhere else; no `<base>`.
  */
 export const PAGE_CSP = [
   "default-src 'none'",

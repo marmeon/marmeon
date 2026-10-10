@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
- * The ambient transaction context (E107): which database transaction the current async call chain runs in.
+ * The ambient transaction context: which database transaction the current async call chain runs in.
  *
  * A transaction is entered ONLY by an explicit `transaction(callback)` (`connections.transaction`,
  * `repository.transaction` in @marmeon/database) and lasts exactly as long as its callback. Everything awaited
@@ -108,8 +108,8 @@ interface Context {
   readonly left: readonly TransactionFrame[];
 }
 
-// The third deliberate piece of ambient state, next to the request/job context (E3) and logging: the transaction a call
-// chain runs in (E107). Context only — which transaction — never services or data.
+// The third deliberate piece of ambient state, next to the request/job context and logging: the transaction a call
+// chain runs in. Context only — which transaction — never services or data.
 const storage = new AsyncLocalStorage<Context>();
 
 /**
@@ -145,7 +145,7 @@ export function leftTransactionOf(owner: object): TransactionFrame | undefined {
 /**
  * An open transaction of `owner` that the current call chain is in, or stepped out of with {@link outsideTransaction} —
  * one that holds the owner's connection while this call chain runs. Unlike {@link transactionOf} it never throws: a
- * finished transaction holds nothing. For connections that must never join a transaction (E108).
+ * finished transaction holds nothing. For connections that must never join a transaction.
  */
 export function openTransactionOf(owner: object): TransactionFrame | undefined {
   const context = storage.getStore();
@@ -244,7 +244,7 @@ export async function afterCommit(fn: () => unknown): Promise<void> {
  * Runs `fn` if the current transaction rolls back — right after that rollback, outside of any transaction; never, if it
  * commits. The counterpart of {@link afterCommit}, for work done OUTSIDE the transaction on its behalf that must be
  * undone with it: a lock taken on the cache's own connection for a job whose row is part of the transaction (a unique
- * job, E108), a file written for a record that is gone.
+ * job), a file written for a record that is gone.
  *
  * ```ts
  * await connections.transaction(async () => {

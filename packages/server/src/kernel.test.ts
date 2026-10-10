@@ -135,7 +135,7 @@ describe('createHttpKernel — errors & logging', async () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ message: 'Server Error' });
     expect(response.headers.get('x-request-id')).toBe('req-1');
-    // The log line's own text is masked like text (E125): the URL's password goes, free prose stays (redactText is a net).
+    // The log line's own text is masked like text: the URL's password goes, free prose stays (redactText is a net).
     expect(JSON.stringify(entries), 'the report logged a URL password in clear').not.toContain('hunter3');
     expect(entries.find((entry) => entry.level === 'error')).toMatchObject({
       message: 'database password is hunter2 (postgres://app:***@db/app)',
@@ -204,7 +204,7 @@ describe('createHttpKernel — errors & logging', async () => {
 });
 
 /**
- * The request line (E187): built only when the logger lets `info` through — with `LOG_LEVEL=silent` neither the message nor its
+ * The request line: built only when the logger lets `info` through — with `LOG_LEVEL=silent` neither the message nor its
  * redacted path is computed. The counter sits on the Redactor's `path`, the expensive half of the line.
  */
 describe('createHttpKernel — the request line at a level that discards it', async () => {
@@ -430,7 +430,7 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
     const response = await app.request('/api/items');
     await app.settle();
     expect(response.status).toBe(200);
-    // Masked like text (E125): the context's keys alone never catch what an error's message quotes.
+    // Masked like text: the context's keys alone never catch what an error's message quotes.
     expect(logged.join('\n'), 'a terminate hook\'s failure logged its message in clear').not.toContain('s3cretPW');
     expect(logged).toContain('A terminate hook failed: Error: terminate broke at postgres://app:***@db/app token=[redacted]');
   });
@@ -501,7 +501,7 @@ describe('createHttpKernel — asset versioning', async () => {
   });
 });
 
-describe('createHttpKernel — response copies (W8 step 9)', async () => {
+describe('createHttpKernel — response copies', async () => {
   /** An app may hand out one Response object to every request — a constant without a body. */
   const SHARED = new Response(null, { status: 204, headers: { 'x-own': 'yes' } });
   let visits = 0;

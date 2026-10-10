@@ -6,7 +6,7 @@ const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaG
 const SCRYPT = '$scrypt$ln=15,r=8,p=1$c2FsdA$aGFzaA';
 const TOKEN = 'marmeon_12|q8Fz0kZb3T5wYvLp9nR2xCj7mHs4dGa1eKoU6iQt0f3c7a9e1';
 
-describe('redactText (E125)', () => {
+describe('redactText', () => {
   it('masks password hashes and API tokens wherever they appear', () => {
     expect(redactText(`hash ${HASH} and ${SCRYPT}.`)).toBe('hash [redacted] and [redacted].');
     expect(redactText(`Authorization failed for ${TOKEN}`)).toBe('Authorization failed for marmeon_12|[redacted]');
@@ -16,7 +16,7 @@ describe('redactText (E125)', () => {
   });
 });
 
-describe('Redactor (E125)', () => {
+describe('Redactor', () => {
   it('replaces sensitive keys at any depth — cookies, set-cookie, x-xsrf-token, _token, password, authorization — and the names added', () => {
     const redactor = new Redactor().addKeys('marmeon_session');
     const value = redactor.value({
@@ -81,7 +81,7 @@ describe('Redactor (E125)', () => {
   });
 });
 
-describe('E125, completed for the devtools (W7.7)', () => {
+describe('Redactor — what the devtools record', () => {
   const token = 'Xq3v9Lr2_pK8sT1uW4yZ6bN0cM5dF7gH-jA2eR9tY1u';
 
   it('masks token-like path segments — a reset link in a mail, a log line, a Referer — but not slugs, words or ids', () => {
@@ -94,8 +94,8 @@ describe('E125, completed for the devtools (W7.7)', () => {
     }
   });
 
-  it('masks every long random token — one without a digit, one with many - and _ (W10 step 9c, finding R) — never a lower-case slug', () => {
-    // Two reset tokens (32 random bytes, base64url) the rule before let through: about 1 in 370 was (a digit and few separators were asked).
+  it('masks every long random token — one without a digit, one with many - and _ — never a lower-case slug', () => {
+    // Two reset tokens (32 random bytes, base64url) that a test for a digit and few separators lets through.
     const noDigit = 'xcTSGsRRdFsBwbUDGMbH_yNyUBMgdklqlolrXjzXiiI';
     const separators = '-RHB_4z_ytbJPF7qzYPGUQq_an-dByze2Kb-EN8Rp_o';
     for (const secret of [noDigit, separators]) {
@@ -141,7 +141,7 @@ describe('E125, completed for the devtools (W7.7)', () => {
   });
 });
 
-describe('redact() — the log path, completed (W7.11)', () => {
+describe('redact() — the log path', () => {
   it('redacts inside lists, nested lists, maps and sets', () => {
     const shown = redact({
       users: [{ email: 'ada@example.com', password: 'hunter2' }, [{ api_key: 'k-1' }]],
@@ -210,7 +210,7 @@ describe('redact() — the log path, completed (W7.11)', () => {
   });
 });
 
-describe('Redactor.text — the shortcut for text without anything to mask (W7.11)', () => {
+describe('Redactor.text — the shortcut for text without anything to mask', () => {
   it('returns a plain path as it is, and masks the same as redactText wherever a pattern could match', () => {
     const redactor = new Redactor(['marmeon_session']);
     const token = 'Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z';
@@ -238,7 +238,7 @@ describe('Redactor.headers — a header given more than once', () => {
   });
 });
 
-describe('URL objects (W10 step 8)', () => {
+describe('URL objects', () => {
   const RESET = 'Q7mZ2xLk9TcV4bN8rW1yH6sD3fG5jA0pE2uI7oK9qMz';
 
   it('are masked like text on the log path — a query token and a token-like path segment never pass as the object', () => {

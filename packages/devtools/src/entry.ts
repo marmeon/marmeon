@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 
 /**
- * What the recorder keeps (E116): one entry per request, query, job, mail, … — every value in it redacted before it was
- * written (E125). Entries of one request, job attempt, scheduled run or command share a `batch`; `requestId` ties a
- * request to the jobs it dispatched, also when a worker in another process ran them (E131).
+ * What the recorder keeps: one entry per request, query, job, mail, … — every value in it redacted before it was
+ * written. Entries of one request, job attempt, scheduled run or command share a `batch`; `requestId` ties a
+ * request to the jobs it dispatched, also when a worker in another process ran them.
  */
 export interface Entry<T extends EntryType = EntryType> {
   /** Unique, sortable by time: `<time base36><counter><random>`. */
@@ -105,7 +105,7 @@ export interface QueryContent {
   readonly sql: string;
   /** The bound values — none of them when the statement touches a table with secret columns (`sensitive`). */
   readonly parameters: readonly unknown[];
-  /** The statement touches a table with secret columns: every parameter is replaced (E125). */
+  /** The statement touches a table with secret columns: every parameter is replaced. */
   readonly sensitive: boolean;
   readonly durationMs: number;
   /** At or over `slowQueryMs`. */
@@ -127,7 +127,7 @@ export interface JobContent {
   /** Seconds before it may run — dispatches only. */
   readonly delay?: number;
   readonly unique?: string;
-  /** The payload, redacted — an encrypted job's is `[encrypted]`, never its contents (E125). */
+  /** The payload, redacted — an encrypted job's is `[encrypted]`, never its contents. */
   readonly payload?: unknown;
   /** The request that dispatched it (attempts). */
   readonly originRequestId?: string;
@@ -145,7 +145,7 @@ export interface MailContent {
   readonly cc: readonly string[];
   readonly bcc: readonly string[];
   readonly subject?: string;
-  /** The body — links with signatures or tokens in them masked (E125). */
+  /** The body — links with signatures or tokens in them masked. */
   readonly html?: string;
   readonly text?: string;
   readonly attachments: readonly { readonly filename: string; readonly bytes: number; readonly contentType?: string }[];
@@ -178,7 +178,7 @@ export interface ExceptionContent extends ErrorContent {
   readonly status?: number;
   readonly method?: string;
   readonly path?: string;
-  /** What to do about it (E130), as the error page shows it — text only. */
+  /** What to do about it, as the error page shows it — text only. */
   readonly solutions: readonly { readonly title: string; readonly text: string; readonly command?: string; readonly docs?: string }[];
 }
 

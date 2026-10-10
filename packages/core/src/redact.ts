@@ -16,16 +16,16 @@ const MAX_DEPTH = 6;
 const MAX_CAUSES = 5;
 
 // `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value (not a statement's `?`/`$1`
-// placeholder: `where password = ?` stays readable). Matches start at a word's
-// beginning only (the lookbehind): otherwise a long word costs quadratic time (a 64 KB string took seconds).
+// placeholder: `where password = ?` stays readable). Matches start at a word's beginning only (the lookbehind): otherwise a
+// long word costs quadratic time (a 64 KB string took seconds).
 const KEY_VALUE = /(?<![\w-])([\w-]*(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature)[\w-]*)("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
 // `Authorization: Bearer …` without the key in front (a header value on its own).
 const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 // `postgres://user:secret@host`, `redis://:secret@host` — the password of a URL.
 const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)[^@\s/]+@/gi;
-// A password hash as a PHC string — `$argon2id$v=19$m=…$salt$hash`, `$scrypt$…` (E125): never shown, wherever it appears.
+// A password hash as a PHC string — `$argon2id$v=19$m=…$salt$hash`, `$scrypt$…`: never shown, wherever it appears.
 const PHC_HASH = /\$(?:argon2(?:id|i|d)|scrypt|pbkdf2(?:-sha\d+)?|bcrypt|2[abxy])\$[\w+/=,.$-]*[\w+/=$-]/g;
-// An API token (`marmeon_12|<secret>`, E27) under any prefix: its id stays, the secret goes.
+// An API token (`marmeon_12|<secret>`) under any prefix: its id stays, the secret goes.
 const API_TOKEN = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
 // A path segment of 32 or more URL-safe characters (`/reset-password/<token>`, a signed link's hash) — kept unless it reads
 // like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).
@@ -34,7 +34,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // What every pattern above (and an added name's `name=value`) needs to match at all: a separator (`:` `=`), a `$` (PHC),
 // whitespace (`Bearer …`) or a run of 32 URL-safe characters (a token-like segment — and an API token's secret). A text
 // without any of them — a request path like `/users/7/edit`, on every request's log line — has nothing to mask: one test
-// instead of seven replaces (W7.11: the log line's path cost /login 2.6 %).
+// instead of seven replaces.
 const MAYBE_SECRET = /[:=$\s]|[\w-]{32}/;
 
 /** From this length on, upper- and lower-case letters alone make a segment a token (see `looksLikeToken`). */
@@ -44,8 +44,8 @@ const LONG_SEGMENT = 40;
  * Whether a long path segment is a secret rather than a name: a hex string (a hash) or a random-looking base64url string. Slugs
  * (`my-long-article-title-2026`, lower case) and UUIDs (ids) stay. From {@link LONG_SEGMENT} characters on — a reset or e-mail
  * change token is 43 (32 random bytes) — upper- and lower-case letters are enough: random base64url has no digit in about 1 of
- * 1,500 tokens and more `-`/`_` than one in eight in about 1 of 480, and each of them was left in a log (W10 step 9c, finding R).
- * Shorter segments also need a digit and few separators.
+ * 1,500 tokens and more `-`/`_` than one in eight in about 1 of 480 — the test for shorter segments, which also needs a digit
+ * and few separators, would leave those in a log.
  */
 function looksLikeToken(segment: string): boolean {
   if (UUID.test(segment)) return false;
@@ -75,10 +75,10 @@ export function redactText(text: string): string {
 /** What replaces a redacted value. */
 export const REDACTED = '[redacted]';
 
-/** What an encrypted payload (a job with `static encrypted`, a queued mail or listener) is shown as — never its contents (E125). */
+/** What an encrypted payload (a job with `static encrypted`, a queued mail or listener) is shown as — never its contents. */
 export const ENCRYPTED = '[encrypted]';
 
-/** The most of one value (a string, a statement, a body) that is shown or recorded (E125) — the rest is cut off. */
+/** The most of one value (a string, a statement, a body) that is shown or recorded — the rest is cut off. */
 export const MAX_ENTRY_BYTES = 64 * 1024;
 
 /** A statement as the `db.query` channel publishes it (`DbQueryMessage`). */
@@ -90,7 +90,7 @@ export interface RedactableQuery {
 }
 
 /**
- * The one place that decides what of a value may be shown or recorded (E125) — for the development error page and its
+ * The one place that decides what of a value may be shown or recorded — for the development error page and its
  * Markdown copy, the devtools recorder and telemetry spans alike, also locally:
  *
  * - **by key**, at any depth: {@link REDACTED_KEYS} (passwords, tokens, secrets, cookies, `authorization`, signatures — so also
@@ -229,7 +229,7 @@ export class Redactor {
     return out;
   }
 
-  /** A statement that may be shown: with `secret`, no parameter at all (E125); otherwise each one masked like any value. */
+  /** A statement that may be shown: with `secret`, no parameter at all; otherwise each one masked like any value. */
   query(query: RedactableQuery): { sql: string; parameters: unknown[] } {
     return {
       sql: this.text(query.sql),
@@ -239,7 +239,7 @@ export class Redactor {
 
   /**
    * A queued payload that may be shown: an encrypted one (a job with `static encrypted`, a queued mail or listener — it may
-   * carry tokens or signed links) only as {@link ENCRYPTED}, never its contents; any other masked like a value (E125).
+   * carry tokens or signed links) only as {@link ENCRYPTED}, never its contents; any other masked like a value.
    */
   payload(payload: unknown, encrypted: boolean): unknown {
     return encrypted ? ENCRYPTED : this.value(payload);
@@ -276,7 +276,7 @@ export class Redactor {
   }
 
   /**
-   * `value` (plain data, as {@link value} gives it) made to fit `maxBytes` of JSON — what one recorded entry may take (E125):
+   * `value` (plain data, as {@link value} gives it) made to fit `maxBytes` of JSON — what one recorded entry may take:
    * long strings and lists are shortened step by step; if even that is too much, a preview of its JSON is all that stays.
    */
   fit(value: unknown, maxBytes = MAX_ENTRY_BYTES): unknown {

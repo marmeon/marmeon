@@ -57,7 +57,7 @@ const routes = defineRoutes((Route) => {
   Route.get('/unbound', SendWelcomeController);
   Route.get('/forbidden', () => abort(403, 'Only admins.'));
   Route.get('/home', () => view('Home', {}));
-  // Two requests at once (E119): the slow one waits until the other one ran its queries, then fails.
+  // Two requests at once: the slow one waits until the other one ran its queries, then fails.
   Route.get('/slow', async () => {
     query('select 1 -- the slow request');
     await new Promise<void>((resolve) => (release = resolve));
@@ -110,7 +110,7 @@ function markdownOf(html: string): string {
   return raw.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 }
 
-describe('the development error page (E119)', () => {
+describe('the development error page', () => {
   it('shows the class, the message, the throwing line of the controller with an editor link, the route, the queries and the log', async () => {
     const { application, kernel } = await boot();
     try {
@@ -119,7 +119,7 @@ describe('the development error page (E119)', () => {
       expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
       expect(response.headers.get('cache-control')).toBe('no-store');
       const html = await response.text();
-      // Its own CSP (E147): exactly its inline style and script, by hash — an app's contentSecurityPolicy() leaves it alone.
+      // Its own CSP: exactly its inline style and script, by hash — an app's contentSecurityPolicy() leaves it alone.
       const policy = response.headers.get('content-security-policy')!;
       const hashOf = (tag: 'style' | 'script') => `'sha256-${createHash('sha256').update(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(html)![1]!).digest('base64')}'`;
       expect(policy).toContain(`style-src ${hashOf('style')}`);
@@ -128,7 +128,7 @@ describe('the development error page (E119)', () => {
       expect(html).toContain('<span class="class">Error</span>');
       expect(html).toContain('The controller failed on purpose');
 
-      // The code snippet's current line is the line that threw (Node runs the TypeScript as it is — E119, Leitprinzip 4).
+      // The code snippet's current line is the line that threw (Node runs the TypeScript as it is).
       const source = readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n');
       const throwing = source.findIndex((line) => line.includes("throw new Error('The controller failed on purpose')")) + 1;
       const current = /<span class="line current"><span class="number">(\d+)<\/span>(.*?)<\/span>/.exec(html);
@@ -272,7 +272,7 @@ describe('the development error page (E119)', () => {
   });
 });
 
-describe('the development error page — only in development (E115)', () => {
+describe('the development error page — only in development', () => {
   for (const env of [{ NODE_ENV: 'production' }, { NODE_ENV: 'test' }, { NODE_ENV: 'production', APP_ENV: 'local' }] as Record<string, string>[]) {
     it(`${JSON.stringify(env)}: no recorder, no subscriber — the plain error page without stack, queries, headers or code`, async () => {
       const { application, kernel } = await boot({ env });
@@ -293,7 +293,7 @@ describe('the development error page — only in development (E115)', () => {
   }
 });
 
-describe('server-rendering errors in development (E119)', () => {
+describe('server-rendering errors in development', () => {
   it('go to the renderer’s overlay hook with their solutions — the page still renders in the browser', async () => {
     const reported: { error: unknown; component: string; titles: string[] }[] = [];
     const renderer: PageRenderer = {

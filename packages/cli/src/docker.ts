@@ -1,5 +1,5 @@
 /**
- * The files `marmeon make:docker` writes (E140, E141, E163): a multi-stage Dockerfile on `node:26-slim`, its `.dockerignore`, a
+ * The files `marmeon make:docker` writes: a multi-stage Dockerfile on `node:26-slim`, its `.dockerignore`, a
  * Compose file with one role per container, a reverse proxy (Caddy or nginx) and systemd units. Plain strings, so a test can
  * read every line the user gets — and run the health check.
  */
@@ -7,7 +7,7 @@
 /** The pnpm the framework is tested with — pinned in a Dockerfile when the app names none (`packageManager`). */
 export const TESTED_PNPM = '12.9.1';
 
-/** The base image of every stage (E141): Debian with glibc — native addons (oxc, rolldown, lightningcss) work as on a dev machine. */
+/** The base image of every stage: Debian with glibc — native addons (oxc, rolldown, lightningcss) work as on a dev machine. */
 export const NODE_IMAGE = 'node:26-slim';
 
 export type PackageManager = 'pnpm' | 'npm';
@@ -32,7 +32,7 @@ export interface DockerOptions {
 }
 
 /**
- * The health check of the image (E126): Node's `fetch` — no curl in a slim image — on `/up`, 200 or it fails. It follows `PORT` and
+ * The health check of the image: Node's `fetch` — no curl in a slim image — on `/up`, 200 or it fails. It follows `PORT` and
  * `HEALTH_PATH` like the server (an empty one counts as missing); `HEALTH_PATH=off` turns the server's endpoints off, so it checks nothing.
  */
 export const HEALTHCHECK_SCRIPT =

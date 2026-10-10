@@ -6,14 +6,14 @@ import { Recorder } from './recorder.ts';
 import { DevtoolsStore, MemoryStore } from './store.ts';
 import { DevtoolsTestOptIn } from './testing.ts';
 
-/** Where the Vite dev server serves the in-page bar's client (W7 step 9) — never part of a build (E115). */
+/** Where the Vite dev server serves the in-page bar's client — never part of a build. */
 export const BAR_SCRIPT = '/@id/@marmeon/devtools/client';
 
 /**
- * The in-page bar (W7 step 9, E117) in every development document's head: the document's request id (E131 — the bar asks the
+ * The in-page bar in every development document's head: the document's request id (the bar asks the
  * server's record of it; escaped, a client may send its own `x-request-id`) and the module script of the bar, served by the Vite
  * dev server. In the head, it runs before the app's entry: its dev hook is there when the navigator is made. Its script carries the
- * nonce placeholder: under the app's `contentSecurityPolicy()` the renderer puts the response's nonce there (E147).
+ * nonce placeholder: under the app's `contentSecurityPolicy()` the renderer puts the response's nonce there.
  */
 export function barMarkup({ requestId }: { readonly requestId: string | undefined }): string {
   return `<meta name="marmeon-devtools" content="${escapeHtml(requestId ?? '')}" data-marmeon-devtools>\n<script type="module" src="${BAR_SCRIPT}" nonce="${CSP_NONCE_PLACEHOLDER}" data-marmeon-devtools></script>`;
@@ -23,8 +23,8 @@ export function barMarkup({ requestId }: { readonly requestId: string | undefine
 export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings');
 
 /**
- * The devtools (E115, fail closed): with `NODE_ENV=development` — and only then — it loads `config/devtools.ts`, opens the
- * store (`storage/framework/devtools/`, shared with the worker and the scheduler `marmeon dev` starts, E101) and starts the
+ * The devtools (fail closed): with `NODE_ENV=development` — and only then — it loads `config/devtools.ts`, opens the
+ * store (`storage/framework/devtools/`, shared with the worker and the scheduler `marmeon dev` starts) and starts the
  * {@link Recorder}. Anywhere else nothing is subscribed, nothing written, `config/devtools.ts` never loaded;
  * `DEVTOOLS_ENABLED=true` with `NODE_ENV=production` fails the start. Tests opt in with `createTestApp(App, { devtools: true })`.
  * The commands `devtools:clear` and `devtools:prune` exist everywhere (they only remove files). Found by `marmeon discover` —
@@ -32,7 +32,7 @@ export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings
  */
 export class DevtoolsServiceProvider implements ServiceProvider {
   static config = [DevtoolsConfig];
-  /** On the error page and when `marmeon` cannot start the app (E130). */
+  /** On the error page and when `marmeon` cannot start the app. */
   static solutions = defineSolutions([
     {
       for: DevtoolsConfigError,
@@ -91,7 +91,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     }).start();
     app.container.instance(Recorder, this.#recorder);
 
-    // The pages under /_marmeon/devtools (W7 step 8): registered only here — in production the routes do not exist (E115).
+    // The pages under /_marmeon/devtools: registered only here — in production the routes do not exist.
     const { registerDevtoolsPages } = await import('./pages/index.ts');
     await registerDevtoolsPages({
       app,
@@ -100,7 +100,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       hosts: config.hosts,
       ...(store instanceof FileStore ? { maxBytes: options.storage.maxBytes } : {}),
     });
-    // The in-page bar in every document `marmeon dev` renders (W7 step 9): HTML the dev renderer adds to the document's head —
+    // The in-page bar in every document `marmeon dev` renders: HTML the dev renderer adds to the document's head —
     // its client comes from the Vite dev server, never from a client chunk. Bound by @marmeon/server only with NODE_ENV=development.
     const server = await import('@marmeon/server').catch(() => undefined);
     if (server && app.container.has(server.DevDocument)) app.container.make(server.DevDocument).add(barMarkup, { at: 'head' });

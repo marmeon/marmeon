@@ -73,7 +73,7 @@ describe('Application.shutdown', () => {
   });
 });
 
-// E128: the W6.6 case — a defaulted Clock is never injected; in development the app says so in its log.
+// A defaulted Clock is never injected; in development the app says so in its log.
 class DueDates {
   readonly clock: Clock;
   constructor(clock: Clock = new SystemClock()) {
@@ -81,7 +81,7 @@ class DueDates {
   }
 }
 
-describe('injection warnings in the log (E128)', () => {
+describe('injection warnings in the log', () => {
   const boot = async (nodeEnv: string) => {
     const warnings: string[] = [];
     const logger: Logger = { debug() {}, info() {}, warn: (message) => void warnings.push(message), error() {}, child: () => logger };
@@ -107,11 +107,11 @@ describe('injection warnings in the log (E128)', () => {
 });
 
 /**
- * The build phase (E187): what `marmeon build` needs of the app — every provider registered, none booted, and the configuration
+ * The build phase: what `marmeon build` needs of the app — every provider registered, none booted, and the configuration
  * that does not validate (the runtime secrets) left out instead of failing. Two measures, each with its own scenario: a boot
  * that would connect (here: one that records itself) and a configuration that cannot validate without `.env`.
  */
-describe('createApplication({ phase: "build" }) (E187)', () => {
+describe('createApplication({ phase: "build" })', () => {
   const Secret = defineConfig('secret', {
     env: env({ APP_KEY: env.string() }),
     resolve: (e) => ({ key: e.APP_KEY }),
@@ -162,7 +162,7 @@ describe('createApplication({ phase: "build" }) (E187)', () => {
   });
 });
 
-describe('the environment (E217)', () => {
+describe('the environment', () => {
   it('stops the start at a NODE_ENV that is none of development, test, production — also for an app given its own env', async () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'staging' } })).rejects.toThrow(ConfigError);
     await expect(createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'staging' } })).rejects.toThrow(

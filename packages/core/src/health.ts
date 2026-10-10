@@ -1,7 +1,7 @@
 import type { Container } from './container.ts';
 
 /**
- * One readiness check (E126): can this instance serve — is its database, its Redis, its cache reachable? An invokable class:
+ * One readiness check: can this instance serve — is its database, its Redis, its cache reachable? An invokable class:
  * dependencies come through the constructor, `handle()` throws (or rejects) when the check fails. What it returns — a short
  * note like `2 connections` — shows in the development details of `/up/ready`.
  *
@@ -37,7 +37,7 @@ export interface HealthCheckResult {
   readonly ms: number;
   /** What `handle()` returned (`2 connections`). */
   readonly note?: string;
-  /** Why it failed — raw: redact before showing (E125). */
+  /** Why it failed — raw: redact before showing. */
   readonly error?: unknown;
 }
 
@@ -51,7 +51,7 @@ export interface HealthReport {
 export const DEFAULT_HEALTH_TIMEOUT = 2_000;
 
 /**
- * The readiness checks of an app (E126): those of every provider's `static health` (packages: database, redis, cache,
+ * The readiness checks of an app: those of every provider's `static health` (packages: database, redis, cache,
  * queue), the app's `health` and each module's `health` — one registry per app. `run()` runs them all at once, each with its
  * own time limit, and never throws.
  */

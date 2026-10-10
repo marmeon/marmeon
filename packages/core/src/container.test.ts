@@ -173,7 +173,7 @@ describe('Container — errors', () => {
   });
 });
 
-describe('Container — what its errors say about themselves (E130)', () => {
+describe('Container — what its errors say about themselves', () => {
   it('names the reason, the key and who asked for it', () => {
     const unbound = catching(() => new Container().bind(Clock, FixedClock).make(WelcomeService));
     expect(unbound).toMatchObject({ reason: 'unbound', key: 'Mailer', path: ['WelcomeService'], neededBy: 'WelcomeService' });
@@ -199,7 +199,7 @@ describe('Container — what its errors say about themselves (E130)', () => {
   });
 });
 
-// The W6.6 case (E128): a defaulted parameter is never injected — the transform marks the class, the container says so.
+// A defaulted parameter is never injected — the transform marks the class, the container says so.
 class WallClock {
   now() {
     return 'wall';
@@ -217,7 +217,7 @@ class Reminder {
   }
 }
 
-describe('Container — injection warnings (E128)', () => {
+describe('Container — injection warnings', () => {
   it('builds the class with its default, and reports the warning once per class — no error', () => {
     const container = new Container().instance(WallClock, new FakeWallClock());
     const heard: string[] = [];

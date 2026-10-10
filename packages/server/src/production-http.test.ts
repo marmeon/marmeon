@@ -16,12 +16,12 @@ import { forwardedRequest, isProxyEntry, proxyMatcher } from './proxies.ts';
 import { createDocumentRenderer } from './render.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-// W8 step 4 (E147, E162): what a production server does at the HTTP level — the proxies it believes, the assets it sends,
+// What a production server does at the HTTP level — the proxies it believes, the assets it sends,
 // the nonce every document and its policy share.
 
 const peer = (remoteAddress: string) => ({ incoming: { socket: { remoteAddress } } });
 
-describe('TRUSTED_PROXIES (E162)', async () => {
+describe('TRUSTED_PROXIES', async () => {
   it('knows addresses and ranges — IPv4, IPv6, an IPv4-mapped peer — and refuses anything else at boot', async () => {
     const trusts = proxyMatcher(['10.0.0.0/8', '192.168.1.7', 'fd00::/8', '::1']);
     expect(['10.200.3.4', '::ffff:10.0.0.1', '192.168.1.7', 'fd12::1', '::1'].map(trusts)).toEqual([true, true, true, true, true]);
@@ -78,7 +78,7 @@ describe('TRUSTED_PROXIES (E162)', async () => {
     expect(await whoami('::ffff:10.1.2.3', proxied, '/api/whoami')).toEqual({ ip: '198.51.100.7', url: 'https://example.com/api/whoami' });
   });
 
-  it("TRUSTED_PROXIES='*' trusts the direct peer only (E172): a client's own X-Forwarded-For through the proxy chooses no address", async () => {
+  it("TRUSTED_PROXIES='*' trusts the direct peer only: a client's own X-Forwarded-For through the proxy chooses no address", async () => {
     const behindAny = createHttpKernel(
       await createApplication({
         root: import.meta.dirname,
@@ -107,7 +107,7 @@ describe('TRUSTED_PROXIES (E162)', async () => {
   });
 });
 
-describe('the build\'s assets (E162)', async () => {
+describe('the build\'s assets', async () => {
   // Removed with the file (also when a filter skips this suite and its afterAll would not run).
   const clientDir = tempDir('marmeon-assets-');
   mkdirSync(join(clientDir, 'assets'));
@@ -162,7 +162,7 @@ describe('the build\'s assets (E162)', async () => {
   });
 });
 
-describe('the CSP nonce (E147)', async () => {
+describe('the CSP nonce', async () => {
   const TEMPLATE = `<!doctype html><html><head><meta property="csp-nonce" nonce="${CSP_NONCE_PLACEHOLDER}"><!--app-head--><script type="module" crossorigin src="/assets/index-AbC123.js" nonce="${CSP_NONCE_PLACEHOLDER}"></script></head><body><div id="app"><!--app-html--></div></body></html>`;
   const rendered: (string | undefined)[] = [];
   const render: SsrRender = async (page, options) => {
@@ -257,7 +257,7 @@ describe('the CSP nonce (E147)', async () => {
   });
 });
 
-describe('startServer and HOST (E162)', () => {
+describe('startServer and HOST', () => {
   it('listens on HOST only — 127.0.0.1 answers, the start line names it', async () => {
     const root = tempDir('marmeon-host-');
     mkdirSync(join(root, 'dist/client'), { recursive: true });
@@ -286,7 +286,7 @@ describe('startServer and HOST (E162)', () => {
   });
 });
 
-describe('keep-alive behind a proxy (W9 step 4)', () => {
+describe('keep-alive behind a proxy', () => {
   /** The `Keep-Alive` header of an answer — what Node tells the client (the proxy) about idle connections. */
   const keepAliveOf = (port: number) =>
     new Promise<string | undefined>((resolve, reject) => {

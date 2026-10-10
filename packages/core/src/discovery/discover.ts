@@ -6,7 +6,7 @@
  * - injection lists for their exported classes (from the constructor signatures),
  * - their service providers, in dependency order.
  *
- * One file per set of resolution conditions (E160): `manifest.json` for the published packages (production, an installed app),
+ * One file per set of resolution conditions: `manifest.json` for the published packages (production, an installed app),
  * `manifest.source.json` for the framework's monorepo (`@marmeon/source`) — switching between `marmeon dev` and
  * `marmeon start` there rewrites nothing. Module references are file paths relative to the app (the classmap of Composer,
  * portable like a Docker build stage), so dependencies the app cannot import itself — transitive ones under pnpm — resolve.
@@ -83,7 +83,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const reader = new DeclarationReader();
   const modules: string[] = [];
   const moduleIndex = (url: string) => {
-    // Kept relative to the app (E160): the same manifest serves the app wherever it is copied to.
+    // Kept relative to the app: the same manifest serves the app wherever it is copied to.
     const path = relative(root, fileURLToPath(url)).split(sep).join('/');
     const index = modules.indexOf(path);
     return index === -1 ? modules.push(path) - 1 : index;
@@ -112,7 +112,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
       const typesEntry = jsEntry && resolveTypes(pkg, subpath, jsEntry);
       if (!jsEntry || !typesEntry) continue;
       // Listed (and imported at boot) only when one of its classes is injected: a subpath without any — the React adapter's
-      // `./table`, whose optional peer an app without tables does not install (W9 step 6) — is never loaded on the server.
+      // `./table`, whose optional peer an app without tables does not install — is never loaded on the server.
       const module = () => moduleIndex(pathToFileURL(jsEntry).href);
 
       for (const [publicName, location] of reader.read(typesEntry).exports) {
@@ -282,7 +282,7 @@ function publicRef(pkg: PackageInfo, declared: Location, reader: DeclarationRead
 
 /** Node's own conditions — present in every process; the others are the ones a manifest file is named after. */
 const NODE_CONDITIONS = new Set(['node', 'import', 'module-sync', 'node-addons', 'default', 'require']);
-/** What happens when `.marmeon/` cannot be written (E160): a read-only image, a locked-down directory. */
+/** What happens when `.marmeon/` cannot be written: a read-only image, a locked-down directory. */
 const UNWRITABLE = new Set(['EACCES', 'EPERM', 'EROFS']);
 
 /** Changes whenever installed dependencies or resolution conditions change. */
@@ -305,7 +305,7 @@ function findLockfile(root: string): string | undefined {
 }
 
 /**
- * The manifest of one set of conditions (E160): `.marmeon/manifest.json` with Node's own (published packages, production),
+ * The manifest of one set of conditions: `.marmeon/manifest.json` with Node's own (published packages, production),
  * `.marmeon/manifest.source.json` with `@marmeon/source` (the monorepo), `manifest.<conditions>.json` for any other set.
  */
 export function manifestPath(root: string, conditions: readonly string[] = runtimeConditions()): string {
@@ -328,7 +328,7 @@ export function writeManifest(options: DiscoverOptions): DiscoverySummary & { re
  * Generates and writes the manifest atomically: a temporary file renamed into place.
  * Several processes may regenerate at once (the dev server, `marmeon` commands, test
  * workers) — a reader must never see a half-written file. A directory that cannot be
- * written is no failure here: the manifest is returned with the error (E160).
+ * written is no failure here: the manifest is returned with the error.
  */
 function regenerate(options: DiscoverOptions): { manifest: Manifest; summary: DiscoverySummary; unwritable?: NodeJS.ErrnoException } {
   const conditions = options.conditions ?? runtimeConditions();
@@ -354,7 +354,7 @@ export interface DiscoveredPackages {
   /** Whether the manifest was (re)generated during this call. */
   readonly regenerated: boolean;
   /**
-   * Set when the manifest was out of date and `.marmeon/` could not be written (E160): the packages were discovered in memory —
+   * Set when the manifest was out of date and `.marmeon/` could not be written: the packages were discovered in memory —
    * once per process, the app logs it (run `marmeon build` or `marmeon discover` where it can write, e.g. in the image's build stage).
    */
   readonly warning?: string;
@@ -362,7 +362,7 @@ export interface DiscoveredPackages {
 
 /**
  * The discovered packages' modules, by URL, once per process. Node keeps a module by its URL anyway; under a module runner (Vitest)
- * every `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test (W9 step 1: under
+ * every `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test (under
  * load that made `createTestApp` take seconds). A failed import is not kept (a pruned install is discovered again, below).
  */
 const packageModules = new Map<string, Promise<Record<string, any>>>();
@@ -407,7 +407,7 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     modules = await load(manifest!);
   } catch (error) {
     // A package the manifest lists is gone while package.json and the lockfile stayed — a production install without the dev
-    // dependencies (`pnpm install --prod`, a pruned image) next to a manifest written with them (@marmeon/devtools, E115).
+    // dependencies (`pnpm install --prod`, a pruned image) next to a manifest written with them (@marmeon/devtools).
     // Discover again from what is installed, once.
     if (regenerated || (error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     manifest = discover();

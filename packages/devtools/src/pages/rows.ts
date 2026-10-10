@@ -128,7 +128,7 @@ export function readableUrl(url: string): string {
   }
 }
 
-/** What an entry came from: its request (also for a worker's job, E131), else its job. */
+/** What an entry came from: its request (also for a worker's job), else its job. */
 export function origin(entry: AnyEntry): Html {
   if (entry.type !== 'request' && entry.requestId) return html`<a class="mono muted" href="${href('/requests', { requestId: entry.requestId })}" title="The request it belongs to">request ${entry.requestId.slice(0, 8)}</a>`;
   if (entry.jobId && entry.type !== 'job') return html`<a class="mono muted" href="${href('/jobs', { jobId: entry.jobId })}">job ${entry.jobId.slice(0, 8)}</a>`;

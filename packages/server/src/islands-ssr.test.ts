@@ -19,7 +19,7 @@ import { createHttpKernel } from './kernel.ts';
 import { createDocumentRenderer } from './render.ts';
 
 /**
- * A UI-free SSR entry, as an adapter would be (E49): the shell at once, then each island of the page (`props.islands`) as
+ * A UI-free SSR entry, as an adapter would be: the shell at once, then each island of the page (`props.islands`) as
  * the server's `resolveIsland` answers it, then each deferred group — all in the same stream. `complete`: all of it first.
  */
 const render: SsrRender = async (page, options = {}) => {
@@ -54,7 +54,7 @@ function later() {
 const islandsOf = (html: string) =>
   Object.fromEntries([...html.matchAll(/<island url="([^"]+)">(.*?)<\/island>/g)].map(([, url, json]) => [url!, JSON.parse(json!) as RegionResult]));
 
-describe('islands resolved in-process while the page streams (E49)', async () => {
+describe('islands resolved in-process while the page streams', async () => {
   const logged: string[] = [];
   class CollectingLogger extends ConsoleLogger {
     override error(message: string): void {
@@ -201,7 +201,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     expect(logged.some((message) => message.includes('took longer than 100 ms'))).toBe(true);
   });
 
-  it('counter-check: a slow island never holds the headers back — the shell is out, the island follows in the same response', async () => {
+  it('a slow island never holds the headers back — the shell is out, the island follows in the same response', async () => {
     slow.gate = later();
     const started = performance.now();
     const response = await page(['/islands/slow', '/islands/echo']);
@@ -222,7 +222,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     expect(islandsOf(html)['/islands/slow']).toMatchObject({ status: 'ready', region: { props: { done: true } } });
   });
 
-  it('leaves the islands of a prefetched document to the browser — islands never load ahead (E52)', async () => {
+  it('leaves the islands of a prefetched document to the browser — islands never load ahead', async () => {
     passed.length = 0;
     const html = await (await page(['/islands/echo'], { headers: { 'sec-purpose': 'prefetch' } })).text();
     expect(islandsOf(html)['/islands/echo']).toEqual({ status: 'browser' });
@@ -236,7 +236,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     expect(islandsOf(await response.text())['/islands/slow']).toMatchObject({ status: 'ready' });
   });
 
-  it('counter-check: an island stays read-only in-process — a cookie throws in development, and is dropped and logged in production', async () => {
+  it('an island stays read-only in-process — a cookie throws in development, and is dropped and logged in production', async () => {
     const strict = islandsOf(await (await page(['/islands/cookie'])).text())['/islands/cookie'];
     expect(strict).toMatchObject({ status: 'exception', failure: { status: 500 } });
     logged.length = 0;
@@ -246,7 +246,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     expect(logged.filter((message) => message.includes("cookies.set('tracking')"))).toHaveLength(1);
   });
 
-  it('counter-check: concurrent pages never share an island’s request — each sees its own page’s cookies and request id', async () => {
+  it('concurrent pages never share an island’s request — each sees its own page’s cookies and request id', async () => {
     const responses = await Promise.all(
       Array.from({ length: 10 }, (_, index) => page(['/islands/echo'], { headers: { cookie: `user=${index}`, 'x-request-id': `page-${index}` } })),
     );
@@ -267,7 +267,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     expect(computed).toEqual([{ headersSent: true }]);
   });
 
-  it('counter-check: a deferred prop that writes after the headers throws in development — the group is not streamed, the browser loads it', async () => {
+  it('a deferred prop that writes after the headers throws in development — the group is not streamed, the browser loads it', async () => {
     logged.length = 0;
     const response = await app.request('/page/deferred-writes');
     const html = await response.text();

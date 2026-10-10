@@ -1,4 +1,4 @@
-/** A process `marmeon dev` runs next to the server, e.g. a queue worker (E101): `marmeon <args>` in the app root. */
+/** A process `marmeon dev` runs next to the server, e.g. a queue worker: `marmeon <args>` in the app root. */
 export interface DevProcess {
   /** Shown in messages: `queue`. */
   readonly name: string;

@@ -1,7 +1,7 @@
 import type { Application } from './application.ts';
 
 /**
- * A way out of an error, as the development error page shows it (E130): what to do, why, the command to copy and where the
+ * A way out of an error, as the development error page shows it: what to do, why, the command to copy and where the
  * docs are. **Text only** — no endpoint ever runs a solution (Ignition's runnable solutions were CVE-2021-3129).
  */
 export interface Solution {
@@ -32,7 +32,7 @@ export interface SolutionDefinition<E = Error> {
 }
 
 /**
- * Solutions for a package's (or an app's) errors (E130) — a provider lists them as `static solutions`, the development error
+ * Solutions for a package's (or an app's) errors — a provider lists them as `static solutions`, the development error
  * page shows the ones that match:
  *
  * ```ts
@@ -55,7 +55,7 @@ export function defineSolutions<const Classes extends readonly ErrorClass<unknow
 }
 
 /**
- * The solutions an app knows (E130): the core's, those of every provider's `static solutions` (packages and the app) — one
+ * The solutions an app knows: the core's, those of every provider's `static solutions` (packages and the app) — one
  * registry per app. `find` looks through an error and its causes.
  */
 export class ErrorSolutions {

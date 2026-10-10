@@ -89,7 +89,7 @@ export function editorLink(frame: Pick<StackFrame, 'file' | 'line' | 'column'>):
   return `/__open-in-editor?file=${encodeURIComponent(`${frame.file}:${frame.line}:${frame.column}`)}`;
 }
 
-/** Everything the error page and its Markdown show — **already redacted** (E125): both render only this. */
+/** Everything the error page and its Markdown show — **already redacted**: both render only this. */
 export interface ErrorReport {
   readonly status: number;
   readonly requestId: string | undefined;
@@ -119,7 +119,7 @@ export interface ErrorReport {
   readonly droppedQueries: number;
   readonly logs: readonly { readonly level: string; readonly message: string; readonly context: unknown }[];
   readonly droppedLogs: number;
-  /** Injection warnings (E128) of the classes built so far. */
+  /** Injection warnings of the classes built so far. */
   readonly warnings: readonly string[];
   readonly environment: {
     readonly node: string;
@@ -151,7 +151,7 @@ export interface ReportInput {
   readonly recording?: RequestRecording | undefined;
 }
 
-/** Builds the report of an error — every value that leaves the server passes the app's {@link Redactor} (E125). */
+/** Builds the report of an error — every value that leaves the server passes the app's {@link Redactor}. */
 export async function buildReport({ error, status, request, requestId, app, redactor, solutions, route, body, recording }: ReportInput): Promise<ErrorReport> {
   const { root } = app;
   const failure = error instanceof Error ? error : new Error(String(error));

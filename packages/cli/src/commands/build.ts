@@ -7,21 +7,10 @@ import { precompressAssets } from '../precompress.ts';
 import { typecheckApp } from '../typecheck.ts';
 
 /**
- * Builds the client bundle and the SSR bundle with the app's own Vite. The `marmeon()` plugin
- * from `@marmeon/vite` decides entries and output (`dist/client`, `dist/server/ssr.js`).
- * First, `marmeon route:types` brings `bootstrap/routes.ts` and `.marmeon/routes.json` up to date — the plugin builds
- * the bundle's route manifest from the latter — in a process of its own, with the app in its build phase (E187): every provider
- * registered, none booted, the configuration that does not validate left out — no `.env`, no key, no connection needed, and
- * so no secret that could end up in `dist/`.
- * Then the app is type-checked against it, like `next build`: a renamed route or a missing view fails the build.
- * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too, and so does
- * client code that imports a server module (a controller, a job …) as a value (E121).
- * Before anything else it precomputes the app's injection lists (`.marmeon/injections.json`, E138): the analysis the load
- * hook runs, kept per module with the hash of its source — a production start applies them instead of parsing the app
- * with oxc (and so does the `route:types` process this command starts, which boots the app).
- * The client's assets get a `.br` and a `.gz` next to them (E162), which the server sends by `Accept-Encoding`.
- * Last, it writes the production discovery manifest (E160) — the one `marmeon start` reads, resolved without the monorepo's
- * source condition — so the first start rewrites nothing and `.marmeon/` may be read-only from then on.
+ * `marmeon build`: the app's injection lists, the route types (in a process of its own, with the app in its build phase — no
+ * `.env`, no key, so no secret can end up in `dist/`), the type check (`--no-typecheck` skips it), the client and SSR bundles
+ * with the app's own Vite, the precompressed assets and the production discovery manifest. See
+ * docs/deployment.md#building-and-starting.
  */
 export class BuildCommand {
   static command = 'build';
@@ -79,7 +68,7 @@ export class BuildCommand {
       return 1;
     }
     output.success('Built dist/client and dist/server');
-    // Compressed once, here (E162): the server sends these by Accept-Encoding and never compresses per request (BREACH).
+    // Compressed once, here: the server sends these by Accept-Encoding and never compresses per request (BREACH).
     const compressed = await precompressAssets(join(root, 'dist', 'client', 'assets'));
     if (compressed.files > 0) {
       const kb = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`;

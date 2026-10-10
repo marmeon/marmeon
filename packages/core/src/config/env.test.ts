@@ -32,7 +32,7 @@ describe('env — the building blocks', () => {
     expect(one(env.integer(), '5000')).toEqual({ value: { X: 5000 } });
     expect(one(env.integer(), '-3')).toEqual({ value: { X: -3 } });
     expect(one(env.integer(), '+7')).toEqual({ value: { X: 7 } });
-    // Only a sign and decimal digits — as the whole-number variables take them today (KEEP_ALIVE_TIMEOUT, AUTH_UNVERIFIED_DAYS).
+    // Only a sign and decimal digits — as the whole-number variables take them (KEEP_ALIVE_TIMEOUT, AUTH_UNVERIFIED_DAYS).
     for (const raw of ['1.5', 'ten', '0x10', '12abc', 'Infinity', '9007199254740993', '1e3', '5.', '.5', ' 5', '5 ', '--5']) {
       expect(one(env.integer(), raw), raw).toEqual({ problems: ['X — X must be a whole number.'] });
     }

@@ -68,7 +68,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // Boot the application unless the command works without it (generators, tooling).
   let app: Application | undefined;
   if (listing || !builtIn || builtIn.boots !== false) {
-    // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `marmeon build` needs (E187).
+    // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `marmeon build` needs.
     const loaded = await loadApplication(root, !listing && builtIn?.boots === 'build' ? 'build' : 'run');
     if (loaded instanceof Error) {
       if (!listing) {
@@ -116,7 +116,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
     const execute = () => runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnMarmeon(root, args) });
-    // On the `command.run` channel while something listens (E118): the devtools keep what a command did as one batch.
+    // On the `command.run` channel while something listens: the devtools keep what a command did as one batch.
     if (!app || !commands.hasSubscribers) return await execute();
     const message: CommandRunMessage = { ...messageBase(app), command: Command.command, args: rest };
     return await trace(commands, message, execute, (ended, code) => {
@@ -141,7 +141,7 @@ function printError(output: Output, error: unknown): void {
 }
 
 /**
- * What to do about an error the app could not start with (E130) — the solutions of the core and of the installed packages
+ * What to do about an error the app could not start with — the solutions of the core and of the installed packages
  * (`APP_KEY` → `marmeon key:generate`), as text. Never fails itself.
  */
 async function printSolutions(output: Output, error: Error, root: string): Promise<void> {
@@ -160,7 +160,7 @@ async function printSolutions(output: Output, error: Error, root: string): Promi
   }
 }
 
-/** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it (in the build phase: registers it, E187). */
+/** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it (in the build phase: registers it). */
 async function loadApplication(root: string, phase: ApplicationPhase): Promise<Application | Error> {
   const entry = join(root, 'bootstrap', 'app.ts');
   if (!existsSync(entry)) return new Error(`No Marmeon app in ${root} (bootstrap/app.ts not found)`);

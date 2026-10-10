@@ -1,35 +1,10 @@
 /**
- * The guard of every development route (E200) — the devtools (`/_marmeon/devtools`), the mail previews (`/_marmeon/mail`) and any
- * later one. Such a route answers only with `NODE_ENV=development` (E115; and `test`, for the app's tests) — anywhere else a 404, so
- * a route of your own registered without asking the environment stays shut on a server, where `APP_URL`'s host is public — and
- * this decides **who** it answers:
+ * The guard of every development route (the devtools, the mail previews, an app's own): outside `NODE_ENV=development` (and
+ * `test`) a 404, and only the loopback names and `APP_URL`'s host are answered. See docs/routing.md#development-only-routes.
  *
- * The framework's own routes take `APP_URL` from their config (`devHosts(e.APP_URL)` in its `resolve`). An app's route takes it
- * from the app's config, injected into a middleware — a route file has no config, and `process.env` misses a value of `.env`:
- *
- * ```ts
- * import { devHosts, devOnly } from '@marmeon/core/dev';
- * import type { EmptyObject, HttpContext, Next } from '@marmeon/http';
- * import { AppConfig } from '../../config/app.ts';
- *
- * export class DevelopmentOnly {
- *   readonly #guard: (ctx: HttpContext, next: Next<EmptyObject>) => Promise<Response>;
- *   constructor(app: AppConfig) {
- *     // localhost, 127.0.0.1, [::1] and APP_URL's host
- *     this.#guard = devOnly(devHosts(app.url), (_ctx: HttpContext, next: Next<EmptyObject>) => next());
- *   }
- *   handle(ctx: HttpContext, next: Next<EmptyObject>): Promise<Response> {
- *     return this.#guard(ctx, next);
- *   }
- * }
- *
- * Route.middleware(DevelopmentOnly).get('/_playground', ShowPlaygroundController);
- * ```
- *
- * **Why a host check:** DNS rebinding. A page on `evil.example` whose name the attacker then points at 127.0.0.1 reaches the
- * developer's server with `Host: evil.example` — and reads every answer as same-origin. Vite refuses unknown hosts itself
- * (`server.allowedHosts`), but only for its own server and **not under HTTPS** (Vite skips the check there), and an app's own
- * routes must not rely on what runs in front of them.
+ * **Why a host check:** DNS rebinding — a page on `evil.example` re-pointed at 127.0.0.1 reaches the developer's server with
+ * `Host: evil.example` and reads every answer as same-origin. Vite's `server.allowedHosts` covers only its own server and is
+ * skipped under HTTPS, and an app's routes must not rely on what runs in front of them.
  */
 
 /** The loopback names — development routes always answer them. */
@@ -97,7 +72,7 @@ export function forbiddenDevHost(): Response {
   );
 }
 
-/** Whether development routes answer at all: `NODE_ENV` is `development` (or `test`) — asked positively, per request (E115, E201). */
+/** Whether development routes answer at all: `NODE_ENV` is `development` (or `test`) — asked positively, per request. */
 export function devEnvironment(env: { readonly NODE_ENV?: string | undefined } = process.env): boolean {
   return env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
 }

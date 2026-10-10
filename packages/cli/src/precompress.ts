@@ -20,7 +20,7 @@ export interface PrecompressResult {
 
 /**
  * Writes `<file>.br` (Brotli, quality 11) and `<file>.gz` (gzip, level 9) next to every compressible file of the build's assets
- * (E162) — once, at build time, at the highest levels: the server sends them by `Accept-Encoding` and compresses nothing per
+ * — once, at build time, at the highest levels: the server sends them by `Accept-Encoding` and compresses nothing per
  * request (documents never: BREACH). A file that does not get smaller keeps no variant.
  */
 export async function precompressAssets(dir: string): Promise<PrecompressResult> {

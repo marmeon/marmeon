@@ -5,21 +5,21 @@ const OVERRIDES = new Set(['PUT', 'PATCH', 'DELETE']);
 export const METHOD_FIELD = '_method';
 
 /**
- * How much of a body is read to find `_method` (W5b.10): the fields at its start — `<Form>` renders `_method` first, a form
+ * How much of a body is read to find `_method`: the fields at its start — `<Form>` renders `_method` first, a form
  * written by hand has it next to `_token`. The body is never read twice: what was read goes on, ahead of the rest of the stream.
  */
 export const METHOD_FIELD_WINDOW = 16 * 1024;
 
 /**
- * Method spoofing (E64, Laravel's `_method`): a plain HTML form — `<Form>` without JavaScript — can only POST, so a PUT, PATCH
+ * Method spoofing (Laravel's `_method`): a plain HTML form — `<Form>` without JavaScript — can only POST, so a PUT, PATCH
  * or DELETE route gets a POST with `_method=PUT` in its body. The request becomes that method before it is routed.
  *
  * Only from the body of a POST that a form sends (`application/x-www-form-urlencoded`, `multipart/form-data`), never from the
- * query (E65: a link could set it), only to PUT, PATCH and DELETE (never to GET — a GET has no CSRF check). CSRF verification
+ * query (a link could set it), only to PUT, PATCH and DELETE (never to GET — a GET has no CSRF check). CSRF verification
  * then runs for the method it became, as for any write.
  *
  * Only the complete fields within the first {@link METHOD_FIELD_WINDOW} bytes count — before the first file of a multipart
- * body: the body is read once, by its route (bounded by `MAX_BODY_SIZE`), not buffered here first (W5b.10).
+ * body: the body is read once, by its route (bounded by `MAX_BODY_SIZE`), not buffered here first.
  */
 export async function overrideMethod(request: Request): Promise<Request> {
   if (request.method !== 'POST' || request.body === null) return request;

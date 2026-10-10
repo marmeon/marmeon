@@ -21,9 +21,9 @@ import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { METHOD_FIELD_WINDOW, overrideMethod } from './method-override.ts';
 
-/** Once props, the two kinds of 409, method spoofing and the CSRF token of a page — on the server (W5b step 10, E64). */
+/** Once props, the two kinds of 409, method spoofing and the CSRF token of a page — on the server. */
 
-describe('once props on the server (E64)', async () => {
+describe('once props on the server', async () => {
   const computed: Record<string, number> = {};
   const count = (name: string) => (computed[name] = (computed[name] ?? 0) + 1);
   /** Who the page is for — what the session package binds (a hash of the session id); changes with every sign-in. */
@@ -73,7 +73,7 @@ describe('once props on the server (E64)', async () => {
     expect((await visit('/b')).onceProps).toMatchObject({ shared: { key: 'shared-key' } });
   });
 
-  it('counter-check: skips what the browser holds under the same scope — not computed, still announced', async () => {
+  it('skips what the browser holds under the same scope — not computed, still announced', async () => {
     reset();
     const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': 'ada-session' });
     expect(page.props).toEqual({ name: 'A' });
@@ -81,7 +81,7 @@ describe('once props on the server (E64)', async () => {
     expect(computed).toEqual({});
   });
 
-  it('counter-check: computes it again for another scope — someone else signed in (another tab): never a value held for someone else', async () => {
+  it('computes it again for another scope — someone else signed in (another tab): never a value held for someone else', async () => {
     reset();
     scope = 'alan-session';
     try {
@@ -107,7 +107,7 @@ describe('once props on the server (E64)', async () => {
   });
 });
 
-describe('the two kinds of 409 (E64) — a new build may wait, signing in or out never', async () => {
+describe('the two kinds of 409 — a new build may wait, signing in or out never', async () => {
   /** Signs someone in before the version check runs (a remember-me sign-in in early middleware, say). */
   class SignsInEarly {
     readonly #history: ClientHistory;
@@ -137,14 +137,14 @@ describe('the two kinds of 409 (E64) — a new build may wait, signing in or out
     expect(response.headers.get(RELOAD_HEADER)).toBe('version');
   });
 
-  it('counter-check: signed in on the same request — `ClearClientHistory` makes it `history`, whatever the version check said', async () => {
+  it('signed in on the same request — `ClearClientHistory` makes it `history`, whatever the version check said', async () => {
     const response = await stale('/a?sign-in');
     expect(response.status).toBe(409);
     expect(response.headers.get(RELOAD_HEADER)).toBe('history');
   });
 });
 
-describe('method spoofing (E64) — a form without JavaScript sends PUT, PATCH and DELETE as POST with `_method`', async () => {
+describe('method spoofing — a form without JavaScript sends PUT, PATCH and DELETE as POST with `_method`', async () => {
   const seen: string[] = [];
   const application = await createApplication({
     root: import.meta.dirname,
@@ -180,7 +180,7 @@ describe('method spoofing (E64) — a form without JavaScript sends PUT, PATCH a
     expect(seen[0]).toBe('put {"_method":"PUT","label":"Blog"}');
   });
 
-  it('counter-check: never from the query (E65), never to GET, never from JSON — and anything else stays a POST', async () => {
+  it('never from the query, never to GET, never from JSON — and anything else stays a POST', async () => {
     expect(await (await form('label=Blog', '/api/links/1?_method=DELETE')).text()).toBe('post');
     expect(await (await form('_method=GET')).text()).toBe('post');
     expect(await (await form('_method=TRACE')).text()).toBe('post');
@@ -212,7 +212,7 @@ describe('method spoofing (E64) — a form without JavaScript sends PUT, PATCH a
     return { body, read };
   }
 
-  it('a big body is not read twice (W5b.10): only its start is looked at, then it goes on to the route as it came', async () => {
+  it('a big body is not read twice: only its start is looked at, then it goes on to the route as it came', async () => {
     const size = 20 * 1024 * 1024;
     const { body, read } = counted('_method=PUT&label=', size);
     const request = new Request('http://localhost/api/links/1', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body, duplex: 'half' } as RequestInit);
@@ -228,7 +228,7 @@ describe('method spoofing (E64) — a form without JavaScript sends PUT, PATCH a
     expect(read.bytes).toBe(size);
   });
 
-  it('counter-check: `_method` after a file, or past the start of the body, does not count', async () => {
+  it('`_method` after a file, or past the start of the body, does not count', async () => {
     const multipart = new FormData();
     multipart.set('avatar', new File(['png'], 'a.png', { type: 'image/png' }));
     multipart.set('_method', 'DELETE');
@@ -237,7 +237,7 @@ describe('method spoofing (E64) — a form without JavaScript sends PUT, PATCH a
   });
 });
 
-describe('the view a route renders, for instant visits (E64)', () => {
+describe('the view a route renders, for instant visits', () => {
   class ShowController extends Controller {
     handle() {
       return this.view('users/Show' as never, {});

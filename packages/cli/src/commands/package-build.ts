@@ -7,11 +7,11 @@ import type { CommandInput } from '../command.ts';
 
 /**
  * Builds packages with `tsc -b`, then embeds the injection lists into dist/ — so a
- * published package carries them and consumers need nothing (roadmap E1). Browser-only
- * sources (`"marmeon": { "browser": [...] }` in package.json) get none (E76).
+ * published package carries them and consumers need nothing. Browser-only
+ * sources (`"marmeon": { "browser": [...] }` in package.json) get none.
  *
  * `--clean` empties every given package's output directory and removes its `*.tsbuildinfo` first: `tsc -b` never
- * deletes what a renamed or removed source left behind, and a tarball would carry it (E156). `pnpm pack:check`
+ * deletes what a renamed or removed source left behind, and a tarball would carry it. `pnpm pack:check`
  * always builds that way.
  */
 export class PackageBuildCommand {

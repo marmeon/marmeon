@@ -1,14 +1,14 @@
 import { serveStatic } from '@hono/node-server/serve-static';
 import type { MiddlewareHandler } from 'hono';
 
-/** How long the build's hashed files may be kept (E162): a year, never revalidated — a new build has new names. */
+/** How long the build's hashed files may be kept: a year, never revalidated — a new build has new names. */
 export const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 /** What `marmeon build` writes `.br`/`.gz` of — text, scripts, styles, JSON, SVG, WebAssembly (`precompressAssets`). */
 const COMPRESSIBLE = /^(?:text\/|application\/(?:javascript|json|manifest\+json|wasm|xml)|image\/svg\+xml)/;
 
 /**
- * The build's `/assets/*` (E162): Vite names every file by its content's hash, so a response is kept for a year
+ * The build's `/assets/*`: Vite names every file by its content's hash, so a response is kept for a year
  * (`public, max-age=31536000, immutable`). A file `marmeon build` compressed is sent as its `.br` (else `.gz`) when the
  * request's `Accept-Encoding` names it — `Content-Encoding` set, `Content-Type` the original's — and every compressible file
  * says `Vary: Accept-Encoding`, so a shared cache keeps the variants apart. Nothing is compressed per request: documents

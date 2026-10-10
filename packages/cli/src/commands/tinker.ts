@@ -4,17 +4,17 @@ import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import type { TinkerSession } from '../tinker/session.ts';
 
-/** The REPL (`node:repl`, the TypeScript transform) and the session, loaded when tinker runs — never on `marmeon start` (E138). */
+/** The REPL (`node:repl`, the TypeScript transform) and the session, loaded when tinker runs — never on `marmeon start`. */
 type Repl = typeof import('../tinker/repl.ts');
 
 /** Where the history of `marmeon tinker` is kept (plain text), relative to the app root. */
 export const TINKER_HISTORY = 'storage/framework/tinker_history';
 
 /**
- * `marmeon tinker` (E122): a REPL with the booted application — available in every environment (access to the shell is
+ * `marmeon tinker`: a REPL with the booted application — available in every environment (access to the shell is
  * the gate), with a banner that says which environment and database it talks to.
  *
- * - `--sandbox`: the whole session in one transaction on the default connection (E107), rolled back at the end — also
+ * - `--sandbox`: the whole session in one transaction on the default connection, rolled back at the end — also
  *   on Ctrl-D, `.exit`, SIGINT/SIGTERM and errors. Jobs on the database queue join it and are gone with it.
  * - `--execute "<code>"`: evaluates the code, prints its value and exits (1 on an error) — for scripts.
  * - `--no-history`: keeps no history (it is plain text in `storage/framework/tinker_history`).
@@ -99,7 +99,7 @@ export class TinkerCommand {
       output.line(style('cyan', 'Sandbox: every change to the default connection is rolled back when the session ends (mails, files and Redis are real).'));
       if (database?.startsWith('sqlite')) output.line(style('dim', 'SQLite: once the session wrote, other processes (the dev server, a worker) cannot write to the file until it ends.'));
     }
-    // Protected (E139): production and a missing NODE_ENV get the red line — whatever APP_ENV says.
+    // Protected: production and a missing NODE_ENV get the red line — whatever APP_ENV says.
     if (environment.isProtected()) output.line(style(['bold', 'red'], this.#productionLine(session)));
     if (!history) output.line(style('dim', 'No history (--no-history).'));
   }

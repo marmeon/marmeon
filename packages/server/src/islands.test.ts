@@ -10,7 +10,7 @@ const ISLAND = { 'x-marmeon': 'true', 'x-marmeon-region': 'island' };
 /** A response's JSON body, for assertions. */
 const json = async (response: Response) => (await response.json()) as { message?: string; props?: unknown; [key: string]: unknown };
 
-describe('createHttpKernel — islands (E48, E52)', async () => {
+describe('createHttpKernel — islands', async () => {
   const logged: string[] = [];
   class CollectingLogger extends ConsoleLogger {
     override error(message: string): void {
@@ -83,7 +83,7 @@ describe('createHttpKernel — islands (E48, E52)', async () => {
     expect((await json(partial)).props).toEqual({ more: ['later'] });
   });
 
-  it('counter-check: a direct hit is a 404 — and so is a page visit or a prefetch of the island’s URL (E52)', async () => {
+  it('a direct hit is a 404 — and so is a page visit or a prefetch of the island’s URL', async () => {
     const direct = await app.request('/islands/feed', { headers: { accept: 'text/html' } });
     expect(direct.status).toBe(404);
     expect(await direct.text()).toContain('[dashboard/Feed] is an island: it is loaded by');
@@ -101,7 +101,7 @@ describe('createHttpKernel — islands (E48, E52)', async () => {
     expect((await json(response)).message).toContain('[pages/Show] is a page, not an island');
   });
 
-  it('counter-check: a redirect, a 401 or a 403 becomes the island’s outcome (204), never a redirect the browser follows', async () => {
+  it('a redirect, a 401 or a 403 becomes the island’s outcome (204), never a redirect the browser follows', async () => {
     const redirect = await app.request('/islands/redirects', { headers: ISLAND });
     expect([redirect.status, redirect.headers.get('x-marmeon-region-status'), redirect.headers.get('location')]).toEqual([204, 'unauthorized', null]);
     const unauthenticated = await app.request('/islands/unauthenticated', { headers: ISLAND });
@@ -124,7 +124,7 @@ describe('createHttpKernel — islands (E48, E52)', async () => {
     expect([missing.status, missing.headers.get('x-marmeon-region-status')]).toEqual([404, 'exception']);
   });
 
-  it('counter-check: islands answer GET only — this.island() on a POST route is an error at runtime too', async () => {
+  it('islands answer GET only — this.island() on a POST route is an error at runtime too', async () => {
     const response = await app.request('/islands/post', { method: 'POST', headers: ISLAND });
     expect(response.status).toBe(500);
     expect((await json(response)).message).toContain('islands answer GET requests only');
@@ -137,7 +137,7 @@ describe('createHttpKernel — islands (E48, E52)', async () => {
     expect(stale.headers.get('x-marmeon-location')).toBe('http://localhost/islands/feed');
   });
 
-  it('counter-check: read-only (E52) — a cookie or work after the response throws in development …', async () => {
+  it('an island is read-only — a cookie or work after the response throws in development …', async () => {
     const cookie = await app.request('/islands/cookie', { headers: ISLAND });
     expect(cookie.status).toBe(500);
     expect(cookie.headers.get('set-cookie')).toBeNull();

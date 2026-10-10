@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 const packages = fileURLToPath(new URL('../../../', import.meta.url));
 
 /**
- * The in-page bar's client (W7 step 9) as the Vite dev server serves it: browser code only — the bar, the client core and the
+ * The in-page bar's client as the Vite dev server serves it: browser code only — the bar, the client core and the
  * page contract. None of the devtools' server side (recorder, store, pages: Node built-ins), whatever the client imports types of.
  */
 describe('@marmeon/devtools/client is browser-safe', () => {

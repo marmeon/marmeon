@@ -1,4 +1,4 @@
-// A server process that stops like `marmeon serve` (E102): on SIGTERM, `close()`, then `app.shutdown()`, then exit.
+// A server process that stops like `marmeon serve`: on SIGTERM, `close()`, then `app.shutdown()`, then exit.
 // POST /reset answers at once and sends its "mail" after the response (`afterResponse.defer`) over a transport that
 // takes 300 ms and is closed by the app's shutdown — the way a pool or an SMTP connection is. Used by shutdown.test.ts.
 import { setTimeout as sleep } from 'node:timers/promises';

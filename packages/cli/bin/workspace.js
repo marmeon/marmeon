@@ -1,5 +1,5 @@
 /**
- * Whether a package is a member of a pnpm workspace (E187) — how the `marmeon` launcher knows it runs inside the framework's
+ * Whether a package is a member of a pnpm workspace — how the `marmeon` launcher knows it runs inside the framework's
  * monorepo, where it starts Node with the `@marmeon/source` condition. A `pnpm-workspace.yaml` above the package lists its
  * directory among `packages`: that makes it a workspace package — not its `package.json`. A copy is none, whatever its manifest
  * says: `pnpm deploy` (and an injected workspace dependency) copies a package with its workspace manifest — `exports` with the

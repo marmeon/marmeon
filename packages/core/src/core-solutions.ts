@@ -5,7 +5,7 @@ import { defineSolutions, type Solution } from './solutions.ts';
 
 const CONTAINER_DOCS = 'docs/container.md#the-containers-errors';
 
-/** The core's own solutions (E130): the container, the injection transform, the configuration. Always registered. */
+/** The core's own solutions: the container, the injection transform, the configuration. Always registered. */
 export const coreSolutions = defineSolutions([
   {
     for: ContainerError,

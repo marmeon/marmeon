@@ -34,7 +34,7 @@ const thrown = (fn: () => unknown): unknown => {
   throw new Error('expected an error');
 };
 
-describe('the core solutions (E130)', () => {
+describe('the core solutions', () => {
   it('a binding that is missing: bind it in a provider', async () => {
     const [solution] = await solutions.find(thrown(() => new Container().make(WelcomeService)));
     expect(solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'marmeon discover', docs: 'docs/container.md#the-containers-errors' });

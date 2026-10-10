@@ -3,12 +3,12 @@ import { reportMarkdown } from './markdown.ts';
 import { editorLink, type ErrorReport, type StackFrame } from './report.ts';
 
 /**
- * The development error page (E119): one self-contained HTML document — its own CSS (light and dark after the system),
+ * The development error page: one self-contained HTML document — its own CSS (light and dark after the system),
  * no React, no Vite, no client code of the app — so it renders when server rendering or the build is what broke, and in
  * the sandboxed frame a client-side visit shows it in (`VisitFailure`, no scripts there). It works without JavaScript:
  * sections are `<details>`, the Markdown is in a text field; one small inline script only adds the copy button.
  *
- * Everything it shows comes from the redacted {@link ErrorReport} (E125) and is escaped here.
+ * Everything it shows comes from the redacted {@link ErrorReport} and is escaped here.
  */
 export function renderErrorPage(report: ErrorReport): string {
   const { error, status, request, route } = report;

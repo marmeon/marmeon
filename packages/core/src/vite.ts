@@ -13,7 +13,7 @@ export interface InjectionPlugin {
 /**
  * Vite plugin with the same transform as `@marmeon/core/register`, for code that
  * Vite loads (Vitest, SSR). Runs before Vite strips the types (`enforce: 'pre'`). Like
- * `marmeon package:build`, it leaves a package's browser-only sources alone (E76).
+ * `marmeon package:build`, it leaves a package's browser-only sources alone.
  */
 export function marmeonInjection(): InjectionPlugin {
   return {

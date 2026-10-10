@@ -1,5 +1,5 @@
 /**
- * `create-marmeon <dir>` (E150, E151, E167) — a thin shell: the template (the blank app) into a new directory, its
+ * `create-marmeon <dir>` — a thin shell: the template (the blank app) into a new directory, its
  * `package.json` at this package's version, `.env` with a fresh `APP_KEY`, the install — then the app's own generators: the
  * starter kit is `marmeon make:auth` plus the home module, `--docker` is `marmeon make:docker`; `marmeon migrate`, a first
  * commit. No dependencies: prompts over `node:readline`, only when a terminal asks — without one nothing is asked, and a
@@ -31,7 +31,7 @@ import {
   type PackageManager,
 } from './template.ts';
 
-/** Exit code of a wrong call (a missing directory without a terminal, an unknown flag) — like `create-nuxt` (E167). */
+/** Exit code of a wrong call (a missing directory without a terminal, an unknown flag) — like `create-nuxt`. */
 export const USAGE = 2;
 
 /** The streams and surroundings of a run — the process's by default, others in tests. */
@@ -121,7 +121,7 @@ export async function main(io: Io = processIo()): Promise<number> {
     return USAGE;
   }
 
-  // Asked only on a terminal, and never with --yes: without one a run never waits for an answer (E167).
+  // Asked only on a terminal, and never with --yes: without one a run never waits for an answer.
   const interactive = io.stdin.isTTY === true && io.stdout.isTTY === true;
   let choices: Choices | undefined;
   try {
@@ -262,7 +262,7 @@ async function choose(values: Record<string, boolean | undefined>, directory: st
 }
 
 /**
- * The environment of `install` and the generators: the user's, without `NODE_ENV` — the app's `.env` says `development` (E170),
+ * The environment of `install` and the generators: the user's, without `NODE_ENV` — the app's `.env` says `development`,
  * so `migrate` needs no `--force` and writes the tables' types even in a shell that exports `NODE_ENV=production`.
  */
 function commandEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

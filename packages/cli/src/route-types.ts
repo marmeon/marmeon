@@ -17,11 +17,11 @@ interface Located {
 }
 
 /**
- * Generates `bootstrap/routes.ts` from the booted app (E34): `interface Routes` for the type checker — every
+ * Generates `bootstrap/routes.ts` from the booted app: `interface Routes` for the type checker — every
  * named route with its method, path and controller class — and the page components as `interface Views`. Types
  * only: the routes the browser may learn go to `.marmeon/routes.json` (not committed), from which the `marmeon()`
- * Vite plugin builds `virtual:marmeon/routes` with just the names client code writes out (E57). So the committed
- * file depends on routes and views alone (`--check`, E42), and no importable table of every route sits in the repo.
+ * Vite plugin builds `virtual:marmeon/routes` with just the names client code writes out. So the committed
+ * file depends on routes and views alone (`--check`), and no importable table of every route sits in the repo.
  * Both are written only when something changed, so watchers stay calm.
  */
 export class RouteTypes {

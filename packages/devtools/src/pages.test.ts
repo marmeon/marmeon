@@ -108,8 +108,8 @@ async function readStream(response: Response, until: RegExp, ms = 5000): Promise
   return text;
 }
 
-describe('the devtools pages (W7 step 8): only where the devtools run (E115)', () => {
-  // APP_ENV names the environment and opens nothing (E217): production with APP_ENV=local has no devtools either.
+describe('the devtools pages: only where the devtools run', () => {
+  // APP_ENV names the environment and opens nothing: production with APP_ENV=local has no devtools either.
   it.each([[{ NODE_ENV: 'test' }], [{ NODE_ENV: 'production', APP_ENV: 'local' }], [{ NODE_ENV: 'production' }], [{}]])('do not exist with %j and no opt-in — not one route', async (environment) => {
     const { app, kernel } = await boot(environment, { test: false });
     try {
@@ -246,13 +246,13 @@ describe('what the pages show', () => {
       expect(csp).not.toMatch(/script-src|allow-/);
       const markup = await body.text();
       expect(markup).toContain('<script>parent.document.title'); // the mail as it was — only the CSP and the sandbox keep it inert
-      expect(markup).toContain('/reset-password/[redacted]'); // its token path masked when recorded (E125)
+      expect(markup).toContain('/reset-password/[redacted]'); // its token path masked when recorded
     } finally {
       await app.shutdown();
     }
   });
 
-  it('tie a request to what it set off — its queries, log, queued job and mail; then the job a worker ran, by the request id (E131)', async () => {
+  it('tie a request to what it set off — its queries, log, queued job and mail; then the job a worker ran, by the request id', async () => {
     const { app, kernel, tester } = await boot();
     try {
       const response = await kernel.request('/people/ada');
@@ -355,7 +355,7 @@ describe('what the pages show', () => {
       expect(page).toContain('Failed jobs (1)');
       expect(page).toContain('marmeon queue:retry f00d-0001');
       expect(page).toContain('marmeon queue:forget f00d-0001');
-      expect(page).not.toContain('hunter2'); // the stored error and payload, redacted (E125)
+      expect(page).not.toContain('hunter2'); // the stored error and payload, redacted
       expect(page).toContain(`href="${BASE}/requests?requestId=req-1"`);
 
       const api = (await (await kernel.request(`${BASE}/api/queue`)).json()) as { available: boolean; failedTotal: number; connections: { queues: { name: string; size: number }[] }[] };
@@ -370,7 +370,7 @@ describe('what the pages show', () => {
   });
 });
 
-describe('the in-page bar’s side on the server (W7 step 9)', () => {
+describe('the in-page bar’s side on the server', () => {
   it('/api/source: where a controller or a view is, for "open in editor" — inside the app only, nothing else', async () => {
     const { app, kernel } = await boot();
     try {
@@ -406,7 +406,7 @@ describe('the in-page bar’s side on the server (W7 step 9)', () => {
       expect(head).toBe(
         '<meta name="marmeon-devtools" content="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" data-marmeon-devtools>\n<script type="module" src="/@id/@marmeon/devtools/client" nonce="__marmeon_csp_nonce__" data-marmeon-devtools></script>',
       );
-      expect(app.container.make(DevDocument).body).toBe(''); // no link any more: the bar's pill is the way in
+      expect(app.container.make(DevDocument).body).toBe(''); // no link: the bar's pill is the way in
     } finally {
       await app.shutdown();
     }

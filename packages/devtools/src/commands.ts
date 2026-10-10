@@ -40,7 +40,7 @@ export class DevtoolsClearCommand {
   }
 }
 
-/** `marmeon devtools:prune`: removes entries past the ring's age, then the oldest until it is within its size (E116). */
+/** `marmeon devtools:prune`: removes entries past the ring's age, then the oldest until it is within its size. */
 export class DevtoolsPruneCommand {
   static command = 'devtools:prune';
   static description = "Remove the devtools' entries past their age or size limit";

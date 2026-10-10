@@ -10,7 +10,7 @@ interface Recording {
 }
 
 /**
- * The error page's recorder (E119): listens to `db.query` and `marmeon:log` of `app` and keeps, per request, its first
+ * The error page's recorder: listens to `db.query` and `marmeon:log` of `app` and keeps, per request, its first
  * {@link MAX_RECORDED} queries and log entries. Keyed by the request's context object (a WeakMap): what a request records
  * goes when the request does, and a request resolved in-process for another (an island) records its own.
  */

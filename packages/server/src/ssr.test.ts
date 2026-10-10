@@ -89,7 +89,7 @@ async function appWith(render: SsrRender, options: KernelOptions = {}) {
 const page = (html: string) => JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as PageObject;
 const markup = (html: string) => /<div id="app">([\s\S]*)<\/div>/.exec(html)![1];
 
-describe('server rendering gets the page as the browser does (W5.1 finding)', () => {
+describe('server rendering gets the page as the browser does', () => {
   it('serializes once: the SSR entry sees a Date as its ISO string — the same value the page script carries', async () => {
     const seen: PageObject[] = [];
     const app = await appWith(async (page) => {
@@ -175,7 +175,7 @@ describe('client fallback: server rendering never breaks a page', () => {
   });
 });
 
-describe('streaming (E37)', () => {
+describe('streaming', () => {
   const encoder = new TextEncoder();
 
   it('streams the document: head and shell at once, the rest as it renders — headers as for any page', async () => {

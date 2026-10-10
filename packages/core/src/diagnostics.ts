@@ -1,5 +1,5 @@
 /**
- * The framework's observation points (E118): `node:diagnostics_channel` TracingChannels named
+ * The framework's observation points: `node:diagnostics_channel` TracingChannels named
  * `tracing:marmeon:<operation>:{start,end,asyncStart,asyncEnd,error}` plus three plain channels, `marmeon:log`,
  * `marmeon:exception` and `marmeon:event`. The error page, the devtools recorder, the debug bar and `@marmeon/otel` subscribe to them;
  * apps keep using events (job events, scheduler events) for their own reactions.
@@ -19,7 +19,7 @@
  * - **The channels are the only process-wide part** (they are Node's): a subscription belongs to whoever made it and ends
  *   with `off()` — a provider's `shutdown()`.
  * - **Raw values**: queries carry their parameters, log entries their context, exceptions the error itself. Whatever
- *   records or shows them redacts them first (E125); `QueryMessage.secret` says when a statement touches secret columns.
+ *   records or shows them redacts them first; `QueryMessage.secret` says when a statement touches secret columns.
  */
 import { channel as plainChannel, tracingChannel, type TracingChannel } from 'node:diagnostics_channel';
 import type { Application } from './application.ts';
@@ -53,13 +53,13 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   readonly method: string;
   /** The path as requested (no query string). */
   readonly path: string;
-  /** The URL as requested, with its query string — raw: redact before recording or showing (E125). */
+  /** The URL as requested, with its query string — raw: redact before recording or showing. */
   readonly url: string;
-  /** The request's headers — raw (cookies, `authorization`): redact before recording or showing (E125). */
+  /** The request's headers — raw (cookies, `authorization`): redact before recording or showing. */
   readonly headers: Headers;
   /** `island` or `layer`: a region's request (`x-marmeon-region`). */
   readonly region?: string;
-  /** Resolved in-process for another request — an island while its page renders, a layer's base for its deep link (E49, E53). */
+  /** Resolved in-process for another request — an island while its page renders, a layer's base for its deep link. */
   readonly inProcess: boolean;
   /** The matched route's name (`users.show`) — unnamed routes and unknown paths have none. */
   route?: string;
@@ -71,14 +71,14 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   status?: number;
   /**
    * Where the response sends the browser — a redirect's `Location`, or with a 409 the protocol's `x-marmeon-location` (a full
-   * reload: a new build, or crossing the sign-in boundary) — raw: redact before recording (E125).
+   * reload: a new build, or crossing the sign-in boundary) — raw: redact before recording.
    */
   location?: string;
   /** With a 409 and a location: why the browser reloads (`x-marmeon-reload`: `version`, `history`). */
   reload?: string;
-  /** The page or island it answered with — set only while something listens (the devtools, E118). */
+  /** The page or island it answered with — set only while something listens (the devtools). */
   page?: PageSummary;
-  /** The body, as the app read it (never read for this — unset when nothing read it) — raw: redact before recording (E125). */
+  /** The body, as the app read it (never read for this — unset when nothing read it) — raw: redact before recording. */
   input?: Readonly<Record<string, unknown>>;
 }
 
@@ -92,13 +92,13 @@ export interface PageSummary {
   readonly only?: readonly string[];
   /** A partial reload's left-out props (`except`). */
   readonly except?: readonly string[];
-  /** The props deferred to later requests (E49), by group. */
+  /** The props deferred to later requests, by group. */
   readonly deferred?: Readonly<Record<string, readonly string[]>>;
   /** Sent props that are shared (`SharedData`), not the controller's own. */
   readonly shared?: readonly string[];
   /** `optional()` props left out — sent only when a partial reload names them. */
   readonly optional?: readonly string[];
-  /** `page`, `layer` (E53) or `island` (E48). */
+  /** `page`, `layer` or `island`. */
   readonly kind: 'page' | 'layer' | 'island';
 }
 
@@ -109,7 +109,7 @@ export interface DbQueryMessage extends MessageBase, Ended {
   /** The connection's driver: `sqlite` or `pgsql`. */
   readonly driver: string;
   readonly sql: string;
-  /** As bound — raw. Redact before recording or showing (E125); with `secret`, all of them. */
+  /** As bound — raw. Redact before recording or showing; with `secret`, all of them. */
   readonly parameters: readonly unknown[];
   /** The statement touches a table with secret columns (`.secret()` in its migration) — its parameters may hold secrets. */
   readonly secret: boolean;
@@ -129,13 +129,13 @@ export interface QueueDispatchMessage extends MessageBase, Ended {
   readonly unique?: string;
   /** Their ids, once queued — none when a unique job with the key was queued already. */
   jobIds: string[];
-  /** Their payloads as given, in order — raw: shown only through the redactor, an encrypted one never (E125). */
+  /** Their payloads as given, in order — raw: shown only through the redactor, an encrypted one never. */
   readonly payloads?: readonly unknown[];
   /** Which of them are encrypted (`static encrypted`), in order. */
   readonly encrypted?: readonly boolean[];
   /**
    * The trace context to carry to the worker (W3C `traceparent`) — set by a tracer in its `start` handler
-   * (`@marmeon/otel`); stored with each job and passed on in its `queue.job` message (E131).
+   * (`@marmeon/otel`); stored with each job and passed on in its `queue.job` message.
    */
   traceparent?: string;
 }
@@ -149,11 +149,11 @@ export interface QueueJobMessage extends MessageBase, Ended {
   readonly connection: string;
   /** From 1. */
   readonly attempt: number;
-  /** The request that dispatched it (E131), if one did. */
+  /** The request that dispatched it, if one did. */
   readonly originRequestId?: string;
-  /** The trace context it was dispatched in (E131), if a tracer gave one. */
+  /** The trace context it was dispatched in, if a tracer gave one. */
   readonly traceparent?: string;
-  /** Its payload, as the job gets it — raw: shown only through the redactor, an encrypted one never (E125). */
+  /** Its payload, as the job gets it — raw: shown only through the redactor, an encrypted one never. */
   readonly payload?: unknown;
   /** The job is encrypted (`static encrypted`): its payload is never shown. */
   readonly encrypted?: boolean;
@@ -181,7 +181,7 @@ export interface MailSendMessage extends MessageBase, Ended {
   /** The recipients' addresses, once composed. */
   to?: string[];
   subject?: string;
-  /** The sender, copies and body, once composed — raw: links in them may carry tokens (redact before recording, E125). */
+  /** The sender, copies and body, once composed — raw: links in them may carry tokens (redact before recording). */
   from?: string;
   cc?: string[];
   bcc?: string[];
@@ -233,7 +233,7 @@ export interface CommandRunMessage extends MessageBase, Ended {
 
 /** `marmeon:event` — an app event dispatched through the `EventDispatcher` (also one a test's `EventFake` holds back). */
 export interface EventDispatchMessage extends MessageBase {
-  /** The event object — raw: redact before recording (E125). */
+  /** The event object — raw: redact before recording. */
   readonly event: object;
   /** Its `static event` name, else its class name. */
   readonly name: string;

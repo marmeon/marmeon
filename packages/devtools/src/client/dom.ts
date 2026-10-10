@@ -1,5 +1,5 @@
 /**
- * Plain DOM for the in-page bar (E117: no UI framework — it shows any adapter's app). Everything shown is set as text
+ * Plain DOM for the in-page bar (no UI framework — it shows any adapter's app). Everything shown is set as text
  * (`textContent`), never as markup: what the bar shows is the server's data.
  */
 

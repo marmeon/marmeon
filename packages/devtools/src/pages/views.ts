@@ -150,7 +150,7 @@ function queueStats(queue: QueueSnapshot): Html {
   return html`<span class="stat"><b>${waiting}</b><a href="${BASE}/queue">jobs queued</a></span><span class="stat"><b>${queue.failedTotal}</b><a href="${BASE}/queue#failed">failed jobs</a></span>`;
 }
 
-/** `/_marmeon/devtools/queue`: the queues now, the failed jobs, and the latest attempts (E113). */
+/** `/_marmeon/devtools/queue`: the queues now, the failed jobs, and the latest attempts. */
 export function queuePage(frame: Frame, queue: QueueSnapshot, attempts: readonly AnyEntry[]): string {
   let body: Html;
   if (!queue.available) {
@@ -195,7 +195,7 @@ ${keyValues([
 </details>`;
 }
 
-/** `/_marmeon/devtools/schedule`: the tasks with their next run, the lock warning (E123), and the latest runs. */
+/** `/_marmeon/devtools/schedule`: the tasks with their next run, the lock warning, and the latest runs. */
 export function schedulePage(frame: Frame, schedule: ScheduleSnapshot, entries: readonly AnyEntry[], filters: ListFilters, limit: number): string {
   const tasks = !schedule.available
     ? html`<div class="callout info"><p>${schedule.reason}</p></div>`
@@ -244,7 +244,7 @@ ${section(`${entries.length} entries`, entryTable(undefined, entries, { empty: '
   );
 }
 
-/** A request's own sections: what it did itself, what it set off (jobs in a worker, their mails — E131). */
+/** A request's own sections: what it did itself, what it set off (jobs in a worker, their mails). */
 function requestRelated(entry: Entry<'request'>, related: { batch: readonly AnyEntry[]; triggered: readonly AnyEntry[] }): Html {
   const own = related.batch.filter((candidate) => candidate.id !== entry.id);
   const byType = (type: EntryType) => own.filter((candidate) => candidate.type === type);

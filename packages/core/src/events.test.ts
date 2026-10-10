@@ -22,7 +22,7 @@ class InvoiceSent {
   readonly invoiceId = 'inv-1';
 }
 
-// A queueable event (E86): a stable name and the schema of what is queued of it — read from the event itself.
+// A queueable event: a stable name and the schema of what is queued of it — read from the event itself.
 class OrderShipped {
   static readonly event = 'shop.order-shipped';
   static readonly schema = v.object({ orderId: v.string() });
@@ -204,7 +204,7 @@ export function typeLevelTests(): void {
   // A closure's event is typed from the event class:
   listen(OrderPlaced, (event) => void event.orderId.toUpperCase());
 
-  // Queued listeners (E86) get the event's payload — its static schema — not the event:
+  // Queued listeners get the event's payload — its static schema — not the event:
   listen(OrderShipped, SendShippingMail);
   class TakesTheEvent {
     static readonly queue = {};

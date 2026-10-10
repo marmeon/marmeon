@@ -68,12 +68,12 @@ export interface PageRenderOptions {
   onWarning(message: string): void;
   /** Stops rendering when the client went away. */
   signal?: AbortSignal;
-  /** Resolves an island of this page in-process (E49) — `SsrRenderOptions.resolveIsland`. */
+  /** Resolves an island of this page in-process — `SsrRenderOptions.resolveIsland`. */
   resolveIsland?: (url: string) => Promise<RegionResult>;
-  /** Computes a deferred group of this page while it streams (E49) — `SsrRenderOptions.resolveDeferred`. */
+  /** Computes a deferred group of this page while it streams — `SsrRenderOptions.resolveDeferred`. */
   resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
   /**
-   * The response's CSP nonce (E147), when it has one: on the template's tags (in place of `CSP_NONCE_PLACEHOLDER`), React's
+   * The response's CSP nonce, when it has one: on the template's tags (in place of `CSP_NONCE_PLACEHOLDER`), React's
    * streamed scripts and styles and `<Head>`'s scripts. Without it, the template's placeholder attributes are taken out.
    */
   nonce?: string;
@@ -91,7 +91,7 @@ export interface PageRenderer {
   /** Version of the built assets; undefined in development (no checks while Vite serves sources). */
   readonly version?: string;
   /**
-   * Development (E119): server rendering of a page failed and its document goes out without markup — tell the developer
+   * Development: server rendering of a page failed and its document goes out without markup — tell the developer
    * (the Vite dev renderer shows it in Vite's overlay). What it returns goes into that document, before `</body>`.
    */
   failed?(error: unknown, details: RenderFailureDetails): Promise<string | undefined>;
@@ -101,11 +101,11 @@ export interface PageRenderer {
 export interface RenderFailureDetails {
   /** The page that failed. */
   readonly component: string;
-  /** The solutions for the error (E130). */
+  /** The solutions for the error. */
   readonly solutions: readonly Solution[];
-  /** The app's redactor (E125): what is shown passes it. */
+  /** The app's redactor: what is shown passes it. */
   readonly redactor: Redactor;
-  /** The response's CSP nonce, for a script the markup brings (E147). */
+  /** The response's CSP nonce, for a script the markup brings. */
   readonly nonce?: string;
 }
 
@@ -182,7 +182,7 @@ const BOTS =
 const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER].join(', ');
 
 /**
- * The live subscriptions of a response (W6.10), signed for the request's session — `PageObject.live`. A result that declares
+ * The live subscriptions of a response, signed for the request's session — `PageObject.live`. A result that declares
  * some in an app without @marmeon/live is a mistake that says so.
  */
 async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope: Container | undefined, component: string): Promise<{ live?: PageObject['live'] }> {
@@ -199,11 +199,11 @@ async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
 
 export interface ResponseFactoryOptions {
-  /** The app whose pages these are — server rendering is reported on its `render.ssr` channel (E118). */
+  /** The app whose pages these are — server rendering is reported on its `render.ssr` channel. */
   app?: Application;
   /**
    * Hears each page, layer or island object a response carries, before it is sent — the kernel's, for the `http.request`
-   * message's prop sizes (E118; it computes nothing unless something listens).
+   * message's prop sizes (it computes nothing unless something listens).
    */
   onPage?: (request: Request, page: PageObject | RegionObject, kind: 'page' | 'layer' | 'island', origins: () => PropOrigins) => void;
   /** Where server-rendering errors go. */
@@ -213,14 +213,14 @@ export interface ResponseFactoryOptions {
   /** Development: say why an island (or a page) is a 404 where it was asked for the other. */
   debug?: boolean;
   /**
-   * Resolves an island of a page in-process while the page renders (E49) — the kernel's: through the island route's own
+   * Resolves an island of a page in-process while the page renders — the kernel's: through the island route's own
    * middleware, read-only. Without it, islands load in the browser.
    */
   islands?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<RegionResult>;
   /** How long a deferred group streamed with its page may take before the browser loads it instead (ms, default 10 s). */
   deferredTimeout?: number;
   /**
-   * Resolves the base of a layer whose URL was loaded as a document — a deep link or a reload (E53): the kernel's, a GET of
+   * Resolves the base of a layer whose URL was loaded as a document — a deep link or a reload: the kernel's, a GET of
    * `url` in-process through the base route's own middleware and authorization, read-only. Without it, a layer's document
    * shows the layer over the neutral surface.
    */
@@ -228,7 +228,7 @@ export interface ResponseFactoryOptions {
 }
 
 /**
- * What the base of a deep-linked layer answered (E53, E54): its page object — a page, or another layer (`layer` set: its
+ * What the base of a deep-linked layer answered: its page object — a page, or another layer (`layer` set: its
  * base comes next) — or nothing to show: a redirect (not signed in), 401, 403, 404, an error. `status` is the HTTP status.
  */
 export type LayerBaseResult = { readonly status: 'page'; readonly page: PageObject } | { readonly status: 'unavailable'; readonly httpStatus: number };
@@ -258,13 +258,13 @@ export function createResponseFactory(
   };
 
   /**
-   * What the page's request resolves while the page streams (E49): its islands — in-process, through their own routes —
+   * What the page's request resolves while the page streams: its islands — in-process, through their own routes —
    * and its deferred groups, computed in the page's scope once the headers are out (read-only then). Per request.
    */
   const streaming = (page: PageObject, request: Request, props: Readonly<Record<string, unknown>>, scope: Container | undefined): Pick<PageRenderOptions, 'resolveIsland' | 'resolveDeferred'> => {
     if (!scope) return {};
     const requestId = currentRequest()?.requestId;
-    // A prefetched document (`Sec-Purpose: prefetch`) leaves its islands to the browser: islands never load ahead (E52).
+    // A prefetched document (`Sec-Purpose: prefetch`) leaves its islands to the browser: islands never load ahead.
     const resolveIsland = islands && !isPrefetch(request)
       ? async (url: string): Promise<RegionResult> => {
           const result = await islands(url, { request, scope, requestId });
@@ -313,7 +313,7 @@ export function createResponseFactory(
     resolvers: Pick<PageRenderOptions, 'resolveIsland' | 'resolveDeferred'> = {},
     scope?: Container,
   ): Promise<string | ReadableStream<Uint8Array>> => {
-    // The response's CSP nonce (E147) — when `contentSecurityPolicy()` wants one (or the app made one): made here, read by the header.
+    // The response's CSP nonce — when `contentSecurityPolicy()` wants one (or the app made one): made here, read by the header.
     const nonce = scope?.has(RequestNonce) ? scope.make(RequestNonce).forDocument() : undefined;
     if (!ssr) return renderer.shell(page, request, nonce);
     const report = (message: string) => (error: unknown) => logger.error(message, { component: page.component, ...describe(error) });
@@ -328,7 +328,7 @@ export function createResponseFactory(
         ...(nonce ? { nonce } : {}),
       });
     try {
-      // On the `render.ssr` channel only while something listens (E118).
+      // On the `render.ssr` channel only while something listens.
       if (app && renders.hasSubscribers) {
         const message: SsrRenderMessage = { ...messageBase(app), component: page.component, complete };
         return await trace(renders, message, render, (ended, result) => {
@@ -339,7 +339,7 @@ export function createResponseFactory(
     } catch (error) {
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
       const shell = await renderer.shell(page, request, nonce);
-      // Development (E119): the developer sees it — in Vite's overlay — instead of a page that silently renders in the browser.
+      // Development: the developer sees it — in Vite's overlay — instead of a page that silently renders in the browser.
       if (debug && app && renderer.failed) {
         try {
           const solutions = app.container.has(ErrorSolutions) ? await app.container.make(ErrorSolutions).find(error, { app }) : [];
@@ -363,9 +363,9 @@ export function createResponseFactory(
   };
 
   /**
-   * The document of a layer's URL (E53): its base — a page, or another layer, whose base comes next (up to
+   * The document of a layer's URL: its base — a page, or another layer, whose base comes next (up to
    * {@link MAX_LAYER_DEPTH}) — then the layers over it. A base that does not answer with its page (a redirect to the login,
-   * 401, 403, 404, an error) leaves the layers alone over the neutral surface ({@link LAYER_BACKDROP}, E54): nothing of the
+   * 401, 403, 404, an error) leaves the layers alone over the neutral surface ({@link LAYER_BACKDROP}): nothing of the
    * base is computed for the browser, let alone sent.
    */
   const deepLink = async (layer: PageObject, request: Request, scope: Container | undefined): Promise<PageObject> => {
@@ -412,7 +412,7 @@ export function createResponseFactory(
   };
 
   /**
-   * The flash messages a response the user is shown takes (E60): those waiting in the session, then the result's own. Never
+   * The flash messages a response the user is shown takes: those waiting in the session, then the result's own. Never
    * for a prefetch (the user has not asked for the page yet), an island or any other read-only request (a layer's base,
    * resolved in-process for its deep link): they leave them for the page.
    */
@@ -420,7 +420,7 @@ export function createResponseFactory(
     if (isPrefetch(request) || regionOf(request) === 'island') return [];
     if (scope?.has(ReadOnly) && scope.make(ReadOnly).active) return [];
     const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
-    // Only those of this document (E165): a message another tab's request flashed waits for that tab.
+    // Only those of this document: a message another tab's request flashed waits for that tab.
     return serializedFlash([...(flasher?.takeFlash(documentOfRequest(request)) ?? []), ...own]);
   };
 
@@ -428,18 +428,18 @@ export function createResponseFactory(
     if (isRedirectResult(result)) {
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
       const response = result.toResponse(ctx.request, routes ?? noRouter, flasher);
-      // An action's redirect is not followed (E59): its answer is what the user is shown, so it takes the flash messages (E60).
+      // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
     if (isIslandResult(result)) return islandResponse(result, ctx, version, debug, scope, onPage);
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
-      // An action's data (E60): with the messages its controller flashed — an API client's JSON leaves them for a page.
+      // An action's data: with the messages its controller flashed — an API client's JSON leaves them for a page.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope, flashOf(result))) : response;
     }
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
     if (isActionRequest(ctx.request)) {
-      // An action (E59) gets data, never a page: the types refuse such a route for `useAction` — a page here is a mistake.
+      // An action gets data, never a page: the types refuse such a route for `useAction` — a page here is a mistake.
       throw new HttpError(
         406,
         debug ? `[${result.component}] is a page — an action (useAction) gets data: its controller returns this.json(…) or a redirect, not this.view(…).` : undefined,
@@ -452,7 +452,7 @@ export function createResponseFactory(
 
     const url = new URL(ctx.request.url);
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
-    // Who the page is for (E64): the session's scope for once props, its CSRF token for forms without JavaScript.
+    // Who the page is for: the session's scope for once props, its CSRF token for forms without JavaScript.
     const session = scope?.has(PageSession) ? scope.make(PageSession) : undefined;
     const onceScope = session?.scope();
     // Once props the browser holds — under this session's scope only (another tab may have signed someone else in).
@@ -460,27 +460,27 @@ export function createResponseFactory(
     // Shared props and the controller's (which win), resolved as far as this response sends them.
     const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component), once);
     const csrf = session?.csrfToken();
-    // The session's epoch (W8 step 8): the tabs of the browser compare it — on every page, a partial reload's too.
+    // The session's epoch: the tabs of the browser compare it — on every page, a partial reload's too.
     const epoch = epochOf(scope);
     const pageSession = { ...(resolved.onceProps && onceScope !== undefined ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}), ...(epoch !== undefined ? { epoch } : {}) };
     // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
     const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
-    // The parsed query (E55), for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
+    // The parsed query, for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
     const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
     const layer = isLayerResult(result) ? layerInfo(result, ctx.request) : undefined;
-    // The route that answered (E64, `<Link activeMatch>`): its name — never an internal one's, and none for an error page.
+    // The route that answered (`<Link activeMatch>`): its name — never an internal one's, and none for an error page.
     const matched = (ctx as { route?: { routeName?: string | undefined; isInternal?: boolean } }).route;
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
-    // The channels it follows (W6.10): its own and — a page, which shows the layout — the shared ones, signed for this session.
+    // The channels it follows: its own and — a page, which shows the layout — the shared ones, signed for this session.
     const live = await liveSubscriptions([...(layer ? [] : (shared?.liveChannels() ?? [])), ...liveOf(result)], scope, result.component);
     const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
-    // Shown to the user: it takes the flash messages (E60) — and a response with them is never kept by a cache (a document
+    // Shown to the user: it takes the flash messages — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));
     if (flash.length > 0) page.flash = flash;
     onPage?.(ctx.request, page, layer ? 'layer' : 'page', () => propOrigins(result.props, shared, Object.keys(resolved.props)));
-    // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it (E60).
+    // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it.
     const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash(documentOfRequest(ctx.request))));
     const headers = {
       ...result.headers,
@@ -493,7 +493,7 @@ export function createResponseFactory(
     // sides (`Serialize<T>`), so the markup hydrates.
     const json = JSON.stringify(page);
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {
-      // A layer's page object, also to a plain visit: the client opens it over what is on screen (E53).
+      // A layer's page object, also to a plain visit: the client opens it over what is on screen.
       return ownResponse(new Response(json, {
         status: result.status,
         headers: { ...headers, 'content-type': 'application/json', [PAGE_HEADER]: 'true', ...(layer ? { [REGION_HEADER]: 'layer' } : {}) },
@@ -502,8 +502,8 @@ export function createResponseFactory(
 
     const sent = JSON.parse(json) as PageObject;
     if (layer) {
-      // A deep link or a reload of a layer's URL: its declared base under it, resolved in-process (E53) — or the neutral
-      // surface, when the base turns the user away (E54). The base's deferred props load in the browser (its scope is gone).
+      // A deep link or a reload of a layer's URL: its declared base under it, resolved in-process — or the neutral
+      // surface, when the base turns the user away. The base's deferred props load in the browser (its scope is gone).
       // The flash messages go with the document (the outermost page object), not with the layer in it.
       const { flash: _flash, ...top } = sent;
       const stacked = await deepLink(top, ctx.request, scope);
@@ -521,7 +521,7 @@ export function createResponseFactory(
   };
 }
 
-/** `response` with the flash messages it delivers (E60) — in a header: an action's body is its controller's data. */
+/** `response` with the flash messages it delivers — in a header: an action's body is its controller's data. */
 function withFlash(response: Response, flash: readonly FlashMessage[]): Response {
   if (flash.length === 0) return response;
   const headers = new Headers(response.headers);
@@ -531,7 +531,7 @@ function withFlash(response: Response, flash: readonly FlashMessage[]): Response
 }
 
 /**
- * The answer to an island's request (E48, E52): its region object as JSON — the page object of the island route, without
+ * The answer to an island's request: its region object as JSON — the page object of the island route, without
  * shared props and without the page's locale. Only for a region request (`x-marmeon-region: island`): anything else —
  * a direct hit, a page visit or a prefetch of the island's URL — is a 404 (an island has no head, layout or title).
  */
@@ -560,7 +560,7 @@ async function islandResponse(
   // Its own props only: the page around it has the shared ones. Partial reloads of the island name its component.
   const resolved = await resolvePageProps(result.props, undefined, partialReloadOf(request, result.component));
   const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
-  // The channels it follows (W6.10), signed for the session of the page around it (an island's request carries its cookie).
+  // The channels it follows, signed for the session of the page around it (an island's request carries its cookie).
   const live = await liveSubscriptions(liveOf(result), scope, result.component);
   const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query, ...live };
   onPage?.(request, region, 'island', () => propOrigins(result.props, undefined, Object.keys(resolved.props)));
@@ -571,7 +571,7 @@ async function islandResponse(
 }
 
 /**
- * What a region request's response becomes on its way out (E52) — whatever the island route's middleware or controller
+ * What a region request's response becomes on its way out — whatever the island route's middleware or controller
  * answered: the region object passes, so does a 409 (a new build: the client loads the whole page again). A redirect, a
  * 401 or a 423 is `unauthorized`, a 403 `forbidden` — `204` with `x-marmeon-region-status`, the redirect never followed,
  * so the island shows its fallback and the page never navigates. Anything else is an `exception`, with its status (an
@@ -598,7 +598,7 @@ export async function toRegionResponse(response: Response): Promise<Response> {
 }
 
 /**
- * What an action's response becomes on its way out (E59) — whatever its route's middleware or controller answered:
+ * What an action's response becomes on its way out — whatever its route's middleware or controller answered:
  * - a redirect is not followed (the browser's `fetch` would, and the action would read the next page): `204` with
  *   {@link ACTION_REDIRECT_HEADER} — the client reports where it pointed;
  * - a 409 with `x-marmeon-location` (signed out through the action, a new build) passes: the client loads that page;
@@ -620,7 +620,7 @@ export async function toActionResponse(response: Response): Promise<Response> {
 }
 
 /**
- * The answer of a live validation (E62): never cached (`no-store`, `Vary`), and a redirect of its route — middleware that sends
+ * The answer of a live validation: never cached (`no-store`, `Vary`), and a redirect of its route — middleware that sends
  * a guest away, say — becomes `204` with `x-marmeon-redirect`, like an action's: reported, not followed. Only its own `204` and
  * `422` carry `x-marmeon-validated` (the router's and the kernel's) — what the client takes for a result.
  */

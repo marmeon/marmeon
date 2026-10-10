@@ -11,7 +11,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const blank = join(repo, 'apps', 'blank-app');
 const ownVersion = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
-/** The framework's packages: the scope and the unscoped CLI (E195) — spelled out here, not taken from template.ts. */
+/** The framework's packages: the scope and the unscoped CLI — spelled out here, not taken from template.ts. */
 const framework = (name: string) => name.startsWith('@marmeon/') || name === 'marmeon';
 
 function workspace(): string {
@@ -44,7 +44,7 @@ function blankAppFiles(): string[] {
 }
 
 describe('create-marmeon — the call', () => {
-  it('without a directory and without a terminal: exit 2 and the reason, at once — it never waits for an answer (E167)', async () => {
+  it('without a directory and without a terminal: exit 2 and the reason, at once — it never waits for an answer', async () => {
     // stdin stays open — a pipe nobody writes to and nobody closes, as in a CI job: a prompt would wait for good.
     const child = spawn(process.execPath, ['--input-type=module', '-e', `const { main } = await import(${JSON.stringify(join(repo, 'packages/create-marmeon/src/main.ts'))}); process.exitCode = await main();`], {
       cwd: workspace(),
@@ -104,7 +104,7 @@ describe('create-marmeon — the call', () => {
 });
 
 describe('create-marmeon — the app', () => {
-  it('--minimal writes the blank app: every file as apps/blank-app has it (E167) — package.json, tsconfig.json, README and the keys aside', async () => {
+  it('--minimal writes the blank app: every file as apps/blank-app has it — package.json, tsconfig.json, README and the keys aside', async () => {
     const cwd = workspace();
     expect((await create(cwd, ['blank', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
     const app = join(cwd, 'blank');
@@ -113,7 +113,7 @@ describe('create-marmeon — the app', () => {
     for (const file of blankAppFiles().filter((name) => !own.has(name))) {
       expect(readFileSync(join(app, file), 'utf8'), file).toBe(readFileSync(join(blank, file), 'utf8'));
     }
-    // index.html: the blank app's, with the app's name as its title — never the framework's (W8.10).
+    // index.html: the blank app's, with the app's name as its title — never the framework's.
     const html = readFileSync(join(app, 'index.html'), 'utf8');
     expect(/<title>(.*)<\/title>/.exec(html)?.[1], 'the title of a new app').not.toMatch(/Marmeon/);
     expect(html).toBe(readFileSync(join(blank, 'index.html'), 'utf8').replace(TEMPLATE_TITLE, '<title>Blank</title>'));
@@ -246,7 +246,7 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
     const workspaceFile = readFileSync(join(cwd, 'vendored-pnpm/pnpm-workspace.yaml'), 'utf8');
     expect(workspaceFile).toContain('"@marmeon/core": "file:./vendor/marmeon/marmeon-core-0.0.0.tgz"');
     expect(workspaceFile).toContain('"@marmeon/encryption": "file:./vendor/marmeon/marmeon-encryption-0.0.0.tgz"'); // cli's dependency
-    // An overridden optional peer is installed by pnpm as if the app had asked for it — what nobody installs stays out (E198).
+    // An overridden optional peer is installed by pnpm as if the app had asked for it — what nobody installs stays out.
     expect(workspaceFile).not.toContain('@marmeon/redis');
     expect(workspaceFile).toContain('hoistPattern: []');
   });
@@ -262,7 +262,7 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
 });
 
 describe('the starter kit’s own files', () => {
-  it('its client is the blank app’s — with its dialog (`confirm: Confirm`, W9 step 7) and nothing else', () => {
+  it('its client is the blank app’s — with its dialog (`confirm: Confirm`) and nothing else', () => {
     const base = readFileSync(join(TEMPLATE, 'base/bootstrap/client.tsx'), 'utf8');
     const kit = readFileSync(join(TEMPLATE, 'kit/bootstrap/client.tsx'), 'utf8');
     const dialog = /^import \{ Confirm \} from '\.\/confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
@@ -272,7 +272,7 @@ describe('the starter kit’s own files', () => {
 });
 
 /**
- * The starter kit as a user gets it (E150): the template and the home module, then the app's own `make:auth` and `migrate` —
+ * The starter kit as a user gets it: the template and the home module, then the app's own `make:auth` and `migrate` —
  * type-checked, linted with the app's preset, and its tests (auth, home, system) pass. The framework from the workspace (the
  * blank app's node_modules); `pnpm pack:smoke` does the same from the tarballs, outside the monorepo.
  */
@@ -301,7 +301,7 @@ it(
     expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
     const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
     expect(tests.out).toContain('modules/home/home.test.ts');
-    // The app's dialog in the page's language (W9 step 7): the guard's question — and tab sync's — in German too.
+    // The app's dialog in the page's language: the guard's question — and tab sync's — in German too.
     expect(tests.out).toContain('modules/home/confirm.test.ts');
     // The failing tests by name — the message (Vitest shortens a long output it prints).
     const failed = tests.out.split('\n').filter((line) => /^\s*(×|FAIL)/.test(line)).join('\n');

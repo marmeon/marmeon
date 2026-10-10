@@ -15,7 +15,7 @@ function query(app: Application, sql = 'select 1'): DbQueryMessage {
   return { ...messageBase(app), connection: 'default', driver: 'sqlite', sql, parameters: [], secret: false, durationMs: 1.5 };
 }
 
-describe('channels.subscribe (E118)', () => {
+describe('channels.subscribe', () => {
   it('passes on only its own app\'s messages — two apps in one process never see each other\'s', async () => {
     const one = await boot();
     const two = await boot();
@@ -111,7 +111,7 @@ describe('channels.subscribe (E118)', () => {
 });
 
 describe('messages', () => {
-  it('say where they happen: the request, the job (by the context, E3)', async () => {
+  it('say where they happen: the request, the job (by the context)', async () => {
     const app = await boot();
     const inRequest = runWithRequest({ requestId: 'req-7' }, () => messageBase(app));
     const inJob = runWithJob({ job: 'stats', jobId: 'job-9', attempt: 1 }, () => messageBase(app));
@@ -149,7 +149,7 @@ describe('messages', () => {
   });
 });
 
-describe('channels.around: an operation\'s work in a context of the subscriber\'s (E120)', () => {
+describe('channels.around: an operation\'s work in a context of the subscriber\'s', () => {
   it('runs the work inside the wrapper — what happens there sees the wrapper\'s context; other apps\' operations do not', async () => {
     const one = await boot();
     const two = await boot();
@@ -234,7 +234,7 @@ describe('channels.around: an operation\'s work in a context of the subscriber\'
   });
 });
 
-describe('marmeon:event — app events for observers (W7.7)', () => {
+describe('marmeon:event — app events for observers', () => {
   class Registered {
     static readonly event = 'auth.registered';
     readonly #event = true;

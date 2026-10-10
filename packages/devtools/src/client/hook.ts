@@ -1,5 +1,5 @@
 /**
- * The dev hook (W7 step 9): `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set before the app starts. The client core calls it when a
+ * The dev hook: `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set before the app starts. The client core calls it when a
  * navigator is made — the bar attaches its data feature (`devtools` of `@marmeon/http/client`) there — and with what only it
  * sees: optimistic patches, and hydration errors from the React adapter. Those calls exist in development builds only.
  */

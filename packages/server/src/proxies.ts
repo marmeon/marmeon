@@ -15,9 +15,9 @@ export function isProxyEntry(entry: string): boolean {
 }
 
 /**
- * The check behind `TRUSTED_PROXIES` (E162): whether a peer is one of the app's proxies — by address or range (CIDR), IPv4
+ * The check behind `TRUSTED_PROXIES`: whether a peer is one of the app's proxies — by address or range (CIDR), IPv4
  * and IPv6, an IPv4-mapped IPv6 peer (`::ffff:10.0.0.1`) as its IPv4 address. Empty: nobody (the default — `X-Forwarded-*`
- * are ignored); `*`: whoever connects — the direct peer is the proxy (E172); the client's address is then the entry it added
+ * are ignored); `*`: whoever connects — the direct peer is the proxy; the client's address is then the entry it added
  * (`clientIp` with `['*']`), never one before it.
  */
 export function proxyMatcher(entries: readonly string[]): (address: string) => boolean {
@@ -48,7 +48,7 @@ function nearest(value: string | null): string | undefined {
 }
 
 /**
- * The request as the client sent it to the app's proxy (E162): from a trusted peer, `X-Forwarded-Proto` (`http`/`https`) and
+ * The request as the client sent it to the app's proxy: from a trusted peer, `X-Forwarded-Proto` (`http`/`https`) and
  * `X-Forwarded-Host` replace the URL's protocol and host — so the CSRF origin check, an island's origin, the asset version's
  * reload URL and `ctx.request.url` see `https://example.com/…`, not the proxy's `http://10.0.0.5:3000/…`. From anybody else
  * the headers are ignored; a value that is no protocol or host is ignored too. Of a list (`https, http`), the right-most value

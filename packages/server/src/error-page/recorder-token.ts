@@ -1,7 +1,7 @@
 import { token, type RequestInfo } from '@marmeon/core';
 import type { DbQueryMessage, LogMessage } from '@marmeon/core/diagnostics';
 
-/** What the error page shows of a request's queries and log entries — raw; the page redacts them (E125). */
+/** What the error page shows of a request's queries and log entries — raw; the page redacts them. */
 export interface RequestRecording {
   readonly queries: readonly DbQueryMessage[];
   /** Queries left out once {@link MAX_RECORDED} were kept. */
@@ -11,7 +11,7 @@ export interface RequestRecording {
 }
 
 /**
- * The error page's request recorder (development only, E119): from the moment a request starts, its queries and log
+ * The error page's request recorder (development only): from the moment a request starts, its queries and log
  * entries — by the request's own context, so a parallel request's never mix in. Bound by the server's provider only when
  * `ServerConfig.debug`; the kernel asks for it with `has`.
  */

@@ -3,7 +3,7 @@ import { createApplication } from '@marmeon/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AesGcmEncrypter, DecryptError, Encrypter, EncryptionConfig, EncryptionServiceProvider, generateKey } from './index.ts';
 
-// Counts the keys the encrypter imports (W8 step 9: once, never per payload).
+// Counts the keys the encrypter imports (once, never per payload).
 vi.mock('node:crypto', async (original) => {
   const actual = await original<typeof import('node:crypto')>();
   return { ...actual, createSecretKey: vi.fn(actual.createSecretKey) };
@@ -59,7 +59,7 @@ describe('AesGcmEncrypter', () => {
     expect(() => new AesGcmEncrypter(new Uint8Array(16))).toThrow('exactly 32 bytes');
   });
 
-  it('imports its keys once — not for every payload (W8 step 9)', async () => {
+  it('imports its keys once — not for every payload', async () => {
     const imported = vi.mocked(nodeCrypto.createSecretKey);
     imported.mockClear();
     const encrypter = new AesGcmEncrypter(raw(), [raw()]);
@@ -75,10 +75,7 @@ describe('AesGcmEncrypter', () => {
   });
 });
 
-/**
- * The encrypter as it was until Wave 8 step 9 — AES-256-GCM through WebCrypto, the same payload layout. Cookies, encrypted
- * sessions (SESSION_ENCRYPT) and every other payload written by it must still decrypt, with the current and the previous keys.
- */
+/** AES-256-GCM through WebCrypto with the same payload layout: what either writes, the other decrypts, with the current and the previous keys. */
 class WebCryptoEncrypter {
   readonly #keys: Promise<CryptoKey>[];
 
@@ -109,7 +106,7 @@ class WebCryptoEncrypter {
   }
 }
 
-describe('AesGcmEncrypter and the WebCrypto encrypter before it (W8 step 9)', () => {
+describe('AesGcmEncrypter and a WebCrypto encrypter', () => {
   const texts = ['', 'user=1', 'Grüße 👋', 'x'.repeat(5000), JSON.stringify({ _token: 'abc', _flash_messages: [{ id: 'm1', text: '✓ Saved' }] })];
 
   it('decrypts what WebCrypto encrypted — every text, every context, with the current and a previous key', async () => {

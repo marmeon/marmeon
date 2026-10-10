@@ -16,14 +16,14 @@ export const ServerConfig = defineConfig('server', {
     /** The port to listen on; `0` asks the system for a free one (the start line names the port it got). */
     PORT: env.integer().min(0).max(65_535).default(3000),
     /**
-     * The interface the server listens on (E162): unset — every interface (Node's default), `127.0.0.1` — this machine only
+     * The interface the server listens on: unset — every interface (Node's default), `127.0.0.1` — this machine only
      * (behind a proxy on the same host), `0.0.0.0` — every IPv4 interface (a container).
      */
     HOST: env.string().optional(),
     /** Largest accepted request body: bytes, or with a unit — `512k`, `8m`, `1g`. */
     MAX_BODY_SIZE: env.string().regex(/^\d+[kmg]?$/i, 'Expected bytes or a size like 512k, 8m or 1g').default('8m'),
     /**
-     * The app's proxies (load balancers, E162), comma-separated: addresses or ranges — `127.0.0.1,10.0.0.0/8,fd00::/8` — or
+     * The app's proxies (load balancers), comma-separated: addresses or ranges — `127.0.0.1,10.0.0.0/8,fd00::/8` — or
      * `*` when the app is only reachable through its own proxy. Only from these, `X-Forwarded-For` sets `ctx.ip` and
      * `X-Forwarded-Proto`/`X-Forwarded-Host` the request's URL (`https://…`). Default: none — the headers are ignored.
      */
@@ -42,18 +42,18 @@ export const ServerConfig = defineConfig('server', {
      */
     SSR_ENABLED: env.in(['true', 'false']).default('true'),
     /**
-     * Where the health endpoints answer (E126): liveness at this path, readiness below it (`/up/ready`). `off`: neither —
+     * Where the health endpoints answer: liveness at this path, readiness below it (`/up/ready`). `off`: neither —
      * e.g. when the app's own route needs `/up`.
      */
     HEALTH_PATH: env.string().regex(/^(?:off|\/[\w./-]*[\w-])$/, 'Expected a path like /up or /healthz (no trailing slash), or off').default('/up'),
     /**
-     * Seconds the server keeps taking requests after SIGTERM (E163): `/up/ready` answers 503 at once, so a load balancer stops
-     * sending new ones, and only then the server closes and drains (E102). Default 0 — set it (5 is typical) behind a load
+     * Seconds the server keeps taking requests after SIGTERM: `/up/ready` answers 503 at once, so a load balancer stops
+     * sending new ones, and only then the server closes and drains. Default 0 — set it (5 is typical) behind a load
      * balancer that learns about a stopping instance only from its probes (kamal-proxy, Traefik, a cloud load balancer).
      */
     SHUTDOWN_DELAY: env.number('Expected seconds, like 5 or 0.5').min(0, 'Expected seconds, like 5 or 0.5').max(300, 'Expected at most 300 seconds').default(0),
     /**
-     * Seconds an idle keep-alive connection stays open (W9 step 4). Default 65 — longer than the proxy in front keeps its idle
+     * Seconds an idle keep-alive connection stays open. Default 65 — longer than the proxy in front keeps its idle
      * connections to the app (nginx's upstream `keepalive_timeout` 60 s, an AWS load balancer's idle timeout 60 s): the side that
      * closes first must be the proxy, or a request it sends on a connection the app is just closing fails (a 502). Behind a proxy
      * that keeps them longer (a Google load balancer: 600 s) set it above that.
@@ -74,16 +74,16 @@ export const ServerConfig = defineConfig('server', {
     assetVersion: e.ASSET_VERSION,
     trustedProxies: e.TRUSTED_PROXIES,
     ssr: e.SSR_ENABLED === 'true',
-    /** The liveness path of the health endpoints (readiness: `<path>/ready`), or `false` without them (E126). */
+    /** The liveness path of the health endpoints (readiness: `<path>/ready`), or `false` without them. */
     health: e.HEALTH_PATH === 'off' ? (false as const) : e.HEALTH_PATH,
-    /** How long the server keeps taking requests after SIGTERM, not ready any more (E163), in milliseconds. */
+    /** How long the server keeps taking requests after SIGTERM, not ready any more, in milliseconds. */
     shutdownDelayMs: Math.round(e.SHUTDOWN_DELAY * 1000),
     /** How long an idle keep-alive connection stays open, in milliseconds — above the proxy's (`KEEP_ALIVE_TIMEOUT`). */
     keepAliveTimeoutMs: e.KEEP_ALIVE_TIMEOUT * 1000,
-    /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
+    /** The `Server-Timing` header: only when `NODE_ENV=development` — not in tests, never in production. */
     serverTiming: environment.isDevelopment(e),
     /**
-     * Development error handling (E115, E119): the error page with code, request, queries and solutions, exception details in
+     * Development error handling: the error page with code, request, queries and solutions, exception details in
      * JSON errors, the Vite overlay for server-rendering errors. Only when `NODE_ENV=development` — never "not production":
      * a production or test server shows the plain error page, whatever `APP_ENV` says.
      */
@@ -93,8 +93,8 @@ export const ServerConfig = defineConfig('server', {
 export type ServerConfig = ConfigOf<typeof ServerConfig>;
 
 /**
- * Brings the server's configuration — and, in development only, the `Server-Timing` header (E129) and the error page's
- * request recorder (E119): both listen to the app's channels until the app shuts down. In production neither is loaded,
+ * Brings the server's configuration — and, in development only, the `Server-Timing` header and the error page's
+ * request recorder: both listen to the app's channels until the app shuts down. In production neither is loaded,
  * and no channel gets a subscriber. Found by `marmeon discover` like any installed package.
  */
 export class ServerServiceProvider implements ServiceProvider {

@@ -44,7 +44,7 @@ interface FileState {
 }
 
 /**
- * Entries as NDJSON files (E116) — one line per entry, shared by every process of the app (server, worker, scheduler: E101):
+ * Entries as NDJSON files — one line per entry, shared by every process of the app (server, worker, scheduler):
  *
  * - **Writing:** one file per process and hour (`<YYYYMMDDHH>-<pid>-<random>-<n>.ndjson`, UTC), so no two processes ever
  *   append to the same file; a batch is one append. A file holds at most a tenth of `maxBytes` — then the next one starts.

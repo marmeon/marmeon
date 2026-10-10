@@ -98,7 +98,7 @@ export interface EmbedPackageOptions {
   outDir: string;
   /**
    * Browser-only sources, as globs relative to the package directory (the parent of `srcDir`) — the package's
-   * `"marmeon": { "browser": [...] }`. Their classes get nothing (roadmap E76), and fields an earlier build left there are taken out.
+   * `"marmeon": { "browser": [...] }`. Their classes get nothing, and fields an earlier build left there are taken out.
    */
   browser?: readonly string[];
 }

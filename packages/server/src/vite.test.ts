@@ -64,7 +64,7 @@ describe('createViteDevRenderer', () => {
     }
   });
 
-  it('adds development head HTML (DevDocument: the devtools\' bar, W7 step 9) before </head> — ahead of the app\'s entry', async () => {
+  it('adds development head HTML (DevDocument: the devtools\' bar) before </head> — ahead of the app\'s entry', async () => {
     const httpServer = createServer();
     const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer, devHead: () => '<script type="module" src="/@id/@marmeon/devtools/client" data-marmeon-devtools></script>' });
     try {
@@ -90,7 +90,7 @@ describe('createViteDevRenderer', () => {
     }
   });
 
-  it('shows a server-rendering error of a view in Vite\'s overlay — at the line of the view that threw (E119)', async () => {
+  it('shows a server-rendering error of a view in Vite\'s overlay — at the line of the view that threw', async () => {
     const root = app();
     // Types before the throw: what Vite runs has fewer lines than the source — only the source mapping finds the line.
     const view = [

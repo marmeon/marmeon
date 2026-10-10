@@ -61,7 +61,7 @@ async function boot(env: Record<string, string> = {}) {
   return { application, kernel: createHttpKernel(application) };
 }
 
-describe('the http.request channel (E118)', () => {
+describe('the http.request channel', () => {
   it('traces a request: route name, pattern, controller, status, duration — with the request id it answers with', async () => {
     const { application, kernel } = await boot();
     const ended: HttpRequestMessage[] = [];
@@ -86,7 +86,7 @@ describe('the http.request channel (E118)', () => {
     await application.shutdown();
   });
 
-  it('says where a response sends the browser: a redirect\'s Location, the protocol\'s 409 reload with its reason (W7 step 8)', async () => {
+  it('says where a response sends the browser: a redirect\'s Location, the protocol\'s 409 reload with its reason', async () => {
     const { application, kernel } = await boot();
     const ended: HttpRequestMessage[] = [];
     const off = channels.subscribe(application, 'http.request', { end: (message) => void ended.push(message) });
@@ -124,7 +124,7 @@ describe('the http.request channel (E118)', () => {
   });
 });
 
-describe('the request\'s log line without secrets (E125, W7.11)', () => {
+describe('the request\'s log line without secrets', () => {
   it('replaces sensitive route parameters and token-like segments of unmatched paths', async () => {
     const { application, kernel } = await boot();
     lines.length = 0;
@@ -135,7 +135,7 @@ describe('the request\'s log line without secrets (E125, W7.11)', () => {
   });
 });
 
-describe('the render.ssr channel (E118)', () => {
+describe('the render.ssr channel', () => {
   it('traces server rendering of a document — its view, whether it streams; a failure with its error (the browser renders)', async () => {
     const { application } = await boot();
     let fail = false;
@@ -167,7 +167,7 @@ describe('the render.ssr channel (E118)', () => {
   });
 });
 
-describe('the exception channel (E118)', () => {
+describe('the exception channel', () => {
   it('carries the error a request ended in, its status and the request id', async () => {
     const { application, kernel } = await boot();
     const errors: ExceptionMessage[] = [];
@@ -188,7 +188,7 @@ describe('the exception channel (E118)', () => {
   });
 });
 
-describe('Server-Timing (E129)', () => {
+describe('Server-Timing', () => {
   it('with NODE_ENV=development: app, db (time and count) — measured from the channels', async () => {
     const { application, kernel } = await boot({ NODE_ENV: 'development' });
     const response = await kernel.request('/users/7');
@@ -200,7 +200,7 @@ describe('Server-Timing (E129)', () => {
     await application.shutdown();
   });
 
-  it.each<Record<string, string>>([{ NODE_ENV: 'production' }, { NODE_ENV: 'test' }, { NODE_ENV: 'production', APP_ENV: 'local' }])('never with %j — development only, not "not production" (E115), whatever APP_ENV says', async (env) => {
+  it.each<Record<string, string>>([{ NODE_ENV: 'production' }, { NODE_ENV: 'test' }, { NODE_ENV: 'production', APP_ENV: 'local' }])('never with %j — development only, not "not production", whatever APP_ENV says', async (env) => {
     const { application, kernel } = await boot(env);
     expect((await kernel.request('/users/7')).headers.has('server-timing')).toBe(false);
     expect(channels.tracing('db.query').hasSubscribers).toBe(false);
@@ -230,7 +230,7 @@ describe('withDevBody', () => {
     expect(withDevBody('<body></body>', '')).toBe('<body></body>');
   });
 
-  it('puts development head HTML before </head> — before the app entry the body ends with (W7 step 9)', () => {
+  it('puts development head HTML before </head> — before the app entry the body ends with', () => {
     expect(withDevBody('<html><head><title>x</title></head><body><script type="module" src="/entry.ts"></script></body></html>', '', '<script src="/bar"></script>')).toBe(
       '<html><head><title>x</title><script src="/bar"></script>\n</head><body><script type="module" src="/entry.ts"></script></body></html>',
     );

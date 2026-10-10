@@ -50,18 +50,18 @@ export interface RecorderOptions {
   readonly store: DevtoolsStore;
   readonly redactor: Redactor;
   readonly options: ResolvedDevtoolsOptions;
-  /** The app's solutions (E130), for exception entries. */
+  /** The app's solutions, for exception entries. */
   readonly solutions?: ErrorSolutions;
 }
 
 /**
- * The devtools' recorder (E116, E118): listens to the app's channels — requests, queries, jobs, mails, notifications, logs,
+ * The devtools' recorder: listens to the app's channels — requests, queries, jobs, mails, notifications, logs,
  * exceptions, scheduled runs, live hints, events and commands — and keeps what happens as entries:
  *
  * - **Batches:** a request's entries (with those of islands and layer bases it resolved in-process), a job attempt's, a
  *   scheduled run's or a command's are collected in memory and written in one go when it ends — to the store, never to the
- *   app's database, outside of any transaction (E107). A job's entries carry the request that dispatched it (E131).
- * - **Redacted before written** (E125): every value through the app's `Redactor` — by key, in text (hashes, API tokens, token
+ *   app's database, outside of any transaction. A job's entries carry the request that dispatched it.
+ * - **Redacted before written**: every value through the app's `Redactor` — by key, in text (hashes, API tokens, token
  *   paths in links), statements on secret columns without parameters, encrypted payloads as `[encrypted]` — then cut to
  *   64 KB per entry.
  * - **Never in the way:** a handler never throws into the operation (the channels turn it into a warning), a failed write
@@ -216,7 +216,7 @@ export class Recorder {
   }
 
   /**
-   * Adds an entry: its content redacted as a whole once more (E125 — by key and in text, whatever a builder forgot) and cut
+   * Adds an entry: its content redacted as a whole once more (by key and in text, whatever a builder forgot) and cut
    * to 64 KB. Into `batch`, or the current one, or the background.
    */
   #add<T extends EntryType>(type: T, message: MessageBase, content: EntryContents[T], tags: readonly string[], batch = this.#current() ?? this.#background()): AnyEntry | undefined {
@@ -538,7 +538,7 @@ export class Recorder {
     this.#failure(message, message.error, 'request', undefined, { status: message.status, method: message.method, path: message.path });
   }
 
-  /** An `exception` entry: the error, where it ended, and the solutions the error page would show (E130) — looked up before the batch is written. */
+  /** An `exception` entry: the error, where it ended, and the solutions the error page would show — looked up before the batch is written. */
   #failure(message: MessageBase, error: unknown, where: ExceptionContent['in'], batch?: Batch, request?: { status: number; method: string; path: string }): void {
     if (!this.#options.record.has('exceptions')) return;
     const shown = this.#error(error)!;

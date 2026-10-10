@@ -122,7 +122,7 @@ class TransactionController {
   }
 }
 
-/** A page with a shared prop and an optional one it leaves out — the badges of the in-page bar (W7 step 9). */
+/** A page with a shared prop and an optional one it leaves out — the badges of the in-page bar. */
 class ShowOriginsController {
   readonly #shared: SharedData;
   constructor(shared: SharedData) {
@@ -171,7 +171,7 @@ async function boot(env: Record<string, string> = {}, options: { test?: boolean;
     },
   });
   const connections = app.container.make(Connections);
-  // `people.password` is `.secret()` in its migration — the migrator's bookkeeping tells the query channel (E125).
+  // `people.password` is `.secret()` in its migration — the migrator's bookkeeping tells the query channel.
   await new Migrator(app, connections).migrate();
   await sql`insert into people (email) values ('ada@example.com')`.execute(connections.get());
   return { app, root, kernel: createHttpKernel(app), ...(tester ? { tester } : {}) };
@@ -186,7 +186,7 @@ function files(root: string): string {
     .join('');
 }
 
-describe('the gate (E115: fail closed, development only)', () => {
+describe('the gate (fail closed, development only)', () => {
   it.each([[{ NODE_ENV: 'test' }], [{ NODE_ENV: 'production', APP_ENV: 'local' }], [{}]])('subscribes to nothing and writes nothing with %j', async (environment) => {
     const { app, root, kernel } = await boot(environment);
     try {
@@ -225,7 +225,7 @@ describe('the gate (E115: fail closed, development only)', () => {
     }
   });
 
-  it('fails the start with DEVTOOLS_ENABLED=true where the app is protected — and a test opt-in there (E139: no NODE_ENV too; APP_ENV opens nothing)', async () => {
+  it('fails the start with DEVTOOLS_ENABLED=true where the app is protected — and a test opt-in there (no NODE_ENV too; APP_ENV opens nothing)', async () => {
     await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production\)[\s\S]*never run in production or without NODE_ENV, whatever APP_ENV says/);
     await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=local\)/);
     await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production, NODE_ENV unset\)/);
@@ -234,7 +234,7 @@ describe('the gate (E115: fail closed, development only)', () => {
     await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: '1' })).rejects.toThrow(/devtools: DEVTOOLS_ENABLED — DEVTOOLS_ENABLED must be true or false\./);
     await expect(boot({ NODE_ENV: 'production' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run in production/);
     await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run/);
-    // What `marmeon` prints with it (E130): the devtools' own solution — not "set the variables in .env".
+    // What `marmeon` prints with it: the devtools' own solution — not "set the variables in .env".
     const error = await boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' }).catch((failure: unknown) => failure);
     const solutions = await new ErrorSolutions([...DevtoolsServiceProvider.solutions, ...coreSolutions]).find(error);
     expect(solutions.map((solution) => solution.title)).toEqual(['Remove DEVTOOLS_ENABLED in production']);
@@ -263,7 +263,7 @@ describe('the gate (E115: fail closed, development only)', () => {
 });
 
 describe('what the recorder keeps', () => {
-  it('a request with its queries, jobs, log entries and events — one batch, tied by the request id (E131)', async () => {
+  it('a request with its queries, jobs, log entries and events — one batch, tied by the request id', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
       const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { 'x-marmeon': 'true', cookie: 'marmeon_session=s3ss10n', authorization: `Bearer ${API_TOKEN}` } });
@@ -279,7 +279,7 @@ describe('what the recorder keeps', () => {
       // Prop sizes per key, never the values.
       expect(request.content.page).toMatchObject({ kind: 'page', component: 'people/Show', props: { person: JSON.stringify({ id: 7, name: 'Ada' }).length, list: JSON.stringify(Array.from({ length: 50 }, (_, i) => i)).length } });
       expect(JSON.stringify(request.content.page)).not.toContain('Ada');
-      // Where the props came from (W7 step 9): shared and left-out optional props, by name.
+      // Where the props came from: shared and left-out optional props, by name.
       await kernel.request('/origins', { headers: { 'x-marmeon': 'true' } });
       expect(tester!.assertRecorded('request', (content) => content.route === 'origins').content.page).toMatchObject({ component: 'people/Origins', shared: ['auth'], optional: ['stats'] });
 
@@ -293,7 +293,7 @@ describe('what the recorder keeps', () => {
       expect(attempt.batch).not.toBe(request.batch);
       expect(attempt.content.payload).toEqual({ personId: 7 });
       expect(tester!.batch(attempt.batch).some((entry) => entry.type === 'query' && entry.content.sql.includes('count(*)'))).toBe(true);
-      // An encrypted job's payload is never shown (E125) — neither queued nor run.
+      // An encrypted job's payload is never shown — neither queued nor run.
       const secret = tester!.entries('job').filter((job) => job.content.name === 'test.secret');
       expect(secret.map((job) => job.content.status).sort()).toEqual(['done', 'queued']);
       expect(secret.every((job) => job.content.payload === '[encrypted]')).toBe(true);
@@ -325,8 +325,8 @@ describe('what the recorder keeps', () => {
   it('mails with the tokens and signatures in their links masked — and the token path of the request', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      // Fixed, not random (W10 step 9c, finding R): 32 random bytes as the app makes them — this one without a digit, which the
-      // token rule before let through (about 1 run in 370 failed); redact.test.ts covers the random ones.
+      // Fixed, not random: 32 random bytes as the app makes them — this one without a digit; redact.test.ts covers the
+      // random ones.
       const token = 'xcTSGsRRdFsBwbUDGMbH_yNyUBMgdklqlolrXjzXiiI';
       await kernel.request(`/reset-password/${token}`);
       const mail = tester!.assertRecorded('mail', (content) => content.subject === 'Reset your password');

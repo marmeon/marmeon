@@ -41,7 +41,7 @@ export { ConfigError };
  * `.env.testing`); variables from the real environment win over both.
  * Parsed with `util.parseEnv`, so `process.env` itself is never modified.
  *
- * `NODE_ENV` follows the one resolution of `@marmeon/core/environment` (E170): the real environment's, else the base
+ * `NODE_ENV` follows the one resolution of `@marmeon/core/environment`: the real environment's, else the base
  * `.env`'s — which is also what picks `.env.{mode}` when `mode` is not given. `.env.{mode}` never sets `NODE_ENV`.
  */
 export function loadEnv(root: string, mode?: string, environment: Env = process.env): Env {
@@ -67,7 +67,7 @@ export async function resolveConfig(
 
 /**
  * Validates every definition against `env` without failing: the resolved values, and the problems of every definition that
- * did not validate (`  • name: VARIABLE — message` per issue). `createApplication` in the build phase (E187) binds the valid ones
+ * did not validate (`  • name: VARIABLE — message` per issue). `createApplication` in the build phase binds the valid ones
  * and leaves the others unavailable — the build needs no runtime secrets.
  */
 export async function validateConfig(

@@ -12,9 +12,9 @@ export interface OverlayError {
 }
 
 /**
- * A server-rendering error for Vite's overlay (E119): the message with its solutions, the stack (already mapped to the
+ * A server-rendering error for Vite's overlay: the message with its solutions, the stack (already mapped to the
  * sources by `ssrFixStacktrace`), and — for the first frame in the app's code — a code frame and a link (`loc`), as Vite
- * shows its own transform errors. Redacted like the error page (E125).
+ * shows its own transform errors. Redacted like the error page.
  */
 export function overlayError(error: unknown, root: string, redactor: Redactor, solutions: readonly Solution[] = []): OverlayError {
   const failure = error instanceof Error ? error : new Error(String(error));
@@ -49,6 +49,6 @@ export function codeFrame(lines: readonly { number: number; text: string; curren
  */
 export function overlayScript(error: OverlayError, nonce?: string): string {
   const payload = JSON.stringify(error).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-  // The response's CSP nonce (E147): under `contentSecurityPolicy()` an inline script runs only with it.
+  // The response's CSP nonce: under `contentSecurityPolicy()` an inline script runs only with it.
   return `<script type="module"${nonce ? ` nonce="${nonce}"` : ''}>import('/@vite/client').then(({ ErrorOverlay }) => { document.querySelector('vite-error-overlay')?.remove(); document.body.appendChild(new ErrorOverlay(${payload})); });</script>`;
 }

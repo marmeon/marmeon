@@ -3,12 +3,12 @@ import { newestFirst, type AnyEntry, type EntryType } from './entry.ts';
 
 /**
  * Which entries a read wants — every field narrows. The devtools pages (lists with filters, a request's batch, a job's
- * attempts) and the in-page bar (a request's entries by its `x-request-id`, E131) read through it.
+ * attempts) and the in-page bar (a request's entries by its `x-request-id`) read through it.
  */
 export interface EntryQuery {
   readonly type?: EntryType | readonly EntryType[];
   readonly batch?: string;
-  /** Entries of a request — and of the jobs it dispatched (their entries carry it, E131). */
+  /** Entries of a request — and of the jobs it dispatched (their entries carry it). */
   readonly requestId?: string;
   readonly jobId?: string;
   /** One of the entry's tags (`status:500`, `status:5xx`, `slow`, `failed`, `route:users.show`) — or several, all of which it has. */
@@ -42,7 +42,7 @@ export interface StoreUsage {
 }
 
 /**
- * Where entries go (E116): the {@link FileStore} — NDJSON files under `storage/framework/devtools/`, shared by the server, the
+ * Where entries go: the {@link FileStore} — NDJSON files under `storage/framework/devtools/`, shared by the server, the
  * worker and the scheduler — or the {@link MemoryStore} of tests. Entries come in redacted; a store never sees raw values.
  * Writing never throws: a failure is reported (`onError`) and the entries are lost — never the request.
  */

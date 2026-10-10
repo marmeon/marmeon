@@ -2,7 +2,7 @@ import type { ErrorReport } from './report.ts';
 
 /**
  * The report as Markdown — what "Copy as Markdown" copies, for an issue or a chat. Built from the same redacted report as
- * the page (E125); no source code, only where the frames are.
+ * the page; no source code, only where the frames are.
  */
 export function reportMarkdown(report: ErrorReport): string {
   const out: string[] = [`# ${report.error.name}: ${oneLine(report.error.message)}`, ''];

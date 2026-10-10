@@ -49,7 +49,7 @@ class Recording implements Logger {
 
 async function boot({ env = {}, routes }: { env?: Record<string, string>; routes?: ReturnType<typeof defineRoutes> } = {}) {
   const logger = new Recording();
-  // `/up/ready` keeps a result for a second (E163): the tests move this clock past it.
+  // `/up/ready` keeps a result for a second: the tests move this clock past it.
   const clock = new TestClock();
   clock.freeze();
   const application = await createApplication({
@@ -69,7 +69,7 @@ async function boot({ env = {}, routes }: { env?: Record<string, string>; routes
   return { application, logger, later };
 }
 
-describe('health endpoints (E126)', () => {
+describe('health endpoints', () => {
   it('/up: 200 "OK" before anything else runs — no request id, no log line, no request message, not cached', async () => {
     state.database = 'ok';
     const { application, logger } = await boot();
@@ -149,7 +149,7 @@ describe('health endpoints (E126)', () => {
     }
   });
 
-  it('from the stop signal on /up/ready answers 503 "draining" while /up stays 200 (SHUTDOWN_DELAY, E163); both 503 once it closes (E102)', async () => {
+  it('from the stop signal on /up/ready answers 503 "draining" while /up stays 200 (SHUTDOWN_DELAY); both 503 once it closes', async () => {
     state.database = 'ok';
     const { application } = await boot();
     const kernel = createHttpKernel(application);
@@ -173,7 +173,7 @@ describe('health endpoints (E126)', () => {
     }
   });
 
-  it('probes at the same time share one run of the checks — and the result serves every probe for a second (E163)', async () => {
+  it('probes at the same time share one run of the checks — and the result serves every probe for a second', async () => {
     state.database = 'ok';
     state.runs = 0;
     const { application, later } = await boot();

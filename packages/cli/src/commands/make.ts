@@ -85,7 +85,7 @@ export class MakeControllerCommand {
     const module = input.options.module as string;
     const page = name.replace(/Controller$/, '');
     const withView = input.options.view === true;
-    // A GET has no body (E65): a reading endpoint (Show…, List…) gets a `query` schema, any other a body `schema`.
+    // A GET has no body: a reading endpoint (Show…, List…) gets a `query` schema, any other a body `schema`.
     const reads = READING.test(name);
     // A writing endpoint answers its form with a redirect: a page beside it would never render.
     if (withView && input.options.request === true && !reads) {
@@ -163,7 +163,7 @@ export class MakeJobCommand {
     const name = className(input, 'Job');
     if (!dir || !name) return 1;
     const module = input.options.module as string;
-    // The stable name the queue stores (E84) — from the class name once; renaming the class later keeps it.
+    // The stable name the queue stores — from the class name once; renaming the class later keeps it.
     if (!write(input, join(dir, 'jobs', `${name}.ts`), JOB(name, `${module}.${stableName(name, 'Job') || 'job'}`))) return 1;
 
     input.output.line();
@@ -195,7 +195,7 @@ export class MakeNotificationCommand {
     const name = className(input, 'Notification');
     if (!dir || !name) return 1;
     const module = input.options.module as string;
-    // The stable name the queue and the notifications table store (E92) — from the class name once, like a job's.
+    // The stable name the queue and the notifications table store — from the class name once, like a job's.
     if (!write(input, join(dir, 'notifications', `${name}.ts`), NOTIFICATION(name, `${module}.${stableName(name, 'Notification') || 'notification'}`))) return 1;
 
     input.output.line();
@@ -288,10 +288,10 @@ ${page ? `    return this.view('${page}', {});` : `    return this.json({ path: 
 }
 `;
 
-/** Controllers that read (GET routes) — their request validates the query, never a body (E65). */
+/** Controllers that read (GET routes) — their request validates the query, never a body. */
 const READING = /^(Show|List|Index|Search|Get|Find|Browse)[A-Z]/;
 
-/** REPR for a GET: the query schema (every field optional or with a default — an invalid one falls back to it, E56). */
+/** REPR for a GET: the query schema (every field optional or with a default — an invalid one falls back to it). */
 const QUERY_REQUEST_CONTROLLER = (name: string, subject: string, page: string | undefined) => `import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 

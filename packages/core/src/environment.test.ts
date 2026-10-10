@@ -5,7 +5,7 @@ import { loadEnv } from './config/config.ts';
 import { buildEnvironment, ConfigError, DOTENV_MARKER, environment, resolveEnvironment } from './environment.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-describe('environment (E115, E139, E217)', () => {
+describe('environment', () => {
   const cases = [
     { NODE_ENV: 'development', development: true, protected: false, app: 'local', describe: 'development (APP_ENV=local)' },
     { NODE_ENV: 'test', development: false, protected: false, app: 'testing', describe: 'test (APP_ENV=testing)' },
@@ -81,7 +81,7 @@ describe('environment (E115, E139, E217)', () => {
   });
 });
 
-describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
+describe('resolveEnvironment — where NODE_ENV comes from', () => {
   const app = (files: Record<string, string>) => {
     const root = tempDir('marmeon-env-');
     for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
@@ -111,7 +111,7 @@ describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
     expect(environment.dotEnvDevelopmentWarning('start', { NODE_ENV: 'development' })).toBeUndefined(); // set in the process
   });
 
-  it('stops at a NODE_ENV that is none of development, test, production — from the process or from .env (E217)', () => {
+  it('stops at a NODE_ENV that is none of development, test, production — from the process or from .env', () => {
     const fromProcess: Record<string, string | undefined> = { NODE_ENV: 'staging' };
     expect(() => resolveEnvironment(app({}), { env: fromProcess, fallback: 'production' })).toThrow(/NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging/);
     const fromDotEnv: Record<string, string | undefined> = {};
@@ -157,7 +157,7 @@ describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
   });
 });
 
-describe('buildEnvironment — what marmeon build bakes into the browser code (W10 step 9b)', () => {
+describe('buildEnvironment — what marmeon build bakes into the browser code', () => {
   const app = (files: Record<string, string>) => {
     const root = tempDir('marmeon-env-');
     for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
@@ -193,7 +193,7 @@ describe('buildEnvironment — what marmeon build bakes into the browser code (W
     expect(none.NODE_ENV, 'a build without NODE_ENV is no production build').toBe('production');
   });
 
-  it('any other NODE_ENV builds nothing (E217): the start error', () => {
+  it('any other NODE_ENV builds nothing: the start error', () => {
     expect(() => buildEnvironment({ NODE_ENV: 'staging' })).toThrow(/NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging/);
   });
 });

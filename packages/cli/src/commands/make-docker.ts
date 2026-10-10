@@ -5,7 +5,7 @@ import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, 
 import { style } from '../output.ts';
 
 /**
- * `marmeon make:docker [--caddy|--nginx] [--systemd] [--force]` (E140, E141): the files to run the app in production — a
+ * `marmeon make:docker [--caddy|--nginx] [--systemd] [--force]`: the files to run the app in production — a
  * Dockerfile (multi-stage, `node:26-slim`, the app's package manager pinned, non-root, health check, `marmeon` as the process),
  * `.dockerignore` (no `.env*`), `compose.production.yaml` (web, worker, scheduler — one role per container; tini is the image's PID 1), with
  * `--caddy`/`--nginx` a reverse proxy in front of it, with `--systemd` units for running without Docker. Yours to change.

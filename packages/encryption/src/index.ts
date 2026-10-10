@@ -41,11 +41,8 @@ const TAG_BYTES = 16;
 const ALGORITHM = 'aes-256-gcm';
 
 /**
- * AES-256-GCM through `node:crypto`. Payload: base64url(version · iv · ciphertext · tag) — the 16-byte tag last, as WebCrypto
- * writes it (the encrypter used WebCrypto until Wave 8 step 9: every payload written before still decrypts, and the other way
- * round). Encrypts with the current key, decrypts with it or any previous key. The keys are imported once (`KeyObject`s). A
- * session payload of 250 bytes: ≈ 3.9 µs to encrypt, ≈ 2.8 µs to decrypt — through WebCrypto (a job per call, its promise) it
- * was ≈ 18.5 and ≈ 17.5 µs.
+ * AES-256-GCM through `node:crypto`. Payload: base64url(version · iv · ciphertext · tag) — the 16-byte tag last, the layout
+ * WebCrypto writes, so either reads the other's payloads. Encrypts with the current key, decrypts with it or any previous key.
  */
 export class AesGcmEncrypter implements Encrypter {
   readonly #keys: readonly KeyObject[];
@@ -65,7 +62,7 @@ export class AesGcmEncrypter implements Encrypter {
     const iv = randomBytes(IV_BYTES);
     const cipher = createCipheriv(ALGORITHM, this.#keys[0]!, iv, { authTagLength: TAG_BYTES });
     cipher.setAAD(Buffer.from(context, 'utf8'));
-    // As WebCrypto's TextEncoder took it: a missing value is the empty text, anything else its string.
+    // Like TextEncoder: a missing value is the empty text, anything else its string.
     const ciphertext = cipher.update(plaintext === undefined ? '' : String(plaintext), 'utf8');
     const rest = cipher.final(); // empty for GCM, a stream cipher — kept for correctness
     const payload = Buffer.allocUnsafe(1 + IV_BYTES + ciphertext.length + rest.length + TAG_BYTES);
@@ -112,7 +109,7 @@ export function generateKey(): string {
 }
 
 /**
- * A missing or broken `APP_KEY` — at the start (the configuration) or in a package that needs it (E130): the command that
+ * A missing or broken `APP_KEY` — at the start (the configuration) or in a package that needs it: the command that
  * writes one. Text only.
  */
 export const encryptionSolutions = defineSolutions([

@@ -76,9 +76,9 @@ export interface KernelOptions {
   /** Built client output (production). Only its `/assets/*` files are served. */
   clientDir?: string;
   /**
-   * Development error handling (E119): the development error page — code, request, route, queries, log, solutions — for
+   * Development error handling: the development error page — code, request, route, queries, log, solutions — for
    * page requests that fail with a 5xx, and exception details plus a `solution` in JSON errors. Default:
-   * `ServerConfig.debug` (`NODE_ENV=development`, never "not production", E115); off without a `ServerConfig`.
+   * `ServerConfig.debug` (`NODE_ENV=development`, never "not production"); off without a `ServerConfig`.
    */
   debug?: boolean;
   /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `MAX_BODY_SIZE`), else 8 MiB. */
@@ -88,15 +88,15 @@ export interface KernelOptions {
   /** Server rendering (default: `ServerConfig.ssr`, env `SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
   ssr?: boolean;
   /**
-   * What a write in a read-only request (an island's, E52) does: throw (`true`, the default with `NODE_ENV=development` and
+   * What a write in a read-only request (an island's) does: throw (`true`, the default with `NODE_ENV=development` and
    * `test` — the mistake shows where it is made) or get dropped and logged (`false`, the default everywhere else — production,
-   * no `NODE_ENV` (E164): the island and its page stay whole).
+   * no `NODE_ENV`: the island and its page stay whole).
    */
   strictReadOnly?: boolean;
   /** How long an island resolved in-process may take before it shows its `exception` fallback (ms, default 10 s). */
   islandTimeout?: number;
   /**
-   * The health endpoints' path (E126): `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
+   * The health endpoints' path: `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
    * `ServerConfig.health` (env `HEALTH_PATH`, `/up`); `false`: none.
    */
   health?: string | false;
@@ -113,7 +113,7 @@ function controllerOf(route: RouteDefinition): string | undefined {
   return typeof action === 'function' && action.name !== '' && typeof (action as { prototype?: { handle?: unknown } }).prototype?.handle === 'function' ? action.name : undefined;
 }
 
-/** The page request an island resolved in-process belongs to (E49) — what `handle` gives the island's request. */
+/** The page request an island resolved in-process belongs to — what `handle` gives the island's request. */
 interface IslandParent {
   readonly request: Request;
   readonly scope: Container;
@@ -121,7 +121,7 @@ interface IslandParent {
 }
 
 /**
- * What an island's request takes over from its page's request (E49) — as the browser would send them with its own
+ * What an island's request takes over from its page's request — as the browser would send them with its own
  * request: the cookies (the session's id, a remember-me token), the languages, the client and proxy headers. Nothing
  * that is about the page's own request (its body, `Purpose`, partial reloads).
  */
@@ -164,20 +164,20 @@ export function createHttpKernel(
 ): HttpKernel {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
-  // The log line's path without secrets in it (E125): `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
+  // The log line's path without secrets in it: `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
   // Every error line of the kernel masks its text with it too: the names the app's packages add (the session cookie) count.
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   container.instance(AssetVersion, { value: version });
-  // TRUSTED_PROXIES (E162): only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
+  // TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
   const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   const trusts = proxyMatcher(proxies);
-  // `*` trusts the direct peer only (E172): the client's address is the entry that peer added, never one a client wrote before it.
+  // `*` trusts the direct peer only: the client's address is the entry that peer added, never one a client wrote before it.
   const forwardedTrust: readonly string[] | ((address: string) => boolean) = proxies.includes('*') ? ['*'] : trusts;
-  // What every cookie gets unless its `set` says otherwise — `secure` from the session's config (E162), when there is a session.
+  // What every cookie gets unless its `set` says otherwise — `secure` from the session's config, when there is a session.
   const cookieDefaults = container.has(CookieDefaults) ? container.make(CookieDefaults) : undefined;
-  // Development only (E129): its provider binds it when NODE_ENV=development.
+  // Development only: its provider binds it when NODE_ENV=development.
   const timing = container.has(ServerTiming) ? container.make(ServerTiming) : undefined;
-  // Development only (E119): the error page's queries and log of each request — bound by the provider in debug mode.
+  // Development only: the error page's queries and log of each request — bound by the provider in debug mode.
   const recorder = debug && container.has(DevRequestRecorder) ? container.make(DevRequestRecorder) : undefined;
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
@@ -185,15 +185,15 @@ export function createHttpKernel(
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
   /** Development only: each request's state (its parsed body) and route parameters, for the error page — and, while
-   * something listens to `http.request`, the state and the page it answered with (the devtools, E118). */
+   * something listens to `http.request`, the state and the page it answered with (the devtools). */
   const states = new WeakMap<Request, RequestState>();
   const pages = new WeakMap<Request, PageSummary>();
   const parameters = new WeakMap<Request, Record<string, string>>();
 
   /**
-   * An island, resolved in-process while its page renders (E49): a GET of its URL with the page request's cookies and
+   * An island, resolved in-process while its page renders: a GET of its URL with the page request's cookies and
    * headers plus `x-marmeon-region: island`, matched by Hono and run through the island route's own middleware and
-   * authorization — in a scope of its own, read-only (E52), its session a copy of the page's. What it answers becomes
+   * authorization — in a scope of its own, read-only, its session a copy of the page's. What it answers becomes
    * the island's outcome, as for the browser's request (`toRegionResponse`); a 409 — the document is out of date — is
    * left to the browser, whose request reloads the page.
    */
@@ -231,10 +231,10 @@ export function createHttpKernel(
   };
 
   /**
-   * The base of a layer whose URL was loaded as a document (E53): a GET of its URL as a layer's client would send it
+   * The base of a layer whose URL was loaded as a document: a GET of its URL as a layer's client would send it
    * (`x-marmeon`, `x-marmeon-region: layer`) with the page request's cookies and headers, run in-process through the base
    * route's own middleware and authorization — read-only, its session a copy of the request's. Its page object, or what kept
-   * it from showing one: a redirect, 401 or 403 (E54: the layer shows alone), anything else.
+   * it from showing one: a redirect, 401 or 403 (the layer shows alone), anything else.
    */
   const dispatchLayerBase = async (url: string, parent: IslandParent): Promise<LayerBaseResult> => {
     const origin = new URL(parent.request.url);
@@ -267,7 +267,7 @@ export function createHttpKernel(
 
   const toResponse = createResponseFactory(renderer, router, version, {
     app: application,
-    // Prop sizes for the `http.request` message (E118) — measured only while something listens.
+    // Prop sizes for the `http.request` message — measured only while something listens.
     onPage: (request, page, kind, origins) => {
       if (requests.hasSubscribers) pages.set(request, pageSummary(request, page, kind, origins()));
     },
@@ -285,7 +285,7 @@ export function createHttpKernel(
     }
     const handler = container.make(ExceptionHandler);
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);
-    // An upload (W6.9) is answered as JSON whatever it accepts — never back to a form with flashed errors (it is read-only).
+    // An upload is answered as JSON whatever it accepts — never back to a form with flashed errors (it is read-only).
     const request = failed.headers.has(UPLOAD_HEADER) ? new Request(failed.url, { method: failed.method, headers: { ...Object.fromEntries(failed.headers), accept: 'application/json' } }) : failed;
     handler.report(error);
     if (regionOf(request) === 'island') return renderRegionError(handler, error, request, scope);
@@ -312,7 +312,7 @@ export function createHttpKernel(
   };
 
   /**
-   * Development only (E119): what replaces the handler's answer to a 5xx — for a page request (a document or a visit) whose
+   * Development only: what replaces the handler's answer to a 5xx — for a page request (a document or a visit) whose
    * answer is the error page, the development error page, rendered without the app's views or SSR (so also when those are
    * what broke); for a JSON error with exception details, the same JSON plus the first `solution`. Undefined otherwise —
    * an app's own handler answer, a 4xx, an action or an upload keep theirs. The page's code is loaded here, never in production.
@@ -367,7 +367,7 @@ export function createHttpKernel(
   };
 
   /**
-   * An error in an island's request (E52): no error page — the island shows its fallback. JSON with the status (and, in
+   * An error in an island's request: no error page — the island shows its fallback. JSON with the status (and, in
    * development, the exception), which `toRegionResponse` marks as the island's `exception`.
    */
   const renderRegionError = (handler: ExceptionHandler, error: unknown, request: Request, scope?: Container): Response => {
@@ -384,7 +384,7 @@ export function createHttpKernel(
   };
 
   /**
-   * What a live validation (E62) answers when it does not pass: `422` with the named fields' errors in the request's language —
+   * What a live validation answers when it does not pass: `422` with the named fields' errors in the request's language —
    * JSON, never a page and never back to the form (that would write the session) — or the failure (403, 419, 429, …) as JSON.
    */
   const renderLiveValidationError = (handler: ExceptionHandler, error: unknown, request: Request, scope?: Container): Response => {
@@ -409,7 +409,7 @@ export function createHttpKernel(
     }
   }
 
-  // Health (E126): answered first — before the request id, the log line, the request channel and every middleware group.
+  // Health: answered first — before the request id, the log line, the request channel and every middleware group.
   if (health !== false) {
     const endpoints = createHealthEndpoints(application, container, { path: health, debug });
     checkHealthPaths(endpoints, router.routes);
@@ -426,16 +426,16 @@ export function createHttpKernel(
     recorder?.begin(info);
 
     await runWithRequest(info, async () => {
-      // The log line is written inside the request's trace (a tracer's span, E120: its `trace_id` in the line).
+      // The log line is written inside the request's trace (a tracer's span: its `trace_id` in the line).
       const run = async () => {
         await next();
-        // Built only when it goes somewhere: with LOG_LEVEL=silent (or warn) neither the line nor its redacted path (E187).
+        // Built only when it goes somewhere: with LOG_LEVEL=silent (or warn) neither the line nor its redacted path.
         if (logger.enabled?.('info') === false) return;
         const definition = matched.get(c.req.raw);
         const route = definition?.routeName;
         logger.info(`${c.req.method} ${redactor.path(c.req.path, definition?.path)} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
       };
-      // Traced only while something listens (E118): otherwise no message is built at all.
+      // Traced only while something listens: otherwise no message is built at all.
       if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, run, () => c.res);
       else await run();
     });
@@ -490,7 +490,7 @@ export function createHttpKernel(
   };
 
   if (clientDir) {
-    // The build's hashed files (E162): cached for a year, `immutable`; the `.br`/`.gz` that `marmeon build` wrote next to them by
+    // The build's hashed files: cached for a year, `immutable`; the `.br`/`.gz` that `marmeon build` wrote next to them by
     // `Accept-Encoding`. Never compressed here — documents least of all (BREACH): that is the proxy's business.
     app.use('/assets/*', ...serveAssets(clientDir));
   }
@@ -508,14 +508,14 @@ export function createHttpKernel(
     // An island resolved in-process is from where its page's request is from.
     const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), forwardedTrust);
     addresses.set(request, ip);
-    // The response's CSP nonce (E147): made only when a document needs it — the same for the header, React and the template.
+    // The response's CSP nonce: made only when a document needs it — the same for the header, React and the template.
     const nonce = new RequestNonce();
     scope.instance(RequestNonce, nonce);
     const state = createRequestState(request, { maxBodySize, ip, nonce, ...(cookieDefaults ? { cookies: cookieDefaults } : {}) });
     if (debug || requests.hasSubscribers) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     scope.instance(IncomingRequest, request); // which tab sent it (`x-marmeon-connection`), for the live Broadcaster
-    // Who sent it (E169) — for services without `ctx`: `Auth`'s Login event. The header is read only when asked for.
+    // Who sent it — for services without `ctx`: `Auth`'s Login event. The header is read only when asked for.
     scope.instance(RequestInfo, {
       ip,
       get userAgent() {
@@ -523,22 +523,22 @@ export function createHttpKernel(
       },
     });
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
-    // An island's request is read-only (E52): no session write, no cookie, no work after the response — and so is every
+    // An island's request is read-only: no session write, no cookie, no work after the response — and so is every
     // request resolved in-process for another (an island while its page renders, a layer's base for its deep link).
     const island = regionOf(request) === 'island';
-    // A live validation (E62) checks input and changes nothing: read-only like an island — no session write (its flash data
+    // A live validation checks input and changes nothing: read-only like an island — no session write (its flash data
     // stays), no cookie, no work after the response; its controller never runs.
     const live = isLiveValidation(request);
-    // An upload's target or its bytes (W6.9): a request beside the page — like a live validation, it never writes the session
+    // An upload's target or its bytes: a request beside the page — like a live validation, it never writes the session
     // (flash data meant for the next page stays) or cookies.
     const upload = request.headers.has(UPLOAD_HEADER);
     const { pathname } = new URL(request.url);
-    // An event stream (W6.10, the live stream: `EventSource` asks for `text/event-stream`) stays open beside the page for as long
+    // An event stream (the live stream: `EventSource` asks for `text/event-stream`) stays open beside the page for as long
     // as the tab does: it reads the session to check who listens, never writes it — no cookie, no flash data taken. The live
-    // stream's path is read-only by itself (W9 step 4): a request without the header (a script, a proxy that drops it) must not
+    // stream's path is read-only by itself: a request without the header (a script, a proxy that drops it) must not
     // start, extend or save a session there either.
     const stream = pathname === LIVE_PATH || request.headers.get('accept')?.includes('text/event-stream') === true;
-    // The tabs' question for the session's epoch (W8 step 8): it reads the session, never writes it — it starts none, extends none
+    // The tabs' question for the session's epoch: it reads the session, never writes it — it starts none, extends none
     // (a tab becoming visible is no activity), takes no flash data, sets no cookie.
     const epoch = pathname === SESSION_PATH;
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
@@ -569,7 +569,7 @@ export function createHttpKernel(
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
     }
-    // Resolved while its page renders (E49): its session is a copy of the page request's (`StartSession`).
+    // Resolved while its page renders: its session is a copy of the page request's (`StartSession`).
     if (parent && scope.has(ParentRequest)) scope.make(ParentRequest).adopt(parent.request, parent.scope);
 
     let response: Response;
@@ -582,7 +582,7 @@ export function createHttpKernel(
     if (island) response = await toRegionResponse(response);
     // A live validation's answer is never cached, and a redirect of its route (a guest-only page) is reported, not followed.
     else if (live) response = await toLiveValidationResponse(response);
-    // An action's redirect is reported, not followed — and its answer is never cached (E59).
+    // An action's redirect is reported, not followed — and its answer is never cached.
     else if (isActionRequest(request)) response = await toActionResponse(response);
     // Cookies queued during the request reach the client whatever the outcome (like Laravel).
     const final = await withQueuedCookies(response, state.cookies);
@@ -590,11 +590,11 @@ export function createHttpKernel(
     if (terminable.length > 0) {
       // After the response is handed to the server — the client does not wait for this work.
       const task = new Promise<void>((resolve) => setImmediate(resolve))
-        // Outside of any transaction (E107): work after the response never joins one that was open during the request.
+        // Outside of any transaction: work after the response never joins one that was open during the request.
         .then(() => outsideTransaction(() => Promise.all(terminable.map(([handler, ctx]) => handler.terminate!(ctx, final)))))
         .then(
           () => undefined,
-          // Masked like text (E125): a message may quote a connection URL or a token — the log context's keys alone would not catch it.
+          // Masked like text: a message may quote a connection URL or a token — the log context's keys alone would not catch it.
           (error: unknown) => logger.error('A terminate hook failed', { exception: redactor.text(String(error)) }),
         );
       pending.add(task);
@@ -603,7 +603,7 @@ export function createHttpKernel(
     // `afterResponse.defer(…)` work: also after the response, one task after the other.
     const deferred = scope.has(AfterResponse) ? scope.make(AfterResponse).take() : [];
     // The headers are out (the session saved, its cookie set): what still runs in this request — a server-rendered page
-    // streams on, computing its deferred props (E49) — cannot change the session, cookies or work after the response.
+    // streams on, computing its deferred props — cannot change the session, cookies or work after the response.
     if (!island && !parent && readOnly) {
       readOnly.engage({
         reason: `${request.method} ${pathname} after its response headers were sent (a deferred prop, streamed with the page)`,
@@ -619,7 +619,7 @@ export function createHttpKernel(
       const task = new Promise<void>((resolve) => setImmediate(resolve)).then(async () => {
         for (const work of deferred) {
           try {
-            // A boundary (E107): deferred work runs outside of any transaction, also one still open around this request.
+            // A boundary: deferred work runs outside of any transaction, also one still open around this request.
             await outsideTransaction(work);
           } catch (error) {
             logger.error('Deferred work failed', { exception: redactor.text(error instanceof Error ? (error.stack ?? error.message) : String(error)) });
@@ -667,8 +667,8 @@ export function createHttpKernel(
   );
   app.onError((error, c) => renderError(error, c.req.raw));
 
-  // Behind a trusted proxy (E162), the URL the client asked for (`X-Forwarded-Proto`/`-Host`). A plain HTML form's PUT, PATCH or
-  // DELETE (`_method` in its POST body, E64) is routed as that method.
+  // Behind a trusted proxy, the URL the client asked for (`X-Forwarded-Proto`/`-Host`). A plain HTML form's PUT, PATCH or
+  // DELETE (`_method` in its POST body) is routed as that method.
   const dispatch = app.fetch;
   app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(forwardedRequest(request, remoteAddress(env), trusts)), env, executionContext);
 
@@ -697,12 +697,12 @@ function pageSummary(request: Request, page: PageObject | RegionObject, kind: Pa
   };
 }
 
-/** The page request of an island resolved in-process (`app.fetch(request, { parent })`, E49) — never set from outside. */
+/** The page request of an island resolved in-process (`app.fetch(request, { parent })`) — never set from outside. */
 function islandParent(env: unknown): IslandParent | undefined {
   return (env as { parent?: IslandParent } | undefined)?.parent;
 }
 
-/** What an island's request answered (after `toRegionResponse`), as the outcome streamed with the page (E49). */
+/** What an island's request answered (after `toRegionResponse`), as the outcome streamed with the page. */
 async function regionResultOf(response: Response): Promise<RegionResult> {
   if (response.ok && response.headers.get(REGION_HEADER) === 'island') return { status: 'ready', region: (await response.json()) as RegionObject };
   // A new build or a document change: the browser's request of the island reloads the page (as on a client-side visit).
@@ -746,8 +746,8 @@ export interface ServeOptions {
   host?: string;
   /**
    * `development` runs Vite's dev server in front of the app (source modules, HMR, `/__open-in-editor`); `production` serves
-   * the build. Defaults to `development` only with `NODE_ENV=development` (E115) — `production`, a missing `NODE_ENV` or `test`
-   * serves the build: never "anything but production". Any other `NODE_ENV` does not start (E217).
+   * the build. Defaults to `development` only with `NODE_ENV=development` — `production`, a missing `NODE_ENV` or `test`
+   * serves the build: never "anything but production". Any other `NODE_ENV` does not start.
    */
   mode?: 'development' | 'production';
   /**
@@ -756,13 +756,13 @@ export interface ServeOptions {
    */
   drainTimeoutMs?: number;
   /**
-   * How long an idle keep-alive connection stays open (ms) — above the keep-alive of the proxy in front (W9 step 4). Defaults to
+   * How long an idle keep-alive connection stays open (ms) — above the keep-alive of the proxy in front. Defaults to
    * `ServerConfig.keepAliveTimeoutMs` (env `KEEP_ALIVE_TIMEOUT`, seconds; default 65). The time to receive a request's headers
    * (`headersTimeout`) is a second longer — between 60 s and the 300 s of `requestTimeout`.
    */
   keepAliveTimeoutMs?: number;
   /**
-   * How long `close()` keeps taking requests first, with `/up/ready` at 503 (E163) — so a load balancer that learns from its
+   * How long `close()` keeps taking requests first, with `/up/ready` at 503 — so a load balancer that learns from its
    * probes sends the next requests elsewhere before this server stops listening. Defaults to `ServerConfig.shutdownDelayMs`
    * (env `SHUTDOWN_DELAY`, seconds; default 0).
    */
@@ -776,9 +776,9 @@ export interface CloseOptions {
 
 /**
  * A listening server. `close()` stops it gracefully: readiness (`/up/ready`) answers 503 at once and, for `SHUTDOWN_DELAY`
- * seconds, requests are still answered (E163); then no new connections, requests in flight finish, and then the work
+ * seconds, requests are still answered; then no new connections, requests in flight finish, and then the work
  * they deferred until after their response (a reset mail sent by `afterResponse.defer`) finishes too — before the app
- * shuts down and closes its pools (E102).
+ * shuts down and closes its pools.
  */
 export interface RunningServer {
   readonly server: Server;
@@ -796,17 +796,16 @@ export async function startServer({
   shutdownDelayMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).shutdownDelayMs : 0,
   keepAliveTimeoutMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).keepAliveTimeoutMs : 65_000,
 }: ServeOptions): Promise<RunningServer> {
-  // An unknown NODE_ENV never serves (E217) — also where a script changed it after the app booted.
+  // An unknown NODE_ENV never serves — also where a script changed it after the app booted.
   environment.check();
   const mode = chosenMode ?? (environment.isDevelopment() ? 'development' : 'production');
-  // Node closes an idle keep-alive connection after 5 s by default; a proxy that keeps its connections to the app longer (nginx's
-  // upstream keepalive: 60 s) sends the next request on one the app is closing — a 502 now and then (W9 step 4). The app
-  // waits longer than the proxy. A request's headers may take a second longer (the usual pairing, `headersTimeout` above
-  // `keepAliveTimeout`), within Node's defaults: at least 60 s, at most the 300 s a whole request may take (`requestTimeout`, kept
-  // — a slow client must not hold a connection longer).
+  // Node closes an idle keep-alive connection after 5 s; a proxy that keeps its connections longer (nginx's upstream keepalive:
+  // 60 s) would send a request on one the app is closing — a 502 now and then — so the app waits longer than the proxy.
+  // `headersTimeout` is a second above it, within 60 s and the 300 s of `requestTimeout` (kept: a slow client must not hold a
+  // connection longer).
   const server = createServer({ keepAliveTimeout: keepAliveTimeoutMs, headersTimeout: Math.min(300_000, Math.max(60_000, keepAliveTimeoutMs + 1000)) });
   const closing = app.container.has(ServerClosing) ? app.container.make(ServerClosing) : undefined;
-  // While the server drains (SHUTDOWN_DELAY, E163) a keep-alive connection ends after its response: the client's next
+  // While the server drains (SHUTDOWN_DELAY) a keep-alive connection ends after its response: the client's next
   // request opens a new one — which the load balancer, told by the failing readiness, gives to another instance.
   server.prependListener('request', (_req, res) => {
     if (closing?.draining.aborted) res.setHeader('connection', 'close');
@@ -820,11 +819,11 @@ export async function startServer({
       root,
       ssrEntry,
       httpServer: server,
-      // Bound only with NODE_ENV=development (E115): a Vite dev server elsewhere adds nothing.
+      // Bound only with NODE_ENV=development: a Vite dev server elsewhere adds nothing.
       devBody: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).body : ''),
       devHead: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).head : ''),
     });
-    // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development` (E115), not this mode: Vite asked for elsewhere shows no stack.
+    // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development`, not this mode: Vite asked for elsewhere shows no stack.
     kernel = createHttpKernel(app, { renderer });
     const handle = getRequestListener(kernel.fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
@@ -839,10 +838,10 @@ export async function startServer({
   let closed: Promise<void> | undefined;
   const close = ({ immediately = false }: CloseOptions = {}) => (closed ??= shutdown(immediately));
   const shutdown = async (immediately: boolean) => {
-    // Not ready from now on (E163) — and, for SHUTDOWN_DELAY, still answering what the load balancer sends until it notices.
+    // Not ready from now on — and, for SHUTDOWN_DELAY, still answering what the load balancer sends until it notices.
     closing?.drain();
     if (shutdownDelayMs > 0 && !immediately) await new Promise((resolve) => setTimeout(resolve, shutdownDelayMs));
-    // Responses that stay open (live streams, W6.10) end first: `server.close()` waits for every connection, and a tab never
+    // Responses that stay open (live streams) end first: `server.close()` waits for every connection, and a tab never
     // closes its stream by itself — it connects to the next server instead.
     closing?.close();
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
@@ -855,7 +854,7 @@ export async function startServer({
     await stopped;
     clearInterval(sweep);
     // The requests are answered; what they deferred until after their response (a mail, a terminate hook) still runs —
-    // and needs the app's pools, which the caller closes next (E102). Bounded: a hanging task must not block the exit.
+    // and needs the app's pools, which the caller closes next. Bounded: a hanging task must not block the exit.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const settled = await Promise.race([
       kernel.settle().then(() => true),
@@ -880,7 +879,7 @@ export async function startServer({
       const listening = (server.address() as { port?: number } | null)?.port ?? port;
       const routes = app.container.make(Router).routes.length;
       const packages = app.packages.length ? `, packages: ${app.packages.join(', ')}` : '';
-      // The environment as the framework reads it (E139, E217): `in production (APP_ENV=staging)` — APP_ENV as the configuration read it.
+      // The environment as the framework reads it: `in production (APP_ENV=staging)` — APP_ENV as the configuration read it.
       const serving = mode === 'development' ? "Vite's dev server" : 'the build';
       const named = app.container.has(EnvironmentConfig) ? app.container.make(EnvironmentConfig).app : undefined;
       app.container

@@ -1,5 +1,5 @@
 /**
- * The in-page bar (W7 step 9, E117): plain DOM in a shadow root — no UI framework, so it shows any adapter's app. A pill at the
+ * The in-page bar: plain DOM in a shadow root — no UI framework, so it shows any adapter's app. A pill at the
  * bottom right opens a panel with six tabs:
  *
  * - **Visits** — every request of the client core, newest first: visits, reloads, partial reloads, polls, deferred props,
@@ -8,14 +8,14 @@
  *   it (`only`/`except`), the query raw and parsed, and every prop with its size and badges (deferred, optional, merged, once,
  *   live, shared, streamed).
  * - **Layers & regions** — the stack (the page, then each layer) and the islands of each, with their status.
- * - **Optimistic** — the patches shown (E59): what each changed, before and after, and how it ended.
- * - **Server** — what the server recorded for a request (E131: `GET /_marmeon/devtools/api/requests/:id`): route, controller,
+ * - **Optimistic** — the patches shown: what each changed, before and after, and how it ended.
+ * - **Server** — what the server recorded for a request (`GET /_marmeon/devtools/api/requests/:id`): route, controller,
  *   queries, log, events, jobs (in the worker too), mails, exceptions.
  * - **SSR** — hydration errors React recovered from, and the document's server rendering.
  *
  * What it shows of the app's data comes from the data feature's slots (`devtools` of `@marmeon/http/client`) or straight from
  * the navigator — read when it renders, kept nowhere else: when the document is left (signed out, a new build) the slots are
- * empty and the panel shows nothing of it. `sessionStorage` holds only whether the panel is open and which tab (E36: never props).
+ * empty and the panel shows nothing of it. `sessionStorage` holds only whether the panel is open and which tab (never props).
  */
 import type { DevtoolsFeature, Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client';
 import type { PageObject } from '@marmeon/http/page';
@@ -26,9 +26,9 @@ export const TABS = ['visits', 'page', 'layers', 'optimistic', 'server', 'ssr'] 
 export type BarTab = (typeof TABS)[number];
 const LABELS: Record<BarTab, string> = { visits: 'Visits', page: 'Page', layers: 'Layers & regions', optimistic: 'Optimistic', server: 'Server', ssr: 'SSR' };
 
-/** Where the panel's state is kept — `{ open, tab }`, nothing else (E36). */
+/** Where the panel's state is kept — `{ open, tab }`, nothing else. */
 export const STATE_KEY = 'marmeon-devtools';
-/** The devtools' JSON API (W7 step 8). */
+/** The devtools' JSON API. */
 const API = '/_marmeon/devtools/api';
 /** Opens and closes the panel. */
 export const SHORTCUT = 'Alt+Shift+D';
@@ -109,7 +109,7 @@ export class DevtoolsBar {
     this.root = this.host.attachShadow({ mode: 'open' });
     adoptStyles(this.root, win);
     parent.append(this.host);
-    // A modal dialog (a layer, E53) makes everything outside it inert — the bar too: while one is open, the bar lives in the top one.
+    // A modal dialog (a layer) makes everything outside it inert — the bar too: while one is open, the bar lives in the top one.
     const observer = new MutationObserver(() => this.#place(parent));
     observer.observe(parent.ownerDocument.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
     this.#stops.push(() => observer.disconnect());
@@ -146,7 +146,7 @@ export class DevtoolsBar {
     this.render();
   }
 
-  /** Shows what the server recorded for request `requestId` (E131). */
+  /** Shows what the server recorded for request `requestId`. */
   showRequest(requestId: string): void {
     this.#selected = requestId;
     this.show('server');
@@ -598,7 +598,7 @@ export class DevtoolsBar {
 }
 
 /**
- * The bar's look as a constructed stylesheet of its shadow root (E202): the CSSOM, which no `style-src` blocks — a `<style>` element
+ * The bar's look as a constructed stylesheet of its shadow root: the CSSOM, which no `style-src` blocks — a `<style>` element
  * without the response's nonce is what a strict policy refuses (the app's `contentSecurityPolicy({ styleSrc: ["'self'"] })` runs
  * under `marmeon dev` too). A browser (or test DOM) without constructed stylesheets gets the `<style>` element.
  */

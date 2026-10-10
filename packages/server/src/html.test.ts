@@ -75,7 +75,7 @@ describe('documentOf — streamed markup', () => {
     expect(cancelled).toBe('gone');
   });
 
-  it('counter-check: has the head and the shell ready together — a server writes both at once, not a tick later', async () => {
+  it('has the head and the shell ready together — a server writes both at once, not a tick later', async () => {
     // The rest never comes (an island still loading): only what is ready may be read.
     const streaming = new ReadableStream<Uint8Array>({ start: (controller) => controller.enqueue(encoder.encode('<p>shell</p>')) });
     const reader = ((await documentOf(template, page, { html: streaming })) as ReadableStream<Uint8Array>).getReader();

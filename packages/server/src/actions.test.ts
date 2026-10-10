@@ -21,7 +21,7 @@ import { createHttpKernel } from './kernel.ts';
 
 const ACTION = { [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' };
 
-describe('createHttpKernel — actions (E59)', async () => {
+describe('createHttpKernel — actions', async () => {
   const StoreRequest = defineRequest({ schema: v.object({ label: v.pipe(v.string(), v.minLength(1, 'The label is required.')) }) });
   class Cached {
     async handle(_ctx: HttpContext, next: Next<{}>) {
@@ -60,7 +60,7 @@ describe('createHttpKernel — actions (E59)', async () => {
     expect(response.headers.get('vary')).toContain(ACTION_HEADER);
     const cached = await app.request('/cached', { method: 'POST', headers: ACTION });
     expect(cached.headers.get('cache-control')).toBe('no-store');
-    // Counter-check: the same route without the action header keeps its own Cache-Control.
+    // The same route without the action header keeps its own Cache-Control.
     expect((await app.request('/cached', { method: 'POST' })).headers.get('cache-control')).toBe('public, max-age=3600');
   });
 

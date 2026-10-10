@@ -5,7 +5,7 @@ import { ConfigError, defineConfig, env, environment, type ConfigOf } from '@mar
 import { devHosts } from '@marmeon/core/dev';
 import { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES } from './file-store.ts';
 
-/** The devtools cannot run as configured: forced on in production (E115), or `config/devtools.ts` malformed. */
+/** The devtools cannot run as configured: forced on in production, or `config/devtools.ts` malformed. */
 export class DevtoolsConfigError extends ConfigError {
   override name = 'DevtoolsConfigError';
 }
@@ -31,7 +31,7 @@ export type PathPattern = string | RegExp;
  * ```
  *
  * The file is loaded only where the devtools run (`NODE_ENV=development`), by the devtools themselves — nothing else imports
- * it, so it may import `@marmeon/devtools` while the package is a dev dependency (E115: absent in production installs).
+ * it, so it may import `@marmeon/devtools` while the package is a dev dependency (absent in production installs).
  */
 export interface DevtoolsOptions {
   /** What to record (default: everything). */
@@ -51,7 +51,7 @@ export interface DevtoolsOptions {
   /** The least level of a log entry recorded (default `debug`: all). */
   readonly logLevel?: 'debug' | 'info' | 'warn' | 'error';
   readonly storage?: {
-    /** `file` (default): NDJSON files every process of the app shares (E116); `memory`: this process only. */
+    /** `file` (default): NDJSON files every process of the app shares; `memory`: this process only. */
     readonly driver?: 'file' | 'memory';
     /** Relative to the app root (default `storage/framework/devtools`). */
     readonly path?: string;
@@ -133,9 +133,9 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
 }
 
 /**
- * Whether the devtools run (E115, fail closed): **only** with `NODE_ENV=development` — not "anything but production" (a missing
+ * Whether the devtools run (fail closed): **only** with `NODE_ENV=development` — not "anything but production" (a missing
  * `NODE_ENV`, `test` or `production` keeps them off, whatever `APP_ENV` says). `DEVTOOLS_ENABLED=false` turns them off there too; `DEVTOOLS_ENABLED=true`
- * cannot turn them on anywhere else — where the app is protected (E139: production, no `NODE_ENV`) it fails the start.
+ * cannot turn them on anywhere else — where the app is protected (production, no `NODE_ENV`) it fails the start.
  * Tests opt in with `createTestApp(App, { devtools: true })`.
  */
 export const DevtoolsConfig = defineConfig('devtools', {
@@ -159,7 +159,7 @@ export const DevtoolsConfig = defineConfig('devtools', {
     return {
       enabled: environment.isDevelopment(e) && switched !== 'false',
       environment: environment.name(e),
-      /** Production, no `NODE_ENV` (E139): a test's opt-in fails the start there. */
+      /** Production, no `NODE_ENV`: a test's opt-in fails the start there. */
       protected: environment.isProtected(e),
       /** `DEVTOOLS_ENABLED=true` in a test: it has no effect (said once, at the start). */
       ineffective: switched === 'true' && !environment.isDevelopment(e),

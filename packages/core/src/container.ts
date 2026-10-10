@@ -21,7 +21,7 @@ interface Binding {
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const WARNINGS = Symbol.for('marmeon.injection.warnings');
 
-/** Why the container could not resolve something — for messages and the solutions of the error page (E130). */
+/** Why the container could not resolve something — for messages and the solutions of the error page. */
 export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular';
 
 export interface ContainerErrorDetails {
@@ -60,7 +60,7 @@ export class ContainerError extends Error {
 }
 
 /**
- * A class the container built whose constructor has a defaulted or optional parameter of an injectable type (E128): the
+ * A class the container built whose constructor has a defaulted or optional parameter of an injectable type: the
  * container never injects it — the default applies (or `undefined`). Reported once per class (`Container.onWarning`).
  */
 export interface InjectionWarning {
@@ -71,9 +71,8 @@ export interface InjectionWarning {
 }
 
 /**
- * The service container. Resolves classes through their `static inject` list
- * (written by hand, or generated from constructor types — see the roadmap, E1)
- * and interfaces through same-named tokens.
+ * The service container. Resolves classes through their `static inject` list (written by hand, or generated from the
+ * constructor types — docs/container.md#where-the-lists-come-from) and interfaces through same-named tokens.
  *
  * Lifetimes:
  * - `bind`      — a new instance on every resolution
@@ -103,7 +102,7 @@ export class Container implements Resolver {
   }
 
   /**
-   * Hears about the injection warnings (E128) of classes this container — or a scope of it — builds: a defaulted or
+   * Hears about the injection warnings of classes this container — or a scope of it — builds: a defaulted or
    * optional constructor parameter of an injectable type, which is never injected. Once per class; returns `off`.
    */
   onWarning(listener: (warning: InjectionWarning) => void): () => void {
@@ -112,7 +111,7 @@ export class Container implements Resolver {
     return () => root.#warningListeners.delete(listener);
   }
 
-  /** The injection warnings (E128) of every class built so far — what the development error page lists. */
+  /** The injection warnings of every class built so far — what the development error page lists. */
   get warnings(): readonly InjectionWarning[] {
     return [...this.#root().#warned.values()].flat();
   }
@@ -250,7 +249,7 @@ export class Container implements Resolver {
     return new concrete(...(inject ?? []).map((dependency) => this.#resolve(dependency, chain)));
   }
 
-  /** Reports a built class's injection warnings (E128) — once per class, on the root. */
+  /** Reports a built class's injection warnings — once per class, on the root. */
   #warn(concrete: Concrete, messages: readonly string[]): void {
     const root = this.#root();
     if (root.#warned.has(concrete)) return;

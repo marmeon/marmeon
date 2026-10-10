@@ -5,8 +5,8 @@ import { analyzeInjections, applyInsertions, injectConstructorDependencies, inse
 import { isBrowserSource } from './browser.ts';
 
 /**
- * The app's injection lists, precomputed by `marmeon build` (E138) — so a production start neither parses the app with oxc
- * nor loads oxc-parser. The app stays `.ts` (Leitprinzip 4): the file keeps, per module, only what the load hook would insert
+ * The app's injection lists, precomputed by `marmeon build` — so a production start neither parses the app with oxc
+ * nor loads oxc-parser. The app stays `.ts`: the file keeps, per module, only what the load hook would insert
  * (the same analysis, {@link analyzeInjections} + {@link insertionsOf}, line-preserving) and the SHA-256 of the source it was
  * derived from. A start checks the hash of every module it loads; one that changed since the build (or is not in the file) is
  * analysed as in development — never trusted blindly — and the start says so once ("build artifacts are stale").

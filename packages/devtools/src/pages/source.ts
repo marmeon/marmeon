@@ -1,8 +1,8 @@
 /**
- * Where a controller or a view is in the app's sources — for the in-page bar's "open in editor" (W7 step 9): Vite's
+ * Where a controller or a view is in the app's sources — for the in-page bar's "open in editor": Vite's
  * `/__open-in-editor` opens a file, the bar knows a controller's class name (the request entry's `controller`) and a page's
  * component (`users/Show`). Read only, inside the app's root only: a controller is found by `export class <Name>` in the app's
- * modules, a view by the page naming convention (`modules/<module>/views/<Page>.tsx`). Nothing runs, nothing is written (E130).
+ * modules, a view by the page naming convention (`modules/<module>/views/<Page>.tsx`). Nothing runs, nothing is written.
  */
 import { existsSync } from 'node:fs';
 import { glob, readFile } from 'node:fs/promises';

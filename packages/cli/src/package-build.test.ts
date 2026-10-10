@@ -27,7 +27,7 @@ function build(dir: string, options: Record<string, boolean> = {}) {
   return new PackageBuildCommand().handle({ args: [dir], options, output: silent as never, root: dir, spawn: async () => 0 });
 }
 
-describe('marmeon package:build --clean (E156)', () => {
+describe('marmeon package:build --clean', () => {
   let dir: string;
   beforeEach(() => {
     dir = fixture();

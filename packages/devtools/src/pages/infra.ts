@@ -1,10 +1,10 @@
 import { outsideTransaction, type Application, type Redactor } from '@marmeon/core';
 
 /**
- * The queue and the scheduler as they are now (E113: Horizon's idea, development only, read-only) — read through their own
- * APIs: `QueueConnections` (the queue's own connections — the infrastructure connection of E108, never a transaction of the
- * app: every read runs outside of one) and the `Scheduler`. Both packages are optional: an app without them gets a note.
- * Nothing here writes; retrying or forgetting a failed job is a command to copy.
+ * The queue and the scheduler as they are now (Horizon's idea, development only, read-only) — read through their own
+ * APIs: `QueueConnections` (the queue's own connections, never a transaction of the app: every read runs outside of one)
+ * and the `Scheduler`. Both packages are optional: an app without them gets a note. Nothing here writes; retrying or
+ * forgetting a failed job is a command to copy.
  */
 
 export interface QueueView {
@@ -21,11 +21,11 @@ export interface FailedJobView {
   readonly connection: string;
   readonly queue: string;
   readonly failedAt: number;
-  /** The stored error, redacted (E125). */
+  /** The stored error, redacted. */
   readonly exception: string;
   /** The job's data, redacted — an encrypted job's only as `[encrypted]`. */
   readonly payload: unknown;
-  /** The request that dispatched it (E131). */
+  /** The request that dispatched it. */
   readonly requestId?: string;
   readonly retry: string;
   readonly forget: string;
@@ -146,7 +146,7 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
   return { available: true, default: connections.default, connections: views, failed, failedTotal, ...(failedError === undefined ? {} : { failedError }) };
 }
 
-/** The scheduled tasks — when each is due next (the logic of `schedule:list`) — and the lock warning (E123). */
+/** The scheduled tasks — when each is due next (the logic of `schedule:list`) — and the lock warning. */
 export async function scheduleSnapshot(app: Application): Promise<ScheduleSnapshot> {
   const module = await optional(() => import('@marmeon/scheduler'));
   if (!module || !app.container.has(module.Scheduler)) return { available: false, reason: 'The app has no scheduler (@marmeon/scheduler).' };

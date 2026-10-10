@@ -21,7 +21,7 @@ export type InjectionSite =
       /** Runtime expressions for each parameter, e.g. `UserRepository` or `mail.Mailer`. Empty when only warnings are attached. */
       readonly dependencies: readonly string[];
       /**
-       * Defaulted or optional parameters of an injectable type (E128): never injected — the default applies. The container
+       * Defaulted or optional parameters of an injectable type: never injected — the default applies. The container
        * reports them once it builds the class (`Container.onWarning`); no error.
        */
       readonly warnings?: readonly string[];
@@ -34,7 +34,7 @@ export type InjectionSite =
 /** Static, symbol-keyed field carrying the reason a class has no injection list. */
 export const UNRESOLVABLE = 'marmeon.injection.unresolvable';
 
-/** Static, symbol-keyed field carrying a class's injection warnings (E128). */
+/** Static, symbol-keyed field carrying a class's injection warnings. */
 export const WARNINGS = 'marmeon.injection.warnings';
 
 export class InjectionError extends Error {
@@ -63,7 +63,7 @@ interface ModuleBindings {
  * - Covered: `class X`, `export class X`, `export default class`, `const X = class`, `return class { … }`.
  * - A class declaring its own `static inject` is left alone (explicit override).
  * - Optional and defaulted parameters end the list, so their JavaScript defaults apply. When one has an injectable type
- *   (`clock: Clock = new SystemClock()`), the class carries a warning (E128): the container never injects it — a test's
+ *   (`clock: Clock = new SystemClock()`), the class carries a warning: the container never injects it — a test's
  *   fake `Clock` would not reach the class.
  */
 export function analyzeInjections(source: string, filename: string): InjectionSite[] {
@@ -107,7 +107,7 @@ export type Insertion = readonly [offset: number, text: string];
 
 /**
  * The text each site gets — `static inject = [...]` (or the unresolvable reason, the warnings) — at the offset of its class
- * body's `{`, so line numbers never shift. `marmeon build` keeps these per file (`.marmeon/injections.json`, E138).
+ * body's `{`, so line numbers never shift. `marmeon build` keeps these per file (`.marmeon/injections.json`).
  */
 export function insertionsOf(sites: readonly InjectionSite[]): Insertion[] {
   return sites.map((site) => {
@@ -266,7 +266,7 @@ function dependencyOf(param: Node, context: ParamContext): string {
 }
 
 /**
- * The warning for a defaulted or optional parameter (E128) — when its type could be injected: a class or a token that exists
+ * The warning for a defaulted or optional parameter — when its type could be injected: a class or a token that exists
  * at runtime (a value import or a declaration of the module). `name = 'x'`, `options?: Options` (a type only) and the like
  * are what defaults are for: no warning.
  */

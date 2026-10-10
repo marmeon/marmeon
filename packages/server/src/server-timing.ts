@@ -10,7 +10,7 @@ interface Timing {
 }
 
 /**
- * The `Server-Timing` header (E129) — **development only** (`NODE_ENV=development`, never "not production"): `app` (the
+ * The `Server-Timing` header — **development only** (`NODE_ENV=development`, never "not production"): `app` (the
  * request until its response), `db` (the queries' time, and how many) and `ssr` (server rendering until the shell). The
  * browser's network panel shows it per request.
  *

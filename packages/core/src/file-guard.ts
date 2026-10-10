@@ -13,8 +13,8 @@ export interface FileGuardOptions {
 /**
  * Runs `work` while holding `<file>.guard` — one writer at a time per file, across processes (the file stores of the session
  * and the cache). The guard is a file created exclusively (`wx`); a holder removes only its own (by inode). A guard older than
- * `staleMs` is broken by one waiter at a time, and only while it is still the file found stale (same inode). (Removing the stale
- * guard by name let two waiters that both saw it stale delete each other's fresh guards: two writers at once.)
+ * `staleMs` is broken by one waiter at a time, and only while it is still the file found stale (same inode) — removing it by
+ * name would let two waiters that both saw it stale delete each other's fresh guards: two writers at once.
  */
 export async function withFileGuard<T>(file: string, work: () => Promise<T>, { staleMs = 2_000, timeoutMs = 10_000, busy }: FileGuardOptions = {}): Promise<T> {
   const guard = `${file}.guard`;

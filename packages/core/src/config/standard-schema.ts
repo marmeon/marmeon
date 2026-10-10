@@ -1,7 +1,7 @@
 /**
  * The Standard Schema interface (https://standardschema.dev), copied as the spec recommends so core depends on no
  * validation library — the one copy of the framework (the router takes it from here). Every schema the framework
- * accepts is one: the env reader of this package (`env`), `rules` of @marmeon/validation (what docs and generators use, E197),
+ * accepts is one: the env reader of this package (`env`), `rules` of @marmeon/validation (what docs and generators use),
  * and Zod, Valibot, ArkType …
  */
 export interface StandardSchemaV1<Input = unknown, Output = Input> {

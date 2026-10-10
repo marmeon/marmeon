@@ -19,8 +19,8 @@ export interface Logger {
   /** A logger that adds `bindings` to every entry, e.g. `{ channel: 'http' }`. */
   child(bindings: LogContext): Logger;
   /**
-   * Whether an entry at `level` would go anywhere — written (the configured level lets it through) or seen on the `log` channel
-   * (E118). A caller asks before it builds an entry that costs something (the request line with its redacted path): with
+   * Whether an entry at `level` would go anywhere — written (the configured level lets it through) or seen on the `log` channel.
+   * A caller asks before it builds an entry that costs something (the request line with its redacted path): with
    * `LOG_LEVEL=silent` nothing is built. Optional — a logger without it counts as enabled.
    */
   enabled?(level: 'debug' | 'info' | 'warn' | 'error'): boolean;
@@ -69,7 +69,7 @@ export function logContextSourcesOf(app: Application | undefined): LogContextSou
 
 /**
  * Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included.
- * With an `app`, entries also go to the `log` channel (E118) while something listens, and are redacted by the app's
+ * With an `app`, entries also go to the `log` channel while something listens, and are redacted by the app's
  * `Redactor` (the names its packages add count too).
  */
 export class ConsoleLogger implements Logger {

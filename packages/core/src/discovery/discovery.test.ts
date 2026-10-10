@@ -108,7 +108,7 @@ describe('marmeon discover', () => {
     expect(dev.providers.map(([, name]) => name)).toContain('SourceServiceProvider');
   });
 
-  it('records module paths relative to the app and resolved dependencies in the manifest (E160)', () => {
+  it('records module paths relative to the app and resolved dependencies in the manifest', () => {
     const { manifest, summary } = generateManifest({ root: app, conditions: DEV });
     const ref = ([module, name]: readonly [number, string]) => `${manifest.modules[module]!.replace(/^.*\/store\//, '')}#${name}`;
     const smtp = manifest.injections.find((entry) => entry.class[1] === 'SmtpMailer')!;
@@ -122,7 +122,7 @@ describe('marmeon discover', () => {
     expect(summary).toMatchObject({ injectable: 3, unresolvable: 1, providers: 3 });
   });
 
-  it('lists only the modules whose classes it injects — a subpath for an optional peer that is not installed is never imported at boot (W9 step 6)', () => {
+  it('lists only the modules whose classes it injects — a subpath for an optional peer that is not installed is never imported at boot', () => {
     const { manifest } = generateManifest({ root: app, conditions: PROD });
     expect(manifest.modules.filter((path) => path.endsWith('/optional.js')), 'a subpath without a class to inject is listed — imported at boot').toEqual([]);
     // The app starts: nothing imports @acme/optional-peer.
@@ -148,7 +148,7 @@ describe('marmeon discover', () => {
     expect(readdirSync(join(app, '.marmeon')).filter((name) => name.endsWith('.tmp'))).toEqual([]); // no temporary files left behind
   }, 30_000);
 
-  it('discovers again when a listed package is gone but package.json and the lockfile stayed — a production install without dev dependencies (E115)', async () => {
+  it('discovers again when a listed package is gone but package.json and the lockfile stayed — a production install without dev dependencies', async () => {
     writeFileSync(
       join(app, 'packages.ts'),
       `import { loadDiscoveredPackages } from '@marmeon/core';
@@ -170,7 +170,7 @@ describe('marmeon discover', () => {
     }
   });
 
-  it('keeps one manifest per set of conditions — switching between the monorepo source and the published dist rewrites nothing (E160)', async () => {
+  it('keeps one manifest per set of conditions — switching between the monorepo source and the published dist rewrites nothing', async () => {
     const mtime = (name: string) => statSync(join(app, '.marmeon', name)).mtimeMs;
     await loadDiscoveredPackages({ root: app, conditions: DEV });
     await loadDiscoveredPackages({ root: app, conditions: PROD });
@@ -182,7 +182,7 @@ describe('marmeon discover', () => {
     expect(manifestPath(app, [...PROD, 'edge-light'])).toBe(join(app, '.marmeon', 'manifest.edge-light.json'));
   });
 
-  it('discovers in memory when .marmeon/ is read-only and the manifest is out of date — with one warning, never EACCES (E160)', async () => {
+  it('discovers in memory when .marmeon/ is read-only and the manifest is out of date — with one warning, never EACCES', async () => {
     await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
     const file = join(app, '.marmeon', 'manifest.json');
     writeFileSync(file, readFileSync(file, 'utf8').replace(/"hash": "\w+"/, '"hash": "outdated"'));

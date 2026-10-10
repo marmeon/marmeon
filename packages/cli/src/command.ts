@@ -42,7 +42,7 @@ export interface CommandClass {
   readonly options?: ParseArgsOptionsConfig;
   /**
    * Whether the application must boot first (default: true). Generators and
-   * tooling set this to false, so they work without a valid `.env`. `'build'`: the app as `marmeon build` has it (E187) — every
+   * tooling set this to false, so they work without a valid `.env`. `'build'`: the app as `marmeon build` has it — every
    * provider registered, none booted, no runtime secret needed (`route:types`). Read for the CLI's built-in commands, which it
    * knows before the app boots.
    */

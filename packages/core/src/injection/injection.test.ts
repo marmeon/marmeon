@@ -80,8 +80,8 @@ describe('injectConstructorDependencies', () => {
     );
   });
 
-  it('warns about a defaulted or optional parameter of an injectable type — never an error (E128)', () => {
-    // The W6.6 case: the job took its own SystemClock, a test's TestClock never reached it.
+  it('warns about a defaulted or optional parameter of an injectable type — never an error', () => {
+    // The job took its own SystemClock, a test's TestClock never reached it.
     const source = [
       "import { Clock, SystemClock } from '@marmeon/core';",
       "import type { Options } from './options.ts';",
@@ -194,7 +194,7 @@ describe('embedInjections (marmeon package:build)', () => {
   });
 });
 
-describe('browser sources get no injection metadata (E76)', () => {
+describe('browser sources get no injection metadata', () => {
   /** A package with a browser class and a server class, both with a constructor parameter the container cannot fill. */
   function fixture(browser: readonly string[] | undefined): string {
     const dir = mkdtempSync(join(tmpdir(), 'marmeon-embed-'));

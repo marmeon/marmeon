@@ -1,5 +1,5 @@
 /**
- * The development error page (E119) — loaded by the kernel with `import()` only when it is in debug mode
+ * The development error page — loaded by the kernel with `import()` only when it is in debug mode
  * (`ServerConfig.debug`, `NODE_ENV=development`): a production server never loads this code.
  */
 import { ERROR_PAGE_CSP, renderErrorPage } from './html.ts';

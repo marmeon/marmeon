@@ -50,7 +50,7 @@ class HangController {
 const FIXTURE = fileURLToPath(new URL('./__fixtures__/drain-server.ts', import.meta.url));
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
 
-// E102: stopping the server must not lose the work its requests deferred until after their response — the app's
+// Stopping the server must not lose the work its requests deferred until after their response — the app's
 // shutdown closes the pools that work needs, so `close()` waits for it first.
 describe('stopping the server', () => {
   it('lets work after the response finish before close() returns', async () => {
@@ -96,7 +96,7 @@ describe('stopping the server', () => {
     await app.shutdown();
   });
 
-  it('SHUTDOWN_DELAY (E163): /up/ready 503 at once, requests still answered for the delay (connection: close), then the drain', async () => {
+  it('SHUTDOWN_DELAY: /up/ready 503 at once, requests still answered for the delay (connection: close), then the drain', async () => {
     const app = await createApplication({
       root,
       discover: false,

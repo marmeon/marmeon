@@ -15,7 +15,7 @@ function documentPage(html: string): PageObject {
   return page;
 }
 
-describe('createHttpKernel — layers (E53, E54)', async () => {
+describe('createHttpKernel — layers', async () => {
   const logged: string[] = [];
   class CollectingLogger extends ConsoleLogger {
     override error(message: string): void {
@@ -51,7 +51,7 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
     Route.get('/users/:user/links/:link/remove', (ctx: HttpContext<{}, { user: string; link: string }>) =>
       view('users/RemoveLink', { link: ctx.params.link }).layer({ base: 'users.edit', params: { user: ctx.params.user } }),
     ).name('users.links.remove');
-    // A base the user may not see (E54): 403 by its own authorization, a redirect by its middleware.
+    // A base the user may not see: 403 by its own authorization, a redirect by its middleware.
     Route.get('/admin', () => {
       ran.push('admin');
       return abort(403, 'Admins only.');
@@ -116,7 +116,7 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
     expect(page.layers?.map((layer) => layer.component)).toEqual(['users/Edit', 'users/RemoveLink']);
   });
 
-  it('counter-check (E54): a forbidden base — the layer alone over the neutral surface, the base’s data never computed or sent', async () => {
+  it('a forbidden base leaves the layer alone over the neutral surface, the base’s data never computed or sent', async () => {
     ran.length = 0;
     const forbidden = documentPage(await (await app.request('/admin/note')).text());
     expect(forbidden).toMatchObject({ component: 'layers/Backdrop', url: '/admin' });
@@ -137,7 +137,7 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
     expect((await app.request('/users/7/private')).status).toBe(403);
   });
 
-  it(`counter-check: bases in a circle stop at the depth limit — logged, the layers shown alone`, async () => {
+  it(`bases in a circle stop at the depth limit — logged, the layers shown alone`, async () => {
     logged.length = 0;
     ran.length = 0;
     const page = documentPage(await (await app.request('/loop/a')).text());

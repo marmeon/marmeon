@@ -18,19 +18,19 @@ import { writeRouteTypes } from './route-types.ts';
  * accepting requests, open keep-alive connections close, and then the CLI shuts the app down.
  *
  * SIGTERM — a deployment, `docker stop`, Kubernetes, systemd — first takes the server out of readiness (`/up/ready` 503) and
- * keeps answering for `SHUTDOWN_DELAY` seconds (E163), so a load balancer that learns from its probes stops sending requests
+ * keeps answering for `SHUTDOWN_DELAY` seconds, so a load balancer that learns from its probes stops sending requests
  * before the server stops listening; SIGINT (Ctrl+C) skips that. The handlers are in place before the server listens: a
  * supervisor's SIGTERM right after the start line still drains.
  *
- * `marmeon start --workers=N` (E140) runs N servers in worker processes of `node:cluster` that share the port: this process
+ * `marmeon start --workers=N` runs N servers in worker processes of `node:cluster` that share the port: this process
  * (the primary) passes SIGTERM/SIGINT on to each of them — each drains as one server would — and ends with 0 once all ended
  * with 0 (else with the first worker's code). A worker that ends while the cluster runs is started again; one that ends
  * before it listened stops the cluster (a broken start would only repeat).
  *
- * `marmeon dev` also runs what packages add to {@link DevProcesses} (a queue worker, E101) — started with the server,
+ * `marmeon dev` also runs what packages add to {@link DevProcesses} (a queue worker) — started with the server,
  * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own. Each has a channel
  * to this process: when it closes — this process ended without its shutdown (killed, crashed) — the companion stops itself as
- * on SIGTERM (`startMarmeon`, W10 step 9c).
+ * on SIGTERM (`startMarmeon`).
  */
 export class ServeCommand {
   static command = 'serve';
@@ -53,7 +53,7 @@ export class ServeCommand {
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
     // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
-    // NODE_ENV=development only (E115; `marmeon dev` sets it), never with "anything but production" (test, unset).
+    // NODE_ENV=development only (`marmeon dev` sets it), never with "anything but production" (test, unset).
     const development = environment.isDevelopment();
     const workers = workerCount(options.workers);
     if (typeof workers === 'string') {
@@ -64,12 +64,12 @@ export class ServeCommand {
       output.error('--workers is for marmeon start (the build): marmeon dev runs one server, with Vite in front of it.');
       return 1;
     }
-    // `marmeon start` as development because a .env says so (E170): allowed (Max, 04.10.), but never quietly — a developer's
+    // `marmeon start` as development because a .env says so: allowed, but never quietly — a developer's
     // .env on a server. (`marmeon dev` clears the mark: it is development by itself.) Said once, by the primary of a cluster.
     const fromDotEnv = cluster.isPrimary ? environment.dotEnvDevelopmentWarning('start') : undefined;
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     if (workers !== undefined && cluster.isPrimary) return this.#primary(workers);
-    // From here on a signal is ours (E102): one that comes while the server starts is answered once it listens — Node's
+    // From here on a signal is ours: one that comes while the server starts is answered once it listens — Node's
     // default would end the process without a drain (and PID 1 in a container would not end at all).
     const signals = listenForSignals();
     // `marmeon dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
@@ -80,7 +80,7 @@ export class ServeCommand {
       server = await startServer({ app: this.#app, mode: development ? 'development' : 'production' });
     } catch (error) {
       signals.remove();
-      // The route-types watcher would keep the process alive after the failed start (it hung until killed).
+      // The route-types watcher would keep the process alive after the failed start.
       views?.close();
       // A setup problem (no Vite, no marmeon() plugin) is a message, not a stack trace.
       if (!(error instanceof ViteSetupError)) throw error;
@@ -88,7 +88,7 @@ export class ServeCommand {
       return 1;
     }
     const companions = development ? this.#devProcesses.all().map((definition) => this.#companion(definition, root)) : [];
-    // Everything the server needs is loaded now: write the compile cache (`marmeon start`, E138) instead of waiting for the
+    // Everything the server needs is loaded now: write the compile cache (`marmeon start`) instead of waiting for the
     // process to exit — a container that is killed never gets there. Does nothing without a cache.
     flushCompileCache();
     const signal = await signals.received;
@@ -114,7 +114,7 @@ export class ServeCommand {
   }
 
   /**
-   * The primary of `marmeon start --workers=N` (E140): forks the workers — this command again, in processes of `node:cluster`
+   * The primary of `marmeon start --workers=N`: forks the workers — this command again, in processes of `node:cluster`
    * that share the port — passes SIGTERM/SIGINT on to each, and ends when they ended: 0 when all ended with 0.
    */
   async #primary(count: number): Promise<number> {
@@ -239,7 +239,7 @@ export class ServeCommand {
   }
 }
 
-/** `--workers=N` (E140): a whole number from 1; undefined without the option; a message for anything else. */
+/** `--workers=N`: a whole number from 1; undefined without the option; a message for anything else. */
 function workerCount(value: unknown): number | undefined | string {
   if (value === undefined) return undefined;
   const count = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : Number.NaN;
@@ -250,8 +250,8 @@ function workerCount(value: unknown): number | undefined | string {
 /**
  * SIGINT and SIGTERM from now on: which came first (later ones are the caller's to handle). The listeners stay until `remove()`
  * — never `once`: a library's signal-exit (Rolldown's, loaded with Vite 8's dev server) re-raises a signal when it finds itself the
- * only listener, and a `once` listener is gone by then — the process ended by the signal without its shutdown, and `node --watch`
- * left the queue worker and the scheduler running, on every restart and on SIGTERM (W10 step 9c, finding D).
+ * only listener, and a `once` listener is gone by then — the process would end without its shutdown and leave the queue worker
+ * and the scheduler of `marmeon dev` running.
  */
 function listenForSignals(): { received: Promise<NodeJS.Signals>; remove(): void } {
   let resolve: (signal: NodeJS.Signals) => void = () => {};

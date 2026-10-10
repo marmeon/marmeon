@@ -1,5 +1,5 @@
 /**
- * The files of a new app (E150, E167): the template (`template/base` = the blank app, `template/kit` = what the starter kit
+ * The files of a new app: the template (`template/base` = the blank app, `template/kit` = what the starter kit
  * adds besides the auth module), the app's `package.json`, its `.env` with a fresh `APP_KEY`, its README. No dependencies —
  * everything here is Node's own.
  */
@@ -11,7 +11,7 @@ import { gunzipSync } from 'node:zlib';
 /** `template/` of this package: `base/` (the blank app — `pnpm template:sync` copies it) and `kit/` (the starter kit's own files). */
 export const TEMPLATE = fileURLToPath(new URL('../template/', import.meta.url));
 
-/** The pnpm a new app pins (`packageManager`, E151) — the one the framework is tested with (a test keeps it equal to the repository's). */
+/** The pnpm a new app pins (`packageManager`) — the one the framework is tested with (a test keeps it equal to the repository's). */
 export const PNPM_VERSION = '12.9.1';
 
 /**
@@ -24,14 +24,14 @@ export const RENAMED: Readonly<Record<string, string>> = { _gitignore: '.gitigno
 export type PackageManager = 'pnpm' | 'npm';
 
 /**
- * Whether a dependency is one of the framework's: the `@marmeon/*` packages and the CLI, the unscoped `marmeon` (E195) — a
+ * Whether a dependency is one of the framework's: the `@marmeon/*` packages and the CLI, the unscoped `marmeon` — a
  * prefix check alone would leave the CLI at the template's range.
  */
 export function isFramework(name: string): boolean {
   return name.startsWith('@marmeon/') || name === 'marmeon';
 }
 
-/** This package's own version — every `@marmeon/*` (and `marmeon`) of a new app gets exactly this one (lockstep, E167). */
+/** This package's own version — every `@marmeon/*` (and `marmeon`) of a new app gets exactly this one (lockstep). */
 export function ownVersion(): string {
   return (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 }

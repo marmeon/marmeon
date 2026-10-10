@@ -33,7 +33,7 @@ const NOT_APP_CODE = /(^|[\\/])(node_modules|dist|storage|\.marmeon|\.git|public
 const ROLLBACK = Symbol('tinker sandbox rollback');
 
 /**
- * One `marmeon tinker` session (E122): the booted app, ONE container scope for all of it (like a command's — scoped
+ * One `marmeon tinker` session: the booted app, ONE container scope for all of it (like a command's — scoped
  * services such as the Translator in `APP_LOCALE` live as long as the session), the helpers, and — with `--sandbox` —
  * a transaction around everything that rolls back at the end.
  *
@@ -218,7 +218,7 @@ export class TinkerSession {
   /**
    * Runs one input (`run` evaluates the JavaScript). Repositories are loaded first when it names them. In the sandbox it
    * runs inside the session's transaction — as a savepoint of its own: an input that fails takes back only its own
-   * writes, and on Postgres the transaction stays usable after a failed statement. As in every `transaction()` (E107),
+   * writes, and on Postgres the transaction stays usable after a failed statement. As in every `transaction()`,
    * await database work in the input that starts it.
    */
   async evaluate<R>(code: string, run: () => Promise<R>): Promise<R> {

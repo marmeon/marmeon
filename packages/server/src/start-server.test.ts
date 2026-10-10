@@ -45,7 +45,7 @@ describe('startServer', () => {
     await app.shutdown();
   });
 
-  it('counter-check: answers no other origin in development — Vite\'s CORS is off (a page on another localhost port reads nothing)', async () => {
+  it('answers no other origin in development — Vite\'s CORS is off (a page on another localhost port reads nothing)', async () => {
     const app = await createApplication({
       root,
       discover: false,
@@ -69,7 +69,7 @@ describe('startServer', () => {
     }
   });
 
-  describe('a program holding the port on 127.0.0.1 (W9 step 10b)', () => {
+  describe('a program holding the port on 127.0.0.1', () => {
     /** A decoy: another program on 127.0.0.1 only, at a port the system picked. */
     const decoy = async (): Promise<{ program: NetServer; port: number }> => {
       const program = createNetServer((socket) => socket.end('HTTP/1.1 501 Not Implemented\r\ncontent-length: 0\r\n\r\n'));
@@ -88,7 +88,7 @@ describe('startServer', () => {
       return { app, warned };
     };
 
-    it('counter-check: on every interface (no HOST, `::`, `0.0.0.0`) the start says so — requests to 127.0.0.1 would reach that program', async () => {
+    it('on every interface (no HOST, `::`, `0.0.0.0`) the start says so — requests to 127.0.0.1 would reach that program', async () => {
       for (const host of [undefined, '::', '0.0.0.0']) {
         const { program, port } = await decoy();
         const { app, warned } = await boot();
@@ -124,7 +124,7 @@ describe('startServer', () => {
     });
   });
 
-  it('runs Vite\'s dev server only with NODE_ENV=development — test or no NODE_ENV serve the build (E115), any other value does not start (E217)', async () => {
+  it('runs Vite\'s dev server only with NODE_ENV=development — test or no NODE_ENV serve the build, any other value does not start', async () => {
     const before = process.env.NODE_ENV;
     const app = await createApplication({
       root,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `pnpm create marmeon my-app` · `npm create marmeon@latest my-app` · `npx create-marmeon my-app` (E150, E167).
+ * `pnpm create marmeon my-app` · `npm create marmeon@latest my-app` · `npx create-marmeon my-app`.
  * Plain JavaScript: it runs from node_modules, where Node strips no types. The work is in `dist/main.js` (from `src/main.ts`).
  */
 const [major, minor] = process.versions.node.split('.').map(Number);

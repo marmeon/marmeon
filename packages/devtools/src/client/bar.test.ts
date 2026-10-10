@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 /**
- * The in-page bar (W7 step 9) on a UI adapter in plain DOM (the pattern of `http/src/client/adapter.test.ts`): no UI framework
+ * The in-page bar on a UI adapter in plain DOM (the pattern of `http/src/client/adapter.test.ts`): no UI framework
  * anywhere — the client core, a dozen lines that render a page as text, and the bar beside it. What it records comes from the
- * core's own requests; what it shows of the server comes from the devtools' JSON API (E131).
+ * core's own requests; what it shows of the server comes from the devtools' JSON API.
  */
 import { devtools, islands, Navigator, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client';
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/page';
@@ -90,7 +90,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('the dev hook (W7 step 9)', () => {
+describe('the dev hook', () => {
   it('attaches the bar to the navigator that takes over the history — one React threw away (a hydration error) stops recording', async () => {
     const attached: Navigator[] = [];
     const uninstall = installDevtoolsHook(globalThis as DevtoolsGlobal, ({ navigator }) => void attached.push(navigator));
@@ -117,7 +117,7 @@ describe('the dev hook (W7 step 9)', () => {
   });
 });
 
-describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
+describe('the in-page bar on a plain-DOM adapter', () => {
   it('attaches through the dev hook when the navigator is made: a pill at the bottom right, in a shadow root outside the app', async () => {
     const { bar, text, stop } = app();
     expect(bar.host.parentElement).toBe(document.body);
@@ -128,7 +128,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     stop();
   });
 
-  it('brings its look as a constructed stylesheet — no <style> element a strict style-src would block (E202), and it survives a redraw', async () => {
+  it('brings its look as a constructed stylesheet — no <style> element a strict style-src would block, and it survives a redraw', async () => {
     const { bar, stop } = app();
     bar.toggle(true);
     expect(bar.root.querySelector('style'), 'a <style> element in the bar').toBeNull();
@@ -137,7 +137,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     stop();
   });
 
-  it('Visits: every request as it happens — kind, status, time, request id; a click shows what the server recorded (E131)', async () => {
+  it('Visits: every request as it happens — kind, status, time, request id; a click shows what the server recorded', async () => {
     const { navigator, bar, text, stop } = app();
     bar.show('visits');
     await navigator.visit('/users/2');
@@ -204,7 +204,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     stop();
   });
 
-  it('keeps only whether it is open and which tab in sessionStorage — never a prop, nowhere (E36)', async () => {
+  it('keeps only whether it is open and which tab in sessionStorage — never a prop, nowhere', async () => {
     const { navigator, bar, stop } = app();
     window.dispatchEvent(new KeyboardEvent('keydown', { altKey: true, shiftKey: true, code: 'KeyD' }));
     expect(bar.open).toBe(true);
@@ -221,7 +221,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     again.stop();
   });
 
-  it('after signing out (a 409) it shows nothing of the old page — not in its DOM, not in what it keeps (E36)', async () => {
+  it('after signing out (a 409) it shows nothing of the old page — not in its DOM, not in what it keeps', async () => {
     const loads: string[] = [];
     vi.spyOn(window.location, 'assign').mockImplementation((url) => void loads.push(String(url)));
     const { navigator, api, bar, text, stop } = app();

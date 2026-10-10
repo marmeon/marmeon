@@ -97,7 +97,7 @@ ${content}
 </html>`.toString();
 }
 
-/** A command to copy (E113, E130: the devtools never run one — no endpoint writes). */
+/** A command to copy (the devtools never run one — no endpoint writes). */
 export function command(text: string): Html {
   return html`<div class="command"><code>${text}</code><button type="button" data-copy="${text}" hidden>Copy</button></div>`;
 }

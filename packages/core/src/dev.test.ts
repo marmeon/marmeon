@@ -3,7 +3,7 @@ import { devHosts, devOnly, devSecured, hostAllowed, LOOPBACK_HOSTS } from './de
 
 const request = (host: string | undefined, url = 'http://localhost/_marmeon/mail') => new Request(url, host === undefined ? {} : { headers: { host } });
 
-describe('the guard of every development route (E200)', () => {
+describe('the guard of every development route', () => {
   it('devHosts: the loopback names and the host of APP_URL — lower case, no port; a broken APP_URL adds nothing', () => {
     expect([...devHosts(undefined)]).toEqual(LOOPBACK_HOSTS);
     expect([...devHosts('https://Shop.Example:8443/base')]).toEqual([...LOOPBACK_HOSTS, 'shop.example']);
@@ -63,7 +63,7 @@ describe('the guard of every development route (E200)', () => {
     expect(devSecured(new Response('x', { status: 404 })).status).toBe(404);
   });
 
-  describe('outside development: a 404, whatever the host (fail-closed, E115) — APP_URL\'s host is public on a server', () => {
+  describe('outside development: a 404, whatever the host (fail-closed) — APP_URL\'s host is public on a server', () => {
     afterEach(() => {
       vi.unstubAllEnvs();
     });

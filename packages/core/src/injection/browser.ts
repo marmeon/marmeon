@@ -5,7 +5,7 @@ import { dirname, join, matchesGlob, relative, sep } from 'node:path';
  * A package's browser-only sources: globs relative to the package directory, from its package.json —
  * `"marmeon": { "browser": ["src/client/**", "src/page.ts"] }`.
  *
- * The injection transform leaves these files alone (roadmap E76). A browser class is never built by the
+ * The injection transform leaves these files alone. A browser class is never built by the
  * container, so it needs neither a list nor a reason — and every string attached to it would be shipped to
  * every browser (`"Cannot inject src/client/…"`: 0.8 KB gzip in the client core alone).
  */

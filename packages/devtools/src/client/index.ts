@@ -1,5 +1,5 @@
 /**
- * `@marmeon/devtools/client` — the in-page bar (W7 step 9, E117). **Development only (E115):** the devtools' provider puts
+ * `@marmeon/devtools/client` — the in-page bar. **Development only:** the devtools' provider puts
  * `<script type="module" src="/@id/@marmeon/devtools/client">` into the head of every document the Vite dev server renders
  * (`DevDocument`, bound with `NODE_ENV=development` only); nothing else imports it, so no build ever contains it.
  *
@@ -17,7 +17,7 @@ export type { Attached } from './hook.ts';
 
 if (typeof document !== 'undefined') {
   let bar: DevtoolsBar | undefined;
-  // The document's own request (E131) — the server's record of it, for the Page and SSR tabs.
+  // The document's own request — the server's record of it, for the Page and SSR tabs.
   const requestId = document.querySelector('meta[name="marmeon-devtools"]')?.getAttribute('content') || undefined;
   installDevtoolsHook(globalThis as DevtoolsGlobal, ({ navigator, api }) => {
     api.record.document(navigator.page.url, requestId);
