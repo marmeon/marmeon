@@ -28,7 +28,8 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
 - **The text speaks to app developers.** `pnpm check:source` rule 5 refuses decision numbers and comparisons with another
   framework in the pages, the package READMEs, the root's README and the three policies (`UPGRADING.md` among them), and wave
   references in the pages, the READMEs and `UPGRADING.md` (not in CONTRIBUTING, which names the Gegenproben's paths). It reads
-  the starter's template and the packages' stubs, which every new app copies, for all of these and a personal date too. Rule 6
+  the starter's template and the packages' stubs, which every new app copies, and the apps' READMEs and `.env` files for all of
+  these and a personal date too. Rule 6
   reads the strings of the packages' code and launchers — messages, solutions, command output — for a decision number, a wave
   or another framework; comments stay the maintainers'.
 - **The start page** (`/`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.

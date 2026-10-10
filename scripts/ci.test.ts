@@ -186,7 +186,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
       { path: 'SECURITY.md', text: 'E210: the docs' },
       { path: 'UPGRADING.md', text: 'Since E199 the claim is fair.' },
       { path: 'packages/queue/src/worker.ts', text: '// E199' },
-      { path: 'apps/web-app/README.md', text: 'E147' },
+      { path: 'apps/web-app/modules/auth/routes.ts', text: '// E147' },
       { path: 'docs/sub/page.md', text: 'E12' },
     ], decisions)).toEqual([
       'docs/queues.md:2: The claim is fair (E199).',
@@ -247,6 +247,21 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
       'packages/create-marmeon/template/base/.env.example:2: # since Wave 10',
       'packages/auth/stubs/react/modules/auth/routes.ts:1: // Private registration (E146): one answer (W9 step 11)',
     ]);
+  });
+
+  it("reads the apps' READMEs and .env files — what a reader of an app sees first and copies — not the apps' code", () => {
+    const files = [
+      { path: 'apps/web-app/.env.example', text: '# Sessions on the system connection (E108)\n# Live props (W6.10)' },
+      { path: 'apps/docs/.env.test', text: '# like Laravel' },
+      { path: 'apps/blank-app/README.md', text: 'decided by Max 07.10.' },
+      { path: 'apps/web-app/modules/auth/routes.ts', text: '// Private registration (E146), W9, like Laravel, Max 07.10.' },
+      { path: 'apps/web-app/sub/README.md', text: 'E12, W9' },
+    ];
+    expect(textRuleHits(files, decisions)).toEqual(['apps/web-app/.env.example:1: # Sessions on the system connection (E108)']);
+    expect(textRuleHits(files, waves)).toEqual(['apps/web-app/.env.example:2: # Live props (W6.10)']);
+    expect(textRuleHits(files, rule('a comparison with another framework'))).toEqual(['apps/docs/.env.test:1: # like Laravel']);
+    expect(textRuleHits(files, rule('a personal date'))).toEqual(['apps/blank-app/README.md:1: decided by Max 07.10.']);
+    expect(textRuleWhere('apps/web-app/.env.example')).toBe("in an app's README or .env files");
   });
 
   it('finds a personal date of the plan in what a new app copies — not a cookie\'s Max-Age, a version or an address', () => {

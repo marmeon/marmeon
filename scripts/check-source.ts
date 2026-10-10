@@ -33,7 +33,9 @@
  *      `CONTRIBUTING.md` names the Gegenproben's paths (`scripts/gegen/w10/…`) and steps (`'W9.4'`); and no page under `docs/` the
  *      pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline). What every new app
  *      copies — the starter's template and the packages' stubs — carries no decision number, no wave reference, no personal date
- *      ("Max 07.10.") and no comparison with another framework. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and
+ *      ("Max 07.10.") and no comparison with another framework — and so does what a reader of one of the apps sees first and
+ *      copies: its README and its `.env` files (`.env.example`, `.env.test`; W12 step 4b). The apps' code is the framework's test
+ *      bed and keeps its comments, as the packages' code does. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and
  *      the files it reads.
  *
  *   6. **The framework's messages speak to app developers** (W11 step 10, E214): the strings of a package's code
@@ -206,6 +208,12 @@ const UPGRADE_GUIDE = /^UPGRADING\.md$/;
  * app's developers. The code that copies them (`packages/<name>/src/`) is the maintainers' and keeps its decision numbers.
  */
 const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
+/**
+ * What a reader of one of the apps (`apps/<name>/`) sees first and copies: its README and its `.env` files (`.env.example`
+ * becomes someone's `.env`). The apps' code is the framework's own test bed — its comments are the maintainers', like the
+ * packages' code, and keep their decision numbers.
+ */
+const APP_TEXTS = /^apps\/[^/]+\/(?:README\.md|\.env\.[^/]+)$/;
 
 /** Rule 5: the docs speak to their readers — no decision numbers, no wave references, no page still to be written. */
 export const DOC_TEXT_RULES: readonly TextRule[] = [
@@ -213,14 +221,14 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
     what: 'a decision number',
     // A word of its own: `0xE12`, `#E1234`, `1E10`, `E2E` and `E.164` are none.
     pattern: /\bE\d{2,3}\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS],
     why: 'say what was decided, not its number — the decisions are the maintainers\' record',
   },
   {
     what: 'a wave reference',
     pattern: /\b(?:W\d+(?:\.\d+)?|[Ww]ave \d+)\b/,
     // Not CONTRIBUTING.md: it names the Gegenproben's paths (`scripts/gegen/w10/…`) and steps (`step: 'W9.4'`).
-    files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES],
+    files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES, APP_TEXTS],
     why: 'the docs describe the framework as it is, not when it changed — UPGRADING.md says that, by version',
   },
   {
@@ -233,20 +241,22 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
     what: 'a personal date',
     // Who decided and when ("Max 07.10."): a name of its own (not `Max-Age`) or a day and a month with their dots.
     pattern: /\bMax\b(?![-\w])|(?<![\d.])\d{2}\.\d{2}\.(?!\d)/,
-    files: [APP_COPIES],
+    files: [APP_COPIES, APP_TEXTS],
     why: 'a new app keeps the reason, not who decided it when — the maintainers\' record has that',
   },
   {
     what: 'a comparison with another framework',
     pattern: /\b(?:Laravel|Breeze|Inertia|Rails|Django|Symfony|AdonisJS|NestJS|Next\.js|Nuxt)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS],
     why: 'describe Marmeon as it is — a reader may know no other framework',
   },
 ];
 
-/** Where a hit of rule 5 stands, for its message: the docs, or what every new app copies. */
-export function textRuleWhere(path: string): string {
-  return APP_COPIES.test(path) ? 'in what every new app copies' : 'in the docs';
+/** Where a hit of rule 5 (`path:line: text`, or a path) stands, for its message: the docs, what every new app copies, or an app's texts. */
+export function textRuleWhere(hit: string): string {
+  const path = hit.replace(/:\d+: [\s\S]*$/, '');
+  if (APP_COPIES.test(path)) return 'in what every new app copies';
+  return APP_TEXTS.test(path) ? "in an app's README or .env files" : 'in the docs';
 }
 
 /** Rule 5, one part: every line of the files `rule` reads that matches its pattern — `path:line: text`. */
@@ -347,6 +357,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies (the upgrade guide among them) name no decision number and compare Marmeon with no other framework; the docs, the cards and the upgrade guide name no wave, no page is pending; the starter's template and the packages' stubs name no decision number, wave, personal date or other framework; no string of a package's code or launchers names a decision, a wave or another framework.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies (the upgrade guide among them) name no decision number and compare Marmeon with no other framework; the docs, the cards and the upgrade guide name no wave, no page is pending; the starter's template, the packages' stubs and the apps' READMEs and .env files name no decision number, wave, personal date or other framework; no string of a package's code or launchers names a decision, a wave or another framework.`);
   }
 }

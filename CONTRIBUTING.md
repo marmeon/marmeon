@@ -218,7 +218,9 @@ checked over every file of the repository — tracked, or new and not ignored. E
    its own ([Writing documentation](#writing-documentation)) — every page is written. What every new app copies, the starter's
    template (`packages/create-marmeon/template/`) and the packages' stubs (`packages/<name>/stubs/`: the `make:auth` module, the
    migrations of `make:*-table`), carries no decision number, no wave, no personal date of the plan ("Max 07.10.") and no
-   other framework. `UPGRADING.md` says what changed by version and by what it changes, never by decision or wave. Each part
+   other framework — and neither does what a reader of one of the apps (`apps/<name>/`) sees first and copies: its `README.md`
+   and its `.env` files (`.env.example`, `.env.test`). The apps' code is the framework's test bed, and its comments, like the
+   packages' code, are for maintainers. `UPGRADING.md` says what changed by version and by what it changes, never by decision or wave. Each part
    is an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
 6. **The framework's messages speak to app developers**: no string of a package's code (`packages/<name>/src/`, tests and
    fixtures aside) or of its launchers (`packages/<name>/bin/*.js`) names a decision number, a wave or another framework —
