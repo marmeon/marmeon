@@ -38,7 +38,7 @@ import { jsonArrayFrom as sqliteArray, jsonObjectFrom as sqliteObject } from 'ky
 import type { Relation } from './introspection.ts';
 import type { ColumnKind as Kind, SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, MANY, ONE, RELATION, RELATION_TARGET, SECRET, sourcesOf, WITH_TRASHED, type Source } from './placeholders.ts';
-import { guardSecrets, outputName, type Spelled } from './secret-guard.ts';
+import { asked, guardSecrets, outputName, type Spelled } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 type Build<DB, TB extends keyof DB, R extends keyof DB, O> = (query: SelectQueryBuilder<DB, TB | R, {}>) => SelectQueryBuilder<DB, any, O>;
@@ -323,23 +323,20 @@ export class RelationsPlugin implements KyselyPlugin {
     if (this.#done.has(node)) return node;
     const spelled = guardSecrets(node, this.#metadata);
     const relations = hasPlaceholder(node, RELATIONS);
-    if (!relations && spelled.size === 0 && !hasPlaceholder(node, SECRET)) {
-      this.#done.add(node);
-      return node;
-    }
-    const transformed = new RelationTransformer(this.#driver, spelled).transformNode(node, queryId);
+    const transformed = relations || spelled.size > 0 || hasPlaceholder(node, SECRET) ? new RelationTransformer(this.#driver, spelled).transformNode(node, queryId) : node;
     this.#done.add(transformed);
+    // Only the keys of the query's own rows (a nested relation's shape is reached through its parent's) — for every compile, an
+    // empty map included: a builder derived from the same one shares the query id, never what this compile loads.
+    const shapes = new Map<string, Shape>();
     if (relations && SelectQueryNode.is(node)) {
-      // Only the keys of the query's own rows: a nested relation's shape is reached through its parent's.
-      const shapes = new Map<string, Shape>();
       for (const { selection } of node.selections ?? []) {
         if (AliasNode.is(selection) && IdentifierNode.is(selection.alias) && FunctionNode.is(selection.node) && RELATIONS.includes(selection.node.func)) {
           shapes.set(selection.alias.name, shapeOf(selection.node.arguments[0] as SelectQueryNode));
         }
       }
-      this.#shapes.set(transformed, shapes);
-      this.#lastShapes.set(queryId, shapes);
     }
+    this.#shapes.set(transformed, shapes);
+    this.#lastShapes.set(queryId, shapes);
     return transformed;
   }
 
@@ -378,8 +375,8 @@ class RelationTransformer extends OperationNodeTransformer {
   }
 
   protected override transformFunction(node: FunctionNode, queryId?: QueryId): FunctionNode {
-    // `secret()` was asked for: the column itself.
-    if (node.func === SECRET) return this.transformNode(node.arguments[0]!, queryId) as unknown as FunctionNode;
+    // `secret()` was asked for: the column itself, still marked as asked for.
+    if (node.func === SECRET) return asked(this.transformNode(node.arguments[0]!, queryId)) as unknown as FunctionNode;
     if (node.func !== MANY && node.func !== ONE) return super.transformFunction(node, queryId);
     const subquery = this.transformNode(node.arguments[0]!, queryId);
     const expression = { toOperationNode: () => subquery } as never;

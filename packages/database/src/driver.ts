@@ -1,7 +1,7 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, type SchemaMetadata } from './metadata.ts';
-import { PREFIX } from './placeholders.ts';
+import { PREFIX, SECRET } from './placeholders.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
 export class DatabaseConnectionError extends Error {
@@ -444,7 +444,7 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   const resolving = (query: CompiledQuery) => {
     if (hooks.deferred?.(query)) return hooks.resolve!(query, unloggedView);
     // Built on a Kysely without Marmeon's plugins (or compiled by one): nothing resolved its placeholders.
-    if (query.sql.includes(PREFIX)) return Promise.reject(new Error(unresolved(hooks.name ?? 'default')));
+    if (query.sql.includes(PREFIX)) return Promise.reject(new Error(unresolved(hooks.name ?? 'default', query.sql.includes(SECRET))));
     return undefined;
   };
   const { result: after } = hooks;
@@ -486,7 +486,14 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   });
 }
 
-function unresolved(name: string): string {
+function unresolved(name: string, secret: boolean): string {
+  if (secret) {
+    return (
+      `This query reads a column with secret(), which only the app's connection checks — it was not sent: it runs on the database ` +
+      `connection "${name}" without Marmeon's plugins (infrastructure(), withoutPlugins()), which check no column. Name the column ` +
+      'there as it is, or build the query on connections.get() or Database. See docs/migrations.md#secret-columns.'
+    );
+  }
   return (
     "This query loads relations or leaves out soft-deleted rows (with(), withRelation(), withTrashed(), a repository's query()), which " +
     `only the app's connection resolves — it was not sent: it runs on the database connection "${name}" without Marmeon's plugins ` +

@@ -286,7 +286,10 @@ A secret column is written like any other, but:
 - a query reads it only with `secret(eb, 'password')`, in the one place that needs it. A query that names it otherwise, or reads the
   table's whole row as one value (`eb.table('users')` in a function), is refused before it is sent;
 - a subquery or a common table expression that reads it with `secret()` passes it on as a secret column: the query around it asks
-  with `secret()` again. A [relation](queries.md#relations-and-secret-columns) never loads one.
+  with `secret()` again. That holds through a union, which lines its parts up by position, and a recursive common table
+  expression, whose every column then counts as secret. A [relation](queries.md#relations-and-secret-columns) never loads one;
+- a subquery that selects it in a `where()` is refused too, although its value stays in the database. Filter on a key instead:
+  `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`.
 
 The starter kit's `UserRepository` is that place. It checks a password at sign-in, and the hash travels next to the user, never
 inside it:
@@ -295,7 +298,8 @@ inside it:
 const row = await this.query().where('email', '=', email).selectAll().select((eb) => secret(eb, 'password')).executeTakeFirst();
 ```
 
-`secret` comes from `@marmeon/database`. Raw SQL is not checked, so `` sql`select * from users` `` returns the hash. Statements on
+`secret` comes from `@marmeon/database`. Raw SQL is not checked, so `` sql`select * from users` `` returns the hash, and so does a
+view over the table, which is raw SQL of a migration. Statements on
 a table with secret columns are marked as such for whatever records queries, which then leaves their parameters out. The
 [observability](observability.md#queries-and-secret-columns) page explains it.
 

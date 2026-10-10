@@ -378,6 +378,18 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     );
   });
 
+  it('never applies the relations of a sibling builder to a query without them — with or without a later plugin', async () => {
+    const passThrough: KyselyPlugin = { transformQuery: ({ node }) => ({ ...node }), transformResult: async ({ result }) => result };
+    for (const target of [db, db.withPlugin(passThrough)]) {
+      const base = target.selectFrom('posts').where('id', '=', ids.first);
+      expect((await base.select('title').with('author').execute())[0]!.author).toEqual(expect.objectContaining({ is_admin: true }));
+      expect(await base.select(['title', sql<string>`'plain text'`.as('author')]).execute()).toEqual([{ title: 'First', author: 'plain text' }]);
+      // Not converted as a relation: SQLite's connection parses JSON text of an expression (not of a text column) as it is.
+      const [json] = await base.select(['title', sql<string>`'{"is_admin":1}'`.as('author')]).execute();
+      expect(json!.author).toEqual(driver === 'sqlite' ? { is_admin: 1 } : '{"is_admin":1}');
+    }
+  });
+
   it('keeps normalizing nested values behind a plugin added later', async () => {
     const passThrough: KyselyPlugin = { transformQuery: ({ node }) => ({ ...node }), transformResult: async ({ result }) => result };
     const [post] = await db.withPlugin(passThrough).selectFrom('posts').select('title').with('author').where('id', '=', ids.first).execute();
@@ -595,6 +607,75 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       expect(ada!.comments).toEqual([{ body: 'two' }]);
     });
 
+    it('are carried through a recursive common table expression — every column, once one carries a secret', async () => {
+      const k = (target: Kysely<FixtureTables>) =>
+        target.withRecursive('k(user_id, name, token, depth)', (q) =>
+          q
+            .selectFrom('api_keys')
+            .select((e) => ['user_id', 'name', secret(e, 'token'), sql<number>`0`.as('depth')])
+            .unionAll((eb) => eb.selectFrom('k').select(['k.user_id', 'k.token as name', 'k.token', sql<number>`k.depth + 1`.as('depth')]).where('k.depth', '<', 1)),
+        );
+      await expect(k(db).selectFrom('k').select('name').execute()).rejects.toThrow(unasked('k.name'));
+      await expect(
+        k(db).selectFrom('posts').select('title').with('comments', (c) => c.innerJoin('k', 'k.user_id', 'comments.user_id').select(['body', 'k.name'])).execute(),
+      ).rejects.toThrow(refused(`with('comments')`, 'k.name'));
+    });
+
+    it('are not lined up with a part of a union whose columns are unknown — a view’s selectAll()', async () => {
+      const any = db as unknown as Kysely<any>;
+      await sql`create view v_probe as select 'v' as name, 'w' as token2`.execute(db);
+      const union = `This query combines a select that passes on a secret column with one whose columns are not known (a selectAll() of a table the migrations did not create, such as a view), so they cannot be lined up. Name the columns of both. See docs/migrations.md#secret-columns.`;
+      try {
+        const k = () => any.with('k', (q) => q.selectFrom('v_probe').selectAll().unionAll(q.selectFrom('api_keys').select((e) => ['name', secret(e as never, 'token' as never)])));
+        await expect(k().selectFrom('k').selectAll().execute()).rejects.toThrow(union);
+        await expect(
+          k()
+            .selectFrom('posts')
+            .select('title')
+            .with('comments', (c: any) => c.innerJoin('k', 'k.name', 'comments.body').select(['body', 'k.token2']))
+            .execute(),
+        ).rejects.toThrow(union);
+        // Without a secret, a view's columns need not be known.
+        expect(await any.selectFrom('v_probe').selectAll().execute()).toEqual([{ name: 'v', token2: 'w' }]);
+      } finally {
+        await sql`drop view v_probe`.execute(db);
+      }
+    });
+
+    it.runIf(driver === 'pgsql')('are left out of a merge’s returningAll(), and refused in its returning by name', async () => {
+      const merge = () => db.mergeInto('api_keys').using('users', 'users.id', 'api_keys.user_id').whenMatched().thenUpdateSet({ name: 'cli' });
+      const rows = await merge().returningAll('api_keys').execute();
+      expect(rows).toEqual([{ id: expect.any(Number), user_id: ids.ada, name: 'cli' }]);
+      await expect(merge().returning('api_keys.token' as never).execute()).rejects.toThrow(unasked('api_keys.token'));
+    });
+
+    it('are refused in a selectAll() of nothing but secret columns — never an empty select', async () => {
+      await expect(db.with('k', (q) => q.selectFrom('api_keys').select((e) => [secret(e, 'token')])).selectFrom('k').selectAll().execute()).rejects.toThrow(
+        'This query selects all columns of k, and every one is a secret column — name the columns it needs, and read a secret one with secret(eb, …). See docs/migrations.md#secret-columns.',
+      );
+      await expect(db.selectFrom('api_keys').selectAll('users' as never).execute()).rejects.toThrow('This query selects all columns of "users", which is no table, subquery or alias of its own.');
+    });
+
+    it('get the same verdict on the first query of a process and later — secret() in a builder of the connection used as a subquery', async () => {
+      const fresh = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      try {
+        const own = fresh.get<FixtureTables>();
+        const inner = () => own.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')]);
+        const derived = () => own.selectFrom(inner().as('k')).select((eb) => ['k.user_id', secret(eb as never, 'k.token' as never)]);
+        const cte = () => own.with('k', inner()).selectFrom('k').select((eb) => ['k.user_id', secret(eb as never, 'k.token' as never)]);
+        const union = () => own.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')]).union(inner());
+        const expected = [{ user_id: ids.ada, token: 'the-secret-token' }];
+        for (const round of ['cold', 'warm']) {
+          expect(await derived().execute(), round).toEqual(expected);
+          expect(await cte().execute(), round).toEqual(expected);
+          expect(await union().execute(), round).toEqual(expected);
+        }
+        await expect(own.selectFrom(inner().as('k')).select(['k.user_id', 'k.token']).execute()).rejects.toThrow(unasked('k.token'));
+      } finally {
+        await fresh.destroy();
+      }
+    });
+
     it('are refused in a relation of the free helpers too', async () => {
       await expect(
         db
@@ -611,6 +692,9 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     await expect(db.withoutPlugins().selectFrom('users').select('name').with('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').with('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withTrashed().execute()).rejects.toThrow(message);
+    await expect(connections.infrastructure<FixtureTables>().selectFrom('api_keys').select((eb) => ['name', secret(eb, 'token')]).execute()).rejects.toThrow(
+      `This query reads a column with secret(), which only the app's connection checks — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()), which check no column. Name the column there as it is, or build the query on connections.get() or Database. See docs/migrations.md#secret-columns.`,
+    );
     expect(queries).toEqual([]);
   });
 });

@@ -382,7 +382,7 @@ export default defineMigration({
 ```
 
 Your provider stores the key and hands it back as `sessionKey` from `findById()` and `findForLogin()`. A secret column is read
-only when it is named, as the starter kit's `UserRepository` reads the password hash. Its parts that signing in needs, with the
+only with `secret()`, as the starter kit's `UserRepository` reads the password hash. Its parts that signing in needs, with the
 session key added:
 
 ```ts title="modules/auth/UserRepository.ts"

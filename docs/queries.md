@@ -292,14 +292,15 @@ is refused when the query runs: by name, with `secret(eb, …)`, `sql.ref()` or 
 callback joins, from the outer query or a subquery or common table expression of it, or deeper down. So is a whole row of a source
 that holds one, such as `eb.table('users')` in a function.
 
-That goes for a subquery in a relation's `where()` too, although its value stays in the database. Filter on a key instead:
-`where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens').select('user_id').where(…))`, or with a join.
+That goes for a subquery in a relation's `where()` too, as in any query, although its value stays in the database. Filter on a key
+instead: `where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens').select('user_id').where(…))`, or with a join.
 
 ```text
 with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
 ```
 
-The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice.
+The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice. Neither is a view: it
+is raw SQL of a migration, so a view over a table with secret columns returns what its own SQL selects.
 
 ### The app's connection
 

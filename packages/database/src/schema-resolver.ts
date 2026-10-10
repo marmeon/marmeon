@@ -216,10 +216,10 @@ class Resolver extends OperationNodeTransformer {
   }
 }
 
-/** Whether a statement reads rows — a select, a `returning`, or a select inside (`insert … select`) — whose secret columns are checked. */
+/** Whether a statement reads rows — a select, a `returning` (of a merge too), or a select inside (`insert … select`) — whose secret columns are checked. */
 function readsRows(node: RootOperationNode): boolean {
   if (node.kind === 'SelectQueryNode') return true;
-  if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
+  if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode' && node.kind !== 'MergeQueryNode') return false;
   return node.returning !== undefined || hasSelect(node);
 }
 
