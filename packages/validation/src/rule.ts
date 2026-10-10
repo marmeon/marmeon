@@ -21,10 +21,10 @@ export interface RuleDefinition {
   readonly contextual: boolean;
   /** `.live()`: its rules run in a live validation too. */
   readonly live: boolean;
-  /** An object, a list or a union: its rules are other rules — `.live()` belongs on them, never on it (E197). */
+  /** An object, a list or a union: its rules are other rules — `.live()` belongs on them, never on it. */
   readonly container: boolean;
   /**
-   * `''` is a value of the rule (E208): a string's, an `r.in()`'s that lists it — `optional()`/`nullable()`/`default()` keep it. Where
+   * `''` is a value of the rule: a string's, an `r.in()`'s that lists it — `optional()`/`nullable()`/`default()` keep it. Where
    * it never can be one (numbers, booleans, e-mail addresses, URLs, dates, lists, objects …) a form's empty field counts as missing.
    */
   readonly keepsEmpty: boolean;
@@ -38,7 +38,7 @@ type MaybePromise<T> = T | Promise<T>;
 const isAsyncFunction = (fn: unknown): boolean => typeof fn === 'function' && fn.constructor?.name === 'AsyncFunction';
 
 /**
- * A rule — a Standard Schema object (E197): `defineRequest`, `defineConfig`, jobs and query schemas take it like any other.
+ * A rule — a Standard Schema object: `defineRequest`, `defineConfig`, jobs and query schemas take it like any other.
  * Immutable: every method returns a new rule. `Output` is what a valid value becomes, `Input` what may be sent.
  *
  * `optional()`, `nullable()` and `default()` come last (after the rules of the type): `r.string().max(255).optional()`.
@@ -84,21 +84,21 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
 
   /**
    * The value may be missing (`undefined`): `{ bio?: string }`. An empty string stays one where the rule takes it — `r.string()`'s
-   * `''` is a value (E208: a subtitle cleared on purpose) — and is missing where it never is one (`r.integer()`, `r.email()` …).
+   * `''` is a value (a subtitle cleared on purpose) — and is missing where it never is one (`r.integer()`, `r.email()` …).
    */
   optional(): Rule<Output | undefined, Input | undefined> {
     return this.#modified({ optional: true, nullable: false });
   }
 
-  /** The value may be `null`: `website: string | null` — an empty string becomes `null` where the rule never takes it (`r.url()`, E208). */
+  /** The value may be `null`: `website: string | null` — an empty string becomes `null` where the rule never takes it (`r.url()`). */
   nullable(): Rule<Output | null, Input | null> {
     return this.#modified({ optional: false, nullable: true });
   }
 
   /**
-   * What a missing value becomes — the field is then always there: `page: r.integer().min(1).default(1)` (an empty string too where the
-   * rule never takes it: `?page=`; `r.string()` keeps `''`, E208). A
-   * list or an object is copied for every validation (nobody shares it). In `r.query()` it is what an invalid value falls back to (E56).
+   * What a missing value becomes — the field is then always there: `page: r.integer().min(1).default(1)` (an empty string
+   * too where the rule never takes it: `?page=`; `r.string()` keeps `''`). A list or an object is copied for every validation
+   * (nobody shares it). In `r.query()` it is what an invalid value falls back to.
    */
   default(value: Exclude<Output, undefined>): Rule<Exclude<Output, undefined>, Input | undefined> {
     return this.#modified({ optional: true, nullable: false, fallback: { value } });
@@ -116,10 +116,10 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
   }
 
   /**
-   * A check of your own — Laravel's `ValidationRule`: return `false` (its message: `message`, else "The … field is invalid."),
+   * A check of your own: return `false` (its message: `message`, else "The … field is invalid."),
    * a message (a translation key or a text), or nothing when the value is valid. `context.request` is the request's `resolve`,
    * `ctx` and whether it is live. An `async` check makes the rule async, and — like the database rules — it does not run in a live
-   * validation unless the rule says `.live()` (E197).
+   * validation unless the rule says `.live()`.
    *
    * ```ts
    * code: r.string().custom(async (code, { request }) => (await request!.resolve(Invites).valid(code)) || 'invites.validation.unknown')
@@ -141,30 +141,23 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
   }
 
   /**
-   * The value is in no row of `Repository`'s table yet — Laravel's `unique`, for a friendly message before the insert. The
-   * unique index stays the truth (two requests at once): `failOnDuplicate()` of @marmeon/database turns its conflict into the same
-   * 422. Rows of the table count even when soft-deleted (the index holds them too). Gets the repository from the request
-   * (`resolve`) — a rule of a request only.
-   *
-   * Not live (E187/E193/E197): a live validation (E62) never asks the database — free and taken values get the same answer
-   * there; the submit tells. `.live()` turns that on, where whether a value is taken is no secret.
-   *
-   * ```ts
-   * email: r.string().trim().lowercase().email().unique(UserRepository, 'email', { ignore: (ctx) => ctx.user.id }),
-   * ```
+   * The value is in no row of `Repository`'s table yet (soft-deleted rows count) — a friendly message before the insert; the
+   * unique index stays the truth. A rule of a request only (it gets the repository from the request). Not live: a live
+   * validation never asks the database, so free and taken values get the same answer there — `.live()` turns that on. See
+   * `docs/validation.md#database-rules-and-why-they-never-run-live`.
    */
   unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: ColumnOf<R>, options: UniqueOptions<Ctx> = {}): this {
     return this.with(databaseStep('unique', Repository, column, options));
   }
 
-  /** The value is in a row of `Repository`'s table (not soft-deleted) — Laravel's `exists`. Not live, like {@link unique}. */
+  /** The value is in a row of `Repository`'s table (not soft-deleted). Not live, like {@link unique}. */
   exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: ColumnOf<R>, options: ExistsOptions<Ctx> = {}): this {
     return this.with(databaseStep('exists', Repository, column, options));
   }
 
   /**
-   * Runs this rule's database and async checks in a live validation too (E62) — for values whose being taken is no secret (a team's
-   * slug in its own settings). Never for anything that tells whether an account exists (E187/E193). A rule of one value only: on an
+   * Runs this rule's database and async checks in a live validation too — for values whose being taken is no secret (a team's
+   * slug in its own settings). Never for anything that tells whether an account exists. A rule of one value only: on an
    * object, a list or a union it throws — it would open every rule inside, the account's address too; put it on the field.
    */
   live(): this {
@@ -233,7 +226,7 @@ export interface ExistsOptions<Ctx = any> {
 }
 
 export interface UniqueOptions<Ctx = any> extends ExistsOptions<Ctx> {
-  /** A row that does not count — the one being edited: `(ctx) => ctx.user.id` (Laravel's `ignore()`). */
+  /** A row that does not count — the one being edited: `(ctx) => ctx.user.id`. */
   readonly ignore?: (ctx: Ctx) => unknown;
   /** The column `ignore` names (default `id`). */
   readonly ignoreColumn?: string;
@@ -245,7 +238,7 @@ function databaseStep(kind: 'unique' | 'exists', Repository: new (...args: any[]
     async: true,
     contextual: true,
     build: (context) => {
-      // E197: never in a live validation unless the rule says .live() — free and taken values get the same answer (E187/E193).
+      // Never in a live validation unless the rule says .live() — free and taken values get the same answer.
       if (context.live && !context.liveOptIn) return undefined;
       return engine.checkAsync(async (value) => {
         const request = context.request;
@@ -288,7 +281,7 @@ function sizeStep(kind: Sized, rule: 'min' | 'max' | 'between', min: number | un
 }
 
 /**
- * A string — the type of form fields. `''` is a string (E208): `.optional()`, `.nullable()` and `.default()` keep it, `.required()`
+ * A string — the type of form fields. `''` is a string: `.optional()`, `.nullable()` and `.default()` keep it, `.required()`
  * (or `.min(1)`) asks for some text. The formats `email()`, `url()`, `uuid()`, `date()` and `isoTimestamp()` never take `''`: there it
  * is a form's empty field and counts as missing. Lengths count characters (code points).
  */
@@ -303,7 +296,7 @@ export class StringRule extends Rule<string, string> {
     return this.with(step(engine.toLowerCase));
   }
 
-  /** Not empty — Laravel's `required` (put it after `.trim()`: whitespace is no text). */
+  /** Not empty (put it after `.trim()`: whitespace is no text). */
   required(): this {
     return this.with(step(() => engine.check((value: string) => value !== '', engine.message('required'))));
   }
@@ -358,7 +351,7 @@ export class StringRule extends Rule<string, string> {
   }
 }
 
-/** A format `''` never matches: an empty field is a missing one there (E208). */
+/** A format `''` never matches: an empty field is a missing one there. */
 const FORMAT = { keepsEmpty: false } as const;
 
 function isUrl(value: string, protocols: ReadonlySet<string>): boolean {
@@ -401,7 +394,7 @@ export class NumberRule extends Rule<number, number | `${number}`> {
 
 /** A list, each item checked by its rule (`r.array(r.string().max(30))`). Sizes count items. */
 export class ArrayRule<Item, ItemInput, In = ItemInput[]> extends Rule<Item[], In> {
-  /** Not on a list (E197): put `.live()` on its item rule — `r.array(r.string().exists(Tags, 'slug').live())`; it throws here. */
+  /** Not on a list: put `.live()` on its item rule — `r.array(r.string().exists(Tags, 'slug').live())`; it throws here. */
   override live(this: typeof LIVE_ON_CONTAINER): never {
     throw new TypeError(LIVE_ON_CONTAINER);
   }
@@ -461,13 +454,13 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
     return objectParts(this).shape as S;
   }
 
-  /** Not on an object (E197): put `.live()` on the field whose being taken is no secret — it throws here. */
+  /** Not on an object: put `.live()` on the field whose being taken is no secret — it throws here. */
   override live(this: typeof LIVE_ON_CONTAINER): never {
     throw new TypeError(LIVE_ON_CONTAINER);
   }
 
   /**
-   * Fields checked only when `condition` holds for the others (Laravel's `sometimes`/`required_if`), else left out:
+   * Fields checked only when `condition` holds for the others, else left out:
    *
    * ```ts
    * r.object({ kind: r.in(['person', 'company']) }).when((data) => data.kind === 'company', { vat: r.string().trim().required() })
@@ -479,8 +472,8 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
   }
 
   /**
-   * `confirmation` (default `<field>_confirmation`) repeats `field` — Laravel's `confirmed`, reported on the confirmation field
-   * (where a form shows it) once `field` itself is valid.
+   * `confirmation` (default `<field>_confirmation`) repeats `field` — reported on the confirmation field (where a form shows
+   * it) once `field` itself is valid.
    */
   confirmed(field: keyof S & string, confirmation: string = `${field}_confirmation`): this {
     const parts = objectParts(this);

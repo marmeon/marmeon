@@ -16,7 +16,7 @@ type InputOf<R> = R extends Rule<any, any> ? InferInput<R> : never;
 type OutputOf<R> = R extends Rule<any, any> ? InferOutput<R> : never;
 
 /**
- * `S` when every field can be read from a URL — the message the compiler shows otherwise (E56): a query is parsed field by field,
+ * `S` when every field can be read from a URL — the message the compiler shows otherwise: a query is parsed field by field,
  * an invalid field falls back to its default, and a URL never answers 422.
  */
 export type CheckQueryFields<S extends Shape> = {
@@ -34,7 +34,7 @@ function numberRule(): NumberRule {
 }
 
 function stringRule(): StringRule {
-  // `''` is a string (E208): a modifier keeps it — the formats (email(), url() …) say otherwise.
+  // `''` is a string: a modifier keeps it — the formats (email(), url() …) say otherwise.
   return new StringRule(definition(engine.stringEngine, { keepsEmpty: true }));
 }
 
@@ -45,29 +45,17 @@ function choice<const T extends readonly (string | number)[]>(values: T, key: 'i
     spelled.set(value, value);
     if (typeof value === 'number') spelled.set(String(value), value);
   }
-  // E208: `''` is a value only where it is one of the options; else it is a form's empty field — missing (a `<select>`'s placeholder).
+  // `''` is a value only where it is one of the options; else it is a form's empty field — missing (a `<select>`'s placeholder).
   return new Rule(definition(() => engine.typed(key, (value) => spelled.has(value), (value) => spelled.get(value)), { keepsEmpty: spelled.has('') }));
 }
 
 /**
- * The rules (E197) — Laravel's names, typed: each builds a Standard Schema object that `defineRequest`, a job's
- * `static schema` and `parseQuery` take. Messages come in the request's language (`marmeon.validation.*`, English and German in
- * @marmeon/i18n; English without it), the first problem of a field only (`bail`).
- *
- * ```ts
- * import { rules as r } from '@marmeon/validation';
- *
- * schema: r.object({
- *   name:    r.string().trim().required().max(255),
- *   email:   r.string().trim().lowercase().required().email().max(255).unique(UserRepository, 'email', { ignore: (ctx) => ctx.user.id }),
- *   website: r.url().nullable(),
- *   tags:    r.array(r.string().max(30)).max(10).default([]),
- * }),
- * query: r.query({ sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1) }),
- * ```
+ * The rules, typed: each builds a Standard Schema object that `defineRequest`, a job's `static schema` and `parseQuery` take.
+ * Messages come in the request's language (`marmeon.validation.*`; English without @marmeon/i18n), the first problem of a field
+ * only. See `docs/validation.md#available-rules`.
  */
 export const rules = {
-  /** A string (`''` too, also with `.optional()`/`.nullable()`/`.default()`, E208 — `.required()` asks for some text). */
+  /** A string (`''` too, also with `.optional()`/`.nullable()`/`.default()` — `.required()` asks for some text). */
   string: stringRule,
 
   /** A number — or a string that spells one (`'42'`, what a form or a URL sends): becomes a number. */
@@ -79,14 +67,14 @@ export const rules = {
   /** true or false — and `1`/`0`, `'on'`/`'off'`, `'yes'`/`'no'`, `'true'`/`'false'` (forms, URLs). */
   boolean: (): Rule<boolean, BooleanInput> => new Rule(definition(() => engine.typed('boolean', (value) => engine.toBoolean(value) !== undefined, engine.toBoolean))),
 
-  /** Accepted — a ticked checkbox (`on`), `yes`, `1`, `true` — Laravel's `accepted` (terms of service). Becomes `true`. */
+  /** Accepted — a ticked checkbox (`on`), `yes`, `1`, `true` (terms of service). Becomes `true`. */
   accepted: (): Rule<true, AcceptedInput> =>
     // Missing is "must be accepted" too (an unticked checkbox sends nothing), not "required".
     new Rule(definition(() => engine.runsWhenMissing(engine.typed('accepted', (value) => engine.toBoolean(value) === true, () => true, engine.message('accepted'))))),
 
   /**
-   * One of `values` — Laravel's `in`. Numbers are taken as a form or a URL spells them too (`'25'` for `25`). `''` is a value only
-   * when it is one of them; else an empty field (a `<select>`'s placeholder) counts as missing for `.optional()`/`.default()` (E208).
+   * One of `values`. Numbers are taken as a form or a URL spells them too (`'25'` for `25`). `''` is a value only
+   * when it is one of them; else an empty field (a `<select>`'s placeholder) counts as missing for `.optional()`/`.default()`.
    */
   in: <const T extends readonly [string | number, ...(string | number)[]]>(values: T): Rule<T[number], T[number] | Spelled<T[number]>> => choice(values, 'in'),
 
@@ -101,7 +89,7 @@ export const rules = {
         async,
         contextual: options.some((option) => option['~rule'].contextual),
         container: true,
-        // `''` is a value when one of the rules takes it (E208).
+        // `''` is a value when one of the rules takes it.
         keepsEmpty: options.some((option) => option['~rule'].keepsEmpty),
       }),
     );
@@ -149,7 +137,7 @@ export const rules = {
   isoTimestamp: (): StringRule => stringRule().isoTimestamp(),
 
   /**
-   * A query (E55/E56): an object of fields read from the URL — strings, so `r.integer()`, `r.boolean()` and `r.in([10, 25])` take
+   * A query: an object of fields read from the URL — strings, so `r.integer()`, `r.boolean()` and `r.in([10, 25])` take
    * their spelling — where **every field has a default** (or is optional): `parseQuery` lets an invalid field fall back to it, so
    * a URL never answers 422. The compiler names a field without one.
    *

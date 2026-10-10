@@ -5,7 +5,7 @@ import type { OtelApi } from './api.ts';
 
 /** What the instrumentation needs besides the API. */
 export interface InstrumentOptions {
-  /** The app's redactor (E125): every attribute that may hold a secret goes through it — the same one as the error page's. */
+  /** The app's redactor: every attribute that may hold a secret goes through it — the same one as the error page's. */
   readonly redactor: Redactor;
   /** The app's log context sources — `trace_id` and `span_id` are added to each log entry written inside a span. */
   readonly logContext?: LogContextSources;
@@ -14,11 +14,11 @@ export interface InstrumentOptions {
   /** The tracer's name (default `@marmeon/otel`). */
   readonly tracerName?: string;
   /**
-   * Continue the trace of an incoming request's `traceparent` (and take its baggage) — `OTEL_TRUST_TRACEPARENT=true`. Off by default
-   * (W10 step 8, Max 07.10.): anyone can send the header, so every request starts a trace of its own and the caller's context is
-   * only a **link** of its server span — findable, but its trace id and its sampling decision are not taken. Turn it on only
-   * where the edge in front of the app (a gateway, an ingress) sets or strips the header itself, or for an internal service
-   * whose callers are your own. A trusted proxy is no such edge by itself: it usually passes the client's header on unchanged.
+   * Continue the trace of an incoming request's `traceparent` (and take its baggage) — `OTEL_TRUST_TRACEPARENT=true`. Off by
+   * default: anyone can send the header, so every request starts a trace of its own and the caller's context is only a **link**
+   * of its server span — findable, but its trace id and its sampling decision are not taken. Turn it on only where the edge in
+   * front of the app (a gateway, an ingress) sets or strips the header itself, or for an internal service whose callers are your
+   * own. A trusted proxy is no such edge by itself: it usually passes the client's header on unchanged.
    */
   readonly trustTraceparent?: boolean;
   /**
@@ -28,7 +28,7 @@ export interface InstrumentOptions {
    */
   readonly recordQueryValues?: boolean;
   /**
-   * The app's environment (`APP_ENV`, E217): `deployment.environment.name` on every span the framework starts. The resource is the
+   * The app's environment (`APP_ENV`): `deployment.environment.name` on every span the framework starts. The resource is the
    * SDK's — the app's `bootstrap/telemetry.ts` — so the framework says it per span; `OTEL_RESOURCE_ATTRIBUTES` puts it on the resource.
    */
   readonly environment?: string;
@@ -48,7 +48,7 @@ export function traceparentOf(span: Span): string {
 }
 
 /**
- * Turns `app`'s channels (E118) into spans (E120), following OpenTelemetry's semantic conventions — `{method} {route}` server
+ * Turns `app`'s channels into spans, following OpenTelemetry's semantic conventions — `{method} {route}` server
  * spans with `http.route` and `http.response.status_code`, `db.query.text` without parameters, messaging spans for jobs —
  * and puts each operation's work into its span's context (`channels.around`), so what happens inside (queries, dispatches,
  * log lines, the app's own spans) is its child. Returns `off`.
@@ -186,7 +186,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             attributes: clean({
               ...deployment,
               'db.system.name': system,
-              // The statement only — its parameters never (E125): Kysely binds every value, so the text holds placeholders.
+              // The statement only — its parameters never: Kysely binds every value, so the text holds placeholders.
               'db.query.text': redactor.text(query.sql),
               'db.operation.name': operation,
               'db.collection.name': table,
@@ -201,7 +201,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
     }),
   );
 
-  // ---- queue.dispatch: a producer span; its context goes with the job (E131) ----
+  // ---- queue.dispatch: a producer span; its context goes with the job ----
   offs.push(
     channels.subscribe(app, 'queue.dispatch', {
       start: (dispatch: QueueDispatchMessage) => {
@@ -379,8 +379,8 @@ function parseUrl(url: string): URL | undefined {
 }
 
 /**
- * The path as requested, with the values of sensitive route parameters (`/reset/:token`) replaced — names the redactor knows
- * (E125); the rest of the path through the redactor's text rules.
+ * The path as requested, with the values of sensitive route parameters (`/reset/:token`) replaced — names the redactor
+ * knows; the rest of the path through the redactor's text rules.
  */
 export function redactedPath(path: string, pattern: string | undefined, redactor: Redactor): string {
   return redactor.path(path, pattern);
@@ -415,7 +415,7 @@ function errorType(error: unknown): string {
   return typeof error;
 }
 
-/** The exception event of a span — its message and stack redacted like a log entry's (E125). */
+/** The exception event of a span — its message and stack redacted like a log entry's. */
 function exceptionOf(error: unknown, redactor: Redactor): { name: string; message: string; stack?: string } {
   if (error instanceof Error) return { name: errorType(error), message: redactor.text(error.message), ...(error.stack ? { stack: redactor.text(error.stack) } : {}) };
   return { name: typeof error, message: redactor.text(String(error)) };

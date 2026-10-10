@@ -94,18 +94,10 @@ export class Locales {
 }
 
 /**
- * Translators for any locale — outside a request too (finding 3 of W6): a root service, so a job, a command, a scheduled
- * task or a queued listener injects it like anything else. Each translator it hands out is fixed to its locale (no
- * global state, nothing set later):
- *
- * ```ts
- * constructor(translators: Translators) { this.#translators = translators; }
- * await this.#mailer.queue(new ResetPasswordMail(user, url, this.#translators.for(user.locale)));   // the recipient's language
- * ```
- *
- * `for(locale)` takes the supported locale `locale` names (in the app's spelling), else `APP_LOCALE` — never a locale
- * the app does not have. Inside a request, `Translator` is the request's language; in a job or a command it is
- * `APP_LOCALE`: whoever a text is for, ask `Translators`.
+ * Translators for any locale, outside a request too — a root service a job, a command or a queued listener injects; each
+ * translator is fixed to its locale. `for(locale)` takes the supported locale `locale` names, else `APP_LOCALE` — never a
+ * locale the app does not have. Whoever a text is for, ask `Translators`: `Translator` is the request's language, and
+ * `APP_LOCALE` in a job or a command. See `docs/localization.md#translators-any-language-anywhere`.
  */
 export class Translators {
   readonly #catalog: Catalog;
@@ -140,7 +132,7 @@ export class Translators {
 }
 
 /**
- * The signed-in user's stored locale, if the app keeps one (Laravel's `HasLocalePreference`) — `SetLocale` asks
+ * The signed-in user's stored locale, if the app keeps one — `SetLocale` asks
  * after the session and before the browser. Bound per request; the default knows none. Bind your own in a provider:
  *
  * ```ts
@@ -199,15 +191,9 @@ export class SetLocale {
 
 /**
  * A validation message by key, for a rule that takes one — in the request's language when validation fails:
- *
- * ```ts
- * slug: r.string().regex(/^[a-z0-9-]+$/, trans('teams.validation.slug')),
- * ```
- *
- * The key is checked like `translator.get()`'s. Placeholders are filled from `params`, the field's name (`{attribute}`) and
- * the rule's parameters (`{min}`, `{max}`). A rule's own message is replaced per request with `defineRequest({ messages })`;
- * a schema of another library (Valibot, Zod) takes `trans()` where it takes a message function (`{requirement}`: the 2 of
- * Valibot's `v.minLength(2, …)`).
+ * `r.string().regex(/^[a-z0-9-]+$/, trans('teams.validation.slug'))`. The key is checked like `translator.get()`'s;
+ * placeholders come from `params`, the field's name (`{attribute}`) and the rule's parameters (`{min}`, and Valibot's
+ * `{requirement}` where another library's schema takes it as its message function). See `docs/validation.md#messages`.
  */
 export function trans<K extends TranslationKey | (string & {})>(
   key: CheckTranslationKey<K>,
@@ -217,9 +203,9 @@ export function trans<K extends TranslationKey | (string & {})>(
 }
 
 /**
- * The language files' modules, by URL, once per process. Node keeps a module by its URL anyway; under a module runner (Vitest) every
- * `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test (W9 step 1: under load
- * that made `createTestApp` take seconds). A failed import is not kept.
+ * The language files' modules, by URL, once per process. Node keeps a module by its URL anyway; under a module runner (Vitest)
+ * every `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test. A failed
+ * import is not kept.
  */
 const langModules = new Map<string, Promise<unknown>>();
 function importLangFile(url: string): Promise<unknown> {

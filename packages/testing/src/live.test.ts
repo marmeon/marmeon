@@ -86,7 +86,7 @@ const definition: ApplicationOptions = {
   modules: [defineModule({ name: 'board', routes })],
 };
 
-describe('live props through the app — the page declares, the stream hints (W6.10)', () => {
+describe('live props through the app — the page declares, the stream hints', () => {
   it('signs what a page, a layer and an island follow into their objects — a page also what every page shares', async () => {
     const app = await createTestApp(definition);
     const ada = app.withSession({ who: 'ada' });
@@ -120,7 +120,7 @@ describe('live props through the app — the page declares, the stream hints (W6
     expect(app.broadcast.refreshed('board.7')[0]?.connection).toBe('tab-a-0001');
   });
 
-  it('the stream is read-only: no cookie, the session not written — and its headers are those of E104', async () => {
+  it('the stream is read-only: no cookie, the session not written — with the stream headers', async () => {
     const app = await createTestApp(definition);
     const ada = app.withSession({ who: 'ada' });
     const stream = await ada.live('/boards/7');
@@ -153,7 +153,7 @@ describe('live props through the app — the page declares, the stream hints (W6
     expect(tabB.events.map((each) => each.event)).toEqual(['hello', 'end']);
     await app.withSession({ who: 'grace' }).post('/boards/7/cards');
     expect(tabB.hints).toEqual([]);
-    // The tab's cookie still names the old session — gone from the store: no session, no stream (E143: none is made for it).
+    // The tab's cookie still names the old session — gone from the store: no session, no stream (none is made for it).
     expect((await ada.withHeaders({}).live(page.live!)).status).toBe(200); // `withSession` writes the session afresh (a test view)
     const stale = await app.withUnencryptedCookie('marmeon_session', 'gone').live(page.live!);
     expect(stale.status).toBe(401);

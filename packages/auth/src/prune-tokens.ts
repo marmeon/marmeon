@@ -7,7 +7,7 @@ import { AccessTokenStore } from './tokens.ts';
 /**
  * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than
  * `AUTH_RESET_EXPIRE`, expired remember-me tokens, and API tokens expired more than `--hours` ago (a lookup drops only
- * the one it finds; expired API tokens were never deleted before). Valid tokens stay. For the scheduler:
+ * the one it finds). Valid tokens stay. For the scheduler:
  * `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`.
  */
 export class PruneTokensCommand {

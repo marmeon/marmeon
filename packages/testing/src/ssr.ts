@@ -23,7 +23,7 @@ interface Resolved {
   readonly deferred: Map<string, DeferredResult | null>;
   /** Streamed: the page as the server rendered it (its live props) — rendered once more, completely, for the comparison. */
   page?: PageObject;
-  /** The response's CSP nonce, when it had one (E147). */
+  /** The response's CSP nonce, when it had one. */
   nonce?: string;
 }
 
@@ -36,7 +36,7 @@ export class TestSsr {
   readonly renderer: PageRenderer;
   readonly #close: () => Promise<void>;
   readonly #errors = new Map<string, unknown[]>();
-  /** What each render's islands and deferred groups resolved to (E49) — the browser renders them again from that, not from a request. */
+  /** What each render's islands and deferred groups resolved to — the browser renders them again from that, not from a request. */
   readonly #resolved = new Map<string, Resolved>();
   readonly #stream: boolean;
   #next = 0;
@@ -56,7 +56,7 @@ export class TestSsr {
         const { resolveIsland, resolveDeferred } = options;
         const seen = id ? resolved.get(id) : undefined;
         if (seen && stream) seen.page = page;
-        // The response's CSP nonce (E147): the browser reads the same document — rendered again with it.
+        // The response's CSP nonce: the browser reads the same document — rendered again with it.
         if (seen && options.nonce) seen.nonce = options.nonce;
         try {
           const document = await renderer.render(page, request, {
@@ -116,7 +116,7 @@ export class TestSsr {
     this.#resolved.delete(id);
     if (!page || errors.length > 0) return { errors, rerendered: undefined };
     const noop = () => {};
-    // The browser's view: its islands and deferred groups as the server streamed them (E49) — never asked for again.
+    // The browser's view: its islands and deferred groups as the server streamed them — never asked for again.
     const options = {
       // Streamed: both the same way — the late parts come from what was recorded, so only the props can differ.
       complete: !this.#stream,

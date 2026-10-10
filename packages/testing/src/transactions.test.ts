@@ -6,7 +6,7 @@ import { AfterResponse, Controller, defineRoutes, HttpServiceProvider } from '@m
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
 
-// The HTTP kernel cuts the ambient transaction context (E107) at its own boundary: work after the response.
+// The HTTP kernel cuts the ambient transaction context at its own boundary: work after the response.
 
 interface NotesTables {
   notes: { id: Generated<number>; title: string; pinned: Generated<boolean> };

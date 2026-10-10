@@ -56,7 +56,7 @@ function gateFor(user: AuthUser | undefined, { admin = false } = {}) {
 
 const post = (id: number, authorId: number, draft = false): Post => ({ id, authorId, draft });
 
-describe('Gate.abilities — an explicit projection (E61)', () => {
+describe('Gate.abilities — an explicit projection', () => {
   it('answers one boolean per named ability — never the reason of a denial', async () => {
     const { gate, Policy } = gateFor(ada);
     const answer = await gate.abilities(post(1, 2, true), Policy, ['update', 'view', 'publish']);
@@ -78,7 +78,7 @@ describe('Gate.abilities — an explicit projection (E61)', () => {
     expect(calls.update).toBe(1);
   });
 
-  it('asks only what it names — no ability that is not named runs (counter-check: no implicit can())', async () => {
+  it('asks only what it names — no ability that is not named runs (no implicit can())', async () => {
     const { gate, Policy, calls } = gateFor(ada);
     await gate.abilities(post(1, 1), Policy, ['update']);
     expect(calls).toEqual({ built: 1, before: ['update'], update: 1, publish: 0, view: 0, create: 0 });

@@ -9,8 +9,8 @@ export default function Register({ old }: Props) {
   const route = useRoute();
   const t = useTranslation('auth');
   // Live validation: name and e-mail are checked against the server's schema when you leave them — the e-mail's form
-  // only: whether an address has an account is never told (private registration; with AUTH_PRIVATE_REGISTRATION=false a
-  // taken address shows before you send). Password fields never are (never sent for a check): their rules are checked on submit.
+  // only, never whether it has an account (with AUTH_PRIVATE_REGISTRATION=false a taken address is said on submit).
+  // Password fields are never sent for a check: their rules are checked on submit.
   const form = useForm(
     'auth.register.store',
     {},

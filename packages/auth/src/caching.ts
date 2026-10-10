@@ -6,14 +6,10 @@ import { AUTH_SESSION_KEYS } from './auth.ts';
 export const NO_STORE = 'no-store, private';
 
 /**
- * Answers for a signed-in user are never stored (`Cache-Control: no-store, private`): pages, their JSON for
- * client-side visits, redirects and error pages. Without it, the browser keeps them in its HTTP cache, and
- * "Back" after signing out shows them again — without asking the server (and Chromium keeps `no-store`
- * pages out of the back/forward cache).
- *
- * In the `web` group of every app with @marmeon/auth (inside the session: it asks the session, after the
- * route, whether someone is signed in — no user lookup). A route that sets its own `Cache-Control` keeps it:
- * `cacheControl('private, max-age=60')` from @marmeon/http, or the header on its response.
+ * Answers for a signed-in user are never stored (`Cache-Control: no-store, private`), so "Back" after signing out cannot
+ * show them from the HTTP cache (Chromium keeps `no-store` pages out of the back/forward cache too). Asks the session, never
+ * loads the user; a route that sets its own `Cache-Control` keeps it. See
+ * `docs/authentication.md#signed-in-pages-are-never-cached`.
  */
 export class NoStoreWhenSignedIn {
   readonly #session: Session;

@@ -75,7 +75,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(await hasher.verify('new password', hash)).toBe(true);
     expect(forgotten).toEqual([1]);
     expect(events.map((event) => event.constructor.name)).toEqual(['PasswordReset']);
-    // Counter-check: the same token a second time
+    // The same token a second time
     expect(await broker().reset('ada@example.com', created!.token, 'another')).toBeUndefined();
     expect(await hasher.verify('new password', hash)).toBe(true);
   });
@@ -99,7 +99,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(await apiTokens.find(kept.plainText), 'revoked without the option').toBeDefined();
   });
 
-  it('counter-check: the revocation fails — the transaction rolls back, every token stays valid', async () => {
+  it('a failed revocation rolls the transaction back — every token stays valid', async () => {
     const adas = [await apiTokens.create(1, 'cli')];
     const failing: AccessTokenStore = Object.assign(Object.create(apiTokens) as AccessTokenStore, {
       revokeAll: async (userId: number | string) => {
@@ -115,7 +115,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(await hasher.verify('old password', hash), 'a new hash next to live tokens').toBe(true);
   });
 
-  it('counter-check: an expired token, another e-mail’s token, a guessed token — all one answer', async () => {
+  it('an expired token, another e-mail’s token, a guessed token — all one answer', async () => {
     const created = (await broker().createToken('ada@example.com'))!;
     expect(await broker().reset('alan@example.com', created.token, 'x'.repeat(8))).toBeUndefined(); // another e-mail
     expect(await broker().reset('ada@example.com', 'A'.repeat(43), 'x'.repeat(8))).toBeUndefined(); // guessed

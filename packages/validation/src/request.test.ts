@@ -140,7 +140,7 @@ class InviteController {
 function wrapped(inner: StandardSchemaV1): StandardSchemaV1 {
   return { '~standard': { version: 1, vendor: 'other', validate: (value) => inner['~standard'].validate(value) } };
 }
-// `live: true`: the request lets a live validation run its foreign schema (E206) — so only the mark on the issue (NOT_LIVE) keeps
+// `live: true`: the request lets a live validation run its foreign schema — so only the mark on the issue (NOT_LIVE) keeps
 // what our not-live rule found out of the answer.
 const WrappedRequest = defineRequest({ schema: wrapped(r.object({ code: r.string().custom(async (code) => code !== 'taken') })), live: true });
 class WrappedController {
@@ -151,7 +151,7 @@ class WrappedController {
 }
 
 /**
- * A page builder's block (E208): a subtitle cleared on purpose is `''` — neither missing (the block keeps it empty) nor an error;
+ * A page builder's block: a subtitle cleared on purpose is `''` — neither missing (the block keeps it empty) nor an error;
  * an empty number, link or choice is a form's empty field — missing.
  */
 const BlockRequest = defineRequest({
@@ -233,7 +233,7 @@ describe('database rules in a request', () => {
   });
 });
 
-describe('live validation (E62) never asks the database unless the rule says .live() (E187/E193/E197)', () => {
+describe('live validation never asks the database unless the rule says .live()', () => {
   it('the rule does not run: no query, and a taken and a free address get the same answer', async () => {
     const { live, users } = app();
     const taken = await live('/profile', { name: 'Ada', email: 'alan@example.com' }, 'email');
@@ -308,7 +308,7 @@ describe('live validation (E62) never asks the database unless the rule says .li
   });
 });
 
-describe('messages and attributes (Laravel\'s messages() and attributes())', () => {
+describe('messages and attributes', () => {
   const german: Record<string, string> = {
     'profile.email_taken': 'Diese Adresse ist vergeben.',
     'profile.fields.email': 'E-Mail',
@@ -353,7 +353,7 @@ describe('messages and attributes (Laravel\'s messages() and attributes())', () 
   });
 });
 
-describe('an empty string in a request — by type (E208)', () => {
+describe('an empty string in a request — by type', () => {
   const { send } = app();
   const cleared = { title: 'Pricing', subtitle: '', caption: '', cta: '', width: '', link: '', align: '' };
   const expected = {

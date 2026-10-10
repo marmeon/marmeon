@@ -1,4 +1,4 @@
-// The engine under the rules: Valibot (E197) — inside this package only. Nothing here is public: no exported type names a
+// The engine under the rules: Valibot — inside this package only. Nothing here is public: no exported type names a
 // Valibot type (an app's `.d.ts` would need `valibot` then — TS2742), so schemas leave this module as the opaque `Engine`.
 import type { StandardIssue, StandardOptions, StandardResult } from '@marmeon/core';
 import { messageOf, NOT_LIVE, translatable, type ValidationContext } from '@marmeon/router';
@@ -14,7 +14,7 @@ export interface Engine {
 export interface BuildContext {
   /** The request's, when the router validates (`libraryOptions.marmeon`) — none for a config, a job or a schema on its own. */
   readonly request: ValidationContext | undefined;
-  /** A live validation (E62): rules that are not live (`unique`, `exists`, async rules) do not run. */
+  /** A live validation: rules that are not live (`unique`, `exists`, async rules) do not run. */
   readonly live: boolean;
   /** `.live()` on this rule or one around it: its rules run in a live validation too. */
   readonly liveOptIn: boolean;
@@ -53,7 +53,7 @@ export function ownMessage(text: RuleMessage): Message {
   return typeof text === 'function' ? text : translatable(text, undefined, text);
 }
 
-/** `message`, and the issue says its rule is not live (E197) — a live validation drops it even if the rule ran. */
+/** `message`, and the issue says its rule is not live — a live validation drops it even if the rule ran. */
 export function notLive(message: Message): Message {
   return (issue) => {
     Object.defineProperty(issue, NOT_LIVE, { value: true, configurable: true });
@@ -61,7 +61,7 @@ export function notLive(message: Message): Message {
   };
 }
 
-/** How the rules validate: the first problem of a field only (Laravel's `bail` — what a form shows next to the field). */
+/** How the rules validate: the first problem of a field only — what a form shows next to the field. */
 const CONFIG = { abortPipeEarly: true } as const;
 
 /**
@@ -276,12 +276,12 @@ export interface Modifier {
   readonly nullable: boolean;
   /** `.default(value)`: what a missing value becomes (a copy of it, for an object or a list). */
   readonly fallback?: { readonly value: unknown } | undefined;
-  /** `''` is a value of the rule (E208: a string's, an `r.in()` that lists it) — never "missing". */
+  /** `''` is a value of the rule (a string's, an `r.in()` that lists it) — never "missing". */
   readonly keepsEmpty: boolean;
 }
 
 /**
- * `.optional()`, `.nullable()`, `.default()`: what a missing value is. An empty string (E208, "by type"): a value where the rule
+ * `.optional()`, `.nullable()`, `.default()`: what a missing value is. An empty string ("by type"): a value where the rule
  * takes it — a string (a page builder's subtitle somebody cleared on purpose is `''`, not missing), an `r.in()` that lists `''` —;
  * where it never can be one (a number, a boolean, an e-mail address, a date, a list …) it is a form's empty field and counts as
  * missing: `null` where the rule is nullable and has no default, else undefined (the default).

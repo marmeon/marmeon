@@ -15,7 +15,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
   });
   afterAll(() => close());
 
-  it('deletes expired reset, remember-me and API tokens — every valid one stays (finding 5)', async () => {
+  it('deletes expired reset, remember-me and API tokens — every valid one stays', async () => {
     const clock = new TestClock();
     clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
     const resets = new DatabasePasswordResetTokens(connections, clock);

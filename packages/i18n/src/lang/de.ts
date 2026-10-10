@@ -40,7 +40,7 @@ export default {
       type: 'Dieser Dateityp ist nicht erlaubt (erlaubt: {types}).',
     },
     more: '(und {count, plural, one {# weiterer Fehler} other {# weitere Fehler}})',
-    // Die Regeln von @marmeon/validation (E197).
+    // Die Regeln von @marmeon/validation.
     required: 'Das Feld {attribute} ist erforderlich.',
     string: 'Das Feld {attribute} muss ein Text sein.',
     number: 'Das Feld {attribute} muss eine Zahl sein.',

@@ -18,7 +18,7 @@ function flatten(messages: object, prefix = ''): Record<string, string> {
 
 const catalog = new Catalog({ fallback: 'en' }).add('en', 'marmeon', frameworkEn, 'en').add('de', 'marmeon', frameworkDe, 'de');
 
-describe('the texts of @marmeon/validation (E197): English and German for every rule', () => {
+describe('the texts of @marmeon/validation: English and German for every rule', () => {
   const rules = flatten(VALIDATION_TEXTS);
   const en = flatten(frameworkEn.validation);
   const de = flatten(frameworkDe.validation);

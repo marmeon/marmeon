@@ -12,7 +12,7 @@ declare const passwordHash: unique symbol;
 export type PasswordHash = string & { readonly [passwordHash]: true };
 
 /**
- * Hashes and checks passwords (Laravel's `Hash`). Passwords are never trimmed, but **Unicode-normalized
+ * Hashes and checks passwords. Passwords are never trimmed, but **Unicode-normalized
  * (NFKC)** before hashing, as NIST SP 800-63B asks: `é` typed as one code point (Windows) or as `e` plus
  * a combining accent (macOS) is the same password. Strings with lone surrogates are refused (they
  * would encode as U+FFFD and collide). At most {@link MAX_PASSWORD_BYTES} long, after normalizing.

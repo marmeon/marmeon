@@ -12,7 +12,7 @@ function declarations(dir: string): string[] {
   );
 }
 
-describe('@marmeon/validation: Valibot stays inside (E197)', () => {
+describe('@marmeon/validation: Valibot stays inside', () => {
   it('is a dependency of the package — the app installs nothing for it', () => {
     const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as Record<string, Record<string, string> | undefined>;
     expect(manifest.dependencies?.valibot).toMatch(/^\^1\.\d+\.\d+$/);

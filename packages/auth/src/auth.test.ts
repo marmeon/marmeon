@@ -234,7 +234,7 @@ describe('Auth (session guard)', () => {
     expect(await (await send('/me')).json()).toEqual({ id: 1, name: 'Ada' });
   });
 
-  it('counter-check (session fixation): the session id and the CSRF token from before the login do not survive it', async () => {
+  it('session fixation: the session id and the CSRF token from before the login do not survive it', async () => {
     const { add, browser, store, application } = await boot();
     await add(ada);
     const { send, cookie } = browser();
@@ -252,7 +252,7 @@ describe('Auth (session guard)', () => {
     expect(JSON.parse(current!.data)).toMatchObject({ [AUTH_SESSION_KEYS.id]: 1 });
   });
 
-  it('the Login event carries the request\'s address (through TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo, E169)', async () => {
+  it('the Login event carries the request\'s address (through TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo)', async () => {
     const { add, kernel } = await boot({ env: { TRUSTED_PROXIES: '127.0.0.1' } });
     await add(ada);
     events.length = 0;
@@ -284,7 +284,7 @@ describe('Auth (session guard)', () => {
     expect(events.filter((event) => event instanceof Failed).slice(-2).map((event) => (event as Failed).identifier)).toEqual(['ada@example.com', 'nobody@example.com']);
   });
 
-  it('counter-check (enumeration by timing): an unknown e-mail takes as long as a wrong password', async () => {
+  it('enumeration by timing: an unknown e-mail takes as long as a wrong password', async () => {
     const users = new MemoryUsers();
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
@@ -316,7 +316,7 @@ describe('Auth (session guard)', () => {
     expect(users.rows.get(1)!.hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/);
   });
 
-  it('counter-check (password changed elsewhere): other sessions end on their next request', async () => {
+  it('a password changed elsewhere ends the other sessions on their next request', async () => {
     const { add, users, browser, application } = await boot();
     await add(ada);
     const laptop = browser();
@@ -363,7 +363,7 @@ describe('Auth (session guard)', () => {
     expect((events[0] as Login).user).toEqual(ada);
   });
 
-  it('says how the user signed in — and is queueable (E86): its payload is JSON, `at` an ISO string', async () => {
+  it('says how the user signed in — and is queueable: its payload is JSON, `at` an ISO string', async () => {
     const { add, browser } = await boot();
     await add(ada);
     events.length = 0;
@@ -432,7 +432,7 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]!;
 }
 
-describe('remember me (E26)', () => {
+describe('remember me', () => {
   const rememberLogin = (send: ReturnType<Awaited<ReturnType<typeof boot>>['browser']>['send']) =>
     send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
 
@@ -462,7 +462,7 @@ describe('remember me (E26)', () => {
     expect(header).toMatch(/; Max-Age=60(4799|4800); HttpOnly; SameSite=Lax$/);
   });
 
-  it('counter-check (copied cookie): the thief and the owner are both signed out, and every device of the user with them', async () => {
+  it('a copied cookie signs out the thief and the owner, and every device of the user with them', async () => {
     const { add, browser } = await boot();
     await add(ada);
     const owner = browser();

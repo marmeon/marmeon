@@ -41,7 +41,7 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
       if (user) return next({ user });
       if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401 });
       // A prefetch (a hovered link) is not where the guest wanted to go — only a visit is remembered (an island's request,
-      // read-only, is no visit either: it gets its `unauthorized` fallback, E52).
+      // read-only, is no visit either: it gets its `unauthorized` fallback).
       if (ctx.request.method === 'GET' && this.#session.started && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
@@ -81,7 +81,7 @@ export interface ConfirmedPasswordOptions<N extends string = string> {
 }
 
 /**
- * Sensitive pages ask for the password again — "sudo mode" (Laravel's `password.confirm`):
+ * Sensitive pages ask for the password again — "sudo mode":
  * `Route.middleware(authenticate()).middleware(confirmedPassword())`. Without a recent confirmation,
  * JSON clients get 423, browsers the confirmation page (and come back afterwards).
  */

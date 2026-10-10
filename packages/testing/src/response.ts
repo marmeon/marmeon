@@ -27,7 +27,7 @@ import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
 import { misnested } from './markup.ts';
 
-/** Where @marmeon/session keeps flash messages waiting for a response that is shown (E60). */
+/** Where @marmeon/session keeps flash messages waiting for a response that is shown. */
 const FLASH_MESSAGES = '_flash_messages';
 
 /** `AUTH_SESSION_KEYS.id` of @marmeon/auth — an optional peer, so not imported at runtime. */
@@ -62,8 +62,7 @@ export type IslandPropsOf<TSource extends IslandSource> = IslandSource extends T
 const PAGE_SCRIPT = new RegExp(`<script type="application/json" id="${PAGE_SCRIPT_ID}">([\\s\\S]*?)</script>`);
 
 /**
- * A response with Laravel-style assertions. The body is read up front, so every
- * assertion is synchronous and can be chained.
+ * A response with assertions. The body is read up front, so every assertion is synchronous and can be chained.
  */
 export class TestResponse {
   readonly status: number;
@@ -278,7 +277,7 @@ export class TestResponse {
     return this;
   }
 
-  /** A live validation (`app.validating(…)`, E62) passed: `204` with `x-marmeon-validated` — naming `fields`, when given. */
+  /** A live validation (`app.validating(…)`) passed: `204` with `x-marmeon-validated` — naming `fields`, when given. */
   assertLiveValid(...fields: string[]): this {
     const validated = this.headers.get(VALIDATED_HEADER);
     if (this.status !== 204 || validated === null) {
@@ -374,7 +373,7 @@ export class TestResponse {
     return this;
   }
 
-  // --- Flash messages (E60) ------------------------------------------------------------
+  // --- Flash messages ------------------------------------------------------------
 
   /**
    * The flash messages this response delivers — a page's or a layer's (`PageObject.flash`), an action's (`x-marmeon-flash`),
@@ -388,7 +387,7 @@ export class TestResponse {
   }
 
   /**
-   * The response delivers a flash message of `key` (E60) — with data that contains `data`, when given (typed by the app's
+   * The response delivers a flash message of `key` — with data that contains `data`, when given (typed by the app's
    * `FlashData`): `assertFlash('toast', { message: 'Profile saved.' })`.
    */
   assertFlash<const K extends string>(key: CheckFlashKey<K>, data?: DeepPartial<FlashValue<K>>): this {
@@ -406,13 +405,13 @@ export class TestResponse {
     return this.#compare(() => partialDeepStrictEqual(messages[0]!.data, data), `The flash message "${key}" carries other data`);
   }
 
-  /** The flash messages waiting in the session after this response (E60) — for the next answer that is shown to take. */
+  /** The flash messages waiting in the session after this response — for the next answer that is shown to take. */
   flashed(): FlashMessage[] {
     return (this.#session?.[FLASH_MESSAGES] as FlashMessage[] | undefined) ?? [];
   }
 
   /**
-   * The response left a flash message of `key` waiting in the session (E60) — a redirect: the page it leads to delivers it.
+   * The response left a flash message of `key` waiting in the session — a redirect: the page it leads to delivers it.
    * With data that contains `data`, when given: `assertFlashed('toast', { message: 'Saved.' })`.
    */
   assertFlashed<const K extends string>(key: CheckFlashKey<K>, data?: DeepPartial<FlashValue<K>>): this {
@@ -442,7 +441,7 @@ export class TestResponse {
     return messages.length === 0 ? 'none' : messages.map((message) => `${message.key} ${JSON.stringify(message.data)}`).join(', ');
   }
 
-  // --- Actions (E59) -----------------------------------------------------------------
+  // --- Actions -----------------------------------------------------------------
 
   /** The answer of an action (`acting()`) that redirected: `204` with `x-marmeon-redirect` — to `url`, when given. */
   assertActionRedirect(url?: string): this {
@@ -452,7 +451,7 @@ export class TestResponse {
     return this;
   }
 
-  // --- Layers (E53) ------------------------------------------------------------------
+  // --- Layers ------------------------------------------------------------------
 
   /**
    * The response is layer `component`'s page object (a client-side request — `app.layering()` — answered by
@@ -474,7 +473,7 @@ export class TestResponse {
   }
 
   /**
-   * The response tells the layer's client to close (`closeLayer()`, E53): `layers` of them (default 1) and, when given, to
+   * The response tells the layer's client to close (`closeLayer()`): `layers` of them (default 1) and, when given, to
    * reload `reload` beneath them.
    */
   assertLayerClosed(expected: Partial<LayerClose> = {}): this {

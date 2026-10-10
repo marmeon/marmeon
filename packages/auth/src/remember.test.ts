@@ -39,7 +39,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(await tokens.consume(rotated)).toMatchObject({ kind: 'valid', userId: 1 });
   });
 
-  it('counter-check (theft): an old validator after the grace period drops every token of the user', async () => {
+  it('theft: an old validator after the grace period drops every token of the user', async () => {
     const stolen = await tokens.create(1, inAMonth());
     await tokens.create(1, inAMonth()); // another device of the same user
     await tokens.create(2, inAMonth()); // someone else

@@ -17,9 +17,9 @@ const userId = v.custom<AuthUserId>((value) => typeof value === 'string' || type
 const MAX_USER_AGENT = 512;
 
 /**
- * A user signed in (password, remember-me cookie, registration). Queueable (E86): a queued listener gets
+ * A user signed in (password, remember-me cookie, registration). Queueable: a queued listener gets
  * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof Login>`, `at` as an ISO-8601 string) and reads
- * the account as it is when it runs. `ip` and `userAgent` are the request's (`RequestInfo`, E169: the address through
+ * the account as it is when it runs. `ip` and `userAgent` are the request's (`RequestInfo`: the address through
  * `TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`login()`; null outside a request.
  */
 export class Login {
@@ -97,7 +97,7 @@ export class Lockout {
 }
 
 /**
- * A new user registered — the app dispatches it (the verification mail listens to it). Queueable (E86): a queued
+ * A new user registered — the app dispatches it (the verification mail listens to it). Queueable: a queued
  * listener gets `{ userId }` (`EventPayload<typeof Registered>`) and reads the account as it is when it runs.
  */
 export class Registered {

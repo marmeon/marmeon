@@ -9,9 +9,9 @@ import type { UserProvider } from './user.ts';
 /**
  * Stores a new password — what `Auth.updatePassword()` and `PasswordBroker.reset()` share: the new hash, every remember-me token
  * of the user dropped, and with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token of the user revoked, in one
- * transaction with the new hash (the app's `UserProvider` joins it, E107), the tokens first — a password that changed never
- * leaves a token behind, and a failed revocation keeps the old password. The token store and the connections are looked up only then: an app that
- * keeps its tokens is not asked for them.
+ * transaction with the new hash (the app's `UserProvider` joins it), the tokens first — a password that changed never
+ * leaves a token behind, and a failed revocation keeps the old password. The token store and the connections are looked up
+ * only then: an app that keeps its tokens is not asked for them.
  */
 export class NewPassword {
   readonly #tokens: () => AccessTokenStore;

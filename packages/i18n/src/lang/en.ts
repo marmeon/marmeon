@@ -40,7 +40,7 @@ const en = {
       type: 'This type of file is not accepted (allowed: {types}).',
     },
     more: '(and {count, plural, one {# more error} other {# more errors}})',
-    // The rules of @marmeon/validation (E197) — the same English as its VALIDATION_TEXTS (a test keeps them equal).
+    // The rules of @marmeon/validation — the same English as its VALIDATION_TEXTS (a test keeps them equal).
     required: 'The {attribute} field is required.',
     string: 'The {attribute} field must be a string.',
     number: 'The {attribute} field must be a number.',

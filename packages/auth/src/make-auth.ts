@@ -4,15 +4,15 @@ import { fileURLToPath } from 'node:url';
 import type { CommandInput } from 'marmeon';
 
 /**
- * The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth`. One set: its registration and change of address are
- * private by default and say "taken" with `AUTH_PRIVATE_REGISTRATION=false` (E146, E193) — decided at run time, not here.
+ * The module templates, per UI adapter: `stubs/<adapter>/modules/auth`. One set: its registration and change of address are
+ * private by default and say "taken" with `AUTH_PRIVATE_REGISTRATION=false` — decided at run time, not here.
  */
 export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
 /**
  * What the generated module imports — reported when the app lacks it (the fixture test checks the list against every import
  * of the templates). `mjml` is the mail package's optional peer behind the templates' `mjml` mails. `marmeon` runs the
- * module in production — `marmeon start`, the worker its mails go through, the scheduler that prunes its tokens (E159) — so
+ * module in production — `marmeon start`, the worker its mails go through, the scheduler that prunes its tokens — so
  * it is a dependency, never a dev dependency.
  */
 export const NEEDED = [
@@ -38,16 +38,15 @@ export const NEEDED = [
 export const NEEDED_FOR_TESTS = ['@marmeon/testing', 'vitest'];
 
 /**
- * `marmeon make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
- * remember-me, password reset, e-mail verification, password confirmation, API tokens, with views,
- * mails, migrations and tests. The code belongs to the app from then on; the mechanics stay in
- * @marmeon/auth.
+ * `marmeon make:auth`: writes a complete auth module into the app — sign-in, registration, remember-me, password reset,
+ * e-mail verification, password confirmation, API tokens, with views, mails, migrations and tests. The code belongs to the
+ * app from then on; the mechanics stay in @marmeon/auth.
  */
 export class MakeAuthCommand {
   static command = 'make:auth';
   static description = 'Create the auth module (sign-in, registration, reset, verification, API tokens) — yours to change';
   static usage = '[--adapter=react] [--force]';
-  // The module is private by default (E193); AUTH_PRIVATE_REGISTRATION=false turns it off at run time — no option for it.
+  // The module is private by default; AUTH_PRIVATE_REGISTRATION=false turns it off at run time — no option for it.
   static options = { force: { type: 'boolean' }, adapter: { type: 'string' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
@@ -78,7 +77,7 @@ export class MakeAuthCommand {
       input.output.line("  import auth from '#modules/auth';");
       input.output.line('  modules: [auth, …]');
     }
-    // Its look (E202): a stylesheet of the app, imported by the client entry — in the built index.html, so a server-rendered
+    // Its look: a stylesheet of the app, imported by the client entry — in the built index.html, so a server-rendered
     // page is styled before its code loads; classes, never `style` attributes (a strict `style-src` blocks those).
     const styled = importStyles(join(input.root, 'bootstrap', 'client.tsx'));
     if (styled === 'added') input.output.success('Imported its styles (modules/auth/auth.css) in bootstrap/client.tsx');
@@ -103,14 +102,14 @@ export class MakeAuthCommand {
     input.output.line('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
     input.output.line('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
-    // The lint preset and the devtools belong to the app, not to the module (W7.6) — named when the app has neither yet.
+    // The lint preset and the devtools belong to the app, not to the module — named when the app has neither yet.
     if (!existsSync(join(input.root, '.oxlintrc.json'))) {
       input.output.line('Lint: marmeon make:lint-config writes the app\'s preset (views import controllers only with import type).');
     }
     if (!('@marmeon/devtools' in installed(input.root))) {
       input.output.line('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -D @marmeon/devtools');
     }
-    // The Content-Security-Policy belongs to the app's middleware too (E147) — named when bootstrap/app.ts has none.
+    // The Content-Security-Policy belongs to the app's middleware too — named when bootstrap/app.ts has none.
     const bootstrap = join(input.root, 'bootstrap', 'app.ts');
     if (existsSync(bootstrap) && !readFileSync(bootstrap, 'utf8').includes('contentSecurityPolicy(')) {
       input.output.line("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page).");

@@ -16,7 +16,7 @@ import type {} from '@marmeon/cache';
 export const AUTH_SESSION_KEYS = {
   /** The user's id (the session package's key: the `database` session driver copies it into `user_id`). */
   id: SESSION_USER_KEY,
-  /** The account's fingerprint when the session signed in (E26): its id, password hash and session key. */
+  /** The account's fingerprint when the session signed in: its id, password hash and session key. */
   password: '_auth_password',
   /** When the password was last typed (sign-in, confirmation), in Unix seconds — for `confirmedPassword()`. */
   confirmedAt: '_auth_confirmed_at',
@@ -41,7 +41,7 @@ declare module '@marmeon/cache' {
 }
 
 /**
- * What the session remembers of the account (E26): a SHA-256 of its id, its password hash and its session key. A new
+ * What the session remembers of the account: a SHA-256 of its id, its password hash and its session key. A new
  * password or a new session key (`auth.updateSessionKey()`) changes it, so every other session's fingerprint stops matching —
  * and that session ends. Two accounts never share one, also without a password. The hash itself never goes into the session.
  */
@@ -55,7 +55,7 @@ export interface LoginOptions {
   readonly remember?: boolean;
   /**
    * The client's address for the `Login` event (for "a new sign-in" notices, audit logs). Default: the request's (`RequestInfo`,
-   * through `TRUSTED_PROXIES` like `ctx.ip`, E169) — pass it only to say something else.
+   * through `TRUSTED_PROXIES` like `ctx.ip`) — pass it only to say something else.
    */
   readonly ip?: string | undefined;
   /** The browser's `User-Agent` header for the `Login` event — default: the request's, like `ip`. */
@@ -136,7 +136,7 @@ export class Auth {
   /**
    * Signs out on this device: the session's data, id and CSRF token are all replaced, the remember-me token is dropped.
    * The browser loads the next page fully (its in-memory pages are gone) and clears its HTTP cache for the site
-   * and the site's storage (`Clear-Site-Data: "cache", "storage"`, E165) — see `ClientHistory`; an app that keeps something in
+   * and the site's storage (`Clear-Site-Data: "cache", "storage"`) — see `ClientHistory`; an app that keeps something in
    * the browser's storage across a sign-out takes that back with `history.clear({ siteData: false })` after `logout()`.
    */
   async logout(): Promise<void> {
@@ -201,7 +201,7 @@ export class Auth {
   }
 
   /**
-   * Signs out every other device (Laravel's `logoutOtherDevices`): checks `password`, then hashes it
+   * Signs out every other device: checks `password`, then hashes it
    * anew — a new salt, a new hash, so the other sessions' fingerprints stop matching — and drops the
    * other devices' remember-me tokens. `false` for a wrong password.
    */
@@ -288,7 +288,7 @@ export class Auth {
     const fingerprint = this.#session.get(AUTH_SESSION_KEYS.password);
     if (!found || typeof fingerprint !== 'string' || !equal(fingerprint, sessionFingerprint(found))) {
       // Deleted, or the password or the session key changed since this session signed in: this session ends — by the next request that may
-      // write it (an island's is read-only, E52: for it, nobody is signed in).
+      // write it (an island's is read-only: for it, nobody is signed in).
       if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
     }
@@ -297,7 +297,7 @@ export class Auth {
 
   async #fromRememberCookie(): Promise<AuthUser | undefined> {
     const cookie = this.#cookies.get(this.#config.rememberCookie);
-    // A read-only request (an island, E52) cannot sign in: consuming the token rotates it, and the new one would never
+    // A read-only request (an island) cannot sign in: consuming the token rotates it, and the new one would never
     // reach the browser (the next request would present the old one — "stolen"). The page's request signs in.
     if (!cookie || this.#session.readOnly) return undefined;
     const result = await this.#remember.consume(cookie);

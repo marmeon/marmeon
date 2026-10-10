@@ -24,12 +24,10 @@ export class AccountDeleted {
 }
 
 /**
- * The one way an account is deleted — the unconfirmed ones `auth:prune-unverified` clears (by hand, or nightly once you turn on its
- * line in schedule.ts), and any deletion the
- * app adds (a "delete my account" page): the row (its remember-me and API tokens go with it — the foreign keys cascade, a pending
- * change of address lives on the row), its password reset token, what other modules keep ({@link AccountDeleted}) — in one
- * transaction — then its sessions (`UserSessions`: the `database` driver removes them; with the others they end at their next
- * request, which finds no user). Irreversible.
+ * The one way an account is deleted — by `auth:prune-unverified` and by any deletion the app adds (a "delete my account"
+ * page): the row (its remember-me and API tokens go with it — the foreign keys cascade), its password reset token and what
+ * other modules keep ({@link AccountDeleted}) in one transaction, then its sessions (`UserSessions`: the `database` driver
+ * removes them; with the others they end at their next request, which finds no user). Irreversible.
  */
 export class AccountDeletion {
   readonly #connections: Connections;

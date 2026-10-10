@@ -70,7 +70,7 @@ describe('PasswordHasher', () => {
     expect(argon2.needsRehash('not a hash' as PasswordHash)).toBe(true);
   });
 
-  it('counter-check: a tampered hash is false, never an exception', async () => {
+  it('a tampered hash is false, never an exception', async () => {
     const hash = await argon2.make('secret');
     const [, , version, params, salt, digest] = hash.split('$') as [string, string, string, string, string, string];
     const tampered = [
@@ -109,7 +109,7 @@ describe('PasswordHasher', () => {
     expect(await argon2.verify(`${longest}x`, hash)).toBe(false);
   });
 
-  it('counter-check: dummyVerify takes as long as a real verify (unknown e-mail ≈ wrong password)', async () => {
+  it('dummyVerify takes as long as a real verify (unknown e-mail ≈ wrong password)', async () => {
     const hasher = new PasswordHasher(); // real costs: differences must not hide in noise
     const hash = await hasher.make('secret');
     await hasher.dummyVerify('warm-up'); // the first call also makes its reference hash

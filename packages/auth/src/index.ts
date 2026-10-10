@@ -15,7 +15,6 @@ import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { warnAboutCookieSessions } from './session-driver.ts';
 import { UserProvider } from './user.ts';
 
-// Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
 export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 export type { LoginOptions } from './auth.ts';
 export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
@@ -109,7 +108,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     warnAboutCookieSessions(app.container);
-    // Private registration turned off where it counts (E193): said once, at boot — like the log mailer and the cookie driver.
+    // Private registration turned off where it counts: said once, at boot — like the log mailer and the cookie driver.
     const config = app.container.make(AuthConfig);
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
     const cli = await import('marmeon').catch(() => undefined);

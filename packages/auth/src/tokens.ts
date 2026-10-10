@@ -9,20 +9,8 @@ import { AuthConfig } from './config.ts';
 export const ACCESS_TOKEN_TABLE = 'personal_access_tokens';
 
 /**
- * The columns {@link DatabaseAccessTokens} needs:
- *
- * ```ts
- * schema.create('personal_access_tokens', (table) => {
- *   table.id();
- *   table.foreignId('user_id').constrained().cascadeOnDelete();
- *   table.string('name');
- *   table.string('token_hash', 64).secret();
- *   table.json('abilities');
- *   table.timestamp('last_used_at').nullable();
- *   table.timestamp('expires_at').nullable();
- *   table.timestamps();
- * });
- * ```
+ * The columns {@link DatabaseAccessTokens} needs — the `personal_access_tokens` migration `make:auth` writes into
+ * `modules/auth/migrations/` creates them (the token only as its SHA-256, a `secret()` column).
  */
 export interface AccessTokenTable {
   id: Generated<number>;
@@ -53,7 +41,7 @@ export interface WithToken {
 }
 
 /**
- * Personal access tokens (E27, Sanctum-style): opaque, `marmeon_<id>|<40 characters><crc32>`. The prefix
+ * Personal access tokens: opaque, `marmeon_<id>|<40 characters><crc32>`. The prefix
  * and the checksum let secret scanners find leaked tokens and let typos fail without a query; only a
  * SHA-256 of the secret is stored — 62⁴⁰ ≈ 2²³⁸ possibilities need no slow hash, and a slow hash per
  * API request would be a lever for anyone sending invalid tokens.

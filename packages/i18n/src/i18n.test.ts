@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
 import { createTranslator } from './translator.ts';
 
-// Counts the translators made (W8 step 9: only for a request that asks for one).
+// Counts the translators made (only for a request that asks for one).
 vi.mock('./translator.ts', async (original) => {
   const actual = await original<typeof import('./translator.ts')>();
   return { ...actual, createTranslator: vi.fn(actual.createTranslator) };
@@ -73,7 +73,7 @@ class ChooseLocaleController extends Controller {
 }
 
 const SignupRequest = defineRequest({
-  // A key of the app for a rule — the request's messages (Laravel's messages()) or trans() in place; the password's are the
+  // A key of the app for a rule — the request's messages or trans() in place; the password's are the
   // framework's (@marmeon/auth).
   schema: r.object({ name: r.string().min(3), email: r.string().regex(/^[^@\s]+@[^@\s]+$/, trans('shop.validation.email')), password: password() }),
   messages: { 'name.min': 'shop.validation.name_min' },
@@ -164,7 +164,7 @@ describe('the request locale (SetLocale)', () => {
     expect((await several('/hello', { headers: { [PAGE_HEADER]: 'true' } })).headers.get('vary')).toMatch(/accept-language/);
   });
 
-  it("builds the request's translator only for a request that asks for one — one per request, whoever asks (W8 step 9)", async () => {
+  it("builds the request's translator only for a request that asks for one — one per request, whoever asks", async () => {
     const { send } = await boot();
     const built = vi.mocked(createTranslator);
     built.mockClear();
@@ -227,7 +227,7 @@ describe('the request locale (SetLocale)', () => {
     };
 
     expect(await run()).toEqual({ en: { locale: 'en', greeting: 'Hello en1' }, de: { locale: 'de', greeting: 'Hallo de1' } });
-    // Counter-check — a naive translator shared by all requests (its locale a singleton): the English request answers in German.
+    // A naive translator shared by all requests (its locale a singleton): the English request answers in German.
     const naive = await run((c) => {
       const shared = new CurrentLocale('en');
       c.singleton(CurrentLocale, () => shared);
@@ -337,7 +337,7 @@ describe('Translators — any locale, outside a request too', () => {
     expect(translators.locales).toEqual(['de', 'en']);
   });
 
-  it('a command resolves the Translator — it runs in a scope of its own (finding 3: never "scoped outside a scope")', async () => {
+  it('a command resolves the Translator — it runs in a scope of its own (never "scoped outside a scope")', async () => {
     const { run } = await import('marmeon/main');
     const out: string[] = [];
     const err: string[] = [];
@@ -362,7 +362,7 @@ describe('Translators — any locale, outside a request too', () => {
   });
 });
 
-describe('Spike: Standard Schema options → Valibot', () => {
+describe('Standard Schema options → Valibot', () => {
   it('Valibot 1.5 ignores libraryOptions of ~standard.validate (it reads only its global config) — so we translate per request', async () => {
     const schema = v.pipe(v.string(), v.minLength(3));
     v.setGlobalMessage(() => 'auf Deutsch', 'de');

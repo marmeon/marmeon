@@ -27,7 +27,7 @@ async function boot(env: Record<string, string>): Promise<{ app: Application; wa
   return { app, warnings: warnings.filter((warning) => warning.startsWith('AUTH_PRIVATE_REGISTRATION') || warning.startsWith('AUTH_UNVERIFIED_DAYS')) };
 }
 
-describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
+describe('AUTH_PRIVATE_REGISTRATION', () => {
   it('is on unless set to false — and only "true" or "false" boot', async () => {
     expect((await boot({ NODE_ENV: 'test' })).app.container.make(AuthConfig).privateRegistration, 'unset, private registration must be on').toBe(true);
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: 'true' })).app.container.make(AuthConfig).privateRegistration).toBe(true);
@@ -43,9 +43,9 @@ describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
   it('turned off outside development and tests, the boot warns once: registration tells whether an address has an account', async () => {
     expect((await boot({ NODE_ENV: 'production', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'production: the boot must warn once').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
     expect(PRIVATE_REGISTRATION_OFF_WARNING).toContain('tell whether an address has an account');
-    // Fail-closed (E139): a missing NODE_ENV is protected like production — and APP_ENV changes nothing (E217).
-    expect((await boot({ NODE_ENV: 'production', APP_ENV: 'local', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'APP_ENV=local on production (protected, E217): the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
-    expect((await boot({ NODE_ENV: '', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'no NODE_ENV (protected, E139): the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
+    // Fail-closed: a missing NODE_ENV is protected like production — and APP_ENV changes nothing.
+    expect((await boot({ NODE_ENV: 'production', APP_ENV: 'local', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'APP_ENV=local on production (protected): the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
+    expect((await boot({ NODE_ENV: '', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'no NODE_ENV (protected): the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
     // Quiet when it is on, and in development and tests.
     expect((await boot({ NODE_ENV: 'production' })).warnings).toEqual([]);
     expect((await boot({ NODE_ENV: 'development', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings).toEqual([]);
@@ -53,7 +53,7 @@ describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
   });
 });
 
-describe('AUTH_UNVERIFIED_DAYS (E203)', () => {
+describe('AUTH_UNVERIFIED_DAYS', () => {
   it('is 7 unless set — only whole numbers of days boot, 0 (the command deletes none)', async () => {
     const days = async (value?: string) => (await boot({ NODE_ENV: 'test', ...(value === undefined ? {} : { AUTH_UNVERIFIED_DAYS: value }) })).app.container.make(AuthConfig).unverifiedDays;
     expect(await days(), 'unset, unconfirmed accounts must go after 7 days').toBe(7);
@@ -66,7 +66,7 @@ describe('AUTH_UNVERIFIED_DAYS (E203)', () => {
     }
   });
 
-  it('0 is no boot warning (E209): whether unconfirmed accounts go is the schedule of the app, not a default to warn about', async () => {
+  it('0 is no boot warning: whether unconfirmed accounts go is the schedule of the app, not a default to warn about', async () => {
     for (const NODE_ENV of ['production', '', 'development', 'test']) {
       expect((await boot({ NODE_ENV, AUTH_UNVERIFIED_DAYS: '0' })).warnings, NODE_ENV).toEqual([]);
     }

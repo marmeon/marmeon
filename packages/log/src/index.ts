@@ -7,7 +7,10 @@ import type pinoPretty from 'pino-pretty';
 export const LogConfig = defineConfig('log', {
   env: env({
     LOG_LEVEL: env.in(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
-    /** `pretty` for humans, `json` for log shippers. Defaults to pretty with `NODE_ENV=development` only (E164) — JSON everywhere else, also without a `NODE_ENV`. */
+    /**
+     * `pretty` for humans, `json` for log shippers. Defaults to pretty with `NODE_ENV=development` only — JSON everywhere else,
+     * also without a `NODE_ENV`.
+     */
     LOG_FORMAT: env.in(['pretty', 'json']).optional(),
     NODE_ENV: env.string().optional(),
     APP_ENV: env.string().optional(),
@@ -15,7 +18,7 @@ export const LogConfig = defineConfig('log', {
   resolve: (e) => ({
     level: e.LOG_LEVEL,
     format: e.LOG_FORMAT ?? (environment.isDevelopment(e) ? 'pretty' : 'json'),
-    /** `APP_ENV` (`staging`, `production`, …; by default the one `NODE_ENV` goes with): the `appEnv` field of every JSON entry (E217). */
+    /** `APP_ENV` (`staging`, `production`, …; by default the one `NODE_ENV` goes with): the `appEnv` field of every JSON entry. */
     environment: environment.app(e),
   }),
 });
@@ -31,8 +34,8 @@ export interface LogOptions {
 const entries = channels.event('log');
 
 /**
- * Adapts pino to the framework's Logger contract (`message, context` order, like Laravel). With an `app`, every entry also
- * goes to the `log` channel (E118) — at any level, before pino's level filter — while something listens; otherwise the
+ * Adapts pino to the framework's Logger contract (`message, context` order). With an `app`, every entry also
+ * goes to the `log` channel — at any level, before pino's level filter — while something listens; otherwise the
  * path is pino's alone. A subscriber of `log` must not log itself.
  */
 export class PinoLogger implements Logger {
@@ -68,12 +71,12 @@ export class PinoLogger implements Logger {
     this.#pino.error(context ?? {}, message);
     if (this.#app && entries.hasSubscribers) this.#publish('error', message, context);
   }
-  /** Written at this level (pino's own check) — or listened to on the `log` channel, which sees every level (E118). */
+  /** Written at this level (pino's own check) — or listened to on the `log` channel, which sees every level. */
   enabled(level: 'debug' | 'info' | 'warn' | 'error'): boolean {
     return this.#pino.isLevelEnabled(level) || (this.#app !== undefined && entries.hasSubscribers);
   }
   child(bindings: LogContext): Logger {
-    // pino writes a child's bindings once, at creation, past `formatters.log` — so they are redacted here (E125).
+    // pino writes a child's bindings once, at creation, past `formatters.log` — so they are redacted here.
     return new PinoLogger(this.#pino.child(this.#redactor.log(bindings)), this.#app, bindings, this);
   }
 
@@ -86,7 +89,7 @@ export class PinoLogger implements Logger {
   }
 }
 
-// The redaction lives in core: the queue redacts a failed job's error the same way (E105).
+// The redaction lives in core: the queue redacts a failed job's error the same way.
 export { redact, REDACTED_KEYS } from '@marmeon/core';
 
 /** The app's `Redactor` — one per app, with the names its packages add (the session's cookie) — or the core's key list alone. */
@@ -103,14 +106,14 @@ function withoutBound(context: Readonly<Record<string, unknown>>, instance: unkn
 }
 
 /**
- * pino-pretty, loaded when a logger is pretty (E138) — in development. JSON logs (production, tests, workers) never load
+ * pino-pretty, loaded when a logger is pretty — in development. JSON logs (production, tests, workers) never load
  * its 28 modules. Synchronous (`require`), because the logger is made synchronously.
  */
 function pretty(): typeof pinoPretty {
   return createRequire(import.meta.url)('pino-pretty') as typeof pinoPretty;
 }
 
-/** `app`: its entries also go to the `log` channel (E118) while something listens. */
+/** `app`: its entries also go to the `log` channel while something listens. */
 export function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
     destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv' }) : undefined);
@@ -120,9 +123,9 @@ export function createPinoLogger(config: LogOptions, destination?: NodeJS.Writab
   const logger = pino(
     {
       level: config.level,
-      // The app's environment on every entry (E217: `APP_ENV`, informative) — a log shipper tells one deployment from another by it.
+      // The app's environment on every entry (`APP_ENV`, informative) — a log shipper tells one deployment from another by it.
       base: config.environment === undefined ? undefined : { appEnv: config.environment },
-      // The app's Redactor (E125): sensitive keys at any depth, an error under any key as type, message and stack, masked.
+      // The app's Redactor: sensitive keys at any depth, an error under any key as type, message and stack, masked.
       formatters: { log: (object) => redactor.log(object) },
       // The redaction wrote `err` already, in the shape of pino's error serializer — which would take it for an object of its own.
       serializers: { err: (value: unknown) => value },

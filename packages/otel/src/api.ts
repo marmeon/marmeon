@@ -1,10 +1,10 @@
 import type * as Api from '@opentelemetry/api';
 
-/** The OpenTelemetry API module (`@opentelemetry/api`) — the one OpenTelemetry package this one talks to (E120). */
+/** The OpenTelemetry API module (`@opentelemetry/api`) — the one OpenTelemetry package this one talks to. */
 export type OtelApi = typeof Api;
 
 /**
- * What to install when the API is missing — a peer, never a dependency (E198): the app's SDK and the framework must share one
+ * What to install when the API is missing — a peer, never a dependency: the app's SDK and the framework must share one
  * instance of the API.
  */
 export const OTEL_INSTALL = 'pnpm add @opentelemetry/api@^1.9.0';

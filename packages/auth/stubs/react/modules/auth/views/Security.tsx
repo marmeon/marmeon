@@ -125,7 +125,7 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
 
 Security.layout = [AppLayout, SettingsLayout];
 
-/** Passwords and sessions are one thing, API tokens another (like Sanctum): revoking them is done by hand. */
+/** Passwords and sessions are one thing, API tokens another: revoking them is done by hand. */
 function ApiTokensNote() {
   const t = useTranslation('auth');
   return (

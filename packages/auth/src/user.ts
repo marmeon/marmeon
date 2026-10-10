@@ -2,7 +2,7 @@ import { token, type Token } from '@marmeon/core';
 import type { PasswordHash } from './hashing.ts';
 
 /**
- * The app's user type, declared once (E24) — like `SessionData` or `SharedProps`:
+ * The app's user type, declared once — like `SessionData` or `SharedProps`:
  *
  * ```ts
  * declare module '@marmeon/auth' {
@@ -30,10 +30,10 @@ export type AuthUser = UserOf<AuthTypes>;
 /** The type of a user's id. */
 export type AuthUserId = AuthUser extends { readonly id: infer Id } ? Id : string | number;
 
-/** A user together with their password hash — which never becomes part of the user (E24). */
+/** A user together with their password hash — which never becomes part of the user. */
 export interface Credentials<U = AuthUser> {
   readonly user: U;
-  /** `null` for users who cannot sign in with a password (e.g. only by link or OAuth, later). */
+  /** `null` for users who cannot sign in with a password (e.g. only by link or OAuth). */
   readonly passwordHash: PasswordHash | null;
   /**
    * A value of the account that `auth.updateSessionKey()` replaces to end the account's other sessions — a `session_key`

@@ -30,7 +30,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     expect(await tokens.find(plainText)).toMatchObject({ id: token.id, userId: 1, abilities: ['users:read'] });
   });
 
-  it('counter-check: a broken checksum, a wrong prefix or garbage cost no query', async () => {
+  it('a broken checksum, a wrong prefix or garbage cost no query', async () => {
     const { plainText } = await tokens.create(1, 'CLI');
     const typo = plainText.slice(0, 10) + (plainText[10] === 'a' ? 'b' : 'a') + plainText.slice(11);
     queries.length = 0;
@@ -41,7 +41,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     expect(parseAccessToken(plainText, 'marmeon_')).toBeDefined();
   });
 
-  it('counter-check: the right id with a wrong secret (another user’s token id) is no token', async () => {
+  it('the right id with a wrong secret (another user’s token id) is no token', async () => {
     const { token } = await tokens.create(2, 'Alan’s');
     const forged = `marmeon_${token.id}|${'A'.repeat(40)}`;
     const { crc32 } = await import('node:zlib');

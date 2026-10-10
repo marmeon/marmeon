@@ -61,7 +61,7 @@ async function failure(check: PromiseLike<unknown>): Promise<string> {
 }
 
 describe('@marmeon/testing', () => {
-  it("moves the app's time: every service reading the Clock sees app.travel() and app.freeze() (E97)", async () => {
+  it("moves the app's time: every service reading the Clock sees app.travel() and app.freeze()", async () => {
     const app = await createTestApp(definition);
     const clock = app.container.make(Clock);
     expect(clock).toBe(app.clock);
@@ -174,7 +174,7 @@ describe('server rendering assertions', () => {
   });
 });
 
-describe('the devtools in tests (E115, E116)', () => {
+describe('the devtools in tests', () => {
   it('records into memory with devtools: true — app.devtools — and never without it', async () => {
     const withDevtools = { ...definition, providers: [...(definition.providers ?? []), ServerServiceProvider, DevtoolsServiceProvider] };
     const app = await createTestApp(withDevtools, { devtools: true });

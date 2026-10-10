@@ -2,7 +2,7 @@ import { defineConfig, defineSolutions, env, EnvironmentConfig, LogContextSource
 import { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered, type OtelApi } from './api.ts';
 import { instrument } from './tracer.ts';
 
-// OpenTelemetry (E120): spans from the framework's channels (E118), through `@opentelemetry/api` only — the SDK and its
+// OpenTelemetry: spans from the framework's channels, through `@opentelemetry/api` only — the SDK and its
 // exporter are the app's (`bootstrap/telemetry.ts`). No auto-instrumentation, no module hooks (Node 26: DEP0205).
 export { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered } from './api.ts';
 export type { ImportOtelApi } from './api.ts';
@@ -42,14 +42,14 @@ export type OtelConfig = ConfigOf<typeof OtelConfig>;
 
 /**
  * Subscribes to the app's channels and records spans — when an OpenTelemetry SDK is registered by the time the app boots
- * (start it first: `node --import ./bootstrap/telemetry.ts`, docs/observability.md#starting-the-sdk). Without one, nothing is subscribed: no span,
- * no cost, no error. `@opentelemetry/api` must be installed (an optional peer): the start fails with what to install.
- * On shutdown it unsubscribes and flushes the SDK's spans (≤ 2 s), so the last requests' and jobs' spans are not lost.
- * Found by `marmeon discover`.
+ * (start it first: `node --import ./bootstrap/telemetry.ts`, docs/observability.md#starting-the-sdk). Without one, nothing is
+ * subscribed: no span, no cost, no error. `@opentelemetry/api` must be installed (an optional peer): the start fails with
+ * what to install. On shutdown it unsubscribes and flushes the SDK's spans (≤ 2 s), so the last requests' and jobs' spans
+ * are not lost. Found by `marmeon discover`.
  */
 export class OtelServiceProvider implements ServiceProvider {
   static config = [OtelConfig];
-  /** The missing API, on the error page and when `marmeon` cannot start the app (E130). */
+  /** The missing API, on the error page and when `marmeon` cannot start the app. */
   static solutions = defineSolutions([
     {
       for: OtelSetupError,

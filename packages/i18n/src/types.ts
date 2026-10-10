@@ -1,6 +1,6 @@
 /**
  * Types of messages, keys and placeholders — computed from the English (source) files themselves, without code
- * generation (E38). Browser-safe: types only.
+ * generation. Browser-safe: types only.
  */
 import type { Suggest } from '@marmeon/router';
 
@@ -8,18 +8,9 @@ import type { Suggest } from '@marmeon/router';
 export type MessageTree = { readonly [key: string]: string | MessageTree };
 
 /**
- * The app's messages by namespace, merged in by declaration from each module's source file (`lang/en.ts`) — the
- * namespace is the module's name, `app` for the app-wide `lang/` folder:
- *
- * ```ts
- * const en = { login: { title: 'Sign in' } } as const;
- * export default en;
- * declare module '@marmeon/i18n/messages' {
- *   interface Translations { auth: typeof en }
- * }
- * ```
- *
- * `as const` keeps the texts as types: that is what types the placeholders (`{count}` → `count: number`).
+ * The app's messages by namespace, merged in by declaration from each module's source file (`lang/en.ts`): the namespace is
+ * the module's name, `app` for the app-wide `lang/` folder. Keep the file `as const` — the texts as types are what type the
+ * placeholders (`{count}` → `count: number`). See `docs/localization.md#language-files`.
  */
 export interface Translations {}
 

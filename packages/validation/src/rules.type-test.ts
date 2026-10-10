@@ -1,4 +1,4 @@
-// Type guarantees of the rules (W10 step 3, E197) — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
+// Type guarantees of the rules — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the
 // compiler shows them (directives removed once and read), are quoted in the comments.
 import { defineRequest, type ContextOf, type FormOf, type QueryOf } from '@marmeon/router';
 import { rules as r } from './index.ts';
@@ -16,7 +16,7 @@ class UserRepository {
   }
 }
 
-// ——— The plan's sketch ———
+// ——— A request's schema ———
 
 export const UpdateProfileRequest = defineRequest({
   schema: r.object({
@@ -57,7 +57,7 @@ same<QueryOf<ListPeopleController>, { sort: 'name' | '-name'; page: number; per_
 
 // Type 'NumberRule' is not assignable to type 'NumberRule & "Query field 'page' needs .default(…) — …"'.
 //   Type 'NumberRule' is not assignable to type '"Query field 'page' needs .default(…) — a query is parsed field by field and never
-//   answers 422 (E56); .optional() leaves it undefined"'.
+//   answers 422; .optional() leaves it undefined"'.
 // @ts-expect-error — a query field without a default
 r.query({ page: r.integer().min(1) });
 
@@ -107,7 +107,7 @@ company.confirmed('nope');
 // A when-condition sees the other fields' output.
 r.object({ count: r.integer() }).when((data) => data.count > 2, { reason: r.string() });
 
-// ——— W10 step 4: entries, r.value(), message functions ———
+// ——— Entries, r.value(), message functions ———
 
 // An object's entries spread into another query keep their types.
 const paging = r.query({ page: r.integer().min(1).default(1) });
@@ -136,18 +136,18 @@ r.string().regex(/x/, 42);
 // @ts-expect-error — a check answers a message, never a number
 r.value<string>(() => 1);
 
-// ——— .live() belongs on a field, never on a container (W10 step 9b, E197) ———
+// ——— .live() belongs on a field, never on a container ———
 
 r.object({ slug: r.string().unique(UserRepository, 'email').live() }); // on the field: fine
 // @ts-expect-error — on an object it would open every rule inside, the address too
 r.object({ email: r.string().unique(UserRepository, 'email') }).live();
 // The 'this' context of type 'ObjectRule<{ readonly email: StringRule; }, {}>' is not assignable to method's 'this' of type '".live() goes on
 // the field whose being taken is no secret — r.object({ slug: r.string().unique(Teams, 'slug').live() }) — never on an object, a list
-// or a union: it would open every rule inside (E197)."'.
+// or a union: it would open every rule inside."'.
 // @ts-expect-error — on a list: put it on the item rule
 r.array(r.string().unique(UserRepository, 'email')).live();
 
-// ——— An empty string, by type (E208): the types stay — '' is a string, and what a rule keeps is in its output ———
+// ——— An empty string, by type: the types stay — '' is a string, and what a rule keeps is in its output ———
 
 export const BlockRequest = defineRequest({ schema: r.object({ title: r.string().trim().required(), subtitle: r.string().max(120).optional(), style: r.in(['', 'bold']).optional() }) });
 class BlockController {

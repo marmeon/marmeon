@@ -44,7 +44,7 @@ async function boot() {
   return { app, logger };
 }
 
-describe('@marmeon/otel without an SDK (E120)', () => {
+describe('@marmeon/otel without an SDK', () => {
   it('no SDK registered: no subscription, no message built, no span, no error — one debug line', async () => {
     const { app, logger } = await boot();
     try {

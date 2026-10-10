@@ -63,26 +63,24 @@ export interface TestAppOptions {
   /** Replace bindings before the app boots — even singletons see these. */
   override?: (container: Container) => void;
   /**
-   * Verify CSRF (default: false). Like Laravel, tests skip CSRF protection unless they test it — then the stages of E143
-   * apply: `Sec-Fetch-Site: same-origin` or the app's own `Origin` pass, another site's is 403; without either header send
-   * `_token` or the `X-XSRF-TOKEN` header yourself.
+   * Verify CSRF (default: false) — for a test of the protection itself: `Sec-Fetch-Site: same-origin` or the app's own
+   * `Origin` pass, another site's is 403; without either header send `_token` or the `X-XSRF-TOKEN` header yourself.
    */
   csrf?: boolean;
   /**
-   * `'refresh'`: a real database, reset for every test (Laravel's `RefreshDatabase`, E21). Each test
-   * worker gets its own database, migrated once; every test app runs inside one transaction that is
-   * rolled back when the test ends. Needs @marmeon/database.
+   * `'refresh'`: a real database, reset for every test. Each test worker gets its own database, migrated once; every test
+   * app runs inside one transaction that is rolled back when the test ends. Needs @marmeon/database.
    */
   database?: 'refresh';
   /** With `database: 'refresh'`: run the modules' seeders for every test (inside its transaction). */
   seed?: boolean;
   /**
-   * Mail is recorded, never sent (default `'fake'`): the `Mailer` is a `MailFake`, available as `app.mail`
-   * (Laravel's `Mail::fake()`, on by default). `'real'` keeps the configured transport.
+   * Mail is recorded, never sent (default `'fake'`): the `Mailer` is a `MailFake`, available as `app.mail`. `'real'` keeps
+   * the configured transport.
    */
   mail?: 'fake' | 'real';
   /**
-   * Jobs are recorded, not queued (default `'fake'`, E101): the `Queue` is a `QueueFake`, available as `app.queue` —
+   * Jobs are recorded, not queued (default `'fake'`): the `Queue` is a `QueueFake`, available as `app.queue` —
    * `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`, and `await app.queue.work()` runs them for real in the
    * test. `'real'` keeps the configured connection (`QUEUE_CONNECTION`). Needs @marmeon/queue.
    */
@@ -102,27 +100,27 @@ export interface TestAppOptions {
    */
   storage?: 'fake' | 'real';
   /**
-   * Every dispatched event is recorded — `app.events.assertDispatched(Registered)` (W6.7). Its listeners run as usual
+   * Every dispatched event is recorded — `app.events.assertDispatched(Registered)`. Its listeners run as usual
    * (default `'real'`), none run or are queued (`'fake'`), or only those of some events are held back
-   * (`[Registered]` — Laravel's `Event::fake([…])`).
+   * (`[Registered]`).
    */
   events?: 'real' | 'fake' | readonly EventClass[];
   /**
    * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `marmeon dev` does) — so the markup
    * and `<Head>` are testable (`assertSee`, `assertServerRendered`, `assertHydrates`). Off by default: responses carry
-   * the page object only (fast, no Vite). Every page renders completely, as for a bot — islands included (E49).
+   * the page object only (fast, no Vite). Every page renders completely, as for a bot — islands included.
    * `'stream'`: as for a browser — the shell first, islands and deferred props streamed into the same response
    * (`app.stream(path)` gives the raw response, to read it as it arrives).
    */
   ssr?: boolean | 'stream';
   /**
-   * Development error handling, as `marmeon dev` has it (E119): a page request that fails with a 5xx gets the development
+   * Development error handling, as `marmeon dev` has it: a page request that fails with a 5xx gets the development
    * error page (code, request, route, queries and log of the request, solutions), JSON errors carry the exception and a
    * `solution`. Off by default — tests see the error page production shows.
    */
   debug?: boolean;
   /**
-   * Record what the app does, as the devtools do in development (E115, E116) — into memory, available as `app.devtools`:
+   * Record what the app does, as the devtools do in development — into memory, available as `app.devtools`:
    * `app.devtools.assertRecorded('query', (query) => query.sql.includes('from "users"'))`, `app.devtools.entries('request')`.
    * The only way to run them outside `NODE_ENV=development` (never in production). Without it they are off in every test —
    * also one that runs as development (`env: { NODE_ENV: 'development' }`). Needs @marmeon/devtools.
@@ -178,7 +176,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   // The devtools record in a test only when it opts in (into memory) — never into the app's storage/framework/devtools, also
   // not in a test that runs as development (`env: { NODE_ENV: 'development' }`, for Server-Timing or the error page).
   // A test app is a test (NODE_ENV=test) unless its environment names another: an app's own `env` without NODE_ENV would
-  // otherwise count as protected, like production (E139).
+  // otherwise count as protected, like production.
   let env = { NODE_ENV: 'test', ...(definition.env ?? loadEnv(definition.root)), ...options.env, ...(options.devtools ? {} : { DEVTOOLS_ENABLED: 'false' }) };
   const clock = new TestClock();
 
@@ -203,7 +201,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     ...definition,
     env,
     override: (container) => {
-      // The time, movable from the test (E97): app.travel({ minutes: 5 }), app.freeze().
+      // The time, movable from the test: app.travel({ minutes: 5 }), app.freeze().
       container.instance(Clock, clock);
       if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
       if (mail && container.has(mail.Mailer)) {
@@ -229,7 +227,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       }
       eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
       container.instance(EventFake, eventFake);
-      // The devtools' opt-in (E115): a memory store, recorded from the boot on.
+      // The devtools' opt-in: a memory store, recorded from the boot on.
       if (devtools) devtoolsTester = devtools.enableDevtoolsForTests(container);
       definition.override?.(container);
       options.override?.(container);
@@ -299,7 +297,7 @@ const openRefreshed = new Set<TestApp>();
 
 /**
  * Inside a Vitest test (or its `beforeEach`), the app closes when the test ends — its transaction is
- * rolled back, its connections closed — like Laravel's tearDown. Elsewhere: `app.close()` or `await using`.
+ * rolled back, its connections closed. Elsewhere: `app.close()` or `await using`.
  */
 async function closeWhenTheTestEnds(app: TestApp): Promise<void> {
   try {
@@ -399,7 +397,7 @@ async function importQueue(): Promise<typeof import('@marmeon/queue') | undefine
   }
 }
 
-/** @marmeon/devtools is an optional peer (a dev dependency of the app, E115) — needed only with `devtools: true`. */
+/** @marmeon/devtools is an optional peer (a dev dependency of the app) — needed only with `devtools: true`. */
 async function importDevtools(): Promise<typeof import('@marmeon/devtools')> {
   try {
     return await import('@marmeon/devtools');
@@ -472,7 +470,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
     if (config.driver === 'cookie') throw new Error('Session helpers in tests need a server-side session driver — memory, file, database or redis (set SESSION_DRIVER=memory in .env.test).');
     return container.make(session.SessionStore);
   };
-  // Like the session itself: stored under the id's hash (E144), the payload through the app's codec (SESSION_ENCRYPT).
+  // Like the session itself: stored under the id's hash, the payload through the app's codec (SESSION_ENCRYPT).
   const codec = () => container.make(session.SessionCodec);
   return {
     cookie: config.cookie,
@@ -504,7 +502,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
   };
 }
 
-/** How the app encrypts cookies — so tests can send and read plain values, like Laravel's. */
+/** How the app encrypts cookies — so tests can send and read plain values. */
 export interface CookieCrypto {
   encrypt(name: string, value: string): Promise<string>;
   /** The plain value, or the raw one if it is not encrypted (or not decryptable). */
@@ -584,7 +582,7 @@ export class TestApp {
   }
 
   /**
-   * What the app's `Broadcaster` sent (W6.10) — every refresh once it went out (after its commit): `app.broadcast.assertRefreshed(
+   * What the app's `Broadcaster` sent — every refresh once it went out (after its commit): `app.broadcast.assertRefreshed(
    * \`users.${ada.id}\`, { only: ['profile'] })`, `assertNotRefreshed`, `assertNothingRefreshed`. The hints reach the streams as in
    * production (`app.live(path)`). Needs @marmeon/live.
    */
@@ -594,20 +592,10 @@ export class TestApp {
   }
 
   /**
-   * Opens a live stream (W6.10) as a tab does — for the channels the page at `path` follows (its `PageObject.live`, signed for
-   * this view's session), or for those given (`(await app.island(…)).page()?.live`) — and reads it as it arrives:
-   *
-   * ```ts
-   * const ada$ = app.actingAs(ada);
-   * const stream = await ada$.live(\`/users/${ada.id}\`);
-   * await stream.hello();
-   * await app.actingAs(ada).withHeaders({ 'x-marmeon-connection': 'another-tab' }).post(\`/users/${ada.id}/links\`, { json });
-   * await stream.waitFor(1);
-   * expect(stream.hints).toEqual([{ channel: \`users.${ada.id}\`, only: ['profile'], seq: 1 }]);
-   * ```
-   *
-   * The stream belongs to this view's session (`actingAs`/`withSession`): signing out through the same view ends it. It closes
-   * when the app does — or with `stream.close()`. `connection` is the tab's id (`x-marmeon-connection`, default `test-tab-0001`).
+   * Opens a live stream as a tab does — for the channels the page at `path` follows (signed for this view's session), or for
+   * those given (`(await app.island(…)).page()?.live`) — and reads it as it arrives: `hello()`, `waitFor(n)`, `hints`. Signing
+   * out through the same view ends it; it closes with the app or `stream.close()`. `connection` is the tab's id
+   * (`x-marmeon-connection`, default `test-tab-0001`). See `docs/fakes.md#live-updates`.
    */
   async live(
     target: string | readonly LiveSubscription[],
@@ -634,7 +622,7 @@ export class TestApp {
   }
 
   /**
-   * What the devtools recorded (E116) — with `createTestApp(App, { devtools: true })`: `app.devtools.entries('request')`,
+   * What the devtools recorded — with `createTestApp(App, { devtools: true })`: `app.devtools.entries('request')`,
    * `app.devtools.assertRecorded('mail', (mail) => mail.to.includes('ada@example.com'))`.
    */
   get devtools(): DevtoolsTester {
@@ -652,7 +640,7 @@ export class TestApp {
   }
 
   /**
-   * The app's schedule (E88), with the test clock: `app.schedule.due('2026-10-04T03:10:00+02:00')` lists the tasks due
+   * The app's schedule, with the test clock: `app.schedule.due('2026-10-04T03:10:00+02:00')` lists the tasks due
    * then, `await app.schedule.run(time)` moves the clock there and runs them (catching up what was missed since the last
    * `run`, like a scheduler), `app.schedule.runTask(name)` runs one now. Needs @marmeon/scheduler.
    */
@@ -662,7 +650,7 @@ export class TestApp {
   }
 
   /**
-   * The app's clock (E97) — every service that reads the time through `Clock` (cache expiry, locks, rate limits, …) sees
+   * The app's clock — every service that reads the time through `Clock` (cache expiry, locks, rate limits, …) sees
    * it move. Redis keeps its own time: a key's `PX` expiry does not follow.
    */
   get clock(): TestClock {
@@ -705,14 +693,14 @@ export class TestApp {
   }
 
   /**
-   * Rows from a factory, in this app's database (Laravel's `User::factory()`):
+   * Rows from a factory, in this app's database:
    * `await app.factory(UserFactory).count(3).create()`. Needs @marmeon/database.
    */
   factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S> {
     return this.application.container.make(this.#requireDatabase('app.factory()').Factories).for(definition);
   }
 
-  // --- Database assertions (Laravel's assertDatabaseHas & co.) -----------------------
+  // --- Database assertions -----------------------------------------------------------
 
   /** A row in `table` matches every given column value. */
   async assertDatabaseHas<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this> {
@@ -767,13 +755,13 @@ export class TestApp {
     return this.#with({ headers: { ...this.#defaults.headers, ...headers } });
   }
 
-  /** Sends a cookie, encrypted like the app encrypts its own (Laravel's `withCookie`). */
+  /** Sends a cookie, encrypted like the app encrypts its own. */
   withCookie(name: string, value: string): TestApp {
     return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: true }] });
   }
 
   /**
-   * Starts the request with a session holding `data` (Laravel's `withSession`):
+   * Starts the request with a session holding `data`:
    * `app.withSession({ cart: [42] }).get('/checkout')` — to sign someone in, use `actingAs(user)`.
    */
   withSession(data: Record<string, unknown>): TestApp {
@@ -781,9 +769,8 @@ export class TestApp {
   }
 
   /**
-   * Signed in as `user` — the session holds exactly what a login leaves (Laravel's `actingAs`):
-   * `app.actingAs(ada).get('/users/me')`. With `{ guard: 'api' }`, through a real API token instead
-   * (`Authorization: Bearer …`, Sanctum's `actingAs`). Needs @marmeon/auth; the user must exist.
+   * Signed in as `user` — the session holds exactly what a login leaves: `app.actingAs(ada).get('/users/me')`. With
+   * `{ guard: 'api' }`, through a real API token instead (`Authorization: Bearer …`). Needs @marmeon/auth; the user must exist.
    */
   actingAs(user: AuthUser, options: { guard?: 'web' } | { guard: 'api'; abilities?: readonly string[] } = {}): TestApp {
     if (options.guard === 'api') return this.#with({ token: { user, abilities: options.abilities ?? ['*'] } });
@@ -826,7 +813,7 @@ export class TestApp {
   }
 
   /**
-   * Requests as an `<Island route>` does (E48): a client-side request with `x-marmeon-region: island` — answered with the
+   * Requests as an `<Island route>` does: a client-side request with `x-marmeon-region: island` — answered with the
    * island's region object, or (redirect, 401, 403) with its outcome. For a partial reload of the island, chain
    * `reloading(component, { only })`.
    */
@@ -844,7 +831,7 @@ export class TestApp {
   }
 
   /**
-   * Requests as a layer does (E53) — opening one (`<Link layer>`), or a visit or form inside one: a client-side request
+   * Requests as a layer does — opening one (`<Link layer>`), or a visit or form inside one: a client-side request
    * with `x-marmeon-region: layer`. A layer route answers with its page object (`assertLayer`), `closeLayer()` with "close"
    * (`assertLayerClosed`), a page route with its page.
    */
@@ -859,7 +846,7 @@ export class TestApp {
   }
 
   /**
-   * Requests as an action does (E59, `useAction`): `x-marmeon-action` and `Accept: application/json` — answered with its data
+   * Requests as an action does (`useAction`): `x-marmeon-action` and `Accept: application/json` — answered with its data
    * (`this.json(…)`), a 422 with the field errors, an `exception` status, or — a redirect, not followed — `204` with
    * `x-marmeon-redirect` (`assertActionRedirect`). Never cached (`no-store`).
    */
@@ -868,7 +855,7 @@ export class TestApp {
   }
 
   /**
-   * Requests as a live validation does (E62, `useForm(…, { validate })`): the form's own request naming the fields to check
+   * Requests as a live validation does (`useForm(…, { validate })`): the form's own request naming the fields to check
    * (`x-marmeon-validate`) — answered `204` (`assertLiveValid()`), `422` with those fields' errors (`assertInvalid`), or a
    * failure (403, 419, 429). The controller never runs. `app.validating('name', 'email').post('/register', { json })`.
    */
@@ -917,7 +904,7 @@ export class TestApp {
         const response = await TestResponse.from(res, label, this.#crypto, await this.#session, async (page) =>
           render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
         );
-        await this.#shared.kernel.settle(); // terminate hooks ran — like Laravel's test helpers call terminate()
+        await this.#shared.kernel.settle(); // terminate hooks ran
         await this.#shared.devtools?.settled(); // the request's entries are written (an exception's solutions looked up)
         return response;
       });
@@ -925,18 +912,10 @@ export class TestApp {
   }
 
   /**
-   * Uploads a file for a form field (W6.9) as the browser does — the route's upload target (its middleware and `authorize`
-   * run), then the bytes — and returns the token the form sends in the field:
-   *
-   * ```ts
-   * const ada$ = app.actingAs(ada);
-   * const token = await ada$.upload('user-profile.avatar.update', 'avatar', new File([png], 'me.png'), { user: ada.id });
-   * app.storage.disk('uploads').assertCount(1);
-   * await ada$.put(`/users/${ada.id}/avatar`, { json: { avatar: token } }).assertRedirect();
-   * ```
-   *
-   * The upload belongs to this view's session: send the form through the same view (another one is another browser — 422).
-   * A target the route refuses (no `upload()` rule: 404, not allowed: 403, too large: 422) fails with the response.
+   * Uploads a file for a form field as the browser does — the route's upload target (its middleware and `authorize` run),
+   * then the bytes — and returns the token the form sends in the field. The upload belongs to this view's session: send the
+   * form through the same view (another one is another browser — 422). A target the route refuses fails with the response.
+   * See `docs/http-tests.md#uploads`.
    */
   async upload<const N extends RouteNameInput, const K extends string>(
     name: CheckRouteName<N>,

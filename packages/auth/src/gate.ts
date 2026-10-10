@@ -128,16 +128,9 @@ function projection<T>(compute: () => Promise<T>): Projection<T> {
 let setTokenUser: (gate: Gate, user: AuthUser) => void;
 
 /**
- * Asks policies (E28): explicitly named, type-checked, no string gates — Laravel's `Gate`, per request.
- *
- * ```ts
- * if (await this.#gate.allows(ProfilePolicy, 'update', profile)) …
- * await this.#gate.authorize(ProfilePolicy, 'update', profile);   // or 403 / 404
- * ```
- *
- * The user is the session's — or, on a route behind `authenticate('api')`, the token's user: the token guard tells the
- * request's gate. Guests are denied before any policy runs. A policy's `before(user, ability)` may decide first
- * (`true`/`false`); `undefined` lets the ability decide.
+ * Asks policies for this request: explicitly named and type-checked, no string gates —
+ * `await this.#gate.authorize(ProfilePolicy, 'update', profile)`. The user is the session's, or on a route behind
+ * `authenticate('api')` the token's; guests are denied before any policy runs. See `docs/authorization.md#the-gate`.
  */
 export class Gate {
   readonly #auth: Auth;
@@ -191,19 +184,10 @@ export class Gate {
   }
 
   /**
-   * What the page may offer for `resource` (E61) — one boolean per named ability, from the policy:
-   *
-   * ```ts
-   * abilities: this.#gate.abilities(profile, ProfilePolicy, ['update']),   // the view: abilities.update
-   * abilities: this.#gate.abilities(PostPolicy, ['create']),              // abilities without a resource
-   * ```
-   *
-   * Explicit: nothing is asked that is not named, and only booleans leave the server (never a `deny()` reason).
-   * Lazy: as a page prop it runs only when the response includes it — a partial reload for other props skips it,
-   * and so does a reload of the data it is about; name it, or project it inside that prop (`profile: async () =>
-   * ({ ...profile, can: await gate.abilities(…) })`), to refresh it with the data.
-   *
-   * The UI's hint only: the server checks again on every request (`can()` in `authorize`, `gate.authorize`).
+   * What the page may offer for `resource`: one boolean per named ability — `abilities(profile, ProfilePolicy, ['update'])`.
+   * Only named abilities are asked, only booleans leave the server (never a `deny()` reason), and as a page prop it runs only
+   * when the response includes it. A hint for the UI: the server checks again on every request. See
+   * `docs/authorization.md#abilities-for-the-page`.
    */
   abilities<P extends object, const K extends string>(
     policy: PolicyClass<P>,
@@ -220,17 +204,9 @@ export class Gate {
   }
 
   /**
-   * Each row with its abilities (E61): `{ ...link, can: { delete: boolean } }` — for lists, where every row is
-   * asked on its own:
-   *
-   * ```ts
-   * links: this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete']),   // the view: link.can.delete
-   * ```
-   *
-   * The cost, honestly: the policy method runs once per row and named ability (50 rows, one ability: 50 calls) —
-   * cheap for a comparison, a query per row for a policy that queries (load what it needs with the rows instead).
-   * `before()` runs once per ability for the whole list, the policy is built once, and abilities not named never run.
-   * Lazy like {@link Gate.abilities}.
+   * Each row with its abilities: `{ ...link, can: { delete: boolean } }`. The policy runs once per row and named ability — a
+   * query per row for a policy that queries, so load what it needs with the rows. Lazy like {@link Gate.abilities}; see
+   * `docs/authorization.md#abilities-for-the-page`.
    */
   withAbilities<P extends object, const K extends string, T extends ResourceOf<P, Projectable<P, K>>>(
     rows: readonly T[],
@@ -282,15 +258,9 @@ export function authenticatedByToken(gate: Gate, user: AuthUser): void {
 type ResourceSource<R, TParams extends object> = keyof TParams | ((ctx: HttpContext<Authenticated, TParams>) => R);
 
 /**
- * A request's `authorize`, asking a policy — after route binding, so it sees the bound record (E28):
- *
- * ```ts
- * authorize: can(ProfilePolicy, 'update', 'user'),   // ctx.params.user, typed by the route's binding
- * ```
- *
- * The route must provide what the policy needs: a parameter bound to the wrong type, or not bound at
- * all (a string), is a compile error where the controller is registered. Abilities without a resource
- * take no third argument. Denials throw `AuthorizationError`, so `denyAsNotFound()` answers 404.
+ * A request's `authorize`, asking a policy after route binding — `authorize: can(ProfilePolicy, 'update', 'user')`.
+ * A parameter bound to the wrong type, or not bound at all, is a compile error where the controller is registered.
+ * Denials throw `AuthorizationError`, so `denyAsNotFound()` answers 404. See `docs/authorization.md#authorizing-requests`.
  */
 export function can<P extends object, K extends AbilityOf<P>>(
   policy: PolicyClass<P>,

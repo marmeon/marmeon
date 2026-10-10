@@ -142,7 +142,7 @@ describe('what a missing value is', () => {
   });
 });
 
-describe('an empty string — by type (E208)', () => {
+describe('an empty string — by type', () => {
   it("a string keeps '' — optional, nullable and default give it back: a subtitle cleared on purpose is no missing one", async () => {
     const block = r.object({
       subtitle: r.string().max(120).optional(),
@@ -347,7 +347,7 @@ describe('custom rules', () => {
   });
 });
 
-describe('queries (E56)', () => {
+describe('queries', () => {
   const query = r.query({ q: r.string().trim().max(60).default(''), sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1), per_page: r.in([10, 25, 50]).default(10), mine: r.boolean().default(false), tag: r.array(r.string()).default([]) });
 
   it('strings in, typed values out; an invalid field falls back to its default — never a 422', async () => {

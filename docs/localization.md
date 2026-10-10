@@ -84,8 +84,9 @@ A message is text with placeholders, in a subset of ICU's message format. It is 
 | `{kind, select, link {…} other {…}}` | A string. |
 
 Branches nest, and a `select` inside a `plural` keeps `#`. `plural`, `selectordinal` and `select` need an `other` branch. A
-literal brace is `'{'` and an apostrophe `''`, while a lone apostrophe, as in "it's", is just itself. `offset:` and number
-skeletons are not supported. A value that is missing at runtime leaves its placeholder visible, `{name}`, instead of failing.
+literal brace is `'{'` and an apostrophe `''`, while a lone apostrophe, as in "it's", is just itself. `offset:`, number
+skeletons and placeholder types other than those in the table are not supported. A value that is missing at runtime leaves its
+placeholder visible, `{name}`, instead of failing.
 
 > [!WARNING]
 > A formatted message is plain text. Render it as text, never as HTML: markup in a message or in a value stays as written, and

@@ -7,7 +7,7 @@ type Assertions = {
 
 /**
  * A request that has not been awaited yet. Assertions chained onto it run once it
- * is awaited, so a whole check reads like Laravel:
+ * is awaited, so a whole check is one chain:
  *
  * ```ts
  * await app.get('/users/1').assertOk().assertPage('user-profile/Show');

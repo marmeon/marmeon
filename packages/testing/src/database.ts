@@ -10,7 +10,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 const prepared = new Map<string, Promise<void>>();
 
 /**
- * Where a refreshed test app keeps its data: one database per test worker (E21) — a temporary
+ * Where a refreshed test app keeps its data: one database per test worker — a temporary
  * SQLite file, or a Postgres database named after the app's with `_test_<worker>` — so parallel
  * workers never meet. Returns the environment that points the app there.
  */
@@ -25,7 +25,7 @@ export async function workerDatabase(database: DatabaseModule, root: string, env
   const config = (await resolveConfig([database.DatabaseConfig], env)).get(database.DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
   const options = config.default;
   // Named after the worker slot, not the process: the next run reuses (and first resets) it, so
-  // databases do not pile up — like Laravel's parallel testing. Two runs at once would share them.
+  // databases do not pile up. Two runs at once would share them.
   const worker = process.env.VITEST_POOL_ID ?? '0';
 
   if (options.driver === 'sqlite') {

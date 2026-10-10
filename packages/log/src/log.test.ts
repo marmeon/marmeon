@@ -19,7 +19,7 @@ function capture(level: 'info' | 'warn' = 'info') {
 }
 
 describe('@marmeon/log', () => {
-  it('logs pretty lines with NODE_ENV=development only — JSON everywhere else, a missing NODE_ENV included (E139, E164)', () => {
+  it('logs pretty lines with NODE_ENV=development only — JSON everywhere else, a missing NODE_ENV included', () => {
     const format = (NODE_ENV: string | undefined, LOG_FORMAT?: 'pretty' | 'json') => LogConfig.resolve({ LOG_LEVEL: 'info', NODE_ENV, LOG_FORMAT }).format;
     expect(format('development')).toBe('pretty');
     for (const environment of [undefined, '', 'production', 'staging', 'test']) expect(format(environment)).toBe('json');
@@ -27,7 +27,7 @@ describe('@marmeon/log', () => {
     expect(format('development', 'json')).toBe('json');
   });
 
-  it('names the app\'s environment in every JSON entry — appEnv, from APP_ENV or the one NODE_ENV goes with (E217)', () => {
+  it('names the app\'s environment in every JSON entry — appEnv, from APP_ENV or the one NODE_ENV goes with', () => {
     const resolve = (env: Record<string, string | undefined>) => LogConfig.resolve({ LOG_LEVEL: 'info', ...env }).environment;
     expect(resolve({ NODE_ENV: 'production', APP_ENV: 'staging' })).toBe('staging');
     expect(resolve({ NODE_ENV: 'production' })).toBe('production');
@@ -49,7 +49,7 @@ describe('@marmeon/log', () => {
     ]);
   });
 
-  it('writes JSON with the message and context, in Laravel argument order', () => {
+  it('writes JSON with the message and context', () => {
     const { lines, logger } = capture();
     logger.info('User signed in', { userId: '1' });
     expect(lines[0]).toMatchObject({ level: 30, msg: 'User signed in', userId: '1' });
@@ -73,7 +73,7 @@ describe('@marmeon/log', () => {
     expect(lines[1]).toMatchObject({ requestId: 'req-7', job: 'auth.sync', jobId: 'j-2', attempt: 1 });
   });
 
-  it('adds what the app\'s log context sources give — a tracer\'s trace_id and span_id (E120) — and nothing without a source', async () => {
+  it('adds what the app\'s log context sources give — a tracer\'s trace_id and span_id — and nothing without a source', async () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
     const lines: Record<string, unknown>[] = [];
     const stream = new Writable({
@@ -120,7 +120,7 @@ describe('@marmeon/log', () => {
     expect(lines[1]).toMatchObject({ msg: 'Running', task: 'cache:prune' });
   });
 
-  it('redacts secrets in text — a failed job\'s stored error (E105)', () => {
+  it('redacts secrets in text — a failed job\'s stored error', () => {
     expect(redactText('login failed: password=hunter2&user=ada, "api_key":"k-1", token: abc123')).toBe(
       'login failed: password=[redacted]&user=ada, "api_key":"[redacted]", token: [redacted]',
     );
@@ -135,7 +135,7 @@ describe('@marmeon/log', () => {
     expect(text).not.toMatch(/password=x|token=y|Basic z/);
   });
 
-  it('counter-check: never writes passwords, tokens, secrets or credentials — by key, at any depth', () => {
+  it('never writes passwords, tokens, secrets or credentials — by key, at any depth', () => {
     const { lines, logger } = capture();
     logger.info('Login failed', {
       email: 'ada@example.com',
@@ -152,7 +152,7 @@ describe('@marmeon/log', () => {
     expect(lines[0]).toMatchObject({ email: 'ada@example.com', headers: { accept: 'application/json', authorization: '[redacted]' }, nested: { deeper: { id: 7 } } });
   });
 
-  it('counter-check: redacts inside lists, the bindings of a child logger and an error\'s fields and causes (W7.11)', () => {
+  it('redacts inside lists, the bindings of a child logger and an error\'s fields and causes', () => {
     const { lines, raw, logger } = capture();
     const child = logger.child({ channel: 'auth', token: 'bound-t0k3n', user: { password: 'bound-pw' } });
     const cause = Object.assign(new Error('socket token=c4use'), { config: { headers: { authorization: 'Basic c2VjcmV0' } } });
@@ -166,7 +166,7 @@ describe('@marmeon/log', () => {
     expect((lines[1]!.err as { stack: string }).stack).toContain('caused by: Error: socket token=[redacted]');
   });
 
-  it("counter-check: redacts the names the app's Redactor adds (addKeys) — in the context, a child's bindings and an error's text", async () => {
+  it("redacts the names the app's Redactor adds (addKeys) — in the context, a child's bindings and an error's text", async () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
     app.container.make(Redactor).addKeys('marmeon_session', 'X-Tenant-Key');
     const raw: string[] = [];
@@ -189,7 +189,7 @@ describe('@marmeon/log', () => {
     expect(written.join(''), JSON.stringify(written)).not.toMatch(/bound-s3ss|tenant-k3y/);
   });
 
-  it('counter-check: writes an error under any key with its type, message and stack — masked like under err, never as {}', () => {
+  it('writes an error under any key with its type, message and stack — masked like under err, never as {}', () => {
     const { lines, raw, logger } = capture();
     const failure = () => Object.assign(new TypeError('import failed for password=errpw', { cause: new Error('socket token=c4use') }), { code: 'EIMPORT', secret: 'own-field' });
     logger.error('Failed', { error: failure(), job: { last: failure() }, errors: [failure()] });
@@ -212,7 +212,7 @@ describe('@marmeon/log', () => {
     expect(printed[0]).not.toMatch(/errpw|c4use|own-field/);
   });
 
-  it('counter-check: the console fallback redacts like pino (W7.11)', () => {
+  it('the console fallback redacts like pino', () => {
     const written: string[] = [];
     const log = console.log;
     console.log = (line: string) => void written.push(line);
@@ -234,7 +234,7 @@ describe('@marmeon/log', () => {
   });
 });
 
-describe('the log channel (E118)', () => {
+describe('the log channel', () => {
   it('carries every entry of its app — any level, the bindings of every parent, the request — while something listens', async () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
     const other = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
@@ -259,12 +259,12 @@ describe('the log channel (E118)', () => {
       { level: 'debug', message: 'below the level', context: { channel: 'http', part: 'kernel', ms: 3 }, requestId: 'req-3' },
       { level: 'warn', message: 'a warning', context: {}, requestId: undefined },
     ]);
-    // pino writes as before — its level decides, not the channel.
+    // pino's level decides what it writes, not the channel.
     expect(lines.map((line) => line.msg)).toEqual(['a warning', 'another app', 'after off']);
   });
 });
 
-describe('enabled(level) — asked before an entry is built (E187)', () => {
+describe('enabled(level) — asked before an entry is built', () => {
   it('follows the level — silent lets nothing through — and says yes while the log channel listens', async () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'test' } });
     const sink = new Writable({ write: (_chunk, _encoding, done) => done() });

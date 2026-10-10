@@ -8,11 +8,9 @@ import { PruneEmailChanges } from './tasks/PruneEmailChanges.ts';
 export const schedule = defineSchedule((s) => {
   s.command('auth:prune-tokens').daily().at('03:10').onOneServer();
   s.call(PruneEmailChanges).daily().at('03:10').onOneServer().name('auth.prune-email-changes');
-  // Accounts whose address was never confirmed — opt-in, your app's decision: turn this line on to delete them at 03:20
-  // once AUTH_UNVERIFIED_DAYS (default 7) have passed since the sign-up. It ends whoever signed up with somebody else's address
-  // holding it (pre-hijacked accounts) and keeps no data of sign-ups nobody finished (data minimization) — and it is irreversible:
-  // with AUTH_PRIVATE_REGISTRATION=false such accounts were signed in and may have used the app. An account confirmed once
-  // (first_verified_at) is never deleted. Leave it off where unconfirmed accounts belong to your model (an invited team, an import);
-  // `marmeon auth:prune-unverified` deletes them by hand — commands/PruneUnverifiedCommand.ts, through AccountDeletion.
+  // Accounts whose address was never confirmed — opt-in: turn this line on to delete them at 03:20 once AUTH_UNVERIFIED_DAYS
+  // (default 7) have passed since the sign-up (pre-hijacked accounts, data minimization). Irreversible; an account confirmed
+  // once is never deleted. Leave it off where unconfirmed accounts belong to your model (an invited team, an import);
+  // `marmeon auth:prune-unverified` deletes them by hand (commands/PruneUnverifiedCommand.ts).
   // s.command('auth:prune-unverified').daily().at('03:20').onOneServer();
 });

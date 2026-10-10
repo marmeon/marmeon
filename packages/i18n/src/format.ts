@@ -1,16 +1,6 @@
 /**
- * The ICU MessageFormat subset Marmeon speaks — parsed once, formatted through `Intl`:
- *
- * - `{name}` — a value; numbers and dates are formatted for the locale
- * - `{n, number}`, `{n, number, integer|percent}`
- * - `{d, date}`, `{d, date, short|medium|long|full}`, `{t, time, …}`
- * - `{count, plural, =0 {none} one {# item} other {# items}}` — `Intl.PluralRules`, `#` is the number
- * - `{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}`
- * - `{kind, select, link {…} other {…}}`
- * - quoting as in ICU: `'{'` is a literal brace, `''` an apostrophe (an apostrophe elsewhere is just one: "it's")
- *
- * Not supported: `offset:`, number skeletons (`::`), nested formats of other kinds. The result is plain text —
- * render it as text, never as HTML.
+ * The ICU MessageFormat subset Marmeon speaks — parsed once, formatted through `Intl`; the syntax is in
+ * `docs/localization.md#messages`. The result is plain text — render it as text, never as HTML.
  */
 
 export type Part =

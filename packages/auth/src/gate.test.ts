@@ -233,7 +233,7 @@ describe('policies at the request (can) — after route binding', () => {
     expect((await (await as(1))('PUT', '/posts/1', { title: '' })).status).toBe(422);
   });
 
-  it('counter-check: denyAsNotFound answers exactly like a record that does not exist', async () => {
+  it('denyAsNotFound answers exactly like a record that does not exist', async () => {
     const as = await boot();
     const ada = await as(1);
     const hidden = await ada('GET', '/posts/2'); // Alan's draft

@@ -31,17 +31,9 @@ export interface MessageLoader {
 }
 
 /**
- * Loads language files on demand — in the browser and in the SSR entry, where pages render from the same messages:
- *
- * ```ts
- * import lang from 'virtual:marmeon/lang';
- * export const messages = createMessageLoader(lang);
- * ```
- *
- * The fallback locale comes from the server with each page (`APP_FALLBACK_LOCALE`): configured once.
- *
- * A locale is only ever a key into `files` (never part of a path), so a page's `locale` cannot load anything but
- * the app's own language files.
+ * Loads language files on demand — in the browser and in the SSR entry: `createMessageLoader(lang)`, with `lang` from
+ * `virtual:marmeon/lang`. The fallback locale comes from the server with each page (`APP_FALLBACK_LOCALE`). A locale is
+ * only ever a key into `files` (never part of a path), so a page's `locale` cannot load anything but the app's own files.
  */
 export function createMessageLoader(files: LangFiles, { fallback = 'en' }: { fallback?: string } = {}): MessageLoader {
   const byNamespace = new Map<string, Map<string, () => Promise<unknown>>>(); // namespace → locale → load

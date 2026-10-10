@@ -6,7 +6,7 @@ import { CliServiceProvider } from 'marmeon';
 import { I18nServiceProvider } from '../../../index.ts';
 import { GreetCommand } from '../commands.ts';
 
-// A minimal app for `i18n.test.ts`: a command whose constructor takes the request-scoped Translator (finding 3 of W6).
+// A minimal app for `i18n.test.ts`: a command whose constructor takes the request-scoped Translator.
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   discover: false,

@@ -54,19 +54,19 @@ describe('make:auth', () => {
     expect(app).toMatch(/modules: \[auth, system\]/);
     expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
-    // Its look (E202): a stylesheet the client entry imports — once, after the framework's.
+    // Its look: a stylesheet the client entry imports — once, after the framework's.
     const client = readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8');
     expect(client.match(/modules\/auth\/auth\.css/g)).toHaveLength(1);
     expect(client.indexOf(AUTH_STYLES_IMPORT)).toBeGreaterThan(client.indexOf("import '@marmeon/react/styles.css';"));
     expect(lines).toContain('✓ Imported its styles (modules/auth/auth.css) in bootstrap/client.tsx');
-    // The blank app has its lint preset, the devtools (E150) and a Content-Security-Policy (E147): none is named.
+    // The blank app has its lint preset, the devtools and a Content-Security-Policy: none is named.
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
     expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
     expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
   });
 
-  it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app, W7.6)', async () => {
+  it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app)', async () => {
     const root = blankApp();
     rmSync(join(root, '.oxlintrc.json'));
     const bootstrap = join(root, 'bootstrap/app.ts');
@@ -100,7 +100,7 @@ describe('make:auth', () => {
     expect(readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8').match(/modules\/auth\/auth\.css/g)).toHaveLength(1); // its styles too
   });
 
-  it('names every package its templates import — the module\'s in NEEDED, its tests\' in NEEDED_FOR_TESTS (W7.11: i18n was missing)', () => {
+  it('names every package its templates import — the module\'s in NEEDED, its tests\' in NEEDED_FOR_TESTS', () => {
     const imported = (test: boolean) => {
       const names = new Set<string>();
       for (const file of readdirSync(STUBS, { recursive: true }) as string[]) {
@@ -133,7 +133,7 @@ describe('make:auth', () => {
     expect(spawned).toEqual([]);
   });
 
-  it('names what the module runs with in production but the app has as a dev dependency — marmeon (E159)', async () => {
+  it('names what the module runs with in production but the app has as a dev dependency — marmeon', async () => {
     const root = blankApp();
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
     pkg.devDependencies['marmeon'] = pkg.dependencies['marmeon']!;
@@ -151,18 +151,18 @@ describe('make:auth', () => {
     expect(lines[0]).toBe('✗ There are no auth templates for the UI adapter "vue". Known: react.');
   });
 
-  it('makes one module, private by default (E146, E193) — AUTH_PRIVATE_REGISTRATION=false turns it off, no flag of the command', async () => {
+  it('makes one module, private by default — AUTH_PRIVATE_REGISTRATION=false turns it off, no flag of the command', async () => {
     expect(Object.keys(MakeAuthCommand.options)).toEqual(['force', 'adapter']);
     const defaults = blankApp();
     const plain = fakeInput(defaults);
     expect(await new MakeAuthCommand().handle(plain.input)).toBe(0);
     expect(plain.lines.filter((line) => line.startsWith('!'))).toEqual([]);
     expect(existsSync(join(STUBS, 'react', 'private-registration'))).toBe(false);
-    // The change of address is pending by default (W9 step 9) and immediate with the switch off: both in the one controller.
+    // The change of address is pending by default and immediate with the switch off: both in the one controller.
     const controller = readFileSync(join(defaults, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8');
     expect(controller).toContain('requestEmailChange');
     expect(controller).toContain('changeEmail');
-    // The users table is made with every column it has — no migration adds one later (E216: no app is older than its table).
+    // The users table is made with every column it has — no migration adds one later (no app is older than its table).
     const migrations = readdirSync(join(defaults, 'modules/auth/migrations')).filter((file) => file.includes('users_table'));
     expect(migrations).toEqual(['0001_01_01_000000_create_users_table.ts']);
     const users = readFileSync(join(defaults, 'modules/auth/migrations', migrations[0]!), 'utf8');
@@ -183,8 +183,8 @@ describe('make:auth', () => {
   });
 
   /**
-   * The acceptance of wave 4 (E30): a new app gets a complete auth area whose own tests pass — generated,
-   * migrated, type-checked and tested as a user would. On Postgres too when `pnpm test:pgsql` runs.
+   * A new app gets a complete auth area whose own tests pass — generated, migrated, type-checked and tested as a
+   * user would. On Postgres too when `pnpm test:pgsql` runs.
    */
   it(
     'gives a new app a working auth area: its generated tests pass',
@@ -205,13 +205,13 @@ describe('make:auth', () => {
       const generated = marmeon('make:auth');
       expect(generated.out).toContain('Created modules/auth');
       expect(generated.code).toBe(0);
-      // make:auth ran `marmeon route:types`: the module's routes, controllers and views are typed (W5.2).
+      // make:auth ran `marmeon route:types`: the module's routes, controllers and views are typed.
       const routeTypes = readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8');
       expect(generated.out).toContain('Wrote bootstrap/routes.ts');
       expect(routeTypes).toContain("'auth.login.store': { method: 'post'; path: '/login'; controller: typeof LoginController };");
       expect(routeTypes).toContain("'api.user': { method: 'get'; path: '/api/user'; browser: false };");
       expect(routeTypes).toContain("'auth/Dashboard': true;");
-      // Private registration (E146, the default): its page and the change link — answered with 404 when the switch is off.
+      // Private registration (the default): its page and the change link — answered with 404 when the switch is off.
       expect(routeTypes).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
       expect(routeTypes).toContain("'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };");
       expect(marmeon('route:types', '--check').code).toBe(0);
@@ -228,7 +228,7 @@ describe('make:auth', () => {
       expect(typecheck.out).toBe('');
       expect(typecheck.code).toBe(0);
 
-      // Clean under the lint preset the blank app carries (E121), and with module boundaries too: views import controllers
+      // Clean under the lint preset the blank app carries, and with module boundaries too: views import controllers
       // with `import type`, other modules through their entry.
       const lint = () => run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings']);
       expect(lint()).toMatchObject({ code: 0 });
@@ -240,16 +240,16 @@ describe('make:auth', () => {
       expect(failed, `generated tests failed: ${failed.join(' | ')}`).toEqual([]);
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
       expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
-      // Both values of the switch (E193): the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
+      // Both values of the switch: the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
       const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
       expect(ran('registration', 'private registration — the default')).toBe(6);
       expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(4);
-      expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(7); // W9 step 9
+      expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(7);
       expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(2);
-      // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS (E203) by the command, in both behaviours — the module schedules no
-      // deletion (E209: the app turns it on).
+      // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS by the command, in both behaviours — the module schedules no
+      // deletion (the app turns it on).
       expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed — the default')).toBe(6);
-      // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became (W10 step 9b).
+      // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became.
       expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false')).toBe(3);
       expect(tests.code).toBe(0);
 
@@ -261,7 +261,7 @@ describe('make:auth', () => {
       expect(stale.out).toContain('bootstrap/routes.ts is out of date — run: marmeon route:types');
       expect(stale.code).toBe(1);
 
-      // The build regenerates it, and the client bundle carries only the routes its code names (E57): no API route, no
+      // The build regenerates it, and the client bundle carries only the routes its code names: no API route, no
       // `.internal()` route, none that only the server redirects to — their names and patterns stay on the server.
       const built = marmeon('build');
       expect(built.out).toContain('Built dist/client and dist/server');
@@ -272,7 +272,7 @@ describe('make:auth', () => {
         .map((file) => readFileSync(join(root, 'dist/client', file), 'utf8'))
         .join('\n');
       expect(client).toContain('auth.login.store');
-      // The look (E202): the framework's stylesheet and the module's, in the stylesheet the built index.html links — no inline style.
+      // The look: the framework's stylesheet and the module's, in the stylesheet the built index.html links — no inline style.
       const css = readdirSync(join(root, 'dist/client'), { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.css'));
       const styles = css.map((file) => readFileSync(join(root, 'dist/client', file), 'utf8')).join('\n');
       expect(styles).toContain('.auth-header');

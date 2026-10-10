@@ -6,21 +6,8 @@ import { Connections, type Generated } from '@marmeon/database';
 export const REMEMBER_TABLE = 'remember_tokens';
 
 /**
- * The columns {@link DatabaseRememberTokens} needs. The migration of `make:auth`:
- *
- * ```ts
- * schema.create('remember_tokens', (table) => {
- *   table.id();
- *   table.foreignId('user_id').constrained().cascadeOnDelete();
- *   table.string('selector', 32).unique();
- *   table.string('validator_hash', 64).secret();
- *   table.string('previous_validator_hash', 64).nullable().secret();
- *   table.timestamp('rotated_at').nullable();
- *   table.timestamp('last_used_at').nullable();
- *   table.timestamp('expires_at');
- *   table.timestamps();
- * });
- * ```
+ * The columns {@link DatabaseRememberTokens} needs — the `remember_tokens` migration `make:auth` writes into
+ * `modules/auth/migrations/` creates them (the validators only as SHA-256, `secret()` columns).
  */
 export interface RememberTokenTable {
   id: Generated<number>;
@@ -43,7 +30,7 @@ export type RememberResult =
   | { readonly kind: 'stolen'; readonly userId: number | string };
 
 /**
- * Remember-me tokens, one per device (E26): `<selector>.<validator>` in the cookie, the selector in
+ * Remember-me tokens, one per device: `<selector>.<validator>` in the cookie, the selector in
  * clear (to find the row), the validator only as SHA-256 (the cookie is the secret, the database
  * is not). Every use rotates the validator; an old one coming back means the cookie was copied, so
  * all of the user's tokens are dropped.

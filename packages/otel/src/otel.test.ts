@@ -71,7 +71,7 @@ class ShowPersonController {
   }
   async handle(ctx: HttpContext<{}, { person: string }>) {
     seen.activeTraceId = trace.getActiveSpan()?.spanContext().traceId;
-    // A parameter that must never reach a span (E125).
+    // A parameter that must never reach a span.
     const rows = await this.#db.selectFrom('people' as never).selectAll().where('email' as never, '=', 'ada-secret@example.com' as never).execute();
     await this.#queue.dispatch(ReportJob, { userId: Number(ctx.params.person) });
     this.#logger.info('Looked at a person', { found: rows.length });
@@ -130,7 +130,7 @@ const dump = (span: ReadableSpan | undefined) => JSON.stringify(span && { name: 
 const byName = (list: readonly ReadableSpan[], name: string) => list.find((span) => span.name === name);
 const parentOf = (span: ReadableSpan | undefined) => span?.parentSpanContext?.spanId;
 
-describe('@marmeon/otel (E120)', () => {
+describe('@marmeon/otel', () => {
   it('a request: a server span `GET /people/:person`, its query (without parameters), the dispatch — and the job, run by the worker, in the same trace', async () => {
     const { app: booting, lines } = boot();
     await using app = await booting;
@@ -138,7 +138,7 @@ describe('@marmeon/otel (E120)', () => {
     const kernel = createHttpKernel(app);
     const response = await kernel.request('http://shop.test/people/7?page=2&token=secret-in-the-url', { headers: { 'user-agent': 'probe/1.0' } });
     expect(response.status).toBe(200);
-    // The worker, as `marmeon queue:work` runs it: the job comes out of the jobs table, its trace context with it (E131).
+    // The worker, as `marmeon queue:work` runs it: the job comes out of the jobs table, its trace context with it.
     await app.container.make(QueueConnections).worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true });
 
     const all = await spans();
@@ -228,7 +228,7 @@ describe('@marmeon/otel (E120)', () => {
     expect(job.events).toEqual([]);
   });
 
-  it("starts a trace of its own for every request — a caller's traceparent is a link, never the parent (W10 step 8)", async () => {
+  it("starts a trace of its own for every request — a caller's traceparent is a link, never the parent", async () => {
     const { app: booting } = boot();
     await using app = await booting;
     await spans();
@@ -331,7 +331,7 @@ describe('@marmeon/otel (E120)', () => {
     const peer = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { peerDependencies: Record<string, string> }).peerDependencies['@opentelemetry/api'];
     expect(peer).toBe('^1.9.0');
     expect((error as Error).message).toContain(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@${peer} `);
-    // `marmeon` prints the way out when the app cannot start (E130).
+    // `marmeon` prints the way out when the app cannot start.
     const [solution] = await new ErrorSolutions(OtelServiceProvider.solutions).find(error);
     expect(solution).toMatchObject({ title: 'Install the OpenTelemetry API', command: `pnpm add @opentelemetry/api@${peer}` });
   });

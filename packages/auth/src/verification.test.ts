@@ -25,7 +25,7 @@ describe('EmailVerification', () => {
     expect(signer.hasValidSignature(link)).toBe(true);
   });
 
-  it('counter-checks: another user’s link, an old address — no match', () => {
+  it('another user’s link or an old address does not match', () => {
     const params = { id: '1', hash: emailHash('ada@example.com') };
     expect(verification.matches(ada, params)).toBe(true);
     expect(verification.matches({ id: 2, email: 'alan@example.com' }, params)).toBe(false); // signed, but not yours
@@ -49,7 +49,7 @@ describe('verified()', () => {
     expect((await run({ email_verified_at: null }, 'application/json')).status).toBe(403);
   });
 
-  it('counter-check: a user without the column (a provider that did not select it) is not verified — fail closed', async () => {
+  it('a user without the column (a provider that did not select it) is not verified — fail closed', async () => {
     expect((await run({ email_verified_at: undefined as never })).status).toBe(302);
     expect((await run({ email_verified_at: undefined as never }, 'application/json')).status).toBe(403);
   });

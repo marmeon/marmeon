@@ -24,8 +24,8 @@ export interface VerificationLinkOptions<N extends string = string> {
 }
 
 /**
- * E-mail verification links (Laravel's `VerifyEmail`): signed, expiring, bound to the user's id and
- * the hash of the address — the controller behind `signed()` asks `matches()` before marking it verified.
+ * E-mail verification links: signed, expiring, bound to the user's id and the hash of the address — the controller
+ * behind `signed()` asks `matches()` before marking it verified.
  */
 export class EmailVerification {
   readonly #signer: UrlSigner;
@@ -59,7 +59,7 @@ export interface VerifiedOptions<N extends string = string> {
 }
 
 /**
- * Only for users with a verified e-mail (Laravel's `verified`): after `authenticate()`; the user type
+ * Only for users with a verified e-mail: after `authenticate()`; the user type
  * must have `email_verified_at`. Others get 403 (JSON) or the notice page.
  */
 export function verified<const N extends RouteNameInput = never>(options: VerifiedOptions<N> = {}): MiddlewareClass<{ readonly user: VerifiableUser }, {}> {

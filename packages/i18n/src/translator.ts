@@ -4,19 +4,10 @@ import { supportedLocale } from './locale.ts';
 import type { CheckTranslationKey, MessageOf, TranslateArgs, TranslationKey } from './types.ts';
 
 /**
- * Translates the app's messages in one locale — on the server the **request's** (`constructor(translator: Translator)`,
- * scoped: two requests never share one, E38). Keys are `namespace.path` and checked, like their placeholders:
- *
- * ```ts
- * translator.get('auth.login.failed');
- * translator.get('auth.throttled', { seconds: 30 });
- * translator.forLocale(user.locale).get('auth.mail.reset.subject');   // a mail in the recipient's language
- * ```
- *
- * Outside a request — in a job, a command — it speaks `APP_LOCALE`; `Translators.for(locale)` gives a translator for
- * any locale anywhere (a root service).
- *
- * The same token as the `Translator` contract of @marmeon/core, which framework packages use.
+ * Translates the app's messages in one locale — on the server the **request's** (scoped: two requests never share one):
+ * `translator.get('auth.throttled', { seconds: 30 })`, keys (`namespace.path`) and placeholders checked. Outside a request it
+ * speaks `APP_LOCALE`; `Translators.for(locale)` gives a translator for any locale anywhere. The same token as the
+ * `Translator` contract of @marmeon/core. See `docs/localization.md#on-the-server`.
  */
 export interface Translator extends TranslatorContract {
   /** `key`'s message with its placeholders filled; the key itself when no locale has it. */
@@ -57,8 +48,8 @@ export interface TranslatorOptions {
 
 /** A {@link Translator} over the catalog; `locale` is read on every call (the request's may be set after creation). */
 export function createTranslator(catalog: Catalog, locale: () => string, { locales }: TranslatorOptions): Translator {
-  // An object literal with its getters — one per request (the request's `Translator`): half the cost of the object that
-  // `Object.defineProperties` completed afterwards (≈ 0.4 instead of ≈ 0.8 µs, W8 step 9).
+  // An object literal with its getters — one per request (the request's `Translator`): half the cost of an object
+  // completed with `Object.defineProperties` afterwards.
   const translator = {
     get: (key: string, params?: Readonly<Record<string, unknown>>) => catalog.text(locale(), key, params),
     has: (key: string) => catalog.has(locale(), key),

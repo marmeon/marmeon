@@ -26,7 +26,7 @@ async function warningsWith(driver: string, withAuth = true): Promise<string[]> 
   return warnings;
 }
 
-describe('the cookie session driver with sign-in (E46)', () => {
+describe('the cookie session driver with sign-in', () => {
   it('warns once at boot: a sign-out can be undone by a request still in flight', async () => {
     expect(await warningsWith('cookie')).toEqual([COOKIE_SESSION_WARNING]);
     expect(COOKIE_SESSION_WARNING).toContain('Use SESSION_DRIVER=file');

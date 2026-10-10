@@ -16,9 +16,9 @@ const length = (value: string) => [...value.normalize('NFKC')].length;
 const bytes = (value: string) => Buffer.byteLength(value.normalize('NFKC'), 'utf8');
 
 /**
- * A new password — a rule of @marmeon/validation: long enough, short enough to hash (4 KiB, the hasher's limit — why it lives
- * here), well-formed, and nothing else. No composition rules (digits, symbols): NIST SP 800-63B advises against them. Never
- * trimmed. Its confirmation is Laravel's `confirmed` of the object:
+ * A new password — a rule of @marmeon/validation: long enough, short enough to hash (4 KiB, the hasher's limit), well-formed,
+ * and nothing else. No composition rules (digits, symbols): NIST SP 800-63B advises against them. Never trimmed. Its
+ * confirmation is `.confirmed()` of the object:
  *
  * ```ts
  * schema: r.object({ password: password(), password_confirmation: r.string() }).confirmed('password')
