@@ -339,7 +339,12 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `HOST` | every interface | The interface the server listens on. |
 | `LOG_LEVEL` | `info` | The lowest level that is logged, or `silent`. |
 | `DB_CONNECTION` | `sqlite` | `sqlite` or `pgsql`. |
-| `DB_DATABASE` | `storage/database.sqlite` | The SQLite file, or the name of the Postgres database. |
+| `DB_DATABASE` | `storage/database.sqlite` | The SQLite file, or the name of the Postgres database (`marmeon` by default). |
+| `DB_HOST` | `127.0.0.1` | Postgres: the server. |
+| `DB_PORT` | `5432` | Postgres: its port. |
+| `DB_USERNAME` | `postgres` | Postgres: the user. |
+| `DB_PASSWORD` | empty | Postgres: the password. |
+| `DB_URL` | none | Postgres: the whole address instead. When it is set, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD` are not read. |
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis`, `cookie` or `memory`. |
 | `CACHE_DRIVER` | `file` | Where the cache lives: `file`, `database`, `redis` or `memory`. |
 | `QUEUE_CONNECTION` | `database` | Where queued jobs wait: `database`, `redis` or `sync`. |

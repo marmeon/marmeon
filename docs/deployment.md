@@ -198,6 +198,7 @@ The settings a server needs, beyond those of each feature:
 | `TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |
 | `SHUTDOWN_DELAY` | `0` | Seconds of requests after `SIGTERM`, at most 300. About 5 behind a load balancer that learns from its probes. |
 | `KEEP_ALIVE_TIMEOUT` | `65` | Seconds an idle connection stays open. Longer than the proxy keeps its own. |
+| `DB_CONNECTION` | `sqlite` | `pgsql` for Postgres, with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or the whole address in `DB_URL`, which then wins. See [database](database.md#configuration). |
 | `MAIL_MAILER` | `log` | `smtp` in production, with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` and `MAIL_FROM_ADDRESS`. |
 | `ASSET_VERSION` | the build's | Tabs of an older version load the page fully on their next visit. Set it to the git commit, for example. |
 

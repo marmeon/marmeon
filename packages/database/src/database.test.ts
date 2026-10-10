@@ -233,6 +233,59 @@ describe('DatabaseServiceProvider', () => {
       createApplication({ root, discover: false, env: { DB_CONNECTION: 'pgsql', DB_URL: 'mysql://x' }, providers: [DatabaseServiceProvider] }),
     ).rejects.toThrow(/DB_URL.*postgres:\/\//);
   });
+
+  it('DB_URL wins over DB_HOST & co. — then the parts and DB_DATABASE are not read', async () => {
+    const pgsql = await createApplication({
+      root,
+      discover: false,
+      env: { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:secret@db.example:5433/app', DB_HOST: 'other', DB_DATABASE: 'other', DB_USERNAME: 'other' },
+      providers: [DatabaseServiceProvider],
+    });
+    expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://app:secret@db.example:5433/app', poolMax: 10, infrastructurePoolMax: 4 });
+    await pgsql.shutdown();
+  });
+
+  it('a connection of its own reads the same two ways: the server and the account in parts, or one URL — which wins', async () => {
+    const Reporting = defineConnection('reporting', {
+      env: env({
+        REPORTING_DB_URL: env.url({ protocols: ['postgres', 'postgresql'] }).optional(),
+        REPORTING_DB_HOST: env.string().default('127.0.0.1'),
+        REPORTING_DB_PORT: env.port().default(5432),
+        REPORTING_DB_DATABASE: env.string().default('reporting'),
+        REPORTING_DB_USERNAME: env.string().default('postgres'),
+        REPORTING_DB_PASSWORD: env.string().default(''),
+      }),
+      resolve: (e) => ({
+        driver: 'pgsql',
+        url: e.REPORTING_DB_URL,
+        host: e.REPORTING_DB_HOST,
+        port: e.REPORTING_DB_PORT,
+        database: e.REPORTING_DB_DATABASE,
+        username: e.REPORTING_DB_USERNAME,
+        password: e.REPORTING_DB_PASSWORD,
+        poolMax: 3,
+      }),
+    });
+    const options = async (variables: Record<string, string>) => {
+      await using app = await createApplication({ root, discover: false, env: { DB_DATABASE: ':memory:', ...variables }, config: [Reporting], providers: [DatabaseServiceProvider] });
+      return app.container.make(Connections).options('reporting');
+    };
+    expect(await options({ REPORTING_DB_HOST: 'reports.internal', REPORTING_DB_PORT: '6543', REPORTING_DB_USERNAME: 'report', REPORTING_DB_PASSWORD: 'p@ss/word' })).toEqual({
+      driver: 'pgsql',
+      url: 'postgres://report:p%40ss%2Fword@reports.internal:6543/reporting',
+      poolMax: 3,
+    });
+    expect(await options({ REPORTING_DB_URL: 'postgresql://ro:secret@replica:5432/stats', REPORTING_DB_HOST: 'ignored' })).toEqual({
+      driver: 'pgsql',
+      url: 'postgresql://ro:secret@replica:5432/stats',
+      poolMax: 3,
+    });
+    // Neither a URL nor a database: the start names the connection instead of guessing a database.
+    const Nameless = defineConnection('nameless', { env: env({}), resolve: () => ({ driver: 'pgsql', host: 'db' }) });
+    await expect(createApplication({ root, discover: false, env: { DB_DATABASE: ':memory:' }, config: [Nameless], providers: [DatabaseServiceProvider] })).rejects.toThrow(
+      'The Postgres connection "nameless" needs a url or a database.',
+    );
+  });
 });
 
 describe('pg (an optional peer, E198)', () => {

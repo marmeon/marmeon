@@ -47,6 +47,13 @@ it('types connections, configuration and the query log', () => {
   expectTypeOf<Database>().toEqualTypeOf<Kysely<Tables>>();
 
   defineConnection('reporting', { env: env({ URL: env.string() }), resolve: (e) => ({ driver: 'pgsql', url: e.URL }) });
+  // Postgres in parts, or a URL that may be missing — the parts then make it.
+  defineConnection('parts', {
+    env: env({ URL: env.string().optional(), HOST: env.string(), PORT: env.port() }),
+    resolve: (e) => ({ driver: 'pgsql', url: e.URL, host: e.HOST, port: e.PORT, database: 'reports', username: 'report', password: 'secret' }),
+  });
+  // @ts-expect-error — (3b) a port is a number (env.port() parses it)
+  defineConnection('d', { env: env({}), resolve: () => ({ driver: 'pgsql', host: 'db', port: '5432', database: 'app' }) });
   // @ts-expect-error — (3) unknown driver
   defineConnection('a', { env: env({}), resolve: () => ({ driver: 'mysql', url: 'x' }) });
   // @ts-expect-error — (4) SQLite needs a database file

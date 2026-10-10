@@ -44,16 +44,27 @@ The default connection reads these variables, checked when the app starts like a
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `DB_CONNECTION` | `sqlite` | The driver: `sqlite` or `pgsql`. |
-| `DB_DATABASE` | `storage/database.sqlite` for SQLite, `marmeon` for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name, without `DB_URL`. |
-| `DB_URL` | none | Postgres: the whole address, `postgres://user:secret@host:5432/app`. When it is set, the four variables below and `DB_DATABASE` are not read. |
-| `DB_HOST` | `127.0.0.1` | Postgres: the server, without `DB_URL`. |
+| `DB_DATABASE` | `storage/database.sqlite` for SQLite, `marmeon` for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name. |
+| `DB_HOST` | `127.0.0.1` | Postgres: the server. |
 | `DB_PORT` | `5432` | Postgres: its port. |
 | `DB_USERNAME` | `postgres` | Postgres: the user. |
 | `DB_PASSWORD` | empty | Postgres: the password. |
+| `DB_URL` | none | Postgres: the whole address instead, `postgres://user:secret@host:5432/app`. |
 | `DB_POOL_MAX` | `10` | Postgres: the most connections the app's pool opens. |
 | `DB_INFRA_POOL_MAX` | `4` | Postgres: the most connections of the small pool the cache, the sessions and uploads use. See [infrastructure connections](#infrastructure-connections). |
 
-`DB_URL` must start with `postgres://` or `postgresql://`, and the start fails with every wrong value named at once.
+A Postgres server is either the five variables `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or its
+whole address in `DB_URL`. When `DB_URL` is set, it wins: the five are not read. `DB_URL` must start with `postgres://` or
+`postgresql://`, and the start fails with every wrong value named at once.
+
+```sh title=".env"
+DB_CONNECTION=pgsql
+DB_HOST=db.internal
+DB_PORT=5432
+DB_DATABASE=notes
+DB_USERNAME=notes
+DB_PASSWORD=secret
+```
 
 ### SQLite
 
@@ -120,8 +131,36 @@ export const SystemDatabase = defineConnection('system', {
 ```
 
 List the definition in `config` of `defineApplication()` in `bootstrap/app.ts`, or of the module that needs it. `resolve`
-returns either `{ driver: 'sqlite', database }` or `{ driver: 'pgsql', url, poolMax?, infrastructurePoolMax? }`, so a reporting
-database on Postgres reads `resolve: (e) => ({ driver: 'pgsql', url: e.REPORTING_DB_URL, poolMax: 5 })`.
+returns `{ driver: 'sqlite', database }` or a Postgres server. Like the default connection, a Postgres server is its parts, `host`,
+`port`, `database`, `username` and `password`, or the whole address in `url`, which wins when both are given. Without `url`, the
+parts default to `127.0.0.1`, `5432`, `postgres` and no password, and `database` is required. `poolMax` and
+`infrastructurePoolMax` size its pools, 10 and 4 by default. A reporting database that reads both ways:
+
+```ts title="config/reporting.ts"
+import { env } from '@marmeon/core';
+import { defineConnection } from '@marmeon/database';
+
+export const ReportingDatabase = defineConnection('reporting', {
+  env: env({
+    REPORTING_DB_HOST: env.string().default('127.0.0.1'),
+    REPORTING_DB_PORT: env.port().default(5432),
+    REPORTING_DB_DATABASE: env.string().default('reporting'),
+    REPORTING_DB_USERNAME: env.string().default('postgres'),
+    REPORTING_DB_PASSWORD: env.string().default(''),
+    REPORTING_DB_URL: env.url({ protocols: ['postgres', 'postgresql'] }).optional(),
+  }),
+  resolve: (e) => ({
+    driver: 'pgsql',
+    url: e.REPORTING_DB_URL,
+    host: e.REPORTING_DB_HOST,
+    port: e.REPORTING_DB_PORT,
+    database: e.REPORTING_DB_DATABASE,
+    username: e.REPORTING_DB_USERNAME,
+    password: e.REPORTING_DB_PASSWORD,
+    poolMax: 5,
+  }),
+});
+```
 
 `default` is the name of the connection of `DB_CONNECTION`, and `defineConnection('default', …)` throws. Ask `Connections` for any
 connection by its name:

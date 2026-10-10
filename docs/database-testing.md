@@ -29,7 +29,7 @@ Each test worker of Vitest gets a database of its own, so tests that run in para
 
 - **SQLite:** a file in the system's temporary directory, named after the app and the worker.
 - **Postgres:** a database next to the configured one, named `<database>_test_<app>_<worker>`. The test run drops and creates it,
-  so the role in `DB_URL` needs the right to create databases.
+  so the database's user needs the right to create databases.
 
 Each test file starts with a fresh database: before its first refreshed test, the file's worker drops its database, creates it
 and runs the migrations. Then each test app pins one connection of the `default` database connection and runs every query on it,
@@ -166,16 +166,19 @@ explains infrastructure connections.
 
 ## Running the tests on Postgres
 
-With `DB_CONNECTION=pgsql` and `DB_URL` in the environment, refreshed test apps use Postgres instead of SQLite:
+With `DB_CONNECTION=pgsql` and the server in the environment, refreshed test apps use Postgres instead of SQLite. Name the
+database in the shell too, since otherwise the `DB_DATABASE=:memory:` of `.env.test` names it:
 
 ```sh
-DB_CONNECTION=pgsql DB_URL=postgres://notes:secret@localhost:5432/notes pnpm test
+DB_CONNECTION=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWORD=secret pnpm test
 ```
+
+`DB_URL=postgres://notes:secret@localhost:5432/notes` instead of the four does the same, and then `DB_DATABASE` is not read.
 
 Each worker gets its own database next to `notes`, as described above. Postgres finds what SQLite hides, such as two requests
 that race for the same row, so run the suite on the database you deploy to before you ship.
 
 > [!WARNING]
-> The test run drops and creates databases on the server in `DB_URL`, and a `DB_URL` in the shell wins over `.env.test`. Point it
+> The test run drops and creates databases on that server, and a variable in the shell wins over `.env.test`. Point it
 > at a development server only, never at one that holds real data. The [database](database.md#configuration) page
 covers the connection settings.
