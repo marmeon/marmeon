@@ -88,31 +88,16 @@ export function pageName(path: string): string | undefined {
 }
 
 /**
- * Props every page receives, next to its controller's own — the signed-in user,
- * flash messages, validation errors. Declared by whoever shares them:
- *
- * ```ts
- * declare module '@marmeon/http/page' {
- *   interface SharedProps { auth: { user: { id: string; name: string } | null } }
- * }
- * ```
- *
- * `PageProps<Controller>` includes them, and the server fills them in (`SharedData`).
+ * Props every page receives next to its controller's own — the signed-in user, flash messages, validation errors. Declared
+ * with `declare module '@marmeon/http/page'` by whoever shares them; `PageProps<Controller>` includes them, and the server fills
+ * them in (`SharedData`). See docs/responses.md#shared-props.
  */
 export interface SharedProps {}
 
 /**
- * The app's flash messages — what a controller hands the next page to show once: a toast, a notice. Declared by the
- * app, checked where it flashes (`redirect().flash('toast', { kind: 'success', message })`) and where it shows them
- * (`useFlash('toast', (toast) => …)`):
- *
- * ```ts
- * declare module '@marmeon/http/page' {
- *   interface FlashData { toast: { kind: 'success' | 'error' | 'info'; message: string } }
- * }
- * ```
- *
- * Until the app declares any, every key is allowed and its data is `unknown`.
+ * The app's flash messages — what a controller hands the next page to show once, declared by the app with
+ * `declare module '@marmeon/http/page'`. Until the app declares any, every key is allowed and its data is `unknown`.
+ * See docs/responses.md#flash-data-and-flash-messages.
  */
 export interface FlashData {}
 

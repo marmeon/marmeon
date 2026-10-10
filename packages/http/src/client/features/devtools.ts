@@ -1,16 +1,11 @@
 /**
- * What the in-page devtools bar shows, recorded UI-free — the data side of the bar, as a feature: every request the client
- * core makes with its kind, status, duration and the server's request id (`x-request-id`), the live hints that came, the
- * optimistic patches shown and the hydration errors React recovered from.
+ * The data side of the in-page devtools bar, as a feature: every request the client core makes (kind, status, duration, the
+ * server's `x-request-id`), the live hints, the optimistic patches and the hydration errors React recovered from.
+ * See docs/devtools.md#the-bar-on-every-page.
  *
- * **Development only.** Nothing in the framework imports it: the devtools' client (served by the Vite dev server only)
- * attaches it through `__MARMEON_DEVTOOLS_HOOK__`, which the core and the React adapter call only in development and test
- * builds — a production build drops those calls.
- *
- * **What it holds is the server's data** (validation messages, patched props, a hydration error's text): **only in slots of the
- * document**, emptied by the core when the document is left — signing out leaves none of it, whatever the bar showed.
- * Never in `history.state` or any storage. Its wiring — the `fetch` and `EventSource` of the window, wrapped to see every
- * request and hint — is no data.
+ * **Development only:** nothing in the framework imports it; the devtools' client attaches it through
+ * `__MARMEON_DEVTOOLS_HOOK__`, whose calls a production build drops. What it holds is the server's data — only in slots of the
+ * document, emptied when the document is left, never in `history.state` or any storage.
  */
 import {
   ACTION_HEADER,

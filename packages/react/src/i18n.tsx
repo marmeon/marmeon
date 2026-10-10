@@ -26,16 +26,9 @@ function useI18n(hook: string): I18nValue {
 }
 
 /**
- * The messages of a namespace (a module's name, `app` for `lang/`), in the page's locale:
- *
- * ```tsx
- * const t = useTranslation('auth');
- * <h1>{t('login.title')}</h1>
- * <p>{t('attempts', { count: 3 })}</p>          // keys and placeholders are checked against modules/auth/lang/en.ts
- * <time>{t.format.relative(at, now)}</time>     // numbers, dates and relative times in the locale
- * ```
- *
- * The texts are plain strings — React renders them as text, never as HTML.
+ * The messages of a namespace (a module's name, `app` for `lang/`) in the page's locale: `t(key, params)`, checked against the
+ * language file, with `t.format` for numbers, dates and relative times. The texts are plain strings — React renders them as
+ * text, never as HTML. See docs/localization.md#in-the-browser.
  */
 export function useTranslation<N extends Namespace>(namespace: N): Translate<N> {
   const { catalog, locale } = useI18n('useTranslation()');

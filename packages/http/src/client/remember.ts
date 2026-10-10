@@ -1,14 +1,8 @@
 /**
- * Remembered state, UI-free: what a form or a component wants back when Back/Forward returns to its history entry —
- * typed input, an open tab, a filter not sent yet. Kept **in memory only**, per history entry (the page's, a layer's), next to
- * the entry's page and islands in the navigator's cache: never in `history.state` (browsers write it to disk for session
- * restore, and it outlives a sign-out), never in `sessionStorage` (restored from disk too).
- *
- * Gone with the entry — evicted from the cache, a layer closed for good — and with the document: a reload, signing in or out,
- * a new build, a language switch (every 409).
- *
- * Sensitive values are never kept: fields named like a password, a token, a secret or a card (`/password|secret|token|card|cvc/i`),
- * at any depth, and files. Passwords never, even when asked; the others when a form names them (`include`).
+ * Remembered state, UI-free: what a form or a component wants back when Back/Forward returns to its history entry. Kept in
+ * memory only, per history entry, and gone with the entry and with the document — never in `history.state` or `sessionStorage`,
+ * which browsers restore from disk, past a sign-out. Fields named like a password (never, even when asked), a token, a secret or
+ * a card (unless a form names them in `include`), at any depth, and files are not kept. See docs/navigation.md#remembered-state.
  */
 
 import { slot } from './feature.ts';

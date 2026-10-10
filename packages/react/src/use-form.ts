@@ -195,17 +195,8 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
   : [params: ParamsOf<N>, initial: RouteFormFields<N>] | [initial: ParamsFirst<N>];
 
 /**
- * Form state and submission, typed from the endpoint's request schema. By route name, the form knows
- * method, URL and fields — from `bootstrap/routes.ts`:
- *
- * ```tsx
- * const form = useForm('user-profile.update', { user: profile.id }, { name: profile.name, bio: profile.bio });
- * <input value={form.data.name} onChange={(e) => form.set('name', e.target.value)} />
- * {form.errors.name && <p>{form.errors.name}</p>}
- * <button disabled={form.processing} onClick={() => form.submit()}>Save</button>
- * ```
- *
- * Or by controller, sent to any URL: `useForm<UpdateUserProfileController>(initial)` and `form.put(url)`.
+ * Form state and submission, typed from the endpoint's request schema — by route name (method, URL and fields from
+ * `bootstrap/routes.ts`), or by controller, sent to any URL (`useForm<UpdateUserProfileController>(initial)`, `form.put(url)`).
  * The fields are the schema's *input* (what the browser sends). See docs/forms.md#forms-by-route-name.
  */
 export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;

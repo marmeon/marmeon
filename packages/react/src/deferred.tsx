@@ -11,16 +11,9 @@ export interface DeferredProps<T = unknown> {
 }
 
 /**
- * Renders `fallback` until the page's deferred props (`defer()` on the server) have arrived, then `children`:
- *
- * ```tsx
- * <Deferred<ShowUserProfileController> data="activity" fallback={<p>Loading…</p>}>
- *   {() => <ActivityList items={activity!} />}
- * </Deferred>
- * ```
- *
- * A revalidation of the whole page (the reload after an action, a live update, a reload on Back) keeps the old values on
- * screen until the new ones land. See docs/deferred-props.md#deferred-props.
+ * Renders `fallback` until the page's deferred props (`defer()` on the server) have arrived, then `children`. A revalidation of
+ * the whole page (the reload after an action, a live update, a reload on Back) keeps the old values on screen until the new
+ * ones land. See docs/deferred-props.md#deferred-props.
  */
 export function Deferred<T = unknown>({ data, fallback = null, children }: DeferredProps<T>) {
   const { props } = usePage<Record<string, unknown>>();

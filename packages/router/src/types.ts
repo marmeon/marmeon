@@ -80,14 +80,7 @@ export interface Middleware<TRequires extends object = EmptyObject, TAdds extend
 
 /**
  * Middleware as a class: built per request from the container, so it gets
- * constructor injection like a controller.
- *
- * ```ts
- * export class Authenticate {
- *   constructor(users: UserRepository) { … }
- *   handle(ctx: HttpContext, next: Next<AuthState>) { … }
- * }
- * ```
+ * constructor injection like a controller. See docs/middleware.md#middleware-classes.
  */
 export type MiddlewareClass<TRequires extends object = any, TAdds extends object = any> = new (
   ...args: any[]

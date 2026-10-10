@@ -16,18 +16,9 @@ export function ownResponse<R extends Response>(response: R): R {
 
 /**
  * `response`, ready for its headers to be set: itself when this request owns it ({@link ownResponse}), else a copy it owns from
- * now on — at most one copy per request, however many middleware add headers.
- *
- * A response the framework did not make is copied rather than changed: an app may return the same `Response` object twice, and
- * a cookie set in place would reach the next request that gets it; its headers may also be immutable (`Response.redirect`, `fetch`).
- *
- * ```ts
- * async handle(ctx: HttpContext, next: Next<{}>) {
- *   const response = editableResponse(await next());
- *   response.headers.set('x-frame-options', 'DENY');
- *   return response;
- * }
- * ```
+ * now on — at most one copy per request. A response the framework did not make is copied rather than changed: an app may return
+ * the same `Response` twice, and a cookie set in place would reach the next request that gets it; its headers may also be
+ * immutable (`Response.redirect`, `fetch`). See docs/middleware.md#changing-the-response.
  */
 export function editableResponse(response: Response): Response {
   if (owned.has(response)) return response;

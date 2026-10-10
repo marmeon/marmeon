@@ -32,16 +32,8 @@ export interface FileInputProps extends Omit<InputHTMLAttributes<HTMLInputElemen
 
 /**
  * A file input for an upload field (Livewire's model): a chosen file is uploaded at once, and the field holds the
- * {@link Upload} (`progress`, `preview`, `error`, `cancel()`). The form then sends the token, never the file. See
- * docs/forms.md#uploads.
- *
- * ```tsx
- * const form = useForm('user-profile.avatar.update', { user: me.id }, { avatar: null });
- * <FileInput field={form.field('avatar')} accept="image/png,image/jpeg,image/webp" />
- * {form.data.avatar?.uploading && <progress value={form.data.avatar.progress} max={1} />}
- * ```
- *
- * A file still on its way when the input goes is cancelled.
+ * {@link Upload} (`progress`, `preview`, `error`, `cancel()`). The form then sends the token, never the file. A file still on
+ * its way when the input goes is cancelled. See docs/forms.md#uploads.
  */
 export function FileInput({ field, onChange, ...attributes }: FileInputProps) {
   const navigator = useRouterContext().navigator();

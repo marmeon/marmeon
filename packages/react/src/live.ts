@@ -13,16 +13,9 @@ export interface LiveUpdatesState {
 const noSubscription = () => () => {};
 
 /**
- * Live props that wait for unsaved changes: a page (island, layer) follows a channel — the core reloads it on
- * each hint by itself; only while a guard holds (a dirty form: `useForm(…, { guard })`, `useBlocker`) the reloads wait, and
- * this says so:
- *
- * ```tsx
- * const updates = useLiveUpdates();
- * {updates.pending && <p role="status">Updates available <button onClick={updates.apply}>Show</button></p>}
- * ```
- *
- * Loads the live feature if nothing did yet (a chunk of its own).
+ * Live props that wait for unsaved changes: the core reloads a page, an island or a layer on each hint by itself, but while a
+ * guard holds (a dirty form: `useForm(…, { guard })`, `useBlocker`) the reloads wait — `pending` says so, `apply()` loads them.
+ * Loads the live feature if nothing did yet (a chunk of its own). See docs/realtime.md#unsaved-changes.
  */
 export function useLiveUpdates(): LiveUpdatesState {
   const navigator = useRouterContext().navigator();

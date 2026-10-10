@@ -24,17 +24,9 @@ export class SharedData {
   }
 
   /**
-   * A live channel every page follows — for shared props, which every page's layout shows: the bell's count reloads
-   * when the server hints that the signed-in user's notifications changed.
-   *
-   * ```ts
-   * shared.live(async () => {
-   *   const user = await auth.user();
-   *   return user ? notificationsChannel({ type: 'user', id: user.id }) : undefined;   // a guest follows nothing
-   * }, { only: ['bell'] });
-   * ```
-   *
-   * Signed into every page this request renders — never into an island or a layer, which show no layout. Needs @marmeon/live.
+   * A live channel every page follows, for shared props a layout shows — a channel, or a function of the request that returns
+   * one (`undefined`: follow nothing). Signed into every page this request renders — never into an island or a layer, which show
+   * no layout. Needs @marmeon/live. See docs/realtime.md#shared-props.
    */
   live<const O extends readonly string[] = readonly []>(
     channel: string | (() => string | undefined | Promise<string | undefined>),

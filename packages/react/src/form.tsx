@@ -151,23 +151,9 @@ const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
 
 /**
- * An uncontrolled form for a named route (Inertia's `<Form>`): it reads its fields from the DOM — any input with a
- * `name` — and sends them like `useForm` does. See docs/forms.md#forms-without-state.
- *
- * ```tsx
- * <Form route="auth.tokens.store" resetOnSuccess>
- *   {(form) => (
- *     <>
- *       <input {...form.field('name')} />  {form.error('name')}
- *       <input type="checkbox" {...form.field('abilities[]')} value="users:read" />
- *       <button disabled={form.processing}>Create</button>
- *     </>
- *   )}
- * </Form>
- * ```
- *
- * Without JavaScript it is a real `<form>` (`_method`, the CSRF token as `_token`). Only a GET route's form writes its
- * fields into the URL; any other sends them in the body.
+ * An uncontrolled form for a named route (Inertia's `<Form>`): it reads its fields from the DOM — any input with a `name` — and
+ * sends them like `useForm` does. Without JavaScript it is a real `<form>` (`_method`, the CSRF token as `_token`); only a GET
+ * route's form writes its fields into the URL, any other sends them in the body. See docs/forms.md#forms-without-state.
  */
 export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>) {
   const {

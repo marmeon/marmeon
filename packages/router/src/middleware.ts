@@ -1,19 +1,8 @@
 import type { AnyMiddleware, ClassResolver, EmptyObject, Middleware, MiddlewareClass, MiddlewareHandler } from './types.ts';
 
 /**
- * Declares a middleware. Type parameters are ordered by how often you need them:
- *
- * ```ts
- * const authenticate = defineMiddleware<{ user: User }>('auth', async (ctx, next) => {
- *   const user = await findUser(ctx.request);
- *   return user ? next({ user }) : new Response('Unauthorized', { status: 401 });
- * });
- *
- * // Requires `user` from an earlier middleware, adds nothing:
- * const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx, next) =>
- *   ctx.user.isAdmin ? next() : new Response('Forbidden', { status: 403 }),
- * );
- * ```
+ * Declares a middleware as a name and a function. Type parameters are ordered by how often you need them: what it adds to the
+ * context (`next({ user })`), then what it requires from an earlier middleware. See docs/middleware.md#middleware-objects.
  */
 export function defineMiddleware<TAdds extends object = EmptyObject, TRequires extends object = EmptyObject>(
   name: string,

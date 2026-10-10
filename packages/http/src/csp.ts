@@ -93,17 +93,10 @@ export function compilePolicy(directives: CspDirectives): { pieces: readonly str
 }
 
 /**
- * A `Content-Security-Policy` for the documents the app renders — opt-in, with a strict default ({@link DEFAULT_CSP}):
- *
- * ```ts
- * middleware: { global: [SecurityHeaders, contentSecurityPolicy()] }                      // bootstrap/app.ts
- * contentSecurityPolicy({ imgSrc: ["'self'", 'data:'], frameAncestors: ["'none'"] })        // more directives
- * contentSecurityPolicy({ baseUri: false, reportOnly: true, reportUri: ['/csp-reports'] })   // a default left out, report only
- * ```
- *
- * Each response gets its own nonce (`ctx.nonce()`). Only HTML responses without a policy of their own get the header. A page
- * cached publicly with a nonce is logged once: a shared cache would hand the same nonce to everybody. See
- * docs/csp.md#pages-in-a-shared-cache.
+ * A `Content-Security-Policy` for the documents the app renders — opt-in, with a strict default ({@link DEFAULT_CSP}). Each
+ * response gets its own nonce (`ctx.nonce()`). Only HTML responses without a policy of their own get the header. A page cached
+ * publicly with a nonce is logged once: a shared cache would hand the same nonce to everybody. See docs/csp.md#adding-directives
+ * and docs/csp.md#pages-in-a-shared-cache.
  */
 export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}): MiddlewareClass<{}, {}> {
   const { reportOnly = false, ...given } = options;

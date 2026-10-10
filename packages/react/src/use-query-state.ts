@@ -30,17 +30,10 @@ export type UseQueryStateOptions<N extends string = string> = Omit<QueryStateOpt
 export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
 
 /**
- * Typed URL state: the page's query as its controller's `query` schema parsed it — and a setter that changes
- * the URL with a visit of the same page (partial with `only`, keeping component state and scroll):
- *
- * ```tsx
- * const [query, setQuery] = useQueryState('user-profile.people', { only: ['people'], debounce: 300, history: 'replace' });
- * <input value={query.q} onChange={(e) => setQuery({ q: e.target.value })} />
- * <button onClick={() => setQuery((current) => ({ sort: current.sort === 'name' ? '-name' : 'name' }))}>Sort</button>
- * ```
- *
- * The state changes at once, the URL after `debounce` ms. Only on the page of route `name`; a route without a query schema
- * is a compile error. See docs/pagination.md#searching-and-sorting.
+ * Typed URL state: the page's query as its controller's `query` schema parsed it, and a setter that changes the URL with a
+ * visit of the same page (partial with `only`, keeping component state and scroll). The state changes at once, the URL after
+ * `debounce` ms. Only on the page of route `name`; a route without a query schema is a compile error.
+ * See docs/pagination.md#searching-and-sorting.
  */
 export function useQueryState<const N extends BrowserRouteNameInput>(
   name: CheckQueryRoute<N>,

@@ -103,17 +103,9 @@ const noSubscription = () => () => {};
 const noReload = () => Promise.resolve();
 
 /**
- * A part of the page that loads by itself — the view of another route: its own controller, middleware,
- * authorization and query, reusable on any page.
- *
- * ```tsx
- * <Island route="dashboard.sign-ins" query={{ limit: 5 }} fallback={<WidgetSkeleton />} />
- * <Island route="dashboard.activity" load="visible" poll={15_000} fallback={<WidgetSkeleton />} />
- * <Island route="dashboard.members" fallback={<WidgetSkeleton />} unauthorized={<p>Verify your address to see this.</p>} />
- * ```
- *
- * It lives in the memory of the page's history entry — nothing of it goes into `history.state` — and is never prefetched.
- * Links inside navigate the page. See docs/deferred-props.md#how-islands-load.
+ * A part of the page that loads by itself — the view of another route: its own controller, middleware, authorization and
+ * query, reusable on any page. It lives in the memory of the page's history entry — nothing of it goes into `history.state` —
+ * and is never prefetched. Links inside navigate the page. See docs/deferred-props.md#how-islands-load.
  */
 export function Island<const N extends BrowserRouteNameInput>(props: IslandElementProps<N>) {
   const manifest = useContext(RoutesContext);
@@ -395,16 +387,8 @@ function onServer(): never {
 }
 
 /**
- * The island around this component — inside the view an `<Island>` renders:
- *
- * ```tsx
- * export default function RecentSignIns({ entries }: IslandProps<ShowRecentSignInsController>) {
- *   const island = useIsland<ShowRecentSignInsController>();
- *   return <button onClick={() => island.reload({ query: { limit: 10 } })} disabled={island.pending}>More</button>;
- * }
- * ```
- *
- * `reload({ query })` is typed by the island route's query schema (`QueryOf<C>`): a wrong field or value is a compile error.
+ * The island around this component, inside the view an `<Island>` renders. `reload({ query })` is typed by the island route's
+ * query schema (`QueryOf<C>`): a wrong field or value is a compile error. See docs/deferred-props.md#inside-an-island.
  */
 export function useIsland<C extends IslandAction = IslandAction>(): IslandState<C> {
   const value = useContext(IslandContext);

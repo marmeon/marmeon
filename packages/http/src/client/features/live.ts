@@ -1,14 +1,11 @@
 /**
- * Live props as a feature — loaded by the core when a page, a layer or an island follows a channel (`PageObject.live`):
- * ONE `EventSource` per document for every channel on screen; a hint (never data) becomes a partial reload of what follows
- * the channel, through its own route. See docs/realtime.md#sending-hints and docs/realtime.md#catching-up.
+ * Live props as a feature, loaded when a page, a layer or an island follows a channel (`PageObject.live`): ONE `EventSource` per
+ * document, and a hint (never data) becomes a partial reload through the follower's own route. See docs/realtime.md#sending-hints.
  *
- * - **In a slot of the document**: the stream, the sequences seen and the hints waiting — a 409 (signed out, a new build) closes
- *   the stream and forgets them.
- * - **Paused while the session changed in another tab** (`stale`): the page on screen is of the old session. No stream, no
- *   reconnect, no reload until a page of the new session lands: its tokens were signed for the old one.
- * - **Only while the navigator runs** (`start()` → `stop()`): a second navigator (React builds one after a hydration mismatch)
- *   never opens a stream of its own.
+ * Its state is in a slot of the document; a 409 (signed out, a new build) closes the stream and forgets it. While the session
+ * changed in another tab (`stale`), nothing reconnects or reloads until a page of the new session lands: its tokens were signed
+ * for the old one. Only a running navigator (`start()` → `stop()`) opens a stream — React builds a second one after a hydration
+ * mismatch.
  */
 import { CONNECTION_HEADER, LIVE_PATH } from '../../live-protocol.ts';
 import type { LiveHint, LiveSubscription } from '../../page.ts';

@@ -6,16 +6,10 @@ import { useRouterContext } from './app.tsx';
 export type FlashHandler<K extends FlashKey> = (data: FlashMessage<K>['data'], message: FlashMessage<K>) => void;
 
 /**
- * Runs `handler` for every flash message of `key` — exactly once per message (twice for one flashed twice), never again for
- * a reload, Back/Forward or a page shown from memory. Messages nobody heard before this component mounted come at once.
- * Typed by the app's `FlashData`.
+ * Runs `handler` for every flash message of `key`, typed by the app's `FlashData` — exactly once per message, never again for
+ * a reload, Back/Forward or a page shown from memory; messages that came before this component mounted fire at once. In the
+ * browser only (an effect): on the server, the page object's `flash` is what a `<noscript>` may show.
  * See docs/pages.md#flash-messages.
- *
- * ```tsx
- * useFlash('toast', (toast) => toaster.show(toast));     // in the layout
- * ```
- *
- * In the browser only (an effect): on the server, the page object's `flash` is what a `<noscript>` may show.
  */
 export function useFlash<const K extends string>(key: CheckFlashKey<K>, handler: FlashHandler<K & FlashKey>): void {
   const navigator = useRouterContext().navigator();

@@ -35,13 +35,7 @@ const MARKER = 'data-marmeon-head';
 
 /**
  * The page's title and meta tags. Rendered on the server into the document head,
- * kept up to date on client-side navigations.
- *
- * ```tsx
- * <Head title={profile.name}>
- *   <meta name="description" content={profile.bio} />
- * </Head>
- * ```
+ * kept up to date on client-side navigations. See docs/pages.md#the-document-head.
  */
 export function Head(props: HeadProps) {
   const island = useContext(IslandHeadContext);

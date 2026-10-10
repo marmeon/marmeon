@@ -89,16 +89,8 @@ export function joinPaths(...segments: string[]): string {
 }
 
 /**
- * Fluent, immutable route registrar (Laravel's `RouteRegistrar`).
- *
- * Every attribute call returns a *new* registrar, so the accumulated context
- * type (`TState`) and path parameters (`TParams`) flow into nested groups:
- *
- * ```ts
- * Route.prefix('/teams/:team').middleware(authenticate).name('teams.').group((Route) => {
- *   Route.get('/members/:id', (ctx) => ctx.user + ctx.params.team + ctx.params.id).name('members.show');
- * });
- * ```
+ * Fluent, immutable route registrar (Laravel's `RouteRegistrar`): every attribute call returns a *new* registrar, so the
+ * accumulated context type (`TState`) and path parameters (`TParams`) flow into nested groups. See docs/routing.md#route-groups.
  */
 export class Route<TState extends object = EmptyObject, TParams extends object = EmptyObject, TBindings extends object = EmptyObject> {
   readonly #register: (route: RouteDefinition) => void;
@@ -132,19 +124,10 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   /**
-   * Resolves the route parameter `param` with `binder` (Laravel's route model binding): the action
-   * gets the record instead of the string, a missing one answers 404. Registered before the route,
-   * like middleware, so the type reaches `handle`:
-   *
-   * ```ts
-   * Route.bind('user', UserRepository).get('/users/:user', ShowUserController);   // ctx.params.user: User
-   * Route.bind('team', TeamRepository)
-   *   .bind('member', MemberRepository, { scopedBy: 'team' })                     // must belong to the team
-   *   .get('/teams/:team/members/:member', ShowMemberController);
-   * ```
-   *
-   * Scoped bindings look the child up *within* its parent (`team_id = team.id`, or `column`), so an id
-   * from somewhere else is a 404 — insecure direct object references cannot happen by forgetting a check.
+   * Resolves the route parameter `param` with `binder` (Laravel's route model binding): the action gets the record instead of
+   * the string, a missing one answers 404. Registered before the route, like middleware, so the type reaches `handle`. A scoped
+   * binding (`scopedBy`) looks the child up *within* its parent (`team_id = team.id`, or `column`), so an id from somewhere else
+   * is a 404 — insecure direct object references cannot happen by forgetting a check. See docs/routing.md#scoped-bindings.
    */
   bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = never>(
     param: TName,

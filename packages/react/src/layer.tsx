@@ -91,18 +91,9 @@ export interface UseLayerOptions {
 }
 
 /**
- * The layer around this view — `close()` it, react to it closing (`onClose`), know how deep it is, or whether the
- * view is a layer at all (`isLayer`: a view can be a page and a layer).
- *
- * ```tsx
- * export default function Edit({ profile }: PageProps<EditUserProfileController>) {
- *   const layer = useLayer<EditUserProfileController>();
- *   const form = useForm('user-profile.update', { user: profile.id }, { name: profile.name });   // submits as the layer
- *   return layer.isLayer ? <button onClick={() => layer.close()}>Cancel</button> : <Link route="user-profile.show" …>Cancel</Link>;
- * }
- * ```
- *
- * Given the view's controller, a controller that never answers a layer is a compile error.
+ * The layer around this view — `close()` it, react to it closing (`onClose`), know how deep it is, or whether the view is a
+ * layer at all (`isLayer`: a view can be a page and a layer). Given the view's controller, a controller that never answers a
+ * layer is a compile error. See docs/dialogs.md#inside-a-layer.
  */
 // oxlint-disable-next-line no-unused-vars -- C is checked where useLayer<C>() is called, never used inside
 export function useLayer<C extends LayerController<C> = LayerAction>({ onClose }: UseLayerOptions = {}): LayerState {

@@ -164,23 +164,8 @@ const noSubscription = () => () => {};
 
 /**
  * A server-driven table (`@marmeon/table`), headless — typed by its props (`TableProps<typeof MembersTable>`): only its sortable
- * columns sort, only its filters filter, only its actions run.
- *
- * ```tsx
- * const table = useTable(members, { labels: { column: (name) => t(`column.${name}`) } });
- * <table>
- *   <caption>{t('caption')}</caption>
- *   <thead><tr>{table.columns.map((column) => (
- *     <th key={column.name} {...column.headerProps}>
- *       {column.sortUrl ? <Link href={column.sortUrl} preserveScroll>{column.label}</Link> : column.label}
- *     </th>))}</tr></thead>
- *   …
- * </table>
- * <p {...table.statusProps}>{table.status}</p>
- * ```
- *
- * Sorting, filters, search and pages are visits of the page's URL; the selection lives in memory with the history entry
- * (a sign-out empties it). See docs/tables.md#in-the-browser.
+ * columns sort, only its filters filter, only its actions run. Sorting, filters, search and pages are visits of the page's URL;
+ * the selection lives in memory with the history entry (a sign-out empties it). See docs/tables.md#in-the-browser.
  */
 export function useTable<T extends AnyTableData>(data: T, options: UseTableOptions<T> = {}): Table<T> {
   const router = useRouterContext();

@@ -19,16 +19,8 @@ export interface WhenVisibleProps<T = unknown> {
 }
 
 /**
- * Loads props when this comes into view (IntersectionObserver), with a background reload (`async`):
- *
- * ```tsx
- * <WhenVisible<ShowUserProfileController> data="stats" fallback={<p>Loading…</p>}>{() => <Stats stats={stats!} />}</WhenVisible>
- *
- * // infinite scroll: at the end of the list, as long as there is more (the prop is `merge()`d on the server)
- * {next && <WhenVisible always params={{ data: { cursor: next }, only: ['people'], preserveUrl: true }} fallback={<p>Loading…</p>} />}
- * ```
- *
- * Without an IntersectionObserver (old browsers), it loads right away.
+ * Loads props when this comes into view (IntersectionObserver; without one, right away), with a background reload (`async`).
+ * See docs/deferred-props.md#props-loaded-when-seen, and docs/deferred-props.md#merged-props for infinite scroll (`always`).
  */
 export function WhenVisible<T = unknown>({ data, params, buffer = 0, always = false, as = 'div', fallback = null, children }: WhenVisibleProps<T>) {
   const { props } = usePage<Record<string, unknown>>();

@@ -17,13 +17,7 @@ export interface RouteDefinitions {
 
 /**
  * Declares a route file without touching global state, so re-importing it
- * (tests, Vite HMR) never registers routes twice.
- *
- * ```ts
- * export default defineRoutes((Route) => {
- *   Route.get('/', ShowHomeController).name('home');
- * });
- * ```
+ * (tests, Vite HMR) never registers routes twice. See docs/routing.md#route-files.
  */
 export function defineRoutes(register: (Route: Route) => void): RouteDefinitions {
   return { register };

@@ -1,18 +1,7 @@
 /**
- * Page props that are more than a value (Inertia's semantics): left out of the first response, loaded after
- * it, sent with every partial reload, or merged into what the browser already has.
- *
- * ```ts
- * return this.view('user-profile/Show', {
- *   profile,
- *   stats: optional(() => this.#stats.for(profile.id)),   // only when asked for: reload({ only: ['stats'] })
- *   activity: defer(() => this.#activity.for(profile.id)), // the page renders without it; the browser loads it next
- *   links: merge(page.data),                               // a partial reload appends to the links shown
- * });
- * ```
- *
- * A plain function is a prop, too — evaluated only when the response includes it (a partial reload that asks for
- * other props never calls it).
+ * Page props that are more than a value (Inertia's semantics): left out of the first response, loaded after it, sent with every
+ * partial reload, or merged into what the browser already has. A plain function is a prop too, called only when the response
+ * includes it. See docs/responses.md#props-that-load-later.
  */
 const PROP = Symbol.for('marmeon.page-prop');
 

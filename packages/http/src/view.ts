@@ -132,17 +132,9 @@ type ActionResult<TAction extends PageAction> = TAction extends { handle: (...ar
     : never;
 
 /**
- * Infers a page's props from the controller that renders it — the controller
- * is the single source of truth for the data contract.
- *
- * ```ts
- * export default function Show({ profile }: PageProps<ShowUserProfileController>) {}
- * ```
- *
- * Non-view branches (redirects, JSON `Response`s) are filtered out. The props every
- * page shares (`SharedProps`) are included; a controller's own prop of the same name wins.
- * Props are typed as they arrive — resolved (a function prop is its result, `optional()`/`defer()` props are
- * `T | undefined`) and serialized (`Serialize`): a `Date` prop is a `string` in the view.
+ * Infers a page's props from the controller that renders it (`PageProps<ShowUserProfileController>`): its view branches only,
+ * plus the `SharedProps` (a controller's own prop of the same name wins), typed as they arrive — resolved (`optional()` and
+ * `defer()` props are `T | undefined`) and serialized (`Serialize`: a `Date` prop is a `string`). See docs/responses.md#pages.
  */
 export type PageProps<TAction extends PageAction> =
   Awaited<ActionResult<TAction>> extends infer TResult

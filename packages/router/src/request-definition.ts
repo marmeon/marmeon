@@ -7,13 +7,8 @@ import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from '@marmeon/core';
 
 /**
- * A body schema built per request, with the request's `resolve` — for a schema of another library whose rules need the app (say
- * the database), or one picked by the app's config:
- *
- * ```ts
- * schema: (resolve) => (resolve(RegistrationMode).private ? privately : publicly),
- * ```
- *
+ * A body schema built per request with the request's `resolve` — for another library's schema whose rules need the app (say
+ * the database), or one the app's config picks: `schema: (resolve) => (resolve(RegistrationMode).private ? privately : publicly)`.
  * **A live validation never runs a schema of another library** unless the request says {@link RequestDefinition.live}.
  * `rules` of @marmeon/validation need no factory: they get `resolve` through {@link ValidationContext}.
  * See docs/validation.md#other-libraries.
@@ -124,23 +119,9 @@ export type CheckQuery<TQuery extends StandardSchemaV1> =
     : 'a query schema describes an object of fields — r.query({ … })';
 
 /**
- * ```ts
- * export const UpdateUserProfileRequest = defineRequest({
- *   schema: r.object({ name: r.string().trim().required().min(2) }),
- *   authorize: (ctx: HttpContext<AuthState, { id: string }>) => ctx.user.id === ctx.params.id,
- * });
- *
- * export class UpdateUserProfileController extends Controller {
- *   static request = UpdateUserProfileRequest;
- *   handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) { ctx.body.name; }
- * }
- *
- * // A GET: the query, parsed — an invalid field falls back to its default.
- * export const ListPeopleRequest = defineRequest({
- *   query: r.query({ sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1) }),
- * });
- * handle(ctx: ContextOf<typeof ListPeopleRequest>) { ctx.query.sort; ctx.query.page; }   // 'name' | '-name', number
- * ```
+ * Declares what an endpoint accepts ({@link RequestDefinition}); a controller attaches it with `static request = …` and its
+ * `handle` takes `ContextOf<typeof …>`: `ctx.body` is the schema's output, `ctx.query` the parsed query (an invalid field falls
+ * back to its default). See docs/requests.md#validated-input and docs/requests.md#query-schemas.
  */
 export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TCtx = HttpContext>(definition: {
   schema?: TSchema | SchemaFactory<TSchema>;

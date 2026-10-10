@@ -162,19 +162,10 @@ type AnyLinkProps = LinkOptions &
   };
 
 /**
- * An `<a>` that navigates client-side for same-origin, plain left clicks — and degrades to a normal link.
- *
- * ```tsx
- * <Link route="user-profile.show" params={{ user: profile.id }}>{profile.name}</Link>
- * <Link route="auth.logout">Sign out</Link>            // a POST route: a <button> in a <form>, sending the visit with the CSRF token
- * <Link href="https://example.com">elsewhere</Link>
- * <Link route="user-profile.show" params={{ user: 7 }} prefetch>Grace</Link>   // fetched on hover, shown at once on click
- * <Link route="user-profile.edit" params={{ user: 7 }} layer>Edit</Link>     // a layer (modal) over the page on screen
- * ```
- *
- * With `route`, name, parameters and method come from `bootstrap/routes.ts`: a typo, a missing parameter or
- * `method="get"` on a POST route is a compile error. Methods other than GET render a button in a real `<form>`, which works
- * without JavaScript — so never inside a `<p>` or another form. See docs/navigation.md#links-that-send.
+ * An `<a>` that navigates client-side for same-origin, plain left clicks — and degrades to a normal link. With `route`, name,
+ * parameters and method come from `bootstrap/routes.ts`: a typo, a missing parameter or `method="get"` on a POST route is a
+ * compile error. Methods other than GET render a button in a real `<form>` that sends the CSRF token and works without
+ * JavaScript — so never inside a `<p>` or another form. See docs/navigation.md#links-that-send.
  */
 export function Link<const N extends BrowserRouteNameInput = never>(props: LinkProps<N>) {
   const { visit, prefetch: prefetchPage } = useRouterContext();

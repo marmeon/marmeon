@@ -24,18 +24,10 @@ export type { ActionException } from '@marmeon/http/client';
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
 
 /**
- * How an action of route `N` ended, typed by its controller:
- * - `data`: it answered `this.json(…)` — `data` is what JSON made of it (`Serialize<T>`); only when the controller has such a branch;
- * - `redirect`: it redirected — reported, not followed (`onRedirect: 'visit'` follows it); only when the controller can;
- * - `flash` (with both): the flash messages its controller flashed — they also fire for `useFlash`, once;
- * - `invalid`: 422 — the first message per field of its request schema;
- * - `exception`: offline, or a failure status (401/419 after signing out, 403, 404, 5xx) — shown, never retried by itself;
- * - `cancelled`: `cancel()`, a newer call with the same `key`, or the page was left.
- *
- * ```ts
- * const result = await remove.submit({ params: { user, link } });
- * if (result.ok && result.kind === 'data') result.data.deleted;
- * ```
+ * How an action of route `N` ended, typed by its controller: `data` (what JSON made of its `this.json(…)`), `redirect`
+ * (reported, not followed), `invalid` (422), `exception` (offline or a failure status — never retried by itself) or
+ * `cancelled`. `data` and `redirect` exist only when the controller can answer so, and carry its flash messages.
+ * See docs/actions.md#the-result.
  */
 export type ActionResultOf<N extends string> =
   | ([ActionDataOf<N>] extends [never]
@@ -134,21 +126,10 @@ function flatten<T>(value: T | readonly T[] | readonly (T | readonly T[])[] | un
 }
 
 /**
- * A non-navigating request to a named route — Inertia's `useHttp`, React Router's `useFetcher`, typed by the route:
- * the body by its controller's request schema, the result by what its controller returns (`this.json(…)`, a redirect).
- *
- * ```tsx
- * const router = useRouter<ShowUserProfileController>();
- * const remove = useAction('user-profile.links.destroy');
- * await remove.submit({
- *   params: { user: profile.id, link: link.id },
- *   optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((l) => l.id !== link.id) } })),
- *   reload: router.reloading({ only: ['profile'] }),
- * });
- * ```
- *
- * An action is an ordinary request of its route — middleware, CSRF, authorization and validation run as for a form. It never
- * touches the history; its answer is never cached; a redirect is reported, not followed.
+ * A non-navigating request to a named route — Inertia's `useHttp`, React Router's `useFetcher` — typed by the route: the body
+ * by its controller's request schema, the result by what its controller returns. An ordinary request of its route: middleware,
+ * CSRF, authorization and validation run as for a form. It never touches the history; its answer is never cached; a redirect
+ * is reported, not followed. See docs/actions.md#sending.
  */
 export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): Action<N, {} extends ParamsOf<N> ? false : true>;
 export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): Action<N, false>;

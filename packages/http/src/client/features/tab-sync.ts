@@ -1,15 +1,9 @@
 /**
- * Tab sync as a feature: the tabs of one browser tell each other when the session's epoch changes, and a tab that hears it
- * lets go of everything it keeps and loads again. `createMarmeonApp` attaches it by default. See docs/client-features.md#tab-sync.
+ * Tab sync as a feature, attached by `createMarmeonApp` by default: the tabs of one browser tell each other when the session's
+ * epoch changes, and a tab that hears it lets go of everything it keeps and loads again. See docs/client-features.md#tab-sync.
  *
- * - **The channel carries a hint, never data:** `{ v: 1, epoch }` — no props, no ids, no tokens. A message of any other shape
- *   is ignored.
- * - **The server decides:** only an epoch that differs from the one `GET /_marmeon/session` answers changes anything, so a
- *   stale tab's message makes no tab reload.
- * - **Then:** the document is left (every slot emptied, requests aborted — the core's `leave`, as for a 409) and loaded again —
- *   unless a navigation guard holds: then pages fetched ahead are dropped and the user is asked.
- *
- * Its state is in a slot of the document (the channel, the epochs, the entries' keys): leaving the document empties it.
+ * The channel carries `{ v: 1, epoch }` and nothing else (a message of any other shape is ignored), and only the epoch the
+ * server answers changes anything, so a stale tab's message makes no tab reload. Its state is in a slot of the document.
  */
 import { DOCUMENT_HEADER, SESSION_PATH, TAB_SYNC_CHANNEL, type TabSyncMessage } from '../../tab-sync-protocol.ts';
 import type { FeatureHost } from '../core.ts';
