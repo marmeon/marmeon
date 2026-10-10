@@ -205,7 +205,9 @@ To answer a form with "taken" at its field instead, wrap the write in `failOnDup
 ### Route binding
 
 Every repository can bind a route parameter: `notes.bind('note', NoteRepository)` gives the controller the row, or answers 404.
-`routeKey`, `routeKeyPattern` and bindings scoped to a parent are on the [routing](routing.md#binding-a-repository) page.
+`notes.bind('note', NoteRepository, { with: ['tags'] })` loads relations with it, in the same query. `routeKey`, `routeKeyPattern`,
+bindings scoped to a parent and [relations](routing.md#loading-relations-with-the-record) are on the
+[routing](routing.md#binding-a-repository) page.
 
 ## Relations
 

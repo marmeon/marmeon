@@ -429,6 +429,41 @@ The attachment is looked up with `note_id` equal to the bound note's `id`. An at
 changed id in the URL cannot reach somebody else's attachment. The column defaults to the parent's name with `_id`. Pass
 `column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`.
 
+### Loading relations with the record
+
+`with` names [relations](queries.md#relations) a repository loads with the record, in the same query:
+
+```ts title="modules/notes/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { ShowNoteController } from './controllers/ShowNoteController.ts';
+import { NoteRepository } from './NoteRepository.ts';
+
+export default defineRoutes((Route) => {
+  const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
+
+  notes.bind('note', NoteRepository, { with: ['tags'] }).get('/:note', ShowNoteController).name('show');
+});
+```
+
+The relations come as `with()` loads them: every column but the secret ones, and no soft-deleted rows. The names are those of the
+table's relations, so a wrong one is a compile error, and the bound value's type has the ones you name:
+
+```ts title="modules/notes/controllers/ShowNoteController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { Controller, type HttpContext } from '@marmeon/http';
+
+export class ShowNoteController extends Controller {
+  handle(ctx: HttpContext<Authenticated, { note: Row<'notes'> & { tags: Row<'tags'>[] } }>) {
+    return this.view('notes/Show', { note: ctx.params.note, tags: ctx.params.note.tags });
+  }
+}
+```
+
+A scoped binding takes `with` too: `{ scopedBy: 'note', with: ['uploader'] }`. The names come from your routes, never from the
+request.
+
 ### Your own binder
 
 Any class with a `resolveRouteBinding(value)` method can bind a parameter. It returns the record, or `undefined` for a 404. The
@@ -463,7 +498,9 @@ export default defineRoutes((Route) => {
 });
 ```
 
-The second argument of `resolveRouteBinding` carries the request's context and, for a scoped binding, the parent.
+The second argument of `resolveRouteBinding` carries the request's context, for a scoped binding the parent, and in `with` the names
+the route asks to load. `bind()` accepts `with` for a binder that declares what it loads in a `routeBindingWith` property, as a
+repository does; for any other binder it is a compile error.
 
 ## API routes
 

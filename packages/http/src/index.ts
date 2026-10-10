@@ -116,6 +116,7 @@ export type {
   Routes,
   RouteBinder,
   RouteBindingContext,
+  RouteBindingWith,
   TextKey,
   Validated,
   ValidationErrors,

@@ -1,5 +1,5 @@
 import { err, errOfRollback, ok, rollBackOnErr, type Result } from '@marmeon/core';
-import { HttpError, type RouteBinder, type RouteBindingContext } from '@marmeon/router';
+import { HttpError, type RouteBinder, type RouteBindingContext, type RouteBindingWith } from '@marmeon/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
 import { isUniqueViolation } from './errors.ts';
@@ -57,6 +57,8 @@ export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never 
  * `timestamps()`). See `docs/queries.md#repositories`.
  */
 export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
+  /** Types only: `Route.bind('post', PostRepository, { with: ['author'] })` takes the table's relations and types them on the row. */
+  declare readonly routeBindingWith?: RepositoryBindingWith<DB, T>;
   readonly #db: Kysely<DB>;
   /** The app's connections, for `transaction()`. */
   readonly #connections: Connections | undefined;
@@ -321,7 +323,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
 
   /**
    * `Route.bind('user', UserRepository)`: the row whose route key (`id`) is `value` — within the parent
-   * for scoped bindings (`scope.column` = the parent's id), so another parent's row is a 404.
+   * for scoped bindings (`scope.column` = the parent's id), so another parent's row is a 404 — with the relations the binding
+   * names (`{ with }`) loaded in the same query.
    */
   async resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<Selectable<DB[T]> | undefined> {
     const key = this.#statics().routeKey ?? 'id';
@@ -330,7 +333,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     const numericId = key === 'id' && !custom;
     const pattern = custom ?? (numericId ? /^\d{1,15}$/ : undefined);
     if (pattern && !pattern.test(value)) return undefined;
-    let query = this.query().selectAll().where(key as never, '=', (numericId ? Number(value) : value) as never);
+    let query = this.#loading(this.query().selectAll(), binding.with).where(key as never, '=', (numericId ? Number(value) : value) as never);
     if (binding.scope) {
       const parent = (binding.scope.parent as { id?: unknown } | undefined)?.id;
       if (parent === undefined) return undefined;
@@ -363,6 +366,12 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   #statics(): RepositoryStatics {
     return this.constructor as unknown as RepositoryStatics;
   }
+}
+
+/** What `Route.bind(…, { with })` takes for a repository — the table's relations — and the row it then binds, with them loaded. */
+export interface RepositoryBindingWith<DB, T extends keyof DB> extends RouteBindingWith {
+  readonly with: readonly RelationName<DB, T>[];
+  readonly value: WithRelations<DB, T, this['with'][number]>;
 }
 
 /** A repository class: `static table` must name the same table as `Repository<'…'>` — checked wherever the class is passed. */

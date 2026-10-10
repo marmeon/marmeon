@@ -1,5 +1,6 @@
 // Type guarantees of a repository's finders and relation writes — checked by `tsc` (pnpm build / typecheck), never run. The messages,
 // as the compiler shows them, are quoted in the comments.
+import { defineRoutes } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -66,6 +67,29 @@ export async function finderTypes() {
     expectTypeOf(batch[0]!.comments_count).toEqualTypeOf<number>();
     expectTypeOf(batch[0]!.title).toEqualTypeOf<string>();
   }
+}
+
+export function routeBindingTypes() {
+  defineRoutes((Route) => {
+    Route.bind('post', Posts, { with: ['author', 'tags'] }).get('/posts/:post', (ctx) => {
+      expectTypeOf(ctx.params.post.tags).toEqualTypeOf<{ id: number; slug: string }[]>();
+      expectTypeOf(ctx.params.post.author?.name).toEqualTypeOf<string | undefined>();
+      expectTypeOf(ctx.params.post.title).toEqualTypeOf<string>();
+      // Property 'comments' does not exist on type '{ author: { balance: string; …; } | null; ... 9 more ...; updated_at: string; }'.
+      // @ts-expect-error — not named, not loaded
+      void ctx.params.post.comments;
+      return null;
+    });
+    // Without relations, the row as it is.
+    Route.bind('post', Posts).get('/posts/:post', (ctx) => {
+      expectTypeOf(ctx.params.post).toEqualTypeOf<NonNullable<Awaited<ReturnType<Posts['find']>>>>();
+      return null;
+    });
+    // Type '"autor"' is not assignable to type '"author" | "comments" | "editor" | "post_stats" | "post_tag" | "post_user" | "tags" | "users"'.
+    // Did you mean '"author"'?
+    // @ts-expect-error — a relation posts does not have
+    Route.bind('post', Posts, { with: ['autor'] });
+  });
 }
 
 export async function relationWriteTypes() {

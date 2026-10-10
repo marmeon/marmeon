@@ -2,7 +2,7 @@ import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { defineRequest } from './request-definition.ts';
 import { defineRoutes, Router } from './router.ts';
-import type { HttpContext, RouteBinder, RouteBindingContext } from './types.ts';
+import type { HttpContext, RouteBinder, RouteBindingContext, RouteBindingWith } from './types.ts';
 
 interface Team {
   id: number;
@@ -38,6 +38,24 @@ class Members implements RouteBinder<Member> {
   }
 }
 
+/** A binder that loads more with the record when the route asks: its `routeBindingWith` names what, and types the result. */
+interface TeamWith extends RouteBindingWith {
+  readonly with: readonly ('members' | 'captain')[];
+  readonly value: Team & { [K in this['with'][number]]: K extends 'members' ? Member[] : Member };
+}
+class TeamsWith implements RouteBinder<Team> {
+  declare readonly routeBindingWith?: TeamWith;
+  resolveRouteBinding(value: string, binding: RouteBindingContext) {
+    lookups.push(`team ${value} with ${(binding.with ?? []).join(', ') || 'nothing'}`);
+    const team = teams.find((candidate) => String(candidate.id) === value);
+    if (!team) return undefined;
+    const loaded: Record<string, unknown> = { ...team };
+    if (binding.with?.includes('members')) loaded.members = members.filter((member) => member.team_id === team.id);
+    if (binding.with?.includes('captain')) loaded.captain = members.find((member) => member.team_id === team.id);
+    return loaded as unknown as Team;
+  }
+}
+
 class ShowMemberController {
   handle(ctx: HttpContext<{}, { team: Team; member: Member }>) {
     return { team: ctx.params.team.name, member: ctx.params.member.name };
@@ -63,6 +81,10 @@ function router() {
       Route.bind('team', Teams).get('/teams/:team', (ctx) => ({ name: ctx.params.team.name }));
       Route.bind('team', Teams).put('/teams/:team', UpdateTeamController);
       Route.bind('member', Members).get('/members/:member?', (ctx) => ({ member: ctx.params.member?.name ?? null }));
+      Route.bind('team', TeamsWith, { with: ['members'] }).get('/rosters/:team', (ctx) => ({ team: ctx.params.team.name, members: ctx.params.team.members.map((m) => m.name) }));
+      Route.bind('team', TeamsWith)
+        .bind('member', MembersOfTeam, { scopedBy: 'team', with: [] })
+        .get('/rosters/:team/members/:member', (ctx) => ({ member: ctx.params.member.name }));
     }),
   );
 }
@@ -110,11 +132,27 @@ describe('Route.bind', () => {
     expect(await (await call('/members/20')).json()).toEqual({ member: 'Alan' });
   });
 
+  it('passes the relations a binding names on to its binder — and nothing when it names none', async () => {
+    lookups.length = 0;
+    expect(await (await call('/rosters/1')).json()).toEqual({ team: 'Red', members: ['Ada'] });
+    expect(await (await call('/rosters/1/members/10')).json()).toEqual({ member: 'Ada' });
+    expect((await call('/rosters/1/members/20')).status).toBe(404); // scoped as before: another team's member
+    expect(lookups).toEqual(['team 1 with members', 'team 1 with nothing', 'member 10 in team (team_id)', 'team 1 with nothing', 'member 20 in team (team_id)']);
+  });
+
   it('refuses a binding for a parameter the path does not have — at boot, for untyped code', () => {
     const untyped = defineRoutes((Route) => (Route.bind('team', Teams) as any).get('/teams/:id', () => 'x'));
     expect(() => new Router().load(untyped)).toThrow("Route.bind('team') needs a :team parameter in /teams/:id.");
   });
 });
+
+interface MemberWith extends RouteBindingWith {
+  readonly with: readonly 'team'[];
+  readonly value: Member & { [K in this['with'][number]]: Team };
+}
+class MembersOfTeam extends Members {
+  declare readonly routeBindingWith?: MemberWith;
+}
 
 // Type guarantees — compiled, not run.
 export function typeLevelTests() {
@@ -133,5 +171,33 @@ export function typeLevelTests() {
     Route.bind('team', Teams).get('/teams/:team/members/:member', ShowMemberController);
     // @ts-expect-error — (5) not a binder (no resolveRouteBinding)
     Route.bind('team', class {}).get('/teams/:team', () => null);
+
+    // With relations: the bound value has the ones named, and only those.
+    Route.bind('team', TeamsWith, { with: ['members'] }).get('/teams/:team', (ctx) => {
+      expectTypeOf(ctx.params.team.members).toEqualTypeOf<Member[]>();
+      expectTypeOf(ctx.params.team.name).toEqualTypeOf<string>();
+      // Property 'captain' does not exist on type 'Team & { members: Member[]; }'.
+      // @ts-expect-error — (6) not named, not loaded
+      void ctx.params.team.captain;
+      return null;
+    });
+    Route.bind('team', TeamsWith, { with: ['members', 'captain'] }).get('/teams/:team', (ctx) => {
+      expectTypeOf(ctx.params.team.captain).toEqualTypeOf<Member>();
+      return null;
+    });
+    // Type '"coach"' is not assignable to type '"captain" | "members"'.
+    // @ts-expect-error — (7) a name the binder does not load
+    Route.bind('team', TeamsWith, { with: ['coach'] });
+    // Type 'string[]' is not assignable to type '"this binder loads nothing with the record — only one with a routeBindingWith does, such as a
+    // repository"'.
+    // @ts-expect-error — (8) a binder without routeBindingWith takes no with
+    Route.bind('team', Teams, { with: ['members'] });
+    // Scoped and with relations at once.
+    Route.bind('team', Teams)
+      .bind('member', MembersOfTeam, { scopedBy: 'team', with: ['team'] })
+      .get('/teams/:team/members/:member', (ctx) => {
+        expectTypeOf(ctx.params.member.team).toEqualTypeOf<Team>();
+        return null;
+      });
   });
 }

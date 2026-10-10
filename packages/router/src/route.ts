@@ -4,6 +4,7 @@ import type {
   Action,
   AnyAction,
   AnyMiddleware,
+  BindingWith,
   BoundValue,
   ConsistentBinder,
   EmptyObject,
@@ -17,6 +18,9 @@ import type {
   RouteBinding,
   Simplify,
 } from './types.ts';
+
+/** What `with` takes for a binder that loads nothing besides the record — the message the compiler shows. */
+type NoRelations = 'this binder loads nothing with the record — only one with a routeBindingWith does, such as a repository';
 
 export interface GroupAttributes {
   readonly prefix: string;
@@ -127,14 +131,20 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * Resolves the route parameter `param` with `binder`: the action gets the record instead of
    * the string, a missing one answers 404. Registered before the route, like middleware, so the type reaches `handle`. A scoped
    * binding (`scopedBy`) looks the child up *within* its parent (`team_id = team.id`, or `column`), so an id from somewhere else
-   * is a 404 — insecure direct object references cannot happen by forgetting a check. See docs/routing.md#scoped-bindings.
+   * is a 404 — insecure direct object references cannot happen by forgetting a check. See docs/routing.md#scoped-bindings. `with`
+   * names relations a repository loads with the record, in the same query: docs/routing.md#loading-relations-with-the-record.
    */
-  bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = never>(
+  bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = never, const W extends BindingWith<B> = never>(
     param: TName,
     binder: B & ConsistentBinder<B>,
-    options?: { scopedBy: TScope; column?: string },
-  ): Route<TState, TParams, Merge<TBindings, { [K in TName]: BoundValue<B> }>> {
-    const binding: RouteBinding = { param, binder, ...(options ? { scopedBy: options.scopedBy, column: options.column } : {}) };
+    options?: { scopedBy?: TScope; column?: string; with?: [BindingWith<B>] extends [never] ? NoRelations : readonly W[] },
+  ): Route<TState, TParams, Merge<TBindings, { [K in TName]: BoundValue<B, W> }>> {
+    const binding: RouteBinding = {
+      param,
+      binder,
+      ...(options?.scopedBy === undefined ? {} : { scopedBy: options.scopedBy, column: options.column }),
+      ...(options?.with?.length ? { with: [...options.with] } : {}),
+    };
     return this.#with({ bindings: [...(this.#attributes.bindings ?? []), binding] });
   }
 

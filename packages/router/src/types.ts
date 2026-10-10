@@ -131,19 +131,52 @@ export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, 
  */
 export interface RouteBinder<T> {
   resolveRouteBinding(value: string, binding: RouteBindingContext): T | undefined | Promise<T | undefined>;
+  /**
+   * Types only, never set: what `Route.bind(…, { with })` may name for this binder, and what it then resolves to — a
+   * {@link RouteBindingWith}. A binder without it takes no `with`. See docs/routing.md#loading-relations-with-the-record.
+   */
+  readonly routeBindingWith?: RouteBindingWith;
+}
+
+/**
+ * What a binder loads besides the record (`Route.bind('post', PostRepository, { with: ['author'] })`), as a type: `with` lists the
+ * names, and `value` — an interface member that reads `this['with']` — is the record with the named ones loaded. Repositories have
+ * one. See docs/routing.md#loading-relations-with-the-record.
+ */
+export interface RouteBindingWith {
+  readonly with: readonly string[];
+  readonly value: unknown;
 }
 
 export interface RouteBindingContext {
   readonly ctx: HttpContext<any, any>;
   /** Scoped bindings (`{ scopedBy: 'team' }`): the parent it must belong to, and the column that points at it. */
   readonly scope?: { readonly param: string; readonly parent: unknown; readonly column: string };
+  /** What the route asks to load with the record (`{ with: ['author'] }`) — names from the code, never from the request. */
+  readonly with?: readonly string[];
 }
 
 /** A class that binds route parameters — built per request from the container. */
 export type RouteBinderClass<T = unknown> = new (...args: any[]) => RouteBinder<T>;
 
-/** What a binder class resolves to. */
-export type BoundValue<B> = B extends new (...args: any[]) => RouteBinder<infer T> ? T : never;
+/** The binder's {@link RouteBindingWith} — never for one that declares none. */
+type WithOf<B> = B extends new (...args: any[]) => infer I
+  ? 'routeBindingWith' extends keyof I
+    ? I extends { readonly routeBindingWith?: infer L extends RouteBindingWith | undefined }
+      ? NonNullable<L>
+      : never
+    : never
+  : never;
+
+/** The names `Route.bind(param, B, { with })` takes — none for a binder without a `routeBindingWith`. */
+export type BindingWith<B> = [WithOf<B>] extends [never] ? never : WithOf<B> extends { readonly with: readonly (infer N extends string)[] } ? N : never;
+
+/** What a binder class resolves to — with the relations `W` loaded when `Route.bind()` names some. */
+export type BoundValue<B, W extends string = never> = [W] extends [never]
+  ? B extends new (...args: any[]) => RouteBinder<infer T>
+    ? T
+    : never
+  : (WithOf<B> & { readonly with: readonly W[] })['value'];
 
 /**
  * A binder class with a static `table` (a repository) must name the table its instances are typed for —
@@ -162,6 +195,7 @@ export interface RouteBinding {
   readonly binder: RouteBinderClass;
   readonly scopedBy?: string;
   readonly column?: string;
+  readonly with?: readonly string[];
 }
 
 /** Builds controller and middleware classes — per request, from the container. */

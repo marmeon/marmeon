@@ -290,7 +290,7 @@ async function bindParams(route: RouteDefinition, ctx: HttpContext, resolve: Cla
     const scope = binding.scopedBy
       ? { param: binding.scopedBy, parent: params[binding.scopedBy], column: binding.column ?? `${binding.scopedBy}_id` }
       : undefined;
-    const bound = await resolve(binding.binder).resolveRouteBinding(String(value), { ctx, ...(scope ? { scope } : {}) });
+    const bound = await resolve(binding.binder).resolveRouteBinding(String(value), { ctx, ...(scope ? { scope } : {}), ...(binding.with ? { with: binding.with } : {}) });
     if (bound === undefined || bound === null) throw new HttpError(404);
     params[binding.param] = bound;
   }

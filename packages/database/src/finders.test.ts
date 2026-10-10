@@ -143,6 +143,31 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
     expectTypeOf(await posts.findOrFail(ids.first)).toEqualTypeOf<NonNullable<Awaited<ReturnType<PostRepository['find']>>>>();
   });
 
+  it('binds a route parameter with the relations its binding names — in the same query, scoped as before', async () => {
+    class CommentRepository extends Repository<'comments', FixtureTables> {
+      static table = 'comments' as const;
+    }
+    const ctx = {} as never;
+    const { result: post, sql } = await logged(() => posts.resolveRouteBinding(String(ids.first), { ctx, with: ['author', 'comments', 'tags'] }));
+    expect(sql).toHaveLength(1);
+    expect(post).toMatchObject({ id: ids.first, title: 'First', author: { name: 'Ada', is_admin: true }, tags: [{ slug: 'sql' }] });
+    expect((post as unknown as { comments: { body: string }[] }).comments.map((comment) => comment.body)).toEqual(['one']);
+    // Soft-deleted rows: the author of the second post is gone, and so is a gone user's own binding.
+    expect(await posts.resolveRouteBinding(String(ids.second), { ctx, with: ['author'] })).toMatchObject({ id: ids.second, author: null });
+    expect(await users.resolveRouteBinding(String(ids.gone), { ctx, with: ['comments'] })).toBeUndefined();
+    // Secret columns: never.
+    const ada = (await users.resolveRouteBinding(String(ids.ada), { ctx, with: ['api_keys'] })) as unknown as { api_keys: object[] };
+    expect(Object.keys(ada.api_keys[0]!).sort()).toEqual(['id', 'name', 'user_id']);
+    // Scoped: a comment within its post — another post's comment is not found, relations or not.
+    const comments = new CommentRepository(connections);
+    const comment = await comments.findBy('body', 'one');
+    const scope = (parent: number) => ({ param: 'post', parent: { id: parent }, column: 'post_id' });
+    expect(await comments.resolveRouteBinding(String(comment!.id), { ctx, scope: scope(ids.first), with: ['user'] })).toMatchObject({ body: 'one', user: { name: 'Alan' } });
+    expect(await comments.resolveRouteBinding(String(comment!.id), { ctx, scope: scope(ids.second), with: ['user'] })).toBeUndefined();
+    // A name the table has no relation of is refused when the query runs.
+    await expect(posts.resolveRouteBinding(String(ids.first), { ctx, with: ['nope'] })).rejects.toThrow(`with('nope'): posts has no relation "nope"`);
+  });
+
   describe('chunk()', () => {
     const seed = async (count: number) => {
       const made: number[] = [];
