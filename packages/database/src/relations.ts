@@ -25,8 +25,6 @@ import {
   SelectQueryNode,
   TableNode,
   ValueNode,
-  type AliasableExpression,
-  type ExpressionBuilder,
   type KyselyPlugin,
   type OperationNode,
   type PluginTransformQueryArgs,
@@ -36,8 +34,6 @@ import {
   type ReturningNode,
   type RootOperationNode,
   type SelectQueryBuilder,
-  type Simplify,
-  type StringReference,
   type UnknownRow,
 } from 'kysely';
 import { jsonArrayFrom as pgArray, jsonObjectFrom as pgObject } from 'kysely/helpers/postgres';
@@ -47,59 +43,6 @@ import type { ColumnKind as Kind, SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, MANY, ONE, RELATION, RELATION_TARGET, SECRET, sourcesOf, WITH_TRASHED, type Source } from './placeholders.ts';
 import { asked, guardSecrets, outputName, type Spelled } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
-
-type Build<DB, TB extends keyof DB, R extends keyof DB, O> = (query: SelectQueryBuilder<DB, TB | R, {}>) => SelectQueryBuilder<DB, any, O>;
-
-/**
- * The rows of `table` whose `foreignKey` points at the outer row's `localKey` — loaded in the same
- * query, as an array (one query, no lazy loading: N+1 cannot happen). Select explicitly — the
- * selection is the type (and SQLite's JSON functions need the columns).
- *
- * ```ts
- * users.query().select((eb) => ['id', 'name',
- *   hasMany(eb, 'posts', 'user_id', 'users.id', (q) => q.select(['posts.id', 'posts.title']).orderBy('posts.id')).as('posts'),
- * ])
- * ```
- */
-export function hasMany<DB, TB extends keyof DB, R extends keyof DB & string, O>(
-  eb: ExpressionBuilder<DB, TB>,
-  table: R,
-  foreignKey: keyof DB[R] & string,
-  localKey: StringReference<DB, TB>,
-  build: Build<DB, TB, R, O>,
-): AliasableExpression<Simplify<O>[]> {
-  return relation(eb, MANY, `hasMany('${table}')`, table, `${table}.${foreignKey}`, localKey, build) as never;
-}
-
-/** The one row of `table` whose `foreignKey` points at the outer row — or `null`. */
-export function hasOne<DB, TB extends keyof DB, R extends keyof DB & string, O>(
-  eb: ExpressionBuilder<DB, TB>,
-  table: R,
-  foreignKey: keyof DB[R] & string,
-  localKey: StringReference<DB, TB>,
-  build: Build<DB, TB, R, O>,
-): AliasableExpression<Simplify<O> | null> {
-  return relation(eb, ONE, `hasOne('${table}')`, table, `${table}.${foreignKey}`, localKey, build) as never;
-}
-
-/** The row of `table` the outer row's `foreignKey` points at (its `ownerKey`, usually `id`) — or `null`. */
-export function belongsTo<DB, TB extends keyof DB, R extends keyof DB & string, O>(
-  eb: ExpressionBuilder<DB, TB>,
-  table: R,
-  ownerKey: keyof DB[R] & string,
-  foreignKey: StringReference<DB, TB>,
-  build: Build<DB, TB, R, O>,
-): AliasableExpression<Simplify<O> | null> {
-  return relation(eb, ONE, `belongsTo('${table}')`, table, `${table}.${ownerKey}`, foreignKey, build) as never;
-}
-
-function relation(eb: ExpressionBuilder<any, any>, kind: string, label: string, table: string, inner: string, outer: string, build: Build<any, any, any, unknown>) {
-  const query = build(eb.selectFrom(table).whereRef(inner, '=', outer));
-  // A marker the connection's RelationsPlugin replaces with its dialect's JSON aggregation.
-  return eb.fn(kind, [query, eb.val(label)]);
-}
-
-// --- The chain's relations ---------------------------------------------------------------------
 
 /**
  * What a `with()` or `withRelation()` placeholder holds, besides the callback's query. `use` says what a relation of the chain

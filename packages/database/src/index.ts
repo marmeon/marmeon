@@ -56,7 +56,7 @@ export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/
 export type { SchemaMarker } from './introspection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
-export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';
+export { RelationsPlugin } from './relations.ts';
 // Puts `with()`, `withCount()`, `whereHas()`, `withRelation()` and `withTrashed()` on Kysely's select builder — at runtime (this import) and in the types.
 import './chain.ts';
 export type { RelationDefinition, RelationName } from './chain.ts';

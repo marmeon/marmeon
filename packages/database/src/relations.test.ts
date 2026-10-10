@@ -2,7 +2,7 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { belongsTo, hasMany, hasOne, Migrator, type Connections, type Json, type QueryEvent } from './index.ts';
+import { Migrator, type Connections, type Json, type QueryEvent } from './index.ts';
 import type { Kysely } from 'kysely';
 
 const modules: ModuleDefinition[] = [
@@ -38,20 +38,16 @@ describe.each(drivers)('relations on %s', (driver) => {
   });
   afterAll(() => close());
 
+  // The fixture's tables have no generated relations: withRelation() names the keys.
   const withArticles = () =>
     db
       .selectFrom('users')
-      .select((eb) => [
-        'id',
-        'name',
-        hasMany(eb, 'articles', 'user_id', 'users.id', (q) => q.select(['articles.id', 'articles.title', 'articles.published_at']).orderBy('articles.id')).as(
-          'articles',
-        ),
-        hasOne(eb, 'articles', 'user_id', 'users.id', (q) => q.select(['articles.title']).orderBy('articles.id', 'desc').limit(1)).as('latest'),
-      ])
+      .select(['id', 'name'])
+      .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) => q.select(['articles.id', 'articles.title', 'articles.published_at']).orderBy('articles.id'))
+      .withRelation('latest', { table: 'articles', foreignKey: 'user_id', one: true }, (q) => q.select(['articles.title']).orderBy('articles.id', 'desc'))
       .orderBy('id');
 
-  it('loads a hasMany and a hasOne in the same query as their parents', async () => {
+  it('loads a list and one row in the same query as their parents', async () => {
     queries.length = 0; // column kinds were loaded on the connection when it was handed out — not as queries of their own
     const users = await withArticles().execute();
     expect(queries).toHaveLength(1); // no N+1 — there is no lazy loading to fall into
@@ -75,12 +71,10 @@ describe.each(drivers)('relations on %s', (driver) => {
   it('gives nested values the same types as top-level ones: booleans, JSON, decimals, timestamps', async () => {
     const [article] = await db
       .selectFrom('articles')
-      .select((eb) => [
-        'articles.title',
-        belongsTo(eb, 'users', 'id', 'articles.user_id', (q) =>
-          q.select(['users.name', 'users.is_admin', 'users.settings', 'users.balance', 'users.created_at']),
-        ).as('author'),
-      ])
+      .select('articles.title')
+      .withRelation('author', { table: 'users', foreignKey: 'id', localKey: 'user_id', one: true }, (q) =>
+        q.select(['users.name', 'users.is_admin', 'users.settings', 'users.balance', 'users.created_at']),
+      )
       .orderBy('articles.id')
       .execute();
     expect(article).toEqual({
@@ -93,31 +87,35 @@ describe.each(drivers)('relations on %s', (driver) => {
   it('nests relations, with aliases and renamed columns', async () => {
     const [user] = await db
       .selectFrom('users')
-      .select((eb) => [
-        'users.name',
-        hasMany(eb, 'articles', 'user_id', 'users.id', (q) =>
-          q
-            .select((inner) => [
-              'articles.title as headline',
-              belongsTo(inner, 'users', 'id', 'articles.user_id', (u) => u.select(['users.is_admin as admin'])).as('by'),
-            ])
-            .orderBy('articles.id'),
-        ).as('articles'),
-      ])
+      .select('users.name')
+      .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) =>
+        q
+          .select(['articles.id', 'articles.title as headline'])
+          .withRelation('by', { table: 'users', foreignKey: 'id', localKey: 'user_id', one: true }, (u) => u.select(['users.id', 'users.is_admin as admin']))
+          .orderBy('articles.id'),
+      )
       .where('users.name', '=', 'Ada')
       .execute();
     expect(user!.articles).toEqual([
-      { headline: 'First', by: { admin: true } },
-      { headline: 'Second', by: { admin: true } },
+      { id: expect.any(Number), headline: 'First', by: { id: expect.any(Number), admin: true } },
+      { id: expect.any(Number), headline: 'Second', by: { id: expect.any(Number), admin: true } },
     ]);
+    expectTypeOf(user!.articles).toEqualTypeOf<{ id: number; headline: string; by: { id: number; admin: boolean } | null }[]>();
   });
 
-  it('asks for explicit columns instead of selectAll() — on every driver', async () => {
-    await expect(
-      db
-        .selectFrom('users')
-        .select((eb) => hasMany(eb, 'articles', 'user_id', 'users.id', (q) => q.selectAll('articles')).as('articles'))
-        .execute(),
-    ).rejects.toThrow('Relations need explicit columns: q.select([…]) instead of selectAll()');
+  it('spells out selectAll() in a relation as the columns of its table — on every driver', async () => {
+    const [user] = await db
+      .selectFrom('users')
+      .select('users.name')
+      .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) => q.selectAll().orderBy('articles.id'))
+      .where('users.name', '=', 'Ada')
+      .execute();
+    expect(Object.keys(user!.articles[0]!).sort()).toEqual(['content', 'id', 'published_at', 'slug', 'title', 'user_id']);
+  });
+});
+
+describe('the relations of a query', () => {
+  it('are loaded through the query builder only — the package exports no functions that build them', async () => {
+    expect(Object.keys(await import('./index.ts'))).not.toEqual(expect.arrayContaining([expect.stringMatching(/^(hasMany|hasOne|belongsTo)$/)]));
   });
 });

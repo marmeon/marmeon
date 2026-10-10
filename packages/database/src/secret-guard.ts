@@ -324,7 +324,7 @@ class Guard {
       const { selection } = node;
       const all = selection.kind === 'SelectAllNode' ? sources : ReferenceNode.is(selection) && selection.column.kind === 'SelectAllNode' ? [this.#own(selection.table!.table.identifier.name, sources)] : undefined;
       if (all) {
-        // At a relation's top level the chain spelled it out already; the free helpers ask for the columns.
+        // At a relation's top level the chain spelled it out already: its JSON needs the columns named (SQLite).
         if (this.#relation !== undefined && top) throw new Error('Relations need explicit columns: q.select([…]) instead of selectAll() — the selection is the type.');
         for (const source of all) if (source.untyped) this.#untyped(source);
         if (all.every((source) => source.secret.size === 0)) {

@@ -7,10 +7,8 @@ import { defineRoutes } from '@marmeon/router';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import {
-  belongsTo,
   Connections,
   Factories,
-  hasMany,
   Repository,
   type RepositoryClass,
   type RowOf,
@@ -212,29 +210,22 @@ it('types factories against the insert type of their table', () => void (async (
 it('types relations: keys are columns, the selection is the type, module boundaries hold', () => void (async (db: import('kysely').Kysely<FixtureTables>) => {
   const [user] = await db
     .selectFrom('users')
-    .select((eb) => ['users.id', hasMany(eb, 'articles', 'user_id', 'users.id', (q) => q.select(['articles.title'])).as('articles')])
+    .select('users.id')
+    .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) => q.select(['articles.title']))
     .execute();
   expectTypeOf(user!.articles).toEqualTypeOf<{ title: string }[]>();
   // @ts-expect-error — only the selected columns exist on related rows
   void user!.articles[0]!.id;
 
-  await db.selectFrom('users').select((eb) => [
-    // @ts-expect-error — the foreign key must be a column of the related table
-    hasMany(eb, 'articles', 'author_id', 'users.id', (q) => q.select(['articles.title'])).as('a'),
-  ]);
-  await db.selectFrom('users').select((eb) => [
-    // @ts-expect-error — the local key must be a column of the outer query
-    hasMany(eb, 'articles', 'user_id', 'users.uuid', (q) => q.select(['articles.title'])).as('a'),
-  ]);
-  await db.selectFrom('articles').select((eb) => [
-    // @ts-expect-error — unknown related table
-    belongsTo(eb, 'authors', 'id', 'articles.user_id', (q) => q.select(['id'])).as('author'),
-  ]);
+  // @ts-expect-error — the foreign key must be a column of the related table
+  await db.selectFrom('users').withRelation('a', { table: 'articles', foreignKey: 'author_id' }).execute();
+  // @ts-expect-error — the local key must be a column of the outer query
+  await db.selectFrom('users').withRelation('a', { table: 'articles', foreignKey: 'user_id', localKey: 'uuid' }).execute();
+  // @ts-expect-error — unknown related table
+  await db.selectFrom('articles').withRelation('author', { table: 'authors', foreignKey: 'id', localKey: 'user_id', one: true }).execute();
   // user-profile cannot even load a relation to a table it cannot see
-  await profile.selectFrom('login_activity').select((eb) => [
-    // @ts-expect-error — audit_log belongs to another module and is not exposed
-    hasMany(eb, 'audit_log', 'id', 'login_activity.user_id', (q) => q.select(['audit_log.message'])).as('log'),
-  ]);
+  // @ts-expect-error — audit_log belongs to another module and is not exposed
+  await profile.selectFrom('login_activity').withRelation('log', { table: 'audit_log', foreignKey: 'id', localKey: 'user_id' }).execute();
 }));
 
 it('binds route parameters to rows of the repository’s table', () => {

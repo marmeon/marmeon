@@ -5,7 +5,7 @@ import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { rules as r } from '@marmeon/validation';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
-import { cursorPaginate, hasMany, InvalidCursorError, Migrator, pageQuery, paginate, type Connections, type CursorEncrypter, type QueryEvent } from './index.ts';
+import { cursorPaginate, InvalidCursorError, Migrator, pageQuery, paginate, type Connections, type CursorEncrypter, type QueryEvent } from './index.ts';
 
 const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: new URL('./__fixtures__/migrations/auth/', import.meta.url) },
@@ -31,7 +31,8 @@ describe.each(drivers)('pagination on %s', (driver) => {
   const people = () =>
     db
       .selectFrom('users')
-      .select((eb) => ['users.name', hasMany(eb, 'articles', 'user_id', 'users.id', (q) => q.select(['articles.title'])).as('articles')])
+      .select('users.name')
+      .withRelation('articles', { table: 'articles', foreignKey: 'user_id' }, (q) => q.select(['articles.title']))
       .orderBy('users.name');
 
   it('returns a page and where it stands — counting without ordering or relations', async () => {
@@ -41,7 +42,7 @@ describe.each(drivers)('pagination on %s', (driver) => {
     stop();
     expect(page.data.map((person) => person.name)).toEqual(['User 06', 'User 07', 'User 08', 'User 09', 'User 10']);
     expect(page.meta).toEqual({ page: 2, perPage: 5, total: 12, lastPage: 3, from: 6, to: 10 });
-    expectTypeOf(page.data[0]!).toEqualTypeOf<{ name: string; articles: { title: string }[] }>();
+    expectTypeOf(page.data[0]!).toEqualTypeOf<{ name: string } & { articles: { title: string }[] }>();
     const count = queries.find((query) => /count\(\*\)/.test(query.sql))!.sql;
     expect(count).not.toMatch(/order by|json/i);
   });

@@ -8,7 +8,7 @@ import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { installChain, installOn } from './chain.ts';
-import { Connections, cursorPaginate, hasMany, Migrator, paginate, Repository, secret, sql, type ConnectionOptions, type Json, type QueryEvent } from './index.ts';
+import { Connections, cursorPaginate, Migrator, paginate, Repository, secret, sql, type ConnectionOptions, type Json, type QueryEvent } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
@@ -886,15 +886,6 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       expect(compiled).toContain('"b"."user_id"');
       expect(compiled).not.toContain('"b".*');
       expect(await query.execute()).toEqual([{ user_id: ids.ada }]);
-    });
-
-    it('are refused in a relation of the free helpers too', async () => {
-      await expect(
-        db
-          .selectFrom('users')
-          .select((eb) => ['name', hasMany(eb, 'api_keys', 'user_id', 'users.id', (q) => q.select(['api_keys.name', 'api_keys.token' as never])).as('keys')])
-          .execute(),
-      ).rejects.toThrow(refused(`hasMany('api_keys')`));
     });
   });
 
