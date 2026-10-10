@@ -7,7 +7,7 @@ export type FlashHandler<K extends FlashKey> = (data: FlashMessage<K>['data'], m
 
 /**
  * Runs `handler` for every flash message of `key`, typed by the app's `FlashData` — exactly once per message, never again for
- * a reload, Back/Forward or a page shown from memory; messages that came before this component mounted fire at once. In the
+ * a reload, Back/Forward or a page shown from memory; messages nobody heard before this component mounted fire at once. In the
  * browser only (an effect): on the server, the page object's `flash` is what a `<noscript>` may show.
  * See docs/pages.md#flash-messages.
  */

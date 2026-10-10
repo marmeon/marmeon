@@ -1,8 +1,8 @@
 /**
  * Remembered state, UI-free: what a form or a component wants back when Back/Forward returns to its history entry. Kept in
  * memory only, per history entry, and gone with the entry and with the document — never in `history.state` or `sessionStorage`,
- * which browsers restore from disk, past a sign-out. Fields named like a password (never, even when asked), a token, a secret or
- * a card (unless a form names them in `include`), at any depth, and files are not kept. See docs/navigation.md#remembered-state.
+ * which browsers restore from disk, past a sign-out. Fields named like a token, a secret or a card are not kept unless a form
+ * names them in `include`; passwords and files never, at any depth. See docs/navigation.md#remembered-state.
  */
 
 import { slot } from './feature.ts';
