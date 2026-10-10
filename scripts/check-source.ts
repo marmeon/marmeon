@@ -229,12 +229,12 @@ export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
   },
   {
     what: 'a wave reference',
-    // A wave or a step — a `W` or "wave" and its number, each with its letter, a point release and a step — a counter-probe's
-    // id (a `G`, a number and a letter) or the words of the abolished method, in any case (spelled in parts: this file passes
-    // its own rule); `W3C` is none.
+    // A wave or a step — a `W` or "wave" and its number, each with its letter, a point release and a step — an id of a `G` or
+    // `T`, one or two digits and a letter, and two words no file may say (spelled in parts below, so this file passes its own
+    // rule); `W3C` is none.
     pattern: new RegExp(
       [
-        String.raw`\b(?:W\d+[a-z]?(?:\.\d+[a-z]?)?(?:\s+step\s+\d+[a-z]?)?|[Ww]ave \d+[a-z]?(?:\s+step\s+\d+[a-z]?)?|G\d{1,2}[a-z])\b`,
+        String.raw`\b(?:W\d+[a-z]?(?:\.\d+[a-z]?)?(?:\s+step\s+\d+[a-z]?)?|[Ww]ave \d+[a-z]?(?:\s+step\s+\d+[a-z]?)?|[GT]\d{1,2}[a-z])\b`,
         String.raw`\b(?i:${'counter'}-${'checks'}?|${'Gegen'}${'proben'}?)\b`,
       ].join('|'),
     ),

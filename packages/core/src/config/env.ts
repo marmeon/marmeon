@@ -284,6 +284,10 @@ function envSchema<const F extends Fields>(fields: F): EnvSchema<{ -readonly [K 
   return new EnvSchema(fields);
 }
 
+/**
+ * The environment variables of a config definition, by name — each read by a building block (`env.string()`,
+ * `env.integer()`, `env.in([...])`). See docs/configuration.md#reading-variables.
+ */
 export const env = Object.assign(envSchema, {
   /** Text. */
   string,

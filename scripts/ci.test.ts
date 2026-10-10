@@ -303,6 +303,7 @@ describe('rule 7: no references to the private record', () => {
     expect(what('# the Docker image, since Wa·ve 10', '.github/workflows/ci.yml')).toEqual(['a wave reference']);
     expect(what('// done in W·12 step 4b', 'vitest.config.ts')).toEqual(['a wave reference']);
     expect(what('// red without the lock (G·12b)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
+    expect(what('// red without the lock (T·8b)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
     expect(what('// red without the lock (Gegen·probe G·3)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
     expect(what('// the island (E·7)')).toEqual(['a decision number']);
     expect(what('as E·1 says')).toEqual(['a decision number']);
@@ -323,7 +324,7 @@ describe('rule 7: no references to the private record', () => {
 
   it('takes no hex value, exponent, phone format, test name, cookie attribute, date of test data, version or CSS for one', () => {
     const text = [
-      'W3C, HTTP/2, AW3 and W-9',
+      'W3C, HTTP/2, AW3 and W-9, T3 and TS2345',
       'Set-Cookie: a=b; Max-Age=60',
       'E164, E.164 numbers, E2E tests and E1000',
       'https://example.test/?q=%E2%82%AC and %E0%A4%A',

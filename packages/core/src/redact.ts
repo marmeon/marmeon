@@ -91,9 +91,9 @@ export interface RedactableQuery {
 
 /**
  * The one place that decides what of a value may be shown or recorded — the development error page, the devtools and
- * telemetry: sensitive keys at any depth (the core's list and the names packages add), secrets in text, statements on secret
- * columns without parameters, files and bytes by their size, every string cut at {@link MAX_ENTRY_BYTES}. One per app
- * (`app.container.make(Redactor)`), so the names an app adds stay its own.
+ * telemetry. It masks sensitive keys at any depth (the core's list and the names packages add), secrets in text and the
+ * parameters of statements on secret columns, shows files and bytes by their size only, and cuts every string at
+ * {@link MAX_ENTRY_BYTES}. One per app (`app.container.make(Redactor)`), so the names an app adds stay its own.
  * See docs/logging.md#what-the-framework-shows-elsewhere.
  */
 export class Redactor {

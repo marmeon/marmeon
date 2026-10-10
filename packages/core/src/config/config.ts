@@ -17,6 +17,10 @@ export interface ConfigDefinition<T> extends Token<T> {
 
 export type ConfigOf<Definition> = Definition extends ConfigDefinition<infer T> ? T : never;
 
+/**
+ * Defines a validated, typed piece of configuration: `env` names the variables, `resolve` builds the value — a container
+ * token, injected like any service. See docs/configuration.md#defining-configuration.
+ */
 export function defineConfig<const Schema extends StandardSchemaV1, T>(
   name: string,
   definition: { env: Schema; resolve: (env: InferOutput<Schema>) => T },
