@@ -69,26 +69,6 @@ export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never]
     : PageRequest;
 
 /**
- * Page and page size from the query string (`?page=3&per_page=20`), made safe: anything that is not a
- * whole number in range falls back instead of failing — `?page=-1`, `?page=abc`, `?per_page=100000`.
- *
- * @deprecated Since Wave 9: spread {@link pageQuery} into the route's query schema and hand `paginate` the parsed `ctx.query` —
- * the browser's links then come from the same schema (`<Pagination>`). Reads a parsed query object as well as the search params.
- */
-export function paginationFrom(
-  query: URLSearchParams | Readonly<Record<string, unknown>>,
-  { perPage = 15, maxPerPage = 100 }: { perPage?: number; maxPerPage?: number } = {},
-): { page: number; perPage: number } {
-  const read = (key: string) => (query instanceof URLSearchParams ? query.get(key) : query[key]);
-  const page = Number(read('page'));
-  const size = Number(read('per_page') ?? perPage);
-  return {
-    page: Number.isSafeInteger(page) && page >= 1 ? page : 1,
-    perPage: Number.isSafeInteger(size) && size >= 1 ? Math.min(size, maxPerPage) : perPage,
-  };
-}
-
-/**
  * One page of `query`, and how many rows there are in all (a second, counting query on the same
  * filter — ordering, selections and relations are left out of it). Which page: the route's parsed query
  * (`ctx.query`, with {@link pageQuery} in its schema), or `{ page, perPage }`.

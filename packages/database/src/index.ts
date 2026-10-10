@@ -56,7 +56,7 @@ export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
 export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';
-export { cursorPaginate, InvalidCursorError, pageQuery, paginate, paginationFrom } from './pagination.ts';
+export { cursorPaginate, InvalidCursorError, pageQuery, paginate } from './pagination.ts';
 export type { CheckPageRequest, CursorEncrypter, CursorOptions, CursorPaginated, PageMeta, PageRequest, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
 export type { Exact, KeyOf, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';

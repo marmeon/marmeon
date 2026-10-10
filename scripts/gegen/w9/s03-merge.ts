@@ -5,7 +5,8 @@ import { defineGegenproben } from '../define.ts';
  * while "load more" appends, GET lists as repeated keys, `paginate(ctx.query)` with `pageQuery()`, `<Pagination>` from the parsed query
  * and in German, encrypted cursors (a NULL is a cursor, a forged one a 400), `merge()` of a paginator, paths in `matchOn`, merge marks
  * that do not pile up, and `useQueryState.set()` before its effect. The action path and the live path are separate cases (one could
- * hide the other); so are the cursor's checks (encryption, the 400, the NULLs, its order).
+ * hide the other); so are the cursor's checks (encryption, the 400, the NULLs, its order). G10 (paginationFrom() and a parsed query) is
+ * retired with paginationFrom() itself (W12 step 4b).
  */
 const merge = (name: string) => ({ vitest: 'packages/http/src/client/merge.test.ts', name });
 const pagination = (name: string) => ({ vitest: 'packages/database/src/pagination.test.ts', name });
@@ -134,13 +135,7 @@ export default defineGegenproben({
       expect: /the list went as one value/,
     },
     // --- Pagination from the query schema ------------------------------------------------------------------------------------------
-    {
-      id: 'G10',
-      title: 'paginationFrom(ctx.query) — a parsed query object — gives page 1',
-      patch: [{ file: 'packages/database/src/pagination.ts', find: 'query instanceof URLSearchParams ? query.get(key) : query[key]', replace: 'query instanceof URLSearchParams ? query.get(key) : undefined' }],
-      run: pagination('reads a parsed query (ctx.query) as well'),
-      expect: /to deeply equal \{ page: 3, perPage: 20 \}/,
-    },
+    // G10 retired (W12 step 4b, E216): paginationFrom() is gone — pageQuery() and the parsed query are the only way to a page.
     {
       id: 'G11',
       title: 'paginate(ctx.query) ignores per_page — what pageQuery() parses',

@@ -5,7 +5,7 @@ import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { rules as r } from '@marmeon/validation';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
-import { cursorPaginate, hasMany, InvalidCursorError, Migrator, pageQuery, paginate, paginationFrom, type Connections, type CursorEncrypter, type QueryEvent } from './index.ts';
+import { cursorPaginate, hasMany, InvalidCursorError, Migrator, pageQuery, paginate, type Connections, type CursorEncrypter, type QueryEvent } from './index.ts';
 
 const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: new URL('./__fixtures__/migrations/auth/', import.meta.url) },
@@ -185,18 +185,8 @@ describe.each(drivers)('pagination on %s', (driver) => {
   });
 });
 
-describe('paginationFrom', () => {
-  it('takes page and size from the query string — safe against anything', () => {
-    const from = (query: string) => paginationFrom(new URLSearchParams(query), { perPage: 10, maxPerPage: 50 });
-    expect(from('page=3&per_page=20')).toEqual({ page: 3, perPage: 20 });
-    expect(from('')).toEqual({ page: 1, perPage: 10 });
-    for (const bad of ['page=-1', 'page=0', 'page=abc', 'page=1.5', 'page=1e999', 'page=99999999999999999999']) expect(from(bad).page).toBe(1);
-    expect(from('per_page=100000').perPage).toBe(50);
-    expect(from('per_page=0').perPage).toBe(10);
-  });
-
-  it('reads a parsed query (ctx.query) as well — the page it names, not page 1', () => {
-    expect(paginationFrom({ page: 3, per_page: 20, q: 'ada' }, { perPage: 10 })).toEqual({ page: 3, perPage: 20 });
-    expect(paginationFrom({ page: 0 }, { perPage: 10 })).toEqual({ page: 1, perPage: 10 });
+describe('the page of a request', () => {
+  it('comes from the route\'s parsed query alone — pageQuery() in its schema, paginate(ctx.query); nothing reads the search params', async () => {
+    expect(Object.keys(await import('./index.ts'))).not.toContain('paginationFrom');
   });
 });

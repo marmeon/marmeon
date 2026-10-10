@@ -12,11 +12,6 @@ export interface DatabaseSessionConnection {
 
 type Sql = (typeof import('@marmeon/database'))['sql'];
 
-/** What a table without the `version` column (made before W8 step 7) needs. */
-const UPGRADE =
-  'The sessions table has no version column: it was made before session keys were hashed and before writes compared versions. ' +
-  'Run `marmeon make:session-table --upgrade` and `marmeon migrate` — every user is signed out once.';
-
 /**
  * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
  * session id (`id`, E144), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's
@@ -50,9 +45,7 @@ export class DatabaseSessionStore implements SessionStore {
 
   async read(key: string): Promise<StoredSession | undefined> {
     const { db, sql } = await this.#use();
-    const { rows } = await upgradeHint(
-      sql<{ payload: string; version: number | string }>`select payload, version from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db),
-    );
+    const { rows } = await sql<{ payload: string; version: number | string }>`select payload, version from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
     return rows[0] ? { data: rows[0].payload, version: Number(rows[0].version) } : undefined;
   }
 
@@ -60,16 +53,12 @@ export class DatabaseSessionStore implements SessionStore {
     const { db, sql } = await this.#use();
     const now = this.#clock.now();
     if (expectedVersion === undefined) {
-      const inserted = await upgradeHint(
-        sql`insert into sessions (id, user_id, payload, last_activity, version) values (${key}, ${userId}, ${data}, ${now}, 1)
-          on conflict (id) do nothing`.execute(db),
-      );
+      const inserted = await sql`insert into sessions (id, user_id, payload, last_activity, version) values (${key}, ${userId}, ${data}, ${now}, 1)
+        on conflict (id) do nothing`.execute(db);
       return inserted.numAffectedRows === 1n ? 'written' : 'conflict';
     }
-    const updated = await upgradeHint(
-      sql`update sessions set user_id = ${userId}, payload = ${data}, last_activity = ${now}, version = version + 1
-        where id = ${key} and version = ${expectedVersion} and last_activity > ${this.#oldest()}`.execute(db),
-    );
+    const updated = await sql`update sessions set user_id = ${userId}, payload = ${data}, last_activity = ${now}, version = version + 1
+      where id = ${key} and version = ${expectedVersion} and last_activity > ${this.#oldest()}`.execute(db);
     if (updated.numAffectedRows === 1n) return 'written';
     // Nothing matched: written by another request since (conflict) — or destroyed, or expired (gone).
     const { rows } = await sql`select 1 as found from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
@@ -104,16 +93,5 @@ export class DatabaseSessionStore implements SessionStore {
     this.#sql ??= import('@marmeon/database').then((module) => module.sql);
     const [connection, sql] = await Promise.all([this.#connection(), this.#sql]);
     return { ...connection, sql };
-  }
-}
-
-/** A query on a table without `version` fails with what to run (SQLite: "no such column", Postgres: "column … does not exist"). */
-async function upgradeHint<T>(query: Promise<T>): Promise<T> {
-  try {
-    return await query;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    if (/\bversion\b/.test(message) && /column/i.test(message)) throw new Error(UPGRADE, { cause: error });
-    throw error;
   }
 }

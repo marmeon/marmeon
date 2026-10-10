@@ -119,9 +119,10 @@ export default defineGegenproben({
     {
       id: 'T6b',
       title: "a wave in a command's description: check:source names it",
-      patch: [{ file: 'packages/session/src/commands/make-session-table.ts', find: "--upgrade for a table made before Marmeon 0.1.0'", replace: "--upgrade for a table made before W8'" }],
+      // Re-based in W12 step 4b: the command lost its `--upgrade` (E216), and with it the text this case patched.
+      patch: [{ file: 'packages/session/src/commands/make-session-table.ts', find: "driver (sessions)';", replace: "driver (sessions) — the table of W8';" }],
       run: SOURCE,
-      expect: /the framework's messages speak to app developers \([^)]*\): packages\/session\/src\/commands\/make-session-table\.ts:16: a wave reference: 'Create the migration .* made before W8'/,
+      expect: /the framework's messages speak to app developers \([^)]*\): packages\/session\/src\/commands\/make-session-table\.ts:13: a wave reference: 'Create the migration .* the table of W8'/,
     },
     {
       id: 'T5b',

@@ -146,13 +146,14 @@ describe('SESSION_DRIVER', () => {
     await expect(boot({ SESSION_DRIVER: 'memory', SESSION_ENCRYPT: 'yes' }, [])).rejects.toThrow(/SESSION_ENCRYPT/);
   });
 
-  it('database: a sessions table made before hashed ids and versions names the upgrade', async () => {
+  it('database: an error of the sessions table goes out as the driver wrote it — the store adds no advice of its own', async () => {
     const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     const db = app.container.make(Connections).get();
     await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
-    const response = await createHttpKernel(app).request('/count', { headers: { accept: 'application/json' } });
-    expect(response.status).toBe(500);
-    await expect(app.container.make(SessionStore).read('a'.repeat(64))).rejects.toThrow('Run `marmeon make:session-table --upgrade` and `marmeon migrate`');
+    const error = await app.container.make(SessionStore).read('a'.repeat(64)).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/version/);
+    expect((error as Error).message).not.toContain('make:session-table');
     await app.shutdown();
   });
 
@@ -313,28 +314,18 @@ describe('make:session-table', () => {
     lines.length = 0;
     expect(await new MakeSessionTableCommand().handle(run)).toBe(1);
     expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sessions table has its migration.`]);
-    // An app made before W8: --upgrade writes the migration that makes the table anew (hashed keys, version).
-    lines.length = 0;
-    expect(await new MakeSessionTableCommand().handle({ ...(run as object), options: { upgrade: true } } as never)).toBe(0);
-    const upgrade = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_upgrade_sessions_table.ts'))!;
-    expect(readFileSync(join(root, 'modules/system/migrations', upgrade), 'utf8')).toContain("table.integer('version').default(1)");
-    expect(lines).toEqual([`✓ Created modules/system/migrations/${upgrade}`, 'Then: marmeon migrate']);
   });
 
-  it('the upgrade migration turns an old table into one the store writes — every old row gone', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
-    const connections = app.container.make(Connections);
-    const db = connections.get();
-    await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
-    await sql`insert into sessions values (${'r'.repeat(40)}, '1', '{"_auth_id":"1"}', ${Date.now()})`.execute(db);
-    const { Schema } = await import('@marmeon/database');
-    const { SESSIONS_UPGRADE_MIGRATION } = await import('./commands/make-session-table.ts');
-    const upgrade = ((await import(SESSIONS_UPGRADE_MIGRATION.href)) as { default: { up(schema: InstanceType<typeof Schema>): Promise<void> } }).default;
-    await upgrade.up(new Schema(db, connections.options().driver));
-    expect((await sql`select * from sessions`.execute(db)).rows).toEqual([]);
-    const counted = await createHttpKernel(app).request('/count', { headers: { accept: 'application/json' } });
-    expect(await counted.json()).toEqual({ visits: 1 });
-    expect((await sql<{ version: number }>`select version from sessions`.execute(db)).rows).toEqual([{ version: 1 }]);
-    await app.shutdown();
+  it('writes one migration: the table as the store writes it — no other to choose', () => {
+    expect(MakeSessionTableCommand.options).toEqual({ module: { type: 'string', short: 'm' } });
+    expect(MakeSessionTableCommand.usage).toBe('[--module=system]');
+    expect(readdirSync(new URL('../stubs/migrations/', import.meta.url))).toEqual(['create_sessions_table.ts']);
+  });
+
+  it("the web app's sessions table is the stub's — made once, no migration changes it later", () => {
+    const stub = readFileSync(new URL('../stubs/migrations/create_sessions_table.ts', import.meta.url), 'utf8');
+    const migrations = new URL('../../../apps/web-app/modules/system/migrations/', import.meta.url);
+    expect(readdirSync(migrations).filter((file) => file.includes('sessions'))).toEqual(['2026_10_02_203103_create_sessions_table.ts']);
+    expect(readFileSync(new URL('2026_10_02_203103_create_sessions_table.ts', migrations), 'utf8')).toBe(stub);
   });
 });
