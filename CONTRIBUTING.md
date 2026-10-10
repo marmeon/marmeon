@@ -220,9 +220,7 @@ checked over every file of the repository — tracked, or new and not ignored. E
 7. **No references to the private record**: no tracked file names a decision number (an `E` and two or three digits as a word
    of its own — a hex value, an exponent, `E2E`, `E.164` or `E164` is none), a wave or a step of the maintainers' plan, a
    personal date or a path into the maintainers' notes — a comment says what holds and links a page under `docs/`
-   ([Comments](#comments)). `PENDING_AREAS` in `scripts/check-source.ts` lists the areas of `packages/` and `apps/` it does not
-   read yet; what readers see first there — the cards, the stubs, the template, the apps' READMEs and `.env` files — it reads
-   all the same.
+   ([Comments](#comments)). `pnpm pack:check` holds every file of the packed tarballs to the same patterns.
 
 A new rule joins the same script, with its test.
 

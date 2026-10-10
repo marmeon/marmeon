@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -10,7 +13,6 @@ import {
   OLD_NAME,
   OLD_TOKEN_PREFIX,
   oldTokenPrefixHits,
-  PENDING_AREAS,
   PRIVATE_RECORD_RULES,
   privateRecordHits,
   runtimeStringHits,
@@ -18,6 +20,7 @@ import {
   textRuleWhere,
 } from './check-source.ts';
 import { parts } from './ci.ts';
+import { privateRecordInTarball } from './pack-check.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -292,7 +295,7 @@ describe("check:source — the framework's messages speak to app developers (rul
 });
 
 describe('rule 7: no references to the private record', () => {
-  const what = (text: string, path = 'scripts/ci.ts') => privateRecordHits([{ path, text: ref(text) }], []).map((hit) => hit.replace(/^[^:]+:\d+: ([^:]+): .*$/, '$1'));
+  const what = (text: string, path = 'scripts/ci.ts') => privateRecordHits([{ path, text: ref(text) }]).map((hit) => hit.replace(/^[^:]+:\d+: ([^:]+): .*$/, '$1'));
 
   it('finds a decision number, a wave or a step, a personal date and a path into the private record — in any file', () => {
     expect(what('// allowed (E·170)')).toEqual(['a decision number']);
@@ -329,41 +332,33 @@ describe('rule 7: no references to the private record', () => {
       "it('runs once on the day the clocks go forward (29 March)', () => {});",
       'Math.max(a, b); max-width: 40rem; max 255; Marmeon 0.2.0; 127.0.0.1 or 10.0.0.0/8',
     ].join('\n');
-    expect(privateRecordHits([{ path: 'scripts/check-source.ts', text }], [])).toEqual([]);
+    expect(privateRecordHits([{ path: 'scripts/check-source.ts', text }])).toEqual([]);
   });
 
   it('reads no integrity hash of the lockfile — base64 holds a decision number or a wave by chance', () => {
     const text = ref('    resolution: {integrity: sha512-dLJDGaLZ1D4H+E·8/d1g+W·5b/x3TU==}');
-    expect(privateRecordHits([{ path: 'pnpm-lock.yaml', text }], [])).toEqual([]);
-    expect(privateRecordHits([{ path: 'scripts/lock.yaml', text }], []).map((hit) => hit.split(': ')[1])).toEqual(['a decision number', 'a wave reference']);
+    expect(privateRecordHits([{ path: 'pnpm-lock.yaml', text }])).toEqual([]);
+    expect(privateRecordHits([{ path: 'scripts/lock.yaml', text }]).map((hit) => hit.split(': ')[1])).toEqual(['a decision number', 'a wave reference']);
   });
 
-  it('leaves the files under a pending area alone — but reads what readers see first there: the cards, the stubs, the template, the apps\' READMEs and .env files', () => {
-    const pending = ['packages/queue/', 'packages/create-marmeon/', 'apps/web-app/'];
-    const files = [
-      { path: 'packages/queue/src/worker.ts', text: ref('// the fair claim (E·199)') },
-      { path: 'packages/create-marmeon/src/main.ts', text: ref('// the template (E·167), W·10') },
-      { path: 'apps/web-app/modules/auth/routes.ts', text: ref('// Private registration (E·146), Ma·x 07.·10.') },
-      { path: 'packages/queue/README.md', text: ref('Fair by default, E·199.') },
-      { path: 'packages/queue/stubs/migrations/create_jobs_table.ts', text: ref('// the fair claim (W·9 step 11)') },
-      { path: 'packages/create-marmeon/template/base/.env.example', text: ref('# decided on 09.·10. by the team') },
-      { path: 'apps/web-app/.env.example', text: ref('# Live props (W·6.10)') },
-      { path: 'apps/web-app/README.md', text: ref('see the Obsi·dian note') },
-      { path: 'packages/auth/src/make-auth.ts', text: ref('// the stubs (E·30)') },
-    ];
-    expect(privateRecordHits(files, pending)).toEqual([
-      ref('packages/queue/README.md:1: a decision number: Fair by default, E·199.'),
-      ref('packages/queue/stubs/migrations/create_jobs_table.ts:1: a wave reference: // the fair claim (W·9 step 11)'),
-      ref('packages/create-marmeon/template/base/.env.example:1: a personal date: # decided on 09.·10. by the team'),
-      ref('apps/web-app/.env.example:1: a wave reference: # Live props (W·6.10)'),
-      ref('apps/web-app/README.md:1: a path into the private record: see the Obsi·dian note'),
-      ref('packages/auth/src/make-auth.ts:1: a decision number: // the stubs (E·30)'),
-    ]);
-  });
-
-  it('keeps pending only areas of packages/ and apps/ — everything else is read already', () => {
-    expect(PENDING_AREAS.filter((area) => !/^(?:packages|apps)\/[^/]+\/$/.test(area))).toEqual([]);
+  it('names each rule in the problems of check:source', () => {
     expect(PRIVATE_RECORD_RULES.map((rule) => rule.what)).toEqual(['a decision number', 'a wave reference', 'a personal date', 'a path into the private record']);
+  });
+});
+
+describe('pack:check — no references to the private record in the tarballs', () => {
+  it('reads every text file of an unpacked tarball and names the package and the path of a hit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-ci-test-'));
+    try {
+      mkdirSync(join(dir, 'dist'));
+      writeFileSync(join(dir, 'dist/index.js'), ref('export const a = 1;\n// the fair claim (E·199)\n'));
+      writeFileSync(join(dir, 'dist/index.d.ts'), '/** The queue. */\nexport declare const a = 1;\n');
+      writeFileSync(join(dir, 'icon.png'), Buffer.from(ref('\0PNG E·199'), 'latin1'));
+      const packed = { name: '@marmeon/queue', files: ['dist/index.js', 'dist/index.d.ts', 'icon.png'] };
+      expect(privateRecordInTarball(packed, dir)).toEqual([ref('@marmeon/queue/dist/index.js:2: a decision number: // the fair claim (E·199)')]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -17,6 +17,7 @@
  *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
  *   - the driver rule (`checkDriverRule` in scripts/packages.ts): one wrapped driver is a dependency, one of several an optional
  *     peer, a library the app must share one instance of (OpenTelemetry API, React, Vite) a peer;
+ *   - no file names the private record (rule 7 of `pnpm check:source`, the same patterns);
  * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
  * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported); a package with
  * only a bin (create-marmeon) has no entry point for attw to check.
@@ -32,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { publint } from 'publint';
 import { formatMessage } from 'publint/utils';
+import { PRIVATE_RECORD_RULES, privateRecordHits, type SourceFile } from './check-source.ts';
 import { checkDriverRule, frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
 import { licenseDrift } from './sync-license.ts';
 
@@ -106,6 +108,9 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
 
   // The driver rule: which third-party library is a dependency, an optional peer or a shared peer.
   for (const problem of checkDriverRule(pkg.short, manifest)) problems.push(problem);
+  for (const hit of privateRecordInTarball(packed, dir)) {
+    problems.push(`${hit} — no references to the private record (${PRIVATE_RECORD_RULES.find((rule) => rule.what === hit.split(': ')[1])?.why})`);
+  }
 
   for (const [where, target] of exportTargets(manifest)) {
     const path = posix.normalize(target);
@@ -126,6 +131,16 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
     problems.push('publishConfig needs "access": "public" and "provenance": true');
   }
   return problems;
+}
+
+/** Rule 7 of `pnpm check:source` over every text file of an unpacked tarball (`dir`) — `<package>/<path>:line: what: text`. */
+export function privateRecordInTarball(packed: Pick<PackedPackage, 'name' | 'files'>, dir: string): string[] {
+  const files: SourceFile[] = [];
+  for (const path of packed.files) {
+    const bytes = readFileSync(join(dir, path));
+    if (!bytes.subarray(0, 8000).includes(0)) files.push({ path: `${packed.name}/${path}`, text: bytes.toString('utf8') });
+  }
+  return privateRecordHits(files);
 }
 
 /**

@@ -13,7 +13,7 @@
  *   6. **The framework's messages speak to app developers:** no string of a package's code or launchers names a decision, a wave
  *      or another framework (read with oxc-parser — comments, names and regular expressions are rule 7's).
  *   7. **No references to the private record:** no tracked file names a decision number, a wave or a step, a personal date or a
- *      path into the maintainers' notes. {@link PENDING_AREAS} lists the areas it does not read yet.
+ *      path into the maintainers' notes (`pnpm pack:check` holds the packed tarballs to the same patterns).
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -214,7 +214,10 @@ export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): strin
   return hits;
 }
 
-/** Rule 7: what points into the maintainers' private record — every tracked file outside {@link PENDING_AREAS}. */
+/**
+ * Rule 7: what points into the maintainers' private record — in every tracked file. A random value (a key, a token) can match
+ * by chance: regenerate it. Only the lockfile's hashes, which cannot be regenerated, are left out (`WRITTEN`).
+ */
 export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
   {
     what: 'a decision number',
@@ -254,20 +257,10 @@ export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
   },
 ];
 
-/**
- * The areas rule 7 does not read yet (path prefixes): their comments still name the private record. An area leaves the list
- * once its comments are clean. What readers see first in them — the package cards, the stubs, the starter's template and the
- * apps' READMEs and `.env` files — is read all the same.
- */
-export const PENDING_AREAS: readonly string[] = [];
-/** Read even inside a pending area. */
-const READER_TEXTS = [PACKAGE_CARDS, APP_COPIES, APP_TEXTS];
-
-/** Rule 7: every line of the files outside `pending` that names the private record — `path:line: what: text`. */
-export function privateRecordHits(files: Iterable<SourceFile>, pending: readonly string[] = PENDING_AREAS): string[] {
+/** Rule 7: every line that names the private record — `path:line: what: text`. */
+export function privateRecordHits(files: Iterable<SourceFile>): string[] {
   const hits: string[] = [];
   for (const { path, text } of files) {
-    if (pending.some((area) => path.startsWith(area)) && !READER_TEXTS.some((pattern) => pattern.test(path))) continue;
     if (!PRIVATE_RECORD_RULES.some((rule) => rule.pattern.test(text))) continue;
     text.split('\n').forEach((line, index) => {
       for (const rule of PRIVATE_RECORD_RULES) {
@@ -366,7 +359,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file outside the ${PENDING_AREAS.length} pending areas names a decision, a wave, a personal date or the maintainers' notes.`,
+      `check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes.`,
     );
   }
 }
