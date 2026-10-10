@@ -11,6 +11,7 @@ import { UserRepository } from './UserRepository.ts';
  * their module); files go after the commit (`afterCommit`).
  */
 export class AccountDeleted {
+  readonly #event = true;
   /** The account as it was — its id, its address, whatever the row held (never the password hash). */
   readonly user: User;
   /** When it was deleted. */

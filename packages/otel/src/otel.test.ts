@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@marmeon/core';
@@ -6,7 +7,7 @@ import { Connections, Database, DatabaseServiceProvider, Schema, sql } from '@ma
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, HttpServiceProvider } from '@marmeon/http';
 import { createPinoLogger } from '@marmeon/log';
-import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
+import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider, type JobContext } from '@marmeon/queue';
 import { defineRoutes, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { context, propagation, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
@@ -44,6 +45,15 @@ class ReportJob {
   }
   async handle(payload: { userId: number }) {
     await sql`select count(*) as n from people where id = ${payload.userId}`.execute(this.#db);
+  }
+}
+
+/** Fails through its context — without throwing. */
+class RefusedJob {
+  static readonly job = 'test.refused';
+  static readonly schema = v.object({});
+  handle(_payload: object, job: JobContext) {
+    job.fail('the account is gone');
   }
 }
 
@@ -91,7 +101,7 @@ function boot(env: Record<string, string> = {}, providers: ServiceProviderClass[
     discover: false,
     env: { APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, `${crypto.randomUUID()}.sqlite`), QUEUE_CONNECTION: 'database', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, QueueServiceProvider, ...providers],
-    modules: [defineModule({ name: 'people', routes, jobs: [ReportJob] })],
+    modules: [defineModule({ name: 'people', routes, jobs: [ReportJob, RefusedJob] })],
     override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, stream, container.make(Application))),
   }).then(async (application) => {
     const connections = application.container.make(Connections);
@@ -205,6 +215,19 @@ describe('@marmeon/otel (E120)', () => {
     expect(missing.events).toEqual([]);
   });
 
+  it('a job that fails without throwing is an error too: the error status and `error.type` _OTHER, no exception event', async () => {
+    const { app: booting } = boot();
+    await using app = await booting;
+    await app.container.make(Queue).dispatch(RefusedJob, {});
+    await spans();
+    await app.container.make(QueueConnections).worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true });
+    const job = byName(await spans(), 'process test.refused')!;
+    expect(job.attributes['marmeon.job.outcome']).toBe('failed');
+    expect(job.status.code).toBe(SpanStatusCode.ERROR);
+    expect(job.attributes['error.type']).toBe('_OTHER');
+    expect(job.events).toEqual([]);
+  });
+
   it("starts a trace of its own for every request — a caller's traceparent is a link, never the parent (W10 step 8)", async () => {
     const { app: booting } = boot();
     await using app = await booting;
@@ -304,10 +327,13 @@ describe('@marmeon/otel (E120)', () => {
   it('without @opentelemetry/api: the start fails with what to install', async () => {
     const missing = Object.assign(new Error("Cannot find package '@opentelemetry/api' imported from …"), { code: 'ERR_MODULE_NOT_FOUND' });
     const error = await loadOtelApi(() => Promise.reject(missing)).catch((failure: unknown) => failure);
-    expect((error as Error).message).toMatch(/^@marmeon\/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry\/api@\^1 /);
+    // The range of the peer dependency, as package.json names it — not a looser one the package was never tested with.
+    const peer = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { peerDependencies: Record<string, string> }).peerDependencies['@opentelemetry/api'];
+    expect(peer).toBe('^1.9.0');
+    expect((error as Error).message).toContain(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@${peer} `);
     // `marmeon` prints the way out when the app cannot start (E130).
     const [solution] = await new ErrorSolutions(OtelServiceProvider.solutions).find(error);
-    expect(solution).toMatchObject({ title: 'Install the OpenTelemetry API', command: 'pnpm add @opentelemetry/api@^1' });
+    expect(solution).toMatchObject({ title: 'Install the OpenTelemetry API', command: `pnpm add @opentelemetry/api@${peer}` });
   });
 
   it('redactedPath: sensitive parameters by name; a pattern that does not line up shows the pattern', () => {

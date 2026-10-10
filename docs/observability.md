@@ -140,7 +140,7 @@ auto-instrumentation.
 ### Installation
 
 ```sh
-pnpm add @marmeon/otel @opentelemetry/api@^1
+pnpm add @marmeon/otel @opentelemetry/api@^1.9.0
 pnpm add @opentelemetry/sdk-trace @opentelemetry/context-async-hooks @opentelemetry/core @opentelemetry/resources @opentelemetry/exporter-trace-otlp-http
 ```
 
@@ -149,7 +149,7 @@ framework must read that same copy. Install the SDK as dependencies, not dev dep
 install leaves dev dependencies out. Without the API the start fails, and its message starts with what to install:
 
 ```text
-@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@^1
+@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@^1.9.0
 ```
 
 ### Starting the SDK
@@ -229,7 +229,8 @@ your SDK. To name the environment there too, set `OTEL_RESOURCE_ATTRIBUTES=deplo
 
 A failed operation marks its span as failed, with `error.type` set to the error's class and an `exception` event whose message
 and stack are redacted. A request that ends in a `5xx` without an exception gets the status code as its `error.type`. A job or a
-scheduled task that failed without throwing gets the error status only.
+scheduled task that failed without throwing, such as a job that called `job.fail()`, gets the error status and `_OTHER` as its
+`error.type`, without an `exception` event.
 
 An island or a layer's base that the server resolves for a page is an internal child of the page's request. A statement outside
 every span, such as one of a command or a health check, is no trace of its own. `/up` and `/up/ready` are never traced, since they

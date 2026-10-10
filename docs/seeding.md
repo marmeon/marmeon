@@ -71,7 +71,7 @@ A factory is used through `factory(Definition)`, which a seeder gets in its cont
 | Call | Effect |
 | --- | --- |
 | `.create(overrides?)` | Inserts one row and returns it as stored, with its id and defaults. Secret columns, such as `password`, are not in it. |
-| `.make(overrides?)` | Returns the values without inserting anything. A related factory is not created either: its column keeps the factory itself, not an id. |
+| `.make(overrides?)` | Returns the values without inserting anything. A related factory is not created either: its column keeps the factory itself, not an id, and its type says so (`number \| PendingFactory`) unless an override sets the column. |
 | `.count(n)` | `n` rows instead of one: `create()` and `make()` return a list. |
 | `.state('shared')` | Applies a named state. Several states apply in the order you call them. |
 | `.state({ title: 'Draft' })` | Applies values directly. |

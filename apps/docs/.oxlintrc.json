@@ -2,9 +2,10 @@
 // Client code (views, layouts, the client entry) imports controllers, repositories, providers and module entries only with
 // `import type`: a value import bundles server code into the browser. The marmeon() Vite plugin refuses that too (resolved
 // paths, also indirect imports); this catches it in the editor.
+// `readonly #event = true` makes an event class a type of its own and is never read: unused private members are no warning.
 {
   "ignorePatterns": ["node_modules/**", "dist/**"],
-  "rules": { "typescript/no-import-type-side-effects": "error" },
+  "rules": { "typescript/no-import-type-side-effects": "error", "no-unused-private-class-members": "off" },
   "overrides": [
     {
       "files": ["modules/*/views/**", "modules/*/layouts/**", "layouts/**", "bootstrap/client.*"],

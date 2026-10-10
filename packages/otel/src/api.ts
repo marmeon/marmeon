@@ -7,7 +7,7 @@ export type OtelApi = typeof Api;
  * What to install when the API is missing — a peer, never a dependency (E198): the app's SDK and the framework must share one
  * instance of the API.
  */
-export const OTEL_INSTALL = 'pnpm add @opentelemetry/api@^1';
+export const OTEL_INSTALL = 'pnpm add @opentelemetry/api@^1.9.0';
 
 /**
  * `@opentelemetry/api` is not installed — an optional peer of @marmeon/otel. The message says what to install; the CLI

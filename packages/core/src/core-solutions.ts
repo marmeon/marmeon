@@ -100,7 +100,8 @@ function injectionSolution(key: string, reason: string | undefined): Solution {
 
 /** What to do about invalid configuration: set the variables its message lists (packages add more specific solutions). */
 function configSolution(message: string): Solution {
-  const variables = [...new Set([...message.matchAll(/•\s*[\w.-]+:\s*([A-Z][A-Z0-9_]*)\s/g)].map((match) => match[1]!))];
+  // `  • name: PATH — message` per issue (`validateConfig`): the whole path, `SMTP.HOST` of a nested schema too; an issue without one names none.
+  const variables = [...new Set([...message.matchAll(/•\s*[\w.-]+:\s*([^\s—]+) — /g)].map((match) => match[1]!))];
   const names = variables.length > 0 ? variables.join(', ') : 'the variables listed';
   return {
     title: `Set ${names} in .env`,

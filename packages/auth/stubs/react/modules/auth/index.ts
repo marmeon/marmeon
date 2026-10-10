@@ -33,8 +33,9 @@ export default defineModule({
   seeders: [UserSeeder],
   routes,
   apiRoutes,
-  // Scheduled work: the nightly prune of tokens, expired changes of address and unconfirmed accounts (marmeon schedule:work).
+  // Scheduled work: the nightly prune of tokens and expired changes of address — and of unconfirmed accounts once you turn its
+  // line on in schedule.ts (marmeon schedule:work).
   schedule,
-  // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (the schedule runs it nightly).
+  // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (by hand, or by the schedule once turned on).
   commands: [PruneUnverifiedCommand],
 });

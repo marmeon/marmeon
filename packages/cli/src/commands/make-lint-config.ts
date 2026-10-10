@@ -68,7 +68,12 @@ export function lintConfig({ boundaries = false, depth = MIN_DEPTH }: { boundari
   }
   // oxlint reports nothing from node_modules or dist then, even without a .gitignore. (It still walks them: only a .gitignore —
   // which every app has — or --ignore-pattern keeps it out; through pnpm's links that walk takes half a minute.)
-  return { ignorePatterns: ['node_modules/**', 'dist/**'], rules: { 'typescript/no-import-type-side-effects': 'error' }, overrides };
+  // `readonly #event = true` (make:event) makes an event a type of its own and is never read: no warning for it.
+  return {
+    ignorePatterns: ['node_modules/**', 'dist/**'],
+    rules: { 'typescript/no-import-type-side-effects': 'error', 'no-unused-private-class-members': 'off' },
+    overrides,
+  };
 }
 
 /** How many folders deep the app's modules go (`modules/<name>/a/b/file.ts` = 2). */
@@ -104,6 +109,7 @@ export class MakeLintConfigCommand {
       '// Client code (views, layouts, the client entry) imports controllers, repositories, providers and module entries only with',
       '// `import type`: a value import bundles server code into the browser. The marmeon() Vite plugin refuses that too (resolved',
       '// paths, also indirect imports); this catches it in the editor.',
+      '// `readonly #event = true` makes an event class a type of its own and is never read: unused private members are no warning.',
       ...(boundaries
         ? [
             "// --boundaries (opt-in): a module imports another module only through its entry (#modules/<name>). oxlint matches the",

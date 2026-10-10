@@ -101,15 +101,19 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
 }
 
 /**
- * "Forgot password" (Laravel's password broker): a token for a known e-mail — sent by mail, never shown —
- * and the reset with it. After a reset every remember-me token of the user is gone and every
- * session ends (the password fingerprint changed); with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token too.
+ * "Forgot password": a token for a known e-mail — sent by mail, never shown — and the reset with it. After a reset every
+ * remember-me token of the user is gone and every session ends (the password fingerprint changed); with
+ * `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token too. The request only queues a job — the same answer, in the same
+ * time, whether the e-mail has an account or not — and the job makes the token and queues the mail:
  *
  * ```ts
- * this.#afterResponse.defer(async () => {   // same answer, same time, whether the e-mail exists or not
- *   const reset = await this.#broker.createToken(email);
- *   if (reset) await this.#mailer.send(new ResetPasswordMail(reset.user, urlWith(reset.token)));
- * });
+ * async handle(payload: JobPayload<typeof SendPasswordResetLinkJob>): Promise<void> {
+ *   const reset = await this.#broker.createToken(payload.email);
+ *   if (!reset) return; // no account, or a link went out moments ago
+ *   const url = new URL(this.#router.url('auth.password.reset', {}, { token: reset.token, email: payload.email }), this.#app.url);
+ *   const t = this.#translators.for(reset.user.locale ?? payload.locale);
+ *   await this.#mailer.queue(new ResetPasswordMail(reset.user, url.href, this.#auth.resetExpire, t), { queue: 'mail' });
+ * }
  * ```
  */
 export class PasswordBroker {

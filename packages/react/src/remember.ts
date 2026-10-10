@@ -45,7 +45,8 @@ export function useRememberStore(key: string): { store: Remembered | undefined; 
  *
  * Never sensitive data: fields named like a password, token, secret or card (`/password|secret|token|card|cvc/i`) and files are
  * left out of what is kept, at any depth — a key named so is a compile error unless `{ sensitive: true }` (never for passwords).
- * No tab sync (E66): another tab keeps its remembered state after signing out here, until it navigates or reloads.
+ * Signing in or out in another tab of the browser loads this one again (tab sync, on by default), and its remembered
+ * state goes with it.
  */
 export function useRemember<T, const K extends string = string>(key: RememberKey<K>, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>];
 export function useRemember<T, const K extends string = string>(key: SensitiveKey<K>, initial: T | (() => T), options: UseRememberOptions): [T, Dispatch<SetStateAction<T>>];

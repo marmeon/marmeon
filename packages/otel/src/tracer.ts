@@ -75,6 +75,11 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
     typed.add(span);
     span.setStatus({ code: api.SpanStatusCode.ERROR, message: redactor.text(error instanceof Error ? error.message : String(error)) });
   };
+  /** Failed without an exception (`job.fail()`): the error status, and `error.type` as the conventions say when none is known. */
+  const failedWithoutError = (span: Span) => {
+    span.setAttribute('error.type', OTHER_ERROR);
+    span.setStatus({ code: api.SpanStatusCode.ERROR });
+  };
   /** Ends the span of `message` — after `finish` set what the end knows. */
   const ender =
     <M extends object>(finish?: (span: Span, message: M) => void) =>
@@ -243,7 +248,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
       },
       end: ender<QueueJobMessage>((span, job) => {
         if (job.outcome !== undefined) span.setAttribute('marmeon.job.outcome', job.outcome);
-        if (job.outcome === 'failed' && job.error === undefined) span.setStatus({ code: api.SpanStatusCode.ERROR });
+        if (job.outcome === 'failed' && job.error === undefined) failedWithoutError(span);
       }),
     }),
   );
@@ -274,7 +279,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
     (task) => ({ name: `schedule ${task.task}`, attributes: { 'marmeon.schedule.task': task.task, 'marmeon.schedule.reason': task.reason } }),
     (span, task) => {
       span.setAttributes(clean({ 'marmeon.schedule.outcome': task.outcome, 'marmeon.schedule.skipped': task.skipped }));
-      if (task.outcome === 'failed' && task.error === undefined) span.setStatus({ code: api.SpanStatusCode.ERROR });
+      if (task.outcome === 'failed' && task.error === undefined) failedWithoutError(span);
     },
   );
   // Mails: which mailable, how; recipients only counted — addresses and subjects are personal data.
@@ -397,6 +402,9 @@ function clean(attributes: Attributes): Attributes {
   for (const [key, value] of Object.entries(attributes)) if (value !== undefined) out[key] = value;
   return out;
 }
+
+/** `error.type` of a failure without an exception — the semantic conventions' value for a type that is not known. */
+const OTHER_ERROR = '_OTHER';
 
 /** `error.type`: the error's class name (or its code), for anything thrown. */
 function errorType(error: unknown): string {

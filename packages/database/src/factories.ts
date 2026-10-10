@@ -16,6 +16,15 @@ export interface FactoryContext {
 /** A column value in a definition: the value, or another factory whose created row's `id` is used. */
 type Attribute<V> = V | PendingFactory<any, any, false>;
 type Attributes<Row> = { [K in keyof Row]: Attribute<Row[K]> };
+/**
+ * What `make()` gives: the attributes — a related factory's column holds the factory itself, not an id — with what the
+ * overrides set as they set it.
+ */
+export type MadeAttributes<Row, O> = {
+  [K in keyof Row]: K extends keyof O ? Exclude<O[K], undefined> | (undefined extends O[K] ? Attribute<Row[K]> : never) : Attribute<Row[K]>;
+};
+/** An override for a column the table does not have is a compile error (at its key), also next to columns it has. */
+type KnownColumns<O, Row> = { [K in Exclude<keyof O, keyof Row>]: never };
 
 export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S extends string = never> {
   readonly table: T;
@@ -107,9 +116,14 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
     return new PendingFactory(this.#definition, { ...this.#pending, db: db as Kysely<any> });
   }
 
-  /** The attributes, without inserting (related factories are not created either — they stay as they are). */
-  make(overrides: Partial<Insertable<DB[T]>> = {}): Many extends true ? Insertable<DB[T]>[] : Insertable<DB[T]> {
-    const rows = this.#times(() => this.#attributes(overrides));
+  /**
+   * The attributes, without inserting. Related factories are not created either: their column holds the factory itself, not
+   * an id — the type says so (`user_id: number | PendingFactory`), except where `overrides` set the column.
+   */
+  make<O extends Partial<Insertable<DB[T]>> = {}>(
+    overrides?: O & KnownColumns<O, Insertable<DB[T]>>,
+  ): Many extends true ? MadeAttributes<Insertable<DB[T]>, O>[] : MadeAttributes<Insertable<DB[T]>, O> {
+    const rows = this.#times(() => this.#attributes(overrides ?? {}));
     return (this.#pending.count === undefined ? rows[0] : rows) as never;
   }
 

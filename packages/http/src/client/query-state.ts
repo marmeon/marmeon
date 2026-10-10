@@ -22,7 +22,7 @@ export interface QueryStateOptions {
   reset?: readonly string[];
   /** Wait this long (ms) after the last change before asking the server — one request per pause while typing. Default 0. */
   debounce?: number;
-  /** A history entry per change (`'push'`, the default — Back undoes a sort) or one for all of them (`'replace'`, typing). */
+  /** A history entry per change (`'push'`, the default — Back undoes a sort), or the current one replaced (`'replace'`, typing — Back leaves the search). */
   history?: 'push' | 'replace';
   /** Keep the scroll position (default true). */
   preserveScroll?: boolean;

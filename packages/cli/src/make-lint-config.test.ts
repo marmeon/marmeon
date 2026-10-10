@@ -86,6 +86,14 @@ describe('marmeon make:lint-config', () => {
     expect(readFileSync(join(root, LINT_CONFIG_FILE), 'utf8')).toContain('--boundaries');
   });
 
+  it("lets an event be a type of its own: `readonly #event = true` (make:event's shape) is never read, and no warning says so", () => {
+    const root = app({ 'modules/auth/events/Registered.ts': 'export class Registered {\n  readonly #event = true;\n  readonly id: number;\n  constructor(id: number) {\n    this.id = id;\n  }\n}\n' });
+    expect(generate(root).code).toBe(0);
+    const result = spawnSync(oxlint, ['--deny-warnings', '-f', 'unix', '.'], { cwd: root, encoding: 'utf8' });
+    expect(result.stdout).not.toContain('no-unused-private-class-members');
+    expect(result.status).toBe(0);
+  });
+
   it('asks for the #modules/* mapping with --boundaries when package.json lacks it', () => {
     const root = app({ 'package.json': JSON.stringify({ name: 'fixture', type: 'module' }) });
     expect(generate(root, { boundaries: true }).lines.join('\n')).toContain('"imports": { "#modules/*": "./modules/*/index.ts" }');

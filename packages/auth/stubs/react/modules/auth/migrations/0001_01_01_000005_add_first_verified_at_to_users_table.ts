@@ -2,7 +2,7 @@ import { defineMigration, sql } from '@marmeon/database';
 
 /**
  * When the account confirmed an address for the first time — set once, never cleared. A change of address
- * with `AUTH_PRIVATE_REGISTRATION=false` empties `email_verified_at` (the new address is unconfirmed), this stays: the nightly
+ * with `AUTH_PRIVATE_REGISTRATION=false` empties `email_verified_at` (the new address is unconfirmed), this stays:
  * `auth:prune-unverified` never deletes an account that was confirmed once. Accounts confirmed before this migration count.
  */
 export default defineMigration({

@@ -46,7 +46,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
    */
   async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
     // A confirmed account stays one: what confirmed it — its link, or `email_verified_at` alone (an import, a seeder, an
-    // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so the nightly prune never takes it.
+    // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so `auth:prune-unverified` never takes it.
     // (A taken address changes nothing else: the account was confirmed all the same.)
     await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
     return this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });

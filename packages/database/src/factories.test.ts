@@ -1,9 +1,9 @@
 import { Application, Container, type ModuleDefinition } from '@marmeon/core';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { ArticleFactory, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Connections, Factories, Migrator, Repository, Seeding, type SeedContext } from './index.ts';
+import { Connections, Factories, Migrator, PendingFactory, Repository, Seeding, type SeedContext } from './index.ts';
 
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
@@ -71,6 +71,20 @@ describe.each(drivers)('factories and seeders on %s', (driver) => {
       { name: 'Same', email: 'user2@example.com' },
     ]);
     expect(await db().selectFrom('users').selectAll().execute()).toEqual([]);
+  });
+
+  it('makes a related factory\'s column as the factory itself, not an id — and its type says so', () => {
+    const made = factories.for(ArticleFactory).make();
+    expect(made.user_id).toBeInstanceOf(PendingFactory);
+    expectTypeOf(made.user_id).toEqualTypeOf<number | PendingFactory<any, any, false>>();
+    expectTypeOf(factories.for(ArticleFactory).count(2).make()[0]!.title).toEqualTypeOf<string | PendingFactory<any, any, false>>();
+    // What the overrides set is what it is.
+    const overridden = factories.for(ArticleFactory).make({ user_id: 7, title: 'Mine' });
+    expect(overridden).toEqual({ user_id: 7, title: 'Mine' });
+    expectTypeOf(overridden.user_id).toEqualTypeOf<number>();
+    expectTypeOf(overridden.title).toEqualTypeOf<string>();
+    // @ts-expect-error — a column the table does not have
+    factories.for(ArticleFactory).make({ title: 'Mine', titel: 'typo' });
   });
 
   it('creates the related row for a factory used as a column value', async () => {

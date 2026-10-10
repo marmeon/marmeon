@@ -31,7 +31,10 @@ export type PageLayer = LayerVariant | LayerFrame;
 
 /** What `useLayer()` tells a view — the layer it is rendered in, or that it is none (`isLayer: false`, a page). */
 export interface LayerState {
-  /** Rendered as a layer — false for the same view rendered as a page (a link without `layer`, depth beyond the limit). */
+  /**
+   * Rendered as a layer — false for the same view rendered as a page: its controller answered without `.layer()`, or the
+   * answer would have opened a layer beyond the tenth (`MAX_LAYER_DEPTH` of `@marmeon/http/page`). A link without `layer` opens a layer all the same.
+   */
   readonly isLayer: boolean;
   /** 1 for the first layer over the page, 2 for one over that … — 0 for a page. */
   readonly depth: number;

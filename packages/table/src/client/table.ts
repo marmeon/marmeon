@@ -195,7 +195,10 @@ export class TableController<T extends AnyTableData = AnyTableData> {
     return found;
   }
 
-  /** Searches the searchable columns — after a pause in typing (`searchDebounce`), one history entry for all of it. */
+  /**
+   * Searches the searchable columns — after a pause in typing (`searchDebounce`, default 300 ms), replacing the current history
+   * entry instead of adding one: Back after a search goes to the entry before it.
+   */
   search(value: string): void {
     const data = this.#data;
     if (!data.search) refuse('[marmeon:C10]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" cannot search — none of its visible columns is searchable.`);

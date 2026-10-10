@@ -9,7 +9,7 @@ import { createApplication } from '@marmeon/core';
 import { ServerConfig, ServerServiceProvider } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { inspectApp } from './commands/make-docker.ts';
-import { HEALTHCHECK_SCRIPT, TESTED_PNPM } from './docker.ts';
+import { compose, HEALTHCHECK_SCRIPT, systemdUnits, TESTED_PNPM, type DockerApp } from './docker.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -138,6 +138,14 @@ describe('marmeon make:docker', () => {
     expect(upstreamIdle, 'the template names its keepalive_timeout').toBeGreaterThan(0);
     expect(app.container.make(ServerConfig).keepAliveTimeoutMs).toBeGreaterThan(upstreamIdle * 1000);
     expect(nginx.file('compose.production.yaml')).toContain('image: nginx:mainline-alpine');
+  });
+
+  it("gives the scheduler more time to stop than its runs get: schedule:work's --stop-timeout (30 s) and its exit 10 s later fit in", () => {
+    const shop: DockerApp = { name: 'shop', packageManager: 'pnpm', pnpmVersion: TESTED_PNPM, installFiles: [], localPackages: [] };
+    // schedule:work drains for --stop-timeout (30 s by default), then frees the runs' locks; a run that hangs ends the process 10 s later.
+    const graceOf = (text: string, service: string) => Number(new RegExp(`\\n  ${service}:\\n(?:    .*\\n)*?    stop_grace_period: (\\d+)s`).exec(text)?.[1]);
+    expect(graceOf(compose(shop, {}), 'scheduler')).toBeGreaterThan(30 + 10);
+    expect(Number(/^TimeoutStopSec=(\d+)$/m.exec(systemdUnits(shop).scheduler)?.[1])).toBeGreaterThan(30 + 10);
   });
 
   it('--systemd: a unit per role (restart, TimeoutStopSec, loopback + trusted proxy for the web) — the proxy then on the host', () => {

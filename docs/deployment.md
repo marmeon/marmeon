@@ -175,7 +175,7 @@ A new app needs nothing more for SQLite, files, the database queue and the log m
 | An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` |
 | Direct uploads to S3 | also `pnpm add @aws-sdk/s3-presigned-post@^3` |
 | MJML mail templates | `pnpm add mjml@^5`. A new app has it. |
-| OpenTelemetry | `pnpm add @opentelemetry/api@^1` and an SDK. See [observability](observability.md#installation). |
+| OpenTelemetry | `pnpm add @opentelemetry/api@^1.9.0` and an SDK. See [observability](observability.md#installation). |
 
 Install drivers as `dependencies`, not `devDependencies`: the image's production install keeps only those. Where a driver is
 surely needed, the start fails and names the command, such as a Redis driver without `@marmeon/redis` or a default disk on S3
@@ -262,8 +262,8 @@ On `SIGTERM`, the web server:
 
 | Supervisor | Setting | Its default | The templates |
 | --- | --- | --- | --- |
-| Docker and Compose | `stop_grace_period`, `docker stop -t` | 10 s | web 20 s, worker and scheduler 30 s |
-| systemd | `TimeoutStopSec` | 90 s | 30 s |
+| Docker and Compose | `stop_grace_period`, `docker stop -t` | 10 s | web 20 s, worker 30 s, scheduler 45 s |
+| systemd | `TimeoutStopSec` | 90 s | web and worker 30 s, scheduler 45 s |
 | Kubernetes | `terminationGracePeriodSeconds` | 30 s | |
 
 The delay exists because a load balancer learns late that an instance stops. Kubernetes removes a terminating pod from its

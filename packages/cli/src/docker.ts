@@ -166,7 +166,8 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     "    command: ['schedule:work']",
     '    healthcheck:',
     '      disable: true',
-    '    stop_grace_period: 30s',
+    '    # SIGTERM: no new run; the running ones get --stop-timeout (30 s), then their locks are freed (a hung one ends 10 s later).',
+    '    stop_grace_period: 45s',
   ];
   if (proxied && proxy === 'caddy') {
     services.push(
@@ -347,6 +348,8 @@ WantedBy=multi-user.target
       '# A job past its timeout ends the worker with exit code 70: Restart=always brings a fresh one. On SIGTERM the running',
       '# job gets --stop-timeout (10 s): TimeoutStopSec must be longer — raise both together for long jobs.',
     ]),
-    scheduler: unit('scheduler', 'scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 30),
+    scheduler: unit('scheduler', 'scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 45, [
+      '# On SIGTERM the running tasks get --stop-timeout (30 s), and a hung one ends the process 10 s later: TimeoutStopSec covers both.',
+    ]),
   };
 }

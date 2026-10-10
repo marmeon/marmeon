@@ -86,7 +86,11 @@ export interface Frequencies<K extends TaskKind> {
 
 /** A task as `s.job()`, `s.command()` and `s.call()` return it: it needs a frequency first. */
 export interface UnscheduledTask<K extends TaskKind> extends Frequencies<K> {
-  /** The task's name — in `schedule:list`, `schedule:test <name>`, logs and locks. Default: the job's or command's name, or the class name. */
+  /**
+   * The task's name — in `schedule:list`, `schedule:test <name>`, logs and locks. Default: the job's name, the command with its
+   * arguments (`queue:prune-failed --hours=168` — the same command with other arguments is another task, with locks of its own),
+   * or the class name.
+   */
   name(name: string): UnscheduledTask<K>;
   description(text: string): UnscheduledTask<K>;
   onOneServer(this: 'Say how often first — .daily().onOneServer(): a task needs a frequency before its options'): never;

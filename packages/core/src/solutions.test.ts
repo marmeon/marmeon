@@ -104,6 +104,22 @@ describe('the core solutions (E130)', () => {
     const [solution] = await solutions.find(error);
     expect(solution).toMatchObject({ title: 'Set MAIL_HOST, MAIL_PORT in .env', docs: 'docs/configuration.md#when-a-value-is-wrong' });
   });
+
+  it('invalid configuration: a nested variable keeps its whole path — and an issue without a path names no word of its message', async () => {
+    // A Standard Schema of another library may nest its issues (`SMTP.HOST`) or give one for the whole object.
+    const nested = {
+      '~standard': {
+        version: 1,
+        vendor: 'test',
+        validate: () => ({ issues: [{ message: 'Expected a host', path: [{ key: 'SMTP' }, { key: 'HOST' }] }, { message: 'A value is missing' }] }),
+      },
+    } as const;
+    const Config = defineConfig('mail', { env: nested as never, resolve: (e) => e });
+    const error = await resolveConfig([Config], {}).catch((failure: unknown) => failure);
+    const [solution] = await solutions.find(error);
+    expect(solution).toMatchObject({ title: 'Set SMTP.HOST in .env' });
+    expect(solution!.text).toContain('SMTP.HOST is missing or invalid');
+  });
 });
 
 describe('ErrorSolutions', () => {

@@ -19,8 +19,10 @@ export interface DeferredProps<T = unknown> {
  * </Deferred>
  * ```
  *
- * The page renders without them, the browser loads them right after (one partial reload per group). A full
- * reload sends the page without them again — the fallback shows until they are back.
+ * The page renders without them. On a first visit the server streams them into the same response; after a visit inside the
+ * app the browser loads them right after (one request per group). A visit or `router.reload()` of the whole page sends it
+ * without them again — the fallback shows until they are back. A revalidation of the whole page (the reload after an action,
+ * a live update, a reload on Back) keeps the old values on screen until the new ones land.
  */
 export function Deferred<T = unknown>({ data, fallback = null, children }: DeferredProps<T>) {
   const { props } = usePage<Record<string, unknown>>();

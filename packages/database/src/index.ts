@@ -39,7 +39,7 @@ export { DbTypesCommand } from './commands/db-types.ts';
 export { DbSeedCommand } from './commands/db-seed.ts';
 export { publishMigration, SYSTEM_MODULE } from './commands/publish-migration.ts';
 export { defineFactory, Factories, PendingFactory } from './factories.ts';
-export type { FactoryContext, FactoryDefinition } from './factories.ts';
+export type { FactoryContext, FactoryDefinition, MadeAttributes } from './factories.ts';
 export { Seeding } from './seeders.ts';
 export type { SeedContext, Seeder, SeederClass } from './seeders.ts';
 export { defineMigration } from './migrations/migration.ts';

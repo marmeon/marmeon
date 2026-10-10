@@ -134,7 +134,7 @@ const en = {
     may: 'May',
     submit: 'Create token',
     abilities: {
-      'users:read': 'Read the directory of people (GET /api/users)',
+      'users:read': 'Read the directory of people',
     },
   },
   status: {

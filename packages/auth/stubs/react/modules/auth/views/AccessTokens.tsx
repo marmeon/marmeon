@@ -26,7 +26,7 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
             <code>{plainText}</code>
           </pre>
           <p>
-            {t('tokens.usage')} <code>curl -H "Authorization: Bearer {plainText.slice(0, 8)}…" /api/users</code>
+            {t('tokens.usage')} <code>curl -H "Authorization: Bearer {plainText.slice(0, 8)}…" /api/user</code>
           </p>
         </section>
       )}

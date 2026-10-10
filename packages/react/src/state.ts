@@ -82,7 +82,8 @@ export interface UseBlockerOptions {
 /**
  * The navigation guard (E64): while `when` holds, leaving asks first — a visit (a link, a form elsewhere), Back/Forward, closing
  * the layer it is in — through the app's dialog (`createMarmeonApp({ confirm })`), and closing the tab or reloading gets the
- * browser's own question. A full page load the server asks for (signed out, a new build) is never stopped.
+ * browser's own question. The full page load of a sign-in or a sign-out is never stopped; the one of a new build asks first, and
+ * "stay" postpones it ({@link useNewVersion}).
  *
  * ```tsx
  * const form = useForm('user-profile.update', { user }, { name, bio });
