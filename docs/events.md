@@ -202,19 +202,21 @@ listeners run where the event happens: in the worker, in the process that queued
 logged and changes nothing about the job or the task:
 
 ```ts title="modules/system/listeners/AlertOnFailedTask.ts"
-import { Logger, redactText } from '@marmeon/core';
+import { Logger, Redactor } from '@marmeon/core';
 import type { ScheduledTaskFailed } from '@marmeon/scheduler';
 
 export class AlertOnFailedTask {
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, redactor: Redactor) {
     this.#logger = logger.child({ channel: 'alerts' });
+    this.#redactor = redactor;
   }
 
   handle(event: ScheduledTaskFailed): void {
     const message = event.error instanceof Error ? event.error.message : String(event.error);
-    this.#logger.error(`The scheduled task ${event.task} failed: ${redactText(message)}`, { task: event.task });
+    this.#logger.error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, { task: event.task });
   }
 }
 ```

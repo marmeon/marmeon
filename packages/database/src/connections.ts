@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@marmeon/core';
+import { Redactor, runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@marmeon/core';
 import { channels, messageBase, publishEnded, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
@@ -58,6 +58,8 @@ export class Connections {
   readonly #logger: Logger;
   /** The app the queries are reported for on the `db.query` channel (E118) — none: not reported (scratch connections). */
   readonly #app: Application | undefined;
+  /** What a connection's failure is masked with in the log: the app's (the names its packages add count too). */
+  readonly #redactor: Redactor;
   readonly #instances = new Map<string, Instance>();
   /** Infrastructure handles (E108), per connection and user. */
   readonly #infrastructure = new Map<string, Kysely<any>>();
@@ -71,6 +73,7 @@ export class Connections {
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });
     this.#app = options.app;
+    this.#redactor = options.app?.container.has(Redactor) ? options.app.container.make(Redactor) : new Redactor();
   }
 
   /** The connection by name (default: `default`, from `DB_CONNECTION`). Typed by `Tables` unless given its own. */
@@ -274,7 +277,7 @@ export class Connections {
       url: options.url,
       name,
       poolMax: options.poolMax,
-      onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: error.message }),
+      onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: this.#redactor.text(error.message) }),
     });
   }
 

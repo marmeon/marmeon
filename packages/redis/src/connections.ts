@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Logger } from '@marmeon/core';
+import { Redactor, type Logger } from '@marmeon/core';
 
 /** Where a connection points: `redis://[[user]:password@]host[:port][/db]` (`rediss://` for TLS), and the prefix of its keys. */
 export interface RedisConnectionOptions {
@@ -70,6 +70,7 @@ export class RedisConnection {
   readonly #options: RedisConnectionOptions;
   readonly #load: () => Promise<ClientModule>;
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
   readonly #track: (connection: RedisConnection) => void;
   #client: Promise<Client> | undefined;
   #closed = false;
@@ -77,13 +78,14 @@ export class RedisConnection {
   constructor(
     name: string,
     options: RedisConnectionOptions,
-    internals: { load: () => Promise<ClientModule>; logger: Logger; track: (connection: RedisConnection) => void },
+    internals: { load: () => Promise<ClientModule>; logger: Logger; redactor: Redactor; track: (connection: RedisConnection) => void },
   ) {
     this.name = name;
     this.prefix = options.prefix;
     this.#options = options;
     this.#load = internals.load;
     this.#logger = internals.logger;
+    this.#redactor = internals.redactor;
     this.#track = internals.track;
   }
 
@@ -113,7 +115,7 @@ export class RedisConnection {
    * Closed with the others on shutdown.
    */
   duplicate(): RedisConnection {
-    const copy = new RedisConnection(this.name, this.#options, { load: this.#load, logger: this.#logger, track: this.#track });
+    const copy = new RedisConnection(this.name, this.#options, { load: this.#load, logger: this.#logger, redactor: this.#redactor, track: this.#track });
     this.#track(copy);
     return copy;
   }
@@ -167,7 +169,8 @@ export class RedisConnection {
     });
     // Without a listener, a connection error would crash the process; logged once per failure.
     client.on('error', (error) => {
-      if (connected) this.#logger.warn('The Redis connection failed; reconnecting', { connection: this.name, error: error.message });
+      // The driver's text masked by the app's Redactor, like every error line of the framework.
+      if (connected) this.#logger.warn('The Redis connection failed; reconnecting', { connection: this.name, error: this.#redactor.text(error.message) });
     });
     try {
       await client.connect();
@@ -209,15 +212,18 @@ export function describeRedisUrl(url: string): string {
 export class RedisConnections {
   readonly #options: ReadonlyMap<string, RedisConnectionOptions>;
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
   readonly #load: () => Promise<ClientModule>;
   readonly #instances = new Map<string, RedisConnection>();
   readonly #duplicates = new Set<RedisConnection>();
   #client: Promise<ClientModule> | undefined;
   #closed = false;
 
-  constructor(options: { connections: Readonly<Record<string, RedisConnectionOptions>>; logger: Logger }) {
+  /** `redactor` masks a connection's failure in the log — the app's, so the names its packages add count; without one, the core's key list. */
+  constructor(options: { connections: Readonly<Record<string, RedisConnectionOptions>>; logger: Logger; redactor?: Redactor }) {
     this.#options = new Map(Object.entries(options.connections));
     this.#logger = options.logger.child({ channel: 'redis' });
+    this.#redactor = options.redactor ?? new Redactor();
     this.#load = () =>
       (this.#client ??= loadClient().catch((error: unknown) => {
         this.#client = undefined;
@@ -230,7 +236,7 @@ export class RedisConnections {
     if (this.#closed) throw new Error(`The Redis connections are closed (the application shut down); cannot use "${name}".`);
     let connection = this.#instances.get(name);
     if (!connection) {
-      connection = new RedisConnection(name, this.options(name), { load: this.#load, logger: this.#logger, track: (copy) => this.#duplicates.add(copy) });
+      connection = new RedisConnection(name, this.options(name), { load: this.#load, logger: this.#logger, redactor: this.#redactor, track: (copy) => this.#duplicates.add(copy) });
       this.#instances.set(name, connection);
     }
     return connection;

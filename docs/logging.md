@@ -115,13 +115,14 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 > Never turn an error into a string before you log it: `{ exception: String(error) }` is a string, and a connection URL with its
 > password in the error's message goes out as it is. Log the error itself: `logger.error('Import failed', { err: error })`.
 
-When you must log text that may hold a secret, mask it with `redactText()` of `@marmeon/core`. It takes out the values of
-sensitive keys such as `token=…`, bearer credentials, passwords in URLs, password hashes, API tokens and path segments that look
-like a token. The app's `Redactor` does the same with its `text()` method, and masks the values of the names packages add as
-well, such as the session cookie's: take it in your constructor when the text may quote a cookie header.
+When you must log text that may hold a secret, mask it with the app's `Redactor`: take it in your constructor and call its
+`text()` method. It takes out the values of sensitive keys such as `token=…`, bearer credentials, passwords in URLs, password
+hashes, API tokens and path segments that look like a token, and the values of the names packages add, such as the session
+cookie's. `redactText()` of `@marmeon/core` does the same with the core's key list alone, for code that runs without an app.
 
 Every error entry of the framework passes the app's `Redactor` as text: the exception handler's report, server rendering,
-islands, work after the response, scheduled tasks, live updates, session clean-up, the listeners of job events and failed jobs.
+islands, work after the response, scheduled tasks, live updates, session clean-up, the listeners of job events, failed jobs, and lost
+database and Redis connections.
 A failed job's text in `failed_jobs` is cut at 64 KB.
 
 ### What the framework shows elsewhere

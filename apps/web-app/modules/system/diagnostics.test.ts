@@ -127,7 +127,7 @@ describe('Server-Timing in the web app (E129)', () => {
 });
 
 describe('a failed scheduled task (E127)', () => {
-  it('raises one alert: an error with alert: true, the message redacted', async () => {
+  it("raises one alert: an error with alert: true, the message masked by the app's Redactor", async () => {
     const entries: { message: string; context: LogContext }[] = [];
     const recording: Logger = {
       debug() {},
@@ -138,12 +138,13 @@ describe('a failed scheduled task (E127)', () => {
     };
     const app = await createTestApp(application, { override: (container) => container.instance(Logger, recording) });
     await app.make(EventDispatcher).dispatch(
-      new ScheduledTaskFailed({ task: 'user-profile.prune-data-exports', minute: Date.parse('2026-10-03T12:10:00Z'), reason: 'due', error: new Error('disk full, token=abc123'), ms: 12 }),
+      new ScheduledTaskFailed({ task: 'user-profile.prune-data-exports', minute: Date.parse('2026-10-03T12:10:00Z'), reason: 'due', error: new Error('disk full, token=abc123, Cookie: a=1; marmeon_session=s3ss10nvalue'), ms: 12 }),
     );
     app.events.assertDispatched(ScheduledTaskFailed);
     expect(entries).toEqual([
       {
-        message: 'The scheduled task user-profile.prune-data-exports failed: Error: disk full, token=[redacted]',
+        // The app's Redactor: the session cookie's value after another cookie is masked too.
+        message: 'The scheduled task user-profile.prune-data-exports failed: Error: disk full, token=[redacted], Cookie: [redacted]; marmeon_session=[redacted]',
         context: { alert: true, task: 'user-profile.prune-data-exports', due: '2026-10-03T12:10:00.000Z', ms: 12 },
       },
     ]);

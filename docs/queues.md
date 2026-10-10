@@ -479,24 +479,26 @@ in the process that dispatched. Its error is logged and changes nothing about th
 because such a listener would queue a job whose events queue the next. This listener raises an alert for every failed job:
 
 ```ts title="modules/system/listeners/AlertOnFailedJob.ts"
-import { Logger, redactText } from '@marmeon/core';
+import { Logger, Redactor } from '@marmeon/core';
 import type { JobFailed } from '@marmeon/queue';
 
 export class AlertOnFailedJob {
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, redactor: Redactor) {
     this.#logger = logger.child({ channel: 'alerts' });
+    this.#redactor = redactor;
   }
 
   handle(event: JobFailed): void {
-    this.#logger.error(`The job ${event.job} failed: ${redactText(event.error.message)}`, { alert: true, jobId: event.jobId });
+    this.#logger.error(`The job ${event.job} failed: ${this.#redactor.text(event.error.message)}`, { alert: true, jobId: event.jobId });
   }
 }
 ```
 
-The module registers it with `listeners: [listen(JobFailed, AlertOnFailedJob)]`. The error is the one the job threw, so redact it
-before you log it. A job dispatched in a request remembers that request's id, and the
+The module registers it with `listeners: [listen(JobFailed, AlertOnFailedJob)]`. The error is the one the job threw, so mask it with
+the app's `Redactor` before you log it: it may quote a secret or a cookie header. A job dispatched in a request remembers that request's id, and the
 [observability](observability.md#following-a-request) page shows how traces follow a request into its jobs. The queue's driver is
 one of the checks of `/up/ready`, which the [health](health.md#the-checks-of-the-packages) page covers.
 

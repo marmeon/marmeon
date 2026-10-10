@@ -1,4 +1,4 @@
-import { Application, defineConfig, env, Logger, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@marmeon/core';
+import { Application, defineConfig, env, Logger, Redactor, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@marmeon/core';
 import { RedisConnections, type RedisConnectionOptions } from './connections.ts';
 import { RedisHealthCheck } from './health.ts';
 
@@ -77,7 +77,7 @@ export class RedisServiceProvider implements ServiceProvider {
       const named = [...(app.options.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isRedisConnectionDefinition);
       const connections: Record<string, RedisConnectionOptions> = { default: c.make(RedisConfig).default };
       for (const definition of named) connections[definition.redisConnection] = c.make(definition);
-      return new RedisConnections({ connections, logger: c.make(Logger) });
+      return new RedisConnections({ connections, logger: c.make(Logger), redactor: c.make(Redactor) });
     });
   }
 

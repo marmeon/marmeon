@@ -290,19 +290,21 @@ Every run says what became of it through the app's event dispatcher:
 process, and its error is logged and changes nothing about the run. This one raises an alert for every failed task:
 
 ```ts title="modules/system/listeners/AlertOnFailedTask.ts"
-import { Logger, redactText } from '@marmeon/core';
+import { Logger, Redactor } from '@marmeon/core';
 import type { ScheduledTaskFailed } from '@marmeon/scheduler';
 
 export class AlertOnFailedTask {
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, redactor: Redactor) {
     this.#logger = logger.child({ channel: 'alerts' });
+    this.#redactor = redactor;
   }
 
   handle(event: ScheduledTaskFailed): void {
     const message = event.error instanceof Error ? event.error.message : String(event.error);
-    this.#logger.error(`The scheduled task ${event.task} failed: ${redactText(message)}`, { alert: true, task: event.task });
+    this.#logger.error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, { alert: true, task: event.task });
   }
 }
 ```
