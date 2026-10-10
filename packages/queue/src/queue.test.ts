@@ -356,7 +356,7 @@ describe('the worker', () => {
     const [failed] = await connections.failed().all();
     expect(failed!.exception).toContain('the store refused shop_session=[redacted]');
     expect(failed!.exception, failed!.exception).not.toMatch(/s3ss10nvalue|pr0pvalue/);
-    expect(logged).toEqual(['Failed test.leaky: the store refused shop_session=[redacted]']);
+    expect(logged, JSON.stringify(logged)).toEqual(['Failed test.leaky: the store refused shop_session=[redacted]']);
   });
 
   it('lets a job discard, release or fail itself', async () => {

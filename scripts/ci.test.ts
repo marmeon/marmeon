@@ -257,10 +257,14 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
       { path: 'apps/web-app/modules/auth/routes.ts', text: '// Private registration (E146), W9, like Laravel, Max 07.10.' },
       { path: 'apps/web-app/sub/README.md', text: 'E12, W9' },
     ];
-    expect(textRuleHits(files, decisions)).toEqual(['apps/web-app/.env.example:1: # Sessions on the system connection (E108)']);
-    expect(textRuleHits(files, waves)).toEqual(['apps/web-app/.env.example:2: # Live props (W6.10)']);
-    expect(textRuleHits(files, rule('a comparison with another framework'))).toEqual(['apps/docs/.env.test:1: # like Laravel']);
-    expect(textRuleHits(files, rule('a personal date'))).toEqual(['apps/blank-app/README.md:1: decided by Max 07.10.']);
+    const hits = (what: string) => {
+      const found = textRuleHits(files, rule(what));
+      return expect(found, `${what}: ${JSON.stringify(found)}`);
+    };
+    hits('a decision number').toEqual(['apps/web-app/.env.example:1: # Sessions on the system connection (E108)']);
+    hits('a wave reference').toEqual(['apps/web-app/.env.example:2: # Live props (W6.10)']);
+    hits('a comparison with another framework').toEqual(['apps/docs/.env.test:1: # like Laravel']);
+    hits('a personal date').toEqual(['apps/blank-app/README.md:1: decided by Max 07.10.']);
     expect(textRuleWhere('apps/web-app/.env.example')).toBe("in an app's README or .env files");
   });
 

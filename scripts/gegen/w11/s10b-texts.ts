@@ -83,7 +83,8 @@ export default defineGegenproben({
     {
       id: 'T1b',
       title: 'the decision rule without the template and the stubs: its unit test is red',
-      patch: [{ file: 'scripts/check-source.ts', find: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],', replace: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS],' }],
+      // Re-based in W12 step 4b: the rule reads the apps' READMEs and .env files too (they stay in).
+      patch: [{ file: 'scripts/check-source.ts', find: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS],', replace: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_TEXTS],' }],
       run: ci('reads what every new app copies too'),
       // Nothing found where the template's and the stubs' four decision numbers are expected.
       expect: /expected \[\] to deeply equal \[ …\(4\) \]/,

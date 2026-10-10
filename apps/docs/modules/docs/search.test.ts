@@ -23,7 +23,8 @@ describe('the search index', () => {
       section('One server only', 'onOneServer() runs a task on one server.'),
       section('One server with Compose', 'Compose starts the containers.'),
     ]);
-    expect(index.search('onOneServer').map((hit) => hit.heading)).toEqual(['One server only', 'Missed runs']);
+    const named = index.search('onOneServer').map((hit) => hit.heading);
+    expect(named, JSON.stringify(named)).toEqual(['One server only', 'Missed runs']);
     // Typed in lower case, the name has no words to look for.
     expect(index.search('ononeserver').map((hit) => hit.heading)).toEqual(['Missed runs', 'One server only']);
   });

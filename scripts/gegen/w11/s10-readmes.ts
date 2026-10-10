@@ -52,7 +52,8 @@ export default defineGegenproben({
       id: 'G1b',
       title: 'the decision-number rule reads no file: its unit test is red',
       // W11 step 10c: the anchor names the rule's pattern too — the framework rule reads the same files since (C-M2, E215).
-      patch: [{ file: 'scripts/check-source.ts', find: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES],', replace: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [],' }],
+      // Re-based in W12 step 4b: the rule reads the apps' READMEs and .env files too.
+      patch: [{ file: 'scripts/check-source.ts', find: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS],', replace: '    pattern: /\\bE\\d{2,3}\\b/,\n    files: [],' }],
       run: ci('finds a decision number in the docs'),
       // Vitest shortens the lists: nothing found where six hits are expected (UPGRADING.md's among them since step 10c).
       expect: /expected \[\] to deeply equal \[ …\(6\) \]/,

@@ -76,7 +76,8 @@ export default defineGegenproben({
     {
       id: 'U5',
       title: 'the wave rule without the Upgrade Guide: its unit test is red',
-      patch: [{ file: 'scripts/check-source.ts', find: '    files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES],', replace: '    files: [DOCS_PAGES, PACKAGE_CARDS, APP_COPIES],' }],
+      // Re-based in W12 step 4b: the rule reads the apps' READMEs and .env files too (they stay in).
+      patch: [{ file: 'scripts/check-source.ts', find: '    files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES, APP_TEXTS],', replace: '    files: [DOCS_PAGES, PACKAGE_CARDS, APP_COPIES, APP_TEXTS],' }],
       run: ci('finds a wave reference in the docs, the package cards and the upgrade guide'),
       // Three of the four found: UPGRADING.md's "### Wave 10" is missed.
       expect: /expected \[ …\(3\) \] to deeply equal \[ …\(4\) \]/,

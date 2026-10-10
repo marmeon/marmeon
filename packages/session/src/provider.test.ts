@@ -317,7 +317,8 @@ describe('make:session-table', () => {
   });
 
   it('writes one migration: the table as the store writes it — no other to choose', () => {
-    expect(MakeSessionTableCommand.options).toEqual({ module: { type: 'string', short: 'm' } });
+    expect(Object.keys(MakeSessionTableCommand.options)).toEqual(['module']);
+    expect(MakeSessionTableCommand.options.module).toEqual({ type: 'string', short: 'm' });
     expect(MakeSessionTableCommand.usage).toBe('[--module=system]');
     expect(readdirSync(new URL('../stubs/migrations/', import.meta.url))).toEqual(['create_sessions_table.ts']);
   });
