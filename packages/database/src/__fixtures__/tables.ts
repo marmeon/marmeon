@@ -1,3 +1,4 @@
+import type { Secret } from '../secrets.ts';
 import type { Decimal, Generated, JsonColumn, Timestamp } from '../types.ts';
 
 /** What `db:types` generates for the fixture migrations (see types-gen.test.ts) — for tests that need typed tables. */
@@ -60,5 +61,12 @@ export interface FixtureTables {
     id: Generated<number>;
     name: string;
     parent_id: number | null;
+  };
+  // `migrations/relations-secrets`: a related table with a secret column.
+  api_keys: {
+    id: Generated<number>;
+    user_id: number;
+    name: string;
+    token: Secret<string>;
   };
 }

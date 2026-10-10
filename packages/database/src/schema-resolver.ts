@@ -29,19 +29,15 @@ import {
   type UnknownRow,
 } from 'kysely';
 import type { SchemaMetadata } from './metadata.ts';
+import { hasPlaceholder, RELATION, SOFT_DELETE, SOFT_DELETE_FILTER, sourcesOf, TOUCH_COLUMN, WITH_TRASHED, type Source } from './placeholders.ts';
+import { relationQuery, type RelationsPlugin } from './relations.ts';
+import { selectsAll } from './secrets.ts';
 
-// Placeholders for what only the schema metadata knows — whether a table has soft deletes or timestamps. A query is built
-// synchronously, often before anything was loaded (the first query of a process, right after a migration); the placeholders
-// are resolved when it compiles, or — while the metadata is not fresh — by the connection that runs it, after loading.
-// One that reaches the database unresolved (a connection without Marmeon's plugins) fails there instead of reading wrong rows.
-
-const PREFIX = '__marmeon_unresolved_';
-/** In a WHERE: `"table"."deleted_at" is null` when the table has soft deletes, nothing otherwise. */
-const SOFT_DELETE_FILTER = `${PREFIX}soft_delete_filter__`;
-/** In a DELETE's WHERE: the statement becomes `update … set deleted_at` when the table has soft deletes. */
-const SOFT_DELETE = `${PREFIX}soft_delete__`;
-/** A column of an UPDATE's SET: becomes `updated_at` when the table has timestamps (and the update does not set it). */
-export const TOUCH_COLUMN = `${PREFIX}updated_at__`;
+// Placeholders for what only the schema metadata knows — whether a table has soft deletes or timestamps, which relations its
+// foreign keys describe and which columns they may load. A query is built synchronously, often before anything was loaded (the
+// first query of a process, right after a migration); the placeholders are resolved when it compiles, or — while the metadata
+// is not fresh — by the connection that runs it, after loading. One that reaches a connection without Marmeon's plugins is
+// refused there (`serialQueries`), and fails at the database if it gets that far, instead of reading wrong rows.
 
 /** Where a placeholder stood and now nothing does: dropped from its AND chain, `1 = 1` anywhere else. */
 const NOTHING = RawNode.createWithSql('1 = 1');
@@ -72,32 +68,45 @@ export function softDelete(table: string): Expression<SqlBool> {
   return new Placeholder(SOFT_DELETE, table);
 }
 
+/** For `.where()`: the select it is in keeps its soft-deleted rows (`withTrashed()`). */
+export function withTrashed(): Expression<SqlBool> {
+  return new Placeholder(WITH_TRASHED, '');
+}
+
 /**
  * Resolves the placeholders while compiling when the metadata is fresh; otherwise it leaves them for the connection
- * ({@link SchemaResolver.deferred}, {@link SchemaResolver.resolve}), which loads the metadata first.
+ * ({@link SchemaResolver.deferred}, {@link SchemaResolver.resolve}), which loads the metadata first. A query that strips secret
+ * columns from its result (`selectAll()`, `returningAll()`) waits the same way while the metadata is not fresh: its strip list
+ * must be the one of the schema it runs against.
  */
 export class SchemaResolver implements KyselyPlugin {
   readonly #metadata: SchemaMetadata;
   readonly #compiler: QueryCompiler;
+  readonly #relations: RelationsPlugin;
   /**
    * The queries left for the connection. A query id belongs to a builder and every builder derived from it, so two
    * executions of one builder share it: kept, never taken out. A query of another `Kysely` on the same physical connection
-   * (an infrastructure connection on SQLite) was never added — its placeholders reach the database and fail there.
+   * (an infrastructure connection on SQLite) was never added — its placeholders are refused on the connection.
    */
   readonly #deferred = new WeakSet<QueryId>();
 
-  constructor(metadata: SchemaMetadata, compiler: QueryCompiler) {
+  constructor(metadata: SchemaMetadata, compiler: QueryCompiler, relations: RelationsPlugin) {
     this.#metadata = metadata;
     this.#compiler = compiler;
+    this.#relations = relations;
   }
 
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
-    if (!hasPlaceholder(node)) return node;
+    if (!hasPlaceholder(node)) {
+      if (!this.#metadata.fresh && selectsAll(node)) this.#deferred.add(queryId);
+      return node;
+    }
     // A soft delete turns the DELETE into an UPDATE, which a plugin may not do (Kysely checks the kind): the connection does it.
     if (!this.#metadata.fresh || (node.kind === 'DeleteQueryNode' && hasPlaceholder(node.where, SOFT_DELETE))) {
       this.#deferred.add(queryId);
       return node;
     }
+    // The relations' JSON is built by the next plugin, `RelationsPlugin`.
     return resolve(node, this.#metadata);
   }
 
@@ -105,14 +114,15 @@ export class SchemaResolver implements KyselyPlugin {
     return result;
   }
 
-  /** Whether `query` still holds placeholders this plugin left for the connection to resolve. */
+  /** Whether `query` was left for the connection to resolve (it may hold placeholders, or wait for the metadata only). */
   deferred(query: CompiledQuery): boolean {
-    return query.sql.includes(PREFIX) && this.#deferred.has(query.queryId);
+    return this.#deferred.has(query.queryId);
   }
 
   /** The query with its placeholders resolved — called on the connection, once the metadata is loaded there. */
   resolve(query: CompiledQuery): CompiledQuery {
-    return this.#compiler.compileQuery(resolve(query.query, this.#metadata), query.queryId);
+    const node = this.#relations.transform(resolve(query.query, this.#metadata), query.queryId);
+    return this.#compiler.compileQuery(node, query.queryId);
   }
 }
 
@@ -141,8 +151,17 @@ function softly(node: DeleteQueryNode, metadata: SchemaMetadata): RootOperationN
   };
 }
 
+/** A select's tables, and whether it called `withTrashed()`. */
+interface Frame {
+  readonly sources: readonly Source[];
+  readonly trashed: boolean;
+}
+
 class Resolver extends OperationNodeTransformer {
   readonly #metadata: SchemaMetadata;
+  /** The selects around the node being transformed — the innermost last. */
+  readonly #frames: Frame[] = [];
+  #aliases = 0;
 
   constructor(metadata: SchemaMetadata) {
     super();
@@ -152,14 +171,26 @@ class Resolver extends OperationNodeTransformer {
   protected override transformFunction(node: FunctionNode, queryId?: QueryId): FunctionNode {
     if (node.func === SOFT_DELETE_FILTER) {
       const table = String((node.arguments[0] as ValueNode).value);
-      return (this.#metadata.softDeletes.has(table) ? notDeleted(table) : NOTHING) as unknown as FunctionNode;
+      const filtered = this.#metadata.softDeletes.has(table) && !this.#frames.at(-1)?.trashed;
+      return (filtered ? notDeleted(table) : NOTHING) as unknown as FunctionNode;
     }
-    if (node.func === SOFT_DELETE) return NOTHING as unknown as FunctionNode; // done by `softly()` — or a hard delete
+    // A soft delete is done by `softly()` (or it is a hard one); `withTrashed()` was read by its select.
+    if (node.func === SOFT_DELETE || node.func === WITH_TRASHED) return NOTHING as unknown as FunctionNode;
+    if (node.func === RELATION) {
+      // Top-down: the relation's subquery is built in the scope of the select it is in, then resolved as a select of its own.
+      const relation = relationQuery(node, this.#frames.at(-1)?.sources ?? [], this.#metadata, (table) => `${table}__${++this.#aliases}`);
+      return { ...relation, arguments: [this.transformNode(relation.arguments[0]!, queryId), ...relation.arguments.slice(1)] };
+    }
     return super.transformFunction(node, queryId);
   }
 
   protected override transformSelectQuery(node: SelectQueryNode, queryId?: QueryId): SelectQueryNode {
-    return withoutNothing(super.transformSelectQuery(node, queryId));
+    this.#frames.push({ sources: sourcesOf(node), trashed: hasPlaceholder(node.where, WITH_TRASHED, true) });
+    try {
+      return withoutNothing(super.transformSelectQuery(node, queryId));
+    } finally {
+      this.#frames.pop();
+    }
   }
 
   protected override transformDeleteQuery(node: DeleteQueryNode, queryId?: QueryId): DeleteQueryNode {
@@ -210,17 +241,4 @@ function tableOf(node: OperationNode | undefined): string | undefined {
   if (node && TableNode.is(node)) return node.table.identifier.name;
   if (node && AliasNode.is(node) && TableNode.is(node.node)) return node.node.table.identifier.name;
   return undefined;
-}
-
-/** Whether a placeholder is anywhere below `node` — without serializing it (every query of the app passes here). */
-function hasPlaceholder(node: unknown, func?: string): boolean {
-  if (node === null || typeof node !== 'object') return false;
-  if (Array.isArray(node)) return node.some((item) => hasPlaceholder(item, func));
-  const kind = (node as { kind?: unknown }).kind;
-  // Values hold data, never nodes of the query (and may be large).
-  if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return false;
-  if (kind === 'FunctionNode' && (func ? (node as FunctionNode).func === func : (node as FunctionNode).func.startsWith(PREFIX))) return true;
-  if (!func && kind === 'ColumnNode' && (node as ColumnNode).column.name.startsWith(PREFIX)) return true;
-  for (const value of Object.values(node)) if (value !== null && typeof value === 'object' && hasPlaceholder(value, func)) return true;
-  return false;
 }

@@ -6,6 +6,7 @@ import { Kysely, sql, SqliteDialect, type CompiledQuery, type DatabaseConnection
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
+import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { deriveRelations, introspect } from './introspection.ts';
 import { MarmeonDriver } from './driver.ts';
@@ -131,10 +132,12 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     expect(rows).toEqual(['kept']);
   });
 
-  it('resolves only its own queries — an infrastructure connection’s placeholder fails at the database instead', async () => {
+  it('resolves only its own queries — an infrastructure connection’s placeholder is refused, not resolved', async () => {
     const fresh = cold();
     const infrastructure = fresh.infrastructure<FixtureTables>();
-    await expect(infrastructure.selectFrom('comments').select('body').where(softDeleteFilter('comments')).execute()).rejects.toThrow(/__marmeon_unresolved_/);
+    await expect(infrastructure.selectFrom('comments').select('body').where(softDeleteFilter('comments')).execute()).rejects.toThrow(
+      `only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins`,
+    );
   });
 
   it('is not fresh while it loads, and never while a transaction that changed the schema is open', async () => {
@@ -215,6 +218,39 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     await posts.get<any>().deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
   });
 
+  it.runIf(driver === 'sqlite')('a relation built while a migration adds a secret column waits for it — and never loads the column', async () => {
+    const db = connections.get<FixtureTables>();
+    await seed(db);
+    const app = cold();
+    let started!: () => void;
+    const inside = new Promise<void>((resolve) => (started = resolve));
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    try {
+      // The column, its values, a query that loads the metadata again on the migration's connection (the column, not its mark),
+      // and the mark last.
+      const migration = app.transaction(async (transaction) => {
+        const trx = transaction as unknown as Kysely<any>;
+        await trx.schema.alterTable('comments').addColumn('secret_note', 'varchar(255)').execute();
+        await trx.updateTable('comments').set({ secret_note: 'hidden' }).execute();
+        await app.get<any>().selectFrom('users').select('id').execute();
+        started();
+        await finished;
+        await trx.insertInto('secret_columns').values({ table_name: 'comments', column_name: 'secret_note' }).execute();
+      });
+      await inside;
+      const posts = app.get<FixtureTables>().selectFrom('posts').select('title').with('comments').execute(); // built now
+      finish();
+      await migration;
+      const [post] = await posts;
+      expect(post!.comments).toEqual([expect.objectContaining({ body: 'kept' })]);
+      expect(post!.comments[0]).not.toHaveProperty('secret_note');
+    } finally {
+      await sql`alter table comments drop column secret_note`.execute(db).catch(() => {});
+      await db.deleteFrom('secret_columns' as never).where('table_name' as never, '=', 'comments' as never).execute();
+    }
+  });
+
   // Postgres: the migration holds one connection of the pool, a request uses another. The request's query depends on the marks the
   // migration is changing: it must not be resolved with what was loaded meanwhile — neither the committed view from before the
   // commit, nor the migration's own view of a transaction that then rolls back.
@@ -262,6 +298,42 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
         expect(await titles(db)).toEqual(['new', 'old']); // both rows are still there: the delete was soft
       } finally {
         await dropSoftDeletes(db);
+      }
+    });
+
+    it('waits for its commit before a selectAll() or a relation reads a secret column it adds — and leaves the column out', async () => {
+      const app = cold();
+      const db = app.get<any>();
+      const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
+      await db.insertInto('posts').values({ author_id: ada.id, title: 'before' }).execute();
+      await db.selectFrom('users').select('id').execute(); // loaded: the request below starts warm
+      const inside = pause();
+      const finish = pause();
+      try {
+        const migration = app.transaction(async (transaction) => {
+          const trx = transaction as unknown as Kysely<any>;
+          await trx.schema.alterTable('posts').addColumn('secret_note', 'varchar(255)').execute();
+          await trx.insertInto('posts').values({ author_id: ada.id, title: 'during', secret_note: 'hidden' }).execute();
+          await trx.insertInto('secret_columns').values({ table_name: 'posts', column_name: 'secret_note' }).execute();
+          inside.resolve();
+          await finish.done;
+        });
+        await inside.done;
+        // Another connection of the pool: without waiting, it would read before the commit — and strip with what it loaded then.
+        const all = db.selectFrom('posts').selectAll().orderBy('id').execute();
+        const related = db.selectFrom('users').select('name').with('authored_posts', (q: any) => q.orderBy('id')).execute();
+        await sleep(100);
+        finish.resolve();
+        await migration;
+        const rows = await all;
+        expect(rows.map((row: any) => row.title)).toEqual(['before', 'during']); // it waited for the commit
+        expect(JSON.stringify(rows)).not.toContain('hidden');
+        const [user] = await related;
+        expect(user!.authored_posts.map((post: any) => post.title)).toEqual(['before', 'during']);
+        expect(JSON.stringify(user)).not.toContain('hidden');
+      } finally {
+        await sql`alter table posts drop column if exists secret_note`.execute(db);
+        await db.deleteFrom('secret_columns').where('table_name', '=', 'posts').execute();
       }
     });
 

@@ -1,6 +1,7 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, type SchemaMetadata } from './metadata.ts';
+import { PREFIX } from './placeholders.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
 export class DatabaseConnectionError extends Error {
@@ -304,7 +305,7 @@ export class MarmeonDriver implements Driver {
     let serial = this.#serial.get(connection);
     if (!serial) {
       const { metadata, deferred } = this.#context;
-      const hooks: SerialHooks = {};
+      const hooks: SerialHooks = { name: this.#context.name };
       if (deferred) {
         hooks.deferred = (query) => deferred.deferred(query);
         hooks.resolve = async (query, own) => {
@@ -369,6 +370,8 @@ export interface SerialHooks {
   resolve?(query: CompiledQuery, own: DatabaseConnection): Promise<CompiledQuery>;
   /** Before and after a statement ran (or failed) on the connection. */
   ran?(query: CompiledQuery): void;
+  /** The connection's name, for the message when a query holds placeholders nobody resolves. */
+  name?: string;
 }
 
 /**
@@ -433,7 +436,12 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   // Resolved before it takes its turn: loading the metadata takes turns on this connection too. A query with nothing to
   // resolve is queued at once, so queries keep the order they were sent in.
   const unloggedView = { executeQuery: turned, streamQuery: turnedStream } as unknown as DatabaseConnection;
-  const resolving = (query: CompiledQuery) => (hooks.deferred?.(query) ? hooks.resolve!(query, unloggedView) : undefined);
+  const resolving = (query: CompiledQuery) => {
+    if (hooks.deferred?.(query)) return hooks.resolve!(query, unloggedView);
+    // Built on a Kysely without Marmeon's plugins (or compiled by one): nothing resolved its placeholders.
+    if (query.sql.includes(PREFIX)) return Promise.reject(new Error(unresolved(hooks.name ?? 'default')));
+    return undefined;
+  };
   const resolvedExecute =
     (inner: Execute): Execute =>
     (query, ...rest) => {
@@ -463,6 +471,14 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
       return true;
     },
   });
+}
+
+function unresolved(name: string): string {
+  return (
+    "This query loads relations or leaves out soft-deleted rows (with(), withRelation(), withTrashed(), a repository's query()), which " +
+    `only the app's connection resolves — it was not sent: it runs on the database connection "${name}" without Marmeon's plugins ` +
+    '(infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.'
+  );
 }
 
 /** One user of a single-connection dialect at a time (Kysely's `ConnectionMutex`). */

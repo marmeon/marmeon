@@ -168,9 +168,19 @@ export const ByEmailTable = defineTable({
   actions: { deactivate: action(DeactivateByEmail) },
 });
 
+/** A base query that loads a relation: the table pages it like any other query. */
+export const WithTeamTable = defineTable({
+  name: 'with-team',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team).with('team', (team) => team.select('name')),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable() },
+  defaultSort: 'name',
+});
+
 export const MembersRequest = defineRequest({ query: MembersTable.query });
 export const FeedRequest = defineRequest({ query: FeedTable.query });
 export const LeakyRequest = defineRequest({ query: LeakyTable.query });
+export const WithTeamRequest = defineRequest({ query: WithTeamTable.query });
 
 /** The page: the table as JSON (the page protocol is the http package's — here the prop alone). */
 export class MembersPage extends Controller {
@@ -229,6 +239,20 @@ export class LeakyPage extends Controller {
   }
 }
 
+export class WithTeamPage extends Controller {
+  static request = WithTeamRequest;
+  readonly #tables: Tables;
+
+  constructor(tables: Tables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof WithTeamRequest> & Authenticated & { team: number }) {
+    return this.json({ members: await this.#tables.resolve(WithTeamTable, ctx) });
+  }
+}
+
 /** The export, answered from inside a transaction the controller opened — its later batches run after it finished. */
 export class ExportInTransaction extends Controller {
   readonly #tables: Tables;
@@ -266,6 +290,7 @@ const routes = defineRoutes((Route) => {
   team.get('/feed', FeedPage);
   team.get('/feed-copy', FeedCopyPage);
   team.get('/leaky', LeakyPage);
+  team.get('/with-team', WithTeamPage);
   team.get('/no-schema', NoSchemaPage);
   team.get('/export-in-transaction', ExportInTransaction);
   tableRoutes(team, SmallExportTable);
@@ -331,9 +356,14 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
   });
   const connections = application.container.make(Connections);
   const schema = new Schema(connections.get(), connections.options().driver);
+  await schema.create('teams', (table) => {
+    table.id();
+    table.string('name');
+  });
+  await connections.get().insertInto('teams').values([{ id: 1, name: 'Team one' }, { id: 2, name: 'Team two' }]).execute();
   await schema.create('members', (table) => {
     table.id();
-    table.integer('team_id');
+    table.foreignId('team_id').constrained();
     table.string('name');
     table.string('email');
     table.string('role');

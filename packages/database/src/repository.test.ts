@@ -124,13 +124,13 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(await users.find(ada.id)).toBeUndefined();
     expect(await users.count()).toBe(0);
     expect(await users.update(ada.id, { name: 'Ghost' })).toBeUndefined();
-    const trashed = await users.withTrashed().selectAll().where('id', '=', ada.id).executeTakeFirstOrThrow();
+    const trashed = await users.query().withTrashed().selectAll().where('id', '=', ada.id).executeTakeFirstOrThrow();
     expect(trashed.deleted_at).toMatch(/Z$/);
 
     expect(await users.restore(ada.id)).toBe(true);
     expect((await users.find(ada.id))?.deleted_at).toBeNull();
     expect(await users.forceDelete(ada.id)).toBe(true);
-    expect(await users.withTrashed().selectAll().execute()).toEqual([]);
+    expect(await users.query().withTrashed().selectAll().execute()).toEqual([]);
   });
 
   it('works across repositories in one transaction with using(trx)', async () => {

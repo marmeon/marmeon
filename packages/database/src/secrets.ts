@@ -89,6 +89,11 @@ export class SecretColumnsPlugin implements KyselyPlugin {
   }
 }
 
+/** Whether the connection strips secret columns from the statement's result — it selects or returns `*` somewhere. */
+export function selectsAll(node: RootOperationNode): boolean {
+  return planOf(node) !== undefined;
+}
+
 function planOf(node: RootOperationNode): Plan | undefined {
   const root = rootSelections(node);
   if (!root) return undefined;

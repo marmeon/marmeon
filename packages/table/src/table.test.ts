@@ -66,6 +66,17 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(text).not.toContain('@example.com');
     });
 
+    it('takes a base query that loads a relation — the page and its count are one query each', async () => {
+      const application = await app(driver);
+      const response = await application.request('/teams/1/with-team', { user: ALAN });
+      expect(response.status).toBe(200);
+      const { members } = JSON.parse(await response.text()) as { members: Members };
+      expect(names(members)).toEqual(['Ada', 'Alan', 'Edsger', 'Grace']);
+      const selects = application.queries.map((query) => query.sql).filter((text) => /\bfrom "members"/.test(text));
+      expect(selects).toHaveLength(2);
+      expect(selects.filter((text) => /"teams"/.test(text))).toHaveLength(1); // the page loads it, the count does not
+    });
+
     it('stays within the base query — the tenant (another team\'s members never show)', async () => {
       const application = await app(driver);
       const { members } = await page(application, ADA, 'per_page=10');

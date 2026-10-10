@@ -303,7 +303,8 @@ secret columns, and the connection reads them:
 
 - **`timestamps()`**: a repository's `update()` sets `updated_at` to the current time, unless the values set it themselves.
 - **`softDeletes()`**: a repository's `delete()` sets `deleted_at` instead of deleting the row, and its `query()`, `find()`,
-  `count()`, route binding and the rest leave deleted rows out. `withTrashed()` and `forceDelete()` reach them on purpose.
+  `count()`, route binding and the rest leave deleted rows out, and so does every [relation](queries.md#soft-deleted-rows).
+  `query().withTrashed()` and `forceDelete()` reach them on purpose.
 
 A column of the same name without the call is an ordinary column: a `deleted_at` added with `table.timestamp('deleted_at')` deletes
 nothing softly. The mark follows the table when it is renamed. It goes away when its column is dropped or renamed, and a

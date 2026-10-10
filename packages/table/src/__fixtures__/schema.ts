@@ -19,6 +19,15 @@ declare module '@marmeon/database' {
       active: boolean | null;
     };
   }
+  // What `db:types` derives from `members.team_id` (a foreign key to `teams`).
+  interface Relations {
+    members: {
+      team: { kind: 'belongsTo'; table: 'teams'; foreignKey: 'team_id'; localKey: 'team_id'; targetKey: 'id'; nullable: false };
+    };
+    teams: {
+      members: { kind: 'hasMany'; table: 'members'; foreignKey: 'team_id'; localKey: 'id'; targetKey: 'team_id' };
+    };
+  }
 }
 
 

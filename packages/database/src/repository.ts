@@ -4,7 +4,8 @@ import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Select
 import { Connections } from './connections.ts';
 import { isUniqueViolation } from './errors.ts';
 import { paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
-import { softDelete, softDeleteFilter, TOUCH_COLUMN } from './schema-resolver.ts';
+import { TOUCH_COLUMN } from './placeholders.ts';
+import { softDelete, softDeleteFilter } from './schema-resolver.ts';
 import type { Tables } from './types.ts';
 
 /** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
@@ -137,7 +138,10 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     }
   }
 
-  /** A select on the table — without soft-deleted rows when its migration called `softDeletes()`. */
+  /**
+   * A select on the table — without soft-deleted rows when its migration called `softDeletes()`; `query().withTrashed()` keeps
+   * them.
+   */
   query(): SelectQueryBuilder<DB, T, {}> {
     return this.#untyped.selectFrom(this.#name).where(softDeleteFilter(this.#name)) as unknown as SelectQueryBuilder<DB, T, {}>;
   }
@@ -148,11 +152,6 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    */
   paginate<TB extends keyof DB, O, const Q = PageRequest>(query: SelectQueryBuilder<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>> {
     return paginate(this.db, query, request as PageRequest | undefined);
-  }
-
-  /** Including soft-deleted rows. */
-  withTrashed(): SelectQueryBuilder<DB, T, {}> {
-    return this.#untyped.selectFrom(this.#name) as unknown as SelectQueryBuilder<DB, T, {}>;
   }
 
   async find(id: KeyOf<T, DB>): Promise<Selectable<DB[T]> | undefined> {

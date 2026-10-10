@@ -56,6 +56,8 @@ export type { SchemaMarker } from './introspection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
 export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';
+// Also what puts `with()`, `withRelation()` and `withTrashed()` on Kysely's select builder, in types and at runtime.
+export type { RelationDefinition, RelationName } from './chain.ts';
 export { cursorPaginate, InvalidCursorError, pageQuery, paginate } from './pagination.ts';
 export type { CheckPageRequest, CursorEncrypter, CursorOptions, CursorPaginated, PageMeta, PageRequest, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';

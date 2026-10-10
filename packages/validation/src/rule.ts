@@ -245,9 +245,10 @@ function databaseStep(kind: 'unique' | 'exists', Repository: new (...args: any[]
         if (!request) {
           throw new Error(`r.…${kind}() asks the database — it validates in a request (defineRequest), where it gets the app's resolve; this validation has none.`);
         }
-        const repository = request.resolve(Repository) as RepositoryLike & { withTrashed?: () => unknown };
+        const repository = request.resolve(Repository) as RepositoryLike;
+        let query = repository.query() as any;
         // Soft-deleted rows hold the unique index too: they count for unique (not for exists).
-        let query = (kind === 'unique' && typeof repository.withTrashed === 'function' ? repository.withTrashed() : repository.query()) as any;
+        if (kind === 'unique' && typeof query.withTrashed === 'function') query = query.withTrashed();
         query = query.select(column).where(column, '=', value);
         if (options.where) query = options.where(query, request.ctx);
         if (kind === 'unique' && options.ignore) {

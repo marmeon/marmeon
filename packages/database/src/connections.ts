@@ -5,6 +5,7 @@ import { channels, messageBase, publishEnded, type DbQueryMessage } from '@marme
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
+import { installChain } from './chain.ts';
 import { MarmeonDriver, DatabaseConnectionError, multipleConnections, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { SchemaMetadata } from './metadata.ts';
@@ -62,6 +63,7 @@ export class Connections {
   #destroyed = false;
 
   constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application }) {
+    installChain();
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });
@@ -220,9 +222,11 @@ export class Connections {
       const options = this.options(name);
       const metadata = new SchemaMetadata(options.driver);
       const base = this.#dialect(options, name);
-      const resolver = new SchemaResolver(metadata, base.createQueryCompiler());
+      const relations = new RelationsPlugin(options.driver, metadata);
+      const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations);
       const { dialect, driver } = withMarmeonDriver(base, { name, target: describeConnection(options), metadata, deferred: resolver });
-      const plugins = [resolver, new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
+      // In this order: placeholders resolved, then the relations' JSON built, then the result stripped of secret columns.
+      const plugins = [resolver, relations, new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);

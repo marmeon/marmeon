@@ -3,7 +3,7 @@ import { defineRequest, defineRoutes, Router, translatable, VALIDATE_HEADER, Val
 import { describe, expect, it } from 'vitest';
 import { rules as r } from './index.ts';
 
-// ——— A repository as @marmeon/database's are: query() and withTrashed() give a Kysely-like builder ———
+// ——— A repository as @marmeon/database's are: query() gives a Kysely-like builder, which leaves soft-deleted rows out unless withTrashed() ———
 
 interface UserRow {
   id: number;
@@ -13,13 +13,20 @@ interface UserRow {
 }
 
 class FakeQuery {
-  readonly #rows: readonly UserRow[];
+  #rows: readonly UserRow[];
+  readonly #all: readonly UserRow[];
   readonly #where: [keyof UserRow, string, unknown][] = [];
   readonly #log: string[];
 
   constructor(rows: readonly UserRow[], log: string[]) {
-    this.#rows = rows;
+    this.#all = rows;
+    this.#rows = rows.filter((row) => !row.deleted);
     this.#log = log;
+  }
+
+  withTrashed(): this {
+    this.#rows = this.#all;
+    return this;
   }
 
   select(_column: string): this {
@@ -50,10 +57,6 @@ class UserRepository {
   readonly queries: string[] = [];
 
   query(): FakeQuery {
-    return new FakeQuery(UserRepository.rows.filter((row) => !row.deleted), this.queries);
-  }
-
-  withTrashed(): FakeQuery {
     return new FakeQuery(UserRepository.rows, this.queries);
   }
 

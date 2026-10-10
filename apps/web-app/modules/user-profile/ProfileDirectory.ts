@@ -1,4 +1,4 @@
-import { Database, hasMany, hasOne, paginate, sql } from '@marmeon/database';
+import { Database, paginate, sql } from '@marmeon/database';
 import type { RouteBinder } from '@marmeon/http';
 
 /**
@@ -20,12 +20,8 @@ export class ProfileDirectory implements RouteBinder<Profile> {
       // The row as the migrations define it — its columns reach the view (the controller holds back the e-mail;
       // the connection leaves out the secret password hash).
       .selectAll('users')
-      .select((eb) => [
-        hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
-        hasMany(eb, 'profile_links', 'user_id', 'users.id', (q) =>
-          q.select(['profile_links.id', 'profile_links.user_id', 'profile_links.label', 'profile_links.url']).orderBy('profile_links.id'),
-        ).as('links'),
-      ])
+      .with('login_activity', { as: 'activity' }, (activity) => activity.select('last_login_at'))
+      .with('profile_links', { as: 'links' }, (links) => links.select(['id', 'user_id', 'label', 'url']).orderBy('id'))
       .where('users.id', '=', id)
       .executeTakeFirst();
   }
@@ -97,12 +93,8 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   people({ q, sort, page = 1, per_page = 10 }: PeopleQuery) {
     let query = this.#db
       .selectFrom('users')
-      .select((eb) => [
-        'users.id',
-        'users.name',
-        'users.avatar_path',
-        hasOne(eb, 'login_activity', 'user_id', 'users.id', (activity) => activity.select('login_activity.last_login_at')).as('activity'),
-      ]);
+      .select(['users.id', 'users.name', 'users.avatar_path'])
+      .with('login_activity', { as: 'activity' }, (activity) => activity.select('last_login_at'));
     if (q) {
       const pattern = `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       query = query.where(sql<boolean>`lower(users.name) like ${pattern} escape '\\'`);
