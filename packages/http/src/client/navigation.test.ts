@@ -53,7 +53,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.scrollY).toBe(0);
     });
 
-    it('counter-check: after a reload or a session restore, Back asks the server — and shows what it answers now', async () => {
+    it('after a reload or a session restore, Back asks the server — and shows what it answers now', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }));
       const first = boot(win, page('/users/1', { email: 'ada@example.com' }));
@@ -464,7 +464,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.requests).toHaveLength(1);
     });
 
-    it('counter-check: without streamedProps every group is asked for', () => {
+    it('without streamedProps every group is asked for', () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/users/1', {}));
       const { streamedProps: _streamed, ...withoutStreaming } = streamed();
@@ -691,7 +691,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(calls).toEqual(['add', 'settle 1 drop quiet', 'settle 1 drop']);
     });
 
-    it('counter-check: a visit that fails rolls them back', async () => {
+    it('a visit that fails rolls its patches back', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => Promise.reject(new TypeError('offline'));
       const { navigator } = boot(win, page('/users/1'), { features: [] });
@@ -737,7 +737,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.requests).toHaveLength(1);
     });
 
-    it('counter-check: a press on a link fetched ahead asks nothing again — once loaded, the prefetch code prefetches at once', async () => {
+    it('a press on a link fetched ahead asks nothing again — once loaded, the prefetch code prefetches at once', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = (url) => pageResponse(page(new URL(url).pathname, { name: 'Grace' }));
       // The page takes a moment to render (React commits later): the visit is under way a while after it took the page.
@@ -757,7 +757,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(navigator.use(prefetch).size).toBe(0);
     });
 
-    it('counter-check: the very first press (no hover before, the prefetch code not here yet) asks once — the click’s visit, not a prefetch for nobody', async () => {
+    it('the very first press (no hover before, the prefetch code not here yet) asks once — the click’s visit, not a prefetch for nobody', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       const slow = gate();
       win.handler = async (url) => {
@@ -777,7 +777,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(navigator.use(prefetch).size).toBe(0);
     });
 
-    it('counter-check: never prefetches anything but a GET — nor another site', async () => {
+    it('never prefetches anything but a GET — nor another site', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/x'));
       const { navigator } = boot(win, page('/users/1'));
@@ -807,7 +807,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
     it.each([
       ['signing out (POST → 409)', 'post'],
       ['a GET visit answered with 409 (a new build — or the session ended in another tab, the next visit hits the login)', 'get'],
-    ] as const)('counter-check: after a hard page change — %s — a prefetched protected page is never shown', async (_, method) => {
+    ] as const)('after a hard page change — %s — a prefetched protected page is never shown', async (_, method) => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       let signedIn = true;
       win.handler = (url) => {
@@ -973,7 +973,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect((reloaded.visible().props.list as { data: unknown[] }).data).toEqual([{ id: 1 }, { id: 2 }]);
     });
 
-    it('counter-check: the same page fetched twice is merged without duplicates (matchPropsOn) — items with a known key take the old one’s place', () => {
+    it('the same page fetched twice is merged without duplicates (matchPropsOn) — items with a known key take the old one’s place', () => {
       const current = page('/people', { list: { data: [{ id: 1, name: 'a' }, { id: 2, name: 'b' }], meta: { next: 'c2' } }, flat: [{ id: 1 }] });
       const again: PageObject = {
         ...page('/people', { list: { data: [{ id: 2, name: 'b2' }, { id: 3, name: 'c' }], meta: { next: 'c3' } }, flat: [{ id: 1 }, { id: 9 }] }),

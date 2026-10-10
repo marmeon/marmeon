@@ -47,7 +47,7 @@ describe('Region — islands in the client core', () => {
     expect(init?.redirect).toBe('manual');
   });
 
-  it('counter-check: two identical islands share one request (and one state)', async () => {
+  it('two identical islands share one request (and one state)', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     win.handler = (url) => islandResponse(island(new URL(url).pathname + new URL(url).search));
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
@@ -75,7 +75,7 @@ describe('Region — islands in the client core', () => {
     expect(members.snapshot.status).toBe('ready');
   });
 
-  it('counter-check: Back shows the islands of the entry from memory — no request, and none of their props in history.state', async () => {
+  it('Back shows the islands of the entry from memory — no request, and none of their props in history.state', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     win.handler = (url) =>
       url.includes('/islands/') ? islandResponse(island(new URL(url).pathname, { secret: 'only-in-memory' })) : pageResponse(page('/people', {}, 'user-profile/People'));
@@ -94,7 +94,7 @@ describe('Region — islands in the client core', () => {
     for (const { state } of win.entries) expect(state).not.toContain('only-in-memory');
   });
 
-  it('counter-check: an island still loading when the page changes is aborted — it never lands in the next page', async () => {
+  it('an island still loading when the page changes is aborted — it never lands in the next page', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const slow = held();
     let aborted = false;
@@ -118,7 +118,7 @@ describe('Region — islands in the client core', () => {
     expect(navigator.use(islands).region('/dashboard/islands/sign-ins').snapshot.status).toBe('loading');
   });
 
-  it('counter-check: a redirect, 401 or 403 of an island is its outcome — the page never navigates', async () => {
+  it('a redirect, 401 or 403 of an island is its outcome — the page never navigates', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const answers: Record<string, () => Response> = {
       '/i/unauthorized': () => outcome('unauthorized'),
@@ -150,7 +150,7 @@ describe('Region — islands in the client core', () => {
     expect(navigator.page.component).toBe('dashboard/Show');
   });
 
-  it('counter-check: a 5xx of one island is that island’s failure — the page and the other islands stay', async () => {
+  it('a 5xx of one island is that island’s failure — the page and the other islands stay', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     win.handler = (url) =>
       url.includes('broken') ? Response.json({ message: 'Database down' }, { status: 500, headers: { [REGION_STATUS_HEADER]: 'exception' } }) : islandResponse(island(new URL(url).pathname));
@@ -196,7 +196,7 @@ describe('Region — islands in the client core', () => {
     expect([...keptRegions(navigator, owner()).values()]).toEqual([{ status: 'unauthorized' }]);
   });
 
-  it('counter-check: a 409 (a new build) loads the whole page again — and drops every island kept in memory', async () => {
+  it('a 409 (a new build) loads the whole page again — and drops every island kept in memory', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     let deployed = false;
     win.handler = (url) =>
@@ -213,7 +213,7 @@ describe('Region — islands in the client core', () => {
     expect(owner().closed).toBe(true);
   });
 
-  it('counter-check: signing out (a visit answered 409) aborts islands under way — nothing of them lands, nothing stays in memory', async () => {
+  it('signing out (a visit answered 409) aborts islands under way — nothing of them lands, nothing stays in memory', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const slow = held();
     let aborted = false;
@@ -286,7 +286,7 @@ describe('Region — islands in the client core', () => {
     expect(regionId(again.url)).toBe('/islands/sign-ins?limit=5&range=all');
   });
 
-  it('counter-check: a partial reload of the page keeps its islands — no request; a pushed one of the same page takes a copy', async () => {
+  it('a partial reload of the page keeps its islands — no request; a pushed one of the same page takes a copy', async () => {
     const win = new FakeWindow(`${ORIGIN}/people`);
     win.handler = (url) =>
       url.includes('/islands/') ? islandResponse(island(new URL(url).pathname)) : pageResponse(page(new URL(url).pathname + new URL(url).search, { people: [] }, 'user-profile/People'));

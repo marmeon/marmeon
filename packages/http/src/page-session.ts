@@ -18,8 +18,8 @@ export interface PageSession {
   scope(options?: { readonly keep?: boolean }): string | undefined;
   /**
    * The session's generation for the tab-sync epoch: the scope of a signed-in user's session with the user's id — new with
-   * every sign-in, sign-out and regenerated id. Undefined for a guest, so a guest's session writes never reload other tabs.
-   * Never the session id itself.
+   * every sign-in, sign-out and regenerated id, unchanged by other writes (a flash message reloads no other tab). Undefined
+   * for a guest: nothing of a guest's is protected, so a guest's session never reloads other tabs. Never the session id itself.
    */
   generation(): string | undefined;
 }

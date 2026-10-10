@@ -57,7 +57,7 @@ describe('uploads with progress load their code on first use', () => {
     expect(visible().props).toEqual({ uploaded: true });
   });
 
-  it('counter-check: a chunk that cannot load sends the upload with fetch — without progress, never not at all', async () => {
+  it('a chunk that cannot load sends the upload with fetch — without progress, never not at all', async () => {
     vi.doMock('./upload.ts', () => {
       throw new Error('Failed to fetch dynamically imported module');
     });

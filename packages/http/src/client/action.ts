@@ -188,7 +188,6 @@ export class Actions {
     signal?.addEventListener('abort', abort, { once: true });
     const request = this.#host.request(target, method, data);
     const untrack = this.#submissions.add({ name, method, url: request.url, input: options.input ?? data });
-    // Model 1: shown at once.
     const applied = applyPatches(listOf(options.optimistic));
     let outcome: ActionOutcome = CANCELLED;
     try {

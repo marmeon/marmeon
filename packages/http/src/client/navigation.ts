@@ -33,7 +33,6 @@ import { RegionOwner } from './owner.ts';
 import { buildRequest, partialReloadHeaders, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
-// The public API that lives in the modules around the navigator.
 export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
 export { DEFAULT_LEAVE_MESSAGE } from './confirm.ts';
 export { DEFAULT_NEW_VERSION_MESSAGE } from './document-change.ts';
@@ -520,7 +519,6 @@ export class Navigator {
     core.window.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
     core.started = true;
     this.#all('started');
-    // The first page's flash messages: on screen now.
     this.#flushFlash();
     return () => {
       core.started = false;

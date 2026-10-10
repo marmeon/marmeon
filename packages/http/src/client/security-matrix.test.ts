@@ -40,7 +40,7 @@ import { TOP } from './scroll.ts';
  * What it can see, honestly: the slots a feature asks the host for (`entry`, `document` — recorded through the host it gets),
  * the hooks it registers and what they return for probe input, and what its API exposes (enumerable fields, getters). It
  * cannot see a feature's closures or private fields: a feature that hides data there and never hands it out again goes
- * unnoticed — one that hands it out again (a hook, its API) is caught, see the counter-checks at the end.
+ * unnoticed — one that hands it out again (a hook, its API) is caught, see the last tests of the matrix.
  */
 
 const CANARY = 'CANARY-signed-in';
@@ -405,7 +405,7 @@ describe.each(PATHS)('%s path', (path) => {
       expect(tab.navigator.use(live).updates.pending).toBe(false);
     });
 
-    it('counter-check: an upload that arrived holds its token until the document is left — then its Upload sends nothing', async () => {
+    it('an upload that arrived holds its token until the document is left — then its Upload sends nothing', async () => {
       const tab = await stocked();
       const done: (Upload | null)[] = [];
       class AnsweringXhr extends PendingXhr {
@@ -501,10 +501,10 @@ describe.each(PATHS)('%s path', (path) => {
       const shown = await tab.navigator.visit('/users/3');
       expect(shown?.props).toEqual({});
       expect(tab.core.once.size).toBe(0);
-      // Not a document change: the other features keep their data — the 409 of signing in or out takes it (no tab sync).
+      // Not a document change: the other features keep their data — the 409 of signing in or out takes it.
     });
 
-    it('counter-check: catches a feature that keeps data outside its slots (a module-level map) and hands it out again', async () => {
+    it('catches a feature that keeps data outside its slots (a module-level map) and hands it out again', async () => {
       const kept = new Map<string, unknown>();
       const leaky = defineFeature('leaky', (host) => {
         host.on('paint', (key, shown) => {
@@ -518,7 +518,7 @@ describe.each(PATHS)('%s path', (path) => {
       expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['leaky: its hook "paint" hands out signed-in data']);
     });
 
-    it('counter-check: catches a feature whose slot does not empty', async () => {
+    it('catches a feature whose slot does not empty', async () => {
       const FORGETFUL = slot('forgetful', () => new Map<string, unknown>(), () => undefined);
       const forgetful = defineFeature('forgetful', (host) => host.on('paint', (key, shown) => (host.document(FORGETFUL).set(key, shown.props), shown)));
       const tab = await stocked({ extra: [forgetful] });

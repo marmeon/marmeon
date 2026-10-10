@@ -84,7 +84,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
   });
 
   describe('Layers — Back, Forward, close', () => {
-    it('counter-check: Back closes the layer, not the page — from memory, the page not rendered again, no deferred props asked again', async () => {
+    it('Back closes the layer, not the page — from memory, the page not rendered again, no deferred props asked again', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = (url) => (url.endsWith('/edit') ? pageResponse(layer('/users/1/edit')) : pageResponse({ ...page('/users/1', { activity: ['signed in'] }, 'users/Show') }));
       const app = boot(win, { ...page('/users/1', { name: 'Ada' }, 'users/Show'), deferredProps: { default: ['activity'] } });
@@ -146,7 +146,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       expect(app.layers().map((reopened) => reopened.page.props)).toEqual([{ version: 2 }]);
     });
 
-    it('counter-check: what is on screen stays in memory, however small the cache — the layer closes by Back, the page from memory', async () => {
+    it('what is on screen stays in memory, however small the cache — the layer closes by Back, the page from memory', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(layer('/users/1/edit'));
       const app = boot(win, page('/users/1', { name: 'Ada' }, 'users/Show'), { cacheSize: 1 });
@@ -206,7 +206,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       expect(edit!.closed).toBe(false);
     });
 
-    it(`counter-check: the depth limit holds — an answer that would open layer ${MAX_LAYER_DEPTH + 1} is shown as a page`, async () => {
+    it(`the depth limit holds — an answer that would open layer ${MAX_LAYER_DEPTH + 1} is shown as a page`, async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       let n = 0;
       win.handler = () => pageResponse(layer(`/step/${++n}`, {}, `steps/Step${n}`));
@@ -372,7 +372,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       expect(win.requests.map((request) => request.url)).toEqual([`${ORIGIN}/users/2`]);
     });
 
-    it('counter-check: signing out with a layer open (409) drops it — Back finds no layer in memory, the server is asked', async () => {
+    it('signing out with a layer open (409) drops it — Back finds no layer in memory, the server is asked', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = (_url, init) =>
         init.method === 'POST'

@@ -286,7 +286,7 @@ export const ONCE_SCOPE_HEADER = 'x-marmeon-once-scope';
 
 /**
  * Why a `409` with {@link LOCATION_HEADER} reloads the page: `version` — a new build, which the client may postpone; anything
- * else (signing in or out, no header at all) is a document change nothing can stop. Only the exact value `version` is
+ * else (`history`: signing in or out, or no header at all) is a document change nothing can stop. Only the exact value `version` is
  * cancelable; `ClearClientHistory` overwrites it on every 409 it makes.
  */
 export const RELOAD_HEADER = 'x-marmeon-reload';

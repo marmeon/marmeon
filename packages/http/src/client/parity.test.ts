@@ -46,7 +46,7 @@ describe('remembered state — in memory, per history entry', () => {
     expect(remembered().get('q')).toBe('ada');
   });
 
-  it('counter-check: never in history.state — every entry the browser keeps (serialized, written to disk) is scanned', async () => {
+  it('is never in history.state — every entry the browser keeps (serialized, written to disk) is scanned', async () => {
     const { win, navigator, remembered } = tab(page('/users/1'));
     remembered().set('draft', { label: 'MARKER-typed-label' });
     win.handler = () => pageResponse(page('/people', {}, 'pages/People'));
@@ -58,7 +58,7 @@ describe('remembered state — in memory, per history entry', () => {
     for (const entry of win.entries) expect(entry.disk).not.toContain('MARKER');
   });
 
-  it('counter-check: forgotten on a 409 (signing out) — also in an entry a component still holds', async () => {
+  it('is forgotten on a 409 (signing out) — also in an entry a component still holds', async () => {
     const { win, navigator, remembered } = tab(page('/users/1'));
     const held = remembered();
     held.set('draft', 'secret plans');
@@ -99,7 +99,7 @@ describe('remembered state — in memory, per history entry', () => {
     expect(navigator.use(remember).of(navigator.layers[0]!.entry).get('form:user-profile.update')).toEqual({ data: { name: 'Ada X' } });
   });
 
-  it('counter-check: never a password (even when asked), a token, a secret or a card unless named — and never a file', () => {
+  it('keeps no password (even when asked), token, secret or card unless named — and never a file', () => {
     const kept = rememberable(
       {
         name: 'Ada',
@@ -131,7 +131,7 @@ describe('once props — kept by the tab, skipped by the server', () => {
     expect(shown.at(-1)!.props).toEqual({ locales: ['en', 'de'] });
   });
 
-  it('counter-check: a page of another scope (someone else signed in in another tab) drops what was kept — its own value counts', () => {
+  it('a page of another scope (someone else signed in in another tab) drops what was kept — its own value counts', () => {
     const store = new OnceStore();
     store.receive(withLocales('/a', { locales: ['en'] }, 'ada'));
     expect(store.headers()).toEqual({ [ONCE_HEADER]: 'locales', [ONCE_SCOPE_HEADER]: 'ada' });
@@ -142,7 +142,7 @@ describe('once props — kept by the tab, skipped by the server', () => {
     expect(store.receive(withLocales('/c', {}, 'alan')).props).toEqual({ locales: ['de'] });
   });
 
-  it('counter-check: after a scope change nothing of the old scope is named again — the server would trust the new scope', () => {
+  it('after a scope change nothing of the old scope is named again — the server would trust the new scope', () => {
     const store = new OnceStore();
     store.receive({ ...page('/a', { locales: ['en'], countries: ['DE'] }), onceProps: { locales: { key: 'locales' }, countries: { key: 'countries' } }, onceScope: 'ada' });
     // Alan's first page (another tab signed him in) has only the locale list: Ada's countries must not be named under his scope.
@@ -207,7 +207,7 @@ describe('instant visits — the placeholder first, the page when it lands', () 
     expect(win.scrollY).toBe(420);
   });
 
-  it('counter-check: Back during an instant visit cancels it — what the entry shows takes the placeholder’s place, the page never lands', async () => {
+  it('Back during an instant visit cancels it — what the entry shows takes the placeholder’s place, the page never lands', async () => {
     const { win, navigator, renders } = tab(page('/a', {}, 'pages/A'));
     navigator.use(instant); // attached where an instant link renders
     win.handler = () => pageResponse(page('/b', {}, 'pages/B'));
@@ -227,7 +227,7 @@ describe('instant visits — the placeholder first, the page when it lands', () 
     expect(win.entries.map((entry) => entry.url)).toEqual([`${ORIGIN}/a`, `${ORIGIN}/b`]);
   });
 
-  it('counter-check: Back to an entry not in memory during an instant visit — the page left is not shown again under its URL', async () => {
+  it('Back to an entry not in memory during an instant visit — the page left is not shown again under its URL', async () => {
     const { win, navigator, renders } = tab(page('/a', {}, 'pages/A'), { cacheSize: 1 });
     navigator.use(instant); // attached where an instant link renders
     win.handler = () => pageResponse(page('/b', {}, 'pages/B'));
@@ -284,7 +284,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     expect(win.loads).toEqual([`assign ${ORIGIN}/dashboard`]);
   });
 
-  it('counter-check: the 409 of signing in or out is never cancelable — the `version` listener is not even asked', async () => {
+  it('the 409 of signing in or out is never cancelable — the `version` listener is not even asked', async () => {
     const { win, navigator } = tab(page('/users/1'));
     const events: string[] = [];
     navigator.on('version', (event) => {
@@ -297,7 +297,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     expect(win.loads).toEqual(['assign /login']);
   });
 
-  it('counter-check: a 409 without a reason (an older server, a proxy) or with any other value is a document change too', async () => {
+  it('a 409 without a reason (an older server, a proxy) or with any other value is a document change too', async () => {
     for (const reason of [undefined, 'Version', 'version, history', 'history']) {
       const { win, navigator } = tab(page('/users/1'));
       navigator.on('version', (event) => event.preventDefault());
@@ -331,7 +331,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     expect(win.loads).toEqual(['assign /people']);
   });
 
-  it('counter-check: signing out with unsaved changes never asks — the full load wins over the guard', async () => {
+  it('signing out with unsaved changes never asks — the full load wins over the guard', async () => {
     const asked: ConfirmRequest[] = [];
     const { win, navigator } = tab(page('/users/1'), { confirm: async (request) => (asked.push(request), false) });
     navigator.use(guard).add({ message: 'Unsaved changes — leave?' });

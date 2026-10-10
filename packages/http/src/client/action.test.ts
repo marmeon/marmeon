@@ -42,7 +42,7 @@ describe('withActions(navigator).action — requests that do not navigate', () =
     expect(win.requests).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1/links/2`, method: 'DELETE', headers: expect.objectContaining({ [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' }) })]);
     expect(win.requests[0]!.headers[PAGE_HEADER]).toBeUndefined();
     expect(init).toMatchObject({ redirect: 'manual', cache: 'no-store', credentials: 'same-origin' });
-    // Counter-check: an action never pushes (or replaces) a history entry, and renders nothing by itself.
+    // An action never pushes (or replaces) a history entry, and renders nothing by itself.
     expect(JSON.stringify(win.entries)).toBe(entries);
     expect(win.current.url).toBe(`${ORIGIN}/users/1`);
     expect(shown).toEqual([]);
@@ -406,7 +406,7 @@ describe('revalidateOnBack', () => {
     expect(visible().props.profile).toEqual(profile('/users/1', 1).props.profile);
   });
 
-  it('counter-check: a view that declares nothing makes no request on Back', async () => {
+  it('a view that declares nothing makes no request on Back', async () => {
     const { win, navigator } = app({});
     await navigator.visit('/people');
     const requests = win.requests.length;

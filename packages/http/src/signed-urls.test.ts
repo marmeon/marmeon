@@ -30,7 +30,7 @@ describe('UrlSigner', () => {
     expect(signer(KEY).hasValidSignature(absolute)).toBe(true);
   });
 
-  it('counter-checks: a changed parameter, a changed expiry, a signature from another route — all invalid', () => {
+  it('a changed parameter, a changed expiry, a signature from another route — all invalid', () => {
     const url = new URL(signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '60m'), 'http://x');
     const tampered = (change: (url: URL) => void) => {
       const copy = new URL(url);
@@ -81,7 +81,7 @@ describe('UrlSigner', () => {
     expect(signer(KEY).hasValidSignature(url)).toBe(false);
   });
 
-  it('counter-check: signs with a key of its own — an HMAC with APP_KEY itself is not accepted', () => {
+  it('signs with a key of its own — an HMAC with APP_KEY itself is not accepted', () => {
     const path = '/email/verify/7/abc';
     const withAppKey = createHmac('sha256', keyOf(KEY)).update(`${path}?`).digest('hex');
     expect(signer(KEY).hasValidSignature(`${path}?signature=${withAppKey}`)).toBe(false);

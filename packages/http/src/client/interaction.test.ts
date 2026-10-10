@@ -43,7 +43,7 @@ describe('flash messages in the core', () => {
     expect(fired).toEqual(['saved Saved.']);
   });
 
-  it('counter-check: the same message delivered twice (a race of two requests) fires once — by its id', async () => {
+  it('the same message delivered twice (a race of two requests) fires once — by its id', async () => {
     const { win, fired, navigator } = tab(page('/users/1'));
     win.handler = () => pageResponse(withFlash(page('/users/1'), toast('same')));
     await navigator.reload({ only: ['activity'] });
@@ -51,7 +51,7 @@ describe('flash messages in the core', () => {
     expect(fired).toEqual(['same Saved.']);
   });
 
-  it('counter-check: two saves with the same message fire twice (two ids) — no "only when it changed" (Inertia #2783)', async () => {
+  it('two saves with the same message fire twice (two ids) — no "only when it changed" (Inertia #2783)', async () => {
     const { win, fired, navigator } = tab(page('/users/1'));
     let id = 0;
     win.handler = () => pageResponse(withFlash(page('/users/1'), toast(`save-${++id}`)));
@@ -78,7 +78,7 @@ describe('flash messages in the core', () => {
     expect(fired).toEqual(['action Link removed.', 'close Profile saved.']);
   });
 
-  it('counter-check: a prefetch that says messages wait is not shown — the click asks, and its answer brings them (the toast is not lost)', async () => {
+  it('a prefetch that says messages wait is not shown — the click asks, and its answer brings them (the toast is not lost)', async () => {
     const { win, fired, navigator, visible } = tab(page('/users/1'));
     let asked = 0;
     win.handler = (_url, init) => {
@@ -174,7 +174,7 @@ describe.each(PATHS)('the guard on the %s path', (path) => {
       return { asked, confirm: (request: ConfirmRequest) => (asked.push(request), answers.shift() ?? false) };
     };
 
-    it('counter-check: blocks a visit while dirty — Stay sends nothing, Leave goes; after saving it lets the visit through', async () => {
+    it('blocks a visit while dirty — Stay sends nothing, Leave goes; after saving it lets the visit through', async () => {
       const { asked, confirm } = asking([false, true]);
       const { win, navigator, visible } = tab(page('/users/1/edit'), undefined, { confirm });
       win.handler = (url) => pageResponse(page(new URL(url).pathname));
@@ -206,7 +206,7 @@ describe.each(PATHS)('the guard on the %s path', (path) => {
       expect(win.requests).toHaveLength(4);
     });
 
-    it('counter-check: Back while dirty — the core goes forward again, asks, and Leave does the Back after all', async () => {
+    it('Back while dirty — the core goes forward again, asks, and Leave does the Back after all', async () => {
       const { asked, confirm } = asking([false, true]);
       const { win, navigator, visible } = tab(page('/users/1'), undefined, { confirm });
       win.handler = () => pageResponse(page('/users/1/edit', {}, 'user-profile/Edit'));
@@ -245,7 +245,7 @@ describe.each(PATHS)('the guard on the %s path', (path) => {
       expect(asked).toHaveLength(1);
     });
 
-    it('counter-check: closing the tab or reloading while dirty gets the browser’s question — never after a 409 (signed out, a new build): the server wins', async () => {
+    it('closing the tab or reloading while dirty gets the browser’s question — never after a 409 (signed out, a new build): the server wins', async () => {
       const { asked, confirm } = asking([]);
       const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
       expect(win.unload()).toBe(false);
@@ -262,7 +262,7 @@ describe.each(PATHS)('the guard on the %s path', (path) => {
 });
 
 describe('confirm', () => {
-  it('counter-check: a no sends nothing — a visit, an action', async () => {
+  it('a no sends nothing — a visit, an action', async () => {
     const { win, navigator } = tab(page('/users/1'));
     win.handler = () => pageResponse(page('/users/1'));
     win.confirmAnswer = false;
@@ -275,7 +275,7 @@ describe('confirm', () => {
     expect(win.requests).toHaveLength(1);
   });
 
-  it('counter-check: type-to-confirm takes only the exact text — a wrong one (or a bare yes) sends nothing', async () => {
+  it('type-to-confirm takes only the exact text — a wrong one (or a bare yes) sends nothing', async () => {
     const answers: (string | boolean)[] = ['DELET', true, 'delete', 'DELETE'];
     const { win, navigator } = tab(page('/projects/1'), undefined, { confirm: () => answers.shift()! });
     win.handler = () => pageResponse(page('/projects'));

@@ -28,7 +28,7 @@ describe('navigator.use — a feature attaches once per navigator', () => {
     expect(setup).toHaveBeenCalledTimes(1);
   });
 
-  it('counter-check: a hook registered in setup runs once per event, however often the feature is used', async () => {
+  it('a hook registered in setup runs once per event, however often the feature is used', async () => {
     const { navigator } = tab();
     const writes = vi.fn();
     const feature = defineFeature('writes', (host) => void host.on('write', writes));
@@ -192,7 +192,7 @@ describe('the history writer — positions only, never props', () => {
     expect(writer.push).toBe(HistoryWriter.prototype.push);
   });
 
-  it('counter-check: refuses props in development — with what to do instead', () => {
+  it('refuses props in development — with what to do instead', () => {
     const writer = new HistoryWriter(new FakeWindow(`${ORIGIN}/a`));
     expect(() => writer.push(state({ props: { email: 'ada@example.com' } }), '/a')).toThrow(
       '[marmeon] A history entry holds where it is, never what it showed: "props" is no field of it. Keep what a page showed in memory — a slot of the feature (host.entry, host.document) — and register a position a feature needs with host.history.field().',
@@ -200,7 +200,7 @@ describe('the history writer — positions only, never props', () => {
     expect(() => writer.replace(state({ draft: 'secret' }), '/a')).toThrow('"draft" is no field of it');
   });
 
-  it('counter-check: refuses a known field that holds more than a position', () => {
+  it('refuses a known field that holds more than a position', () => {
     const writer = new HistoryWriter(new FakeWindow(`${ORIGIN}/a`));
     expect(() => writer.push(state({ scroll: { x: 0, y: 0, props: { email: 'ada@example.com' } } }), '/a')).toThrow('"scroll" is not a position');
     expect(() => writer.push(state({ url: { email: 'ada@example.com' } }), '/a')).toThrow('"url" is not a position');

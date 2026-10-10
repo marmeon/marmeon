@@ -26,10 +26,10 @@ export interface Feature<API = unknown> {
   readonly name: string;
   setup(host: FeatureHost): API;
   /**
-   * Where its hooks run among those of the other features: lower first; without one, after all that have one. Then in the
-   * order the features were attached. The core's own: guard 1 (it sees a Back first, and may stop it), prefetch 2 (a page
-   * fetched ahead is known before an instant visit decides on its placeholder), instant 3, layers 4, optimistic 5, actions 6,
-   * islands 7, revalidateOnBack 8; the History fallback and view transitions 0 (they see a Back/Forward before anyone takes it).
+   * Where its hooks run among those of the other features: lower first; without one, after all that have one; then in the
+   * order the features were attached. The guard comes before the features that take a visit (it sees a Back first, and may
+   * stop it); the hook API, the History fallback and view transitions come at 0 (they see a visit or a Back/Forward before
+   * anyone takes it).
    */
   readonly order?: number;
 }

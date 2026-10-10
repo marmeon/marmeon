@@ -46,7 +46,7 @@ describe('createPoll', () => {
     poll.stop();
   });
 
-  it('counter-check: pauses while the tab is hidden — and catches up when it is shown again', async () => {
+  it('pauses while the tab is hidden — and catches up when it is shown again', async () => {
     const document = new FakeDocument();
     const run = vi.fn(async () => {});
     const poll = createPoll(run, 1000, { document });

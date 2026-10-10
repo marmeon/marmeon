@@ -44,7 +44,7 @@ describe('the navigator on the Navigation API — only its own navigations', () 
     expect(win.navigation!.currentEntry.getState()).toMatchObject({ component: 'pages/Show', url: '/b' });
   });
 
-  it('counter-check: a plain link, a plain GET form and another site stay the browser’s — not intercepted, the document loads', async () => {
+  it('a plain link, a plain GET form and another site stay the browser’s — not intercepted, the document loads', async () => {
     const { win, navigator, visible } = tab();
     await navigator.visit('/b');
     const requests = win.requests.length;
@@ -63,7 +63,7 @@ describe('the navigator on the Navigation API — only its own navigations', () 
     expect(visible().url).toBe('/b');
   });
 
-  it('counter-check: Back to an entry of an earlier document (a full load came in between) is the browser’s — never even tried', async () => {
+  it('Back to an entry of an earlier document (a full load came in between) is the browser’s — never even tried', async () => {
     const { win, navigator } = tab();
     await navigator.visit('/b');
     // A full load since: the entries before are another document's — same origin, with the navigator's state.
@@ -130,7 +130,7 @@ describe('the navigator on the Navigation API — only its own navigations', () 
 });
 
 describe('the guard on the Navigation API', () => {
-  it('counter-check: Back right after a click is cancelled — the URL never changes; asked once, Leave goes a task later', async () => {
+  it('Back right after a click is cancelled — the URL never changes; asked once, Leave goes a task later', async () => {
     const { asked, confirm } = asking(false, true);
     const { win, navigator, visible } = tab('/users/1', { confirm });
     await navigator.visit('/users/1/edit');
@@ -156,7 +156,7 @@ describe('the guard on the Navigation API', () => {
     stop();
   });
 
-  it('counter-check: without an activation (after a session restore) Back goes, and comes back at once to the entry it left — by the browser’s key', async () => {
+  it('without an activation (after a session restore) Back goes, and comes back at once to the entry it left — by the browser’s key', async () => {
     const first = tab('/a');
     await first.navigator.visit('/b');
     await first.navigator.visit('/c');

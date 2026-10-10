@@ -78,7 +78,7 @@ describe('RedirectResult', () => {
     expect(new RedirectResult('/home').intended().toResponse(request(), router).headers.get('location')).toBe('/home'); // no session
   });
 
-  it('counter-check: an intended URL pointing elsewhere is never followed (open redirect)', () => {
+  it('an intended URL pointing elsewhere is never followed (open redirect)', () => {
     for (const evil of ['//evil.test/phish', '/\\evil.test', 'https://evil.test/', '/\tevil', 'javascript:alert(1)', '', 42]) {
       expect(isLocalPath(evil), String(evil)).toBe(false);
       const flasher = { flash: () => {}, pull: () => evil, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };

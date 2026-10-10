@@ -21,7 +21,8 @@ const ISLAND_RULE =
 /**
  * Whether the current request may leave anything behind — per request (scoped). An island's request is read-only: it runs
  * beside and after the page, so a write to the session, cookies or work after the response would race the page's own
- * requests, or, streamed with the page, never reach the browser. Every writer asks {@link permit} first.
+ * requests, or, streamed with the page, never reach the browser. Every writer — the session, the cookie jar, `AfterResponse` —
+ * asks {@link permit} first.
  *
  * In development and tests a write throws a {@link ReadOnlyViolation}; in production it is dropped and logged.
  */

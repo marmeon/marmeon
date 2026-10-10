@@ -445,7 +445,6 @@ export class LayerStack implements LayerHost {
     const leaving = this.#core.scroll.current();
     this.#core.scroll.cancelSave();
     const top = this.top();
-    // The entry being left keeps where it was scrolled to.
     this.#core.scroll.set(top, leaving);
     if (wasTop) this.#core.history.replace(this.stateOf(top, leaving) ?? entry(this.#core.page, top, leaving), this.#core.window.location.href);
     const below = this.#below(at + 1);
