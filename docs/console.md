@@ -294,8 +294,9 @@ The lint sees what an import says, not the file it resolves to. The `marmeon()` 
 every import of client code, also through a helper in between, and fails the build with the file and the line. The preset shows
 the common case in the editor first.
 
-The preset also lets an event class carry `readonly #event = true`, which `make:event` writes: the field is never read, and it
-makes the class a type of its own, so the lint does not warn about it. The [events](events.md#defining-events) page explains why.
+The preset also turns off the warning for unused private class members, in every class. That lets an event class carry
+`readonly #event = true`, which `make:event` writes: the field is never read, and it makes the class a type of its own. The
+[events](events.md#defining-events) page explains why. A private member your own classes no longer use is not reported either.
 
 `--boundaries` adds a second rule: a module imports another module only through its entry, `#modules/<name>`. The
 [modules](modules.md#a-modules-public-api) page explains it. Without the flag, nothing about the structure of your modules is

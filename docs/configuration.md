@@ -29,6 +29,10 @@ The variables come from three places, and a later one wins over an earlier one:
 2. `.env.{NODE_ENV}` on top of it, for example `.env.test` while the tests run.
 3. The real environment of the process: the shell, the container, the service manager.
 
+An empty value counts as unset, also in a later place: `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=` in the process or in `.env.test`
+gives the variable's default, not the value an earlier file sets. Only `NODE_ENV` has its own rule, in
+[where `NODE_ENV` comes from](#where-node_env-comes-from).
+
 A new app has three such files:
 
 | File | In git | What it holds |
