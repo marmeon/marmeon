@@ -1,5 +1,5 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
-import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
+import { CompiledQuery, RawNode, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, type SchemaMetadata } from './metadata.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
 
@@ -261,8 +261,7 @@ export class MarmeonDriver implements Driver {
       }
     } else {
       await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(depth)}`));
-      // A schema change inside the savepoint is undone.
-      this.#context.metadata?.invalidate();
+      this.#undone(connection);
     }
   }
 
@@ -270,8 +269,9 @@ export class MarmeonDriver implements Driver {
     return this.#driver.savepoint!(...args);
   }
 
-  rollbackToSavepoint(...args: Parameters<NonNullable<Driver['rollbackToSavepoint']>>): Promise<void> {
-    return this.#driver.rollbackToSavepoint!(...args);
+  async rollbackToSavepoint(...args: Parameters<NonNullable<Driver['rollbackToSavepoint']>>): Promise<void> {
+    await this.#driver.rollbackToSavepoint!(...args);
+    this.#undone(args[0]);
   }
 
   releaseSavepoint(...args: Parameters<NonNullable<Driver['releaseSavepoint']>>): Promise<void> {
@@ -328,9 +328,21 @@ export class MarmeonDriver implements Driver {
    * transaction's own uncommitted view: not fresh until then.
    */
   #ran(connection: DatabaseConnection, query: CompiledQuery, metadata: SchemaMetadata): void {
+    // A savepoint rolled back by hand (`sql\`rollback to savepoint …\``, a repository bound with using(trx)).
+    if (RawNode.is(query.query) && ROLLBACK_TO_SAVEPOINT.test(query.sql)) return this.#undone(connection);
     if (!changesSchema(query.query)) return;
     metadata.invalidate();
     if ((this.#depth.get(connection) ?? 0) > 0) metadata.hold(connection);
+  }
+
+  /**
+   * A savepoint on `connection` was rolled back. Only when its transaction changed the schema may the loaded view hold what was
+   * just undone — a plain rollback (a tryInsert() on a taken value) must not cost the next query a reload, which would take
+   * measurably longer than the path where nothing was taken.
+   */
+  #undone(connection: DatabaseConnection): void {
+    const { metadata } = this.#context;
+    if (metadata?.holds(connection)) metadata.invalidate();
   }
 
   async #connecting<T>(open: () => Promise<T>): Promise<T> {
@@ -348,6 +360,7 @@ export class MarmeonDriver implements Driver {
 }
 
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
+const ROLLBACK_TO_SAVEPOINT = /^\s*rollback\s+to\s+savepoint\b/i;
 
 /** How long a query that needs the schema metadata waits for another connection's open schema change (a migration) to end. */
 const SCHEMA_CHANGE_WAIT_MS = 10_000;

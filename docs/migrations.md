@@ -286,8 +286,9 @@ A secret column is written like any other, but:
 - a query reads it only with `secret(eb, 'password')`, in the one place that needs it. A query that names it otherwise, or reads the
   table's whole row as one value (`eb.table('users')` in a function), is refused before it is sent;
 - a subquery or a common table expression that reads it with `secret()` passes it on as a secret column: the query around it asks
-  with `secret()` again. That holds through a union, which lines its parts up by position, and a recursive common table
-  expression, whose every column then counts as secret. A [relation](queries.md#relations-and-secret-columns) never loads one;
+  with `secret()` again. That holds through a union, which lines its parts up by position, and a common table expression that
+  refers to itself (with or without `RECURSIVE`), whose every column then counts as secret — the expressions of one `with` clause
+  are checked as a whole, whatever their order. A [relation](queries.md#relations-and-secret-columns) never loads one;
 - a subquery that selects it in a `where()` is refused too, although its value stays in the database. Filter on a key instead:
   `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`.
 

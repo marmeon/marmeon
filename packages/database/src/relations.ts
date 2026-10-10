@@ -320,7 +320,11 @@ export class RelationsPlugin implements KyselyPlugin {
 
   /** The query checked for secret columns, with its relations as JSON — while compiling, or on the connection after loading. */
   transform(node: RootOperationNode, queryId: QueryId): RootOperationNode {
-    if (this.#done.has(node)) return node;
+    if (this.#done.has(node)) {
+      // Run again (the same builder, after a sibling of its query id): the last compile of the id is this one's, not the sibling's.
+      this.#lastShapes.set(queryId, this.#shapes.get(node) ?? new Map());
+      return node;
+    }
     const spelled = guardSecrets(node, this.#metadata);
     const relations = hasPlaceholder(node, RELATIONS);
     const transformed = relations || spelled.size > 0 || hasPlaceholder(node, SECRET) ? new RelationTransformer(this.#driver, spelled).transformNode(node, queryId) : node;

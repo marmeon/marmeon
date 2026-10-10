@@ -103,6 +103,11 @@ export class SchemaMetadata {
     }
   }
 
+  /** Whether an open transaction on `connection` changed the schema — what it rolls back may undo that change. */
+  holds(connection: object): boolean {
+    return this.#changing.has(connection);
+  }
+
   /** The transaction on `connection` ended — committed or rolled back: load again. */
   release(connection: object): void {
     if (!this.#changing.delete(connection)) return;

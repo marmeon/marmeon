@@ -161,7 +161,8 @@ class Guard {
     try {
       for (const item of items) if (item) sources.push(this.#source(item));
       const { returning, with: _, ...rest } = node as typeof node & { returning?: ReturningNode };
-      if (node.kind === 'MergeQueryNode') delete (rest as { using?: unknown }).using; // a source, not a part to scan
+      // A merge's using clause is a source; only its `on` is a part to scan.
+      if (node.kind === 'MergeQueryNode') (rest as { using?: unknown }).using = node.using?.on;
       this.#scan(Object.values(rest));
       if (returning) this.#selections(returning, returning.selections, sources, false);
     } finally {
@@ -170,30 +171,78 @@ class Guard {
     }
   }
 
-  /** Registers a statement's common table expressions, each seeing the ones before it (and a recursive one itself). */
+  /**
+   * Registers a statement's common table expressions. Every one is known before any body is checked — a body may refer to a
+   * later one — and the bodies are checked again until no column gains a secret. One whose body reaches its own name, directly
+   * or through another of the clause, is recursive (keyword or not): since recursion can move a value from column to column,
+   * once any of its columns carries a secret, every column does.
+   */
   #with(node: WithNode | undefined): boolean {
     if (!node) return false;
     const ctes = new Map<string, Output>();
     this.#ctes.push(ctes);
+    const bodies: { name: string; expression: SelectQueryNode; named: readonly string[] | undefined; self: Output; mentions: ReadonlySet<string> }[] = [];
     for (const { name, expression } of node.expressions) {
       const table = name.table.table.identifier.name;
       const named = name.columns?.map((column) => column.column.name);
-      // A recursive one refers to itself while it is checked: as columns that carry nothing yet (see below).
-      ctes.set(table, { names: named ?? [], secret: new Set(), known: named !== undefined });
       if (!SelectQueryNode.is(expression)) {
         // A statement with `returning` as a common table expression: its columns are not followed — it cannot be read from.
         this.#scan(expression);
         ctes.set(table, { names: [], secret: new Set(), known: false, untyped: true });
         continue;
       }
-      const output = this.#select(expression);
-      const names = named ?? output.names;
-      let secret = new Set(output.names.flatMap((own, at) => (own !== undefined && output.secret.has(own) && names[at] !== undefined ? [names[at]!] : [])));
-      // Recursion can move a value from column to column: once any column of a recursive one carries a secret, every column does.
-      if (node.recursive && secret.size) secret = new Set(names.filter((column) => column !== undefined));
-      ctes.set(table, { names, secret, known: output.known && names.length === output.names.length });
+      // Its own name inside its body: a recursive one's columns carry nothing yet; one named like a table of the migrations is
+      // that table (Postgres reads the table there unless the clause is recursive).
+      const self = this.#table(table) ?? { names: named ?? [], secret: new Set(), known: named !== undefined };
+      ctes.set(table, self);
+      bodies.push({ name: table, expression, named, self, mentions: tablesIn(expression) });
     }
-    return true;
+    const recursive = new Set(bodies.filter((body) => reaches(body.name, body.name, bodies)).map((body) => body.name));
+    for (let pass = 0; ; pass++) {
+      let changed = false;
+      let failed: unknown;
+      for (const { name, expression, named, self } of bodies) {
+        const previous = ctes.get(name)!;
+        let output: Output;
+        ctes.set(name, self);
+        try {
+          output = this.#select(expression);
+        } catch (error) {
+          // A later one may still be unknown: once nothing changes any more, the refusal stands.
+          failed ??= error;
+          continue;
+        } finally {
+          ctes.set(name, previous);
+        }
+        const names = named ?? output.names;
+        // Grows from pass to pass; the first starts from nothing (`self` is only how its own body sees it).
+        const secret = new Set(previous === self ? [] : previous.secret);
+        output.names.forEach((own, at) => {
+          if (own !== undefined && output.secret.has(own) && names[at] !== undefined) secret.add(names[at]!);
+        });
+        if (recursive.has(name) && secret.size) for (const column of names) if (column !== undefined) secret.add(column);
+        const known = output.known && names.length === output.names.length;
+        if (secret.size === previous.secret.size && known === previous.known && names.length === previous.names.length && names.every((column, at) => column === previous.names[at])) continue;
+        ctes.set(name, { names, secret, known });
+        changed = true;
+      }
+      if (!changed) {
+        if (failed) throw failed;
+        return true;
+      }
+      if (pass > bodies.length * 2) {
+        throw new Error(
+          `${this.#relation ?? 'This query'} has common table expressions that refer to one another in a way the check for secret columns cannot ` +
+            'settle. Name the columns of each, and read a secret one with secret(eb, …). See docs/migrations.md#secret-columns.',
+        );
+      }
+    }
+  }
+
+  /** A table of the migrations as what it outputs: its columns, the secret ones among them — `undefined` for one nobody migrated. */
+  #table(name: string): Output | undefined {
+    const kinds = this.#metadata.kinds.get(name);
+    return kinds ? { names: [...kinds.keys()], secret: this.#metadata.secrets.get(name) ?? new Set(), known: true } : undefined;
   }
 
   #source(item: OperationNode): Source {
@@ -253,8 +302,9 @@ class Guard {
             columns++;
             continue;
           }
-          // A source that carries a secret has known columns (a table of the migrations, or a select that asked by name).
-          for (const column of source.names!) {
+          // Of unknown width (a select that asked for a secret next to a view's selectAll()): nothing to spell out, so its row is refused.
+          if (!source.names) this.#wholeRow(source);
+          for (const column of source.names) {
             if (column === undefined) this.#refuse(`a column of ${source.ref} without a name, next to a secret one`);
             if (source.secret.has(column)) continue;
             kept.push(SelectionNode.create(ReferenceNode.create(ColumnNode.create(column), TableNode.create(source.ref))));
@@ -365,7 +415,10 @@ class Guard {
   #row(name: string): void {
     const source = this.#resolve(name);
     if (source.untyped) this.#untyped(source);
-    if (source.secret.size === 0) return;
+    if (source.secret.size) this.#wholeRow(source);
+  }
+
+  #wholeRow(source: Source): never {
     throw new Error(
       `${this.#relation ?? 'This query'} reads the whole row of ${source.table ?? source.ref}, secret columns included — name the columns it ` +
         'needs, and read a secret one with secret(eb, …) in a query of its own. See docs/queries.md#relations-and-secret-columns.',
@@ -408,6 +461,32 @@ interface MutableOutput {
   readonly names: (string | undefined)[];
   readonly secret: Set<string>;
   known: boolean;
+}
+
+/** Every table name a node mentions — a source, a qualifier, a whole row — at any depth (more rather than fewer, on purpose). */
+function tablesIn(node: unknown, into = new Set<string>()): Set<string> {
+  if (node === null || typeof node !== 'object') return into;
+  if (TableNode.is(node as OperationNode)) into.add((node as TableNode).table.identifier.name);
+  else for (const value of Object.values(node)) if (value !== null && typeof value === 'object') tablesIn(value, into);
+  return into;
+}
+
+/** Whether the common table expression `from` reaches `to` through the mentions of the clause's expressions. */
+function reaches(from: string, to: string, bodies: readonly { name: string; mentions: ReadonlySet<string> }[]): boolean {
+  const seen = new Set<string>();
+  const pending = [from];
+  while (pending.length) {
+    const body = bodies.find((candidate) => candidate.name === pending.pop());
+    if (!body) continue;
+    for (const name of body.mentions) {
+      if (name === to) return true;
+      if (!seen.has(name)) {
+        seen.add(name);
+        pending.push(name);
+      }
+    }
+  }
+  return false;
 }
 
 /** The name a selection gets in the result. */

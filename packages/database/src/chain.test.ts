@@ -382,8 +382,11 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     const passThrough: KyselyPlugin = { transformQuery: ({ node }) => ({ ...node }), transformResult: async ({ result }) => result };
     for (const target of [db, db.withPlugin(passThrough)]) {
       const base = target.selectFrom('posts').where('id', '=', ids.first);
+      const plain = base.select(['title', sql<string>`'plain text'`.as('author')]);
+      expect(await plain.execute()).toEqual([{ title: 'First', author: 'plain text' }]);
       expect((await base.select('title').with('author').execute())[0]!.author).toEqual(expect.objectContaining({ is_admin: true }));
-      expect(await base.select(['title', sql<string>`'plain text'`.as('author')]).execute()).toEqual([{ title: 'First', author: 'plain text' }]);
+      // The same builder again, after its sibling: still its own (empty) shapes.
+      expect(await plain.execute()).toEqual([{ title: 'First', author: 'plain text' }]);
       // Not converted as a relation: SQLite's connection parses JSON text of an expression (not of a text column) as it is.
       const [json] = await base.select(['title', sql<string>`'{"is_admin":1}'`.as('author')]).execute();
       expect(json!.author).toEqual(driver === 'sqlite' ? { is_admin: 1 } : '{"is_admin":1}');
@@ -637,6 +640,9 @@ describe.each(drivers)('loading relations on %s', (driver) => {
         ).rejects.toThrow(union);
         // Without a secret, a view's columns need not be known.
         expect(await any.selectFrom('v_probe').selectAll().execute()).toEqual([{ name: 'v', token2: 'w' }]);
+        // A select of unknown width that carries a secret cannot be spelled out: its whole row is refused, readably.
+        const wide = any.with('k', (q) => q.selectFrom('v_probe').innerJoin('api_keys', 'api_keys.name', 'v_probe.name').selectAll('v_probe').select((e) => [secret(e as never, 'token' as never)]));
+        await expect(wide.selectFrom('k').selectAll().execute()).rejects.toThrow(row('This query', 'k'));
       } finally {
         await sql`drop view v_probe`.execute(db);
       }
@@ -647,6 +653,13 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       const rows = await merge().returningAll('api_keys').execute();
       expect(rows).toEqual([{ id: expect.any(Number), user_id: ids.ada, name: 'cli' }]);
       await expect(merge().returning('api_keys.token' as never).execute()).rejects.toThrow(unasked('api_keys.token'));
+      // A subquery in the `on` of its using clause is checked like one in a where.
+      const on = db
+        .mergeInto('api_keys')
+        .using('users', (join) => join.onRef('users.id', '=', 'api_keys.user_id').on('api_keys.token' as never, 'in', (eb) => eb.selectFrom('api_keys as z').select('z.token' as never)))
+        .whenMatched()
+        .thenUpdateSet({ name: 'cli' });
+      await expect(on.execute()).rejects.toThrow(unasked('api_keys.token'));
     });
 
     it('are refused in a selectAll() of nothing but secret columns — never an empty select', async () => {
@@ -674,6 +687,59 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       } finally {
         await fresh.destroy();
       }
+    });
+
+    it('are followed through a common table expression that refers to a later one — the clause is checked as a whole, in any order', async () => {
+      // `a` reads `b`, defined after it: SQLite allows that in any WITH, Postgres under WITH RECURSIVE. The check comes first on both.
+      const forward = (target: Kysely<FixtureTables>, keyword = true) => {
+        const a = ((q: Kysely<any>) => q.selectFrom('b').select((e) => ['b.user_id', secret(e as never, 'b.token' as never)])) as never;
+        const b = ((q: Kysely<any>) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)])) as never;
+        const any = target as unknown as Kysely<any>;
+        return (keyword ? any.withRecursive('a(user_id, name)', a) : any.with('a(user_id, name)', a)).with('b', b) as unknown as Kysely<FixtureTables & { a: { user_id: number; name: string } }>;
+      };
+      await expect(forward(db).selectFrom('a').select('name').execute()).rejects.toThrow(unasked('a.name'));
+      await expect(forward(db, false).selectFrom('a').select('name').execute()).rejects.toThrow(unasked('a.name'));
+      await expect(
+        forward(db)
+          .selectFrom('posts')
+          .select('title')
+          .with('comments', (c: any) => c.innerJoin('a', 'a.user_id', 'comments.user_id').select(['body', 'a.name']))
+          .execute(),
+      ).rejects.toThrow(refused(`with('comments')`, 'a.name'));
+      expect(await forward(db).selectFrom('a').select((e) => [secret(e, 'a.name' as never)]).execute()).toEqual([{ name: 'the-secret-token' }]);
+      // Read in `a` without asking: refused where it happens.
+      const plain = (db as unknown as Kysely<any>)
+        .withRecursive('a(user_id, name)', ((q: Kysely<any>) => q.selectFrom('b').select(['b.user_id', 'b.token'])) as never)
+        .with('b', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]));
+      await expect(plain.selectFrom('a').select('user_id').execute()).rejects.toThrow(unasked('b.token'));
+    });
+
+    it('are carried through a common table expression that refers to itself without the RECURSIVE keyword — SQLite runs it as recursive', async () => {
+      const k = (target: Kysely<FixtureTables>) =>
+        (target as unknown as Kysely<any>).with('k(user_id, name, token, depth)', ((q: Kysely<any>) =>
+          q
+            .selectFrom('api_keys')
+            .select((e) => ['user_id', 'name', secret(e as never, 'token' as never), sql<number>`0`.as('depth')])
+            .unionAll((eb) => eb.selectFrom('k').select(['k.user_id', 'k.token as name', 'k.token', sql<number>`k.depth + 1`.as('depth')]).where('k.depth', '<', 1))) as never,
+        ) as unknown as Kysely<FixtureTables & { k: { user_id: number; name: string; token: string; depth: number } }>;
+      await expect(k(db).selectFrom('k').select('name').execute()).rejects.toThrow(unasked('k.name'));
+      await expect(
+        k(db).selectFrom('posts').select('title').with('comments', (c) => c.innerJoin('k', 'k.user_id', 'comments.user_id').select(['body', 'k.name'])).execute(),
+      ).rejects.toThrow(refused(`with('comments')`, 'k.name'));
+    });
+
+    it('take a common table expression named like a table for the table inside its own body — Postgres reads the table there', async () => {
+      const any = db as unknown as Kysely<any>;
+      // Without RECURSIVE, Postgres resolves the name inside the body to the table: the token would be copied into the expression.
+      if (driver === 'pgsql') {
+        const bare = any.withoutPlugins().with('api_keys', (q) => q.selectFrom('api_keys').select('token')).selectFrom('api_keys').select('token');
+        expect(await bare.execute()).toEqual([{ token: 'the-secret-token' }]);
+      }
+      await expect(any.with('api_keys', (q) => q.selectFrom('api_keys').select(['user_id', 'token'])).selectFrom('api_keys').select('user_id').execute()).rejects.toThrow(
+        unasked('api_keys.token'),
+      );
+      const asked = any.with('api_keys', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e as never, 'token' as never)]));
+      await expect(asked.selectFrom('api_keys').select('token').execute()).rejects.toThrow(unasked('api_keys.token'));
     });
 
     it('are refused in a relation of the free helpers too', async () => {

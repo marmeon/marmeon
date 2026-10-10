@@ -173,6 +173,61 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     expect(metadata.fresh).toBe(true);
   });
 
+  it('keeps what it loaded when a savepoint without a schema change rolls back — and loads again when one with a change does', async () => {
+    const fresh = cold();
+    const metadata = fresh.metadata();
+    const read = () => fresh.get<any>().selectFrom('users').select('id').execute();
+    await read();
+    await fresh.transaction(async () => {
+      await read();
+      // The shape of a tryInsert() on a taken address: a savepoint, rolled back — nothing about the schema changed.
+      await expect(
+        fresh.transaction(async () => {
+          await read();
+          throw new Error('undo');
+        }),
+      ).rejects.toThrow('undo');
+      expect(metadata.fresh).toBe(true);
+      await expect(
+        fresh.transaction(async (transaction) => {
+          await (transaction as unknown as Kysely<any>).schema.createTable('scratch').addColumn('id', 'integer').execute();
+          await read(); // the transaction's own view, with the table
+          expect(metadata.kinds.has('scratch')).toBe(true);
+          throw new Error('undo');
+        }),
+      ).rejects.toThrow('undo');
+      expect(metadata.fresh).toBe(false);
+      await read();
+      expect(metadata.kinds.has('scratch')).toBe(false);
+    });
+    await read();
+    expect(metadata.fresh).toBe(true);
+  });
+
+  it('treats a savepoint Kysely rolls back itself the same way', async () => {
+    const fresh = cold();
+    const metadata = fresh.metadata();
+    await fresh.get<any>().selectFrom('users').select('id').execute();
+    const trx = await fresh.get<any>().startTransaction().execute();
+    try {
+      const plain = await trx.savepoint('plain').execute();
+      await plain.selectFrom('users').select('id').execute();
+      await plain.rollbackToSavepoint('plain').execute();
+      expect(metadata.fresh).toBe(true);
+      const ddl = await trx.savepoint('ddl').execute();
+      await ddl.schema.createTable('scratch').addColumn('id', 'integer').execute();
+      await ddl.selectFrom('users').select('id').execute();
+      expect(metadata.kinds.has('scratch')).toBe(true);
+      await ddl.rollbackToSavepoint('ddl').execute();
+      await trx.selectFrom('users').select('id').execute();
+      expect(metadata.kinds.has('scratch')).toBe(false);
+    } finally {
+      await trx.rollback().execute();
+    }
+    await fresh.get<any>().selectFrom('users').select('id').execute();
+    expect(metadata.fresh).toBe(true);
+  });
+
   it('is stale after a schema change outside a transaction — also after an index — not before it ran', async () => {
     const fresh = cold();
     const metadata = fresh.metadata();
@@ -409,6 +464,42 @@ describe('schema metadata, unit', () => {
     open();
     await reloading;
     expect(metadata.fresh).toBe(true);
+  });
+
+  it('sends no catalog query after a savepoint rolled back without a schema change — and loads again after one with it', async () => {
+    const metadata = new SchemaMetadata('sqlite');
+    const sent: string[] = [];
+    const connection: DatabaseConnection = {
+      async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
+        sent.push(query.sql);
+        return { rows: [] };
+      },
+      async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {},
+    };
+    const driver = new MarmeonDriver(
+      { init: async () => {}, acquireConnection: async () => connection, releaseConnection: async () => {}, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, destroy: async () => {} },
+      { name: 'default', target: 'fake', metadata },
+    );
+    const acquired = await driver.acquireConnection();
+    const loaded = sent.length;
+    expect(loaded).toBeGreaterThan(0);
+    await driver.beginTransaction(acquired, {});
+    await driver.beginTransaction(acquired, {});
+    await driver.rollbackTransaction(acquired);
+    await metadata.refresh(connection, acquired);
+    expect(sent.slice(loaded)).toEqual(['savepoint marmeon_savepoint_1', 'rollback to savepoint marmeon_savepoint_1']);
+    expect(metadata.fresh).toBe(true);
+
+    const ddl = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) }).schema.createTable('x').addColumn('id', 'integer').compile();
+    await driver.beginTransaction(acquired, {});
+    await acquired.executeQuery(ddl);
+    await metadata.refresh(connection, acquired); // the transaction's own view
+    const before = sent.length;
+    await driver.rollbackTransaction(acquired);
+    await metadata.refresh(connection, acquired);
+    expect(sent.length - before).toBeGreaterThan(1); // the rollback, then the catalog again
+    await driver.rollbackTransaction(acquired);
+    await driver.releaseConnection(acquired);
   });
 
   it('is stale after a schema change has run — also when it was loaded again while the change was under way', async () => {
