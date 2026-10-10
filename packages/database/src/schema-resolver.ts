@@ -121,10 +121,17 @@ function resolve(node: RootOperationNode, metadata: SchemaMetadata): RootOperati
   return new Resolver(metadata).transformNode(root);
 }
 
-/** A delete with the soft-delete placeholder, on a table with soft deletes: `update … set deleted_at = now where … and deleted_at is null`. */
+/**
+ * A delete with the soft-delete placeholder, on a table with soft deletes: `update … set deleted_at = now where … and deleted_at
+ * is null`. It keeps the table, `with`, `where` and `returning` only — a delete with anything else is refused, never cut down.
+ */
 function softly(node: DeleteQueryNode, metadata: SchemaMetadata): RootOperationNode {
   const table = tableOf(node.from.froms[0]);
   if (!node.where || !table || !metadata.softDeletes.has(table) || !hasPlaceholder(node.where, SOFT_DELETE)) return node;
+  const extra = (['using', 'joins', 'orderBy', 'limit', 'top', 'output', 'explain', 'endModifiers'] as const).filter((part) => node[part] !== undefined);
+  if (node.from.froms.length !== 1 || !TableNode.is(node.from.froms[0]!) || extra.length) {
+    throw new Error(`A soft delete of "${table}" runs as an update of the table by its WHERE; it cannot keep ${extra.length ? extra.join(', ') : 'an alias or a second table'}.`);
+  }
   const update = UpdateQueryNode.create([TableNode.create(table)], node.with);
   return {
     ...update,

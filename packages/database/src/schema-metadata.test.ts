@@ -1,13 +1,16 @@
 import { mkdtempSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import { sql, type Kysely } from 'kysely';
+import { Kysely, sql, SqliteDialect, type CompiledQuery, type DatabaseConnection, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { deriveRelations, introspect } from './introspection.ts';
-import { softDeleteFilter } from './schema-resolver.ts';
+import { MarmeonDriver } from './driver.ts';
+import { SchemaMetadata } from './metadata.ts';
+import { softDelete, softDeleteFilter } from './schema-resolver.ts';
 import { Connections, cursorPaginate, Migrator, Repository } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -105,6 +108,12 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     expect(await comments().delete(kept!.id)).toBe(true);
     expect(await comments().delete(kept!.id)).toBe(false);
     expect(await connections.get<FixtureTables>().selectFrom('comments').select('id').execute()).toHaveLength(2); // both still there, deleted softly
+  });
+
+  it('refuses a soft delete with parts an update by the WHERE would lose', async () => {
+    await expect(connections.get<FixtureTables>().deleteFrom('comments').where(softDelete('comments')).orderBy('id').execute()).rejects.toThrow(
+      'A soft delete of "comments" runs as an update of the table by its WHERE; it cannot keep orderBy.',
+    );
   });
 
   it('resolves two executions of one query built while nothing was loaded', async () => {
@@ -205,7 +214,163 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     await posts.get<any>().schema.alterTable('posts').dropColumn('deleted_at').execute();
     await posts.get<any>().deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
   });
+
+  // Postgres: the migration holds one connection of the pool, a request uses another. The request's query depends on the marks the
+  // migration is changing: it must not be resolved with what was loaded meanwhile — neither the committed view from before the
+  // commit, nor the migration's own view of a transaction that then rolls back.
+  describe.runIf(driver === 'pgsql')('while a migration on another connection of the pool is open', () => {
+    class Posts extends Repository<'posts', FixtureTables> {
+      static table = 'posts' as const;
+    }
+    const pause = () => {
+      let resolve!: () => void;
+      return { done: new Promise<void>((r) => (resolve = r)), resolve: () => resolve() };
+    };
+    const titles = async (db: Kysely<any>) => (await db.selectFrom('posts').select('title').orderBy('title').execute()).map((row) => row.title);
+    const dropSoftDeletes = async (db: Kysely<any>) => {
+      await sql`alter table posts drop column if exists deleted_at`.execute(db);
+      await db.deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
+    };
+
+    it('waits for its commit — the rows it soft-deleted stay hidden, and a delete stays soft', async () => {
+      const app = cold();
+      const db = app.get<any>();
+      const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
+      await db.insertInto('posts').values([{ author_id: ada.id, title: 'old' }, { author_id: ada.id, title: 'new' }]).execute();
+      const newest = await db.selectFrom('posts').select('id').where('title', '=', 'new').executeTakeFirstOrThrow();
+      await db.selectFrom('users').select('id').execute(); // loaded: the request below starts warm
+      const inside = pause();
+      const finish = pause();
+      try {
+        const migration = app.transaction(async (transaction) => {
+          const trx = transaction as unknown as Kysely<any>;
+          await trx.schema.alterTable('posts').addColumn('deleted_at', 'timestamptz').execute();
+          await trx.updateTable('posts').set({ deleted_at: new Date() }).where('title', '=', 'old').execute();
+          await trx.insertInto('schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
+          inside.resolve();
+          await finish.done;
+        });
+        await inside.done;
+        // Outside the migration's call chain: another connection of the pool, which can load the committed view right now.
+        const read = new Posts(app).query().select('title').execute();
+        const deleted = new Posts(app).delete(newest.id);
+        await sleep(100);
+        finish.resolve();
+        await migration;
+        expect((await read).map((row) => row.title)).not.toContain('old'); // 'new' too, if the delete ran first
+        expect(await deleted).toBe(true);
+        expect(await titles(db)).toEqual(['new', 'old']); // both rows are still there: the delete was soft
+      } finally {
+        await dropSoftDeletes(db);
+      }
+    });
+
+    it('waits for its rollback — a mark it dropped and then rolled back still filters', async () => {
+      const app = cold();
+      const db = app.get<any>();
+      const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
+      await db.schema.alterTable('posts').addColumn('deleted_at', 'timestamptz').execute();
+      await db.insertInto('schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
+      await db.insertInto('posts').values([{ author_id: ada.id, title: 'kept' }, { author_id: ada.id, title: 'deleted', deleted_at: new Date() }]).execute();
+      const inside = pause();
+      const finish = pause();
+      try {
+        const migration = app.transaction(async (transaction) => {
+          const trx = transaction as unknown as Kysely<any>;
+          await trx.schema.alterTable('posts').dropColumn('deleted_at').execute();
+          await trx.deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
+          await app.get<any>().selectFrom('users').select('id').execute(); // loads the migration's own view: no soft deletes
+          inside.resolve();
+          await finish.done;
+          throw new Error('the migration failed');
+        });
+        await inside.done;
+        const read = new Posts(app).query().select('title').execute();
+        await sleep(100);
+        finish.resolve();
+        await expect(migration).rejects.toThrow('the migration failed');
+        expect(await read).toEqual([{ title: 'kept' }]);
+      } finally {
+        await dropSoftDeletes(db);
+      }
+    });
+  });
+
+  it('gives up waiting for another connection’s schema change after the limit — with an error, never a guess', async () => {
+    const app = cold();
+    await app.get<any>().selectFrom('users').select('id').execute();
+    const metadata = app.metadata();
+    const migration = {};
+    metadata.hold(migration);
+    try {
+      await expect(metadata.settle({} as never, {}, { limit: 20, name: 'default' })).rejects.toThrow(
+        'A query on the database connection "default" waited 0.02 s for a transaction that changes the schema to end',
+      );
+    } finally {
+      metadata.release(migration);
+    }
+  });
 });
+
+describe('schema metadata, unit', () => {
+  /** A connection whose statements answer no rows — `sql` waits on `gate` when it is that statement. */
+  const fake = (gated?: { sql: string; gate: Promise<void> }): DatabaseConnection => ({
+    async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
+      if (gated && query.sql === gated.sql) await gated.gate;
+      return { rows: [] };
+    },
+    async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {},
+  });
+  const gate = () => {
+    let open!: () => void;
+    return { gate: new Promise<void>((resolve) => (open = resolve)), open: () => open() };
+  };
+
+  it('is not fresh while it loads again — what it had is being replaced', async () => {
+    const metadata = new SchemaMetadata('sqlite');
+    await metadata.refresh(fake());
+    expect(metadata.fresh).toBe(true);
+    metadata.invalidate();
+    const { gate: slow, open } = gate();
+    const reloading = metadata.refresh(fake({ sql: (await firstCatalogQuery()), gate: slow }));
+    expect(metadata.fresh).toBe(false);
+    open();
+    await reloading;
+    expect(metadata.fresh).toBe(true);
+  });
+
+  it('is stale after a schema change has run — also when it was loaded again while the change was under way', async () => {
+    const metadata = new SchemaMetadata('sqlite');
+    const { gate: slow, open } = gate();
+    const ddl = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) }).schema.createTable('x').addColumn('id', 'integer').compile();
+    const connection = fake({ sql: ddl.sql, gate: slow });
+    const driver = new MarmeonDriver(
+      { init: async () => {}, acquireConnection: async () => connection, releaseConnection: async () => {}, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, destroy: async () => {} },
+      { name: 'default', target: 'fake', metadata },
+    );
+    const acquired = await driver.acquireConnection();
+    const running = acquired.executeQuery(ddl);
+    await metadata.refresh(fake()); // another connection loads meanwhile — before the table exists
+    expect(metadata.fresh).toBe(true);
+    open();
+    await running;
+    expect(metadata.fresh).toBe(false);
+    await driver.releaseConnection(acquired);
+  });
+});
+
+/** The first statement a load sends (to hold it there). */
+async function firstCatalogQuery(): Promise<string> {
+  const sent: string[] = [];
+  await new SchemaMetadata('sqlite').refresh({
+    async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
+      sent.push(query.sql);
+      return { rows: [] };
+    },
+    async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {},
+  });
+  return sent[0]!;
+}
 
 describe('SQLite connections', () => {
   it('enforce foreign keys', async () => {

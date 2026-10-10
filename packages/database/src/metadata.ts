@@ -36,6 +36,10 @@ export class SchemaMetadata {
   #loading: Promise<void> | undefined;
   /** Connections whose open transaction changed the schema: what was loaded may be their own, uncommitted view. */
   readonly #changing = new Set<object>();
+  /** The connection the loaded metadata was read on — its view, while it holds a schema change. */
+  #loadedOn: object | undefined;
+  /** Resolved once no connection holds a schema change. */
+  #idle: { promise: Promise<void>; resolve: () => void } | undefined;
 
   constructor(driver: Driver) {
     this.#driver = driver;
@@ -92,23 +96,74 @@ export class SchemaMetadata {
   hold(connection: object): void {
     this.#changing.add(connection);
     this.#stale = true;
+    if (!this.#idle) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => (resolve = r));
+      this.#idle = { promise, resolve };
+    }
   }
 
   /** The transaction on `connection` ended — committed or rolled back: load again. */
   release(connection: object): void {
-    if (this.#changing.delete(connection)) this.#stale = true;
+    if (!this.#changing.delete(connection)) return;
+    this.#stale = true;
+    if (this.#changing.size === 0) {
+      this.#idle?.resolve();
+      this.#idle = undefined;
+    }
   }
 
-  /** Loads what is stale, on `connection` — called by the driver whenever it hands out a connection. */
-  async refresh(connection: DatabaseConnection): Promise<void> {
+  /**
+   * Loads what is stale, on `connection` — called by the driver whenever it hands out a connection. `owner` is the connection as
+   * the driver knows it (`connection` may be a view of it).
+   */
+  async refresh(connection: DatabaseConnection, owner: object = connection): Promise<void> {
     // A load already under way may predate the latest change: wait for it, then look again.
     while (this.#loading || this.#stale) {
-      this.#loading ??= this.#load(connection).finally(() => (this.#loading = undefined));
+      this.#loading ??= this.#load(connection, owner).finally(() => (this.#loading = undefined));
       await this.#loading;
     }
   }
 
-  async #load(connection: DatabaseConnection): Promise<void> {
+  /**
+   * Makes what is loaded safe to resolve a query of `owner` with. While a transaction on another connection has changed the
+   * schema, nothing loaded is: neither that transaction's uncommitted view nor the committed one it is about to replace — so
+   * this waits until it ends, at most `limit` ms, then throws. The connection holding the change resolves with its own view.
+   */
+  async settle(connection: DatabaseConnection, owner: object, { limit, name }: { limit: number; name: string }): Promise<void> {
+    const deadline = Date.now() + limit;
+    for (;;) {
+      if (this.#idle && !this.#changing.has(owner)) {
+        await this.#ended(this.#idle.promise, deadline, limit, name);
+        continue;
+      }
+      await this.refresh(connection, owner);
+      if (this.#idle && !this.#changing.has(owner)) continue;
+      if (this.#changing.has(owner) && this.#loadedOn !== owner) {
+        this.#stale = true; // loaded on another connection: not this transaction's view
+        continue;
+      }
+      return;
+    }
+  }
+
+  async #ended(idle: Promise<void>, deadline: number, limit: number, name: string): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), Math.max(0, deadline - Date.now()))));
+    try {
+      if ((await Promise.race([idle, late])) === 'late') {
+        throw new Error(
+          `A query on the database connection "${name}" waited ${limit / 1000} s for a transaction that changes the schema to end ` +
+            '(a migration in this process, on another connection), and it did not. The query depends on what the migrations marked ' +
+            '(soft deletes, timestamps), which that transaction is changing, so it was not sent. See docs/migrations.md#migrating-a-running-app.',
+        );
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async #load(connection: DatabaseConnection, owner: object): Promise<void> {
     // Stale from here on only if a schema change happens while loading.
     this.#stale = false;
     try {
@@ -135,6 +190,7 @@ export class SchemaMetadata {
       this.#problems = derived.problems;
       this.#softDeletes = new Set(facts.markers.filter((m) => m.marker === 'soft_deletes').map((m) => m.table));
       this.#timestamps = new Set(facts.markers.filter((m) => m.marker === 'timestamps').map((m) => m.table));
+      this.#loadedOn = owner;
       this.#loaded = true;
     } catch (error) {
       this.#stale = true;

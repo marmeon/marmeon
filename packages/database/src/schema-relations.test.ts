@@ -62,6 +62,21 @@ describe('deriving relations from foreign keys', () => {
     expect(derived.relations.has('users')).toBe(false);
   });
 
+  it('refuses sibling foreign keys when only some have inverse names — whichever column is named', () => {
+    const message = "posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')";
+    for (const named of ['author_id', 'editor_id']) {
+      const derived = deriveRelations(
+        facts({
+          foreignKeys: [fk('posts', 'author_id', 'users'), fk('posts', 'editor_id', 'users', true)],
+          markers: [{ table: 'posts', column: named, marker: 'inverse', value: 'x_posts' }],
+        }),
+      );
+      expect(derived.problems).toEqual([message]);
+      expect(derived.relations.has('users')).toBe(false); // no way back at all, not half of it
+      expect([...derived.relations.get('posts')!.keys()]).toEqual(['author', 'editor']);
+    }
+  });
+
   it('links the two tables of a pivot (exactly two foreign keys, unique together) both ways', () => {
     const derived = deriveRelations(
       facts({ foreignKeys: [fk('post_tag', 'tag_id', 'tags'), fk('post_tag', 'post_id', 'posts')], uniques: new Map([['post_tag', [['post_id', 'tag_id']]]]) }),
@@ -145,6 +160,17 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
       { table: 'posts', column: 'editor_id', marker: 'inverse', value: 'edited_posts' },
     ]);
     expect(found.columns.get('post_stats')).toEqual(['post_id', 'views']);
+  });
+
+  it('leaves views out — on every driver', async () => {
+    await sql`create view post_titles as select id, title from posts`.execute(connections.get());
+    try {
+      const found = await introspect(run, driver);
+      expect(found.columns.has('post_titles')).toBe(false);
+      expect(found.types.has('post_titles')).toBe(false);
+    } finally {
+      await sql`drop view post_titles`.execute(connections.get());
+    }
   });
 
   it('derives the fixture’s relations from them', async () => {

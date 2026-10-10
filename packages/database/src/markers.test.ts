@@ -18,6 +18,7 @@ describe.each(drivers)('schema markers on %s', (driver) => {
     ['users', '', 'soft_deletes', null],
     ['users', '', 'timestamps', null],
   ];
+  const inverse = ['notes', 'author_id', 'inverse', 'written_drafts'];
 
   beforeAll(async () => ({ connections, close } = await freshConnections(driver)));
   afterAll(() => close());
@@ -26,29 +27,30 @@ describe.each(drivers)('schema markers on %s', (driver) => {
     await migrator().migrate();
     expect(MARKERS_TABLE).toBe('schema_markers');
     expect((await connections.get<any>().introspection.getTables()).map((t) => t.name)).toContain('schema_markers');
-    // After the last migration: `drafts` renamed to `notes`, `writer_id` to `author_id`, `deleted_at` dropped.
-    expect(await markers()).toEqual([
-      ['notes', '', 'timestamps', null],
-      ['notes', 'author_id', 'inverse', 'written_drafts'],
-      ...users,
-    ]);
+    // After the last migration: `drafts` renamed to `notes`, `writer_id` to `author_id`, `deleted_at` dropped, `updated_at` and a
+    // new `deleted_at` renamed — and on Postgres `author_id` dropped.
+    expect(await markers()).toEqual([...(driver === 'pgsql' ? [] : [inverse]), ...users]);
+  });
+
+  it('forgets an inverse name with its foreign key column, and knows it again with the column', async () => {
+    await migrator().rollback({ steps: 1 });
+    expect(await markers()).toEqual([inverse, ...users]);
+  });
+
+  it('forgets a table-level marker when its column is renamed — renaming it back does not bring it back', async () => {
+    await migrator().rollback({ steps: 1 });
+    expect(await markers()).toEqual([inverse, ...users]); // no timestamps, no soft deletes on `notes`
   });
 
   it('brings a table-level marker back with its column', async () => {
     await migrator().rollback({ steps: 1 });
-    expect(await markers()).toEqual([
-      ['notes', '', 'soft_deletes', null],
-      ['notes', '', 'timestamps', null],
-      ['notes', 'author_id', 'inverse', 'written_drafts'],
-      ...users,
-    ]);
+    expect(await markers()).toEqual([['notes', '', 'soft_deletes', null], inverse, ...users]);
   });
 
   it('follows a renamed table and a renamed column', async () => {
     await migrator().rollback({ steps: 1 });
     expect(await markers()).toEqual([
       ['drafts', '', 'soft_deletes', null],
-      ['drafts', '', 'timestamps', null],
       ['drafts', 'writer_id', 'inverse', 'written_drafts'],
       ...users,
     ]);

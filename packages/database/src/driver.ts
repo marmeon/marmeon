@@ -167,7 +167,7 @@ export class MarmeonDriver implements Driver {
       throw error;
     }
     try {
-      await this.#context.metadata?.refresh(unlogged(connection));
+      await this.#context.metadata?.refresh(unlogged(connection), connection);
     } catch (error) {
       await this.releaseConnection(connection);
       throw error;
@@ -195,7 +195,7 @@ export class MarmeonDriver implements Driver {
 
   /** The transaction's connection, for a query (or a savepoint) inside it. */
   async #join(connection: DatabaseConnection): Promise<DatabaseConnection> {
-    await this.#context.metadata?.refresh(unlogged(connection));
+    await this.#context.metadata?.refresh(unlogged(connection), connection);
     // Counted once it is handed out (a failed refresh is never released).
     const holders = this.#holders.get(connection);
     if (holders !== undefined) this.#holders.set(connection, holders + 1);
@@ -308,7 +308,7 @@ export class MarmeonDriver implements Driver {
       if (deferred) {
         hooks.deferred = (query) => deferred.deferred(query);
         hooks.resolve = async (query, own) => {
-          await metadata?.refresh(own);
+          await metadata?.settle(own, serial!, { limit: SCHEMA_CHANGE_WAIT_MS, name: this.#context.name });
           return deferred.resolve(query);
         };
       }
@@ -344,6 +344,9 @@ export class MarmeonDriver implements Driver {
 }
 
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
+
+/** How long a query that needs the schema metadata waits for another connection's open schema change (a migration) to end. */
+const SCHEMA_CHANGE_WAIT_MS = 10_000;
 
 /** The adapter as it is, but claiming several connections — so Kysely leaves the locking to {@link MarmeonDriver}. */
 export function multipleConnections(adapter: DialectAdapter): DialectAdapter {

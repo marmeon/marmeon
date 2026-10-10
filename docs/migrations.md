@@ -111,6 +111,17 @@ back in line. The [repositories and queries](queries.md#table-types) page explai
 
 A rollback needs the file of every migration it undoes. One whose file is gone stops it with an error that names the migration.
 
+### Migrating a running app
+
+The app reads what the migrations marked, such as [soft deletes](#timestamps-and-soft-deletes), from the database, and loads it
+again after each schema change it makes itself. While a migration's transaction is open in the app's own process, a query on
+another connection that depends on those marks waits for the migration to end, for at most 10 seconds, and then fails with an error
+instead of guessing. Two cases remain:
+
+- A query built before the migration's first schema change and sent after it uses the schema it was built with.
+- A process that did not run the migration does not see it. Restart the app's processes after `marmeon migrate` ran from another
+  one, as a deployment does when it runs `migrate --force` before the new version takes requests.
+
 > [!WARNING]
 > `migrate:fresh` drops **every** table of the database, also tables that no migration created, and every table of the other
 > connections that migrations run on. Use it on a development database only.
@@ -329,8 +340,9 @@ A one-relation, a belongsTo or a hasOne, may find no row. A hasOne always may. A
 
 ### Naming the way back
 
-Two foreign keys to the same table would give that table two relations of one name. Name each one with `.inverse()`, after
-`constrained()` and before `.nullable()`:
+Two foreign keys to the same table would give that table two relations of one name. So when a table has two or more foreign
+keys to one table, each of them names its way back with `.inverse()`, after `constrained()` and before `.nullable()`. Naming only
+some of them is not enough:
 
 ```ts title="modules/blog/migrations/2026_10_08_080000_create_posts_table.ts"
 import { defineMigration } from '@marmeon/database';
@@ -348,8 +360,8 @@ export default defineMigration({
 });
 ```
 
-Now `posts` has `author` and `editor`, and `users` has `authored_posts` and `edited_posts`. Without the two names, `db:types`
-stops and says what to do:
+Now `posts` has `author` and `editor`, and `users` has `authored_posts` and `edited_posts`. Without both names, `db:types`
+stops and says what to do, and the running app gives `users` neither relation:
 
 ```text
 posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')

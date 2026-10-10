@@ -74,7 +74,8 @@ export interface Introspected extends SchemaFacts {
 export const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Reads columns, single-column foreign keys, unique column sets and the migrator's markers. SQLite lists foreign keys in
+ * Reads the columns of tables (views are left out on both drivers), single-column foreign keys, unique column sets and the
+ * migrator's markers. SQLite lists foreign keys in
  * reverse order and keeps an INTEGER PRIMARY KEY in `pragma_table_info` only; Postgres keeps the blueprint's unique indexes
  * in `pg_index` only (not in `pg_constraint`) — so both are read where they are, and everything is sorted.
  */
@@ -86,7 +87,9 @@ export async function introspect(run: CatalogQuery, driver: Driver): Promise<Int
       : await run<ColumnRow>(`select table_name, column_name,
           case when data_type = 'numeric' then 'numeric(' || coalesce(numeric_precision, 0) || ', ' || coalesce(numeric_scale, 0) || ')' else udt_name end as type,
           is_nullable = 'YES' as nullable
-          from information_schema.columns where table_schema = current_schema() order by table_name, ordinal_position`);
+          from information_schema.columns c where table_schema = current_schema()
+            and exists (select 1 from information_schema.tables t where t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE')
+          order by table_name, ordinal_position`);
   const types = new Map<string, Map<string, string>>();
   const nullable = new Set<string>();
   for (const row of columnRows) {
@@ -197,7 +200,7 @@ const COUNT = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'e
  * The relations the foreign keys describe: a belongsTo named after the column without `_id`; its inverse named after the
  * table (or the column's `.inverse()`), a hasOne when the column alone is unique, a hasMany otherwise; and for a table with
  * exactly two foreign keys to two other tables that are unique together, a belongsToMany each way, named after the other
- * table. Two foreign keys to one table need inverse names; a relation never takes a name twice or hides a column.
+ * table. Two or more foreign keys to one table each need an inverse name; a relation never takes a name twice or hides a column.
  */
 export function deriveRelations(facts: SchemaFacts): DerivedRelations {
   const problems: string[] = [];
@@ -246,7 +249,8 @@ export function deriveRelations(facts: SchemaFacts): DerivedRelations {
     );
     const inverse = inverses.get(`${key.table}\0${key.column}`);
     const siblings = keys.filter((other) => other.table === key.table && other.references === key.references);
-    if (!inverse && siblings.length > 1) {
+    // Two or more foreign keys to one table: every one names its way back, or none of them gets one.
+    if (siblings.length > 1 && siblings.some((sibling) => !inverses.has(`${sibling.table}\0${sibling.column}`))) {
       if (siblings[0] === key) {
         problems.push(
           `${key.table} has ${COUNT[siblings.length] ?? siblings.length} foreign keys to ${key.references} (${siblings.map((s) => s.column).join(', ')}) — name the inverse relations: .inverse('…')`,
