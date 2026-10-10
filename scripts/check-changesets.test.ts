@@ -39,10 +39,7 @@ const anchors = {
   '0.2.0': ['medium-a-change-of-020'],
 } as const satisfies typeof UPGRADING_ANCHORS;
 
-/**
- * The problems found against those wanted — both in the message: Vitest shortens the lists in its own ("[ Array(1) ]"), and a
- * Gegenprobe that takes a rule out reads which problem went missing.
- */
+/** The problems found against those wanted — both in the message: Vitest shortens the lists in its own ("[ Array(1) ]"). */
 function expectProblems(problems: readonly string[], wanted: readonly string[]): void {
   const list = (items: readonly string[]) => (items.length === 0 ? 'nothing' : items.join(' | '));
   expect(problems, `found: ${list(problems)} — wanted: ${list(wanted)}`).toEqual(wanted);

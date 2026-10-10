@@ -16,8 +16,7 @@
  * `compose.yaml` — only its own containers (`marmeon-*`), never another project's. The Postgres and Redis suites run
  * one after the other, never at once: they share their test databases.
  *
- * A new check is one more entry in `parts`. Never the Gegenproben (`pnpm gegen`, E188): they patch the working tree —
- * `scripts/ci.test.ts` keeps them out.
+ * A new check is one more entry in `parts`.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';

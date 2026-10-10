@@ -7,11 +7,6 @@ import { checkDriverRule, frameworkPackages } from './packages.ts';
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 describe('pnpm run ci (E111)', () => {
-  it('never runs the Gegenproben — they patch the working tree (E188: pnpm gegen is run by hand, not by CI)', () => {
-    const gegen = parts.filter((part) => /gegen/.test(`${part.name} ${part.command.join(' ')}`)).map((part) => part.name);
-    expect(gegen).toEqual([]);
-  });
-
   it('runs check:source', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
   });
@@ -49,7 +44,7 @@ describe('check:source — the old name is gone (E196)', () => {
       { path: 'UPGRADING.md', text: `**${hint}**` },
       { path: 'docs/versioning.md', text: hint },
     ]);
-    // The hits as the message too: Vitest shortens the list in its own, and a Gegenprobe reads which file went missing.
+    // The hits as the message too: Vitest shortens the list in its own.
     expect(hits, `found: ${hits.join(' | ') || 'nothing'}`).toEqual([`README.md:1: ${hint}`, `UPGRADING.md:1: **${hint}**`, `docs/versioning.md:1: ${hint}`]);
     // The company name does not cover another mention on its line.
     expect(oldNameHits([{ path: 'LICENSE', text: `${old}Code and ${old}Core` }])).toHaveLength(1);

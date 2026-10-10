@@ -29,8 +29,7 @@
  *   5. **The docs speak to their readers** (W11 step 10, E214, E215): the pages under `docs/`, the packages' READMEs (their npm
  *      cards), the root `README.md` and the policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) carry no
  *      decision number (`E` and two or three digits — a hex value, an exponent, `E2E` or `E.164` is none) and no comparison with
- *      another framework; the pages, the cards and the upgrade guide no wave reference (`W9`, `W10.4`, `Wave 9`) —
- *      `CONTRIBUTING.md` names the Gegenproben's paths (`scripts/gegen/w10/…`) and steps (`'W9.4'`); and no page under `docs/` the
+ *      another framework; the pages, the cards and the upgrade guide no wave reference (`W9`, `W10.4`, `Wave 9`); and no page under `docs/` the
  *      pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline). What every new app
  *      copies — the starter's template and the packages' stubs — carries no decision number, no wave reference, no personal date
  *      ("Max 07.10.") and no comparison with another framework — and so does what a reader of one of the apps sees first and
@@ -45,7 +44,7 @@
  *      as rule 5's patterns find them. Only strings count (read with oxc-parser): comments, names and regular expressions are the
  *      maintainers' and keep their decision numbers.
  *
- * Later rules join this script (one script, several rules, each with its test and Gegenprobe).
+ * Later rules join this script (one script, several rules, each with its test).
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -227,7 +226,6 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
   {
     what: 'a wave reference',
     pattern: /\b(?:W\d+(?:\.\d+)?|[Ww]ave \d+)\b/,
-    // Not CONTRIBUTING.md: it names the Gegenproben's paths (`scripts/gegen/w10/…`) and steps (`step: 'W9.4'`).
     files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES, APP_TEXTS],
     why: 'the docs describe the framework as it is, not when it changed — UPGRADING.md says that, by version',
   },

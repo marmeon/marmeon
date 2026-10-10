@@ -29,7 +29,6 @@
     "image:smoke": "node scripts/image-smoke.ts",
     "docs:image": "node scripts/docs-image.ts",
     "bench": "node scripts/bench/index.ts",
-    "gegen": "node scripts/gegen/run.ts",
     "csp:probe": "node scripts/csp-probe.ts",
     "check-changesets": "node scripts/check-changesets.ts",
     "release:version": "changeset version",

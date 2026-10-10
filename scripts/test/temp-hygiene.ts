@@ -4,7 +4,7 @@
  * left a `marmeon-*` entry in it, with the list. Then the directory goes, whatever it holds.
  *
  * A directory per run instead of counting `os.tmpdir()` before and after: other processes write there at the same time — a second
- * `pnpm test` (another checkout, `pnpm gegen --repo`), `pnpm bench` (its worktrees under `marmeon-bench/`), `pack:smoke`, the system — so
+ * `pnpm test` (another checkout), `pnpm bench` (its worktrees under `marmeon-bench/`), `pack:smoke`, the system — so
  * a shared count would blame this run for their entries, or miss its own ones they removed. Inside the run's directory every entry is
  * this run's.
  *

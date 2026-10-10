@@ -74,7 +74,6 @@ package store, the registry and Docker — without them they are reported as ski
 - **Tests leave nothing behind:** every run gets its own temporary directory (`TMPDIR`), and `pnpm test` fails with a list when a
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
   removes them when the test, or the file, is done.
-- **A measure comes with its Gegenproben** ([below](#gegenproben)).
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
 - **A change an app can notice** gets a changeset ([Changesets and releases](#changesets-and-releases)) and, from the first
   release on, an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — in the next version's section, in
@@ -94,7 +93,6 @@ apps/docs         the documentation as a Marmeon app: docs/*.md and the policies
 docs              the documentation's pages, in the order apps/docs/docs.config.ts lists them
 scripts/ci.ts     pnpm run ci — its 15 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
-scripts/gegen     pnpm gegen — the Gegenproben of each step: a measure taken out, its test red for its reason (never a gate)
 scripts/test      the test suite's temporary directory per run and tempDir() — the repository's own, not exported by a package
                   (pnpm test fails when a test leaves an entry behind)
 deploy/docs       the docs' Compose file and Caddyfile (one server)
@@ -112,7 +110,6 @@ pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or lefto
 pnpm pack:smoke        # create-marmeon from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-marmeon (a test fails while they differ)
 pnpm changeset         # a changeset for your change (below); pnpm check-changesets checks the release rules
-pnpm gegen w10/s05     # the Gegenproben of a step (below): every case red for its reason; --control: all green without the patches
 pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome under style-src 'self': 0 CSP violations (never a gate)
 ```
 
@@ -193,12 +190,12 @@ checked over every file of the repository — tracked, or new and not ignored. E
 
 1. **The old name is gone**: no file and no path says the framework's name from before 0.1.0, in any letter case.
    Allowed is the company name only (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`):
-   nothing was released under the old name, so there is no rename hint. Code that must spell the old name — a test, a
-   Gegenprobe — builds it from parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
+   nothing was released under the old name, so there is no rename hint. Code that must spell the old name — a test — builds it
+   from parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
 2. **No app installs a validation engine**: apps, the starter's template, the `make:auth` stubs, scripts and what the `make:*`
    generators write validate with `rules` of `@marmeon/validation` — no file outside a package's `src/` imports Valibot (in code or in
    a generator's template text), and no `package.json` of an app or of the template lists it. Inside `packages/<name>/src/` Valibot
-   stays an internal engine. A test or Gegenprobe that must write the import builds the name from parts as well.
+   stays an internal engine. A test that must write the import builds the name from parts as well.
 3. **`NODE_ENV` is checked positively**: no `!== 'production'` / `!= 'production'` (any quotes, either side), no
    `NODE_ENV === 'production'` and no `import.meta.env.DEV` / `!import.meta.env.PROD` (Vite derives them from `NODE_ENV ===
    'production'`: a build with any other value, or none, is `DEV`) in code people run or copy — a package's code
@@ -213,8 +210,8 @@ checked over every file of the repository — tracked, or new and not ignored. E
 5. **The docs speak to their readers**: the pages under `docs/`, the packages' READMEs, the root `README.md` and the three
    policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) name no decision number (an `E` and two or three
    digits as a word of its own — a hex value, an exponent or `E2E` is none) and compare Marmeon with no other framework; the
-   pages, the READMEs and `UPGRADING.md` name no wave of the maintainers' plan (a `W` and a number, or "wave" and a number) —
-   this file may, for the Gegenproben's paths and steps; and no page under `docs/` carries the placeholder marker as a line of
+   pages, the READMEs and `UPGRADING.md` name no wave of the maintainers' plan (a `W` and a number, or "wave" and a number);
+   and no page under `docs/` carries the placeholder marker as a line of
    its own ([Writing documentation](#writing-documentation)) — every page is written. What every new app copies, the starter's
    template (`packages/create-marmeon/template/`) and the packages' stubs (`packages/<name>/stubs/`: the `make:auth` module, the
    migrations of `make:*-table`), carries no decision number, no wave, no personal date of the plan ("Max 07.10.") and no
@@ -228,90 +225,7 @@ checked over every file of the repository — tracked, or new and not ignored. E
    pages reach every app. Only strings count, read with oxc-parser: comments, names and regular expressions are for
    maintainers and may keep their decision numbers.
 
-A new rule joins the same script, with its test and its Gegenprobe.
-
-## Gegenproben
-
-A test that passes proves little until it fails without the thing it tests. A *Gegenprobe* (counter-check) takes a measure out —
-a patch — and shows the test turning red **for the measure's reason**. They live in the repository, one file per step of a wave
-(`scripts/gegen/w10/s05-queue.ts`, `scripts/gegen/w9/s04-live.ts`) and run with `pnpm gegen` — never as part of `pnpm run ci`
-(they patch the working tree; `scripts/ci.test.ts` keeps them out):
-
-```sh
-pnpm gegen --list                 # waves, steps, cases
-pnpm gegen w10/s05                # one step: every case must be red, for its reason
-pnpm gegen w10/s05 G1 G2          # some cases
-pnpm gegen w10                    # the whole wave, in step order
-pnpm gegen w10 --control          # without the patches: every case must be green
-pnpm gegen w9 --control           # an older wave's control stays green — its anchors move with the code
-pnpm gegen w10 --repo <checkout>  # against another checkout (a fresh git worktree)
-pnpm gegen w10/s05 G1 --verbose   # print every run's output
-```
-
-### The format
-
-A step's file default-exports `defineGegenproben({ step, cases })` (`scripts/gegen/define.ts` checks it when it loads: unique ids, a
-reason for every red case, pairs that exist, patches inside the repository). A case names its patches, its run and its reason — a
-real one, from `scripts/gegen/w9/s04-live.ts`:
-
-```ts
-import { defineGegenproben } from '../define.ts';
-
-const HUB = 'packages/live/src/hub.ts';
-const SESSION_LIMIT = { file: HUB, find: '    if ((this.#sessions.get(request.scope)?.size ?? 0) >= this.#perSession) {', replace: '    if (false) {' };
-
-export default defineGegenproben({
-  step: 'W9.4',
-  cases: [
-    {
-      id: 'G1',
-      title: 'no limit per session: the 17th stream of one session opens (200 instead of 429)',
-      patch: [SESSION_LIMIT],
-      run: { vitest: 'packages/live/src/live.test.ts', name: 'holds at most LIVE_MAX_STREAMS_PER_SESSION streams of one session' },
-      expect: /expected 200 to be 429/,
-      masks: 'G2',                                       // its masking pair: the atomic count (G2), each red on its own
-    },
-    // { id: 'G1c', …, expectGreen: true }              — a masking probe: one measure alone still holds
-    // { id: 'G9', …, run: { command: ['pnpm', 'run', 'ci', '--only', 'pack:check'] }, expect: /orphaned/ }   — a command instead of Vitest
-  ],
-});
-```
-
-- **`patch`** — `{ file, find, replace }`, relative to the repository's root; `dist/` files too (after `pnpm build` — what
-  `pack:smoke` packs). Each `find` must occur exactly once (after the case's earlier patches of the same file), or nothing is
-  patched. A case's patches are applied all or none and taken back in reverse order — also on Ctrl-C; afterwards every file has its
-  old hash and `git status` is unchanged, or the runner stops (exit 3).
-- **`run`** — `{ vitest: file(s), name }` runs the repository's `pnpm test` with the name as a filter: plain text, the runner escapes
-  it for `-t` (a regular expression); Vitest matches it against the full name, the describes joined with ` > `
-  (`'every page > runs no inline script'`). Or `{ command: [...] }`: any command in the root, exit 0 is green. Both take `env` and a
-  `timeout` (default 10 minutes).
-- **`expect`** — the reason, matched against the failures' messages (the lines before the stack) or the command's output — not a
-  matcher's name: Vitest says *expected 1 to be 2*, not `toBe`, and shortens long values with "…" (cut the reason to their start, or
-  give the assertion a message of its own: `expect(problem, problem)`).
-
-### Reading the result
-
-Each case ends as one of: **red** (the reason matches) · **GREEN** — the measure has no effect, or the test does not test it · **red
-for another reason** — does not count · **0 tests** — the name matched nothing (never red, never green) · **anchor problem** — a
-`find` that is missing or not unique. The summary counts "n of m red (the reason matches), k masking probes as expected"; the exit code
-is 0 when every case is as expected, 1 when one is not, 2 for a usage error, 3 when the working tree could not be put back exactly
-(stop and look: `git status`), 130/143 after Ctrl-C/SIGTERM (the patches are taken back first).
-
-- **Masking:** two measures that hide each other (a session lock and a cookie lock, a projection and a props filter) get a scenario
-  each — `masks: 'G2'` pairs them, and both must be red on their own; a masking probe (`expectGreen: true`) shows that one measure
-  alone still covers the case, and is counted apart.
-- **The control** (`--control`) runs every case without its patch: all green, or the Gegenprobe proves nothing.
-- **`--repo <checkout>`** patches and runs another checkout — the acceptance of a wave runs the whole wave in a fresh `git worktree`
-  (no `.env`, `storage/` or `.marmeon/`), with and without `--control`.
-- **Anchors age:** a later change can move a case's `find`; the anchor check says which, before anything is written. A change that
-  moves an anchor of an older wave updates it in the same commit — `pnpm gegen w9 --control` and `pnpm gegen w10 --control` stay
-  green. A case red for another (correct) reason after a later step — read the message, then correct the reason, never just count
-  "red". A case whose measure is gone is removed, and a comment in its file says why.
-- **Masked by the repository:** a dependency check inside the monorepo stays green (workspace links, devDependencies) — patch the
-  packed manifest or `dist/` and run `pack:smoke`, with a masking scenario where the app installs the library itself.
-  The old name and the validation engine in a patch or a reason are built from parts or written `[v]alibot` (`check:source` reads
-  `scripts/` too).
-- Never edit the repository while `pnpm gegen` runs, and never run it beside `pnpm test:pgsql`/`test:redis` (shared databases).
+A new rule joins the same script, with its test.
 
 ## Dependencies of drivers
 
