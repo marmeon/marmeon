@@ -118,14 +118,14 @@ export default defineGegenproben({
     {
       id: 'G5',
       title: 'a terminate hook\'s failure as String(error): the connection URL\'s password reaches the log line in clear',
-      patch: [{ file: 'packages/server/src/kernel.ts', find: "logger.error('A terminate hook failed', { exception: redactText(String(error)) })", replace: "logger.error('A terminate hook failed', { exception: String(error) })" }],
+      patch: [{ file: 'packages/server/src/kernel.ts', find: "logger.error('A terminate hook failed', { exception: redactor.text(String(error)) })", replace: "logger.error('A terminate hook failed', { exception: String(error) })" }],
       run: kernel('logs a failing terminate hook'),
       expect: /a terminate hook's failure logged its message in clear: expected .*s3cretPW/,
     },
     {
       id: 'G5b',
       title: 'the exception handler\'s report unmasked: an error\'s message (the log line\'s text) carries the URL password',
-      patch: [{ file: 'packages/http/src/errors.ts', find: 'this.#logger.error(redactText(message), { exception: name, stack: redactText(stack) });', replace: 'this.#logger.error(message, { exception: name, stack });' }],
+      patch: [{ file: 'packages/http/src/errors.ts', find: 'this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });', replace: 'this.#logger.error(message, { exception: name, stack });' }],
       run: kernel('hides unexpected errors from clients'),
       expect: /the report logged a URL password in clear: expected .*hunter3/,
     },

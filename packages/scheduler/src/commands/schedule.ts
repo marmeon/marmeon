@@ -1,5 +1,5 @@
 import type { CommandInput } from 'marmeon';
-import { Clock, environment, Logger } from '@marmeon/core';
+import { Clock, environment, Logger, Redactor } from '@marmeon/core';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute } from '../time.ts';
@@ -44,11 +44,13 @@ export class ScheduleWorkCommand {
   readonly #scheduler: Scheduler;
   readonly #clock: Clock;
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
 
-  constructor(scheduler: Scheduler, clock: Clock, logger: Logger) {
+  constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor) {
     this.#scheduler = scheduler;
     this.#clock = clock;
     this.#logger = logger.child({ channel: 'schedule' });
+    this.#redactor = redactor;
   }
 
   async handle({ options, output }: CommandInput): Promise<number> {
@@ -76,7 +78,7 @@ export class ScheduleWorkCommand {
     output.line(
       `Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''} — in ${environment.describe()}`,
     );
-    const worker = new ScheduleWorker(this.#scheduler, this.#clock, this.#logger);
+    const worker = new ScheduleWorker(this.#scheduler, this.#clock, this.#logger, this.#redactor);
     try {
       await worker.run({ signal: stop.signal });
       if (!(await worker.drain(stopTimeout))) {

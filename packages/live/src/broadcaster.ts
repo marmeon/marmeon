@@ -1,4 +1,4 @@
-import { afterCommit, outsideTransaction, redactText, token, type Application, type Logger } from '@marmeon/core';
+import { afterCommit, outsideTransaction, Redactor, token, type Application, type Logger } from '@marmeon/core';
 import { channels, messageBase, trace } from '@marmeon/core/diagnostics';
 import { checkedChannel } from '@marmeon/http';
 import type { LiveBackend } from './backend.ts';
@@ -41,6 +41,8 @@ export interface LiveBroadcasterDependencies {
   readonly recorder?: BroadcastRecorder | undefined;
   /** The app its hints are reported for on the `live.refresh` channel (E118). */
   readonly app?: Application | undefined;
+  /** Masks a failure's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
+  readonly redactor?: Redactor | undefined;
 }
 
 const refreshes = channels.tracing('live.refresh');
@@ -51,13 +53,15 @@ export class LiveBroadcaster implements Broadcaster {
   readonly #logger: Logger;
   readonly #recorder: BroadcastRecorder | undefined;
   readonly #app: Application | undefined;
+  readonly #redactor: Redactor;
 
-  constructor({ backend, connection, logger, recorder, app }: LiveBroadcasterDependencies) {
+  constructor({ backend, connection, logger, recorder, app, redactor }: LiveBroadcasterDependencies) {
     this.#backend = backend;
     this.#connection = connection !== undefined && CONNECTION_ID.test(connection) ? connection : undefined;
     this.#logger = logger;
     this.#recorder = recorder;
     this.#app = app;
+    this.#redactor = redactor ?? new Redactor();
   }
 
   async refresh(channel: string, options: RefreshOptions = {}): Promise<void> {
@@ -79,7 +83,7 @@ export class LiveBroadcaster implements Broadcaster {
           else await send();
         } catch (error) {
           // The change is committed; its hint is lost — a tab that reconnects later still compares sequences (E104).
-          this.#logger.error(`A live hint on "${name}" could not be sent`, { channel: name, exception: redactText(String(error)) });
+          this.#logger.error(`A live hint on "${name}" could not be sent`, { channel: name, exception: this.#redactor.text(String(error)) });
         }
       }),
     );

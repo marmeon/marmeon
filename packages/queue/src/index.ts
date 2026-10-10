@@ -1,4 +1,4 @@
-import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Logger, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
@@ -103,6 +103,7 @@ export class QueueServiceProvider implements ServiceProvider {
         cache: () => connections.cache(),
         events: connections.events,
         app: c.make(Application),
+        redactor: c.make(Redactor),
       });
     });
   }

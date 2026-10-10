@@ -4,13 +4,13 @@ import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, defineRoutes, HttpServiceProvider, type PageObject } from '@marmeon/http';
 import { ServerServiceProvider, startServer } from '@marmeon/server';
-import { SessionServiceProvider } from '@marmeon/session';
+import { SessionEndings, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { LiveBackend, LiveServiceProvider, MemoryLiveBackend } from './index.ts';
+import { Broadcaster, LiveBackend, LiveHub, LiveServiceProvider, MemoryLiveBackend } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -124,4 +124,42 @@ describe('the memory backend and marmeon start --workers (W9 step 4)', () => {
   it('one process starts with it — also with the workers\' mark left in its environment', () => {
     expect(run('single')).toEqual({ code: 0, output: 'booted' });
   }, 30_000);
+});
+
+describe("the live package's error lines", () => {
+  it("mask a failing backend's error with the app's Redactor — the session cookie it quotes stays out of the log", async () => {
+    const logged: unknown[] = [];
+    const capture: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => void logged.push({ message, context }), child: () => capture };
+    const leaky = new Error('the backend refused Cookie: a=1; marmeon_session=s3ss10nvalue');
+    const memory = new MemoryLiveBackend();
+    const failing: LiveBackend = {
+      refresh: () => Promise.reject(leaky),
+      end: () => Promise.reject(leaky),
+      seqs: memory.seqs.bind(memory),
+      listen: () => Promise.reject(leaky),
+      close: memory.close.bind(memory),
+    };
+    const app = await createApplication({
+      root,
+      discover: false,
+      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory' },
+      // The session package adds its cookie's name to the app's Redactor at boot.
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, LiveServiceProvider],
+      override: (container) => {
+        container.instance(LiveBackend, failing);
+        container.instance(Logger, capture);
+      },
+    });
+    await app.container.make(Broadcaster).refresh('users.1');
+    expect((await app.container.make(LiveHub).open({ channels: ['users.1'], scope: 'scope-of-adas-session', connection: 'tab-a-0001' })).status).toBe(503);
+    await app.container.make(SessionEndings).ended('scope-of-adas-session');
+    expect(JSON.stringify(logged), JSON.stringify(logged)).not.toContain('s3ss10nvalue');
+    const exception = 'Error: the backend refused Cookie: [redacted]; marmeon_session=[redacted]';
+    expect(logged).toEqual([
+      { message: 'A live hint on "users.1" could not be sent', context: { channel: 'users.1', exception } },
+      { message: 'A live stream could not start (the live backend failed)', context: { exception } },
+      { message: 'The streams of a session that ended could not be closed (the live backend failed)', context: { exception } },
+    ]);
+    await app.shutdown();
+  });
 });

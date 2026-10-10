@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, currentLogContext, Logger, Redactor, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, listen, Logger, Redactor, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -10,7 +10,7 @@ import { checkTimeouts } from './connections.ts';
 import type { QueueDriver } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { QueueFake } from './fake.ts';
-import { Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
+import { JobQueued, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
 import { JobRegistry, QueueSetupError } from './registry.ts';
 import { JobPayloadError, JobRunner } from './runner.ts';
 import { JobStuckError, Worker } from './worker.ts';
@@ -357,6 +357,21 @@ describe('the worker', () => {
     expect(failed!.exception).toContain('the store refused shop_session=[redacted]');
     expect(failed!.exception, failed!.exception).not.toMatch(/s3ss10nvalue|pr0pvalue/);
     expect(logged, JSON.stringify(logged)).toEqual(['Failed test.leaky: the store refused shop_session=[redacted]']);
+  });
+
+  it("logs a failing listener of a dispatch masked by the app's Redactor — the session cookie its error quotes stays out", async () => {
+    const logged: string[] = [];
+    const capture: Logger = { debug() {}, info() {}, warn: (message) => logged.push(message), error: (message) => logged.push(message), child: () => capture };
+    class LeakyListener {
+      handle() {
+        throw new Error('the audit log refused Cookie: a=1; marmeon_session=s3ss10nvalue');
+      }
+    }
+    await using application = await app({ logger: capture, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobQueued, LeakyListener)] }] });
+    // What the session package does at boot: the session cookie's name joins the app's Redactor.
+    application.container.make(Redactor).addKeys('marmeon_session');
+    await application.container.make(Queue).dispatch(LeakyJob, {});
+    expect(logged, JSON.stringify(logged)).toEqual(['A listener of JobQueued failed: the audit log refused Cookie: [redacted]; marmeon_session=[redacted]']);
   });
 
   it('lets a job discard, release or fail itself', async () => {

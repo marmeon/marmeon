@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { heldOnLoopback } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, redactText, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
@@ -165,6 +165,7 @@ export function createHttpKernel(
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
   // The log line's path without secrets in it (E125): `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
+  // Every error line of the kernel masks its text with it too: the names the app's packages add (the session cookie) count.
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   container.instance(AssetVersion, { value: version });
   // TRUSTED_PROXIES (E162): only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
@@ -219,12 +220,12 @@ export function createHttpKernel(
     try {
       const response = await Promise.race([app.fetch(request, { parent }), timedOut]);
       if (response === 'timeout') {
-        logger.error(`The island ${redactText(`${target.pathname}${target.search}`)} took longer than ${islandTimeout} ms — it shows its error`);
+        logger.error(`The island ${redactor.text(`${target.pathname}${target.search}`)} took longer than ${islandTimeout} ms — it shows its error`);
         return { status: 'exception', failure: { status: 504, ...(debug ? { message: `The island took longer than ${islandTimeout} ms.` } : {}) } };
       }
       return await regionResultOf(response);
     } catch (error) {
-      logger.error(`Resolving the island ${redactText(`${target.pathname}${target.search}`)} failed`, { exception: redactText(String(error)) });
+      logger.error(`Resolving the island ${redactor.text(`${target.pathname}${target.search}`)} failed`, { exception: redactor.text(String(error)) });
       return { status: 'exception', failure: {} };
     }
   };
@@ -259,7 +260,7 @@ export function createHttpKernel(
       await response.body?.cancel();
       return { status: 'unavailable', httpStatus: response.status };
     } catch (error) {
-      logger.error(`Resolving the layer base ${redactText(`${target.pathname}${target.search}`)} failed`, { exception: redactText(String(error)) });
+      logger.error(`Resolving the layer base ${redactor.text(`${target.pathname}${target.search}`)} failed`, { exception: redactor.text(String(error)) });
       return { status: 'unavailable', httpStatus: 500 };
     }
   };
@@ -301,7 +302,7 @@ export function createHttpKernel(
       // Building the error page failed too — most likely a shared prop (the database is down). Once more without
       // the request's scope, so with the error's own props only; server rendering failing is no reason (the browser
       // renders the page then). Only if even that fails: a plain answer rather than none.
-      logger.error('Rendering the error response failed', { exception: String(failure) });
+      logger.error('Rendering the error response failed', { exception: redactor.text(String(failure)) });
       try {
         return await toResponse(handler.render(error, request, { debug }), { request });
       } catch {
@@ -360,7 +361,7 @@ export function createHttpKernel(
         result.headers,
       );
     } catch (failure) {
-      logger.error('Rendering the development error page failed', { exception: failure instanceof Error ? (failure.stack ?? failure.message) : String(failure) });
+      logger.error('Rendering the development error page failed', { exception: redactor.text(failure instanceof Error ? (failure.stack ?? failure.message) : String(failure)) });
       return undefined;
     }
   };
@@ -377,7 +378,7 @@ export function createHttpKernel(
       if (result instanceof Response) return result;
       if (isViewResult(result)) return Response.json(result.props, { status: result.status, headers: result.headers });
     } catch (failure) {
-      logger.error('Rendering the error of an island failed', { exception: String(failure) });
+      logger.error('Rendering the error of an island failed', { exception: redactor.text(String(failure)) });
     }
     return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError ? error.status : 500 });
   };
@@ -594,7 +595,7 @@ export function createHttpKernel(
         .then(
           () => undefined,
           // Masked like text (E125): a message may quote a connection URL or a token — the log context's keys alone would not catch it.
-          (error: unknown) => logger.error('A terminate hook failed', { exception: redactText(String(error)) }),
+          (error: unknown) => logger.error('A terminate hook failed', { exception: redactor.text(String(error)) }),
         );
       pending.add(task);
       void task.finally(() => pending.delete(task));
@@ -621,7 +622,7 @@ export function createHttpKernel(
             // A boundary (E107): deferred work runs outside of any transaction, also one still open around this request.
             await outsideTransaction(work);
           } catch (error) {
-            logger.error('Deferred work failed', { exception: redactText(error instanceof Error ? (error.stack ?? error.message) : String(error)) });
+            logger.error('Deferred work failed', { exception: redactor.text(error instanceof Error ? (error.stack ?? error.message) : String(error)) });
           }
         }
       });

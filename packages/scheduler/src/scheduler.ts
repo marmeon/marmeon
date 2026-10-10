@@ -1,7 +1,7 @@
 import { hostname } from 'node:os';
 import { Cache, CacheConfig, type Lock } from '@marmeon/cache';
 import type { CommandClass } from 'marmeon';
-import { Application, Clock, EventDispatcher, Logger, outsideTransaction, redactText, runWithTask, type Container } from '@marmeon/core';
+import { Application, Clock, EventDispatcher, Logger, outsideTransaction, Redactor, runWithTask, type Container } from '@marmeon/core';
 import { channels, messageBase, trace, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import type { JobClass } from '@marmeon/queue';
 import { ScheduleConfig } from './config.ts';
@@ -143,6 +143,8 @@ export class Scheduler {
   readonly #config: ScheduleConfig;
   readonly #clock: Clock;
   readonly #logger: Logger;
+  /** What a failure's text is masked with in the log: the app's (the names its packages add — the session cookie — count too). */
+  readonly #redactor: Redactor;
   #tasks: readonly Task[] | undefined;
   /** Overlap locks of runs in progress — freed when the process must stop before they end. */
   readonly #held = new Set<Lock>();
@@ -153,6 +155,7 @@ export class Scheduler {
     this.#config = config;
     this.#clock = clock;
     this.#logger = logger.child({ channel: 'schedule' });
+    this.#redactor = container.has(Redactor) ? container.make(Redactor) : new Redactor();
   }
 
   /** Every task of the app's modules, checked: a frequency each, valid expressions and time zones, unique names. */
@@ -369,7 +372,7 @@ export class Scheduler {
           try {
             await scope.make(EventDispatcher).dispatch(event);
           } catch (error) {
-            logger.warn(`A listener of ${event.constructor.name} failed: ${redactText(error instanceof Error ? error.message : String(error))}`);
+            logger.warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
           }
         };
         const skip = async (skipped: SkipReason) => {
@@ -417,7 +420,7 @@ export class Scheduler {
             }
           }
         } catch (error) {
-          logger.error(`Failed: ${task.name}`, { exception: redactText(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) });
+          logger.error(`Failed: ${task.name}`, { exception: this.#redactor.text(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) });
           const failed = result('failed', { error });
           await emit(new ScheduledTaskFailed({ ...about, error, ms: failed.ms }));
           return failed;

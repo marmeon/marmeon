@@ -1,4 +1,4 @@
-import { outsideTransaction, redactText, type Logger } from '@marmeon/core';
+import { outsideTransaction, Redactor, type Logger } from '@marmeon/core';
 import type { LiveHint } from '@marmeon/http';
 import type { LiveBackend, LiveMessage } from './backend.ts';
 
@@ -185,17 +185,20 @@ export class LiveHub {
   readonly #options: LiveHubOptions;
   readonly #perSession: number;
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
   readonly #streams = new Set<OpenStream>();
   readonly #channels = new Map<string, Set<OpenStream>>();
   readonly #sessions = new Map<string, Set<OpenStream>>();
   #listening: Promise<unknown> | undefined;
   #closed = false;
 
-  constructor(backend: LiveBackend, options: LiveHubOptions, logger: Logger, closing?: AbortSignal) {
+  /** `redactor` masks a failure's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
+  constructor(backend: LiveBackend, options: LiveHubOptions, logger: Logger, closing?: AbortSignal, redactor: Redactor = new Redactor()) {
     this.#backend = backend;
     this.#options = options;
     this.#perSession = options.maxStreamsPerSession ?? MAX_STREAMS_PER_SESSION;
     this.#logger = logger;
+    this.#redactor = redactor;
     // The server closes: no stream opens from now on (a request still on its way would hold `server.close()` until the hard
     // exit), and those open end — the browsers reconnect to the next server.
     const close = () => {
@@ -253,7 +256,7 @@ export class LiveHub {
       stream.hello(seqs, request.lastEventId, this.#options);
     } catch (error) {
       stream.close();
-      this.#logger.error('A live stream could not start (the live backend failed)', { exception: redactText(String(error)) });
+      this.#logger.error('A live stream could not start (the live backend failed)', { exception: this.#redactor.text(String(error)) });
       return refuse(503, 'Live updates are unavailable.', '5');
     }
     return new Response(stream.readable, { status: 200, headers: STREAM_HEADERS });

@@ -98,22 +98,22 @@ the error's name, message and stack only in development.
 
 ## Reporting
 
-The exception handler's `report()` logs every server error at the `error` level: its message and its stack, masked like any log
-text, so a token or a password in a connection string does not reach the log. An `HttpError` with a status below 500 is not
+The exception handler's `report()` logs every server error at the `error` level: its message and its stack, masked as text by the
+app's `Redactor`, so a token, a password in a connection string or the value of the session cookie does not reach the log. An `HttpError` with a status below 500 is not
 reported: a 404 or a 403 is an answer, not a bug.
 
 To send errors elsewhere as well, such as to an error tracker, extend the default handler and bind yours in a service provider:
 
 ```ts title="modules/system/ReportingExceptionHandler.ts"
-import { Logger } from '@marmeon/core';
+import { Logger, Redactor } from '@marmeon/core';
 import { DefaultExceptionHandler, HttpError } from '@marmeon/http';
 import { ErrorTracker } from './ErrorTracker.ts';
 
 export class ReportingExceptionHandler extends DefaultExceptionHandler {
   readonly #tracker: ErrorTracker;
 
-  constructor(logger: Logger, tracker: ErrorTracker) {
-    super(logger);
+  constructor(logger: Logger, redactor: Redactor, tracker: ErrorTracker) {
+    super(logger, redactor);
     this.#tracker = tracker;
   }
 

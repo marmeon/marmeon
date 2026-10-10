@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@marmeon/cache';
 import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from 'marmeon';
-import { Clock, createApplication, currentLogContext, defineModule, EventFake, EventRegistry, inTransaction, listen, Logger, TestClock, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, defineModule, EventFake, EventRegistry, inTransaction, listen, Logger, Redactor, TestClock, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, Schema } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -275,7 +275,7 @@ describe('missed runs (catchUp)', () => {
   it('the loop of schedule:work, paused for ten minutes, ticks on with one catch-up', async () => {
     const { scheduler, clock, runs, app, log } = await boot(tasks);
     clock.freeze(at('2026-10-05T09:59:30Z'));
-    const worker = new ScheduleWorker(scheduler, clock, log);
+    const worker = new ScheduleWorker(scheduler, clock, log, app.container.make(Redactor));
     const stop = new AbortController();
     let sleeps = 0;
     const ticks: number[] = [];
@@ -440,6 +440,45 @@ describe('events (E127)', () => {
     expect(result).toMatchObject({ task: 'failing', outcome: 'failed' });
     expect((thrown[0] as Error).message).toBe('the report service is down');
     expect(log.entries.some((entry) => entry.level === 'warn' && entry.message === 'A listener of ScheduledTaskFailed failed: the pager is down')).toBe(true);
+    await app.shutdown();
+  });
+
+  it("logs a failed run, a failing listener and a failed tick masked by the app's Redactor — the session cookie an error quotes stays out", async () => {
+    const leaky = 'Cookie: a=1; marmeon_session=s3ss10nvalue';
+    class LeakyTask {
+      handle() {
+        throw new Error(`the store refused ${leaky}`);
+      }
+    }
+    class LeakyAlert {
+      handle() {
+        throw new Error(`the pager refused ${leaky}`);
+      }
+    }
+    const { scheduler, app, clock, log } = await boot(defineSchedule((s) => void s.call(LeakyTask).everyMinute().name('leaky')), {
+      listeners: [listen(ScheduledTaskFailed, LeakyAlert)],
+    });
+    // What the session package does at boot: the session cookie's name joins the app's Redactor.
+    app.container.make(Redactor).addKeys('marmeon_session');
+    await Promise.all((await scheduler.tick(clock.now())).map((run) => run.done));
+    // The loop of schedule:work, with the app's Redactor: a tick that fails (the cache is down) is logged and the loop goes on.
+    const stop = new AbortController();
+    const failing = { tick: () => Promise.reject(new Error(`the cache refused ${leaky}`)) } as unknown as Scheduler;
+    let sleeps = 0;
+    await new ScheduleWorker(failing, clock, log, app.container.make(Redactor)).run({
+      signal: stop.signal,
+      // One tick (it fails), then the loop is stopped while it sleeps.
+      sleep: async (ms) => {
+        if (++sleeps > 1) stop.abort();
+        clock.travel({ milliseconds: ms });
+        await Promise.resolve();
+      },
+    });
+    const logged = JSON.stringify(log.entries);
+    expect(logged, `the session id reached the log: ${logged}`).not.toContain('s3ss10nvalue');
+    expect(log.entries).toContainEqual(expect.objectContaining({ message: 'Failed: leaky', context: expect.objectContaining({ exception: 'Error: the store refused Cookie: [redacted]; marmeon_session=[redacted]' }) }));
+    expect(log.entries.map((entry) => entry.message)).toContain('A listener of ScheduledTaskFailed failed: the pager refused Cookie: [redacted]; marmeon_session=[redacted]');
+    expect(log.entries).toContainEqual(expect.objectContaining({ message: 'The scheduler could not tick', context: expect.objectContaining({ exception: 'Error: the cache refused Cookie: [redacted]; marmeon_session=[redacted]' }) }));
     await app.shutdown();
   });
 

@@ -1,4 +1,4 @@
-import { Logger, redactText, token, type Translator } from '@marmeon/core';
+import { Logger, Redactor, token, type Translator } from '@marmeon/core';
 import { expectsJson, HttpError, statusText, ValidationError } from '@marmeon/router';
 import { ERROR_PAGE, PAGE_HEADER, type ErrorPageProps } from './page.ts';
 import { RedirectResult } from './redirect.ts';
@@ -30,17 +30,19 @@ export const ExceptionHandler = token<ExceptionHandler>('ExceptionHandler');
 
 export class DefaultExceptionHandler implements ExceptionHandler {
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, redactor: Redactor) {
     this.#logger = logger;
+    this.#redactor = redactor;
   }
 
   report(error: unknown): void {
     if (error instanceof HttpError && error.status < 500) return;
     const { name, message, stack } = asError(error);
-    // The message is the log line's own text, the stack a string: masked like text (E125) — keys alone would not catch a connection
-    // URL or a token an error quotes.
-    this.#logger.error(redactText(message), { exception: name, stack: redactText(stack) });
+    // The message is the log line's own text, the stack a string: masked like text by the app's Redactor (E125) — keys alone would
+    // not catch a connection URL or a token an error quotes, and the core's list alone not the names packages add (the session cookie).
+    this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
   }
 
   render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown {

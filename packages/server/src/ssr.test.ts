@@ -1,4 +1,4 @@
-import { createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
+import { createApplication, currentRequest, defineModule, Logger, Redactor, type Application, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, SharedData, view, type HttpContext, type Next, type PageObject, type SsrRender } from '@marmeon/http';
 import { defineRoutes } from '@marmeon/router';
@@ -62,6 +62,10 @@ async function appWith(render: SsrRender, options: KernelOptions = {}) {
         register(container: Container) {
           container.singleton(Logger, () => new MemoryLogger());
         }
+        // What the session package does at boot: the session cookie's name joins the app's Redactor.
+        boot(app: Application) {
+          app.container.make(Redactor).addKeys('marmeon_session');
+        }
       },
     ],
     middleware: { web: [BrokenSharedProps] },
@@ -118,6 +122,21 @@ describe('client fallback: server rendering never breaks a page', () => {
       level: 'error',
       message: 'Server rendering of [users/Show] failed — the browser renders the page',
       context: expect.objectContaining({ channel: 'ssr', component: 'users/Show', exception: 'ReferenceError', message: 'window is not defined', requestId: 'ssr-1' }),
+    });
+  });
+
+  it("logs the failure masked by the app's Redactor: the session cookie an SSR error quotes stays out of the log", async () => {
+    entries.length = 0;
+    const app = await appWith(async () => {
+      throw new Error('the renderer refused Cookie: a=1; marmeon_session=s3ss10nvalue');
+    });
+    expect((await app.request('/profile', { headers: { accept: 'text/html' } })).status).toBe(200);
+    const logged = JSON.stringify(entries);
+    expect(logged, `the session id reached the log: ${logged}`).not.toContain('s3ss10nvalue');
+    expect(entries).toContainEqual({
+      level: 'error',
+      message: 'Server rendering of [users/Show] failed — the browser renders the page',
+      context: expect.objectContaining({ message: 'the renderer refused Cookie: [redacted]; marmeon_session=[redacted]' }),
     });
   });
 

@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { redactText, type Clock, type Logger } from '@marmeon/core';
+import type { Clock, Logger, Redactor } from '@marmeon/core';
 import type { Scheduler, TaskRun } from './scheduler.ts';
 import { MINUTE, minuteOf } from './time.ts';
 
@@ -17,12 +17,15 @@ export class ScheduleWorker {
   readonly #scheduler: Scheduler;
   readonly #clock: Clock;
   readonly #logger: Logger;
+  readonly #redactor: Redactor;
   readonly #running = new Set<Promise<unknown>>();
 
-  constructor(scheduler: Scheduler, clock: Clock, logger: Logger) {
+  /** `redactor` masks a failed tick's text in the log: the app's (`app.container.make(Redactor)`), so the names its packages add (the session cookie) count too. */
+  constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor) {
     this.#scheduler = scheduler;
     this.#clock = clock;
     this.#logger = logger;
+    this.#redactor = redactor;
   }
 
   /** Runs still going. */
@@ -51,7 +54,7 @@ export class ScheduleWorker {
         options.onTick?.(minute, runs);
       } catch (error) {
         // The cache is down, say: this minute is lost, the next one is tried again.
-        this.#logger.error('The scheduler could not tick', { exception: redactText(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) });
+        this.#logger.error('The scheduler could not tick', { exception: this.#redactor.text(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) });
       }
     }
   }

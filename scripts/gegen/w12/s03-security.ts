@@ -27,6 +27,11 @@ import { defineGegenproben } from '../define.ts';
  * - **`url.query` carries the keys only, unless `OTEL_RECORD_QUERY_VALUES=true`** — the span recording the values again (G6) exports
  *   an e-mail address and a search term; the option read as always on (G6b) does the same through the config; a part without `=`
  *   written as it is (G6c) exports a bare address.
+ * - **The framework's own error lines mask their text with the app's `Redactor`** (final review, I1) — each path its own case, since
+ *   each takes the Redactor on its own: the exception handler's report with the core's list alone (G7) writes the session id a cookie
+ *   header quotes after another cookie; alike a failing terminate hook (G7b), deferred work (G7c), server rendering (G7d), a scheduled
+ *   run and its listeners (G7e), the schedule:work loop's tick (G7f), the live hub (G7g), the broadcaster (G7h), the live package's
+ *   session endings (G7i), a dispatch's failing listener (G7j) and the session clean-up (G7k).
  */
 const SESSION_FLASH = { vitest: 'packages/session/src/session.test.ts', name: 'flashes input like redirect().withInput()' } as const;
 const LOG_KEYS = { vitest: 'packages/log/src/log.test.ts', name: 'redacts the names the app' } as const;
@@ -37,6 +42,12 @@ const TOKEN_POLICIES = { vitest: 'packages/auth/src/gate.test.ts', name: 'lets a
 const GATE = 'packages/auth/src/gate.ts';
 const AUTH = 'packages/auth/src/auth.ts';
 const OTEL_QUERY = { vitest: 'packages/otel/src/otel.test.ts', name: 'records the keys of the query only' } as const;
+const APP_REDACTOR = { vitest: 'packages/server/src/kernel.test.ts', name: "masks with the app's Redactor" } as const;
+const SSR_REDACTOR = { vitest: 'packages/server/src/ssr.test.ts', name: "logs the failure masked by the app's Redactor" } as const;
+const SCHEDULE_REDACTOR = { vitest: 'packages/scheduler/src/scheduler.test.ts', name: "masked by the app's Redactor" } as const;
+const LIVE_REDACTOR = { vitest: 'packages/live/src/server.test.ts', name: "the live package's error lines" } as const;
+/** What each case finds in the failure: the session id after `marmeon_session=`, with the cookie before it masked by the core's list. */
+const leaked = (before: string) => new RegExp(`${before}Cookie: \\[redacted\\]; marmeon_session=s3ss10nvalue`);
 const LOG_ERRORS = { vitest: 'packages/log/src/log.test.ts', name: 'writes an error under any key with its type, message and stack' } as const;
 
 export default defineGegenproben({
@@ -280,6 +291,123 @@ export default defineGegenproben({
       patch: [{ file: 'packages/otel/src/tracer.ts', find: "`${part.slice(0, part.indexOf('='))}=` : REDACTED))", replace: "`${part.slice(0, part.indexOf('='))}=` : part))" }],
       run: OTEL_QUERY,
       expect: /"url\.query":"q=&page=&bare-ada%40example\.com&token=&q="/,
+    },
+    // --- 7 · The framework's own error lines mask with the app's Redactor -------------------------------------------------------------
+    {
+      id: 'G7',
+      title: "the exception handler's report masks with the core's list alone: the session id a cookie header quotes after another cookie is written",
+      patch: [
+        {
+          file: 'packages/http/src/errors.ts',
+          find: 'this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });',
+          replace: 'this.#logger.error(new Redactor().text(message), { exception: name, stack: new Redactor().text(stack) });',
+        },
+      ],
+      run: APP_REDACTOR,
+      expect: leaked('the upstream refused the request with '),
+    },
+    {
+      id: 'G7b',
+      title: "a failing terminate hook is logged masked by the core's list alone: the session id is written",
+      patch: [
+        {
+          file: 'packages/server/src/kernel.ts',
+          find: "logger.error('A terminate hook failed', { exception: redactor.text(String(error)) })",
+          replace: "logger.error('A terminate hook failed', { exception: new Redactor().text(String(error)) })",
+        },
+      ],
+      run: APP_REDACTOR,
+      expect: leaked('a terminate hook refused '),
+    },
+    {
+      id: 'G7c',
+      title: "failed deferred work is logged masked by the core's list alone: the session id is written",
+      patch: [{ file: 'packages/server/src/kernel.ts', find: "logger.error('Deferred work failed', { exception: redactor.text(", replace: "logger.error('Deferred work failed', { exception: new Redactor().text(" }],
+      run: APP_REDACTOR,
+      expect: leaked('deferred work refused '),
+    },
+    {
+      id: 'G7d',
+      title: "server rendering's error lines take a Redactor of their own: the session id an SSR error quotes is written",
+      patch: [
+        {
+          file: 'packages/server/src/render.ts',
+          find: '  const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();',
+          replace: '  const redactor = new Redactor();',
+        },
+      ],
+      run: SSR_REDACTOR,
+      expect: leaked('the renderer refused '),
+    },
+    {
+      id: 'G7e',
+      title: 'the scheduler takes a Redactor of its own: a failed run and its failing listener write the session id',
+      patch: [
+        {
+          file: 'packages/scheduler/src/scheduler.ts',
+          find: '    this.#redactor = container.has(Redactor) ? container.make(Redactor) : new Redactor();',
+          replace: '    this.#redactor = new Redactor();',
+        },
+      ],
+      run: SCHEDULE_REDACTOR,
+      expect: leaked('the store refused '),
+    },
+    {
+      id: 'G7f',
+      title: "the schedule:work loop masks a failed tick with a Redactor of its own, not the one it is given: the session id is written",
+      patch: [
+        { file: 'packages/scheduler/src/worker.ts', find: "import type { Clock, Logger, Redactor } from '@marmeon/core';", replace: "import { Redactor, type Clock, type Logger } from '@marmeon/core';" },
+        { file: 'packages/scheduler/src/worker.ts', find: '    this.#redactor = redactor;', replace: '    this.#redactor = redactor && new Redactor();' },
+      ],
+      run: SCHEDULE_REDACTOR,
+      expect: leaked('the cache refused '),
+    },
+    {
+      id: 'G7g',
+      title: "the live provider builds its hub without the app's Redactor: a stream that cannot start writes the session id",
+      patch: [{ file: 'packages/live/src/index.ts', find: 'c.make(ServerClosing).signal, c.make(Redactor));', replace: 'c.make(ServerClosing).signal);' }],
+      run: LIVE_REDACTOR,
+      expect: /A live stream could not start \(the live backend failed\)","context":\{"exception":"Error: the backend refused Cookie: \[redacted\]; marmeon_session=s3ss10nvalue/,
+    },
+    {
+      id: 'G7h',
+      title: "the live provider builds its broadcaster without the app's Redactor: a lost hint writes the session id",
+      patch: [{ file: 'packages/live/src/index.ts', find: 'app: c.make(Application), redactor: c.make(Redactor) });', replace: 'app: c.make(Application) });' }],
+      run: LIVE_REDACTOR,
+      expect: /could not be sent","context":\{"channel":"users\.1","exception":"Error: the backend refused Cookie: \[redacted\]; marmeon_session=s3ss10nvalue/,
+    },
+    {
+      id: 'G7i',
+      title: "the live package masks a session ending's failure with the core's list alone: the session id is written",
+      patch: [
+        {
+          file: 'packages/live/src/index.ts',
+          find: "{ exception: redactor.text(String(error)) });",
+          replace: "{ exception: new Redactor().text(String(error)) });",
+        },
+      ],
+      run: LIVE_REDACTOR,
+      expect: /session that ended could not be closed \(the live backend failed\)","context":\{"exception":"Error: the backend refused Cookie: \[redacted\]; marmeon_session=s3ss10nvalue/,
+    },
+    {
+      id: 'G7j',
+      title: "the queue provider builds the Queue without the app's Redactor: a dispatch's failing listener writes the session id",
+      patch: [{ file: 'packages/queue/src/index.ts', find: '        redactor: c.make(Redactor),\n', replace: '' }],
+      run: { vitest: 'packages/queue/src/queue.test.ts', name: "logs a failing listener of a dispatch masked by the app's Redactor" },
+      expect: leaked('A listener of JobQueued failed: the audit log refused '),
+    },
+    {
+      id: 'G7k',
+      title: "the session clean-up masks its failure with a Redactor of its own: the session id is written",
+      patch: [
+        {
+          file: 'packages/session/src/start-session.ts',
+          find: '      const redactor = this.#container.has(Redactor) ? this.#container.make(Redactor) : new Redactor();',
+          replace: '      const redactor = new Redactor();',
+        },
+      ],
+      run: { vitest: 'packages/session/src/start-session.test.ts', name: "logs a failed clean-up masked by the app's Redactor" },
+      expect: leaked('Session garbage collection failed: Error: the store refused '),
     },
   ],
 });

@@ -1,5 +1,5 @@
 import cluster from 'node:cluster';
-import { Application, CLUSTER_WORKER, Logger, redactText, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, CLUSTER_WORKER, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
@@ -111,7 +111,7 @@ export class LiveServiceProvider implements ServiceProvider {
     });
     container.singleton(LiveHub, (c) => {
       const { heartbeat, retry, maxStreams, maxStreamsPerSession } = c.make(LiveConfig);
-      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal);
+      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request (E90).
@@ -120,7 +120,7 @@ export class LiveServiceProvider implements ServiceProvider {
     // Per resolution: in a request it knows the tab that sent it (x-marmeon-connection); in a job or a command, none.
     container.bind(Broadcaster, (c) => {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
-      return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application) });
+      return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application), redactor: c.make(Redactor) });
     });
     container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c)));
   }
@@ -162,11 +162,12 @@ export class LiveServiceProvider implements ServiceProvider {
     const session = await importOptional(() => import('@marmeon/session'), '@marmeon/session');
     if (session && container.has(session.SessionEndings)) {
       const logger = container.make(Logger).child({ channel: 'live' });
+      const redactor = container.make(Redactor);
       container.make(session.SessionEndings).listen(async (scope) => {
         try {
           await container.make(LiveBackend).end(scope);
         } catch (error) {
-          logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactText(String(error)) });
+          logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
         }
       });
     }

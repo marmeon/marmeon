@@ -1,6 +1,6 @@
 import { CacheServiceProvider } from '@marmeon/cache';
 import { CliServiceProvider } from 'marmeon';
-import { createApplication, defineModule, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { createApplication, defineModule, Logger, type Container, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { defineSchedule, SchedulerServiceProvider } from '@marmeon/scheduler';
@@ -132,6 +132,18 @@ describe('StartSession', () => {
     await send('/count');
     await application.kernel.settle();
     expect(await store.gc(0)).toBe(0); // the expired session was already collected by terminate()
+  });
+
+  it("logs a failed clean-up masked by the app's Redactor — this package's cookie an error quotes stays out of the log", async () => {
+    const logged: string[] = [];
+    const capture: Logger = { debug() {}, info() {}, warn: (message, context) => logged.push(`${message}: ${String(context?.exception)}`), error() {}, child: () => capture };
+    const { send, application } = await boot({ SESSION_LOTTERY: '1/1' }, {}, { providers: [class { register = (container: Container) => container.instance(Logger, capture); }] });
+    const store = application.container.make(SessionStore);
+    store.gc = () => Promise.reject(new Error('the store refused Cookie: a=1; marmeon_session=s3ss10nvalue'));
+    await send('/count');
+    await application.kernel.settle();
+    expect(JSON.stringify(logged), JSON.stringify(logged)).not.toContain('s3ss10nvalue');
+    expect(logged).toContain('Session garbage collection failed: Error: the store refused Cookie: [redacted]; marmeon_session=[redacted]');
   });
 
   it('draws no lottery when the scheduler runs session:prune — then that is the one sweeper', async () => {

@@ -1,4 +1,4 @@
-import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, redactText, token, type Application, type Clock, type Logger } from '@marmeon/core';
+import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, Redactor, token, type Application, type Clock, type Logger } from '@marmeon/core';
 import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import type { Kysely } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
@@ -103,6 +103,8 @@ export interface QueueManagerDependencies {
   readonly events?: JobEvents;
   /** The app its dispatches are reported for on the `queue.dispatch` channel (E118). */
   readonly app?: Application;
+  /** Masks a failing listener's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
+  readonly redactor?: Redactor;
 }
 
 /** A job checked and ready to queue: its record and that record as stored. */
@@ -115,10 +117,12 @@ interface Prepared {
 export class QueueManager implements Queue {
   readonly #deps: QueueManagerDependencies;
   readonly #transaction: Kysely<any> | undefined;
+  readonly #redactor: Redactor;
 
   constructor(dependencies: QueueManagerDependencies, transaction?: Kysely<any>) {
     this.#deps = dependencies;
     this.#transaction = transaction;
+    this.#redactor = dependencies.redactor ?? new Redactor();
   }
 
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>> {
@@ -319,7 +323,7 @@ export class QueueManager implements Queue {
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${redactText(error instanceof Error ? error.message : String(error))}`, { job: event.job, jobId: event.jobId });
+      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`, { job: event.job, jobId: event.jobId });
     }
   }
 

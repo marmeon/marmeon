@@ -1,4 +1,4 @@
-import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, redactText, Translator, type Application, type Container, type Logger, type Solution } from '@marmeon/core';
+import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, type Application, type Container, type Logger, type Solution } from '@marmeon/core';
 import { channels, messageBase, trace, type SsrRenderMessage } from '@marmeon/core/diagnostics';
 import {
   ACTION_HEADER,
@@ -248,6 +248,9 @@ export function createResponseFactory(
   version: string | null = null,
   { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
+  // What the error lines below mask their text with: the app's (the names its packages add — the session cookie — count too).
+  const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
+  const describe = (error: unknown) => errorFields(error, redactor);
   const noRouter: RouteLookup = {
     findByName: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
@@ -265,7 +268,7 @@ export function createResponseFactory(
     const resolveIsland = islands && !isPrefetch(request)
       ? async (url: string): Promise<RegionResult> => {
           const result = await islands(url, { request, scope, requestId });
-          if (result.status === 'exception') logger.error(`The island ${redactText(url)} on [${page.component}] failed — it shows its error`, { component: page.component, island: redactText(url), status: result.failure.status });
+          if (result.status === 'exception') logger.error(`The island ${redactor.text(url)} on [${page.component}] failed — it shows its error`, { component: page.component, island: redactor.text(url), status: result.failure.status });
           return result;
         }
       : undefined;
@@ -340,7 +343,6 @@ export function createResponseFactory(
       if (debug && app && renderer.failed) {
         try {
           const solutions = app.container.has(ErrorSolutions) ? await app.container.make(ErrorSolutions).find(error, { app }) : [];
-          const redactor = app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
           const markup = await renderer.failed(error, { component: page.component, solutions, redactor, ...(nonce ? { nonce } : {}) });
           const at = shell.lastIndexOf('</body>');
           if (markup) return at === -1 ? shell + markup : shell.slice(0, at) + markup + shell.slice(at);
@@ -643,10 +645,11 @@ function regionOutcome(status: number): RegionOutcomeStatus {
   return 'exception';
 }
 
-function describe(error: unknown): { exception: string; message: string; stack?: string } {
+/** An error's name, message and stack for a log line's context — its text masked by `redactor` (the app's). */
+function errorFields(error: unknown, redactor: Redactor): { exception: string; message: string; stack?: string } {
   return error instanceof Error
-    ? { exception: error.name, message: redactText(error.message), ...(error.stack === undefined ? {} : { stack: redactText(error.stack) }) }
-    : { exception: 'Error', message: redactText(String(error)) };
+    ? { exception: error.name, message: redactor.text(error.message), ...(error.stack === undefined ? {} : { stack: redactor.text(error.stack) }) }
+    : { exception: 'Error', message: redactor.text(String(error)) };
 }
 
 /** The document a request of the client core names (`x-marmeon-document`, the tabSync feature) — undefined: none (a full page load). */

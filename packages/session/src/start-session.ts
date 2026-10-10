@@ -1,4 +1,4 @@
-import { Container, Logger, redactText } from '@marmeon/core';
+import { Container, Logger, Redactor } from '@marmeon/core';
 import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@marmeon/http';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig } from './config.ts';
@@ -130,7 +130,9 @@ export class StartSession {
     try {
       await this.#store.gc(this.#config.lifetime * 60);
     } catch (error) {
-      this.#logger.warn('Session garbage collection failed', { exception: redactText(String(error)) });
+      // Masked by the app's Redactor: the names its packages add (this one's cookie) count too.
+      const redactor = this.#container.has(Redactor) ? this.#container.make(Redactor) : new Redactor();
+      this.#logger.warn('Session garbage collection failed', { exception: redactor.text(String(error)) });
     }
   }
 }

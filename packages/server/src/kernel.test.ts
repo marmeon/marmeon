@@ -80,19 +80,49 @@ describe('createHttpKernel — errors & logging', async () => {
     }
   }
 
+  // A cookie header quoted by an error: the session cookie after another one. The core's key list masks `Cookie: a=1` up to
+  // the first `;` — only the name the session package adds to the app's Redactor masks the session id behind it.
+  const LEAKY_COOKIE = 'Cookie: a=1; marmeon_session=s3ss10nvalue';
+  class CookieDeferringController {
+    readonly #after: AfterResponse;
+    constructor(after: AfterResponse) {
+      this.#after = after;
+    }
+    handle() {
+      this.#after.defer(() => {
+        throw new Error(`deferred work refused ${LEAKY_COOKIE}`);
+      });
+      return 'accepted';
+    }
+  }
+  class CookieTerminating {
+    handle(_ctx: HttpContext, next: Next<{}>) {
+      return next();
+    }
+    terminate(ctx: HttpContext): void {
+      if (new URL(ctx.request.url).pathname === '/cookie-defer') throw new Error(`a terminate hook refused ${LEAKY_COOKIE}`);
+    }
+  }
   const routes = defineRoutes((Route) => {
     Route.get('/boom', () => {
       throw new Error('database password is hunter2 (postgres://app:hunter3@db/app)');
     });
     Route.get('/forbidden', () => abort(403, 'Only admins.'));
+    Route.get('/cookie-boom', () => {
+      throw new Error(`the upstream refused the request with ${LEAKY_COOKIE}`);
+    });
+    Route.get('/cookie-defer', CookieDeferringController);
   });
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
+    middleware: { web: [CookieTerminating] },
     modules: [defineModule({ name: 'errors', routes })],
   });
+  // What the session package does at boot: the session cookie's name joins the app's Redactor.
+  application.container.make(Redactor).addKeys('marmeon_session');
   const app = createHttpKernel(application);
   const debugApp = createHttpKernel(application, { debug: true });
   const json = { headers: { accept: 'application/json' } };
@@ -111,6 +141,22 @@ describe('createHttpKernel — errors & logging', async () => {
       message: 'database password is hunter2 (postgres://app:***@db/app)',
       context: { requestId: 'req-1', exception: 'Error' },
     });
+  });
+
+  it("masks with the app's Redactor: the session cookie a reported error, a terminate hook or deferred work quotes stays out of the log", async () => {
+    entries.length = 0;
+    await app.settle();
+    expect((await app.request('/cookie-boom', json)).status).toBe(500);
+    expect((await app.request('/cookie-defer', json)).status).toBe(200);
+    await app.settle();
+    const logged = JSON.stringify(entries);
+    expect(logged, `the session id reached the log: ${logged}`).not.toContain('s3ss10nvalue');
+    expect(entries.filter((entry) => entry.level === 'error').map((entry) => entry.message)).toEqual(
+      expect.arrayContaining(['the upstream refused the request with Cookie: [redacted]; marmeon_session=[redacted]', 'A terminate hook failed', 'Deferred work failed']),
+    );
+    expect(entries.find((entry) => entry.message === 'A terminate hook failed')?.context.exception).toBe(
+      'Error: a terminate hook refused Cookie: [redacted]; marmeon_session=[redacted]',
+    );
   });
 
   it('shows exception details in debug mode', async () => {
