@@ -10,7 +10,7 @@ import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { deriveRelations, introspect } from './introspection.ts';
 import { MarmeonDriver } from './driver.ts';
-import { SchemaMetadata } from './metadata.ts';
+import { changesSchema, SchemaMetadata } from './metadata.ts';
 import { softDelete, softDeleteFilter } from './schema-resolver.ts';
 import { Connections, cursorPaginate, Migrator, Repository } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -540,6 +540,14 @@ describe('schema metadata, unit', () => {
     expect(sent.length > before).toBe(undone);
     await driver.rollbackTransaction(acquired);
     await driver.releaseConnection(acquired);
+  });
+
+  it('takes a write to the books in any case for a schema change — SQLite reads SECRET_COLUMNS as secret_columns', () => {
+    const books = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) });
+    expect(changesSchema(books.insertInto('secret_columns').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
+    expect(changesSchema(books.insertInto('SECRET_COLUMNS').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
+    expect(changesSchema(books.deleteFrom('Schema_Markers').toOperationNode())).toBe(true);
+    expect(changesSchema(books.insertInto('users').values({ name: 'a' }).toOperationNode())).toBe(false);
   });
 
   it('is stale after a schema change has run — also when it was loaded again while the change was under way', async () => {

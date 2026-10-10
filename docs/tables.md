@@ -75,7 +75,8 @@ says `created_at`.
 | `.visible((ctx, resolve) => …)` | The same with a function of your own. |
 
 A hidden column is not selected, not sent and not exported, and in the row's type it is optional. A column that a migration marked
-`.secret()`, such as a password hash, cannot be a column at all: that is a compile error.
+`.secret()`, such as a password hash, cannot be a column at all: that is a compile error, and a column that names a `secret(eb, …)`
+of the base query is refused when the table runs.
 
 A column can also show a value the base query computes under a name: `withCount('profile_links', { as: 'links' })` gives
 `links: column('links')`, typed as a number, sorted by in `ORDER BY` without a join. Its key is that name. It cannot be

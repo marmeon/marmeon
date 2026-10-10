@@ -7,14 +7,15 @@ import type { Relations } from './types.ts';
 // select builder of Kysely's shares — the connection's, a transaction's, a subquery's. They only add placeholders; the
 // connection's plugins resolve them (see `SchemaResolver`).
 
-/** The names of table `T`'s relations whose related table `DB` has — a module's `Database<'…'>` leaves out the others. */
-type NamesOf<DB, T> = T extends keyof Relations
-  ? { [N in keyof Relations[T]]: Relations[T][N] extends { readonly table: infer R } ? (R extends keyof DB ? N : never) : never }[keyof Relations[T]] & string
-  : never;
+/** Whether `DB` has every table relation `R` reads: its related table, and a belongsToMany's pivot. */
+type Sees<DB, R> = R extends { readonly table: infer T } ? (T extends keyof DB ? (R extends { readonly pivot: infer P } ? (P extends keyof DB ? true : false) : true) : false) : false;
+
+/** The names of table `T`'s relations whose tables `DB` has — a module's `Database<'…'>` leaves out the others. */
+type NamesOf<DB, T> = T extends keyof Relations ? { [N in keyof Relations[T]]: Sees<DB, Relations[T][N]> extends true ? N : never }[keyof Relations[T]] & string : never;
 
 /** The relations of table `T` that hold a list (hasMany, belongsToMany) — what `withCount()` counts. */
 type ListNamesOf<DB, T> = T extends keyof Relations
-  ? { [N in keyof Relations[T]]: Relations[T][N] extends { readonly table: infer R; readonly kind: 'hasMany' | 'belongsToMany' } ? (R extends keyof DB ? N : never) : never }[keyof Relations[T]] & string
+  ? { [N in keyof Relations[T]]: Relations[T][N] extends { readonly kind: 'hasMany' | 'belongsToMany' } ? (Sees<DB, Relations[T][N]> extends true ? N : never) : never }[keyof Relations[T]] & string
   : never;
 
 /**

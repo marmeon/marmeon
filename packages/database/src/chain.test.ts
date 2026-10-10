@@ -1012,6 +1012,26 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       expect(sql[0]).not.toContain('count(*) as integer');
     });
 
+    it('refuses what would change a count or an exists in a callback — groupBy(), having(), limit(), offset()', async () => {
+      const posts = () => db.selectFrom('posts').select('title');
+      const counts = (parts: string) =>
+        `withCount('comments') counts the related rows its callback's conditions match — ${parts} in the callback would change what it counts: leave it out and filter with where().`;
+      await expect(posts().withCount('comments', (q) => q.groupBy('approved')).execute()).rejects.toThrow(counts('groupBy()'));
+      await expect(posts().withCount('comments', (q) => q.limit(1)).execute()).rejects.toThrow(counts('limit()'));
+      await expect(posts().withCount('comments', (q) => q.offset(1)).execute()).rejects.toThrow(counts('offset()'));
+      await expect(posts().withCount('comments', (q) => q.having(sql<boolean>`count(*) > 1`)).execute()).rejects.toThrow(counts('having()'));
+      await expect(posts().whereHas('comments', (q) => q.limit(1).offset(5)).execute()).rejects.toThrow(
+        `whereHas('comments') asks whether there is a related row its callback's conditions match — limit() and offset() in the callback would change the answer: leave them out and filter with where().`,
+      );
+    });
+
+    it('refuses a count or a relation under a name the query selects already', async () => {
+      const taken = (label: string, name: string) => `${label} adds "${name}", which the query selects already — give it another name with { as }.`;
+      await expect(db.selectFrom('posts').select('title').withCount('comments', { as: 'title' }).execute()).rejects.toThrow(taken(`withCount('comments')`, 'title'));
+      await expect(db.selectFrom('posts').selectAll().withCount('tags', { as: 'rating' }).execute()).rejects.toThrow(taken(`withCount('tags')`, 'rating'));
+      await expect(db.selectFrom('posts').select('id as author').with('author').execute()).rejects.toThrow(taken(`with('author')`, 'author'));
+    });
+
     it('refuses withCount() on a relation of one row — whereHas() asks that', async () => {
       const posts = db.selectFrom('posts').select('title') as unknown as { withCount(name: string): { execute(): Promise<unknown> } };
       await expect(posts.withCount('author').execute()).rejects.toThrow(

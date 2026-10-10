@@ -66,6 +66,14 @@ export function asked(reference: OperationNode): RawNode {
   return RawNode.create([ASKED, ''], [reference]);
 }
 
+/**
+ * Whether a selection reads a column with `secret()` — as written, or as the connection compiled it. For code that builds on a
+ * query's own selections, such as a data table: such a value is never one of its columns. See `docs/migrations.md#secret-columns`.
+ */
+export function isSecretSelection(selection: OperationNode): boolean {
+  return askedOf(selection) !== undefined;
+}
+
 /** The column inside a `secret()` — before the connection compiled it, or after. */
 function askedOf(node: OperationNode): OperationNode | undefined {
   if (AliasNode.is(node)) node = node.node;
@@ -502,7 +510,7 @@ interface Table {
 }
 
 /** A name as SQLite compares it: ASCII letters in lower case (only those — SQLite folds no other letter by default). */
-function fold(name: string): string {
+export function fold(name: string): string {
   return /[A-Z]/.test(name) ? name.replace(/[A-Z]/g, (letter) => letter.toLowerCase()) : name;
 }
 

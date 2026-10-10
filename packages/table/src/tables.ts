@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
-import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
+import { cursorPaginate, isSecretSelection, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
 import { isJsonResult, isRedirectResult, json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { expectsJson, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
 import { AliasNode, IdentifierNode, type Kysely, type KyselyPlugin, type RootOperationNode, type SelectQueryBuilder } from 'kysely';
@@ -336,7 +336,11 @@ export class Tables {
   /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column). */
   #base(definition: TableDefinition, ctx: HttpContext, view: View): SelectQueryBuilder<any, any, any> {
     const query = definition.query(this.#db, ctx);
-    const selected = selectedBy(query);
+    const { selected, secret } = selectionsOf(query);
+    const asked = Object.entries(definition.columns).find(([, col]) => secret.has(col.ref));
+    if (asked) {
+      throw new Error(`Table "${definition.name}": the column '${asked[0]}' reads ${asked[1].ref}, a secret column its query asks for with secret() — a table never shows one.`);
+    }
     // Under its own name: the projection cannot rename a value the query selects (SQL has no alias of an alias in one select).
     const renamed = Object.entries(definition.columns).find(([alias, col]) => selected.has(col.ref) && alias !== col.ref);
     if (renamed) {
@@ -351,8 +355,12 @@ export class Tables {
   /** The base query with the state's filters and search — on visible columns and filters only (checked before). */
   #filtered(definition: TableDefinition, ctx: HttpContext, state: TableState, view: View): SelectQueryBuilder<any, any, any> {
     let query = this.#base(definition, ctx, view);
+    const selected = selectedBy(query);
     for (const [name, value] of Object.entries(state.filters)) {
       const entry = definition.filters[name]!;
+      if (selected.has(entry.ref)) {
+        throw new Error(`Table "${definition.name}": the filter '${name}' reads ${entry.ref}, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`);
+      }
       if (entry.type === 'select') {
         query = query.where(entry.ref, '=', value);
       } else {
@@ -363,7 +371,6 @@ export class Tables {
     }
     const searched = view.columns.filter(([, col]) => col.isSearchable);
     if (state.search && searched.length > 0) {
-      const selected = selectedBy(query);
       const value = searched.find(([, col]) => selected.has(col.ref));
       if (value) {
         throw new Error(
@@ -456,14 +463,19 @@ function project(definition: TableDefinition, query: SelectQueryBuilder<any, any
 
 /**
  * The names of the values a query selects itself under an alias (`withCount(…, { as })`, `eb.fn(…).as(…)`): a column of such a name
- * reads that value, and SQL refers to it by name only in `ORDER BY`.
+ * reads that value, and SQL refers to it by name only in `ORDER BY`. A `secret()` is never one of them: it is in `secret`.
  */
-function selectedBy(query: SelectQueryBuilder<any, any, any>): ReadonlySet<string> {
-  const names = new Set<string>();
+function selectionsOf(query: SelectQueryBuilder<any, any, any>): { selected: ReadonlySet<string>; secret: ReadonlySet<string> } {
+  const selected = new Set<string>();
+  const secret = new Set<string>();
   for (const { selection } of query.toOperationNode().selections ?? []) {
-    if (AliasNode.is(selection) && IdentifierNode.is(selection.alias)) names.add(selection.alias.name);
+    if (AliasNode.is(selection) && IdentifierNode.is(selection.alias)) (isSecretSelection(selection) ? secret : selected).add(selection.alias.name);
   }
-  return names;
+  return { selected, secret };
+}
+
+function selectedBy(query: SelectQueryBuilder<any, any, any>): ReadonlySet<string> {
+  return selectionsOf(query).selected;
 }
 
 /** Leaves the values of hidden columns out of the base query's own selections — whatever builds on it, as a subquery too. */

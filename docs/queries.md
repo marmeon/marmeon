@@ -228,7 +228,8 @@ Argument of type '"profile_link"' is not assignable to parameter of type '"login
 `with()` is a method of every select of the app's connection: a repository's `query()`, `Database`, a transaction, a subquery.
 In a query that joins tables, it offers the relations of each table, except a name two of them share. Relations are offered on a
 table's own name, `selectFrom('users')`, not on an alias such as `selectFrom('users as u')`. A module's
-`Database<'user-profile'>` offers only relations to tables the module sees: its own, and the tables other modules expose.
+`Database<'user-profile'>` offers only relations whose tables the module sees, its own and the tables other modules expose: the
+related table, and for a belongsToMany its pivot too. The same holds for `withCount()` and `whereHas()`.
 
 > [!NOTE]
 > Kysely has a `with()` of its own on the connection: `db.with('recent', (q) => …)` defines a common table expression. The
@@ -284,7 +285,8 @@ this.#db
 ```
 
 Each row gets `profile_links_count: number` and `secure_links: number`, a number on SQLite and on Postgres alike, `0` when
-there is none. A belongsTo or a hasOne has one row or none, so there is nothing to count: `withCount()` on one is a compile error
+there is none. The callback filters what is counted: `groupBy()`, `having()`, `limit()` and `offset()` in it are refused, because
+they would change the count. A name the query selects already is refused too, since one row cannot hold two values under it. A belongsTo or a hasOne has one row or none, so there is nothing to count: `withCount()` on one is a compile error
 that lists the relations it can count, and `whereHas()` asks the question instead:
 
 ```text
@@ -307,7 +309,8 @@ this.#db
 ```
 
 Any relation works, a belongsToMany through its pivot too. The callbacks nest: `whereHas()` inside a `whereHas()`, a `with()`
-or a `withCount()` callback filters that level. What the callback selects does not matter: only whether a row is there.
+or a `withCount()` callback filters that level. What the callback selects does not matter: only whether a row is there. `limit()` and `offset()` in it are refused, because they
+would change the answer.
 
 ### Soft-deleted rows
 
@@ -339,10 +342,11 @@ instead: `where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens')
 with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
 ```
 
-A condition may compare a secret column, in a relation's callback as in any `where()`: its value stays in the database.
-`whereHas('personal_access_tokens', (tokens) => tokens.where('token_hash', '=', hash))` finds the owner of a token by its hash.
-Compare only with values your code chose, such as a hash it computed. A condition on a column a request picks, or a `like`
-pattern a request sends, answers questions about the secret column one row count at a time.
+A condition may compare a secret column, in the callback of `with()`, `withCount()` or `whereHas()` as in any `where()`: its
+value stays in the database. The answer does not: every row, count or yes the condition gives says something about the secret, so
+never let a request choose the column or send a `like` pattern for it. A comparison in SQL does not take constant time either,
+so do not look a secret up by its value. Look the row up by its key and compare the secret in code, as an
+[API token](api-tokens.md#the-token-format) is checked: by its id, then its secret in constant time.
 
 The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice. Neither is a view: it
 is raw SQL of a migration, so a view over a table with secret columns returns what its own SQL selects.

@@ -1,5 +1,6 @@
 import { CompiledQuery, TableNode, type DatabaseConnection, type RootOperationNode } from 'kysely';
 import { deriveRelations, introspect, type Relation } from './introspection.ts';
+import { fold } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 /** Internal bookkeeping: the columns migrations marked `.secret()` (written by the migrator). */
@@ -223,5 +224,6 @@ export function changesSchema(node: RootOperationNode): boolean {
   if (DDL.has(node.kind)) return true;
   if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
   const target = node.kind === 'InsertQueryNode' ? node.into : node.kind === 'UpdateQueryNode' ? node.table : node.from.froms[0];
-  return target !== undefined && TableNode.is(target) && BOOKKEEPING.has(target.table.identifier.name);
+  // In any case: SQLite writes to `SECRET_COLUMNS` as to `secret_columns`.
+  return target !== undefined && TableNode.is(target) && BOOKKEEPING.has(fold(target.table.identifier.name));
 }

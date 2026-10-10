@@ -445,9 +445,15 @@ export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
       : unknown;
 };
 
-/** Every filter must read a column of the query. */
-export type CheckFilters<DB, TB extends keyof DB, Filters> = {
-  [N in keyof Filters]: Filters[N] extends Filter<infer R extends string> ? ([ColumnProblem<DB, TB, R>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R>>) : unknown;
+/** Every filter must read a column of the query's tables — not a value the query selects, which its `WHERE` cannot see. */
+export type CheckFilters<DB, TB extends keyof DB, Filters, O = {}> = {
+  [N in keyof Filters]: Filters[N] extends Filter<infer R extends string>
+    ? R extends Selected<DB, TB, O>
+      ? Problem<`'${R}' is a value the query selects — it can be shown and sorted by, not filtered by (a filter runs in the query's WHERE)`>
+      : [ColumnProblem<DB, TB, R>] extends [never]
+        ? unknown
+        : Problem<ColumnProblem<DB, TB, R>>
+    : unknown;
 };
 
 type ScalarKey = string | number;
@@ -588,7 +594,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
    */
   readonly key: CheckKey<DbOf<Q>, TbOf<Q>, K> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>; readonly type: KeyType };
   readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols, OutOf<Q>>>;
-  readonly filters?: Filters & NoInfer<CheckFilters<DbOf<Q>, TbOf<Q>, Filters>>;
+  readonly filters?: Filters & NoInfer<CheckFilters<DbOf<Q>, TbOf<Q>, Filters, OutOf<Q>>>;
   /** The sort without `?sort=` — `'-joined'`; default: the first sortable column. The key is always the last order. */
   readonly defaultSort?: CheckSort<Cols, Sort>;
   readonly pagination?: Pg;

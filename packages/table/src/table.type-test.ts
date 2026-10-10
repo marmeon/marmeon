@@ -160,7 +160,7 @@ describe('defineTable — typed from the query', () => {
       query: (db) => db.selectFrom('teams').withCount('members', { as: 'size' }),
       key: 'teams.id',
       columns: { size: column('size') },
-      // @ts-expect-error — a filter reads a column of the query's tables
+      // @ts-expect-error — a filter runs in WHERE, which cannot see a value the query selects
       filters: { size: filter.select('size', ['1']) },
     });
   });

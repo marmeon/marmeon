@@ -5,6 +5,7 @@ import {
   ColumnNode,
   ColumnUpdateNode,
   FunctionNode,
+  IdentifierNode,
   OperationNodeTransformer,
   OperatorNode,
   ParensNode,
@@ -31,7 +32,8 @@ import {
 } from 'kysely';
 import type { SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, RELATION, SOFT_DELETE, SOFT_DELETE_FILTER, sourcesOf, TOUCH_COLUMN, WITH_TRASHED, type Source } from './placeholders.ts';
-import { relationQuery, type RelationsPlugin } from './relations.ts';
+import { labelOf, relationQuery, type RelationSpec, type RelationsPlugin } from './relations.ts';
+import { outputName } from './secret-guard.ts';
 
 // Placeholders for what only the schema metadata knows — whether a table has soft deletes or timestamps, which relations its
 // foreign keys describe and which columns they may load. A query is built synchronously, often before anything was loaded (the
@@ -189,6 +191,7 @@ class Resolver extends OperationNodeTransformer {
   }
 
   protected override transformSelectQuery(node: SelectQueryNode, queryId?: QueryId): SelectQueryNode {
+    refuseTaken(node, this.#metadata);
     this.#frames.push({ sources: sourcesOf(node), trashed: hasPlaceholder(node.where, WITH_TRASHED, true) });
     try {
       return withoutNothing(super.transformSelectQuery(isolated(node), queryId));
@@ -213,6 +216,35 @@ class Resolver extends OperationNodeTransformer {
         ? updates.map((update) => (update === touch ? ColumnUpdateNode.create(ColumnNode.create('updated_at'), update.value) : update))
         : updates.filter((update) => update !== touch);
     return { ...transformed, updates: kept };
+  }
+}
+
+/**
+ * A relation (`with()`, `withCount()`) may not take a name the select has already — its own selections, the columns of its
+ * `selectAll()`: the row would hold two values under one name, and one of them would be lost.
+ */
+function refuseTaken(node: SelectQueryNode, metadata: SchemaMetadata): void {
+  const selections = node.selections ?? [];
+  const relations = selections.flatMap(({ selection }) =>
+    AliasNode.is(selection) && IdentifierNode.is(selection.alias) && FunctionNode.is(selection.node) && selection.node.func === RELATION ? [{ name: selection.alias.name, marker: selection.node }] : [],
+  );
+  if (relations.length === 0) return;
+  const sources = sourcesOf(node);
+  const columnsOf = (source: Source | undefined) => [...((source?.table && metadata.kinds.get(source.table)?.keys()) || [])];
+  const names: string[] = [];
+  for (const { selection } of selections) {
+    if (selection.kind === 'SelectAllNode') names.push(...sources.flatMap(columnsOf));
+    else if (ReferenceNode.is(selection) && selection.column.kind === 'SelectAllNode') names.push(...columnsOf(sources.find((source) => source.ref === selection.table?.table.identifier.name)));
+    else {
+      const name = outputName(selection);
+      if (name !== undefined) names.push(name);
+    }
+  }
+  for (const { name, marker } of relations) {
+    if (names.filter((other) => other === name).length > 1) {
+      const label = labelOf(JSON.parse(String((marker.arguments[0] as ValueNode).value)) as RelationSpec);
+      throw new Error(`${label} adds "${name}", which the query selects already — give it another name with { as }.`);
+    }
   }
 }
 

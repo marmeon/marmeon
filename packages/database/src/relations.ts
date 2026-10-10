@@ -111,7 +111,8 @@ export type RelationSpec =
 
 const METHODS = { count: 'withCount', exists: 'whereHas', missing: 'whereDoesntHave' } as const;
 
-function labelOf(spec: RelationSpec): string {
+/** The method a relation placeholder came from, with its name: `withCount('comments')`. */
+export function labelOf(spec: RelationSpec): string {
   return spec.kind === 'relation' ? `withRelation('${spec.name}')` : `${spec.use ? METHODS[spec.use] : 'with'}('${spec.name}')`;
 }
 
@@ -169,6 +170,7 @@ export function relationQuery(
   // A relation to the outer row's own table (a parent category) needs a name of its own: the outer name would be the inner table.
   const ref = target === outer.ref ? alias(target) : target;
   let query = marker.arguments[1] as SelectQueryNode;
+  if (use !== undefined) refuseShaping(query, use, label);
   query = { ...query, from: { ...query.from!, froms: query.from!.froms.map((from) => (isTarget(from) ? (ref === target ? TableNode.create(target) : AliasNode.create(TableNode.create(target), IdentifierNode.create(ref))) : from)) } };
   if (ref !== target) query = new Rename(target, ref).transformNode(query) as SelectQueryNode;
 
@@ -203,6 +205,20 @@ export function relationQuery(
   // One row: the first the callback's order gives (Postgres' JSON object refuses a subquery of several rows).
   if (one && !query.limit) query = SelectQueryNode.cloneWithLimit(query, LimitNode.create(ValueNode.createImmediate(1)));
   return { query, wrap: (loaded) => FunctionNode.create(one ? ONE : MANY, [loaded, ValueNode.createImmediate(label)]) };
+}
+
+/**
+ * A count counts the rows a callback's conditions match, and an exists asks whether there is one: what would change that — groups,
+ * limits — is refused, never dropped (a count of groups differs by database: one group on SQLite, an error on Postgres).
+ */
+function refuseShaping(query: SelectQueryNode, use: 'count' | 'exists' | 'missing', label: string): void {
+  const parts = (use === 'count' ? (['groupBy', 'having', 'limit', 'offset'] as const) : (['limit', 'offset'] as const)).filter((part) => query[part] !== undefined);
+  if (parts.length === 0) return;
+  const what = use === 'count' ? ['counts the related rows', 'what it counts'] : ['asks whether there is a related row', 'the answer'];
+  throw new Error(
+    `${label} ${what[0]} its callback's conditions match — ${parts.map((part) => `${part}()`).join(' and ')} in the callback would change ${what[1]}: ` +
+      `leave ${parts.length > 1 ? 'them' : 'it'} out and filter with where().`,
+  );
 }
 
 /** `count(*)` as an integer — Postgres counts in `bigint`, which its driver returns as a string. */

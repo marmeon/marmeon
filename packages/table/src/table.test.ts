@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, MEMBERS, MembersTable, tableApp, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
-import type { Database } from '@marmeon/database';
-import { column, defineTable } from './define.ts';
+import { secret, type Database } from '@marmeon/database';
+import { column, defineTable, filter } from './define.ts';
 import { Tables } from './tables.ts';
 import type { TableData } from './client/index.ts';
 
@@ -135,6 +135,31 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       );
       await expect(tables.resolve(table({ size: column('size').searchable() }), { ...ctx, request: new Request('http://localhost/teams/1/teams?search=x') } as never)).rejects.toThrow(
         `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
+      );
+      const filtered = defineTable({
+        name: 'teams',
+        query: (db: Database) => db.selectFrom('teams').withCount('members', { as: 'size' }),
+        key: 'teams.id',
+        columns: { size: column('size') },
+        filters: { size: filter.select('size', ['1']) },
+      } as never);
+      await expect(tables.resolve(filtered, { ...ctx, request: new Request('http://localhost/teams/1/teams?filter%5Bsize%5D=1') } as never)).rejects.toThrow(
+        `Table "teams": the filter 'size' reads size, a value its query selects — a filter runs in the query's WHERE, which cannot see it.`,
+      );
+    });
+
+    it('never shows a secret column the base query asks for with secret() — a column naming it is refused', async () => {
+      const application = await app(driver);
+      const tables = application.application.container.createScope().make(Tables);
+      const ctx = { request: new Request('http://localhost/teams/1/members'), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 };
+      const table = defineTable({
+        name: 'members',
+        query: (db: Database) => db.selectFrom('members').select((eb) => secret(eb, 'password')).where('members.team_id', '=', 1),
+        key: 'members.id',
+        columns: { name: column('members.name'), password: column('password') },
+      } as never);
+      await expect(tables.resolve(table, ctx as never)).rejects.toThrow(
+        `Table "members": the column 'password' reads password, a secret column its query asks for with secret() — a table never shows one.`,
       );
     });
 

@@ -35,7 +35,7 @@ export async function relationTypes() {
   // @ts-expect-error — both joined tables have a relation "comments": not offered
   db.selectFrom('posts').innerJoin('users', 'users.id', 'posts.author_id').with('comments');
 
-  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts" | "posts"'.
+  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts"'.
   // @ts-expect-error — the module does not see api_keys (owned by auth, not exposed)
   blog.selectFrom('users').with('api_keys');
 
@@ -77,9 +77,17 @@ export async function relationTypes() {
   // Argument of type '"title"' is not assignable to parameter of type 'ReferenceExpression<FixtureTables, "comments">'.
   // @ts-expect-error — the callback's scope is the related table
   db.selectFrom('posts').whereHas('comments', (q) => q.where('title', '=', 'x'));
-  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts" | "posts"'.
+  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts"'.
   // @ts-expect-error — the module does not see api_keys
   blog.selectFrom('users').withCount('api_keys');
+  // A belongsToMany reads its pivot: the module must see that too (post_user is not the blog module's).
+  // Argument of type '"posts"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts"'.
+  // @ts-expect-error — the pivot post_user is not visible to the module
+  blog.selectFrom('users').whereHas('posts');
+  // @ts-expect-error — the same for a count
+  blog.selectFrom('users').withCount('posts');
+  // @ts-expect-error — and for loading it
+  blog.selectFrom('users').with('posts');
   const [counted] = await db
     .selectFrom('posts')
     .select('title')
