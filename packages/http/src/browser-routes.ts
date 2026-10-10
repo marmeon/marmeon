@@ -86,7 +86,7 @@ function hiddenReason(route: RouteDefinition & { routeName: string }, include: r
   return undefined;
 }
 
-/** `*` matches anything (dots included), like Ziggy's patterns: `admin.*`. */
+/** `*` matches anything (dots included): `admin.*`. */
 export function matchesRoutePatterns(name: string, patterns: readonly string[]): boolean {
   return patterns.some((pattern) => new RegExp(`^${pattern.split('*').map(escapeRegExp).join('.*')}$`).test(name));
 }

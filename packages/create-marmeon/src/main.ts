@@ -31,7 +31,7 @@ import {
   type PackageManager,
 } from './template.ts';
 
-/** Exit code of a wrong call (a missing directory without a terminal, an unknown flag) — like `create-nuxt`. */
+/** Exit code of a wrong call (a missing directory without a terminal, an unknown flag) — the usual exit code of a usage error. */
 export const USAGE = 2;
 
 /** The streams and surroundings of a run — the process's by default, others in tests. */

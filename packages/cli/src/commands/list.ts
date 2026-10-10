@@ -1,7 +1,7 @@
 import type { CommandClass, CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
-/** `marmeon` without arguments: every command, grouped by namespace (like `artisan list`). */
+/** `marmeon` without arguments: every command, grouped by namespace. */
 export function printCommandList({ output }: Pick<CommandInput, 'output'>, commands: readonly CommandClass[]): void {
   output.line(`${style('bold', 'Marmeon')}  ${style('dim', 'usage: marmeon <command> [arguments] [--options]')}`);
   const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden)];
