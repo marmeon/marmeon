@@ -14,8 +14,8 @@ Install the package first:
 pnpm add @marmeon/table
 ```
 
-This page builds the members table of the web app: every member with a confirmed address, an e-mail column only administrators see,
-a row action, a bulk action and a CSV export.
+This page builds the members table of the web app: every member with a confirmed address and the number of their links, an e-mail
+column only administrators see, a row action, a bulk action and a CSV export.
 
 ```ts title="modules/members/tables/MembersTable.ts"
 import type { Authenticated } from '@marmeon/auth';
@@ -26,12 +26,14 @@ import { MemberPolicy } from '../policies/MemberPolicy.ts';
 
 export const MembersTable = defineTable({
   name: 'members',
-  query: (db, _ctx: TableContext<Authenticated>) => db.selectFrom('users').where('users.email_verified_at', 'is not', null),
+  query: (db, _ctx: TableContext<Authenticated>) =>
+    db.selectFrom('users').withCount('profile_links', { as: 'links' }).where('users.email_verified_at', 'is not', null),
   key: 'users.id',
   columns: {
     name: column('users.name').sortable().searchable(),
     email: column('users.email').visible(MemberPolicy, 'viewEmails').sortable().searchable(),
     joined: column('users.created_at').sortable(),
+    links: column('links').sortable(),
   },
   filters: {
     joined: filter.dateRange('users.created_at'),
@@ -54,8 +56,9 @@ the policy lacks is a compile error.
 
 `query(db, ctx)` returns every row the table may ever show in this request. Pages, actions, bulk actions and exports all start
 from it, so it is the boundary: put the tenant here, `.where('users.team_id', '=', ctx.user.team_id)`, and nothing of another
-tenant can be shown, changed or downloaded. The base query selects nothing. The table selects the visible columns and the key
-itself. Type its `ctx` as `TableContext<…>` with what the routes' middleware adds, such as `Authenticated`.
+tenant can be shown, changed or downloaded. The base query selects nothing but values it computes, such as a
+[count](queries.md#counting-related-rows). The table selects the visible columns and the key itself. Type its `ctx` as
+`TableContext<…>` with what the routes' middleware adds, such as `Authenticated`.
 
 ### Columns
 
@@ -73,6 +76,11 @@ says `created_at`.
 
 A hidden column is not selected, not sent and not exported, and in the row's type it is optional. A column that a migration marked
 `.secret()`, such as a password hash, cannot be a column at all: that is a compile error.
+
+A column can also show a value the base query computes under a name: `withCount('profile_links', { as: 'links' })` gives
+`links: column('links')`, typed as a number, sorted by in `ORDER BY` without a join. Its key is that name. It cannot be
+searched or filtered by, since `WHERE` cannot see a value the query computes; both are compile errors. Hidden by `.visible(…)`, the
+value is left out of the base query too, so it never reaches the SQL.
 
 ### The key
 

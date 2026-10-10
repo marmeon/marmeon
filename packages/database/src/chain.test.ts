@@ -16,6 +16,7 @@ const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: fixtures('auth') },
   { name: 'blog', migrations: fixtures('relations') },
   { name: 'keys', migrations: fixtures('relations-secrets') },
+  { name: 'readers', migrations: fixtures('relations-readers') },
 ];
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 
@@ -72,6 +73,14 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       ])
       .execute();
     await db.insertInto('post_stats').values({ post_id: ids.first, views: 7 }).execute();
+    await db
+      .insertInto('post_user')
+      .values([
+        { post_id: ids.first, user_id: ids.ada },
+        { post_id: ids.first, user_id: ids.gone },
+        { post_id: ids.second, user_id: ids.alan },
+      ])
+      .execute();
     await db.insertInto('api_keys').values({ user_id: ids.ada, name: 'cli', token: 'the-secret-token' }).execute();
     ids.root = (await db.insertInto('categories').values({ name: 'root' }).returning('id').executeTakeFirstOrThrow()).id;
     ids.child = (await db.insertInto('categories').values({ name: 'child', parent_id: ids.root }).returning('id').executeTakeFirstOrThrow()).id;
@@ -889,12 +898,155 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     });
   });
 
+  describe('counting and filtering by relations', () => {
+    it('counts a hasMany and a belongsToMany as numbers in the same query — soft-deleted rows left out, also behind a pivot', async () => {
+      const { result: rows, sql } = await logged(() =>
+        db.selectFrom('posts').select(['id', 'title']).withCount('comments').withCount('tags').withCount('users', { as: 'readers' }).orderBy('id').execute(),
+      );
+      expect(sql).toHaveLength(1);
+      expect(sql[0]).not.toContain('__marmeon');
+      expect(rows).toEqual([
+        { id: ids.first, title: 'First', comments_count: 2, tags_count: 2, readers: 1 },
+        { id: ids.second, title: 'Second', comments_count: 0, tags_count: 1, readers: 1 },
+      ]);
+      expectTypeOf(rows[0]!).toEqualTypeOf<{ id: number; title: string; comments_count: number; tags_count: number; readers: number }>();
+    });
+
+    it('counts what the callback narrows to — withTrashed() in it counts the soft-deleted rows, at that level only', async () => {
+      const [first] = await db
+        .selectFrom('posts')
+        .select('id')
+        .withCount('comments', (q) => q.where('approved', '=', true))
+        .withCount('comments', { as: 'all_comments' }, (q) => q.withTrashed())
+        .withCount('users', { as: 'readers' }, (q) => q.withTrashed())
+        .withCount('users', { as: 'gone_readers' }, (q) => q.where('name', '=', 'Gone'))
+        .where('id', '=', ids.first)
+        .execute();
+      expect(first).toEqual({ id: ids.first, comments_count: 1, all_comments: 3, readers: 2, gone_readers: 0 });
+    });
+
+    it('counts inside a relation, on a table related to itself, and on the first query of a process', async () => {
+      const { result: [ada], sql } = await logged(() =>
+        db
+          .selectFrom('users')
+          .select('name')
+          .withCount('comments')
+          .with('authored_posts', (posts) => posts.select(['title', 'rating', 'featured']).withCount('comments').withCount('tags'))
+          .where('id', '=', ids.ada)
+          .execute(),
+      );
+      expect(sql).toHaveLength(1);
+      expect(ada).toEqual({ name: 'Ada', comments_count: 1, authored_posts: [{ title: 'First', rating: '4.50', featured: true, comments_count: 2, tags_count: 2 }] });
+      expectTypeOf(ada!.authored_posts[0]!.comments_count).toEqualTypeOf<number>();
+      const categories = await db.selectFrom('categories').select('name').withCount('categories', { as: 'children' }).orderBy('id').execute();
+      expect(categories).toEqual([
+        { name: 'root', children: 1 },
+        { name: 'child', children: 1 },
+        { name: 'grandchild', children: 0 },
+      ]);
+      const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      try {
+        const counted = await cold.get<FixtureTables>().selectFrom('posts').select('id').withCount('comments').whereHas('tags').orderBy('id').execute();
+        expect(counted).toEqual([
+          { id: ids.first, comments_count: 2 },
+          { id: ids.second, comments_count: 0 },
+        ]);
+      } finally {
+        await cold.destroy();
+      }
+    });
+
+    it('filters with whereHas() and whereDoesntHave() — EXISTS, soft-deleted related rows do not count unless asked', async () => {
+      const titles = async (query: SelectQueryBuilder<FixtureTables, 'posts', { title: string }>) => (await query.orderBy('posts.id').execute()).map((row) => row.title);
+      const posts = () => db.selectFrom('posts').select('title');
+      const { result: has, sql } = await logged(() => titles(posts().whereHas('comments')));
+      expect(has).toEqual(['First']);
+      expect(sql).toHaveLength(1);
+      expect(sql[0]).toContain('exists (select 1 from "comments"');
+      expect(await titles(posts().whereDoesntHave('comments'))).toEqual(['Second']);
+      expect(await titles(posts().whereHas('comments', (q) => q.where('body', '=', 'deleted')))).toEqual([]);
+      expect(await titles(posts().whereHas('comments', (q) => q.where('body', '=', 'deleted').withTrashed()))).toEqual(['First']);
+      // The author of the second post is soft-deleted: it has none.
+      expect(await titles(posts().whereHas('author'))).toEqual(['First']);
+      expect(await titles(posts().whereDoesntHave('author'))).toEqual(['Second']);
+      // Through a pivot — to a table with soft deletes.
+      expect(await titles(posts().whereHas('tags', (q) => q.where('slug', '=', 'kysely')))).toEqual(['First']);
+      expect(await titles(posts().whereHas('users', (q) => q.where('name', '=', 'Gone')))).toEqual([]);
+      expect(await titles(posts().whereHas('users', (q) => q.where('name', '=', 'Gone').withTrashed()))).toEqual(['First']);
+      expect(await titles(posts().whereDoesntHave('users', (q) => q.where('name', '=', 'Ada')))).toEqual(['Second']);
+    });
+
+    it('nests whereHas() in its callbacks and combines it with with() and withCount() — still one query', async () => {
+      const { result: users, sql } = await logged(() =>
+        db
+          .selectFrom('users')
+          .select('name')
+          .whereHas('authored_posts', (posts) => posts.whereHas('tags', (tags) => tags.where('slug', '=', 'kysely')).whereDoesntHave('users', (readers) => readers.where('name', '=', 'Alan')))
+          .with('comments', (comments) => comments.select('body').whereHas('post', (post) => post.where('featured', '=', true)))
+          .withCount('authored_posts', (posts) => posts.whereHas('comments'))
+          .execute(),
+      );
+      expect(sql).toHaveLength(1);
+      expect(users).toEqual([{ name: 'Ada', comments: [{ body: 'two' }], authored_posts_count: 1 }]);
+      // On a table related to itself: the categories with a child that has a child.
+      const parents = await db
+        .selectFrom('categories')
+        .select('name')
+        .whereHas('categories', (children) => children.whereHas('categories'))
+        .execute();
+      expect(parents).toEqual([{ name: 'root' }]);
+      // On a repository's query(), which leaves its own soft-deleted rows out.
+      const repository = new UserRepository(connections);
+      expect(await repository.query().select('name').whereHas('authored_posts').execute()).toEqual([{ name: 'Ada' }]);
+      // withTrashed() in the callback keeps that level's rows only: the repository's own deleted user stays out.
+      expect(await repository.query().select('name').whereHas('posts', (posts) => posts.withTrashed()).orderBy('id').execute()).toEqual([{ name: 'Ada' }, { name: 'Alan' }]);
+    });
+
+    it('pages with paginate() — the count keeps whereHas() and leaves withCount() out', async () => {
+      const { result: page, sql } = await logged(() =>
+        paginate(db, db.selectFrom('posts').select('title').withCount('comments').whereHas('users').orderBy('id'), { page: 1, perPage: 1 }),
+      );
+      expect(page.data).toEqual([{ title: 'First', comments_count: 2 }]);
+      expect(page.meta.total).toBe(2);
+      expect(sql[0]).toContain('exists');
+      expect(sql[0]).not.toContain('count(*) as integer');
+    });
+
+    it('refuses withCount() on a relation of one row — whereHas() asks that', async () => {
+      const posts = db.selectFrom('posts').select('title') as unknown as { withCount(name: string): { execute(): Promise<unknown> } };
+      await expect(posts.withCount('author').execute()).rejects.toThrow(
+        "withCount('author') counts the rows of a list — author is a belongsTo of posts, one row or none: ask whereHas('author') instead.",
+      );
+    });
+
+    it('may filter on a secret column, never select one — a subquery of its callback that selects one is refused', async () => {
+      const users = () => db.selectFrom('users').select('name');
+      // Looking a key up by its token: the value stays in the database.
+      expect(await users().whereHas('api_keys', (keys) => keys.where('token' as never, '=', 'the-secret-token' as never)).execute()).toEqual([{ name: 'Ada' }]);
+      expect(await users().withCount('api_keys', (keys) => keys.where('token' as never, '=', 'wrong' as never)).where('id', '=', ids.ada).execute()).toEqual([
+        { name: 'Ada', api_keys_count: 0 },
+      ]);
+      const { result, sql } = await logged(() => users().whereHas('api_keys', (keys) => keys.select('token' as never)).execute());
+      expect(result).toEqual([{ name: 'Ada' }]);
+      expect(sql[0]).not.toMatch(/select "?(api_keys"?\.)?"?token/);
+      await expect(
+        users()
+          .whereHas('comments', (comments) => comments.where('body', 'in', (eb) => eb.selectFrom('api_keys').select('token' as never)))
+          .execute(),
+      ).rejects.toThrow(
+        'This query selects api_keys.token, a secret column, without secret() — read it with secret(eb, …) where it is needed, at every level of the query that passes it on. See docs/migrations.md#secret-columns.',
+      );
+    });
+  });
+
   it('fails with a message that says why on a connection without Marmeon’s plugins — and sends nothing', async () => {
-    const message = `This query loads relations or leaves out soft-deleted rows (with(), withRelation(), withTrashed(), a repository's query()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.`;
+    const message = `This query loads, counts or filters by relations or leaves out soft-deleted rows (with(), withCount(), whereHas(), withRelation(), withTrashed(), a repository's query()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.`;
     queries.length = 0;
     await expect(db.withoutPlugins().selectFrom('users').select('name').with('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').with('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withTrashed().execute()).rejects.toThrow(message);
+    await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withCount('comments').execute()).rejects.toThrow(message);
+    await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').whereHas('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('api_keys').select((eb) => ['name', secret(eb, 'token')]).execute()).rejects.toThrow(
       `This query reads a column with secret(), which only the app's connection checks — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()), which check no column. Name the column there as it is, or build the query on connections.get() or Database. See docs/migrations.md#secret-columns.`,
     );

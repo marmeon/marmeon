@@ -1,5 +1,5 @@
 import { expressionBuilder, type AnyColumn, type Selectable, type SelectQueryBuilder, type Simplify } from 'kysely';
-import { relationSelection } from './relations.ts';
+import { relationCondition, relationSelection } from './relations.ts';
 import { withTrashed as withTrashedFilter } from './schema-resolver.ts';
 import type { Relations } from './types.ts';
 
@@ -10,6 +10,11 @@ import type { Relations } from './types.ts';
 /** The names of table `T`'s relations whose related table `DB` has — a module's `Database<'…'>` leaves out the others. */
 type NamesOf<DB, T> = T extends keyof Relations
   ? { [N in keyof Relations[T]]: Relations[T][N] extends { readonly table: infer R } ? (R extends keyof DB ? N : never) : never }[keyof Relations[T]] & string
+  : never;
+
+/** The relations of table `T` that hold a list (hasMany, belongsToMany) — what `withCount()` counts. */
+type ListNamesOf<DB, T> = T extends keyof Relations
+  ? { [N in keyof Relations[T]]: Relations[T][N] extends { readonly table: infer R; readonly kind: 'hasMany' | 'belongsToMany' } ? (R extends keyof DB ? N : never) : never }[keyof Relations[T]] & string
   : never;
 
 /**
@@ -70,6 +75,35 @@ declare module 'kysely' {
     ): SelectQueryBuilder<DB, TB, O & { [K in A]: One extends true ? Loaded<DB, T, O2> | null : Loaded<DB, T, O2>[] }>;
 
     /**
+     * Counts the rows of a list relation (hasMany, belongsToMany) in the same query, as a number under `<name>_count` — or `{ as }`.
+     * Soft-deleted rows are not counted; the callback narrows what is. See `docs/queries.md#counting-related-rows`.
+     */
+    withCount<N extends { [T in TB]: Exclude<ListNamesOf<DB, T>, NamesOf<DB, Exclude<TB, T>>> }[TB]>(
+      name: N,
+      callback?: (query: RelationQuery<DB, TargetOf<DB, TB, N>>) => SelectQueryBuilder<any, any, any>,
+    ): SelectQueryBuilder<DB, TB, O & { [K in `${N}_count`]: number }>;
+    withCount<N extends { [T in TB]: Exclude<ListNamesOf<DB, T>, NamesOf<DB, Exclude<TB, T>>> }[TB], const A extends string>(
+      name: N,
+      options: { readonly as: A },
+      callback?: (query: RelationQuery<DB, TargetOf<DB, TB, N>>) => SelectQueryBuilder<any, any, any>,
+    ): SelectQueryBuilder<DB, TB, O & { [K in A]: number }>;
+
+    /**
+     * Keeps the rows that have a related row (`exists`) — one the callback's conditions match, if it has any; soft-deleted related
+     * rows do not count. See `docs/queries.md#filtering-by-relations`.
+     */
+    whereHas<N extends { [T in TB]: Exclude<NamesOf<DB, T>, NamesOf<DB, Exclude<TB, T>>> }[TB]>(
+      name: N,
+      callback?: (query: RelationQuery<DB, TargetOf<DB, TB, N>>) => SelectQueryBuilder<any, any, any>,
+    ): SelectQueryBuilder<DB, TB, O>;
+
+    /** Keeps the rows that have no related row (`not exists`) — like {@link whereHas}. See `docs/queries.md#filtering-by-relations`. */
+    whereDoesntHave<N extends { [T in TB]: Exclude<NamesOf<DB, T>, NamesOf<DB, Exclude<TB, T>>> }[TB]>(
+      name: N,
+      callback?: (query: RelationQuery<DB, TargetOf<DB, TB, N>>) => SelectQueryBuilder<any, any, any>,
+    ): SelectQueryBuilder<DB, TB, O>;
+
+    /**
      * Keeps the soft-deleted rows at this level of the query: a repository's `query()`, or a relation in its callback. See
      * `docs/queries.md#soft-deleted-rows`.
      */
@@ -84,11 +118,22 @@ const methods = {
   with(this: Builder, name: string, second?: { readonly as?: string } | Callback, third?: Callback) {
     const options = typeof second === 'object' && second !== null ? second : {};
     const callback = typeof second === 'function' ? second : third;
-    return this.select(relationSelection({ kind: 'with', name }, options.as ?? name, callback, `with('${name}')`) as never);
+    return this.select(relationSelection({ kind: 'with', name }, options.as ?? name, callback) as never);
+  },
+  withCount(this: Builder, name: string, second?: { readonly as?: string } | Callback, third?: Callback) {
+    const options = typeof second === 'object' && second !== null ? second : {};
+    const callback = typeof second === 'function' ? second : third;
+    return this.select(relationSelection({ kind: 'with', name, use: 'count' }, options.as ?? `${name}_count`, callback) as never);
+  },
+  whereHas(this: Builder, name: string, callback?: Callback) {
+    return this.where(relationCondition({ kind: 'with', name, use: 'exists' }, callback));
+  },
+  whereDoesntHave(this: Builder, name: string, callback?: Callback) {
+    return this.where(relationCondition({ kind: 'with', name, use: 'missing' }, callback));
   },
   withRelation(this: Builder, name: string, definition: { table: string; foreignKey: string; localKey?: string; one?: boolean }, callback?: Callback) {
     const { table, foreignKey, localKey = 'id', one = false } = definition;
-    return this.select(relationSelection({ kind: 'relation', name, table, foreignKey, localKey, one }, name, callback, `withRelation('${name}')`) as never);
+    return this.select(relationSelection({ kind: 'relation', name, table, foreignKey, localKey, one }, name, callback) as never);
   },
   withTrashed(this: Builder) {
     return this.where(withTrashedFilter());

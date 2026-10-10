@@ -62,6 +62,11 @@ export interface FixtureTables {
     name: string;
     parent_id: number | null;
   };
+  // `migrations/relations-readers`: a pivot to a table with soft deletes.
+  post_user: {
+    post_id: number;
+    user_id: number;
+  };
   // `migrations/relations-secrets`: a related table with a secret column.
   api_keys: {
     id: Generated<number>;

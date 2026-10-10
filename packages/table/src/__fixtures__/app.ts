@@ -177,10 +177,29 @@ export const WithTeamTable = defineTable({
   defaultSort: 'name',
 });
 
+/** The teams with their number of members — values the base query selects (`withCount`), shown and sorted by their names. */
+export const TeamsTable = defineTable({
+  name: 'teams',
+  query: (db, _ctx: TeamContext) =>
+    db
+      .selectFrom('teams')
+      .withCount('members', { as: 'size' })
+      .withCount('members', { as: 'admins' }, (members) => members.where('role', '=', 'admin')),
+  key: 'teams.id',
+  columns: {
+    name: column('teams.name').sortable(),
+    size: column('size').sortable(),
+    admins: column('admins').visible(MemberPolicy, 'viewEmails').sortable(),
+  },
+  defaultSort: 'name',
+  export: { csv: exportCsv().authorize(MemberPolicy, 'export') },
+});
+
 export const MembersRequest = defineRequest({ query: MembersTable.query });
 export const FeedRequest = defineRequest({ query: FeedTable.query });
 export const LeakyRequest = defineRequest({ query: LeakyTable.query });
 export const WithTeamRequest = defineRequest({ query: WithTeamTable.query });
+export const TeamsRequest = defineRequest({ query: TeamsTable.query });
 
 /** The page: the table as JSON (the page protocol is the http package's — here the prop alone). */
 export class MembersPage extends Controller {
@@ -253,6 +272,20 @@ export class WithTeamPage extends Controller {
   }
 }
 
+export class TeamsPage extends Controller {
+  static request = TeamsRequest;
+  readonly #tables: Tables;
+
+  constructor(tables: Tables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof TeamsRequest> & Authenticated & { team: number }) {
+    return this.json({ teams: await this.#tables.resolve(TeamsTable, ctx) });
+  }
+}
+
 /** The export, answered from inside a transaction the controller opened — its later batches run after it finished. */
 export class ExportInTransaction extends Controller {
   readonly #tables: Tables;
@@ -291,6 +324,8 @@ const routes = defineRoutes((Route) => {
   team.get('/feed-copy', FeedCopyPage);
   team.get('/leaky', LeakyPage);
   team.get('/with-team', WithTeamPage);
+  team.get('/teams', TeamsPage);
+  tableRoutes(team, TeamsTable);
   team.get('/no-schema', NoSchemaPage);
   team.get('/export-in-transaction', ExportInTransaction);
   tableRoutes(team, SmallExportTable);

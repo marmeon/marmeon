@@ -129,6 +129,41 @@ describe('defineTable — typed from the query', () => {
     // @ts-expect-error — a column's visibility is asked once per request: an ability without a row
     column('email').visible(MemberPolicy, 'deactivate');
   });
+
+  it('shows and sorts by a value the base query selects — under its name, never searched or filtered', () => {
+    const Teams = defineTable({
+      name: 'teams',
+      query: (db) => db.selectFrom('teams').withCount('members', { as: 'size' }).withCount('members'),
+      key: 'teams.id',
+      columns: { name: column('teams.name').sortable(), size: column('size').sortable(), members_count: column('members_count').visible(MemberPolicy, 'viewEmails') },
+      defaultSort: '-size',
+    });
+    type Row = TableProps<typeof Teams>['rows'][number];
+    expectTypeOf<Row['size']>().toEqualTypeOf<number>();
+    expectTypeOf<Row['members_count']>().toEqualTypeOf<number | undefined>();
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams').withCount('members', { as: 'size' }),
+      key: 'teams.id',
+      // @ts-expect-error — a value the query selects is read under its own name
+      columns: { members: column('size') },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams').withCount('members', { as: 'size' }),
+      key: 'teams.id',
+      // @ts-expect-error — the search runs in WHERE, which cannot see it
+      columns: { size: column('size').searchable() },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('teams').withCount('members', { as: 'size' }),
+      key: 'teams.id',
+      columns: { size: column('size') },
+      // @ts-expect-error — a filter reads a column of the query's tables
+      filters: { size: filter.select('size', ['1']) },
+    });
+  });
 });
 
 describe('the query schema and the routes', () => {

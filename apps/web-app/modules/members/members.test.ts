@@ -25,7 +25,7 @@ beforeEach(async () => {
   for (const user of [alan, grace]) await app.factory(ProfileLinkFactory).create({ user_id: user.id, label: `${user.name}'s site` });
 });
 
-type Members = TableData<{ id: number; name: string; email?: string; joined: string; links: number | null }>;
+type Members = TableData<{ id: number; name: string; email?: string; joined: string; links: number }>;
 
 /** The members prop of `/members` as `user` gets it. */
 async function members(user: User, query = ''): Promise<Members> {
@@ -48,7 +48,7 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     expect(asAlan.columns.map((column) => column.name)).toEqual(['name', 'joined', 'links']);
     expect(JSON.stringify(asAlan)).not.toContain('@example.com');
     // Not in the SQL either (the projection) — only the table's queries count: the session and auth read users too.
-    const table = queries.filter((query) => query.sql.includes('link_counts'));
+    const table = queries.filter((query) => query.sql.includes('"profile_links"'));
     expect(table.length).toBeGreaterThan(0);
     for (const query of table) expect(query.sql, 'the SQL selects a hidden column').not.toContain('"users"."email" as');
     // The control: an administrator's query does select it.
@@ -94,6 +94,12 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
 
   it('sorts and filters by the URL — strictly: an unknown sort, a raw column, a page size that is none is a 400', async () => {
     expect((await members(ada, 'sort=-name')).rows.map((row) => row.name)).toEqual(['Grace Hopper', 'Alan Turing', 'Ada Lovelace']);
+    // By the number of links the base query counts (withCount): ties broken by the key, in the same direction.
+    expect((await members(ada, 'sort=-links')).rows.map((row) => [row.name, row.links])).toEqual([
+      ['Ada Lovelace', 2],
+      ['Grace Hopper', 1],
+      ['Alan Turing', 1],
+    ]);
     expect((await members(ada, 'search=tur')).rows.map((row) => row.name)).toEqual(['Alan Turing']);
     expect((await members(alan, 'search=grace@')).rows).toEqual([]); // the hidden column is not searched
     for (const query of ['sort=password', 'sort=created_at', 'sort=unknown', 'per_page=10000', 'filter[password]=x', 'filter[locale]=fr']) {

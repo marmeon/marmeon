@@ -3,7 +3,7 @@ import type { Gate, PolicyClass } from '@marmeon/auth';
 import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
 import { isJsonResult, isRedirectResult, json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { expectsJson, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
-import type { Kysely, SelectQueryBuilder } from 'kysely';
+import { AliasNode, IdentifierNode, type Kysely, type KyselyPlugin, type RootOperationNode, type SelectQueryBuilder } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
@@ -156,7 +156,7 @@ export class Tables {
     const key = parseKey(definition.keyType, body.key);
     if (key === undefined) throw new HttpError(404);
     const keyName = keyNameOf(definition);
-    const found = await project(definition, this.#base(definition, ctx), view).where(definition.key, '=', key).limit(1).executeTakeFirst();
+    const found = await project(definition, this.#base(definition, ctx, view), view).where(definition.key, '=', key).limit(1).executeTakeFirst();
     // Not a row of this table for this user — another tenant's, gone, made up: the same 404 either way.
     if (!found) throw new HttpError(404);
     const row = pick(found as Row, view, keyName);
@@ -187,7 +187,7 @@ export class Tables {
       const keys = [...new Set(body.keys.map(String))];
       // Keys that do not parse by the key's type are no rows of the table: counted as missing, never sent to the database.
       const usable = [...new Set(keys.map((key) => parseKey(definition.keyType, key)).filter((key) => key !== undefined))];
-      const found = usable.length === 0 ? [] : await project(definition, this.#base(definition, ctx), view).where(definition.key, 'in', usable).execute();
+      const found = usable.length === 0 ? [] : await project(definition, this.#base(definition, ctx, view), view).where(definition.key, 'in', usable).execute();
       rows = (found as Row[]).map((row) => pick(row, view, keyName));
       missing = keys.length - rows.length;
     } else {
@@ -333,13 +333,24 @@ export class Tables {
     };
   }
 
-  #base(definition: TableDefinition, ctx: HttpContext): SelectQueryBuilder<any, any, any> {
-    return definition.query(this.#db, ctx);
+  /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column). */
+  #base(definition: TableDefinition, ctx: HttpContext, view: View): SelectQueryBuilder<any, any, any> {
+    const query = definition.query(this.#db, ctx);
+    const selected = selectedBy(query);
+    // Under its own name: the projection cannot rename a value the query selects (SQL has no alias of an alias in one select).
+    const renamed = Object.entries(definition.columns).find(([alias, col]) => selected.has(col.ref) && alias !== col.ref);
+    if (renamed) {
+      const [alias, { ref }] = renamed;
+      throw new Error(`Table "${definition.name}": the column '${alias}' reads ${ref}, a value its query selects — name the column ${ref}: ${ref}: column('${ref}').`);
+    }
+    const shown = new Set(view.columns.map(([, col]) => col));
+    const hidden = new Set(Object.values(definition.columns).flatMap((col) => (selected.has(col.ref) && !shown.has(col) ? [col.ref] : [])));
+    return hidden.size ? query.withPlugin(new LeaveOut(hidden)) : query;
   }
 
   /** The base query with the state's filters and search — on visible columns and filters only (checked before). */
   #filtered(definition: TableDefinition, ctx: HttpContext, state: TableState, view: View): SelectQueryBuilder<any, any, any> {
-    let query = this.#base(definition, ctx);
+    let query = this.#base(definition, ctx, view);
     for (const [name, value] of Object.entries(state.filters)) {
       const entry = definition.filters[name]!;
       if (entry.type === 'select') {
@@ -352,6 +363,13 @@ export class Tables {
     }
     const searched = view.columns.filter(([, col]) => col.isSearchable);
     if (state.search && searched.length > 0) {
+      const selected = selectedBy(query);
+      const value = searched.find(([, col]) => selected.has(col.ref));
+      if (value) {
+        throw new Error(
+          `Table "${definition.name}": the column '${value[0]}' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
+        );
+      }
       const pattern = `%${state.search.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       query = query.where((eb) => eb.or(searched.map(([, col]) => sql<boolean>`lower(${sql.ref(col.ref)}) like ${pattern} escape '\\'`)));
     }
@@ -424,11 +442,47 @@ export function keyNameOf(definition: TableDefinition): string {
   return definition.key.slice(definition.key.lastIndexOf('.') + 1);
 }
 
-/** The query with the visible columns (by name) and the key selected — nothing else: a hidden column never reaches the SQL. */
+/**
+ * The query with the visible columns (by name) and the key selected — nothing else: a hidden column never reaches the SQL. A value the
+ * base query selects itself (`withCount(…, { as })`) is in its rows already, under its name ({@link Tables.#base} left out the hidden ones).
+ */
 function project(definition: TableDefinition, query: SelectQueryBuilder<any, any, any>, view: View): SelectQueryBuilder<any, any, Row> {
   const keyName = keyNameOf(definition);
   const keyCovered = view.columns.some(([alias, col]) => alias === keyName && (col.ref === definition.key || col.ref.endsWith(`.${keyName}`) || col.ref === keyName));
-  return query.select((eb) => [...view.columns.map(([alias, col]) => eb.ref(col.ref).as(alias)), ...(keyCovered ? [] : [eb.ref(definition.key).as(keyName)])]);
+  const selected = selectedBy(query);
+  const columns = view.columns.filter(([, col]) => !selected.has(col.ref));
+  return query.select((eb) => [...columns.map(([alias, col]) => eb.ref(col.ref).as(alias)), ...(keyCovered ? [] : [eb.ref(definition.key).as(keyName)])]);
+}
+
+/**
+ * The names of the values a query selects itself under an alias (`withCount(…, { as })`, `eb.fn(…).as(…)`): a column of such a name
+ * reads that value, and SQL refers to it by name only in `ORDER BY`.
+ */
+function selectedBy(query: SelectQueryBuilder<any, any, any>): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const { selection } of query.toOperationNode().selections ?? []) {
+    if (AliasNode.is(selection) && IdentifierNode.is(selection.alias)) names.add(selection.alias.name);
+  }
+  return names;
+}
+
+/** Leaves the values of hidden columns out of the base query's own selections — whatever builds on it, as a subquery too. */
+class LeaveOut implements KyselyPlugin {
+  readonly #names: ReadonlySet<string>;
+
+  constructor(names: ReadonlySet<string>) {
+    this.#names = names;
+  }
+
+  transformQuery({ node }: { node: RootOperationNode }): RootOperationNode {
+    if (node.kind !== 'SelectQueryNode' || !node.selections) return node;
+    const kept = node.selections.filter(({ selection }) => !(AliasNode.is(selection) && IdentifierNode.is(selection.alias) && this.#names.has(selection.alias.name)));
+    return kept.length === node.selections.length ? node : { ...node, selections: kept };
+  }
+
+  async transformResult<R>({ result }: { result: R }): Promise<R> {
+    return result;
+  }
 }
 
 /** Ordered by the state's sort (NULLs last, either way — the same on SQLite and Postgres), then by the key. */

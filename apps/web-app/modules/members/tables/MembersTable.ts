@@ -1,5 +1,4 @@
 import type { Authenticated } from '@marmeon/auth';
-import { sql } from '@marmeon/database';
 import { action, bulk, column, defineTable, exportCsv, filter, type RowOfTable, type TableContext } from '@marmeon/table';
 import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
 import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
@@ -13,24 +12,13 @@ import { MemberPolicy } from '../policies/MemberPolicy.ts';
 export const MembersTable = defineTable({
   name: 'members',
   query: (db, _ctx: TableContext<Authenticated>) =>
-    db
-      .selectFrom('users')
-      .leftJoin(
-        (eb) =>
-          eb
-            .selectFrom('profile_links')
-            .select(['profile_links.user_id', sql<number>`cast(count(*) as integer)`.as('links')])
-            .groupBy('profile_links.user_id')
-            .as('link_counts'),
-        (join) => join.onRef('link_counts.user_id', '=', 'users.id'),
-      )
-      .where('users.email_verified_at', 'is not', null),
+    db.selectFrom('users').withCount('profile_links', { as: 'links' }).where('users.email_verified_at', 'is not', null),
   key: 'users.id',
   columns: {
     name: column('users.name').sortable().searchable(),
     email: column('users.email').visible(MemberPolicy, 'viewEmails').sortable().searchable(),
     joined: column('users.created_at').sortable(),
-    links: column('link_counts.links').sortable(),
+    links: column('links').sortable(),
   },
   filters: {
     joined: filter.dateRange('users.created_at'),

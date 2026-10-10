@@ -182,8 +182,8 @@ class Resolver extends OperationNodeTransformer {
     if (node.func === SOFT_DELETE || node.func === WITH_TRASHED) return NOTHING as unknown as FunctionNode;
     if (node.func === RELATION) {
       // Top-down: the relation's subquery is built in the scope of the select it is in, then resolved as a select of its own.
-      const relation = relationQuery(node, this.#frames.at(-1)?.sources ?? [], this.#metadata, (table) => `${table}__${++this.#aliases}`);
-      return { ...relation, arguments: [this.transformNode(relation.arguments[0]!, queryId), ...relation.arguments.slice(1)] };
+      const { query, wrap } = relationQuery(node, this.#frames.at(-1)?.sources ?? [], this.#metadata, (table) => `${table}__${++this.#aliases}`);
+      return wrap(this.transformNode(query, queryId)) as unknown as FunctionNode;
     }
     return super.transformFunction(node, queryId);
   }

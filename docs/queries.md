@@ -270,10 +270,50 @@ this.#db
 
 Its columns, secret columns and soft-deleted rows follow the rules of `with()`.
 
+### Counting related rows
+
+`withCount(name)` counts the rows of a hasMany or a belongsToMany in the same query and adds the number under `<name>_count`.
+`{ as }` names it otherwise, and a callback narrows what is counted, with the related table in scope as in `with()`:
+
+```ts
+this.#db
+  .selectFrom('users')
+  .select(['users.id', 'users.name'])
+  .withCount('profile_links')
+  .withCount('profile_links', { as: 'secure_links' }, (links) => links.where('url', 'like', 'https://%'));
+```
+
+Each row gets `profile_links_count: number` and `secure_links: number`, a number on SQLite and on Postgres alike, `0` when
+there is none. A belongsTo or a hasOne has one row or none, so there is nothing to count: `withCount()` on one is a compile error
+that lists the relations it can count, and `whereHas()` asks the question instead:
+
+```text
+Argument of type '"login_activity"' is not assignable to parameter of type '"profile_links"'.
+```
+
+A [data table](tables.md#columns) shows and sorts by such a count like a column.
+
+### Filtering by relations
+
+`whereHas(name, callback?)` keeps the rows that have a related row, and `whereDoesntHave(name, callback?)` the rows that have
+none. Both become `exists (…)` in the same query. With a callback, only related rows its conditions match count:
+
+```ts
+this.#db
+  .selectFrom('users')
+  .select(['users.id', 'users.name'])
+  .whereHas('profile_links', (links) => links.where('url', 'like', 'https://%'))
+  .whereDoesntHave('login_activity');
+```
+
+Any relation works, a belongsToMany through its pivot too. The callbacks nest: `whereHas()` inside a `whereHas()`, a `with()`
+or a `withCount()` callback filters that level. What the callback selects does not matter: only whether a row is there.
+
 ### Soft-deleted rows
 
-A relation never loads the rows a table's [soft deletes](migrations.md#timestamps-and-soft-deletes) mark as deleted. Call
-`withTrashed()` in its callback to keep them for that relation. On a repository's `query()`, `withTrashed()` keeps them in the
+A relation never loads the rows a table's [soft deletes](migrations.md#timestamps-and-soft-deletes) mark as deleted, and
+`withCount()`, `whereHas()` and `whereDoesntHave()` never count them, through a pivot neither. Call `withTrashed()` in the
+callback to keep them for that relation. On a repository's `query()`, `withTrashed()` keeps them in the
 query's own rows:
 
 ```ts
@@ -299,6 +339,11 @@ instead: `where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens')
 with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
 ```
 
+A condition may compare a secret column, in a relation's callback as in any `where()`: its value stays in the database.
+`whereHas('personal_access_tokens', (tokens) => tokens.where('token_hash', '=', hash))` finds the owner of a token by its hash.
+Compare only with values your code chose, such as a hash it computed. A condition on a column a request picks, or a `like`
+pattern a request sends, answers questions about the secret column one row count at a time.
+
 The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice. Neither is a view: it
 is raw SQL of a migration, so a view over a table with secret columns returns what its own SQL selects.
 
@@ -309,7 +354,7 @@ query built on a connection without Marmeon's plugins, `connections.infrastructu
 before it is sent:
 
 ```text
-This query loads relations or leaves out soft-deleted rows (with(), withRelation(), withTrashed(), a repository's query()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.
+This query loads, counts or filters by relations or leaves out soft-deleted rows (with(), withCount(), whereHas(), withRelation(), withTrashed(), a repository's query()), which only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()). Build it on connections.get() or Database. See docs/queries.md#relations.
 ```
 
 Nested values come back with the same types as the outer row's: booleans, parsed JSON, decimals as strings and timestamps in UTC,

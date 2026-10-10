@@ -406,24 +406,42 @@ type Simplify<T> = { [K in keyof T]: T[K] } & {};
 /** The plain column names of the query's tables — for "it has …" in messages. */
 type PlainColumns<DB, TB extends keyof DB> = Extract<StringReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 
-type ColumnProblem<DB, TB extends keyof DB, R extends string> =
+type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> =
   R extends SecretReference<DB, TB>
     ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())`
-    : R extends StringReference<DB, TB>
+    : R extends StringReference<DB, TB> | Selected<DB, TB, O>
       ? never
-      : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB>>}`;
+      : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
+
+/** The names of the values the base query selects itself (`withCount(…, { as })`) — not columns of its tables. */
+type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColumns<DB, TB>>;
+
+/** A column that reads a value the base query selects: under that name, and not searched (the search runs in WHERE). */
+type SelectedProblem<DB, TB extends keyof DB, O, A, C> =
+  C extends Column<infer R extends string, boolean, infer Q>
+    ? R extends Selected<DB, TB, O>
+      ? A extends R
+        ? Q extends true
+          ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE)`
+          : never
+        : `'${A & string}' reads '${R}', a value the query selects — name the column '${R}': ${R}: column('${R}')`
+      : never
+    : never;
 
 /** Marks a wrong entry: the property's name is the message. */
 type Problem<M extends string> = { readonly [K in M]: true };
 
-/** Every column must be a column of the query (and none a secret one); `can` is the rows' abilities. */
-export type CheckColumns<DB, TB extends keyof DB, Cols> = {
+/**
+ * Every column must be a column of the query (and none a secret one) or a value the query selects, under its name; `can` is the
+ * rows' abilities.
+ */
+export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
   [A in keyof Cols]: A extends 'can'
     ? Problem<`'can' is taken — a row's abilities are its 'can'; name the column otherwise`>
     : Cols[A] extends Column<infer R extends string>
-      ? [ColumnProblem<DB, TB, R>] extends [never]
+      ? [ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>] extends [never]
         ? unknown
-        : Problem<ColumnProblem<DB, TB, R>>
+        : Problem<ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>>
       : unknown;
 };
 
@@ -486,12 +504,13 @@ export type CheckSort<Cols, S extends string> = string extends S
 /** The name a key column has in a row: its last part (`users.id` → `id`). */
 export type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
 
-type ValueOf<DB, TB extends keyof DB, C> = C extends Column<infer R extends string> ? ExtractTypeFromReferenceExpression<DB, TB, R> : never;
+type ValueOf<DB, TB extends keyof DB, O, C> =
+  C extends Column<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
 
 /** A row as the table sends it (and hands it to actions and policies): the visible columns by name, plus the key. */
-export type RowOf<DB, TB extends keyof DB, Cols, K extends string> = Simplify<
-  { readonly [A in keyof Cols as Cols[A] extends Column<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, Cols[A]> } & {
-    readonly [A in keyof Cols as Cols[A] extends Column<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, Cols[A]>;
+export type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<
+  { readonly [A in keyof Cols as Cols[A] extends Column<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]> } & {
+    readonly [A in keyof Cols as Cols[A] extends Column<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
   } & { readonly [P in KeyName<K>]: ExtractTypeFromReferenceExpression<DB, TB, K> }
 >;
 
@@ -541,6 +560,7 @@ export type TableQuery = { bivariance(db: Database, ctx: TableContext): SelectQu
 /** The tables of a base query's result, its tables in scope, and the context it needs. */
 type DbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, any, any> ? DB : never;
 type TbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
+type OutOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<any, any, infer O> ? O : {};
 type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 
 /** The input of {@link defineTable}. */
@@ -558,7 +578,8 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
   /**
    * The base query — every row the table may ever show this request (the tenant, the scope): `(db, ctx: TableContext<Authenticated>) =>
    * db.selectFrom('users').where('team_id', '=', ctx.user.team_id)`. Pages, actions, bulk actions (also "all matching") and exports
-   * all start from it. Select nothing: the table selects its visible columns itself (whatever the query selects stays on the server).
+   * all start from it. Select nothing: the table selects its visible columns itself (whatever the query selects stays on the server) —
+   * except a value it computes, `withCount('profile_links', { as: 'links' })`, which `links: column('links')` shows and sorts by.
    */
   readonly query: Q;
   /**
@@ -566,19 +587,19 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
    * type (`{ column: 'uuid', type: 'uuid' }`, see {@link KeyType}) — every key the browser sends is parsed by it first.
    */
   readonly key: CheckKey<DbOf<Q>, TbOf<Q>, K> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>; readonly type: KeyType };
-  readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols>>;
+  readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols, OutOf<Q>>>;
   readonly filters?: Filters & NoInfer<CheckFilters<DbOf<Q>, TbOf<Q>, Filters>>;
   /** The sort without `?sort=` — `'-joined'`; default: the first sortable column. The key is always the last order. */
   readonly defaultSort?: CheckSort<Cols, Sort>;
   readonly pagination?: Pg;
-  readonly actions?: Actions & NoInfer<CheckActions<RowOf<DbOf<Q>, TbOf<Q>, Cols, K>, Actions>>;
-  readonly bulk?: Bulk & NoInfer<CheckBulk<RowOf<DbOf<Q>, TbOf<Q>, Cols, K>, Bulk>>;
+  readonly actions?: Actions & NoInfer<CheckActions<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, Actions>>;
+  readonly bulk?: Bulk & NoInfer<CheckBulk<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, Bulk>>;
   readonly export?: Exports;
 }
 
 /** The table `defineTable` makes of its input. */
 type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = Table<
-  RowOf<DbOf<Q>, TbOf<Q>, Cols, K>,
+  RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>,
   CtxOf<Q>,
   keyof Cols & string,
   keyof Filters & string,

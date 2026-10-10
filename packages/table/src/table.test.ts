@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, MEMBERS, MembersTable, tableApp, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import type { Database } from '@marmeon/database';
+import { column, defineTable } from './define.ts';
 import { Tables } from './tables.ts';
 import type { TableData } from './client/index.ts';
 
@@ -20,6 +22,7 @@ const EDSGER = 4; // exports, but does not see e-mails
 const MALLORY = 9; // team 2
 
 type Members = TableData<{ id: number; name: string; email?: string; role: string; joined: string; seen: string | null }>;
+type Teams = TableData<{ id: number; name: string; size: number; admins?: number }>;
 
 async function page(application: TableTestApp, user: number, query = '', path = '/teams/1/members'): Promise<{ status: number; members: Members; text: string }> {
   const response = await application.request(`${path}${query ? `?${query}` : ''}`, { user });
@@ -75,6 +78,64 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       const selects = application.queries.map((query) => query.sql).filter((text) => /\bfrom "members"/.test(text));
       expect(selects).toHaveLength(2);
       expect(selects.filter((text) => /"teams"/.test(text))).toHaveLength(1); // the page loads it, the count does not
+    });
+
+    it('shows and sorts by a value the base query selects (withCount) — both ways, the key breaking ties, without a join', async () => {
+      const application = await app(driver);
+      await application.connections.get().insertInto('teams').values({ id: 3, name: 'Team three' }).execute();
+      application.queries.length = 0;
+      const response = await application.request('/teams/1/teams', { user: ADA });
+      expect(response.status).toBe(200);
+      const { teams } = JSON.parse(await response.text()) as { teams: Teams };
+      expect(teams.columns.map((column) => column.name)).toEqual(['name', 'size', 'admins']);
+      expect(teams.rows.map(({ can: _, ...row }) => row)).toEqual([
+        { id: 1, name: 'Team one', size: 4, admins: 1 },
+        { id: 3, name: 'Team three', size: 0, admins: 0 },
+        { id: 2, name: 'Team two', size: 1, admins: 1 },
+      ]);
+      const sizes = async (query: string) => {
+        const answer = await application.request(`/teams/1/teams?${query}`, { user: ADA });
+        return (JSON.parse(await answer.text()) as { teams: Teams }).teams.rows.map((row) => row.name);
+      };
+      application.queries.length = 0;
+      expect(await sizes('sort=size')).toEqual(['Team three', 'Team two', 'Team one']);
+      expect(application.queries.some((query) => /order by "size" asc/.test(query.sql))).toBe(true);
+      expect(await sizes('sort=-size')).toEqual(['Team one', 'Team two', 'Team three']);
+      // Two teams with one admin each: the key breaks the tie, in the same direction.
+      expect(await sizes('sort=-admins')).toEqual(['Team two', 'Team one', 'Team three']);
+    });
+
+    it('never selects a hidden value of the base query — not in the SQL, not sortable (400), not exported', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      const response = await application.request('/teams/1/teams', { user: ALAN });
+      const { teams } = JSON.parse(await response.text()) as { teams: Teams };
+      expect(teams.columns.map((column) => column.name)).toEqual(['name', 'size']);
+      expect(teams.rows.every((row) => !Object.hasOwn(row, 'admins'))).toBe(true);
+      const selects = application.queries.map((query) => query.sql).filter((text) => /from "teams"/.test(text));
+      expect(selects).toHaveLength(2); // the count and the page
+      for (const text of selects) expect(text, 'the SQL selects a hidden value').not.toContain('admins');
+      expect((await application.request('/teams/1/teams?sort=admins', { user: ALAN })).status).toBe(400);
+      application.queries.length = 0;
+      const exported = await (await application.request('/teams/1/_tables/teams/export/csv?sort=-size', { user: EDSGER })).text();
+      expect(exported.split('\r\n')).toEqual(['"name","size"', '"Team one","4"', '"Team two","1"', '']);
+      for (const query of application.queries) expect(query.sql, 'the export selects a hidden value').not.toContain('admins');
+      const all = await (await application.request('/teams/1/_tables/teams/export/csv?sort=-admins', { user: ADA })).text();
+      expect(all.split('\r\n')).toEqual(['"name","size","admins"', '"Team two","1","1"', '"Team one","4","1"', '']);
+    });
+
+    it('refuses a value of the base query under another name, or searched — a programming error that says what to do', async () => {
+      const application = await app(driver);
+      const tables = application.application.container.createScope().make(Tables);
+      const ctx = { request: new Request('http://localhost/teams/1/teams'), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 };
+      const table = (columns: Record<string, unknown>) =>
+        defineTable({ name: 'teams', query: (db: Database) => db.selectFrom('teams').withCount('members', { as: 'size' }), key: 'teams.id', columns: columns as never } as never);
+      await expect(tables.resolve(table({ name: column('teams.name'), members: column('size') }), ctx as never)).rejects.toThrow(
+        `Table "teams": the column 'members' reads size, a value its query selects — name the column size: size: column('size').`,
+      );
+      await expect(tables.resolve(table({ size: column('size').searchable() }), { ...ctx, request: new Request('http://localhost/teams/1/teams?search=x') } as never)).rejects.toThrow(
+        `Table "teams": the column 'size' is a value its query selects — it can be shown and sorted by, not searched: the search runs in the query's WHERE, which cannot see it.`,
+      );
     });
 
     it('stays within the base query — the tenant (another team\'s members never show)', async () => {

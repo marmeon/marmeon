@@ -1,4 +1,4 @@
-// Type guarantees of with(), withRelation() and withTrashed() — checked by `tsc` (pnpm build / typecheck), never run. The
+// Type guarantees of with(), withRelation(), withCount(), whereHas() and withTrashed() — checked by `tsc` (pnpm build / typecheck), never run. The
 // messages, as the compiler shows them, are quoted in the comments.
 import type { Kysely } from 'kysely';
 import { expectTypeOf } from 'vitest';
@@ -16,7 +16,8 @@ declare const blog: ModuleDatabase<
 >;
 
 export async function relationTypes() {
-  // Argument of type '"autor"' is not assignable to parameter of type '"author" | "comments" | "editor" | "post_stats" | "post_tag" | "tags"'.
+  // Argument of type '"autor"' is not assignable to parameter of type '"author" | "comments" | "editor" | "post_stats" | "post_tag" |
+  // "post_user" | "tags" | "users"'.
   // @ts-expect-error — a relation posts does not have
   db.selectFrom('posts').with('autor');
 
@@ -30,11 +31,11 @@ export async function relationTypes() {
   db.selectFrom('posts').with('comments', (q) => q.where('title', '=', 'x'));
 
   // Argument of type '"comments"' is not assignable to parameter of type '"api_keys" | "author" | "authored_posts" | "edited_posts" |
-  // "editor" | "post_stats" | "post_tag" | "tags"'.
+  // "editor" | "post_stats" | "post_tag" | "posts" | "tags" | "users"'.
   // @ts-expect-error — both joined tables have a relation "comments": not offered
   db.selectFrom('posts').innerJoin('users', 'users.id', 'posts.author_id').with('comments');
 
-  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts"'.
+  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts" | "posts"'.
   // @ts-expect-error — the module does not see api_keys (owned by auth, not exposed)
   blog.selectFrom('users').with('api_keys');
 
@@ -63,6 +64,32 @@ export async function relationTypes() {
   // Property 'comments' does not exist on type '{ first_comment: { body: string; } | null; post_stats: …; replies: …; title: string; }'.
   // @ts-expect-error — `{ as }` renames it: there is no `comments` key
   void post!.comments;
+
+  // Counts and filters.
+  // Argument of type '"author"' is not assignable to parameter of type '"comments" | "post_tag" | "post_user" | "tags" | "users"'.
+  // @ts-expect-error — author is a belongsTo: one row or none, nothing to count (whereHas asks that)
+  db.selectFrom('posts').withCount('author');
+  // @ts-expect-error — post_stats is a hasOne
+  db.selectFrom('posts').withCount('post_stats');
+  // Argument of type '"autor"' is not assignable to parameter of type '"author" | "comments" | "editor" | "post_stats" | … | "users"'.
+  // @ts-expect-error — a relation posts does not have
+  db.selectFrom('posts').whereHas('autor');
+  // Argument of type '"title"' is not assignable to parameter of type 'ReferenceExpression<FixtureTables, "comments">'.
+  // @ts-expect-error — the callback's scope is the related table
+  db.selectFrom('posts').whereHas('comments', (q) => q.where('title', '=', 'x'));
+  // Argument of type '"api_keys"' is not assignable to parameter of type '"authored_posts" | "comments" | "edited_posts" | "posts"'.
+  // @ts-expect-error — the module does not see api_keys
+  blog.selectFrom('users').withCount('api_keys');
+  const [counted] = await db
+    .selectFrom('posts')
+    .select('title')
+    .withCount('comments')
+    .withCount('tags', { as: 'labels' }, (q) => q.where('slug', '!=', 'x'))
+    .whereHas('author', (q) => q.whereHas('comments'))
+    .whereDoesntHave('post_stats')
+    .execute();
+  expectTypeOf(counted!).toEqualTypeOf<{ title: string; comments_count: number; labels: number }>();
+  expectTypeOf(await blog.selectFrom('users').select('name').withCount('comments').whereHas('authored_posts').execute()).toEqualTypeOf<{ name: string; comments_count: number }[]>();
 
   // A secret column is not a column a relation can select — and never part of its defaults.
   const [user] = await db.selectFrom('users').select('name').with('api_keys').execute();

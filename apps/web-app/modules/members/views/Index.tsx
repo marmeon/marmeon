@@ -175,7 +175,7 @@ export default function Index({ members }: Props) {
                       {row.name}
                     </th>
                   ) : (
-                    <td key={column.name}>{column.name === 'joined' ? date(row.joined) : column.name === 'links' ? (row.links ?? 0) : String(row.email ?? '')}</td>
+                    <td key={column.name}>{column.name === 'joined' ? date(row.joined) : column.name === 'links' ? row.links : String(row.email ?? '')}</td>
                   ),
                 )}
                 {remove && (

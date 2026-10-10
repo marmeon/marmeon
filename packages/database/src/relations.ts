@@ -1,6 +1,13 @@
 import {
+  AggregateFunctionNode,
   AliasNode,
+  CastNode,
+  DataTypeNode,
   expressionBuilder,
+  SelectAllNode,
+  UnaryOperationNode,
+  type Expression,
+  type SqlBool,
   ParensNode,
   WhereNode,
   type CompiledQuery,
@@ -94,40 +101,70 @@ function relation(eb: ExpressionBuilder<any, any>, kind: string, label: string, 
 
 // --- The chain's relations ---------------------------------------------------------------------
 
-/** What a `with()` or `withRelation()` placeholder holds, besides the callback's query. */
+/**
+ * What a `with()` or `withRelation()` placeholder holds, besides the callback's query. `use` says what a relation of the chain
+ * becomes: its rows (none), their number (`withCount()`), or a condition on whether there are any (`whereHas()`, `whereDoesntHave()`).
+ */
 export type RelationSpec =
-  | { readonly kind: 'with'; readonly name: string }
+  | { readonly kind: 'with'; readonly name: string; readonly use?: 'count' | 'exists' | 'missing' }
   | { readonly kind: 'relation'; readonly name: string; readonly table: string; readonly foreignKey: string; readonly localKey: string; readonly one: boolean };
+
+const METHODS = { count: 'withCount', exists: 'whereHas', missing: 'whereDoesntHave' } as const;
+
+function labelOf(spec: RelationSpec): string {
+  return spec.kind === 'relation' ? `withRelation('${spec.name}')` : `${spec.use ? METHODS[spec.use] : 'with'}('${spec.name}')`;
+}
 
 type Callback = (query: SelectQueryBuilder<any, any, any>) => unknown;
 
 /**
- * The selection `with()` and `withRelation()` add: a placeholder holding what to load and the callback's query, which starts
+ * The selection `with()`, `withCount()` and `withRelation()` add: a placeholder holding what to load and the callback's query, which starts
  * from a stand-in table — the relation's table is only known once the placeholder is resolved.
  */
-export function relationSelection(spec: RelationSpec, alias: string, callback: Callback | undefined, label: string): { toOperationNode(): OperationNode } {
+export function relationSelection(spec: RelationSpec, alias: string, callback: Callback | undefined): { toOperationNode(): OperationNode } {
+  const marker = placeholder(spec, callback);
+  return { toOperationNode: () => AliasNode.create(marker, IdentifierNode.create(alias)) };
+}
+
+/** The condition `whereHas()` and `whereDoesntHave()` add: a placeholder like {@link relationSelection}'s, which becomes `exists (…)`. */
+export function relationCondition(spec: RelationSpec, callback: Callback | undefined): Expression<SqlBool> {
+  const marker = placeholder(spec, callback);
+  // `expressionType` makes it an expression to Kysely's `where()`.
+  return { expressionType: undefined, toOperationNode: () => marker } as unknown as Expression<SqlBool>;
+}
+
+function placeholder(spec: RelationSpec, callback: Callback | undefined): FunctionNode {
   let query: OperationNode = SelectQueryNode.createFrom([TableNode.create(RELATION_TARGET)]);
   if (callback) {
     const built = callback(expressionBuilder<any, any>().selectFrom(RELATION_TARGET));
     const node = (built as { toOperationNode?: () => OperationNode } | undefined)?.toOperationNode?.();
     const own = node && SelectQueryNode.is(node) && node.from?.froms.some((from) => isTarget(from));
-    if (!own) throw new TypeError(`The callback of ${label} returns something else than the query it was given — return the query: (q) => q.select(…).`);
+    if (!own) throw new TypeError(`The callback of ${labelOf(spec)} returns something else than the query it was given — return the query: (q) => q.select(…).`);
     query = node!;
   }
-  const marker = FunctionNode.create(RELATION, [ValueNode.createImmediate(JSON.stringify(spec)), query]);
-  return { toOperationNode: () => AliasNode.create(marker, IdentifierNode.create(alias)) };
+  return FunctionNode.create(RELATION, [ValueNode.createImmediate(JSON.stringify(spec)), query]);
 }
 
 /**
- * Turns a `with()`/`withRelation()` placeholder into the relation's subquery — still a select with placeholders of its own (the
- * nested relations, `withTrashed()`), which the resolver resolves next, in its own scope. `sources` are the tables of the
- * select the placeholder is in; the relation is looked up on the one that has it. Table and column names come from the
- * metadata, never from the query.
+ * Turns a relation placeholder into the relation's subquery — still a select with placeholders of its own (the nested relations,
+ * `withTrashed()`), which the resolver resolves next, in its own scope, and then wraps: as the relation's JSON, its count or
+ * `exists`. `sources` are the tables of the select the placeholder is in; the relation is looked up on the one that has it.
+ * Table and column names come from the metadata, never from the query.
  */
-export function relationQuery(marker: FunctionNode, sources: readonly Source[], metadata: SchemaMetadata, alias: (table: string) => string): FunctionNode {
+export function relationQuery(
+  marker: FunctionNode,
+  sources: readonly Source[],
+  metadata: SchemaMetadata,
+  alias: (table: string) => string,
+): { readonly query: SelectQueryNode; wrap(query: OperationNode): OperationNode } {
   const spec = JSON.parse(String((marker.arguments[0] as ValueNode).value)) as RelationSpec;
-  const label = spec.kind === 'with' ? `with('${spec.name}')` : `withRelation('${spec.name}')`;
+  const label = labelOf(spec);
+  const use = spec.kind === 'with' ? spec.use : undefined;
   const { outer, relation } = spec.kind === 'with' ? lookUp(spec.name, sources, metadata, label) : defined(spec, sources, metadata, label);
+  const one = relation.kind === 'belongsTo' || relation.kind === 'hasOne' || (spec.kind === 'relation' && spec.one);
+  if (use === 'count' && one) {
+    throw new Error(`${label} counts the rows of a list — ${spec.name} is a ${relation.kind} of ${outer.table}, one row or none: ask whereHas('${spec.name}') instead.`);
+  }
   const target = relation.table;
   // A relation to the outer row's own table (a parent category) needs a name of its own: the outer name would be the inner table.
   const ref = target === outer.ref ? alias(target) : target;
@@ -135,7 +172,13 @@ export function relationQuery(marker: FunctionNode, sources: readonly Source[], 
   query = { ...query, from: { ...query.from!, froms: query.from!.froms.map((from) => (isTarget(from) ? (ref === target ? TableNode.create(target) : AliasNode.create(TableNode.create(target), IdentifierNode.create(ref))) : from)) } };
   if (ref !== target) query = new Rename(target, ref).transformNode(query) as SelectQueryNode;
 
-  query = { ...query, selections: selectionsOf(query, target, ref, metadata, label) };
+  if (use === undefined) query = { ...query, selections: selectionsOf(query, target, ref, metadata, label) };
+  else {
+    // What is counted or asked for is rows, not columns: the callback's selections and order (Postgres refuses an order next to count) go.
+    const { orderBy: _, ...rest } = query;
+    // Kysely's types want an alias on an expression; SQL does not.
+    query = { ...rest, selections: [SelectionNode.create((use === 'count' ? COUNT : ONE_VALUE) as never)] };
+  }
   // The callback's own conditions in parentheses: an `or` in raw SQL must not swallow the correlation or the soft-delete filter.
   if (query.where) query = { ...query, where: WhereNode.create(ParensNode.create(query.where.where)) };
   const at = (table: string, column: string) => ReferenceNode.create(ColumnNode.create(column), TableNode.create(table));
@@ -155,11 +198,16 @@ export function relationQuery(marker: FunctionNode, sources: readonly Source[], 
       if (metadata.softDeletes.has(table)) query = QueryNode.cloneWithWhere(query, BinaryOperationNode.create(at(name, 'deleted_at'), OperatorNode.create('is'), ValueNode.createImmediate(null)));
     }
   }
-  const one = relation.kind === 'belongsTo' || relation.kind === 'hasOne' || (spec.kind === 'relation' && spec.one);
+  if (use === 'count') return { query, wrap: (counted) => ParensNode.create(counted) };
+  if (use !== undefined) return { query, wrap: (asked) => UnaryOperationNode.create(OperatorNode.create(use === 'exists' ? 'exists' : 'not exists'), asked) };
   // One row: the first the callback's order gives (Postgres' JSON object refuses a subquery of several rows).
   if (one && !query.limit) query = SelectQueryNode.cloneWithLimit(query, LimitNode.create(ValueNode.createImmediate(1)));
-  return FunctionNode.create(one ? ONE : MANY, [query, ValueNode.createImmediate(label)]);
+  return { query, wrap: (loaded) => FunctionNode.create(one ? ONE : MANY, [loaded, ValueNode.createImmediate(label)]) };
 }
+
+/** `count(*)` as an integer — Postgres counts in `bigint`, which its driver returns as a string. */
+const COUNT = CastNode.create(AggregateFunctionNode.create('count', [SelectAllNode.create()]), DataTypeNode.create('integer'));
+const ONE_VALUE = ValueNode.createImmediate(1);
 
 function lookUp(name: string, sources: readonly Source[], metadata: SchemaMetadata, label: string): { outer: Source; relation: Relation } {
   const found = sources.flatMap((source) => {
