@@ -18,6 +18,7 @@ import {
   type CompiledQuery,
   type DeleteQueryNode,
   type Expression,
+  type Kysely,
   type KyselyPlugin,
   type OperationNode,
   type PluginTransformQueryArgs,
@@ -98,6 +99,11 @@ export class SchemaResolver implements KyselyPlugin {
     this.#relations = relations;
   }
 
+  /** What the connection knows about its schema — what this plugin resolves with. */
+  get metadata(): SchemaMetadata {
+    return this.#metadata;
+  }
+
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
     if (!hasPlaceholder(node)) {
       // What it reads is checked against the secret columns (`guardSecrets`) and stripped of them: with the schema it runs against.
@@ -130,6 +136,14 @@ export class SchemaResolver implements KyselyPlugin {
     const node = this.#relations.transform(resolved, query.queryId);
     return node === query.query ? query : this.#compiler.compileQuery(node, query.queryId);
   }
+}
+
+/**
+ * The schema metadata of the connection `db` runs on (a transaction's too) — as far as it is loaded: after a query on it has run.
+ * `undefined` on a connection without Marmeon's plugins.
+ */
+export function metadataOf(db: Pick<Kysely<any>, 'getExecutor'>): SchemaMetadata | undefined {
+  return db.getExecutor().plugins.find((plugin): plugin is SchemaResolver => plugin instanceof SchemaResolver)?.metadata;
 }
 
 function resolve(node: RootOperationNode, metadata: SchemaMetadata): RootOperationNode {

@@ -131,10 +131,31 @@ transaction. Give other dependencies to the service that uses the repository.
 | --- | --- |
 | `query()` | A Kysely select on the table, to go on with `select()`, `where()` and the rest. Soft-deleted rows are left out. |
 | `find(id)` | The row, or `undefined`. |
-| `findOrFail(id)` | The row, or a 404 (`RecordNotFoundError`) that does not tell the client what was looked up. |
+| `findOrFail(id, { with })` | The row and the relations `with` lists, or a 404 (`RecordNotFoundError`) that does not say what was looked up. |
+| `findBy(column, value)` | The first row whose column holds the value, or `undefined`. |
+| `firstWhere(values)` | The first row that holds every value, `{ author_id: 1, featured: true }`, or `undefined`. |
+| `pluck(column)` | One column of every row, as a list. |
+| `chunk(size, query?)` | Every row, in batches of `size`, for a `for await` loop. |
 | `exists(id)` | Whether the row is there. |
 | `count()` | How many rows there are. |
 | `paginate(query, ctx.query)` | One page and the total. See [pagination](pagination.md#pages-by-number). |
+
+Every one of them leaves soft-deleted rows out and never returns a secret column. A finder cannot name a secret column at all:
+`pluck('password')` is a compile error, and refused when the query runs. `findBy()` and `firstWhere()` find a NULL with `null`. A
+value that is `undefined`, such as a field a request did not send, is refused, because a condition without a value would match any
+row. Which row is "first" is up to the database unless the column is unique; order a `query()` yourself when it matters.
+
+`findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
+row's type has them. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows added
+during the loop come at the end, and rows removed do not make it skip others. Its callback narrows what it reads:
+
+```ts
+for await (const users of this.#users.chunk(500, (query) => query.where('email_verified_at', 'is', null).with('profile_links'))) {
+  for (const user of users) await this.#reminders.send(user, user.profile_links);
+}
+```
+
+The callback may add conditions and relations. It must keep `id` among the columns.
 
 `query().withTrashed()` keeps the soft-deleted rows, and so does a relation that calls it in its callback. The
 [relations](#soft-deleted-rows) section shows both.
@@ -316,6 +337,45 @@ Any relation works, a belongsToMany through its pivot too. The callbacks nest: `
 or a `withCount()` callback filters that level. What the callback selects does not matter: only whether a row is there.
 `limit()`, `offset()` and a set operation in it are refused, because they would change the answer. So is `having()` without
 `groupBy()`, which makes every related row one group and which databases answer differently.
+
+### Writing through relations
+
+A repository's `relation(id, name)` writes through a relation of one row. For a belongsToMany, it manages the rows of the pivot
+that link the two tables:
+
+```ts
+await this.relation(noteId, 'tags').sync([1, 4, 7]); // { attached: [7], detached: [2] }
+await this.relation(noteId, 'tags').attach(9); // [9]
+await this.relation(noteId, 'tags').detach(4); // 1
+```
+
+`sync(ids)` leaves the note linked to exactly these tags: it attaches the missing ones, detaches the others and leaves the rest
+alone, and says which it attached and detached. `attach()` takes one id or a list, skips the ones linked already and returns
+those it linked. `detach()` returns how many links went: without ids, every one; with an empty list, none.
+
+A link to a row that is missing or soft-deleted is refused before anything is written, and the error names the ids:
+
+```text
+relation('tags').attach() would link notes 3 to tags 9, which is missing or soft-deleted — nothing was written. Check the ids first: the rule exists() leaves soft-deleted rows out. See docs/queries.md#writing-through-relations.
+```
+
+Check ids that come from a request with [`exists()`](validation.md#database-rules-and-why-they-never-run-live) in its rules. A
+link to a row that was soft-deleted later stays until you detach it.
+
+For a hasMany or a hasOne, `create(values)` and `createMany(values)` insert related rows with the foreign key set:
+
+```ts
+const link = await users.relation(user.id, 'profile_links').create({ label: 'Blog', url: 'https://example.com' });
+```
+
+The values are those of an insert without the foreign key, which the relation sets: naming it is a compile error. The rows come
+back as stored, without their secret columns, and `timestamps()` in the related table's migration fills in `created_at` and
+`updated_at`. A hasOne's unique key refuses a second row.
+
+Each call runs in a transaction of its own, or in a savepoint inside an open one, so a refused `sync()` changes nothing. The row
+whose relation you write must be there: a missing or soft-deleted one answers 404 (`RecordNotFoundError`). A belongsTo has no
+`relation()`: update its foreign key instead. A pivot with soft deletes is refused, and nested writes, such as creating a row
+with its relations, do not exist: write each relation with a call of its own.
 
 ### Soft-deleted rows
 

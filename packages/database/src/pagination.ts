@@ -165,19 +165,13 @@ export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<s
   const sorted: readonly string[] = typeof column === 'string' ? [column] : column;
   const columns = sorted.at(-1) === key ? sorted : [...sorted.filter((name) => name !== key), key];
   const context = cursorContext(name, direction, columns);
-  let page = (query as SelectQueryBuilder<any, any, O>).clearOrderBy();
-  for (const [index, name] of columns.entries()) {
-    // The key is unique and never NULL; the columns before it may be NULL — last, in either direction.
-    page = index === columns.length - 1 ? page.orderBy(name, direction) : page.orderBy(name, (order) => (direction === 'asc' ? order.asc() : order.desc()).nullsLast());
-  }
-  page = page.limit(perPage + 1);
+  let after: unknown[] | undefined;
   if (cursor) {
-    const after = await decodeCursor(encrypter, cursor, context, columns.length);
+    after = await decodeCursor(encrypter, cursor, context, columns.length);
     // Not one of this list's (changed, made up, another list's or key's): a 400 — never page 1 again.
     if (!after) throw new InvalidCursorError();
-    page = page.where((eb) => rowsAfter(eb, columns, after, direction));
   }
-  const rows = await page.execute();
+  const rows = await keyset(query, columns, after, direction, perPage + 1).execute();
   const data = rows.slice(0, perPage);
   const last = data.at(-1);
   if (last && !Object.hasOwn(last, key)) {
@@ -185,6 +179,27 @@ export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<s
   }
   const next = rows.length > perPage && last ? columns.map((name) => cursorValue(last[name])) : undefined;
   return { data, meta: { perPage, nextCursor: next ? await encrypter.encrypt(JSON.stringify(next), context) : null } };
+}
+
+/**
+ * `query` in the order of `columns` (the last one a unique key), at most `limit` rows after the row whose values are `after` — the
+ * step {@link cursorPaginate} and a repository's `chunk()` take: no offset, so rows added or removed meanwhile neither repeat nor shift.
+ */
+export function keyset<DB, TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  columns: readonly string[],
+  after: readonly unknown[] | undefined,
+  direction: 'asc' | 'desc',
+  limit: number,
+): SelectQueryBuilder<DB, TB, O> {
+  let page = (query as SelectQueryBuilder<any, any, O>).clearOrderBy();
+  for (const [index, name] of columns.entries()) {
+    // The key is unique and never NULL; the columns before it may be NULL — last, in either direction.
+    page = index === columns.length - 1 ? page.orderBy(name, direction) : page.orderBy(name, (order) => (direction === 'asc' ? order.asc() : order.desc()).nullsLast());
+  }
+  page = page.limit(limit);
+  if (after) page = page.where((eb) => rowsAfter(eb, columns, after, direction));
+  return page as SelectQueryBuilder<DB, TB, O>;
 }
 
 /**

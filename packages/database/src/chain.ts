@@ -32,6 +32,12 @@ type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof Select
 type Shaped<R, V> = R extends { readonly kind: 'hasMany' | 'belongsToMany' } ? V[] : R extends { readonly nullable: false } ? V : V | null;
 type WithResult<DB, TB extends keyof DB, N, O> = Shaped<RelationOf<TB, N>, Loaded<DB, TargetOf<DB, TB, N>, O>>;
 
+/**
+ * A row of table `T` with the relations `N` loaded as `with(name)` loads them — what `findOrFail(id, { with })` and a route binding
+ * with `with` give. See `docs/queries.md#reading`.
+ */
+export type WithRelations<DB, T extends keyof DB, N> = [N] extends [never] ? Selectable<DB[T]> : Simplify<Selectable<DB[T]> & { [K in N & string]: WithResult<DB, T, K, {}> }>;
+
 /** A relation's query, as its callback gets it: the related table only. */
 type RelationQuery<DB, T extends keyof DB> = SelectQueryBuilder<DB, T, {}>;
 

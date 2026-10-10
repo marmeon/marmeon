@@ -3,9 +3,11 @@ import { HttpError, type RouteBinder, type RouteBindingContext } from '@marmeon/
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
 import { isUniqueViolation } from './errors.ts';
-import { paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
+import type { RelationName, WithRelations } from './chain.ts';
+import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
 import { TOUCH_COLUMN } from './placeholders.ts';
-import { softDelete, softDeleteFilter } from './schema-resolver.ts';
+import { relationWriter, type RelationWriter, type WritableRelationName } from './relation-writes.ts';
+import { metadataOf, softDelete, softDeleteFilter } from './schema-resolver.ts';
 import type { Tables } from './types.ts';
 
 /** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
@@ -158,11 +160,59 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return (await this.query().selectAll().where('id' as never, '=', id as never).executeTakeFirst()) as Selectable<DB[T]> | undefined;
   }
 
-  /** The row, or a 404 (`RecordNotFoundError`). */
-  async findOrFail(id: KeyOf<T, DB>): Promise<Selectable<DB[T]>> {
-    const row = await this.find(id);
+  /**
+   * The row, or a 404 (`RecordNotFoundError`) — with the relations `with` names loaded in the same query, as `with()` loads them.
+   * See `docs/queries.md#reading`.
+   */
+  async findOrFail<const W extends readonly RelationName<DB, T>[] = []>(id: KeyOf<T, DB>, options: { readonly with?: W } = {}): Promise<WithRelations<DB, T, W[number]>> {
+    const row = await this.#loading(this.query().selectAll().where('id' as never, '=', id as never), options.with).executeTakeFirst();
     if (!row) throw new RecordNotFoundError(this.table, id);
-    return row;
+    return row as WithRelations<DB, T, W[number]>;
+  }
+
+  /**
+   * The first row whose `column` holds `value` (`null` finds a NULL) — `undefined` when there is none. Never a soft-deleted one.
+   * See `docs/queries.md#reading`.
+   */
+  findBy<C extends keyof Selectable<DB[T]> & string>(column: C, value: Selectable<DB[T]>[C]): Promise<Selectable<DB[T]> | undefined> {
+    return this.#firstWhere('findBy', { [column]: value });
+  }
+
+  /** The first row that holds every value of `values` (`null` finds a NULL) — `undefined` when there is none. See `docs/queries.md#reading`. */
+  firstWhere<V extends Partial<Selectable<DB[T]>>>(values: Exact<V, Selectable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
+    return this.#firstWhere('firstWhere', values as Record<string, unknown>);
+  }
+
+  /** One column of every row, without the soft-deleted ones. A secret column is refused. See `docs/queries.md#reading`. */
+  async pluck<C extends keyof Selectable<DB[T]> & string>(column: C): Promise<Selectable<DB[T]>[C][]> {
+    const rows = await this.query().select(column as never).execute();
+    return rows.map((row) => (row as Record<string, unknown>)[column]) as Selectable<DB[T]>[C][];
+  }
+
+  /**
+   * The rows in batches of `size`, by their `id` — no offset: rows added or removed meanwhile neither repeat nor go missing. One query
+   * per batch; `query` narrows what is read (conditions, relations). See `docs/queries.md#reading`.
+   *
+   * ```ts
+   * for await (const users of this.chunk(500, (query) => query.where('email_verified_at', 'is', null))) …
+   * ```
+   */
+  async *chunk<O = Selectable<DB[T]>>(
+    size: number,
+    query?: (query: SelectQueryBuilder<DB, T, Selectable<DB[T]>>) => SelectQueryBuilder<DB, T, O>,
+  ): AsyncGenerator<O[], void, undefined> {
+    if (!Number.isSafeInteger(size) || size < 1) throw new RangeError(`chunk() takes a size that is a whole number ≥ 1, got ${size}.`);
+    const all = this.query().selectAll() as unknown as SelectQueryBuilder<DB, T, Selectable<DB[T]>>;
+    const base = query ? query(all) : (all as unknown as SelectQueryBuilder<DB, T, O>);
+    let after: unknown[] | undefined;
+    for (;;) {
+      const rows = await keyset(base, [`${this.#name}.id`], after, 'asc', size).execute();
+      const last = rows.at(-1) as Record<string, unknown> | undefined;
+      if (last && !Object.hasOwn(last, 'id')) throw new TypeError('chunk() reads the rows by their key "id", but the query does not select it — keep it in the selection.');
+      if (rows.length > 0) yield rows;
+      if (!last || rows.length < size) return;
+      after = [last.id];
+    }
   }
 
   async exists(id: KeyOf<T, DB>): Promise<boolean> {
@@ -216,6 +266,28 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
+   * Writes through a relation of the row `id`: `sync()`, `attach()` and `detach()` the links of a belongsToMany, `create()` and
+   * `createMany()` rows of a hasMany or a hasOne with the foreign key set — each in a transaction. A missing or soft-deleted row
+   * is a 404 (`RecordNotFoundError`); a link to a missing or soft-deleted related row is refused. See
+   * `docs/queries.md#writing-through-relations`.
+   */
+  relation<N extends WritableRelationName<DB, T>>(id: KeyOf<T, DB>, name: N): RelationWriter<DB, T, N> {
+    return relationWriter({
+      table: this.#name,
+      name,
+      missing: () => new RecordNotFoundError(this.table, id),
+      run: (work) =>
+        this.transaction(async (repository) => {
+          // The row first: its query loads the metadata on this connection, which says what the relation is.
+          const row = (await repository.query().selectAll().where('id' as never, '=', id as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+          const metadata = metadataOf(repository.#db);
+          if (!metadata) throw new Error(`relation('${name}') needs the app's connection, which knows the relations — this repository runs on one without Marmeon's plugins.`);
+          return work(repository.#untyped, row, metadata);
+        }),
+    }) as unknown as RelationWriter<DB, T, N>;
+  }
+
+  /**
    * Updates a row and returns it — `undefined` when there is none (or it is soft-deleted). Sets `updated_at` when the
    * table's migration called `timestamps()`, unless `values` set it.
    */
@@ -263,6 +335,27 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       const parent = (binding.scope.parent as { id?: unknown } | undefined)?.id;
       if (parent === undefined) return undefined;
       query = query.where(binding.scope.column as never, '=', parent as never);
+    }
+    return (await query.executeTakeFirst()) as Selectable<DB[T]> | undefined;
+  }
+
+  /** `query` with the relations `names` loaded (`with()`) — names from the code's types, checked against the metadata when it runs. */
+  #loading<O>(query: SelectQueryBuilder<DB, T, O>, names: readonly string[] | undefined): SelectQueryBuilder<DB, T, O> {
+    let loading = query as unknown as SelectQueryBuilder<any, any, any>;
+    for (const name of names ?? []) loading = loading.with(name as never);
+    return loading as unknown as SelectQueryBuilder<DB, T, O>;
+  }
+
+  async #firstWhere(method: string, values: Record<string, unknown>): Promise<Selectable<DB[T]> | undefined> {
+    const conditions = Object.entries(values);
+    if (conditions.length === 0) throw new TypeError(`${method}() needs at least one column to match — it was given none.`);
+    let query = this.query().selectAll() as unknown as SelectQueryBuilder<any, any, any>;
+    for (const [column, value] of conditions) {
+      // A missing value is a mistake (a field the request did not have), never "any value".
+      if (value === undefined) {
+        throw new TypeError(`${method}() was given no value for ${column} (undefined) — a condition without a value would match any row. Pass null to find a NULL.`);
+      }
+      query = value === null ? query.where(column, 'is', null) : query.where(column, '=', value);
     }
     return (await query.executeTakeFirst()) as Selectable<DB[T]> | undefined;
   }
