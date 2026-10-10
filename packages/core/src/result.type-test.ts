@@ -1,5 +1,6 @@
 // Type guarantees of Result — checked by `tsc` (pnpm build / typecheck), never run. The messages, as the compiler shows them,
 // are quoted in the comments.
+import { expectTypeOf } from 'vitest';
 import { commitAnyway, err, ok, type Err, type Ok, type Result } from './index.ts';
 
 type Missing = { kind: 'missing' };
@@ -14,6 +15,17 @@ export function resultTypes(): void {
   const taken: Err<{ readonly kind: 'taken'; readonly email: string }> = err({ kind: 'taken', email: String('ada@example.com') });
   const both: Result<{ id: number }, Missing | Taken> = Math.random() > 0.5 ? found : taken;
   void [done, both];
+
+  // Only the kind is a literal: the payload keeps its own types — an array stays a mutable array, also when the err is made before it
+  // meets the declared type.
+  const invalid = err({ kind: 'invalid', fields: ['email'], first: 'email' });
+  const declared: Err<{ kind: 'invalid'; fields: string[]; first: string }> = invalid;
+  void declared;
+  expectTypeOf(invalid).toEqualTypeOf<Err<{ kind: 'invalid'; fields: string[]; first: string }>>();
+  // Type 'Err<{ kind: string; }>' is not assignable to type 'Err<Missing>'.
+  // @ts-expect-error — a kind that is any string is not the kind 'missing'
+  const widened: Err<Missing> = err({ kind: String('missing') });
+  void widened;
 
   // Narrowed by `ok`: the value only on an Ok, the error only on an Err.
   if (result.ok) {

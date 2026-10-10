@@ -148,8 +148,8 @@ an `insertInto(…).onConflict(…)`.
 | --- | --- |
 | `insert(values)` | The row as stored, with its id and defaults. Secret columns are not in it. |
 | `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at`. |
-| `tryInsert(values)` | The row, or `undefined` when a unique index already holds the values. |
-| `tryUpdate(id, values)` | The row, `undefined` when there is none, or `'duplicate'` when a unique index holds the new values. |
+| `tryInsert(values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index already holds the values. |
+| `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. |
 | `delete(id)` | Whether there was a row. With soft deletes, it sets `deleted_at`. |
 | `forceDelete(id)` | Whether there was a row. It deletes for real, soft deletes or not. |
 | `restore(id)` | Whether there was a row to bring back. It clears `deleted_at`. |
@@ -159,7 +159,9 @@ deletes, `update()` leaves a deleted row alone.
 
 `tryInsert()` and `tryUpdate()` decide "already taken" by the unique index, so two requests at the same moment cannot both pass.
 They run in a transaction of their own, or in a savepoint inside an open one: on Postgres a failed statement breaks the
-transaction around it, and the savepoint keeps that transaction usable. The starter kit registers a user this way:
+transaction around it, and the savepoint keeps that transaction usable. They return a [`Result`](errors.md#results): narrow it over
+`ok`, then look at `error.kind`. Returned from a transaction's callback, the `err` rolls that transaction back like any other, as
+the [transactions](transactions.md#returning-an-err) page explains. The starter kit registers a user this way:
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { PasswordHash } from '@marmeon/auth';
@@ -169,8 +171,9 @@ import type { User } from './users.ts';
 export class UserRepository extends Repository<'users'> {
   static table = 'users' as const;
 
-  register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
-    return this.tryInsert(values);
+  async register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
+    const created = await this.tryInsert(values);
+    return created.ok ? created.value : undefined;
   }
 }
 ```
@@ -285,9 +288,10 @@ this.#db
 ```
 
 Each row gets `profile_links_count: number` and `secure_links: number`, a number on SQLite and on Postgres alike, `0` when
-there is none. The callback filters what is counted: `groupBy()`, `having()`, `limit()` and `offset()` in it are refused, because
-they would change the count. A name the query selects already is refused too, since one row cannot hold two values under it. A belongsTo or a hasOne has one row or none, so there is nothing to count: `withCount()` on one is a compile error
-that lists the relations it can count, and `whereHas()` asks the question instead:
+there is none. The callback filters what is counted: `groupBy()`, `having()`, `limit()`, `offset()` and a `union()` or another
+set operation in it are refused, because they would change the count. A name the query selects already is refused too, since one
+row cannot hold two values under it. A belongsTo or a hasOne has one row or none, so there is nothing to count: `withCount()` on
+one is a compile error that lists the relations it can count, and `whereHas()` asks the question instead:
 
 ```text
 Argument of type '"login_activity"' is not assignable to parameter of type '"profile_links"'.
@@ -309,8 +313,9 @@ this.#db
 ```
 
 Any relation works, a belongsToMany through its pivot too. The callbacks nest: `whereHas()` inside a `whereHas()`, a `with()`
-or a `withCount()` callback filters that level. What the callback selects does not matter: only whether a row is there. `limit()` and `offset()` in it are refused, because they
-would change the answer.
+or a `withCount()` callback filters that level. What the callback selects does not matter: only whether a row is there.
+`limit()`, `offset()` and a set operation in it are refused, because they would change the answer. So is `having()` without
+`groupBy()`, which makes every related row one group and which databases answer differently.
 
 ### Soft-deleted rows
 
@@ -325,8 +330,8 @@ this.query().withTrashed().selectAll().with('attachments', (attachments) => atta
 ```
 
 `withTrashed()` works on the level it is called on: the relations below it still leave deleted rows out unless their callbacks
-call it too. On a plain `db.selectFrom()`, which filters nothing, it has nothing to keep. A table you join yourself, inside a callback or anywhere else, is your query: soft-deleted rows are not filtered
-there.
+call it too. On a plain `db.selectFrom()`, which filters nothing, it has nothing to keep. A table you join yourself, inside a
+callback or anywhere else, is your query: soft-deleted rows are not filtered there.
 
 ### Relations and secret columns
 
@@ -402,7 +407,8 @@ The migrator records which module's migration created each table. That record is
 | `missingTable(error)` | The table a statement could not find, or `undefined`. |
 
 Catch a unique violation inside a transaction only around a savepoint, as `tryInsert()` does. On Postgres the failed statement
-otherwise aborts the whole transaction, and every later query in it fails.
+otherwise aborts the whole transaction, and every later query in it fails. Where "taken" is an outcome your code handles, prefer
+`tryInsert()` and `tryUpdate()`: their `err` of kind `duplicate` is a [`Result`](errors.md#results), not an exception.
 
 ## Another connection
 

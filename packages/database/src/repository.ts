@@ -1,4 +1,4 @@
-import { errOfRollback, rollBackOnErr } from '@marmeon/core';
+import { err, errOfRollback, ok, rollBackOnErr, type Result } from '@marmeon/core';
 import { HttpError, type RouteBinder, type RouteBindingContext } from '@marmeon/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
@@ -185,28 +185,32 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * Inserts a row unless a unique index already holds its values — then `undefined` (an e-mail that is
-   * taken, say). Race-free, unlike checking first. Runs in a savepoint: on Postgres a failed statement
-   * aborts the whole surrounding transaction, so a plain insert-and-catch would break every query after it.
+   * Inserts a row unless a unique index already holds its values — then an `err` of kind `duplicate` (an e-mail that is taken,
+   * say). Race-free, unlike checking first. Runs in a savepoint: on Postgres a failed statement aborts the whole surrounding
+   * transaction. Returned from a transaction's callback, the `err` rolls that transaction back. See `docs/queries.md#writing`.
    */
-  async tryInsert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
+  async tryInsert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Result<Selectable<DB[T]>, { kind: 'duplicate' }>> {
     try {
-      return await this.transaction((repository) => repository.insert(values));
+      return ok(await this.transaction((repository) => repository.insert(values)));
     } catch (error) {
-      if (isUniqueViolation(error)) return undefined;
+      if (isUniqueViolation(error)) return err({ kind: 'duplicate' });
       throw error;
     }
   }
 
   /**
-   * Updates a row unless a unique index already holds the new values — then `'duplicate'`; `undefined`
-   * when there is no such row. In a savepoint, like `tryInsert`.
+   * Updates a row unless a unique index already holds the new values — then an `err` of kind `duplicate`; of kind `missing` when
+   * there is no such row (or it is soft-deleted). In a savepoint, like `tryInsert`. See `docs/queries.md#writing`.
    */
-  async tryUpdate<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined | 'duplicate'> {
+  async tryUpdate<V extends Updateable<DB[T]>>(
+    id: KeyOf<T, DB>,
+    values: Exact<V, Updateable<DB[T]>>,
+  ): Promise<Result<Selectable<DB[T]>, { kind: 'duplicate' } | { kind: 'missing' }>> {
     try {
-      return await this.transaction((repository) => repository.update(id, values));
+      const row = await this.transaction((repository) => repository.update(id, values));
+      return row ? ok(row) : err({ kind: 'missing' });
     } catch (error) {
-      if (isUniqueViolation(error)) return 'duplicate';
+      if (isUniqueViolation(error)) return err({ kind: 'duplicate' });
       throw error;
     }
   }

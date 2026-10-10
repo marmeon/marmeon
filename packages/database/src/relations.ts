@@ -212,13 +212,25 @@ export function relationQuery(
  * limits — is refused, never dropped (a count of groups differs by database: one group on SQLite, an error on Postgres).
  */
 function refuseShaping(query: SelectQueryNode, use: 'count' | 'exists' | 'missing', label: string): void {
-  const parts = (use === 'count' ? (['groupBy', 'having', 'limit', 'offset'] as const) : (['limit', 'offset'] as const)).filter((part) => query[part] !== undefined);
-  if (parts.length === 0) return;
   const what = use === 'count' ? ['counts the related rows', 'what it counts'] : ['asks whether there is a related row', 'the answer'];
-  throw new Error(
-    `${label} ${what[0]} its callback's conditions match — ${parts.map((part) => `${part}()`).join(' and ')} in the callback would change ${what[1]}: ` +
-      `leave ${parts.length > 1 ? 'them' : 'it'} out and filter with where().`,
-  );
+  const parts = [
+    ...(use === 'count' ? (['groupBy', 'having', 'limit', 'offset'] as const) : (['limit', 'offset'] as const)).filter((part) => query[part] !== undefined),
+    // A union's other rows are not the relation's: they would be counted, or answer the exists, too.
+    ...(query.setOperations ?? []).map((operation) => `${operation.operator}${operation.all ? 'All' : ''}`),
+  ].map((part) => `${part}()`);
+  if (parts.length > 0) {
+    throw new Error(
+      `${label} ${what[0]} its callback's conditions match — ${parts.join(' and ')} in the callback would change ${what[1]}: ` +
+        `leave ${parts.length > 1 ? 'them' : 'it'} out and filter with where().`,
+    );
+  }
+  // Without a group, having() makes all rows one: SQLite refuses it in an exists, Postgres answers it.
+  if (use !== 'count' && query.having !== undefined && query.groupBy === undefined) {
+    throw new Error(
+      `${label} ${what[0]} its callback's conditions match — having() without groupBy() makes every related row one group, which databases answer ` +
+        'differently: add groupBy(), or filter with where().',
+    );
+  }
 }
 
 /** `count(*)` as an integer — Postgres counts in `bigint`, which its driver returns as a string. */

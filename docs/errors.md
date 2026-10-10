@@ -103,7 +103,8 @@ belongs to the work is a `Result` instead, such as an invitation that expired or
 caller sees it in the return type and has to handle it, and nothing is thrown or logged.
 
 `ok(value)` and `err(error)` of `@marmeon/core` make the two sides. A `Result<T, E>` is plain data, `{ ok: true, value }` or
-`{ ok: false, error }`. The error names its case in `kind`, with what the caller needs next to it:
+`{ ok: false, error }`. The error names its case in `kind`, with what the caller needs next to it. `err()` keeps the kind as a
+literal and gives the rest its usual types, so `err({ kind: 'invalid', fields: ['email'] })` fits a declared `fields: string[]`:
 
 ```ts
 accept(tokenHash: string, userId: number): Promise<Result<Member, { kind: 'expired' } | { kind: 'already-member'; teamId: number }>>

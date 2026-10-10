@@ -1025,6 +1025,27 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       );
     });
 
+    it('refuses a set operation in a count or an exists callback, and having() without groupBy() in an exists', async () => {
+      const posts = () => db.selectFrom('posts').select('title');
+      const other = db.selectFrom('comments').selectAll();
+      await expect(posts().withCount('comments', (q) => q.union(other)).execute()).rejects.toThrow(
+        `withCount('comments') counts the related rows its callback's conditions match — union() in the callback would change what it counts: leave it out and filter with where().`,
+      );
+      await expect(posts().whereHas('comments', (q) => q.unionAll(other).except(other)).execute()).rejects.toThrow(
+        `whereHas('comments') asks whether there is a related row its callback's conditions match — unionAll() and except() in the callback would change the answer: leave them out and filter with where().`,
+      );
+      await expect(posts().whereDoesntHave('comments', (q) => q.intersect(other)).execute()).rejects.toThrow(`whereDoesntHave('comments') asks whether there is`);
+      await expect(posts().whereHas('comments', (q) => q.having(sql<boolean>`count(*) > 1`)).execute()).rejects.toThrow(
+        `whereHas('comments') asks whether there is a related row its callback's conditions match — having() without groupBy() makes every related row one group, which databases answer differently: add groupBy(), or filter with where().`,
+      );
+      // Grouped, having() asks about the groups — the same on every database.
+      const grouped = await posts()
+        .whereHas('comments', (q) => q.groupBy('post_id').having(sql<boolean>`count(*) > 1`))
+        .orderBy('id')
+        .execute();
+      expect(grouped).toEqual([{ title: 'First' }]);
+    });
+
     it('refuses a count or a relation under a name the query selects already', async () => {
       const taken = (label: string, name: string) => `${label} adds "${name}", which the query selects already — give it another name with { as }.`;
       await expect(db.selectFrom('posts').select('title').withCount('comments', { as: 'title' }).execute()).rejects.toThrow(taken(`withCount('comments')`, 'title'));
@@ -1041,7 +1062,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
 
     it('may filter on a secret column, never select one — a subquery of its callback that selects one is refused', async () => {
       const users = () => db.selectFrom('users').select('name');
-      // Looking a key up by its token: the value stays in the database.
+      // A condition on a secret column is allowed — what it answers is still about the secret (see the docs for comparing one).
       expect(await users().whereHas('api_keys', (keys) => keys.where('token' as never, '=', 'the-secret-token' as never)).execute()).toEqual([{ name: 'Ada' }]);
       expect(await users().withCount('api_keys', (keys) => keys.where('token' as never, '=', 'wrong' as never)).where('id', '=', ids.ada).execute()).toEqual([
         { name: 'Ada', api_keys_count: 0 },

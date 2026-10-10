@@ -1,9 +1,11 @@
-import type { Application, ModuleDefinition } from '@marmeon/core';
+import type { Application, ModuleDefinition, Result } from '@marmeon/core';
 import type { Generated } from 'kysely';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
+import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections, type Selectable } from './index.ts';
+
+type Row = Selectable<FixtureTables['users']>;
 
 // `users` has soft deletes and timestamps — its migration says so (`softDeletes()`, `timestamps()`); `articles` neither.
 class UserRepository extends Repository<'users', FixtureTables> {
@@ -60,24 +62,49 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(isUniqueViolation(undefined)).toBe(false);
   });
 
-  it('tryInsert(): undefined for a duplicate — and the surrounding transaction survives it (Postgres aborts it otherwise)', async () => {
+  it('tryInsert(): a duplicate err when a unique index holds the values — and the surrounding transaction survives it (Postgres aborts it otherwise)', async () => {
     await users.insert({ name: 'Ada', email: 'ada@example.com' });
     await users.transaction(async (inTransaction) => {
-      expect(await inTransaction.tryInsert({ name: 'Ada 2', email: 'ada@example.com' })).toBeUndefined();
-      expect(await inTransaction.tryInsert({ name: 'Alan', email: 'alan@example.com' })).toMatchObject({ name: 'Alan' });
+      const taken = await inTransaction.tryInsert({ name: 'Ada 2', email: 'ada@example.com' });
+      expect(taken).toEqual({ ok: false, error: { kind: 'duplicate' } });
+      const added = await inTransaction.tryInsert({ name: 'Alan', email: 'alan@example.com' });
+      expect(added).toMatchObject({ ok: true, value: { name: 'Alan', email: 'alan@example.com' } });
+      expectTypeOf(added).toEqualTypeOf<Result<Row, { kind: 'duplicate' }>>();
       expect(await inTransaction.count()).toBe(2); // still usable
     });
     expect(await users.count()).toBe(2);
   });
 
-  it('tryUpdate(): "duplicate" when the new value is taken, the row otherwise — the transaction survives', async () => {
+  it('tryUpdate(): a duplicate err when the new value is taken, a missing err without the row, the row otherwise — the transaction survives', async () => {
     const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
-    await users.insert({ name: 'Alan', email: 'alan@example.com' });
+    const alan = await users.insert({ name: 'Alan', email: 'alan@example.com' });
     await users.transaction(async (inTransaction) => {
-      expect(await inTransaction.tryUpdate(ada.id, { email: 'alan@example.com' })).toBe('duplicate');
-      expect(await inTransaction.tryUpdate(ada.id, { email: 'ada@new.example' })).toMatchObject({ email: 'ada@new.example' });
+      expect(await inTransaction.tryUpdate(ada.id, { email: 'alan@example.com' })).toEqual({ ok: false, error: { kind: 'duplicate' } });
+      const changed = await inTransaction.tryUpdate(ada.id, { email: 'ada@new.example' });
+      expect(changed).toMatchObject({ ok: true, value: { email: 'ada@new.example' } });
+      expectTypeOf(changed).toEqualTypeOf<Result<Row, { kind: 'duplicate' } | { kind: 'missing' }>>();
     });
-    expect(await users.tryUpdate(ada.id + 999, { name: 'Nobody' })).toBeUndefined();
+    expect(await users.tryUpdate(ada.id + 999, { name: 'Nobody' })).toEqual({ ok: false, error: { kind: 'missing' } });
+    // A soft-deleted row is no row to update.
+    await users.delete(alan.id);
+    expect(await users.tryUpdate(alan.id, { name: 'Ghost' })).toEqual({ ok: false, error: { kind: 'missing' } });
+  });
+
+  it('an err of tryInsert() or tryUpdate() returned from a transaction around it rolls that transaction back', async () => {
+    await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    const result = await connections.transaction(async () => {
+      await users.insert({ name: 'Alan', email: 'alan@example.com' });
+      return users.tryInsert({ name: 'Ada 2', email: 'ada@example.com' });
+    });
+    expect(result).toEqual({ ok: false, error: { kind: 'duplicate' } });
+    expect(await users.findByEmail('alan@example.com')).toBeUndefined();
+    // Taken apart instead of returned, it leaves the transaction alone.
+    await connections.transaction(async () => {
+      await users.insert({ name: 'Alan', email: 'alan@example.com' });
+      const taken = await users.tryUpdate((await users.findByEmail('alan@example.com'))!.id, { email: 'ada@example.com' });
+      return taken.ok;
+    });
+    expect(await users.findByEmail('alan@example.com')).toMatchObject({ name: 'Alan' });
   });
 
   it('a plain insert-and-catch inside a Postgres transaction leaves it unusable', async () => {

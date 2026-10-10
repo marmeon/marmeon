@@ -236,8 +236,10 @@ The session has one scope from start to end. The log carries no request context.
 
 `--sandbox` runs the whole session in one transaction on the default connection and rolls it back when the session ends: on
 `.exit`, Ctrl-D, Ctrl-C twice, a signal or a crash. A session that dies never commits. Each input is a savepoint of its own, so a
-failing input takes back only its own writes. Jobs on the `database` queue join the transaction and are gone with it, and jobs on
-other queues and mails that wait for the commit never go out.
+failing input takes back only its own writes. So does an input whose value is an `err`, such as a `tryInsert()` of a taken
+address: an `err` rolls its savepoint back, as the [transactions](transactions.md#returning-an-err) page explains, and tinker
+still prints it. Jobs on the `database` queue join the transaction and are gone with it, and jobs on other queues and mails that
+wait for the commit never go out.
 
 A sandbox does not undo a mail sent directly, a file written to a disk, a Redis command or an HTTP call. Nor does it undo what the
 cache, its locks and rate limits, and the sessions write: they use a connection of their own, also inside the sandbox. On SQLite,

@@ -25,8 +25,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /** A new user — `undefined` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
-  register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
-    return this.tryInsert(values);
+  async register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
+    const created = await this.tryInsert(values);
+    return created.ok ? created.value : undefined;
   }
 
   /** The language the user chose — mails reach them in it. */
@@ -53,7 +54,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so the nightly prune never takes it.
     // (A taken address changes nothing else: the account was confirmed all the same.)
     await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
-    return this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
+    const changed = await this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
+    if (changed.ok) return changed.value;
+    return changed.error.kind === 'duplicate' ? 'duplicate' : undefined;
   }
 
   /**
@@ -95,14 +98,14 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
       if (!claimed?.pending_email) return 'invalid';
       const changes = { pending_email: null, pending_email_expires_at: null };
       const changed = await users.tryUpdate(id, { email: claimed.pending_email, email_verified_at: now, ...changes });
-      if (changed === 'duplicate') {
+      if (!changed.ok) {
+        if (changed.error.kind === 'missing') return 'invalid';
         await users.update(id, changes);
         return 'taken';
       }
-      if (!changed) return 'invalid';
       // A confirmed address — the first one, if the account had none before (kept for good).
       await users.db.updateTable('users').set({ first_verified_at: now }).where('id', '=', id).where('first_verified_at', 'is', null).execute();
-      return { user: changed, previous: claimed.email };
+      return { user: changed.value, previous: claimed.email };
     });
   }
 

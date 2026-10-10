@@ -32,8 +32,11 @@ export function ok<T>(value?: T): Ok<T | undefined> {
   return mark({ ok: true, value }, 'ok');
 }
 
-/** An {@link Err}; the kind stays a literal: `err({ kind: 'taken', email })`. See docs/errors.md#results. */
-export function err<const E extends { readonly kind: string }>(error: E): Err<E> {
+/**
+ * An {@link Err}; the kind stays a literal, the payload keeps its types (`string[]`, not a readonly tuple): `err({ kind: 'taken', email })`.
+ * See docs/errors.md#results.
+ */
+export function err<K extends string, E extends { readonly kind: K }>(error: E): Err<E> {
   return mark({ ok: false, error }, 'err');
 }
 
