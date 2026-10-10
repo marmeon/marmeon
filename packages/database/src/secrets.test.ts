@@ -5,8 +5,8 @@ import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { hasMany, Migrator, Repository, renderTypes, secret, type Connections, type Generated, type Secret, type Selectable, type Timestamp } from './index.ts';
 
-/** What `db:types` generates for the vault fixture (checked below), next to the other fixture tables. */
-interface VaultTables extends FixtureTables {
+/** What `db:types` generates for the accounts fixture (checked below), next to the other fixture tables. */
+interface AccountTables extends FixtureTables {
   accounts: {
     id: Generated<number>;
     email: string;
@@ -18,7 +18,7 @@ interface VaultTables extends FixtureTables {
   };
 }
 
-class AccountRepository extends Repository<'accounts', VaultTables> {
+class AccountRepository extends Repository<'accounts', AccountTables> {
   static table = 'accounts' as const;
   static timestamps = true;
 
@@ -31,7 +31,7 @@ class AccountRepository extends Repository<'accounts', VaultTables> {
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: fixtures('auth') },
-  { name: 'vault', migrations: fixtures('vault') },
+  { name: 'accounts', migrations: fixtures('accounts') },
 ];
 const migrator = (connections: Connections) => new Migrator({ modules, root: '/' } as unknown as Application, connections);
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA';
@@ -39,13 +39,13 @@ const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA';
 describe.each(drivers)('secret columns on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
-  let db: Kysely<VaultTables>;
+  let db: Kysely<AccountTables>;
   let accounts: AccountRepository;
 
   beforeAll(async () => {
     ({ connections, close } = await freshConnections(driver));
     await migrator(connections).migrate();
-    db = connections.get<VaultTables>();
+    db = connections.get<AccountTables>();
     accounts = new AccountRepository(connections);
   });
   afterAll(() => close());
@@ -70,9 +70,9 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     const { source } = renderTypes({
       driver,
       tables: tables.filter((t) => t.name === 'accounts'),
-      owners: new Map([['accounts', 'vault']]),
+      owners: new Map([['accounts', 'accounts']]),
       secrets: await migrator(connections).secrets(),
-      modules: ['vault'],
+      modules: ['accounts'],
       exposes: new Map(),
     });
     expect(source).toContain('password: Secret<string>;');
@@ -137,7 +137,7 @@ describe.each(drivers)('schema metadata inside transactions on %s', (driver) => 
     const { connections, close } = await freshConnections(driver);
     try {
       await migrator(connections).migrate();
-      const db = connections.get<VaultTables>();
+      const db = connections.get<AccountTables>();
       await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).execute();
       // Before: the plugin looked up column kinds through the pool — which the transaction holds (SQLite: forever).
       const run = db.transaction().execute((trx) =>
@@ -156,12 +156,12 @@ describe.each(drivers)('schema metadata inside transactions on %s', (driver) => 
 
 // --- Type guarantees (never called: `declare const` values are undefined at runtime) ---------
 
-declare const accountsDb: Kysely<VaultTables>;
+declare const accountsDb: Kysely<AccountTables>;
 declare const repository: AccountRepository;
 
 export async function secretTypes() {
   // The row type has no secret column — not as `never`, not at all.
-  type Account = Selectable<VaultTables['accounts']>;
+  type Account = Selectable<AccountTables['accounts']>;
   expectTypeOf<keyof Account>().toEqualTypeOf<'id' | 'email' | 'created_at' | 'updated_at'>();
   const found = (await repository.find(1))!;
   // @ts-expect-error — a repository's rows do not carry the hash

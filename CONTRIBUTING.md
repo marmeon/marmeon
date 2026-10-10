@@ -207,23 +207,22 @@ checked over every file of the repository — tracked, or new and not ignored. E
 4. **The old prefix of API tokens is gone**: `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says the two letters and the
    underscore of before in front of a digit, a `|`, a quote, whitespace or a line's end, anywhere. Tests spell it from parts like
    the old name.
-5. **The docs speak to their readers**: the pages under `docs/`, the packages' READMEs, the root `README.md` and the three
-   policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) name no decision number (an `E` and two or three
-   digits as a word of its own — a hex value, an exponent or `E2E` is none) and compare Marmeon with no other framework; the
-   pages, the READMEs and `UPGRADING.md` name no wave of the maintainers' plan (a `W` and a number, or "wave" and a number);
-   and no page under `docs/` carries the placeholder marker as a line of
-   its own ([Writing documentation](#writing-documentation)) — every page is written. What every new app copies, the starter's
-   template (`packages/create-marmeon/template/`) and the packages' stubs (`packages/<name>/stubs/`: the `make:auth` module, the
-   migrations of `make:*-table`), carries no decision number, no wave, no personal date of the plan ("Max 07.10.") and no
-   other framework — and neither does what a reader of one of the apps (`apps/<name>/`) sees first and copies: its `README.md`
-   and its `.env` files (`.env.example`, `.env.test`). The apps' code is the framework's test bed, and its comments, like the
-   packages' code, are for maintainers. `UPGRADING.md` says what changed by version and by what it changes, never by decision or wave. Each part
-   is an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
+5. **The docs speak to their readers**: no page under `docs/` carries the placeholder marker as a line of its own
+   ([Writing documentation](#writing-documentation)) — every page is written. The pages, the packages' READMEs, the root
+   `README.md`, the three policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`), what every new app copies
+   (the starter's template `packages/create-marmeon/template/` and the packages' stubs `packages/<name>/stubs/`) and what a
+   reader of one of the apps sees first (its `README.md` and `.env` files) compare Marmeon with no other framework. Each part is
+   an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
 6. **The framework's messages speak to app developers**: no string of a package's code (`packages/<name>/src/`, tests and
    fixtures aside) or of its launchers (`packages/<name>/bin/*.js`) names a decision number, a wave or another framework —
    errors, warnings, solutions, command descriptions and output, the files the `make:*` generators write and the devtools'
-   pages reach every app. Only strings count, read with oxc-parser: comments, names and regular expressions are for
-   maintainers and may keep their decision numbers.
+   pages reach every app. Only strings count, read with oxc-parser; comments, names and regular expressions are rule 7's.
+7. **No references to the private record**: no tracked file names a decision number (an `E` and two or three digits as a word
+   of its own — a hex value, an exponent, `E2E`, `E.164` or `E164` is none), a wave or a step of the maintainers' plan, a
+   personal date or a path into the maintainers' notes — a comment says what holds and links a page under `docs/`
+   ([Comments](#comments)). `PENDING_AREAS` in `scripts/check-source.ts` lists the areas of `packages/` and `apps/` it does not
+   read yet; what readers see first there — the cards, the stubs, the template, the apps' READMEs and `.env` files — it reads
+   all the same.
 
 A new rule joins the same script, with its test.
 
@@ -423,12 +422,62 @@ depends on the folder depth, and the preset has one override per depth. Its patt
 generator's test lints a fixture app to prove every pattern fires. The `make:auth` fixture test lints the generated module with
 and without `--boundaries`.
 
+## Comments
+
+A comment earns its place by saying what the code cannot. Try a better name or a smaller function first; what is left to say
+follows these rules. No check reads a comment's quality — the review does.
+
+What stays:
+
+- **JSDoc on exported API** — the hover an app developer reads: one or two sentences on what it does, plus only what is not
+  obvious (the default, when it throws, a security note). For more, link the docs page instead of retelling it.
+
+  ```ts
+  // Good
+  /** Signs `url` for `hasValidSignature()`, valid until `expires`. See docs/urls.md#signed-urls. */
+  // Bad: the page retold, line by line
+  /** Signs the URL. The signature is an HMAC over the path and the query, the key is APP_KEY, the expiry … */
+  ```
+
+- **The why**, where the code would otherwise look wrong: a security invariant, a race, a browser or driver quirk, a deliberate
+  deviation — one to three lines.
+
+  ```ts
+  // Good
+  // Compare in constant time: an early exit would tell how much of the token matched.
+  // Bad
+  // Compare the tokens.
+  ```
+
+- **A file header** only when the file's role is not clear from its name and exports — a few lines. Good: "Vitest global setup:
+  a temporary directory per run, and a red run when a test leaves an entry in it." Bad: a header that lists the exports.
+
+What goes:
+
+- **History and derivation** — "used to", "after the review", "we decided", "since", who wanted what when. Git keeps the
+  history. Bad: `// Not cached any more since the logout bug.` Good: `// Not cached: a cached copy would outlive a sign-out.`
+- **Narration of the next line.** Bad: `// Increment the counter` above `count++`. Good: no comment — or the reason, if there is
+  one: `// Counted before the await, so a second request sees it.`
+- **References to decisions, plans, findings and people** — `pnpm check:source` refuses them (rule 7). Bad:
+  `// Changed as the review asked.` Good: `// Claimed in one statement, so two workers never take the same job.`
+- **Essays about behaviour.** What an app developer needs to know belongs on the docs page — move the sentence there, in the
+  same commit; the rest goes. Bad: twenty lines on every option in a config file. Good: one line and
+  `docs/queues.md#connections-and-drivers`.
+- **Duplicate JSDoc** on an interface and its implementation, or the same text on every overload. Document it once, where the
+  reader hovers. Bad: the same paragraph above `interface Mailer` and `class SmtpMailer`. Good: the interface's only.
+- **Comments in tests that repeat the test's name.** The name says what is checked; a comment explains only setup that is not
+  obvious. Bad: `// it logs out` inside `it('logs out')`. Good: `// Two processes on one database file: the lock must hold
+  across them.`
+
+**Security invariants stay.** A comment that says what must never happen, or in which order something must run, may be
+shortened, never deleted.
+
 ## Writing documentation
 
 The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/docs/docs.config.ts` lists
 them. They are the only source, written in English for people who build apps. **A change to a public API, an environment
 default or a command changes its docs page in the same commit.** No check compiles the examples, so that commit is where they
-stay true.
+stay true. Comments in the code follow [Comments](#comments).
 `pnpm docs:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
 other page.
 

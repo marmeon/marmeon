@@ -16,7 +16,7 @@ export interface PackageManifest {
 }
 
 export interface FrameworkPackage {
-  /** `@marmeon/<short>` — or one of the two unscoped ones: the CLI `marmeon` (`packages/cli`) and `create-marmeon` (E195). */
+  /** `@marmeon/<short>` — or one of the two unscoped ones: the CLI `marmeon` (`packages/cli`) and `create-marmeon`. */
   readonly name: string;
   /** The directory name under `packages/`. */
   readonly short: string;
@@ -62,11 +62,11 @@ export function packAll(root: string, destination: string): PackedPackage[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** How a package lists a third-party library under the driver rule (E198). */
+/** How a package lists a third-party library under the driver rule. */
 export type DriverKind = 'dependency' | 'optional peer' | 'peer';
 
 /**
- * The driver rule (E198), per package — `pack:check` holds the packed manifests to it, a test in `scripts/ci.test.ts` the sources:
+ * The driver rule, per package — `pack:check` holds the packed manifests to it, a test in `scripts/ci.test.ts` the sources:
  *   1. a package that wraps exactly one third-party driver and is useless without it lists it in `dependencies`, at a caret range
  *      of the tested major (`@marmeon/redis` → `redis`); decided exception: `nodemailer` in `@marmeon/mail`;
  *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
@@ -76,7 +76,7 @@ export type DriverKind = 'dependency' | 'optional peer' | 'peer';
  */
 export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, DriverKind>>>> = {
   redis: { redis: 'dependency' },
-  // The engine under `rules` (E197): internal, never re-exported — the app installs nothing for its validation.
+  // The engine under `rules`: internal, never re-exported — the app installs nothing for its validation.
   validation: { valibot: 'dependency' },
   mail: { nodemailer: 'dependency', mjml: 'optional peer' },
   storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
@@ -98,23 +98,23 @@ export function checkDriverRule(short: string, manifest: Record<string, any>): s
   const optional = (name: string) => (manifest.peerDependenciesMeta as Record<string, { optional?: boolean }> | undefined)?.[name]?.optional === true;
   for (const [library, kind] of Object.entries(DRIVER_RULE[short] ?? {})) {
     if (kind === 'dependency') {
-      if (!dependencies[library]) problems.push(`${library} must be a dependency (E198: the one driver this package wraps — the app installs nothing else)`);
-      else if (!/^\^\d+\.\d+\.\d+$/.test(dependencies[library])) problems.push(`dependencies.${library} is "${dependencies[library]}" — a caret range of the tested major (^6.2.1, E198)`);
-      if (dependencies[library] && peers[library]) problems.push(`${library} is a dependency and a peer — one or the other (E198)`);
+      if (!dependencies[library]) problems.push(`${library} must be a dependency (the one driver this package wraps — the app installs nothing else)`);
+      else if (!/^\^\d+\.\d+\.\d+$/.test(dependencies[library])) problems.push(`dependencies.${library} is "${dependencies[library]}" — a caret range of the tested major (^6.2.1)`);
+      if (dependencies[library] && peers[library]) problems.push(`${library} is a dependency and a peer — one or the other`);
       continue;
     }
     if (dependencies[library]) {
       problems.push(
         kind === 'peer'
-          ? `${library} must stay a peer, not a dependency (E198) — the app and the framework share one instance; a dependency installs a second copy`
-          : `${library} must stay an optional peer, not a dependency (E198) — one of several drivers; every app would install it`,
+          ? `${library} must stay a peer, not a dependency — the app and the framework share one instance; a dependency installs a second copy`
+          : `${library} must stay an optional peer, not a dependency — one of several drivers; every app would install it`,
       );
     }
-    if (!peers[library]) problems.push(`${library} must be a${kind === 'optional peer' ? 'n optional' : ''} peer of this package (E198)`);
-    else if (kind === 'optional peer' && !optional(library)) problems.push(`${library} must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver (E198)`);
+    if (!peers[library]) problems.push(`${library} must be a${kind === 'optional peer' ? 'n optional' : ''} peer of this package`);
+    else if (kind === 'optional peer' && !optional(library)) problems.push(`${library} must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver`);
   }
   for (const library of SHARED_LIBRARIES) {
-    if (dependencies[library]) problems.push(`${library} is a dependency — the app and the framework must share one instance of it: a peer (E198)`);
+    if (dependencies[library]) problems.push(`${library} is a dependency — the app and the framework must share one instance of it: a peer`);
   }
   return problems;
 }

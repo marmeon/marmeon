@@ -1,50 +1,21 @@
 /**
- * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci` (W10 step 1). Exit 1 names every hit.
+ * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit.
  *
- *   1. **The old name is gone** (E195, E196): no file of the repository — tracked, or new and not ignored — and no path says the
- *      framework's name from before 0.1.0, in any case. Allowed: the company name (`LICENSE` holder, E153 — every copy, the policies
- *      that name it, `check-changesets`' licence rule) — no rename hint: nothing was released under the old name (E216). A
- *      half-renamed repository does not always show: the temp hygiene, for one, finds leftovers by their prefix only — a helper
- *      with the old prefix and a hygiene with the new one would agree on nothing and stay green.
+ *   1. **The old name is gone:** no file — tracked, or new and not ignored — and no path says the framework's name from before
+ *      0.1.0, in any case. Only the company name may contain it.
+ *   2. **No app installs a validation engine:** apps, the starter's template, the stubs and what a generator writes validate with
+ *      `rules` of @marmeon/validation — no file outside `packages/<name>/src/` imports Valibot, no app manifest lists it.
+ *   3. **`NODE_ENV` is checked positively** in code people run or copy: no `!== 'production'`, no `NODE_ENV === 'production'`, no
+ *      `import.meta.env.DEV` / `!import.meta.env.PROD` — each sends a missing `NODE_ENV` (production) down the development branch.
+ *   4. **The old default prefix of API tokens is gone**, everywhere.
+ *   5. **The docs speak to their readers:** no page under `docs/` is pending, and the docs, the package cards, the root texts,
+ *      what every new app copies and the apps' READMEs and `.env` files compare Marmeon with no other framework.
+ *   6. **The framework's messages speak to app developers:** no string of a package's code or launchers names a decision, a wave
+ *      or another framework (read with oxc-parser — comments, names and regular expressions are rule 7's).
+ *   7. **No references to the private record:** no tracked file names a decision number, a wave or a step, a personal date or a
+ *      path into the maintainers' notes. {@link PENDING_AREAS} lists the areas it does not read yet.
  *
- *   2. **No app installs a validation engine** (E197, W10 step 4): apps, the starter's template, the `make:auth` stubs and what a
- *      script or a generator writes into an app validate with `rules` of @marmeon/validation — no file outside `packages/<name>/src/`
- *      imports Valibot (in code or in the code a generator writes: `make:*`'s templates count), and no `package.json` of an app or of
- *      the template lists it. Inside a package's `src/` Valibot stays an internal engine (its env schemas, its tests).
- *
- *   3. **`NODE_ENV` is checked positively** (E201, W10 step 6): no `!== 'production'` (any quotes, also `!=`), no
- *      `NODE_ENV === 'production'` and no `import.meta.env.DEV` / `!import.meta.env.PROD` (Vite sets them from `NODE_ENV ===
- *      'production'`: a build with any other value, or none, is `DEV`) in a package's code (`packages/<name>/src/`, the `make:auth`
- *      stubs), the starter's template (`packages/create-marmeon/template/`) and the apps (`apps/<name>/`) — what people copy — tests
- *      and fixtures aside. Either sends a missing `NODE_ENV` (production, E217) — or a value only a hand-made build folds in — down
- *      the development branch: long messages, warnings, devtools hooks and error details in server rendering, which reads `NODE_ENV`
- *      at run time. Development branches ask
- *      `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (inline: a client build folds it away), server
- *      code `environment.isDevelopment()` / `environment.isProtected()` of @marmeon/core.
- *
- *   4. **The old default prefix of API tokens is gone** (E207, W10 step 9b): `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says
- *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end), not even as a way back in
- *      `UPGRADING.md`: no release handed out a token with it (E216). A forgotten copy in a test or a README would teach the old default.
- *
- *   5. **The docs speak to their readers** (W11 step 10, E214, E215): the pages under `docs/`, the packages' READMEs (their npm
- *      cards), the root `README.md` and the policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) carry no
- *      decision number (`E` and two or three digits — a hex value, an exponent, `E2E` or `E.164` is none) and no comparison with
- *      another framework; the pages, the cards and the upgrade guide no wave reference (`W9`, `W10.4`, `Wave 9`); and no page under `docs/` the
- *      pending marker as a line of its own — every page is written (`CONTRIBUTING.md` names the marker inline). What every new app
- *      copies — the starter's template and the packages' stubs — carries no decision number, no wave reference, no personal date
- *      ("Max 07.10.") and no comparison with another framework — and so does what a reader of one of the apps sees first and
- *      copies: its README and its `.env` files (`.env.example`, `.env.test`; W12 step 4b). The apps' code is the framework's test
- *      bed and keeps its comments, as the packages' code does. Each part is an entry of {@link DOC_TEXT_RULES}: its pattern and
- *      the files it reads.
- *
- *   6. **The framework's messages speak to app developers** (W11 step 10, E214): the strings of a package's code
- *      (`packages/<name>/src/`, tests, type tests and fixtures aside, and the launchers `packages/<name>/bin/*.js`) — errors,
- *      warnings, solutions, command descriptions and
- *      output, the files `make:*` writes, the devtools' pages — carry no decision number, no wave reference and no other framework,
- *      as rule 5's patterns find them. Only strings count (read with oxc-parser): comments, names and regular expressions are the
- *      maintainers' and keep their decision numbers.
- *
- * Later rules join this script (one script, several rules, each with its test).
+ * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -64,9 +35,9 @@ interface Allowance {
   readonly files?: readonly string[];
 }
 
-/** What may still say the old name — a whole phrase, never the word alone. No rename hint: nothing was released under the old name (E216). */
+/** What may still say the old name — a whole phrase, never the word alone. No rename hint: nothing was released under the old name. */
 export const ALLOWED: readonly Allowance[] = [
-  // The company (E153): the LICENSE holder and every place that names it.
+  // The company: the LICENSE holder and every place that names it.
   { pattern: new RegExp(`\\b${OLD_NAME}Code\\b`, 'g') },
 ];
 
@@ -92,10 +63,10 @@ export function oldNameHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
-/** The old default prefix of API tokens (E207), spelled in parts: this file passes its own rule. */
+/** The old default prefix of API tokens, spelled in parts: this file passes its own rule. */
 export const OLD_TOKEN_PREFIX = `${['b', 'c'].join('')}_`;
 const OLD_PREFIX = new RegExp(`(?<![\\w-])${OLD_TOKEN_PREFIX}(?=[\\d|'"\`\\s]|$)`, 'm');
-/** Where the old prefix may stand: nowhere — no release handed out a token with it, so there is no way back to give (E216). */
+/** Where the old prefix may stand: nowhere — no release handed out a token with it, so there is no way back to give. */
 const OLD_PREFIX_ALLOWED: readonly Allowance[] = [];
 
 /** Rule 4: every line that says the old token prefix outside its allowance — `path:line: text`. */
@@ -112,7 +83,7 @@ export function oldTokenPrefixHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
-/** The engine under `rules` (E197), spelled in parts like the old name: this file holds no import of it either. */
+/** The engine under `rules`, spelled in parts like the old name: this file holds no import of it either. */
 export const ENGINE = ['vali', 'bot'].join('');
 const IMPORT = new RegExp(
   [
@@ -182,7 +153,7 @@ export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
-/** One part of rule 5: a pattern no line of the files it reads may match. */
+/** One part of rule 5 or 7: a pattern no line of the files it reads may match. */
 export interface TextRule {
   /** What the pattern finds, for the problem's message: `a decision number`. */
   readonly what: string;
@@ -199,48 +170,20 @@ const DOCS_PAGES = /^docs\/[^/]+\.md$/;
 const PACKAGE_CARDS = /^packages\/[^/]+\/README\.md$/;
 /** The root README and the policies the docs show as pages (Upgrade Guide, Contributing, Security Policy). */
 const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY|UPGRADING)\.md$/;
-/** The upgrade guide: it says what changed by version, not by wave. */
-const UPGRADE_GUIDE = /^UPGRADING\.md$/;
-/**
- * What every new app copies and keeps: the starter's template (`create-marmeon`) and the packages' stubs (`make:auth`'s module,
- * the migrations of `make:queue-table`, `make:session-table`, …) — every comment of them lands in an app, so it speaks to that
- * app's developers. The code that copies them (`packages/<name>/src/`) is the maintainers' and keeps its decision numbers.
- */
+/** What every new app copies and keeps: the starter's template (`create-marmeon`) and the packages' stubs. */
 const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
-/**
- * What a reader of one of the apps (`apps/<name>/`) sees first and copies: its README and its `.env` files (`.env.example`
- * becomes someone's `.env`). The apps' code is the framework's own test bed — its comments are the maintainers', like the
- * packages' code, and keep their decision numbers.
- */
+/** What a reader of one of the apps sees first and copies: its README and its `.env` files. */
 const APP_TEXTS = /^apps\/[^/]+\/(?:README\.md|\.env\.[^/]+)$/;
+/** Every file. */
+const ALL_TRACKED = /^/;
 
-/** Rule 5: the docs speak to their readers — no decision numbers, no wave references, no page still to be written. */
+/** Rule 5: the docs speak to their readers — no page still to be written, no other framework. */
 export const DOC_TEXT_RULES: readonly TextRule[] = [
-  {
-    what: 'a decision number',
-    // A word of its own: `0xE12`, `#E1234`, `1E10`, `E2E` and `E.164` are none.
-    pattern: /\bE\d{2,3}\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS],
-    why: 'say what was decided, not its number — the decisions are the maintainers\' record',
-  },
-  {
-    what: 'a wave reference',
-    pattern: /\b(?:W\d+(?:\.\d+)?|[Ww]ave \d+)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, UPGRADE_GUIDE, APP_COPIES, APP_TEXTS],
-    why: 'the docs describe the framework as it is, not when it changed — UPGRADING.md says that, by version',
-  },
   {
     what: 'the pending marker',
     pattern: /^\s*<!-- docs:pending -->\s*$/,
     files: [DOCS_PAGES],
     why: 'every page is written — write it, or take it out of apps/docs/docs.config.ts and docs/',
-  },
-  {
-    what: 'a personal date',
-    // Who decided and when ("Max 07.10."): a name of its own (not `Max-Age`) or a day and a month with their dots.
-    pattern: /\bMax\b(?![-\w])|(?<![\d.])\d{2}\.\d{2}\.(?!\d)/,
-    files: [APP_COPIES, APP_TEXTS],
-    why: 'a new app keeps the reason, not who decided it when — the maintainers\' record has that',
   },
   {
     what: 'a comparison with another framework',
@@ -269,10 +212,98 @@ export function textRuleHits(files: Iterable<SourceFile>, rule: TextRule): strin
   return hits;
 }
 
+/** Rule 7: what points into the maintainers' private record — every tracked file outside {@link PENDING_AREAS}. */
+export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
+  {
+    what: 'a decision number',
+    // A word of its own: `0xE12`, `#E1234`, `1E10`, `E2E`, `E.164` and the phone format `E164` are none.
+    pattern: /\bE(?!164\b)\d{2,3}\b/,
+    files: [ALL_TRACKED],
+    why: 'say what holds, not which decision made it',
+  },
+  {
+    what: 'a wave reference',
+    // A wave or a step — a `W` and its number, a point release and a step with their letters, or "wave" and a number — or a
+    // counter-probe's id (a `G`, a number and a letter, or any after "Gegenprobe"); `W3C` is none.
+    pattern: /\b(?:W\d+(?:\.\d+[a-z]?)?(?:\s+step\s+\d+[a-z]?)?|[Ww]ave \d+|G\d{1,2}[a-z])\b|\bGegenprobe\s+G\d{1,2}[a-z]?\b/,
+    files: [ALL_TRACKED],
+    why: 'describe the code as it is, not when it changed — UPGRADING.md says that, by version',
+  },
+  {
+    what: 'a personal date',
+    // Who decided and when: a name of its own (not `Max-Age`, not `Math.max`) or a day and a month with their dots (not `10.10.2026`).
+    pattern: /\bMax\b(?![-\w])|(?<![\d.])\d{2}\.\d{2}\.(?!\d)/,
+    files: [ALL_TRACKED],
+    why: 'keep the reason, not who decided it when',
+  },
+  {
+    what: 'a path into the private record',
+    // Spelled in parts, like the old name: this file passes its own rule.
+    pattern: new RegExp([`Naechste-${'Schritte'}`, `Obsi${'dian'}`, `\\bva${'ult'}\\b(?! fixture)`, `/private/${'tmp'}`, `scratch${'pad'}`].join('|'), 'i'),
+    files: [ALL_TRACKED],
+    why: 'point to a page under docs/ instead — the maintainers\' notes are not part of the repository',
+  },
+];
+
+/**
+ * The areas rule 7 does not read yet (path prefixes): their comments still name the private record. An area leaves the list
+ * once its comments are clean. What readers see first in them — the package cards, the stubs, the starter's template and the
+ * apps' READMEs and `.env` files — is read all the same.
+ */
+export const PENDING_AREAS: readonly string[] = [
+  'packages/http/',
+  'packages/react/',
+  'packages/router/',
+  'packages/vite/',
+  'packages/core/',
+  'packages/server/',
+  'packages/cli/',
+  'packages/devtools/',
+  'packages/create-marmeon/',
+  'packages/encryption/',
+  'packages/database/',
+  'packages/table/',
+  'packages/storage/',
+  'packages/cache/',
+  'packages/redis/',
+  'packages/session/',
+  'packages/queue/',
+  'packages/scheduler/',
+  'packages/notifications/',
+  'packages/mail/',
+  'packages/live/',
+  'packages/auth/',
+  'packages/validation/',
+  'packages/i18n/',
+  'packages/otel/',
+  'packages/log/',
+  'packages/testing/',
+  'apps/web-app/',
+  'apps/docs/',
+  'apps/blank-app/',
+];
+/** Read even inside a pending area. */
+const READER_TEXTS = [PACKAGE_CARDS, APP_COPIES, APP_TEXTS];
+
+/** Rule 7: every line of the files outside `pending` that names the private record — `path:line: what: text`. */
+export function privateRecordHits(files: Iterable<SourceFile>, pending: readonly string[] = PENDING_AREAS): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (pending.some((area) => path.startsWith(area)) && !READER_TEXTS.some((pattern) => pattern.test(path))) continue;
+    if (!PRIVATE_RECORD_RULES.some((rule) => rule.pattern.test(text))) continue;
+    text.split('\n').forEach((line, index) => {
+      for (const rule of PRIVATE_RECORD_RULES) {
+        if (rule.files.some((pattern) => pattern.test(path)) && rule.pattern.test(line)) hits.push(`${path}:${index + 1}: ${rule.what}: ${line.trim().slice(0, 160)}`);
+      }
+    });
+  }
+  return hits;
+}
+
 /** A package's code, as it runs in an app: `packages/<name>/src/` (its tests, type tests and fixtures aside) and its launchers (`bin/*.js`). */
 const RUNTIME_CODE = /^packages\/[^/]+\/(?:src\/(?!.*__fixtures__\/).+(?<!\.test|\.type-test)\.tsx?|bin\/[^/]+\.js)$/;
-/** What rule 6 looks for in the strings of that code: rule 5's parts that hold for every text an app developer reads. */
-const RUNTIME_TEXT_RULES = DOC_TEXT_RULES.filter((rule) => ['a decision number', 'a wave reference', 'a comparison with another framework'].includes(rule.what));
+/** What rule 6 looks for in the strings of that code. */
+const RUNTIME_TEXT_RULES = [...PRIVATE_RECORD_RULES, ...DOC_TEXT_RULES].filter((rule) => ['a decision number', 'a wave reference', 'a comparison with another framework'].includes(rule.what));
 
 /** What rule 6 uses of oxc-parser: an ESTree program, and the errors of a file it cannot read. */
 interface OxcParser {
@@ -284,7 +315,7 @@ const oxc = (): OxcParser => createRequire(join(root, 'packages/core/package.jso
 /**
  * Rule 6: the strings of a package's code — messages, warnings, solutions, command descriptions and output, what `make:*`
  * writes, the devtools' pages — carry no decision number, no wave reference and no other framework: every app shows them. A
- * string literal, a template's text and JSX text count; comments, names and regular expressions are the maintainers' and do not.
+ * string literal, a template's text and JSX text count; comments, names and regular expressions are rule 7's.
  * `path:line: what: text`.
  */
 export function runtimeStringHits(files: Iterable<SourceFile>): string[] {
@@ -337,14 +368,15 @@ export function repositoryFiles(repository: string = root): SourceFile[] {
 export function checkSource(repository: string = root): string[] {
   const files = repositoryFiles(repository);
   return [
-    ...oldNameHits(files).map((hit) => `the old name (E196): ${hit}`),
-    ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates (E197): ${hit}`),
+    ...oldNameHits(files).map((hit) => `the old name: ${hit}`),
+    ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates: ${hit}`),
     ...negativeEnvHits(files).map(
-      (hit) => `NODE_ENV checked positively (E201 — only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
+      (hit) => `NODE_ENV checked positively (only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
-    ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (E207 — API tokens start with marmeon_): ${hit}`),
+    ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (API tokens start with marmeon_): ${hit}`),
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
+    ...privateRecordHits(files).map((hit) => `no references to the private record (${PRIVATE_RECORD_RULES.find((rule) => rule.what === hit.split(': ')[1])?.why}): ${hit}`),
   ];
 }
 
@@ -355,6 +387,8 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; the docs, the package cards and the policies (the upgrade guide among them) name no decision number and compare Marmeon with no other framework; the docs, the cards and the upgrade guide name no wave, no page is pending; the starter's template, the packages' stubs and the apps' READMEs and .env files name no decision number, wave, personal date or other framework; no string of a package's code or launchers names a decision, a wave or another framework.`);
+    console.log(
+      `check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file outside the ${PENDING_AREAS.length} pending areas names a decision, a wave, a personal date or the maintainers' notes.`,
+    );
   }
 }

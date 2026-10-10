@@ -1,18 +1,36 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkSource, DOC_TEXT_RULES, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME, OLD_TOKEN_PREFIX, oldTokenPrefixHits, runtimeStringHits, textRuleHits, textRuleWhere } from './check-source.ts';
+import {
+  checkSource,
+  DOC_TEXT_RULES,
+  ENGINE,
+  engineHits,
+  negativeEnvHits,
+  oldNameHits,
+  OLD_NAME,
+  OLD_TOKEN_PREFIX,
+  oldTokenPrefixHits,
+  PENDING_AREAS,
+  PRIVATE_RECORD_RULES,
+  privateRecordHits,
+  runtimeStringHits,
+  textRuleHits,
+  textRuleWhere,
+} from './check-source.ts';
 import { parts } from './ci.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+/** This file's samples of the private record carry a `·` inside each reference, so the file passes rule 7 itself; `ref()` takes it out. */
+const ref = (text: string) => text.replaceAll('·', '');
 
-describe('pnpm run ci (E111)', () => {
+describe('pnpm run ci', () => {
   it('runs check:source', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
   });
 });
 
-describe('check:source — the old name is gone (E196)', () => {
+describe('check:source — the old name is gone', () => {
   const old = OLD_NAME; // spelled in parts by the script: this file passes the rule too
   const lower = old.toLowerCase();
 
@@ -51,7 +69,7 @@ describe('check:source — the old name is gone (E196)', () => {
   });
 });
 
-describe('check:source — no app, stub or template installs the validation engine (E197)', () => {
+describe('check:source — no app, stub or template installs the validation engine', () => {
   const engine = ENGINE; // spelled in parts by the script: this file holds no import of it either
   const manifest = (dependencies: Record<string, string>) => JSON.stringify({ name: 'app', dependencies }, null, 2);
 
@@ -89,7 +107,7 @@ describe('check:source — no app, stub or template installs the validation engi
   });
 });
 
-describe('check:source — NODE_ENV is checked positively (E201)', () => {
+describe('check:source — NODE_ENV is checked positively', () => {
   it('finds a negative or a production check in a package\'s code — sources and stubs, any quotes, either side', () => {
     const hits = negativeEnvHits([
       { path: 'packages/react/src/app.tsx', text: "const a = 1;\nif (process.env.NODE_ENV !== 'production') console.warn('[marmeon] …');\n" },
@@ -140,7 +158,7 @@ describe('check:source — NODE_ENV is checked positively (E201)', () => {
   });
 });
 
-describe('check:source — the old token prefix is gone (E207)', () => {
+describe('check:source — the old token prefix is gone', () => {
   const old = OLD_TOKEN_PREFIX; // spelled in parts by the script
 
   it('finds it before a digit, a pipe, a quote, whitespace or the line\'s end — not inside a word', () => {
@@ -168,51 +186,8 @@ describe('check:source — the old token prefix is gone (E207)', () => {
 
 describe('check:source — the docs speak to their readers (rule 5)', () => {
   const rule = (what: string) => DOC_TEXT_RULES.find((entry) => entry.what === what)!;
-  const decisions = rule('a decision number');
-  const waves = rule('a wave reference');
   const marker = rule('the pending marker');
-
-  it('finds a decision number in the docs, the package cards, the root README, CONTRIBUTING, SECURITY and UPGRADING — not in code', () => {
-    expect(textRuleHits([
-      { path: 'docs/queues.md', text: 'A job runs once.\nThe claim is fair (E199).' },
-      { path: 'packages/queue/README.md', text: 'Fair by default, E199.' },
-      { path: 'README.md', text: 'See E36.' },
-      { path: 'CONTRIBUTING.md', text: '(E123)' },
-      { path: 'SECURITY.md', text: 'E210: the docs' },
-      { path: 'UPGRADING.md', text: 'Since E199 the claim is fair.' },
-      { path: 'packages/queue/src/worker.ts', text: '// E199' },
-      { path: 'apps/web-app/modules/auth/routes.ts', text: '// E147' },
-      { path: 'docs/sub/page.md', text: 'E12' },
-    ], decisions)).toEqual([
-      'docs/queues.md:2: The claim is fair (E199).',
-      'packages/queue/README.md:1: Fair by default, E199.',
-      'README.md:1: See E36.',
-      'CONTRIBUTING.md:1: (E123)',
-      'SECURITY.md:1: E210: the docs',
-      'UPGRADING.md:1: Since E199 the claim is fair.',
-    ]);
-  });
-
-  it('takes no hex value, exponent, E2E or E.164 for a decision number', () => {
-    const text = ['`0xE12`, `#E1234`, 1E10 and 2e10', 'E2E tests, E.164 numbers, E1 and E1000', 'BE12, E12a, the E-mail'].join('\n');
-    expect(textRuleHits([{ path: 'docs/notifications.md', text }], decisions)).toEqual([]);
-  });
-
-  it('finds a wave reference in the docs, the package cards and the upgrade guide — not in CONTRIBUTING (its Gegenproben\'s paths)', () => {
-    expect(textRuleHits([
-      { path: 'docs/routing.md', text: 'Since W9 the router is typed.' },
-      { path: 'docs/forms.md', text: 'as of W10.4, and in wave 3' },
-      { path: 'packages/live/README.md', text: 'New in Wave 9.' },
-      { path: 'UPGRADING.md', text: '### Wave 10 — lean dependencies' },
-      { path: 'CONTRIBUTING.md', text: "Wave 9 wrote it: `scripts/gegen/w10/s09-docs.ts`, step: 'W9.4'" },
-      { path: 'docs/csp.md', text: 'W3C, HTTP/2, AW3 and W-9' },
-    ], waves)).toEqual([
-      'docs/routing.md:1: Since W9 the router is typed.',
-      'docs/forms.md:1: as of W10.4, and in wave 3',
-      'packages/live/README.md:1: New in Wave 9.',
-      'UPGRADING.md:1: ### Wave 10 — lean dependencies',
-    ]);
-  });
+  const frameworks = rule('a comparison with another framework');
 
   it('finds the pending marker as a line of its own in a docs page — not mentioned inline, not in CONTRIBUTING', () => {
     expect(textRuleHits([
@@ -223,63 +198,17 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     ], marker)).toEqual(['docs/routing.md:2: <!-- docs:pending -->', 'docs/middleware.md:2: <!-- docs:pending -->']);
   });
 
-  it('reads what every new app copies too — the starter\'s template and the packages\' stubs — but not the code that copies it', () => {
-    const files = [
-      { path: 'packages/create-marmeon/template/base/.env.example', text: '# Behind a proxy, X-Forwarded-* count (E162)\n# since Wave 10' },
-      { path: 'packages/create-marmeon/template/kit/bootstrap/client.tsx', text: '// the dialog asks (E64)' },
-      { path: 'packages/auth/stubs/react/modules/auth/routes.ts', text: '// Private registration (E146): one answer (W9 step 11)' },
-      { path: 'packages/queue/stubs/migrations/create_jobs_table.ts', text: '// the fair claim (E199) walks this index' },
-      { path: 'packages/create-marmeon/src/main.ts', text: '// the template (E167), W10' },
-      { path: 'packages/auth/src/make-auth.ts', text: '// the stubs (E30), W2' },
-    ];
-    expect(textRuleHits(files, decisions)).toEqual([
-      'packages/create-marmeon/template/base/.env.example:1: # Behind a proxy, X-Forwarded-* count (E162)',
-      'packages/create-marmeon/template/kit/bootstrap/client.tsx:1: // the dialog asks (E64)',
-      'packages/auth/stubs/react/modules/auth/routes.ts:1: // Private registration (E146): one answer (W9 step 11)',
-      'packages/queue/stubs/migrations/create_jobs_table.ts:1: // the fair claim (E199) walks this index',
-    ]);
-    expect(textRuleHits(files, waves)).toEqual([
-      'packages/create-marmeon/template/base/.env.example:2: # since Wave 10',
-      'packages/auth/stubs/react/modules/auth/routes.ts:1: // Private registration (E146): one answer (W9 step 11)',
-    ]);
-  });
-
   it("reads the apps' READMEs and .env files — what a reader of an app sees first and copies — not the apps' code", () => {
-    const files = [
-      { path: 'apps/web-app/.env.example', text: '# Sessions on the system connection (E108)\n# Live props (W6.10)' },
+    expect(textRuleHits([
       { path: 'apps/docs/.env.test', text: '# like Laravel' },
-      { path: 'apps/blank-app/README.md', text: 'decided by Max 07.10.' },
-      { path: 'apps/web-app/modules/auth/routes.ts', text: '// Private registration (E146), W9, like Laravel, Max 07.10.' },
-      { path: 'apps/web-app/sub/README.md', text: 'E12, W9' },
-    ];
-    const hits = (what: string) => {
-      const found = textRuleHits(files, rule(what));
-      return expect(found, `${what}: ${JSON.stringify(found)}`);
-    };
-    hits('a decision number').toEqual(['apps/web-app/.env.example:1: # Sessions on the system connection (E108)']);
-    hits('a wave reference').toEqual(['apps/web-app/.env.example:2: # Live props (W6.10)']);
-    hits('a comparison with another framework').toEqual(['apps/docs/.env.test:1: # like Laravel']);
-    hits('a personal date').toEqual(['apps/blank-app/README.md:1: decided by Max 07.10.']);
+      { path: 'apps/blank-app/README.md', text: 'as in Rails' },
+      { path: 'apps/web-app/modules/auth/routes.ts', text: '// like Laravel' },
+      { path: 'apps/web-app/sub/README.md', text: 'like Laravel' },
+    ], frameworks)).toEqual(['apps/docs/.env.test:1: # like Laravel', 'apps/blank-app/README.md:1: as in Rails']);
     expect(textRuleWhere('apps/web-app/.env.example')).toBe("in an app's README or .env files");
   });
 
-  it('finds a personal date of the plan in what a new app copies — not a cookie\'s Max-Age, a version or an address', () => {
-    const dates = rule('a personal date');
-    expect(textRuleHits([
-      { path: 'packages/auth/stubs/react/modules/auth/migrations/0001_create_users.ts', text: ' * set once (Max 07.10.) — never cleared' },
-      { path: 'packages/auth/stubs/react/modules/auth/prune.test.ts', text: "it('keeps it for good (Max, 07.10.)', async () => {" },
-      { path: 'packages/create-marmeon/template/base/.env.example', text: '# decided on 09.10. by the team' },
-      { path: 'packages/create-marmeon/template/base/config/session.ts', text: "// Max-Age=0 ends it; max 255; Marmeon 0.2.0; 127.0.0.1 or 10.0.0.0/8" },
-      { path: 'packages/create-marmeon/src/main.ts', text: '// Max 07.10.' },
-    ], dates)).toEqual([
-      'packages/auth/stubs/react/modules/auth/migrations/0001_create_users.ts:1: * set once (Max 07.10.) — never cleared',
-      "packages/auth/stubs/react/modules/auth/prune.test.ts:1: it('keeps it for good (Max, 07.10.)', async () => {",
-      'packages/create-marmeon/template/base/.env.example:1: # decided on 09.10. by the team',
-    ]);
-  });
-
   it('finds a comparison with another framework in the docs, the package cards, the root texts and what a new app copies', () => {
-    const frameworks = rule('a comparison with another framework');
     expect(textRuleHits([
       { path: 'docs/authentication.md', text: 'Like Laravel Breeze, the module is yours.' },
       { path: 'packages/validation/README.md', text: "Inertia's partial reloads" },
@@ -304,13 +233,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
   });
 
   it('names each rule in the problems of check:source — and where it was found', () => {
-    expect(DOC_TEXT_RULES.map((entry) => entry.what)).toEqual([
-      'a decision number',
-      'a wave reference',
-      'the pending marker',
-      'a personal date',
-      'a comparison with another framework',
-    ]);
+    expect(DOC_TEXT_RULES.map((entry) => entry.what)).toEqual(['the pending marker', 'a comparison with another framework']);
     expect(textRuleWhere('docs/queues.md')).toBe('in the docs');
     expect(textRuleWhere('packages/queue/README.md')).toBe('in the docs');
     expect(textRuleWhere('UPGRADING.md')).toBe('in the docs');
@@ -322,53 +245,114 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
 
 describe("check:source — the framework's messages speak to app developers (rule 6)", () => {
   it('finds a decision number, a wave reference or another framework in a string of a package\'s code — the text an app sees', () => {
-    const text = [
-      "throw new Error('An app in the build phase is never booted (E187).');",
-      'const hint = `read-only (W6.9) — ${what}`;',
+    const text = ref([
+      "throw new Error('An app in the build phase is never booted (E·187).');",
+      'const hint = `read-only (W·6.9) — ${what}`;',
       "const a = 'Laravel\\'s rules, typed';",
-      'const view = <p>Development only (E115)</p>;',
-      'const b = "fine (W10.4)";',
-    ].join('\n');
+      'const view = <p>Development only (E·115)</p>;',
+      'const b = "fine (W·10.4)";',
+    ].join('\n'));
     expect(runtimeStringHits([{ path: 'packages/core/src/application.tsx', text }])).toEqual([
-      "packages/core/src/application.tsx:1: a decision number: 'An app in the build phase is never booted (E187).'",
-      'packages/core/src/application.tsx:2: a wave reference: `read-only (W6.9) — ${',
+      ref("packages/core/src/application.tsx:1: a decision number: 'An app in the build phase is never booted (E·187).'"),
+      ref('packages/core/src/application.tsx:2: a wave reference: `read-only (W·6.9) — ${'),
       "packages/core/src/application.tsx:3: a comparison with another framework: 'Laravel\\'s rules, typed'",
-      'packages/core/src/application.tsx:4: a decision number: Development only (E115)',
-      'packages/core/src/application.tsx:5: a wave reference: "fine (W10.4)"',
+      ref('packages/core/src/application.tsx:4: a decision number: Development only (E·115)'),
+      ref('packages/core/src/application.tsx:5: a wave reference: "fine (W·10.4)"'),
     ]);
   });
 
   it('reads the launchers too — packages/<name>/bin/*.js print to every developer', () => {
-    const text = ["// E108: one process (W8 step 4)", "console.error('marmeon needs Node 26 (E108).');", 'const w = `since Wave 10`;'].join('\n');
+    const text = ref(["// E·108: one process (W·8 step 4)", "console.error('marmeon needs Node 26 (E·108).');", 'const w = `since Wa·ve 10`;'].join('\n'));
     expect(runtimeStringHits([
       { path: 'packages/cli/bin/marmeon.js', text },
       { path: 'packages/create-marmeon/bin/create-marmeon.js', text: "process.stderr.write('Laravel-like starter\\n');" },
-      { path: 'packages/cli/bin/sub/helper.js', text: "const e = '(E62)';" },
-      { path: 'packages/cli/scripts/build.js', text: "const e = '(E62)';" },
+      { path: 'packages/cli/bin/sub/helper.js', text: ref("const e = '(E·62)';") },
+      { path: 'packages/cli/scripts/build.js', text: ref("const e = '(E·62)';") },
     ])).toEqual([
-      "packages/cli/bin/marmeon.js:2: a decision number: 'marmeon needs Node 26 (E108).'",
-      'packages/cli/bin/marmeon.js:3: a wave reference: since Wave 10',
+      ref("packages/cli/bin/marmeon.js:2: a decision number: 'marmeon needs Node 26 (E·108).'"),
+      ref('packages/cli/bin/marmeon.js:3: a wave reference: since Wa·ve 10'),
       "packages/create-marmeon/bin/create-marmeon.js:1: a comparison with another framework: 'Laravel-like starter\\n'",
     ]);
   });
 
   it('leaves comments, regular expressions, names and the code of tests, fixtures, scripts and apps alone', () => {
-    const code = [
-      '// E187: the build phase (W10 step 9) — Laravel did it so',
-      '/** (E108) */ const E108 = /\\bE\\d{2,3}\\b/;',
+    const code = ref([
+      '// E·187: the build phase (W·10 step 9) — Laravel did it so',
+      '/** (E·108) */ const E·108 = /\\bE\\d{2,3}\\b/;',
       "const fine = 'E2E, E.164, #E1234, 0xE12 and W3C';",
-    ].join('\n');
+    ].join('\n'));
     expect(runtimeStringHits([
       { path: 'packages/core/src/a.ts', text: code },
-      { path: 'packages/core/src/a.test.ts', text: "it('builds (E187)', () => {});" },
-      { path: 'packages/core/src/__fixtures__/b.ts', text: "export const b = 'E187';" },
-      { path: 'scripts/check-source.ts', text: "const w = 'W8';" },
-      { path: 'apps/web-app/modules/lab/a.ts', text: "const e = '(E62)';" },
+      { path: 'packages/core/src/a.test.ts', text: ref("it('builds (E·187)', () => {});") },
+      { path: 'packages/core/src/__fixtures__/b.ts', text: ref("export const b = 'E·187';") },
+      { path: 'scripts/check-source.ts', text: ref("const w = 'W·8';") },
+      { path: 'apps/web-app/modules/lab/a.ts', text: ref("const e = '(E·62)';") },
     ])).toEqual([]);
   });
 });
 
-describe('the driver rule (E198)', () => {
+describe('rule 7: no references to the private record', () => {
+  const what = (text: string, path = 'scripts/ci.ts') => privateRecordHits([{ path, text: ref(text) }], []).map((hit) => hit.replace(/^[^:]+:\d+: ([^:]+): .*$/, '$1'));
+
+  it('finds a decision number, a wave or a step, a personal date and a path into the private record — in any file', () => {
+    expect(what('// allowed (E·170)')).toEqual(['a decision number']);
+    expect(what("it('W·9.5: …', () => {});", 'scripts/bench/boot.ts')).toEqual(['a wave reference']);
+    expect(what('# the Docker image, since Wa·ve 10', '.github/workflows/ci.yml')).toEqual(['a wave reference']);
+    expect(what('// done in W·12 step 4b', 'vitest.config.ts')).toEqual(['a wave reference']);
+    expect(what('// red without the lock (G·12b)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
+    expect(what('// red without the lock (Gegenprobe G·3)', 'scripts/pack-smoke.ts')).toEqual(['a wave reference']);
+    expect(what('kept for good (Ma·x, 07.·10.)', 'deploy/docs/compose.yaml')).toEqual(['a personal date']);
+    // A day and a month with their dots count in a test's title too: write the month's name (`29 March`, below).
+    expect(what("it('runs once on the day the clocks go forward (29.·03.)', () => {});", 'scripts/bench/stats.test.ts')).toEqual(['a personal date']);
+    expect(what('the plan in Marmeon/Naechste-·Schritte.md', 'docs/queues.md')).toEqual(['a path into the private record']);
+    expect(what('written to /private/·tmp/claude-501/x', 'README.md')).toEqual(['a path into the private record']);
+    expect(what('a template in scratch·pad/w8s8/tabs.mjs', 'CONTRIBUTING.md')).toEqual(['a path into the private record']);
+    expect(what('the deployment guide in the Obsi·dian va·ult', 'deploy/docs/Caddyfile')).toEqual(['a path into the private record']);
+  });
+
+  it('takes no hex value, exponent, phone format, test name, cookie attribute, date of test data, version or CSS for one', () => {
+    const text = [
+      'W3C, HTTP/2, AW3 and W-9',
+      'Set-Cookie: a=b; Max-Age=60',
+      'E164, E.164 numbers, E2E tests, E1 and E1000',
+      '`0xE12`, `#E1234`, 1E10 and 2e10, BE12, E12a, the E-mail',
+      "const day = '10.10.2026';",
+      "it('runs once on the day the clocks go forward (29 March)', () => {});",
+      'Math.max(a, b); max-width: 40rem; max 255; Marmeon 0.2.0; 127.0.0.1 or 10.0.0.0/8',
+    ].join('\n');
+    expect(privateRecordHits([{ path: 'scripts/check-source.ts', text }], [])).toEqual([]);
+  });
+
+  it('leaves the files under a pending area alone — but reads what readers see first there: the cards, the stubs, the template, the apps\' READMEs and .env files', () => {
+    const pending = ['packages/queue/', 'packages/create-marmeon/', 'apps/web-app/'];
+    const files = [
+      { path: 'packages/queue/src/worker.ts', text: ref('// the fair claim (E·199)') },
+      { path: 'packages/create-marmeon/src/main.ts', text: ref('// the template (E·167), W·10') },
+      { path: 'apps/web-app/modules/auth/routes.ts', text: ref('// Private registration (E·146), Ma·x 07.·10.') },
+      { path: 'packages/queue/README.md', text: ref('Fair by default, E·199.') },
+      { path: 'packages/queue/stubs/migrations/create_jobs_table.ts', text: ref('// the fair claim (W·9 step 11)') },
+      { path: 'packages/create-marmeon/template/base/.env.example', text: ref('# decided on 09.·10. by the team') },
+      { path: 'apps/web-app/.env.example', text: ref('# Live props (W·6.10)') },
+      { path: 'apps/web-app/README.md', text: ref('see the Obsi·dian note') },
+      { path: 'packages/auth/src/make-auth.ts', text: ref('// the stubs (E·30)') },
+    ];
+    expect(privateRecordHits(files, pending)).toEqual([
+      ref('packages/queue/README.md:1: a decision number: Fair by default, E·199.'),
+      ref('packages/queue/stubs/migrations/create_jobs_table.ts:1: a wave reference: // the fair claim (W·9 step 11)'),
+      ref('packages/create-marmeon/template/base/.env.example:1: a personal date: # decided on 09.·10. by the team'),
+      ref('apps/web-app/.env.example:1: a wave reference: # Live props (W·6.10)'),
+      ref('apps/web-app/README.md:1: a path into the private record: see the Obsi·dian note'),
+      ref('packages/auth/src/make-auth.ts:1: a decision number: // the stubs (E·30)'),
+    ]);
+  });
+
+  it('keeps pending only areas of packages/ and apps/ — everything else is read already', () => {
+    expect(PENDING_AREAS.filter((area) => !/^(?:packages|apps)\/[^/]+\/$/.test(area))).toEqual([]);
+    expect(PRIVATE_RECORD_RULES.map((rule) => rule.what)).toEqual(['a decision number', 'a wave reference', 'a personal date', 'a path into the private record']);
+  });
+});
+
+describe('the driver rule', () => {
   it('holds for every package: one wrapped driver a dependency, one of several an optional peer, a shared library a peer', () => {
     const problems = frameworkPackages(root).flatMap((pkg) => checkDriverRule(pkg.short, pkg.manifest).map((problem) => `${pkg.name}: ${problem}`));
     expect(problems, problems.join('\n')).toEqual([]);
@@ -376,19 +360,19 @@ describe('the driver rule (E198)', () => {
 
   it('names what breaks it', () => {
     expect(checkDriverRule('redis', { peerDependencies: { redis: '^6.0.0' }, peerDependenciesMeta: { redis: { optional: true } } })).toEqual([
-      'redis must be a dependency (E198: the one driver this package wraps — the app installs nothing else)',
+      'redis must be a dependency (the one driver this package wraps — the app installs nothing else)',
     ]);
-    expect(checkDriverRule('redis', { dependencies: { redis: '6.2.1' } })).toEqual(['dependencies.redis is "6.2.1" — a caret range of the tested major (^6.2.1, E198)']);
+    expect(checkDriverRule('redis', { dependencies: { redis: '6.2.1' } })).toEqual(['dependencies.redis is "6.2.1" — a caret range of the tested major (^6.2.1)']);
     expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0' } })).toEqual([
-      'pg must stay an optional peer, not a dependency (E198) — one of several drivers; every app would install it',
-      'pg must be an optional peer of this package (E198)',
+      'pg must stay an optional peer, not a dependency — one of several drivers; every app would install it',
+      'pg must be an optional peer of this package',
     ]);
-    expect(checkDriverRule('database', { peerDependencies: { pg: '^8.23.0' } })).toEqual(['pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver (E198)']);
+    expect(checkDriverRule('database', { peerDependencies: { pg: '^8.23.0' } })).toEqual(['pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver']);
     // One API instance: the app's SDK registers on the API the framework reads — a second copy would be a second instance.
     expect(checkDriverRule('otel', { dependencies: { '@opentelemetry/api': '^1.9.0' }, peerDependencies: { '@opentelemetry/api': '^1.9.0' } })).toEqual([
-      '@opentelemetry/api must stay a peer, not a dependency (E198) — the app and the framework share one instance; a dependency installs a second copy',
-      '@opentelemetry/api is a dependency — the app and the framework must share one instance of it: a peer (E198)',
+      '@opentelemetry/api must stay a peer, not a dependency — the app and the framework share one instance; a dependency installs a second copy',
+      '@opentelemetry/api is a dependency — the app and the framework must share one instance of it: a peer',
     ]);
-    expect(checkDriverRule('table', { dependencies: { react: '^19.3.0' } })).toEqual(['react is a dependency — the app and the framework must share one instance of it: a peer (E198)']);
+    expect(checkDriverRule('table', { dependencies: { react: '^19.3.0' } })).toEqual(['react is a dependency — the app and the framework must share one instance of it: a peer']);
   });
 });

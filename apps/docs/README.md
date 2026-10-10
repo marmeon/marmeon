@@ -25,13 +25,11 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   comes before an example that only calls it.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; no `docs/*.md` carries it any more, and `pnpm check:source` refuses it.
-- **The text speaks to app developers.** `pnpm check:source` rule 5 refuses decision numbers and comparisons with another
-  framework in the pages, the package READMEs, the root's README and the three policies (`UPGRADING.md` among them), and wave
-  references in the pages, the READMEs and `UPGRADING.md` (not in CONTRIBUTING, which names the Gegenproben's paths). It reads
-  the starter's template and the packages' stubs, which every new app copies, and the apps' READMEs and `.env` files for all of
-  these and a personal date too. Rule 6
-  reads the strings of the packages' code and launchers — messages, solutions, command output — for a decision number, a wave
-  or another framework; comments stay the maintainers'.
+- **The text speaks to app developers.** `pnpm check:source` rule 5 refuses comparisons with another framework in the pages,
+  the package READMEs, the root's README, the three policies, the starter's template, the packages' stubs and the apps' READMEs
+  and `.env` files; rule 7 refuses decision numbers, wave references, personal dates and paths into the maintainers' notes in
+  every tracked file. Rule 6 reads the strings of the packages' code and launchers — messages, solutions, command output — for a
+  decision number, a wave or another framework.
 - **The start page** (`/`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
