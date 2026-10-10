@@ -46,16 +46,20 @@ export {
   afterCommit,
   afterRollback,
   currentTransaction,
+  errOfRollback,
   inTransaction,
   leftTransactionOf,
   openTransactionOf,
   outsideTransaction,
+  rollBackOnErr,
   runTransaction,
   TransactionError,
   TransactionFinishedError,
   TransactionFrame,
   transactionOf,
 } from './transaction-context.ts';
+export { commitAnyway, err, ok } from './result.ts';
+export type { Err, Ok, Result } from './result.ts';
 export { escapeHtml, Html, html, interpolateHtml, raw } from './html.ts';
 export { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_KEYS, redactText, Redactor } from './redact.ts';
 export type { RedactableQuery } from './redact.ts';

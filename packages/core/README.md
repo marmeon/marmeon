@@ -1,7 +1,7 @@
 # @marmeon/core
 
 The application kernel of Marmeon: modules, service providers, the container with constructor injection, configuration,
-events, the clock, the context of a request or job, the diagnostics channels and health checks.
+events, the clock, the context of a request or job, results for expected failures, the diagnostics channels and health checks.
 
 ## Installation
 
@@ -51,6 +51,7 @@ development or protected (`NODE_ENV`: `development`, `test` or `production`, not
 - [Context](https://github.com/marmeon/marmeon/blob/main/docs/context.md)
 - [Health Checks](https://github.com/marmeon/marmeon/blob/main/docs/health.md)
 - [Observability](https://github.com/marmeon/marmeon/blob/main/docs/observability.md)
+- [Error Handling: results](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#results)
 - [Error Handling: solutions](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#solutions)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

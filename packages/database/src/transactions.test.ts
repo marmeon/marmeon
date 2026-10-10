@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import { commitAnyway, err, ok, type Result } from '@marmeon/core';
 import type { Generated, Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
@@ -354,6 +355,253 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
   );
 });
 
+describe.each(drivers)('a transaction callback that returns a Result on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  let notes: NoteRepository;
+  let db: Kysely<NoteTables>;
+
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections(driver));
+    db = connections.get<NoteTables>();
+    await createNotes(db, driver);
+    notes = new NoteRepository(connections);
+  });
+  afterAll(() => close());
+  beforeEach(async () => {
+    await db.deleteFrom('notes').execute();
+  });
+
+  it('rolls back on an err and hands the err to the caller unchanged — not thrown', async () => {
+    const failed = err({ kind: 'invalid' });
+    const result = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'rolled back' });
+        return failed;
+      }),
+    );
+    expect(result).toBe(failed);
+    expect(await notes.titles()).toEqual([]);
+    const fine = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'committed' });
+        return ok(1);
+      }),
+    );
+    expect(fine).toEqual({ ok: true, value: 1 });
+    expect(await notes.titles()).toEqual(['committed']);
+  });
+
+  it('rolls a savepoint back on its err and keeps the writes of the transaction around it', async () => {
+    const inner = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'outer' });
+        const result = await connections.transaction(async () => {
+          await notes.insert({ title: 'inner, rolled back' });
+          return err({ kind: 'invalid' });
+        });
+        await notes.insert({ title: 'outer, after' });
+        return result;
+      }),
+    );
+    // The outer callback returned the inner err as its own: the outer transaction rolls back too.
+    expect(inner).toEqual({ ok: false, error: { kind: 'invalid' } });
+    expect(await notes.titles()).toEqual([]);
+
+    await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'outer' });
+        const result = await connections.transaction(async () => {
+          await notes.insert({ title: 'inner, rolled back' });
+          return err({ kind: 'invalid' });
+        });
+        expect(result.ok).toBe(false);
+        await notes.insert({ title: 'outer, after' });
+      }),
+    );
+    expect(await notes.titles()).toEqual(['outer', 'outer, after']);
+  });
+
+  it('runs afterRollback work and drops afterCommit work after an err — in a savepoint and outermost', async () => {
+    const seen: string[] = [];
+    await within(
+      connections.transaction(async () => {
+        await afterCommit(() => seen.push('outer committed'));
+        await connections.transaction(async () => {
+          await afterCommit(() => seen.push('savepoint err — never'));
+          await afterRollback(() => seen.push(`savepoint err: in transaction ${inTransaction()}`));
+          return err({ kind: 'invalid' });
+        });
+        seen.push('callback done');
+      }),
+    );
+    await within(
+      connections.transaction(async () => {
+        await afterCommit(() => seen.push('outermost err — never'));
+        await afterRollback(() => seen.push('outermost err'));
+        return err({ kind: 'invalid' });
+      }),
+    );
+    expect(seen).toEqual(['savepoint err: in transaction false', 'callback done', 'outer committed', 'outermost err']);
+  });
+
+  it('commits a commitAnyway(err) — afterCommit runs, and the caller gets a plain err', async () => {
+    const seen: string[] = [];
+    const result = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'request dropped' });
+        await afterCommit(() => seen.push('committed'));
+        await afterRollback(() => seen.push('rolled back — never'));
+        return commitAnyway(err({ kind: 'taken', email: 'ada@example.com' }));
+      }),
+    );
+    expect(result).toEqual({ ok: false, error: { kind: 'taken', email: 'ada@example.com' } });
+    expect(JSON.stringify(result)).toBe('{"ok":false,"error":{"kind":"taken","email":"ada@example.com"}}');
+    expect(seen).toEqual(['committed']);
+    expect(await notes.titles()).toEqual(['request dropped']);
+
+    // Plain: returned again from a transaction of its own, the err rolls that one back — commitAnyway is local to one callback.
+    await db.deleteFrom('notes').execute();
+    const again = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'outer, rolled back' });
+        return connections.transaction(async () => {
+          await notes.insert({ title: 'savepoint, committed' });
+          return commitAnyway(err({ kind: 'taken', email: 'ada@example.com' }));
+        });
+      }),
+    );
+    expect(again.ok).toBe(false);
+    expect(await notes.titles()).toEqual([]);
+  });
+
+  it('commits a look-alike { ok: false } that err() did not make, like any other value', async () => {
+    const payload = { ok: false, error: { kind: 'invalid' } };
+    const result = await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'committed' });
+        return payload;
+      }),
+    );
+    expect(result).toBe(payload);
+    expect(await notes.titles()).toEqual(['committed']);
+    // A copy of a real err loses the mark: data, not a result.
+    await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'copied' });
+        return { ...err({ kind: 'invalid' }) };
+      }),
+    );
+    expect(await notes.titles()).toEqual(['committed', 'copied']);
+  });
+
+  it('throws the error of afterRollback work after an err — one as it is, several as an AggregateError', async () => {
+    const lockServer = new Error('the lock server is down');
+    await expect(
+      within(
+        connections.transaction(async () => {
+          await notes.insert({ title: 'rolled back' });
+          await afterRollback(() => {
+            throw lockServer;
+          });
+          return err({ kind: 'invalid' });
+        }),
+      ),
+    ).rejects.toBe(lockServer);
+    expect(await notes.titles()).toEqual([]);
+
+    const seen: string[] = [];
+    const error = await within(
+      connections.transaction(async () => {
+        await afterRollback(() => {
+          throw new Error('first');
+        });
+        await afterRollback(() => seen.push('still runs'));
+        await afterRollback(() => {
+          throw new Error('second');
+        });
+        return err({ kind: 'invalid' });
+      }),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AggregateError);
+    expect((error as AggregateError).errors).toEqual([new Error('first'), new Error('second')]);
+    expect((error as Error).message).toBe('2 pieces of after-rollback work failed (the transaction on "default" returned an err and is rolled back).');
+    expect(seen).toEqual(['still runs']);
+  });
+
+  describe.each([
+    ['ambient, through connections.transaction()', (repository: NoteRepository) => repository],
+    ['without Connections, directly over Kysely', (repository: NoteRepository) => repository.using(db)],
+  ])('repository.transaction() %s', (_, repositoryOf) => {
+    it('rolls back on an err and returns it, commits a commitAnyway(err) as a plain err, commits a look-alike', async () => {
+      const repository = repositoryOf(notes);
+      const failed = err({ kind: 'invalid' });
+      expect(
+        await within(
+          repository.transaction(async (inside) => {
+            await inside.insert({ title: 'rolled back' });
+            return failed;
+          }),
+        ),
+      ).toBe(failed);
+      expect(await notes.titles()).toEqual([]);
+
+      const dropped = await within(
+        repository.transaction(async (inside) => {
+          await inside.insert({ title: 'committed anyway' });
+          return commitAnyway(err({ kind: 'taken', email: 'ada@example.com' }));
+        }),
+      );
+      expect(dropped).toEqual({ ok: false, error: { kind: 'taken', email: 'ada@example.com' } });
+      // A plain err now: the next transaction that returns it rolls back.
+      expect(
+        await within(
+          repository.transaction(async (inside) => {
+            await inside.insert({ title: 'rolled back' });
+            return dropped;
+          }),
+        ),
+      ).toBe(dropped);
+
+      await within(
+        repository.transaction(async (inside) => {
+          await inside.insert({ title: 'look-alike' });
+          return { ok: false, error: { kind: 'invalid' } };
+        }),
+      );
+      expect(await notes.titles()).toEqual(['committed anyway', 'look-alike']);
+    });
+  });
+
+  it('repository.transaction() on using(trx) rolls its own savepoint back on an err and keeps the outer writes', async () => {
+    // Kysely's own transaction, outside the ambient context: the repository bound to it opens a savepoint of its own.
+    const results = await within(
+      db.transaction().execute(async (trx) => {
+        const bound = notes.using(trx);
+        await bound.insert({ title: 'outer' });
+        const failed = await bound.transaction(async (inside) => {
+          await inside.insert({ title: 'savepoint, rolled back' });
+          return err({ kind: 'invalid' });
+        });
+        const dropped = await bound.transaction(async (inside) => {
+          await inside.insert({ title: 'savepoint, committed anyway' });
+          return commitAnyway(err({ kind: 'taken', email: 'ada@example.com' }));
+        });
+        await bound.transaction(async (inside) => {
+          await inside.insert({ title: 'savepoint, look-alike' });
+          return { ok: false, error: { kind: 'invalid' } };
+        });
+        return [failed, dropped];
+      }),
+    );
+    expect(results).toEqual([
+      { ok: false, error: { kind: 'invalid' } },
+      { ok: false, error: { kind: 'taken', email: 'ada@example.com' } },
+    ]);
+    expect(await notes.titles()).toEqual(['outer', 'savepoint, committed anyway', 'savepoint, look-alike']);
+  });
+});
+
 describe.each(drivers)('transactions in an isolated test connection on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
@@ -406,6 +654,9 @@ it('types the callback and the result', () => {
   // Never called: only type-checked (and its body really runs through Vitest's transform).
   void (async (connections: Connections) => {
     const count: number = await connections.transaction(async (trx) => (trx.isTransaction ? 1 : 0));
+    // A Result comes back as the callback returned it — narrowed by ok.
+    const outcome: Result<number, { kind: 'invalid' }> = await connections.transaction(async () => (count > 0 ? ok(count) : err({ kind: 'invalid' })));
+    if (!outcome.ok) return outcome.error.kind;
     // @ts-expect-error — the options are an object: { connection: 'reporting' }
     await connections.transaction(async () => {}, 'reporting');
     return count;

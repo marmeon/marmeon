@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { Redactor, runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@marmeon/core';
+import { Redactor, rollBackOnErr, runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@marmeon/core';
 import { channels, messageBase, publishEnded, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
@@ -76,8 +76,9 @@ export class Connections {
   /**
    * Runs `callback` in a transaction — and everything it awaits with it: repositories, the database queue, in-process event
    * listeners and any `db` of this connection join on their own. It commits when the callback resolves and rolls back when it
-   * throws (rethrowing the error); a nested call is a savepoint. Work that runs after the transaction finished throws
-   * `TransactionFinishedError` instead of running outside it. See `docs/transactions.md#running-a-transaction`.
+   * throws (rethrowing the error) or returns an `err` (returning it; `commitAnyway(err(…))` commits); a nested call is a
+   * savepoint. Work that runs after the transaction finished throws `TransactionFinishedError` instead of running outside it.
+   * See `docs/transactions.md#running-a-transaction`.
    */
   async transaction<R>(callback: (trx: Transaction<Tables>) => R | PromiseLike<R>, options: TransactionOptions = {}): Promise<R> {
     const name = options.connection ?? 'default';
@@ -90,7 +91,7 @@ export class Connections {
     return driver.exclusive(() =>
       runTransaction(driver, name, () => {
         const builder = options.isolationLevel ? db.transaction().setIsolationLevel(options.isolationLevel) : db.transaction();
-        return builder.execute(async (trx) => callback(trx as Transaction<Tables>));
+        return builder.execute(async (trx) => rollBackOnErr(await callback(trx as Transaction<Tables>)));
       }),
     );
   }

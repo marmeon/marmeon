@@ -96,6 +96,64 @@ The page renders inside your default layout. A request that matches no route pas
 no shared props: declare them optional, and let the layout render without them. `ErrorPageProps` also has `exception`, which holds
 the error's name, message and stack only in development.
 
+## Results
+
+An exception is for what should not happen: a bug, a lost connection, a request that stops with a status. An outcome that
+belongs to the work is a `Result` instead, such as an invitation that expired or an address another account has taken. The
+caller sees it in the return type and has to handle it, and nothing is thrown or logged.
+
+`ok(value)` and `err(error)` of `@marmeon/core` make the two sides. A `Result<T, E>` is plain data, `{ ok: true, value }` or
+`{ ok: false, error }`. The error names its case in `kind`, with what the caller needs next to it:
+
+```ts
+accept(tokenHash: string, userId: number): Promise<Result<Member, { kind: 'expired' } | { kind: 'already-member'; teamId: number }>>
+```
+
+Inside, `return err({ kind: 'expired' })` ends with an error and `return ok(member)` with the value. `ok()` without a value is
+for work that only succeeds or fails. The caller narrows the result over `ok`, then switches over `error.kind`:
+
+```ts title="modules/teams/controllers/AcceptInvitationController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { invitationTokenHash } from '../invitation-token.ts';
+import { Invitations } from '../Invitations.ts';
+
+export class AcceptInvitationController extends Controller {
+  readonly #invitations: Invitations;
+
+  constructor(invitations: Invitations) {
+    super();
+    this.#invitations = invitations;
+  }
+
+  async handle(ctx: HttpContext<Authenticated, { token: string }>) {
+    const accepted = await this.#invitations.accept(invitationTokenHash(ctx.params.token), ctx.user.id);
+    if (!accepted.ok) {
+      switch (accepted.error.kind) {
+        case 'expired':
+          return abort(410, 'This invitation has expired.');
+        case 'already-member':
+          return this.redirect(`/teams/${accepted.error.teamId}`);
+        default:
+          return accepted.error satisfies never;
+      }
+    }
+    return this.redirect(`/teams/${accepted.value.team_id}`);
+  }
+}
+```
+
+The `default` makes the switch exhaustive. When `accept()` gains a kind, the controller stops compiling until it handles the
+new one:
+
+```text
+Type '{ kind: "banned"; }' does not satisfy the expected type 'never'.
+```
+
+A function with a declared return type needs no `default`: a missing case leaves its end reachable, and the compiler says so.
+HTTP stays with exceptions: `findOrFail()` answers 404 by throwing, and `abort()` stops a request. Returned from the callback of
+a transaction, an `err` rolls the transaction back, as the [transactions](transactions.md#returning-an-err) page explains.
+
 ## Reporting
 
 The exception handler's `report()` logs every server error at the `error` level: its message and its stack, masked as text by the

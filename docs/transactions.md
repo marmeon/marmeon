@@ -44,8 +44,9 @@ export class NotePublishing {
 ```
 
 The transaction commits when the callback resolves, and `transaction()` resolves with the callback's result. When the callback
-throws, the transaction rolls back and the error reaches the caller. A rollback takes back the note, the revision, whatever the
-listeners wrote, and the queued job.
+throws, the transaction rolls back and the error reaches the caller. When it returns an [`err`](errors.md#results), the
+transaction rolls back too, and the caller gets the `err`: see [returning an err](#returning-an-err). A rollback takes back the
+note, the revision, whatever the listeners wrote, and the queued job.
 
 ## Running a transaction
 
@@ -117,6 +118,58 @@ Two transactions were opened at the same time inside one transaction on "default
 ```
 
 A savepoint has no isolation level of its own, so `isolationLevel` on a nested `transaction()` throws as well.
+
+## Returning an err
+
+An expected failure is a [`Result`](errors.md#results), and a callback that returns an `err` rolls its transaction back, as if
+it had thrown. `transaction()` returns the `err` unchanged instead of throwing it. A savepoint that returns one takes back its own
+writes only, and after-commit work is dropped while [after-rollback work](#after-a-rollback) runs, just as after an exception.
+
+Some errors are a change of their own that must stay: a request that is dropped, or a failed attempt that is counted. Return
+those as `commitAnyway(err(…))`, and the transaction commits:
+
+```ts title="modules/teams/Invitations.ts"
+import { commitAnyway, err, ok, type Result } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { InvitationRepository } from './InvitationRepository.ts';
+import { MemberRepository } from './MemberRepository.ts';
+import type { Member } from './members.ts';
+
+export type AcceptError = { kind: 'expired' } | { kind: 'already-member'; teamId: number };
+
+export class Invitations {
+  readonly #connections: Connections;
+  readonly #invitations: InvitationRepository;
+  readonly #members: MemberRepository;
+
+  constructor(connections: Connections, invitations: InvitationRepository, members: MemberRepository) {
+    this.#connections = connections;
+    this.#invitations = invitations;
+    this.#members = members;
+  }
+
+  accept(tokenHash: string, userId: number): Promise<Result<Member, AcceptError>> {
+    return this.#connections.transaction(async () => {
+      const invitation = await this.#invitations.claim(tokenHash, new Date());
+      if (!invitation) return err({ kind: 'expired' }); // rolls back: nothing to keep
+      await this.#invitations.delete(invitation.id);
+      if (await this.#members.isMember(invitation.team_id, userId)) {
+        // The invitation is used up all the same: the delete commits, and the caller gets a plain err.
+        return commitAnyway(err({ kind: 'already-member', teamId: invitation.team_id }));
+      }
+      return ok(await this.#members.insert({ team_id: invitation.team_id, user_id: userId }));
+    });
+  }
+}
+```
+
+`commitAnyway()` takes an `err` only. It marks that one return of that one callback: the caller gets a plain `err`, and returns
+it from a transaction of its own, that transaction rolls back. A rollback looks for the results that `err()` made. An object that
+only looks like one, such as a JSON payload with `ok: false` or a copy made with `{ ...result }`, commits like any other value.
+
+`connections.transaction()` and a repository's `transaction()` both roll back on an `err`, whether they run as a savepoint or
+over a transaction bound with `using(trx)`. Kysely's own `db.transaction().execute()` knows no results and commits whatever its
+callback returns.
 
 ## Await everything
 
@@ -232,7 +285,8 @@ a savepoint that rolls back runs it at once, since what it cleans up after is go
 savepoint that commits hands it on to the transaction around it. Outside a transaction it never runs.
 
 When `fn` fails, the error that rolled the transaction back is not lost: `transaction()` throws a `SuppressedError` whose `error`
-is the failure of `fn` and whose `suppressed` is the original error. A [unique job](queues.md#unique-jobs) does exactly this for
+is the failure of `fn` and whose `suppressed` is the original error. After an `err` there is no error to keep, so `transaction()`
+throws the failure of `fn` itself, or an `AggregateError` when several failed. A [unique job](queues.md#unique-jobs) does exactly this for
 you, so the lock of a unique dispatch needs no `afterRollback()` of your own.
 
 ## Transactions you control yourself

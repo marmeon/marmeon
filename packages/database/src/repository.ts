@@ -1,3 +1,4 @@
+import { errOfRollback, rollBackOnErr } from '@marmeon/core';
 import { HttpError, type RouteBinder, type RouteBindingContext } from '@marmeon/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
@@ -109,22 +110,31 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   /**
    * Runs `callback` in a transaction of the repository's connection — `connections.transaction()`: everything
    * awaited inside joins it, other repositories too. Inside another transaction it becomes a savepoint (also for a
-   * repository bound with `using(trx)` — Kysely itself refuses a transaction in a transaction).
+   * repository bound with `using(trx)` — Kysely itself refuses a transaction in a transaction). An `err` returned by the
+   * callback rolls back like a thrown error and is returned. See `docs/transactions.md#returning-an-err`.
    */
   async transaction<R>(callback: (repository: this) => Promise<R>): Promise<R> {
     const db = this.db;
     if (!db.isTransaction) {
       if (this.#connections) return this.#connections.transaction(() => callback(this), this.#statics().connection ? { connection: this.#statics().connection! } : {});
-      return db.transaction().execute((trx) => callback(this.using(trx)));
+      try {
+        return await db.transaction().execute(async (trx) => rollBackOnErr(await callback(this.using(trx))));
+      } catch (error) {
+        const result = errOfRollback(error);
+        if (result) return result as R;
+        throw error;
+      }
     }
     const name = sql.raw(`repository_savepoint_${++savepoints}`);
     await sql`savepoint ${name}`.execute(db);
     try {
-      const result = await callback(this);
+      const result = rollBackOnErr(await callback(this));
       await sql`release savepoint ${name}`.execute(db);
       return result;
     } catch (error) {
       await sql`rollback to savepoint ${name}`.execute(db);
+      const result = errOfRollback(error);
+      if (result) return result as R;
       throw error;
     }
   }

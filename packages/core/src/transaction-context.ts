@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { resultMark, withoutCommit, type Err } from './result.ts';
 
 /**
  * One open database transaction of the ambient context: entered only by an explicit `transaction(callback)`, it follows that
@@ -152,6 +153,8 @@ export function openTransactionOf(owner: object): TransactionFrame | undefined {
  * - **Rolled back** (outermost or a savepoint): the after-commit work is dropped, and the after-rollback work runs at
  *   once — outside of any transaction — because what it was for is undone for good, whatever the transactions around it
  *   do. Its errors do not hide the error that rolled the transaction back (see {@link afterRollback}).
+ * - **Rolled back by an `err`** (the driver passed the callback's result through {@link rollBackOnErr}): as above, then
+ *   the `err` is returned; an error of the after-rollback work is thrown instead (several as an `AggregateError`).
  */
 export async function runTransaction<R>(owner: object, label: string, body: (frame: TransactionFrame) => Promise<R>): Promise<R> {
   const parent = currentTransaction();
@@ -167,6 +170,13 @@ export async function runTransaction<R>(owner: object, label: string, body: (fra
     // runs now: what it cleans up after is gone, even if a transaction around this one still commits.
     const { rollback } = frame.finish('rolled back');
     const failures = await runOutside(rollback);
+    if (error instanceof RolledBackOnErr) {
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) {
+        throw new AggregateError(failures, `${failures.length} pieces of after-rollback work failed (the transaction on "${label}" returned an err and is rolled back).`);
+      }
+      return error.result as R;
+    }
     if (failures.length === 0) throw error;
     const cause = failures.length === 1 ? failures[0] : new AggregateError(failures, `${failures.length} pieces of after-rollback work failed.`);
     throw new SuppressedError(cause, error, `After-rollback work failed (the transaction on "${label}" is rolled back): ${messageOf(cause)}`);
@@ -182,6 +192,34 @@ export async function runTransaction<R>(owner: object, label: string, body: (fra
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, `${failures.length} pieces of after-commit work failed (the transaction is committed).`);
   return result;
+}
+
+/** Thrown inside the driver's transaction so that it rolls back — the callback returned an `err`, it did not throw. */
+class RolledBackOnErr extends Error {
+  readonly result: Err<unknown>;
+
+  constructor(result: Err<unknown>) {
+    super('The transaction callback returned an err.');
+    this.result = result;
+  }
+}
+
+/**
+ * @internal — for database drivers: called inside the transaction with the callback's result. An `err` throws, so the
+ * transaction (or savepoint) rolls back like on an exception, and {@link runTransaction} — or {@link errOfRollback} —
+ * turns it back into the `err`; a `commitAnyway(err)` is returned as a plain `err` and commits; anything else is returned.
+ */
+export function rollBackOnErr<R>(result: R): R {
+  const marked = resultMark(result);
+  if (marked === 'err') throw new RolledBackOnErr(result as Err<unknown>);
+  // Plain from here on: returned again from a transaction around this one, it rolls that one back.
+  if (marked === 'commit') return withoutCommit(result as Err<unknown>) as R;
+  return result;
+}
+
+/** @internal — the `err` that {@link rollBackOnErr} rolled a transaction back for, or `undefined` for any other error. */
+export function errOfRollback(error: unknown): Err<unknown> | undefined {
+  return error instanceof RolledBackOnErr ? error.result : undefined;
 }
 
 /** Runs work one after the other, outside of any transaction; all of it runs. Returns the errors. */
