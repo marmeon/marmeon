@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, EventDispatcher, token } from '@marmeon/core';
-import { Connections } from '@marmeon/database';
+import { Connections, secret, sql, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -17,7 +17,7 @@ export const PASSWORD_RESET_TABLE = 'password_reset_tokens';
  */
 export interface PasswordResetTokenTable {
   email: string;
-  token_hash: string;
+  token_hash: Secret<string>;
   created_at: string | Date;
 }
 
@@ -64,7 +64,7 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
   async consume(email: string, value: string, maxAgeSeconds: number): Promise<boolean> {
     if (!TOKEN.test(value)) return false; // malformed: no query
     const db = this.#db();
-    const row = await db.selectFrom(PASSWORD_RESET_TABLE).select(['token_hash', 'created_at']).where('email', '=', email).executeTakeFirst();
+    const row = await db.selectFrom(PASSWORD_RESET_TABLE).select((eb) => [secret(eb, 'token_hash'), 'created_at']).where('email', '=', email).executeTakeFirst();
     if (!row) return false;
     if (this.#clock.now() - new Date(row.created_at).getTime() >= maxAgeSeconds * 1000) {
       await this.forget(email);
@@ -72,7 +72,7 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
     }
     if (!equal(sha256(value), row.token_hash)) return false;
     // Used up — conditionally, so two requests with the same token cannot both succeed.
-    const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where('token_hash', '=', row.token_hash).executeTakeFirst();
+    const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where(sql<boolean>`${sql.ref('token_hash')} = ${row.token_hash}`).executeTakeFirst();
     return deleted.numDeletedRows > 0n;
   }
 

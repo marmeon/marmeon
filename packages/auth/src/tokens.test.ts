@@ -1,10 +1,10 @@
 import { SystemClock } from '@marmeon/core';
-import type { Connections } from '@marmeon/database';
+import { secret as secretColumn, type Connections } from '@marmeon/database';
 import { defineRoutes, type HttpContext } from '@marmeon/http';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { abilities, authenticate } from './middleware.ts';
-import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, parseAccessToken, tokenCan, type WithToken } from './tokens.ts';
+import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, parseAccessToken, tokenCan, type AccessTokenTable, type WithToken } from './tokens.ts';
 
 describe.each(drivers)('API tokens on %s', (driver) => {
   let connections: Connections;
@@ -26,7 +26,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     expect(plainText).toMatch(new RegExp(`^marmeon_${token.id}\\|[A-Za-z0-9]{40}[0-9a-f]{8}$`));
     expect(token).toMatchObject({ userId: 1, name: 'CLI', abilities: ['users:read'], lastUsedAt: null, expiresAt: null });
     const secret = plainText.split('|')[1]!.slice(0, 40);
-    expect(JSON.stringify(await connections.get<any>().selectFrom(ACCESS_TOKEN_TABLE).selectAll().select('token_hash').execute())).not.toContain(secret);
+    expect(JSON.stringify(await connections.get<{ [ACCESS_TOKEN_TABLE]: AccessTokenTable }>().selectFrom(ACCESS_TOKEN_TABLE).selectAll().select((eb) => secretColumn(eb, 'token_hash')).execute())).not.toContain(secret);
     expect(await tokens.find(plainText)).toMatchObject({ id: token.id, userId: 1, abilities: ['users:read'] });
   });
 

@@ -1,7 +1,7 @@
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import { Clock, token } from '@marmeon/core';
-import { Connections, type Generated, type JsonColumn } from '@marmeon/database';
+import { Connections, secret, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
 import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
 
@@ -16,7 +16,7 @@ export interface AccessTokenTable {
   id: Generated<number>;
   user_id: number | string;
   name: string;
-  token_hash: string;
+  token_hash: Secret<string>;
   abilities: JsonColumn;
   last_used_at: string | Date | null;
   expires_at: string | Date | null;
@@ -128,7 +128,7 @@ export class DatabaseAccessTokens implements AccessTokenStore {
     // Looked up by id; the secret is compared in constant time (never `where token_hash = ?`).
     const row = await this.#db()
       .selectFrom(ACCESS_TOKEN_TABLE)
-      .select(['id', 'user_id', 'name', 'token_hash', 'abilities', 'last_used_at', 'expires_at', 'created_at'])
+      .select((eb) => ['id', 'user_id', 'name', secret(eb, 'token_hash'), 'abilities', 'last_used_at', 'expires_at', 'created_at'])
       .where('id', '=', parsed.id)
       .executeTakeFirst();
     if (!row || !equal(sha256(parsed.secret), row.token_hash)) return undefined;

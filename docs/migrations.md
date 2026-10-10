@@ -113,10 +113,10 @@ A rollback needs the file of every migration it undoes. One whose file is gone s
 
 ### Migrating a running app
 
-The app reads what the migrations marked, such as [soft deletes](#timestamps-and-soft-deletes), from the database, and loads it
-again after each schema change it makes itself. While a migration's transaction is open in the app's own process, a query on
-another connection that depends on those marks waits for the migration to end, for at most 10 seconds, and then fails with an error
-instead of guessing. Two cases remain:
+The app reads what the migrations marked, such as [soft deletes](#timestamps-and-soft-deletes) and
+[secret columns](#secret-columns), from the database, and loads it again after each schema change it makes itself. While a
+migration's transaction is open in the app's own process, every query on another connection that reads rows or depends on those
+marks waits for the migration to end, for at most 10 seconds, and then fails with an error instead of guessing. Two cases remain:
 
 - A query built before the migration's first schema change and sent after it uses the schema it was built with.
 - A process that did not run the migration does not see it. Restart the app's processes after `marmeon migrate` ran from another
@@ -282,10 +282,11 @@ export default defineMigration({
 A secret column is written like any other, but:
 
 - `Row<'users'>` leaves it out, so it cannot reach a page's props by accident;
-- the connection removes it from every `selectAll()` and `returningAll()` result, also inside a subquery;
-- a query names it on purpose with `secret(eb, 'password')`, in the one place that needs it;
-- a whole row of the table as one value, such as `eb.table('users')` in a function, is refused, and so is any secret column inside a
-  [relation](queries.md#relations-and-secret-columns).
+- the connection leaves it out of every `selectAll()` and `returningAll()`, also inside a subquery or a common table expression;
+- a query reads it only with `secret(eb, 'password')`, in the one place that needs it. A query that names it otherwise, or reads the
+  table's whole row as one value (`eb.table('users')` in a function), is refused before it is sent;
+- a subquery or a common table expression that reads it with `secret()` passes it on as a secret column: the query around it asks
+  with `secret()` again. A [relation](queries.md#relations-and-secret-columns) never loads one.
 
 The starter kit's `UserRepository` is that place. It checks a password at sign-in, and the hash travels next to the user, never
 inside it:

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import { DummyDriver, expressionBuilder, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler, type SelectQueryBuilder } from 'kysely';
+import { DummyDriver, expressionBuilder, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler, type KyselyPlugin, type SelectQueryBuilder } from 'kysely';
+import { jsonArrayFrom as pgArrayFrom } from 'kysely/helpers/postgres';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
@@ -377,6 +378,12 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     );
   });
 
+  it('keeps normalizing nested values behind a plugin added later', async () => {
+    const passThrough: KyselyPlugin = { transformQuery: ({ node }) => ({ ...node }), transformResult: async ({ result }) => result };
+    const [post] = await db.withPlugin(passThrough).selectFrom('posts').select('title').with('author').where('id', '=', ids.first).execute();
+    expect(post!.author).toEqual(expect.objectContaining({ is_admin: true, settings: { theme: 'dark' }, balance: '12.50', created_at: expect.stringMatching(ISO_UTC) }));
+  });
+
   describe('secret columns', () => {
     const refused = (label: string, column = 'api_keys.token') =>
       `${label} selects ${column}, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.`;
@@ -494,6 +501,98 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       ).rejects.toThrow(row('This query'));
       const [key] = await db.selectFrom('api_keys').select((eb) => ['name', secret(eb, 'token')]).execute();
       expect(key).toEqual({ name: 'cli', token: 'the-secret-token' });
+    });
+
+    const unasked = (what: string) =>
+      `This query selects ${what}, a secret column, without secret() — read it with secret(eb, …) where it is needed, at every level of the query that passes it on. See docs/migrations.md#secret-columns.`;
+    /** The statement as it would be sent — the plugins run when it compiles (the metadata is loaded by now). */
+    const sent = (query: { compile(): { sql: string } }) => query.compile().sql;
+
+    it('are refused at the top level by name too — only secret() reads one, at every level that passes it on', async () => {
+      queries.length = 0;
+      await expect(db.selectFrom('api_keys').select(['name', 'token' as never]).execute()).rejects.toThrow(unasked('api_keys.token'));
+      // Asked for in a subquery, it carries the secret outward: the outer select must ask again.
+      const derived = () => db.selectFrom((eb) => eb.selectFrom('api_keys').select((e) => ['name', secret(e, 'token')]).as('k'));
+      await expect(derived().select(['k.name', 'k.token']).execute()).rejects.toThrow(unasked('k.token'));
+      await expect(derived().select((eb) => eb.fn('to_jsonb', [eb.table('k')]).as('row')).execute()).rejects.toThrow(row('This query', 'k'));
+      expect(queries).toEqual([]);
+      expect(await derived().select((eb) => ['k.name', secret(eb as never, 'k.token' as never)]).execute()).toEqual([{ name: 'cli', token: 'the-secret-token' }]);
+      // A common table expression the same way.
+      const cte = () => db.with('k', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')]));
+      await expect(cte().selectFrom('k').select((eb) => eb.fn('to_jsonb', [eb.table('k')]).as('row')).execute()).rejects.toThrow(row('This query', 'k'));
+      await expect(cte().selectFrom('k').selectAll().execute()).resolves.toEqual([{ user_id: ids.ada }]); // spelled out without it
+    });
+
+    it('are left out of a common table expression’s or a subquery’s selectAll(), at the top level too — its whole row is then safe', async () => {
+      const cte = db.with('k', (q) => q.selectFrom('api_keys').selectAll()).selectFrom('k').select((eb) => eb.fn('to_jsonb', [eb.table('k')]).as('row'));
+      expect(sent(cte)).not.toContain('token');
+      const keys = db
+        .selectFrom('users')
+        .select((eb) => ['name', pgArrayFrom(eb.selectFrom('api_keys').selectAll().whereRef('api_keys.user_id', '=', 'users.id')).as('keys')])
+        .where('id', '=', ids.ada);
+      expect(sent(keys)).not.toContain('token');
+      if (driver === 'pgsql') {
+        expect(JSON.stringify(await cte.execute())).not.toContain('the-secret-token');
+        expect(await keys.execute()).toEqual([{ name: 'Ada', keys: [{ id: expect.any(Number), user_id: ids.ada, name: 'cli' }] }]);
+      }
+    });
+
+    it('are refused through an outer subquery or common table expression that asked for one — in a relation never', async () => {
+      const posts = () =>
+        db
+          .selectFrom('posts')
+          .innerJoin((eb) => eb.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')]).as('k'), (join) => join.onRef('k.user_id', '=', 'posts.author_id'))
+          .select('posts.title');
+      await expect(posts().with('comments', (c) => c.select(['body', sql.ref('k.token').as('t')])).execute()).rejects.toThrow(refused(`with('comments')`, 'k.token'));
+      await expect(posts().with('comments', (c) => c.select(['body', sql.ref('token').as('t')])).execute()).rejects.toThrow(refused(`with('comments')`, 'k.token'));
+      await expect(posts().with('comments', (c) => c.select((eb) => ['body', secret(eb as never, 'k.token' as never)])).execute()).rejects.toThrow(
+        refused(`with('comments')`, 'k.token'),
+      );
+      const cte = () => db.with('k', (q) => q.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')])).selectFrom('posts').select('posts.title');
+      await expect(
+        cte().with('comments', (c) => c.innerJoin('k', 'k.user_id', 'comments.user_id').select(['body', (eb) => eb.fn('to_jsonb', [eb.table('k')]).as('key')])).execute(),
+      ).rejects.toThrow(row(`with('comments')`, 'k'));
+      await expect(cte().with('comments', (c) => c.select(['body', sql.ref('k.token').as('t')])).execute()).rejects.toThrow(refused(`with('comments')`, 'k.token'));
+      // A common table expression of selectAll() has no secret column to pass on.
+      const all = db.with('k', (q) => q.selectFrom('api_keys').selectAll()).selectFrom('posts').select('posts.title');
+      const joined = all.with('comments', (c) => c.innerJoin('k', 'k.user_id', 'comments.user_id').select(['body', (eb) => eb.fn('to_jsonb', [eb.table('k')]).as('key')]));
+      expect(sent(joined)).not.toContain('token');
+      await expect(all.with('comments', (c) => c.innerJoin('k', 'k.user_id', 'comments.user_id').select(['body', sql.ref('k.token').as('t')])).execute()).rejects.toThrow();
+    });
+
+    it('are refused in a whole row named with sql.id()', async () => {
+      await expect(
+        db.selectFrom('users').select('name').with('api_keys', (k) => k.select(sql`to_jsonb(${sql.id('api_keys')})`.as('row'))).execute(),
+      ).rejects.toThrow(row(`with('api_keys')`));
+      await expect(db.selectFrom('api_keys').select(sql`to_jsonb(${sql.id('api_keys')})`.as('row')).execute()).rejects.toThrow(row('This query'));
+    });
+
+    it('are refused when an insert copies one — also on the first query of a process', async () => {
+      const copy = (target: Kysely<FixtureTables>) => target.insertInto('tags').columns(['slug']).expression((eb) => eb.selectFrom('api_keys').select('token' as never));
+      await expect(copy(db).execute()).rejects.toThrow(unasked('api_keys.token'));
+      const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      try {
+        await expect(copy(cold.get<FixtureTables>()).execute()).rejects.toThrow(unasked('api_keys.token'));
+      } finally {
+        await cold.destroy();
+      }
+    });
+
+    it('may be in a subquery that only filters a relation — refused all the same (filter on the key instead)', async () => {
+      await expect(
+        db
+          .selectFrom('users')
+          .select('name')
+          .with('comments', (c) => c.where((eb) => eb.exists(eb.selectFrom('api_keys').select('token' as never).whereRef('api_keys.user_id', '=', 'comments.user_id'))))
+          .execute(),
+      ).rejects.toThrow(refused(`with('comments')`));
+      const [ada] = await db
+        .selectFrom('users')
+        .select('name')
+        .with('comments', (c) => c.select('body').where('user_id', 'in', (eb) => eb.selectFrom('api_keys').select('user_id').where('token' as never, '=', 'the-secret-token' as never)))
+        .where('id', '=', ids.ada)
+        .execute();
+      expect(ada!.comments).toEqual([{ body: 'two' }]);
     });
 
     it('are refused in a relation of the free helpers too', async () => {

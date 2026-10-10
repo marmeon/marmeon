@@ -4,9 +4,6 @@ import {
   ParensNode,
   WhereNode,
   type CompiledQuery,
-  type DeleteQueryNode,
-  type InsertQueryNode,
-  type UpdateQueryNode,
   BinaryOperationNode,
   ColumnNode,
   FunctionNode,
@@ -29,6 +26,7 @@ import {
   type PluginTransformResultArgs,
   type QueryId,
   type QueryResult,
+  type ReturningNode,
   type RootOperationNode,
   type SelectQueryBuilder,
   type Simplify,
@@ -39,7 +37,8 @@ import { jsonArrayFrom as pgArray, jsonObjectFrom as pgObject } from 'kysely/hel
 import { jsonArrayFrom as sqliteArray, jsonObjectFrom as sqliteObject } from 'kysely/helpers/sqlite';
 import type { Relation } from './introspection.ts';
 import type { ColumnKind as Kind, SchemaMetadata } from './metadata.ts';
-import { hasPlaceholder, MANY, ONE, RELATION, RELATION_TARGET, sourcesOf, WITH_TRASHED, type Source } from './placeholders.ts';
+import { hasPlaceholder, MANY, ONE, RELATION, RELATION_TARGET, SECRET, sourcesOf, WITH_TRASHED, type Source } from './placeholders.ts';
+import { guardSecrets, outputName, type Spelled } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 type Build<DB, TB extends keyof DB, R extends keyof DB, O> = (query: SelectQueryBuilder<DB, TB | R, {}>) => SelectQueryBuilder<DB, any, O>;
@@ -293,7 +292,7 @@ interface Shape {
 }
 
 /**
- * Keeps secret columns out of what a query reads ({@link checkSecrets}) and turns the relations' subqueries into the dialect's
+ * Keeps secret columns out of what a query reads ({@link guardSecrets}) and turns the relations' subqueries into the dialect's
  * JSON aggregation. Since nested JSON escapes the connection's own normalization, the connection converts nested values to what
  * the table types promise ({@link convert}): booleans (SQLite: 0/1), JSON (SQLite: text), decimals (both: numbers → `'12.50'`),
  * timestamps (Postgres: `+00:00` → `Z`).
@@ -303,6 +302,10 @@ export class RelationsPlugin implements KyselyPlugin {
   readonly #metadata: SchemaMetadata;
   /** By the query as compiled — one entry per compile, never shared by the builders derived from one another. */
   readonly #shapes = new WeakMap<RootOperationNode, Map<string, Shape>>();
+  /** By query id, the last compile's: a plugin added after this one (`db.withPlugin()`) hands the connection another node. */
+  readonly #lastShapes = new WeakMap<QueryId, Map<string, Shape>>();
+  /** What {@link transform} returned: checked and rewritten already (`secret()` unwrapped) — never again. */
+  readonly #done = new WeakSet<RootOperationNode>();
 
   constructor(driver: Driver, metadata: SchemaMetadata) {
     this.#driver = driver;
@@ -317,10 +320,16 @@ export class RelationsPlugin implements KyselyPlugin {
 
   /** The query checked for secret columns, with its relations as JSON — while compiling, or on the connection after loading. */
   transform(node: RootOperationNode, queryId: QueryId): RootOperationNode {
-    checkSecrets(node, this.#metadata);
-    if (!hasPlaceholder(node, RELATIONS)) return node;
-    const transformed = new RelationTransformer(this.#driver, this.#metadata).transformNode(node, queryId);
-    if (SelectQueryNode.is(node)) {
+    if (this.#done.has(node)) return node;
+    const spelled = guardSecrets(node, this.#metadata);
+    const relations = hasPlaceholder(node, RELATIONS);
+    if (!relations && spelled.size === 0 && !hasPlaceholder(node, SECRET)) {
+      this.#done.add(node);
+      return node;
+    }
+    const transformed = new RelationTransformer(this.#driver, spelled).transformNode(node, queryId);
+    this.#done.add(transformed);
+    if (relations && SelectQueryNode.is(node)) {
       // Only the keys of the query's own rows: a nested relation's shape is reached through its parent's.
       const shapes = new Map<string, Shape>();
       for (const { selection } of node.selections ?? []) {
@@ -328,7 +337,8 @@ export class RelationsPlugin implements KyselyPlugin {
           shapes.set(selection.alias.name, shapeOf(selection.node.arguments[0] as SelectQueryNode));
         }
       }
-      if (shapes.size) this.#shapes.set(transformed, shapes);
+      this.#shapes.set(transformed, shapes);
+      this.#lastShapes.set(queryId, shapes);
     }
     return transformed;
   }
@@ -339,8 +349,8 @@ export class RelationsPlugin implements KyselyPlugin {
 
   /** @internal — converts the nested values of `result`, the rows of `query` as it ran (called by the connection). */
   convert(query: CompiledQuery, result: QueryResult<unknown>): void {
-    const shapes = this.#shapes.get(query.query);
-    if (!shapes || result.rows.length === 0) return;
+    const shapes = this.#shapes.get(query.query) ?? this.#lastShapes.get(query.queryId);
+    if (!shapes?.size || result.rows.length === 0) return;
     // Loaded by the driver on the connection this query ran on (a lookup here could deadlock inside a transaction).
     const kinds = this.#metadata.kinds;
     for (const row of result.rows) convertRow(row as Record<string, unknown>, shapes, kinds);
@@ -349,252 +359,34 @@ export class RelationsPlugin implements KyselyPlugin {
 
 class RelationTransformer extends OperationNodeTransformer {
   readonly #driver: Driver;
-  readonly #metadata: SchemaMetadata;
+  readonly #spelled: Spelled;
 
-  constructor(driver: Driver, metadata: SchemaMetadata) {
+  constructor(driver: Driver, spelled: Spelled) {
     super();
     this.#driver = driver;
-    this.#metadata = metadata;
+    this.#spelled = spelled;
+  }
+
+  protected override transformSelectQuery(node: SelectQueryNode, queryId?: QueryId): SelectQueryNode {
+    const selections = this.#spelled.get(node);
+    return super.transformSelectQuery(selections ? { ...node, selections } : node, queryId);
+  }
+
+  protected override transformReturning(node: ReturningNode, queryId?: QueryId): ReturningNode {
+    const selections = this.#spelled.get(node);
+    return super.transformReturning(selections ? { ...node, selections } : node, queryId);
   }
 
   protected override transformFunction(node: FunctionNode, queryId?: QueryId): FunctionNode {
+    // `secret()` was asked for: the column itself.
+    if (node.func === SECRET) return this.transformNode(node.arguments[0]!, queryId) as unknown as FunctionNode;
     if (node.func !== MANY && node.func !== ONE) return super.transformFunction(node, queryId);
-    const spelled = new SpellOut(this.#metadata).transformNode(node.arguments[0]!, queryId);
-    const subquery = this.transformNode(spelled, queryId);
+    const subquery = this.transformNode(node.arguments[0]!, queryId);
     const expression = { toOperationNode: () => subquery } as never;
     const many = node.func === MANY;
     const json = this.#driver === 'sqlite' ? (many ? sqliteArray(expression) : sqliteObject(expression)) : many ? pgArray(expression) : pgObject(expression);
     return json.toOperationNode() as unknown as FunctionNode;
   }
-}
-
-/**
- * A `selectAll()` below a relation's top level (a subquery of its callback), spelled out as the columns without the secret ones:
- * a relation's JSON is never stripped the way a top-level row is. A subquery's `*` is safe once its own select is.
- */
-class SpellOut extends OperationNodeTransformer {
-  readonly #metadata: SchemaMetadata;
-  #depth = 0;
-
-  constructor(metadata: SchemaMetadata) {
-    super();
-    this.#metadata = metadata;
-  }
-
-  protected override transformFunction(node: FunctionNode, queryId?: QueryId): FunctionNode {
-    return node.func === MANY || node.func === ONE ? node : super.transformFunction(node, queryId);
-  }
-
-  protected override transformSelectQuery(node: SelectQueryNode, queryId?: QueryId): SelectQueryNode {
-    const sources = sourcesOf(node);
-    const selections =
-      this.#depth === 0
-        ? node.selections
-        : (node.selections ?? []).flatMap((selection) => {
-            const all = selectAllOf(selection.selection, sources);
-            if (!all) return [selection];
-            return all.flatMap((source) =>
-              source.table === undefined
-                ? [SelectionNode.createSelectAllFromTable(TableNode.create(source.ref))]
-                : (this.#metadata.columns.get(source.table) ?? []).map((column) => SelectionNode.create(ReferenceNode.create(ColumnNode.create(column), TableNode.create(source.ref)))),
-            );
-          });
-    this.#depth++;
-    try {
-      return super.transformSelectQuery({ ...node, ...(selections ? { selections } : {}) }, queryId);
-    } finally {
-      this.#depth--;
-    }
-  }
-}
-
-/** The sources a `selectAll()` / `selectAll('t')` selection reads — `undefined` for any other selection. */
-function selectAllOf(selection: OperationNode, sources: readonly Source[]): readonly Source[] | undefined {
-  if (selection.kind === 'SelectAllNode') return sources;
-  if (ReferenceNode.is(selection) && selection.column.kind === 'SelectAllNode') return sources.filter((source) => source.ref === selection.table?.table.identifier.name);
-  return undefined;
-}
-
-/**
- * Refuses a query that would read a secret column where nothing strips it. In a relation (its JSON is never stripped) that is any
- * reference to one — by name, qualified or not, under an alias, through `secret()` or `sql.ref()`, from its table, a joined
- * one or an outer one — and any whole row of a table with secret columns. At the top level a named secret column is read on
- * purpose (`secret(eb, …)`) and `selectAll()` is stripped, so only a whole row is refused: `eb.table('users')` in a function,
- * `users.*` in an expression, a name that resolves to the row. Names resolve innermost-out through the selects around them;
- * an unqualified one counts for every table in scope. Raw SQL text is not seen: the developer chose its columns.
- */
-export function checkSecrets(root: RootOperationNode, metadata: SchemaMetadata): void {
-  new SecretCheck(metadata).visit(root, false);
-}
-
-class SecretCheck {
-  readonly #metadata: SchemaMetadata;
-  /** The sources of the selects around the node being visited — innermost last. */
-  readonly #scopes: (readonly Source[])[] = [];
-  /** The relation being visited (its label), and whether the next select is its top level. */
-  #relation: string | undefined;
-  #top = false;
-
-  constructor(metadata: SchemaMetadata) {
-    this.#metadata = metadata;
-  }
-
-  visit(node: unknown, inSelection: boolean): void {
-    if (node === null || typeof node !== 'object') return;
-    if (Array.isArray(node)) {
-      for (const item of node) this.visit(item, inSelection);
-      return;
-    }
-    const kind = (node as { kind?: unknown }).kind;
-    if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return;
-    if (kind === 'SelectQueryNode') return this.#select(node as SelectQueryNode);
-    if (kind === 'InsertQueryNode' || kind === 'UpdateQueryNode' || kind === 'DeleteQueryNode') return this.#write(node as InsertQueryNode | UpdateQueryNode | DeleteQueryNode);
-    if (kind === 'FunctionNode' && RELATIONS.includes((node as FunctionNode).func)) {
-      const relation = node as FunctionNode;
-      const [outer, top] = [this.#relation, this.#top];
-      this.#relation = String((relation.arguments[1] as ValueNode | undefined)?.value ?? 'A relation');
-      this.#top = true;
-      try {
-        this.visit(relation.arguments[0], false);
-      } finally {
-        [this.#relation, this.#top] = [outer, top];
-      }
-      return;
-    }
-    for (const value of Object.values(node)) if (value !== null && typeof value === 'object') this.visit(value, inSelection);
-  }
-
-  #select(node: SelectQueryNode): void {
-    const top = this.#top;
-    this.#top = false;
-    this.#scopes.push(sourcesOf(node));
-    try {
-      for (const { selection } of node.selections ?? []) this.#selection(selection, top);
-      const { selections: _, ...rest } = node;
-      this.visit(Object.values(rest), false);
-      // Nested selects and relations in the selections are selects of their own.
-      for (const { selection } of node.selections ?? []) this.#nested(selection);
-    } finally {
-      this.#scopes.pop();
-    }
-  }
-
-  #write(node: InsertQueryNode | UpdateQueryNode | DeleteQueryNode): void {
-    const target = node.kind === 'InsertQueryNode' ? [node.into] : node.kind === 'UpdateQueryNode' ? [node.table, ...(node.from?.froms ?? [])] : node.from.froms;
-    this.#scopes.push(sourcesOf({ kind: 'SelectQueryNode', from: { kind: 'FromNode', froms: target.filter((item) => item !== undefined) }, joins: 'joins' in node ? node.joins : undefined } as SelectQueryNode));
-    try {
-      for (const { selection } of node.returning?.selections ?? []) {
-        this.#selection(selection, false);
-        this.#nested(selection);
-      }
-      const { returning: _, ...rest } = node;
-      this.visit(Object.values(rest), false);
-    } finally {
-      this.#scopes.pop();
-    }
-  }
-
-  /** The selects and relations inside a selection — reached once its own references were checked. */
-  #nested(node: unknown): void {
-    if (node === null || typeof node !== 'object') return;
-    if (Array.isArray(node)) return node.forEach((item) => this.#nested(item));
-    const kind = (node as { kind?: unknown }).kind;
-    if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return;
-    if (kind === 'SelectQueryNode' || (kind === 'FunctionNode' && RELATIONS.includes((node as FunctionNode).func))) return this.visit(node, false);
-    for (const value of Object.values(node)) if (value !== null && typeof value === 'object') this.#nested(value);
-  }
-
-  #selection(selection: OperationNode, top: boolean): void {
-    const sources = this.#scopes.at(-1)!;
-    const strict = this.#relation !== undefined;
-    if (selectAllOf(selection, sources)) {
-      // At a relation's top level the chain has spelled it out already; the free helpers ask for the columns.
-      if (strict && top) throw new Error('Relations need explicit columns: q.select([…]) instead of selectAll() — the selection is the type.');
-      return; // stripped at the top level, spelled out below a relation's top level
-    }
-    if (strict) {
-      const name = outputName(selection);
-      const owner = name === undefined ? undefined : sources.find((source) => source.table !== undefined && this.#metadata.secrets.get(source.table)?.has(name));
-      if (owner) this.#refuse(owner.table!, name!);
-    }
-    this.#references(selection, strict);
-  }
-
-  /** Every column and row the selection reads, down to (not into) its subqueries and relations. */
-  #references(node: unknown, strict: boolean): void {
-    if (node === null || typeof node !== 'object') return;
-    if (Array.isArray(node)) return node.forEach((item) => this.#references(item, strict));
-    const kind = (node as { kind?: unknown }).kind;
-    if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode' || kind === 'SelectQueryNode') return;
-    if (kind === 'FunctionNode' && RELATIONS.includes((node as FunctionNode).func)) return;
-    if (kind === 'ReferenceNode') {
-      const { table, column } = node as ReferenceNode;
-      const qualifier = table?.table.identifier.name;
-      if (column.kind === 'SelectAllNode') return this.#row(qualifier ?? '');
-      if (qualifier === undefined) return this.#column(column.column.name, strict);
-      const owner = this.#resolve(qualifier);
-      if (strict && owner.table !== undefined && this.#metadata.secrets.get(owner.table)?.has(column.column.name)) this.#refuse(owner.table, column.column.name);
-      return;
-    }
-    if (kind === 'ColumnNode') return this.#column((node as ColumnNode).column.name, strict);
-    // A table as a value is its whole row (`eb.table('users')`, `row_to_json(users)`).
-    if (kind === 'TableNode') return this.#row((node as TableNode).table.identifier.name);
-    for (const value of Object.values(node)) if (value !== null && typeof value === 'object') this.#references(value, strict);
-  }
-
-  #column(name: string, strict: boolean): void {
-    for (const sources of this.#scopes.toReversed()) {
-      for (const source of sources) {
-        if (strict && source.table !== undefined && this.#metadata.secrets.get(source.table)?.has(name)) this.#refuse(source.table, name);
-        // A name that is a table's (or alias') in scope may be its whole row (Postgres resolves `users` so).
-        if (source.ref === name) this.#row(name);
-      }
-    }
-  }
-
-  /** The table (or subquery) a name refers to, innermost scope first; an unknown name is taken as a table's. */
-  #resolve(name: string): Source {
-    for (const sources of this.#scopes.toReversed()) {
-      const source = sources.find((candidate) => candidate.ref === name);
-      if (source) return source;
-    }
-    return { table: name, ref: name };
-  }
-
-  #row(name: string): void {
-    const source = this.#resolve(name);
-    const secret = source.table !== undefined ? (this.#metadata.secrets.get(source.table)?.size ?? 0) > 0 : this.#holdsSecrets(source.query);
-    if (!secret) return;
-    const what = source.table ?? name;
-    throw new Error(
-      `${this.#relation ?? 'This query'} reads the whole row of ${what}, secret columns included — name the columns it needs, and read a ` +
-        'secret one with secret(eb, …) in a query of its own. See docs/queries.md#relations-and-secret-columns.',
-    );
-  }
-
-  /** Whether a subquery reads any table with secret columns — its whole row then may hold one. */
-  #holdsSecrets(node: unknown): boolean {
-    if (node === null || typeof node !== 'object') return false;
-    if (Array.isArray(node)) return node.some((item) => this.#holdsSecrets(item));
-    const kind = (node as { kind?: unknown }).kind;
-    if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return false;
-    if (kind === 'TableNode' && (this.#metadata.secrets.get((node as TableNode).table.identifier.name)?.size ?? 0) > 0) return true;
-    return Object.values(node).some((value) => value !== null && typeof value === 'object' && this.#holdsSecrets(value));
-  }
-
-  #refuse(table: string, column: string): never {
-    throw new Error(
-      `${this.#relation} selects ${table}.${column}, a secret column — a relation never loads one. Read it where it is needed, in a query of ` +
-        'its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.',
-    );
-  }
-}
-
-function outputName(node: OperationNode): string | undefined {
-  if (AliasNode.is(node) && IdentifierNode.is(node.alias)) return node.alias.name;
-  if (ReferenceNode.is(node) && ColumnNode.is(node.column)) return node.column.column.name;
-  if (ColumnNode.is(node)) return node.column.name;
-  return undefined;
 }
 
 function shapeOf(query: SelectQueryNode): Shape {

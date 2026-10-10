@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, token } from '@marmeon/core';
-import { Connections, type Generated } from '@marmeon/database';
+import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link RememberTokenTable}. */
 export const REMEMBER_TABLE = 'remember_tokens';
@@ -13,8 +13,8 @@ export interface RememberTokenTable {
   id: Generated<number>;
   user_id: number | string;
   selector: string;
-  validator_hash: string;
-  previous_validator_hash: string | null;
+  validator_hash: Secret<string>;
+  previous_validator_hash: Secret<string | null>;
   rotated_at: string | Date | null;
   last_used_at: string | Date | null;
   expires_at: string | Date;
@@ -81,7 +81,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     const db = this.#db();
     const row = await db
       .selectFrom(REMEMBER_TABLE)
-      .select(['id', 'user_id', 'validator_hash', 'previous_validator_hash', 'rotated_at', 'expires_at'])
+      .select((eb) => ['id', 'user_id', secret(eb, 'validator_hash'), secret(eb, 'previous_validator_hash'), 'rotated_at', 'expires_at'])
       .where('selector', '=', parts.selector)
       .executeTakeFirst();
     if (!row) return undefined;
@@ -100,7 +100,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
         .updateTable(REMEMBER_TABLE)
         .set({ validator_hash: sha256(validator), previous_validator_hash: row.validator_hash, rotated_at: now, last_used_at: now, updated_at: now })
         .where('id', '=', row.id)
-        .where('validator_hash', '=', row.validator_hash)
+        .where(sql<boolean>`${sql.ref('validator_hash')} = ${row.validator_hash}`)
         .executeTakeFirst();
       const rotated = result.numUpdatedRows > 0n;
       return { kind: 'valid', userId: row.user_id, cookie: rotated ? `${parts.selector}.${validator}` : undefined, expiresAt };

@@ -154,8 +154,9 @@ export class SchemaMetadata {
       if ((await Promise.race([idle, late])) === 'late') {
         throw new Error(
           `A query on the database connection "${name}" waited ${limit / 1000} s for a transaction that changes the schema to end ` +
-            '(a migration in this process, on another connection), and it did not. The query depends on what the migrations marked ' +
-            '(soft deletes, timestamps), which that transaction is changing, so it was not sent. See docs/migrations.md#migrating-a-running-app.',
+            '(a migration in this process, on another connection), and it did not. The query reads rows or depends on what the ' +
+            'migrations marked (secret columns, soft deletes, timestamps), which that transaction is changing, so it was not sent. ' +
+            'See docs/migrations.md#migrating-a-running-app.',
         );
       }
     } finally {

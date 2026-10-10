@@ -1,15 +1,15 @@
 import { SystemClock } from '@marmeon/core';
-import type { Connections } from '@marmeon/database';
+import { secret, type Connections } from '@marmeon/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
-import { DatabaseRememberTokens, REMEMBER_TABLE } from './remember.ts';
+import { DatabaseRememberTokens, REMEMBER_TABLE, type RememberTokenTable } from './remember.ts';
 
 describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let tokens: DatabaseRememberTokens;
   const inAMonth = () => new Date(Date.now() + 30 * 86_400_000);
-  const rows = () => connections.get<any>().selectFrom(REMEMBER_TABLE).select(['user_id', 'selector', 'validator_hash']).execute();
+  const rows = () => connections.get<{ [REMEMBER_TABLE]: RememberTokenTable }>().selectFrom(REMEMBER_TABLE).select((eb) => ['user_id', 'selector', secret(eb, 'validator_hash')]).execute();
 
   beforeAll(async () => {
     ({ connections, close } = await migratedConnections(driver));

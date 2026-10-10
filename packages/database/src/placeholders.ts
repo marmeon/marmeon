@@ -21,6 +21,8 @@ export const RELATION_TARGET = `${PREFIX}relation_target__`;
 /** A relation's subquery, resolved: turned into the dialect's JSON array (many) or object (one) by `RelationsPlugin`. */
 export const MANY = `${PREFIX}relation_many__`;
 export const ONE = `${PREFIX}relation_one__`;
+/** A selection `secret()` asked for: the column it holds may leave the query (see `secret-guard.ts`), then it is the column itself. */
+export const SECRET = `${PREFIX}secret__`;
 
 /**
  * Whether a placeholder is anywhere below `node` — without serializing it (every query of the app passes here). `shallow`

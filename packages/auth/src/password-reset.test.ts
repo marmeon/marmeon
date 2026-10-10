@@ -1,8 +1,8 @@
 import { ConsoleLogger, inTransaction, SystemClock } from '@marmeon/core';
-import type { Connections } from '@marmeon/database';
+import { secret, type Connections } from '@marmeon/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
-import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker } from './password-reset.ts';
+import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, type PasswordResetTokenTable } from './password-reset.ts';
 import { PasswordHasher, type PasswordHash } from './hashing.ts';
 import type { RememberTokenStore } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
@@ -13,7 +13,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let tokens: DatabasePasswordResetTokens;
-  const rows = () => connections.get<any>().selectFrom(PASSWORD_RESET_TABLE).select(['email', 'token_hash']).execute();
+  const rows = () => connections.get<{ [PASSWORD_RESET_TABLE]: PasswordResetTokenTable }>().selectFrom(PASSWORD_RESET_TABLE).select((eb) => ['email', secret(eb, 'token_hash')]).execute();
 
   const hasher = new PasswordHasher({ driver: 'argon2id', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } });
   const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };

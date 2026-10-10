@@ -1,4 +1,5 @@
-import { TableNode } from 'kysely';
+import { AliasNode, FunctionNode, IdentifierNode, TableNode } from 'kysely';
+import { SECRET } from './placeholders.ts';
 import type {
   AliasedExpression,
   ColumnType,
@@ -48,7 +49,9 @@ export function secret<DB, TB extends keyof DB, R extends SecretReference<DB, TB
   column: R,
 ): AliasedExpression<SecretValue<DB, TB, R>, SecretName<R>> {
   const name = column.slice(column.lastIndexOf('.') + 1);
-  return eb.ref(column as never).as(name) as never;
+  // Marked as asked for: the connection lets this selection — and only it — read the secret column.
+  const marked = FunctionNode.create(SECRET, [eb.ref(column as never).toOperationNode()]);
+  return { expression: eb.ref(column as never), alias: name, toOperationNode: () => AliasNode.create(marked, IdentifierNode.create(name)) } as never;
 }
 
 interface Plan {

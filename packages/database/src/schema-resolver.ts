@@ -98,7 +98,7 @@ export class SchemaResolver implements KyselyPlugin {
 
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
     if (!hasPlaceholder(node)) {
-      // What it reads is checked against the secret columns (`checkSecrets`) and stripped of them: with the schema it runs against.
+      // What it reads is checked against the secret columns (`guardSecrets`) and stripped of them: with the schema it runs against.
       if (!this.#metadata.fresh && readsRows(node)) this.#deferred.add(queryId);
       return node;
     }
@@ -122,8 +122,11 @@ export class SchemaResolver implements KyselyPlugin {
 
   /** The query with its placeholders resolved — called on the connection, once the metadata is loaded there. */
   resolve(query: CompiledQuery): CompiledQuery {
-    const node = this.#relations.transform(resolve(query.query, this.#metadata), query.queryId);
-    return this.#compiler.compileQuery(node, query.queryId);
+    // A builder deferred once keeps its id: a later compile of it, made while the metadata was fresh, is resolved and checked
+    // already (`RelationsPlugin` returns such a node as it is) — only a soft delete is still to be done.
+    const resolved = hasPlaceholder(query.query) ? resolve(query.query, this.#metadata) : query.query;
+    const node = this.#relations.transform(resolved, query.queryId);
+    return node === query.query ? query : this.#compiler.compileQuery(node, query.queryId);
   }
 }
 
@@ -213,9 +216,20 @@ class Resolver extends OperationNodeTransformer {
   }
 }
 
+/** Whether a statement reads rows — a select, a `returning`, or a select inside (`insert … select`) — whose secret columns are checked. */
 function readsRows(node: RootOperationNode): boolean {
   if (node.kind === 'SelectQueryNode') return true;
-  return (node.kind === 'InsertQueryNode' || node.kind === 'UpdateQueryNode' || node.kind === 'DeleteQueryNode') && node.returning !== undefined;
+  if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
+  return node.returning !== undefined || hasSelect(node);
+}
+
+function hasSelect(node: unknown): boolean {
+  if (node === null || typeof node !== 'object') return false;
+  if (Array.isArray(node)) return node.some(hasSelect);
+  const kind = (node as { kind?: unknown }).kind;
+  if (kind === 'SelectQueryNode') return true;
+  if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return false;
+  return Object.values(node).some((value) => value !== null && typeof value === 'object' && hasSelect(value));
 }
 
 function notDeleted(table: string): OperationNode {

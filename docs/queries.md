@@ -97,9 +97,9 @@ Kysely's own documentation covers the builder: joins, subqueries, `onConflict`, 
 on this page.
 
 > [!WARNING]
-> Secret columns, such as the password hash, are left out of every `selectAll()` and `returningAll()` of the query builder.
-> Raw SQL is not checked: `` sql`select * from users` `` returns the hash. The [migrations](migrations.md#secret-columns) page
-> explains secret columns.
+> Secret columns, such as the password hash, are left out of every `selectAll()` and `returningAll()` of the query builder, and
+> a query reads one only with `secret()`. Raw SQL is not checked: `` sql`select * from users` `` returns the hash. The
+> [migrations](migrations.md#secret-columns) page explains secret columns.
 
 ## Repositories
 
@@ -288,9 +288,12 @@ there.
 ### Relations and secret columns
 
 A secret column never comes back through a relation. It is not among the columns `with()` loads, and naming one inside a relation
-is refused when the query runs: by name, with `secret(eb, …)` or `sql.ref()`, under an alias, from a table the callback joins, from
-the outer query, or deeper down. So is a whole row of a table with secret columns, such as `eb.table('users')` in a function, in a
-relation and at the top level of any query.
+is refused when the query runs: by name, with `secret(eb, …)`, `sql.ref()` or `sql.id()`, under an alias, from a table the
+callback joins, from the outer query or a subquery or common table expression of it, or deeper down. So is a whole row of a source
+that holds one, such as `eb.table('users')` in a function.
+
+That goes for a subquery in a relation's `where()` too, although its value stays in the database. Filter on a key instead:
+`where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens').select('user_id').where(…))`, or with a join.
 
 ```text
 with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
