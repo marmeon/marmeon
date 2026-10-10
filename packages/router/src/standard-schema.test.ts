@@ -5,8 +5,8 @@ import { VALIDATE_HEADER } from './live-validation.ts';
 import { defineRoutes, Router } from './router.ts';
 
 /**
- * A schema of another library, as Zod 4 builds them (W10 step 3): Standard Schema and nothing else of ours — its own vendor, its
- * own issues (paths as `{ key }` segments), no use for `libraryOptions`. The framework's one contract is Standard Schema (E197):
+ * A schema of another library, as Zod 4 builds them: Standard Schema and nothing else of ours — its own vendor, its
+ * own issues (paths as `{ key }` segments), no use for `libraryOptions`. The framework's one contract is Standard Schema:
  * `rules` of @marmeon/validation are what the docs show, never a must.
  */
 type Field<T> = (value: unknown) => { value: T } | { message: string };
@@ -44,7 +44,7 @@ class CreateNoteController {
   }
 }
 
-describe('another library\'s Standard Schema (Zod-like) works where rules do (E197)', () => {
+describe('another library\'s Standard Schema (Zod-like) works where rules do', () => {
   const router = new Router().load(defineRoutes((Route) => Route.post('/notes', CreateNoteController)));
   const post = (body: unknown) =>
     router.dispatch(router.routes[0]!, { request: new Request('http://app.test/notes', { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }), params: {} });
@@ -56,7 +56,7 @@ describe('another library\'s Standard Schema (Zod-like) works where rules do (E1
     expect(error.errors).toEqual({ title: ['Required'] });
   });
 
-  it('parseQuery: an invalid field falls back (E56) — by the issue paths, with any library', async () => {
+  it('parseQuery: an invalid field falls back — by the issue paths, with any library', async () => {
     const parsed = await parseQuery(zodLike({ page }), new URLSearchParams('page=x'));
     expect(parsed.value).toEqual({ page: 1 });
     expect(parsed.dropped).toEqual(['page']);
@@ -70,8 +70,8 @@ describe('another library\'s Standard Schema (Zod-like) works where rules do (E1
   });
 });
 
-describe('another library\'s schema in a live validation: fail-closed (E206)', () => {
-  // A Zod-like schema whose refine asks "the database" whether an address is taken — what the router README once recommended.
+describe('another library\'s schema in a live validation: fail-closed', () => {
+  // A Zod-like schema whose refine asks "the database" whether an address is taken.
   const taken = new Set(['ada@example.com']);
   let calls = 0;
   const signUp = (): StandardSchemaV1 => ({

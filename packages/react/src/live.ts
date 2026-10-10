@@ -2,7 +2,7 @@ import { loadLive, type LiveUpdates } from '@marmeon/http/client';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 
-/** Live updates that wait (W6.10) — what `useLiveUpdates()` returns. */
+/** Live updates that wait — what `useLiveUpdates()` returns. */
 export interface LiveUpdatesState {
   /** Hints came while a form on screen had unsaved changes: their reloads wait (no reload overwrote what was typed). */
   readonly pending: boolean;
@@ -13,7 +13,7 @@ export interface LiveUpdatesState {
 const noSubscription = () => () => {};
 
 /**
- * Live props that wait for unsaved changes (W6.10, E104): a page (island, layer) follows a channel — the core reloads it on
+ * Live props that wait for unsaved changes: a page (island, layer) follows a channel — the core reloads it on
  * each hint by itself; only while a guard holds (a dirty form: `useForm(…, { guard })`, `useBlocker`) the reloads wait, and
  * this says so:
  *

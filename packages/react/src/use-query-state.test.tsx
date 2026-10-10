@@ -10,7 +10,7 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useQueryState } from './use-query-state.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -114,12 +114,12 @@ const typeNow = (testId: string, value: string) =>
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 
-describe('useQueryState (E55)', () => {
+describe('useQueryState', () => {
   it('shows what is typed at once and visits once per pause — a partial reload, the entry replaced', async () => {
     await mount(peoplePage('/people'));
     expect(($('q') as HTMLInputElement).value).toBe('');
     // Two keys with no turn of the event loop between them (synchronous act): however long a loaded machine takes, the pause
-    // cannot end in between — awaited typing let a 30 ms debounce run out between two keys once (two visits).
+    // cannot end in between.
     typeNow('q', 'a');
     typeNow('q', 'al');
     expect(($('q') as HTMLInputElement).value).toBe('al');

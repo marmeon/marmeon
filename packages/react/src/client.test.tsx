@@ -84,7 +84,7 @@ describe('createMarmeonApp — hydration', () => {
 
   it('makes a hydration mismatch visible in development: the page named on the console and in a notice', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    // What the server did before W5.7 rendered from the page object: a Date, not the string the browser gets.
+    // The server renders a Date, the browser the string of its page object.
     serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), await ssr(page({ name: 'Ada', lastLoginAt: at as unknown as string })));
     await start();
     expect(errors).toHaveBeenCalledWith(expect.stringContaining('[marmeon] Hydration mismatch in [users/Profile]'), expect.anything());
@@ -93,7 +93,7 @@ describe('createMarmeonApp — hydration', () => {
     expect(document.querySelector('time')?.textContent).toBe('2026-10-01T12:00:00.600Z');
   });
 
-  it('hands the mismatch to the devtools\' dev hook (W7 step 9) — and the navigator when it is made — where the bar set one', async () => {
+  it('hands the mismatch to the devtools\' dev hook — and the navigator when it is made — where the bar set one', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const hook = { navigator: vi.fn(), recoverable: vi.fn() };
     (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = hook;
@@ -109,7 +109,7 @@ describe('createMarmeonApp — hydration', () => {
     }
   });
 
-  it('reports a mismatch like production without NODE_ENV (E201, E217): no notice, no explanation, no devtools hook — React\'s report only', async () => {
+  it('reports a mismatch like production without NODE_ENV: no notice, no explanation, no devtools hook — React\'s report only', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const reportError = vi.fn();
     vi.stubGlobal('reportError', reportError);
@@ -152,7 +152,7 @@ describe('createMarmeonApp — hydration', () => {
   });
 });
 
-describe('createMarmeonApp — tab sync (W8 step 8, E149)', () => {
+describe('createMarmeonApp — tab sync', () => {
   const attached = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([feature]) => (feature as { name: string }).name);
 
   it('attaches tab sync by default — loaded with the first page, before hydrating: the navigator has it from the start', async () => {
@@ -166,12 +166,12 @@ describe('createMarmeonApp — tab sync (W8 step 8, E149)', () => {
     expect(attached(use)).toContain('tabSync');
     // Attached while the navigator was made (NavigatorOptions.features) — before any other feature a component attaches.
     // (The test's own server render made a navigator too — happy-dom has a window.) The app's first features: the History fallback
-    // (happy-dom has no Navigation API, E184), then tab sync.
+    // (happy-dom has no Navigation API), then tab sync.
     const app = use.mock.contexts[use.mock.calls.findIndex(([feature]) => (feature as { name: string }).name === 'tabSync')];
     expect(use.mock.calls.filter((_, index) => use.mock.contexts[index] === app).map(([feature]) => (feature as { name: string }).name).slice(0, 2)).toEqual(['history', 'tabSync']);
   });
 
-  it('tabSync: false leaves it out — and its chunk is never loaded (the known risk E66, by choice)', async () => {
+  it('tabSync: false leaves it out — and its chunk is never loaded ', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const use = vi.spyOn(Navigator.prototype, 'use');
     const lazy = await import('@marmeon/http/client');
@@ -186,7 +186,7 @@ describe('createMarmeonApp — tab sync (W8 step 8, E149)', () => {
   });
 });
 
-describe('createMarmeonApp — the History fallback (W9 step 7, E184)', () => {
+describe('createMarmeonApp — the History fallback', () => {
   const attached = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([feature]) => (feature as { name: string }).name);
 
   it('loads it beside the first page where the browser has no Navigation API — attached from the start', async () => {
@@ -199,7 +199,7 @@ describe('createMarmeonApp — the History fallback (W9 step 7, E184)', () => {
     expect(attached(use), 'no History fallback attached').toContain('history');
   });
 
-  it('counter-check: with the Navigation API it is never loaded — the navigator writes and follows the history itself', async () => {
+  it('with the Navigation API it is never loaded — the navigator writes and follows the history itself', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     // The parts of a browser's `window.navigation` a hydration uses: it writes the first entry (in place) and listens.
     const written: unknown[] = [];
@@ -218,7 +218,7 @@ describe('createMarmeonApp — the History fallback (W9 step 7, E184)', () => {
       serve(sent, await ssr(sent));
       await start();
       expect(attached(use)).not.toContain('history');
-      // The first entry, written through the Navigation API — positions only (E36).
+      // The first entry, written through the Navigation API — positions only.
       expect(written.at(-1)).toMatchObject({ component: 'users/Profile', url: '/' });
       expect(JSON.stringify(written)).not.toContain('Ada');
     } finally {

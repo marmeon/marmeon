@@ -92,21 +92,21 @@ export interface PartialReloadOptions<T = unknown> {
 export type PatchedProps<T> = unknown extends T ? Readonly<Record<string, unknown>> : PropsOf<T>;
 
 /**
- * What a patch `(props) => R` of page props `P` must be (E59): the props it changes, from the props shown (the server's, with
+ * What a patch `(props) => R` of page props `P` must be: the props it changes, from the props shown (the server's, with
  * the patches under way before it), each of its type — a prop the page does not have is named (`'profle' is not a prop of this
  * page`), a value of the wrong type is the usual error, down to the field. It runs again whenever those change: no side effects.
  */
 export type CheckedPatch<R, P> = (props: P) => { readonly [K in keyof R]: K extends keyof P ? P[K] : `'${K & string}' is not a prop of this page` };
 
 /**
- * What an action reloads once it succeeded (E59) — some props of the page (`only`), all but some (`except`), its islands of a
+ * What an action reloads once it succeeded — some props of the page (`only`), all but some (`except`), its islands of a
  * route (`islands`): `router.reloading({ only: ['profile'] })`. Neither props nor islands: the whole page. What it brings replaces
  * what was there, also a `merge()`d list (a row the action deleted is gone).
  */
 export interface ReloadingOptions<T = unknown, I extends readonly string[] = readonly string[]> {
   only?: readonly PropName<T>[];
   except?: readonly PropName<T>[];
-  /** The merged props it replaces — default: every prop it brings. `[]` merges them instead (appends, as before Wave 9). */
+  /** The merged props it replaces — default: every prop it brings. `[]` merges them instead (appends). */
   reset?: readonly PropName<T>[];
   /** The islands of these routes the page (or layer) shows — each one on screen reloads. Alone: only them, not the page. */
   islands?: { readonly [K in keyof I]: CheckIslandRouteName<I[K] & string> };
@@ -132,7 +132,7 @@ export interface Router<T = unknown> {
   /** Listens to the events of every visit; returns the function that stops listening (for an effect's cleanup). */
   on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
   /**
-   * A patch of this page's props (or the layer's, inside one) for an action or a form (E59) — shown at once, rolled back unless it
+   * A patch of this page's props (or the layer's, inside one) for an action or a form — shown at once, rolled back unless it
    * succeeds: `submit({ optimistic: router.optimistic((props) => ({ likes: props.likes + 1 })) })`. Never in the page's memory
    * before it succeeded, never in `history.state`.
    */
@@ -143,7 +143,7 @@ export interface Router<T = unknown> {
 
 /**
  * @internal What the hooks read: the page (or the layer) around them and how to navigate from it. A layer brings its own patches
- * and reloads (E59); the page's are its history entry's — `useRouter()` makes them, attaching the optimistic patches on first use.
+ * and reloads; the page's are its history entry's — `useRouter()` makes them, attaching the optimistic patches on first use.
  */
 export interface RouterValue extends Omit<Router, 'optimistic' | 'reloading'>, Partial<Pick<Router, 'optimistic' | 'reloading'>> {
   page: PageObject;
@@ -151,7 +151,7 @@ export interface RouterValue extends Omit<Router, 'optimistic' | 'reloading'>, P
   navigator(): Navigator | null;
   /** Page components by name — `<Island>` renders its region's view with it. */
   resolve: ResolvePage;
-  /** The layer this router is a layer's (E53) — null for the page: what a navigation guard in it belongs to (E64). */
+  /** The layer this router is a layer's — null for the page: what a navigation guard in it belongs to. */
   layer: Layer | null;
 }
 
@@ -186,7 +186,7 @@ type StackModule = Promise<typeof import('./layer-stack.tsx')> & { status?: 'ful
 let stackModule: StackModule | undefined;
 
 /**
- * @internal The layer stack (E53, E71) — a chunk of its own, with the core's layers: loaded once per app, asked for again when
+ * @internal The layer stack — a chunk of its own, with the core's layers: loaded once per app, asked for again when
  * it failed. Loaded before a render with layers (and before hydrating a deep link), so the stack renders at once.
  */
 export function loadLayerStack(): Promise<typeof import('./layer-stack.tsx')> {
@@ -201,7 +201,7 @@ export function loadLayerStack(): Promise<typeof import('./layer-stack.tsx')> {
   return stackModule;
 }
 
-/** @internal How the app's navigator loads the layers (E71): with the stack that renders them — one round trip. */
+/** @internal How the app's navigator loads the layers: with the stack that renders them — one round trip. */
 export const loadLayers = (): Promise<Feature<LayersFeature>> => loadLayerStack().then((module) => module.layers);
 
 /** The layers over the page, rendered by the stack — loaded already: never suspends (but would, inside its boundary). */
@@ -231,7 +231,7 @@ function withoutLayers(page: PageObject): PageObject {
 /** The regions (islands) of the page on screen — its history entry's (null on the server: islands load in the browser). */
 export const RegionOwnerContext = createContext<RegionOwner | null>(null);
 
-/** @internal A layer provides its own (E53): `usePage`, `useRouter` and `useForm` inside it act as the layer. */
+/** @internal A layer provides its own: `usePage`, `useRouter` and `useForm` inside it act as the layer. */
 export const RouterContext = createContext<RouterValue | null>(null);
 
 export function useRouterContext(): RouterValue {
@@ -241,8 +241,8 @@ export function useRouterContext(): RouterValue {
 }
 
 /**
- * A feature of the client core (E73) — what an adapter component uses of it, `useFeature(islands).region(…)` (Wave 5c step 4):
- * attached to the app's navigator on first use, once per navigator (E70; `navigator.use`). In the browser only — there is no
+ * A feature of the client core — what an adapter component uses of it, `useFeature(islands).region(…)`:
+ * attached to the app's navigator on first use, once per navigator (`navigator.use`). In the browser only — there is no
  * navigator while rendering on the server.
  */
 export function useFeature<API>(feature: Feature<API>): API {
@@ -277,8 +277,8 @@ export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'>
 export function useRouter<T = unknown>(): Router<T> {
   const { visit, reload, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
   const routes = useContext(RoutesContext);
-  // The page's patches and reloads are those of its history entry (E59) — never in its props in memory. The optimistic patches
-  // attach on first use (E70): an app that never patches the page carries none of their code (a layer brings its own).
+  // The page's patches and reloads are those of its history entry — never in its props in memory. The optimistic patches
+  // attach on first use: an app that never patches the page carries none of their code (a layer brings its own).
   const optimistic = useCallback(
     (patch: (props: Readonly<Record<string, unknown>>) => object) => (own ? own(patch as never) : { target: pagePatches(navigator()), patch: patch as never }),
     [own, navigator],
@@ -292,7 +292,7 @@ export function useRouter<T = unknown>(): Router<T> {
 }
 
 /**
- * The optimistic patches of the page on screen — its history entry's (E59). Their code loads with the first use (a chunk of its
+ * The optimistic patches of the page on screen — its history entry's. Their code loads with the first use (a chunk of its
  * own): until it is there, a target that does what is asked of it once it is.
  */
 function pagePatches(navigator: Navigator | null): PatchTarget {
@@ -304,14 +304,11 @@ function pagePatches(navigator: Navigator | null): PatchTarget {
   return loaded ? loaded.target(key) : laterTarget(navigator.load(loadOptimistic).then((feature) => feature.target(key)));
 }
 
-/** What `progress` took before E82 (`{ delay }`, `false`), as a type error that says what to write now. */
+/** An options object for `progress` (`{ delay }`), as a type error that says what to write instead. */
 type ProgressHint = "progress takes an indicator — progress: progressBar({ delay: 250 }), import { progressBar } from '@marmeon/react'; leave it out for none";
 type ProgressBefore = { readonly delay?: ProgressHint; readonly color?: ProgressHint };
 
-/**
- * @internal The app's progress indicator (E82) — none by default. What `progress` took before (`{ delay }`, `false`) says what to
- * import now.
- */
+/** @internal The app's progress indicator — none by default. Anything but an indicator throws with what to import. */
 export function progressIndicator(progress: MarmeonAppProps['progress'] | unknown): ProgressIndicator | undefined {
   if (progress === undefined) return undefined;
   if (typeof progress === 'function') return progress as ProgressIndicator;
@@ -330,10 +327,10 @@ export interface MarmeonAppProps {
   title?: TitleTemplate;
   /** The named routes the browser knows (`routes` of `virtual:marmeon/routes`) — for `route()`, `<Link route>` and `useForm(name, …)`. */
   routes?: RouteManifest;
-  /** The layout of pages without their own `layout` (E35) — the same on the server and in the browser. */
+  /** The layout of pages without their own `layout` — the same on the server and in the browser. */
   layout?: DefaultLayout;
   /**
-   * An indicator of visits under way (E82, opt-in): `progressBar({ delay: 250 })` — the core's bar, shown only for visits slower
+   * An indicator of visits under way (opt-in): `progressBar({ delay: 250 })` — the core's bar, shown only for visits slower
    * than `delay` — or the app's own (`(navigator) => stop`). None by default: `aria-busy` on `<html>`, `data-pending` on links and
    * `usePending()` are there either way.
    */
@@ -347,21 +344,20 @@ export interface MarmeonAppProps {
   messages?: MessageLoader;
   /** The first page's messages, loaded before hydrating (by `createMarmeonApp` and the SSR entry). */
   initialCatalog?: Catalog;
-  /** Server rendering only (E49): islands and deferred groups, resolved in-process by the page's request (the SSR entry). */
+  /** Server rendering only: islands and deferred groups, resolved in-process by the page's request (the SSR entry). */
   ssr?: SsrResolvers;
-  /** The frame around every layer's view (E53) — default `LayerDialog`, a native modal `<dialog>`. A view's own `layer` wins. */
+  /** The frame around every layer's view — default `LayerDialog`, a native modal `<dialog>`. A view's own `layer` wins. */
   layer?: LayerFrame;
   /**
-   * The dialog that asks the user (E64): a link's, an action's or a form's `confirm`, and the navigation guard's question —
+   * The dialog that asks the user: a link's, an action's or a form's `confirm`, and the navigation guard's question —
    * `ConfirmDialog`, or the app's own. Default: the browser's `confirm()` (and `prompt()` for a text to type).
    */
   confirm?: ConfirmComponent;
-  /** Client features attached from the start (`NavigatorOptions.features`) — `createMarmeonApp` passes tab sync (E149). */
+  /** Client features attached from the start (`NavigatorOptions.features`) — `createMarmeonApp` passes tab sync. */
   features?: readonly Feature[] | undefined;
   /**
-   * View transitions for every page change (E185) — `true` (or `{ types }`): the core's, `document.startViewTransition` around each
-   * page swap (the browser crossfades the page). `'react'`: React's — each page change renders in `startTransition` with its types
-   * (`addTransitionType`), and the `<ViewTransition>` components of the views animate; React starts the transition, the core never does.
+   * View transitions for every page change: the core's (`true`, `{ types }`), or React's (`'react'`: each page change renders in
+   * `startTransition` with its types, and the core starts none). See docs/navigation.md#view-transitions.
    */
   viewTransition?: ViewTransitionOption | 'react' | undefined;
 }
@@ -376,7 +372,7 @@ interface Current {
   /** Where the page's islands live — from the navigator with each page (undefined for the first: the navigator's current). */
   owner?: RegionOwner;
   /**
-   * An instant visit's placeholder (E64) in the page's place — the target view's `placeholder`, with what the link gave it,
+   * An instant visit's placeholder in the page's place — the target view's `placeholder`, with what the link gave it,
    * inside that view's layouts. The page (the context `usePage()` reads) is still the one before.
    */
   placeholder?: { readonly Component: ComponentType<any>; readonly View: PageComponent; readonly name: string; readonly props: Readonly<Record<string, unknown>> };
@@ -385,10 +381,9 @@ interface Current {
 /**
  * Root component on server and client. Navigations fetch the next page object as JSON (via `PAGE_HEADER`)
  * and swap the page component in place — inside its layouts, which stay mounted while the next page has
- * them too (E35). The {@link Navigator} keeps the history — without props (E36) — and the scroll positions.
+ * them too. The {@link Navigator} keeps the history — without props — and the scroll positions.
  *
- * Errors: a page that throws while rendering shows the app's error page inside its layouts (once after a
- * fresh copy of its props from the server — what changed may be the props' shape, e.g. after a hot update);
+ * A page that throws while rendering shows the app's error page inside its layouts (after one fresh copy of its props);
  * a visit that fails (offline, 5xx) leaves the page as it is and shows the failure over it.
  */
 export function MarmeonApp({
@@ -408,7 +403,7 @@ export function MarmeonApp({
   features,
   viewTransition,
 }: MarmeonAppProps) {
-  // A deep link's document brings the layers over its page (E53): rendered over it, apart from it.
+  // A deep link's document brings the layers over its page: rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
   const [current, setCurrent] = useState<Current>({ page: firstPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
   const [failure, setFailure] = useState<VisitException | null>(null);
@@ -416,7 +411,7 @@ export function MarmeonApp({
   // The navigator waits until a page is on screen before it restores the scroll position.
   const committed = useRef<(() => void)[]>([]);
 
-  // Renders in order of the calls: a placeholder that resolves after a later render started is dropped (E64).
+  // Renders in order of the calls: a placeholder that resolves after a later render started is dropped.
   const renders = useRef(0);
   const render = useCallback(
     async (
@@ -425,7 +420,7 @@ export function MarmeonApp({
     ) => {
       const turn = ++renders.current;
       if (placeholder) {
-        // An instant visit (E64): the target view's placeholder — never the view itself, with props it does not have yet.
+        // An instant visit: the target view's placeholder — never the view itself, with props it does not have yet.
         const View = await resolve(page.component);
         const Placeholder = View.placeholder;
         if (!Placeholder || renders.current !== turn) return;
@@ -444,7 +439,7 @@ export function MarmeonApp({
       ]);
       await new Promise<void>((done) => {
         committed.current.push(done);
-        // A view transition by React (E185, `viewTransition: 'react'`): the page changes in a transition with its types — the views'
+        // A view transition by React (`viewTransition: 'react'`): the page changes in a transition with its types — the views'
         // <ViewTransition> animate. Resolved, as any render, once it is committed (the layout effect below).
         (transition ? startTransition : (swap: () => void) => swap())(() => {
           transition?.forEach((type) => addTransitionType(type));
@@ -463,9 +458,7 @@ export function MarmeonApp({
   const renderRef = useRef(render);
   renderRef.current = render;
 
-  // One navigator per app, in the browser only (the server renders a single page). Created during the first
-  // render, so a page's own effects — which run before this component's — can already visit.
-  // Questions for the app's confirmation dialog (E64), one at a time.
+  // Questions for the app's confirmation dialog, one at a time.
   const [questions, setQuestions] = useState<readonly PendingQuestion[]>([]);
   const nextQuestion = useRef(0);
   const ask = useCallback(
@@ -484,25 +477,23 @@ export function MarmeonApp({
       }),
     [],
   );
+  // One navigator per app, in the browser only (the server renders a single page). Created during the first
+  // render, so a page's own effects — which run before this component's — can already visit.
   const navigator = useRef<Navigator | null>(null);
   if (navigator.current === null && typeof window !== 'undefined') {
     navigator.current = new Navigator({
       initialPage,
       render: (page, options) => renderRef.current(page, options),
-      // What a view declares to reload when Back/Forward shows it from memory (E58): `Show.revalidateOnBack = ['activity']`.
       revalidateOnBack: async (component) => (await resolve(component)).revalidateOnBack,
-      // The app's dialog asks (E64) — without one, the browser's own.
       ...(Confirm ? { confirm: ask } : {}),
-      // The layers load with the stack that renders them (E71).
       loadLayers,
-      // What the app attaches from the start: tab sync (E149), before the navigator takes over the history.
+      // Attached before the navigator takes over the history (tab sync).
       features,
-      // View transitions (E185): the core's, or React's (the core hands the types to `render`).
       viewTransition,
     });
     // A deep link's layers: their code was loaded before hydrating (createMarmeonApp) — attached before the navigator stacks them.
     if (stackModule?.value) navigator.current.use(stackModule.value.layers);
-    // What the views use (E70): `revalidateOnBack` with the pages of `resolveModulePages`.
+    // What the views use: `revalidateOnBack` with the pages of `resolveModulePages`.
     for (const feature of resolve.features ?? []) navigator.current.use(feature);
   }
   // The layers on screen — the core's in the browser; on the server, the deep link's page objects.
@@ -526,7 +517,7 @@ export function MarmeonApp({
     const stops = [nav.on('exception', setFailure), nav.on('start', (visit) => visit.async || setFailure(null))];
     const indicator = progressIndicator(progress);
     if (indicator) stops.push(indicator(nav));
-    // `aria-busy` on the document while a visit runs (E64).
+    // `aria-busy` on the document while a visit runs.
     if (typeof document !== 'undefined') stops.push(markBusy(nav));
     return () => {
       for (const stop of stops) stop();
@@ -541,7 +532,7 @@ export function MarmeonApp({
   const visit = useCallback(
     (url: string, options?: VisitOptions) => {
       const nav = browser();
-      // An instant visit (E64) needs the instant code (E74): `<Link instant>` loads it when it renders. A visit before it is here
+      // An instant visit needs the instant code: `<Link instant>` loads it when it renders. A visit before it is here
       // goes without its placeholder.
       if (options?.instant) nav.load(loadInstant).catch(() => undefined);
       return nav.visit(url, options);
@@ -549,7 +540,7 @@ export function MarmeonApp({
     [browser],
   );
   const reload = useCallback((options?: ReloadOptions) => browser().reload(options), [browser]);
-  // A prefetch while rendering on the server (an effect never runs there) has nothing to do. Its code loads with the first (E74).
+  // A prefetch while rendering on the server (an effect never runs there) has nothing to do. Its code loads with the first.
   const prefetch = useCallback((url: string, options?: PrefetchOptions) => (navigator.current ? prefetchWith(navigator.current, url, options) : Promise.resolve()), []);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
 
@@ -589,7 +580,7 @@ export function MarmeonApp({
   const head = useMemo(() => ({ template: title, collector: headCollector, titles }), [title, headCollector, titles]);
 
   const content = placeholder ? (
-    // An instant visit's placeholder (E64): what the link gave it — the real view renders only with its page.
+    // An instant visit's placeholder: what the link gave it — the real view renders only with its page.
     <ErrorBoundary resetKey={placeholder} fallback={() => null}>
       <placeholder.Component {...placeholder.props} />
     </ErrorBoundary>
@@ -616,16 +607,16 @@ export function MarmeonApp({
                   {tree}
                 </ErrorBoundary>
               </RegionOwnerContext.Provider>
-              {/* The layers over the page (E53) — apart from it: opening one changes nothing the page renders from. */}
+              {/* The layers over the page — apart from it: opening one changes nothing the page renders from. */}
               {layers.length > 0 && (
                 <Suspense fallback={null}>
                   <Layers entries={layers} resolve={resolve} frame={frame} base={router} />
                 </Suspense>
               )}
               <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
-              {/* The question a link, an action, a form or the navigation guard asks (E64) — over everything, one at a time. */}
+              {/* The question a link, an action, a form or the navigation guard asks — over everything, one at a time. */}
               <ConfirmHost questions={questions} component={Confirm} />
-              {/* The first page's deferred groups the server streams with the document (E49): to the navigator as they arrive. */}
+              {/* The first page's deferred groups the server streams with the document: to the navigator as they arrive. */}
               <StreamedDeferred groups={initialPage.streamedProps} navigator={getNavigator} />
             </RouterContext.Provider>
           </I18nContext.Provider>

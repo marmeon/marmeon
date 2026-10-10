@@ -14,12 +14,12 @@ import { useAction } from './use-action.ts';
 import { useForm } from './use-form.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Flash, state attributes, the navigation guard and confirm in React (W5b step 7, E60/E64). */
+/** Flash, state attributes, the navigation guard and confirm in React. */
 
 const toasts: string[] = [];
 
@@ -69,7 +69,7 @@ function Edit({ name }: { name: string }) {
 }
 Edit.layout = Layout;
 
-// A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent (W9 step 10b).
+// A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent.
 function Secret({ name }: { name: string }) {
   const form = useForm('profile.update', {}, { name, password: '' }, { guard: 'Unsaved changes.' });
   return (
@@ -148,7 +148,7 @@ const type = (element: HTMLInputElement, value: string) =>
 const dialog = () => document.querySelector('[data-marmeon-confirm]') as HTMLDialogElement | null;
 const answer = (label: 'confirm' | 'cancel') => act(async () => (dialog()!.querySelector(label === 'confirm' ? '[data-confirm]' : 'button[type="button"]') as HTMLElement).click());
 
-describe('toasts: useFlash (E60)', () => {
+describe('toasts: useFlash', () => {
   it('fires the first page’s message once — and a visit’s after its page is on screen', async () => {
     server = () => json(page('People', '/people', {}, { flash: [toast('b', 'Moved.')] }));
     await mount(page('Edit', '/users/1/edit', { name: 'Ada' }, { flash: [toast('a', 'Saved.')] }));
@@ -160,7 +160,7 @@ describe('toasts: useFlash (E60)', () => {
   });
 });
 
-describe('state attributes (E64)', () => {
+describe('state attributes', () => {
   it('marks the link to the page on screen — exactly, or by `activeMatch` — and `data-pending` while its visit runs', async () => {
     let open!: (response: Response) => void;
     server = () => new Promise((resolve) => (open = resolve));
@@ -202,7 +202,7 @@ describe('state attributes (E64)', () => {
 });
 
 describe('reset() in a submit callback', () => {
-  it('counter-check: resets to the defaults before the submit, and the saved form is not dirty — no question on leaving', async () => {
+  it('resets to the defaults before the submit, and the saved form is not dirty — no question on leaving', async () => {
     server = (url) => json(url.startsWith('/people') ? page('People', '/people') : page('Secret', '/users/1/edit', { name: 'Ada King' }));
     await mount(page('Secret', '/users/1/edit', { name: 'Ada' }));
     await type($('name') as HTMLInputElement, 'Ada King');
@@ -241,8 +241,8 @@ describe('reset() in a submit callback', () => {
   });
 });
 
-describe('the navigation guard (E64)', () => {
-  it('counter-check: a dirty form asks before a link leaves — Stay sends nothing, Leave goes; after saving it asks no more', async () => {
+describe('the navigation guard', () => {
+  it('a dirty form asks before a link leaves — Stay sends nothing, Leave goes; after saving it asks no more', async () => {
     server = (url) => json(url.startsWith('/people') ? page('People', '/people') : page('Edit', '/users/1/edit', { name: 'Ada King' }));
     await mount(page('Edit', '/users/1/edit', { name: 'Ada' }));
     await type($('name') as HTMLInputElement, 'Ada King');
@@ -278,8 +278,8 @@ describe('the navigation guard (E64)', () => {
   });
 });
 
-describe('confirm (E64)', () => {
-  it('counter-check: type-to-confirm — the yes stays off for a wrong text, a submitted wrong text sends nothing; the exact text sends', async () => {
+describe('confirm', () => {
+  it('type-to-confirm — the yes stays off for a wrong text, a submitted wrong text sends nothing; the exact text sends', async () => {
     server = () => new Response(null, { status: 204, headers: { 'x-marmeon-redirect': '/projects' } });
     await mount(page('Edit', '/users/1/edit', { name: 'Ada' }));
     await click('delete');

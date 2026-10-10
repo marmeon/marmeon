@@ -14,7 +14,7 @@ export interface UsePendingOptions {
 const noSubscription = () => () => {};
 
 /**
- * Whether a request of route `name` is under way (E64) — a visit (`<Link route>`, a route form) or an action of any component:
+ * Whether a request of route `name` is under way — a visit (`<Link route>`, a route form) or an action of any component:
  * for a spinner, `data-pending`, a disabled button. Checked against the routes the browser knows.
  *
  * ```tsx
@@ -66,7 +66,7 @@ export function useGuard(when: boolean, message: string | undefined): Navigation
     };
   }
   const handle = guard.current;
-  // The guard feature attaches with the first guard that holds (E70) — static here: a guard loaded later could not stop a
+  // The guard feature attaches with the first guard that holds — static here: a guard loaded later could not stop a
   // navigation that came first.
   useEffect(() => (when && navigator ? navigator.use(guardFeature).add(handle) : undefined), [when, navigator, handle]);
   return handle;
@@ -80,10 +80,9 @@ export interface UseBlockerOptions {
 }
 
 /**
- * The navigation guard (E64): while `when` holds, leaving asks first — a visit (a link, a form elsewhere), Back/Forward, closing
- * the layer it is in — through the app's dialog (`createMarmeonApp({ confirm })`), and closing the tab or reloading gets the
- * browser's own question. The full page load of a sign-in or a sign-out is never stopped; the one of a new build asks first, and
- * "stay" postpones it ({@link useNewVersion}).
+ * The navigation guard: while `when` holds, leaving asks first through the app's dialog; closing the tab or reloading gets
+ * the browser's own question. The full page load of a sign-in or a sign-out is never stopped. See
+ * docs/navigation.md#leaving-with-unsaved-changes.
  *
  * ```tsx
  * const form = useForm('user-profile.update', { user }, { name, bio });
@@ -94,7 +93,7 @@ export function useBlocker({ when, message }: UseBlockerOptions): void {
   useGuard(when, message);
 }
 
-/** A new build waiting to load (E64) — from `useNewVersion()`. */
+/** A new build waiting to load — from `useNewVersion()`. */
 export interface NewVersion {
   /** Where the postponed full load goes. */
   readonly location: string;
@@ -103,7 +102,7 @@ export interface NewVersion {
 }
 
 /**
- * A new build of the app that waits to load (E64) — set once its full load was postponed: the app's `version` listener
+ * A new build of the app that waits to load — set once its full load was postponed: the app's `version` listener
  * prevented it (`router.on('version', (event) => event.preventDefault())`), or unsaved changes kept it (the guard's question
  * answered "stay"). For a "a new version is available — reload" banner; undefined while none waits. The next visit loads it anyway.
  */

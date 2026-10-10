@@ -9,7 +9,7 @@ import { progressBar, type ProgressIndicator } from './index.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -50,7 +50,7 @@ async function mount(progress?: ProgressIndicator) {
 const wait = (ms: number) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const bar = () => document.querySelector('[data-marmeon-progress]');
 
-describe('the progress bar is opt-in (E82)', () => {
+describe('the progress bar is opt-in', () => {
   it('progressBar() shows the core’s bar while a slow visit is under way', async () => {
     await mount(progressBar({ delay: 0 }));
     await act(async () => (container.querySelector('[data-testid="go"]') as HTMLElement).click());
@@ -63,7 +63,7 @@ describe('the progress bar is opt-in (E82)', () => {
     expect(document.documentElement.hasAttribute('aria-busy')).toBe(false);
   });
 
-  it('counter-check: without it, a slow visit shows no bar — aria-busy still says a visit runs', async () => {
+  it('without it, a slow visit shows no bar — aria-busy still says a visit runs', async () => {
     await mount();
     await act(async () => (container.querySelector('[data-testid="go"]') as HTMLElement).click());
     await wait(300);
@@ -86,11 +86,11 @@ describe('the progress bar is opt-in (E82)', () => {
     root = createRoot(container);
   });
 
-  it('what progress took before E82 says what to import instead', () => {
+  it('options or false for progress say what to import instead', () => {
     // @ts-expect-error — progress takes an indicator: progressBar({ delay: 250 })
     const before: Parameters<typeof MarmeonApp>[0]['progress'] = { delay: 250 };
     expect(() => progressIndicator(before)).toThrow("[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'.");
-    // @ts-expect-error — `false` is gone too: leave progress out for none
+    // @ts-expect-error — leave progress out for none
     const off: Parameters<typeof MarmeonApp>[0]['progress'] = false;
     expect(() => progressIndicator(off)).toThrow('[marmeon:R16]');
     expect(progressIndicator(undefined)).toBeUndefined();

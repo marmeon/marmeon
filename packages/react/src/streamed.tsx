@@ -3,7 +3,7 @@ import { scriptJson, type DeferredResult, type RegionResult } from '@marmeon/htt
 import { createContext, Suspense, use, useContext, useEffect, useId, useState } from 'react';
 
 /**
- * Server rendering only (E49): what the page's request resolves in-process while the page streams — each island and each
+ * Server rendering only: what the page's request resolves in-process while the page streams — each island and each
  * deferred group once per render (two identical islands share one), per request. The browser has none: there, islands and
  * deferred groups that did not come with the document load themselves.
  */
@@ -55,7 +55,7 @@ export function streamedText(id: string): string | undefined {
 }
 
 /**
- * An inert data block in the document (E49) — `<script type="application/json">`, never executed, so a strict
+ * An inert data block in the document — `<script type="application/json">`, never executed, so a strict
  * Content-Security-Policy needs no nonce for it. The JSON comes from `scriptJson` (`<` escaped: it can never end the
  * element) — or is the text such a block already had.
  */
@@ -64,7 +64,7 @@ export function DataScript({ id, json }: { id: string; json: string }) {
 }
 
 /**
- * The deferred groups the server streams with the document (`streamedProps`, E49) — one Suspense boundary each, at the
+ * The deferred groups the server streams with the document (`streamedProps`) — one Suspense boundary each, at the
  * end of the page: on the server it waits for the group (computed once the headers are out) and renders its props as a
  * data block; in the browser it hands them to the navigator as the boundary hydrates — no request. A group that did not
  * come (it failed, or its part was rendered in the browser) is asked for as without streaming.

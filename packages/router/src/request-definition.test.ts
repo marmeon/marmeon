@@ -105,7 +105,7 @@ describe('request validation (REPR)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Type guarantees — the nine cases of the E13 type spike. Never called.
+// Type guarantees. Never called.
 // ---------------------------------------------------------------------------
 
 declare const AuthRoute: Route<AuthState>;

@@ -10,7 +10,7 @@ import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -121,7 +121,7 @@ const $ = (selector: string) => container.querySelector(selector);
 const wait = (ms = 10) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const islandRequests = () => requests.filter((request) => request.headers[REGION_HEADER] === 'island');
 
-describe('<Island> and useIsland (E48, E51)', () => {
+describe('<Island> and useIsland', () => {
   it('renders its fallback, then the island — each island its own request, in parallel, after the page', async () => {
     await mount(page('Dashboard', '/dashboard'));
     expect($('[data-island="sign-ins"]')?.getAttribute('data-status')).not.toBeNull();
@@ -131,7 +131,7 @@ describe('<Island> and useIsland (E48, E51)', () => {
     expect($('[data-island="sign-ins"]')!.getAttribute('data-status')).toBe('ready');
   });
 
-  it('counter-check: a forbidden island shows `unauthorized`, a failing one its error — the page and the others stay', async () => {
+  it('a forbidden island shows `unauthorized`, a failing one its error — the page and the others stay', async () => {
     await mount(page('Dashboard', '/dashboard'));
     await wait();
     expect($('[data-testid="hidden"]')!.textContent).toBe('Admins only.');
@@ -153,7 +153,7 @@ describe('<Island> and useIsland (E48, E51)', () => {
     expect($('[data-testid="range"]')!.textContent).toBe('7d');
   });
 
-  it('counter-check: Back shows the islands from memory — no request, the reloaded query kept', async () => {
+  it('Back shows the islands from memory — no request, the reloaded query kept', async () => {
     await mount(page('Dashboard', '/dashboard'));
     await wait();
     await act(async () => ($('[data-testid="week"]') as HTMLButtonElement).click());
@@ -198,7 +198,7 @@ describe('<Island> and useIsland (E48, E51)', () => {
   it('useIsland outside an island says where it belongs', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await mount(page('Outside', '/dashboard'));
-    // The page that threw is shown by a chunk of its own (W10.7, loaded when it happens): wait for it, not for one tick.
+    // The page that threw is shown by a chunk of its own (loaded when it happens): wait for it, not for one tick.
     for (let tries = 0; tries < 200 && !container.textContent?.includes('useIsland()'); tries++) await wait(5);
     expect(container.textContent).toContain('useIsland() is for the view of an island');
     errors.mockRestore();

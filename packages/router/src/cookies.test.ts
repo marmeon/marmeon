@@ -15,7 +15,7 @@ describe('cookies', () => {
     );
   });
 
-  it('gives every cookie the jar\'s defaults (E162: Secure from the session config) — unless set says otherwise', async () => {
+  it('gives every cookie the jar\'s defaults (Secure from the session config) — unless set says otherwise', async () => {
     const jar = new CookieJar(null, { secure: true });
     jar.set('plain', '1');
     jar.set('opted_out', '1', { secure: false });

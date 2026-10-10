@@ -10,12 +10,12 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useForm } from './use-form.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** `<FileInput>` (W6.9): a file chosen is uploaded at once, the field holds the upload, the form sends its token. */
+/** `<FileInput>`: a file chosen is uploaded at once, the field holds the upload, the form sends its token. */
 
 function Avatar() {
   // A route form (the route manifest below; untyped here — the web app's type tests check the typed one).
@@ -116,7 +116,7 @@ const choose = (file: File) =>
     $('file').dispatchEvent(new Event('change', { bubbles: true }));
   });
 
-describe('<FileInput> — an upload field (W6.9)', () => {
+describe('<FileInput> — an upload field', () => {
   it('uploads the chosen file at once (progress, a preview); the form then sends the token — never the file', async () => {
     await mount();
     expect($('file').type).toBe('file');

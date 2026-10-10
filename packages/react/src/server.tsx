@@ -29,21 +29,17 @@ export interface SsrOptions {
 
 /**
  * Builds the app's SSR entry. Lives in `@marmeon/react/server` so `react-dom/server` never ends up in the client
- * bundle. Pages are streamed (`renderToReadableStream`, E37): the promise resolves with the shell — everything outside
- * Suspense boundaries — and its `<Head>` content for the document head; the boundaries follow in the stream as they
- * finish. With `complete` (bots) or `Page.ssr = 'complete'` it resolves once the whole page has rendered;
- * `Page.ssr = false` renders no markup at all (the browser renders the page).
- *
- * An error in the shell rejects (the server then sends the page without markup); an error in a Suspense boundary is
- * reported through `onError`, and the browser renders that boundary when it hydrates.
+ * bundle. Pages stream: the promise resolves with the shell and its `<Head>` content, the Suspense boundaries follow.
+ * An error in the shell rejects (the server then sends the page without markup); an error in a boundary is reported
+ * through `onError`, and the browser renders that boundary. See docs/pages.md#server-rendering.
  */
 export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages, layer }: SsrOptions = {}): SsrRender {
-  // A `<Head>`'s script or style carries the response's CSP nonce (E147) — the rest of its tags need none.
+  // A `<Head>`'s script or style carries the response's CSP nonce — the rest of its tags need none.
   const head = (collector: HeadCollector, nonce?: string) =>
     renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)));
 
   return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce } = {}) => {
-    // A deep link's layers (E53) render with the page, in the shell: the layer stack (E71) and their views are loaded first.
+    // A deep link's layers render with the page, in the shell: the layer stack and their views are loaded first.
     const [Component, catalog] = await Promise.all([
       resolve(page.component),
       loadPageMessages(page, messages),
@@ -51,7 +47,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
     ]);
     if (Component.ssr === false) return { html: '', head: head(createHeadCollector(), nonce) };
     const whole = complete || Component.ssr === 'complete';
-    // Deferred groups stream with the page (E49) — not when it is sent whole: they are computed once the headers are out.
+    // Deferred groups stream with the page — not when it is sent whole: they are computed once the headers are out.
     const streamedProps = !whole && resolveDeferred ? Object.entries(page.deferredProps ?? {}).flatMap(([group, props]) => (props.length > 0 ? [group] : [])) : [];
     const rendered: PageObject = streamedProps.length > 0 ? { ...page, streamedProps } : page;
     // Per render: each island and group is asked once (two identical islands share one request), nothing outlives it.
@@ -80,7 +76,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
       />,
       {
         signal,
-        // React's inline scripts (`$RC` reveals a Suspense boundary) and its `<style precedence>` tags, under a strict CSP (E147).
+        // React's inline scripts (`$RC` reveals a Suspense boundary) and its `<style precedence>` tags, under a strict CSP.
         ...(nonce ? { nonce: { script: nonce, style: nonce } } : {}),
         onError(error) {
           // Stopped because the client went away: what did not render is no error.

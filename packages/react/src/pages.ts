@@ -12,7 +12,7 @@ export interface LayoutProps {
 }
 
 /**
- * The layouts of a page, outermost first (E35): `Show.layout = AppLayout` or `[AppLayout, SettingsLayout]`.
+ * The layouts of a page, outermost first: `Show.layout = AppLayout` or `[AppLayout, SettingsLayout]`.
  * A layout that the next page has too stays mounted — its state (and scroll position) survives the navigation.
  * `null` (or `[]`): no layout, not even the app's default. Check one with `satisfies PageLayout`.
  */
@@ -31,7 +31,7 @@ type ViewAction = { handle: (...args: never[]) => unknown };
 type ViewPropsOf<C extends ViewAction> = [PageProps<C>] extends [never] ? IslandProps<C> : PageProps<C>;
 
 /**
- * What a view reloads when Back/Forward shows it from memory (E58) — checked against its controller's props:
+ * What a view reloads when Back/Forward shows it from memory — checked against its controller's props:
  * `Show.revalidateOnBack = ['activity'] as const satisfies RevalidateOnBack<ShowUserProfileController>`. `true`: all of
  * them; a list: those (an `optional()`/`defer()` prop too); `false` or nothing: none — Back shows what memory has, as it was.
  * For pages, layers and islands alike.
@@ -42,22 +42,22 @@ export type RevalidateOnBack<C extends ViewAction> = boolean | readonly (keyof V
 export type PageComponent = ComponentType<any> & {
   layout?: PageLayout;
   ssr?: PageSsr;
-  /** How the view looks when it is a layer (E53): `'modal'` (the default), `'slideover'`, or a frame of its own. */
+  /** How the view looks when it is a layer: `'modal'` (the default), `'slideover'`, or a frame of its own. */
   layer?: PageLayer;
   /**
-   * What reloads when Back/Forward shows the view from memory (E58): `true`, some props, or (the default) none — shown at once,
+   * What reloads when Back/Forward shows the view from memory: `true`, some props, or (the default) none — shown at once,
    * then reloaded in the background without a progress bar. See {@link RevalidateOnBack}.
    */
   revalidateOnBack?: boolean | readonly string[];
   /**
-   * What an instant visit shows before the view's answer lands (E64): `Show.placeholder = ShowPlaceholder` — a skeleton, with
+   * What an instant visit shows before the view's answer lands: `Show.placeholder = ShowPlaceholder` — a skeleton, with
    * what the link hands it (`<Link instant={{ name }}>`), typed by the controller: `satisfies Placeholder<ShowUserProfileController>`.
    */
   placeholder?: ComponentType<any>;
 };
 
 /**
- * The placeholder of controller `C`'s view (E64): a component taking what `C` declares a link may hand it —
+ * The placeholder of controller `C`'s view: a component taking what `C` declares a link may hand it —
  * `declare readonly instant: { name: string }` — never the page's props (it renders before they arrive).
  * `Show.placeholder = ShowPlaceholder satisfies Placeholder<ShowUserProfileController>`.
  */
@@ -99,8 +99,8 @@ function checkLayout(name: string, layout: unknown): void {
 
 export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
   /**
-   * The client features its views use (E70) — `<MarmeonApp>` attaches them to its navigator. `resolveModulePages` brings
-   * `revalidateOnBack` (E58): any of its views may declare it, and an app without the resolver carries none of its code.
+   * The client features its views use — `<MarmeonApp>` attaches them to its navigator. `resolveModulePages` brings
+   * `revalidateOnBack`: any of its views may declare it, and an app without the resolver carries none of its code.
    */
   readonly features?: readonly Feature[];
 };
@@ -126,7 +126,7 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
   const resolve = async (name: string): Promise<PageComponent> => {
     const load = pages.get(name);
     if (!load && name === ERROR_PAGE) return (await import('./error-page.tsx')).ErrorPage; // built-in until the app brings its own (a chunk of its own)
-    if (!load && name === LAYER_BACKDROP) return Backdrop; // the neutral surface under a layer whose base is not shown (E54)
+    if (!load && name === LAYER_BACKDROP) return Backdrop; // the neutral surface under a layer whose base is not shown
     if (!load) {
       const [module, ...rest] = name.split('/');
       throw new Error(

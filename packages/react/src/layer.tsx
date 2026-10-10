@@ -3,8 +3,8 @@ import type { PageObject } from '@marmeon/http/page';
 import { createContext, useContext, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 
 /*
- * Layers (E53) as views see them: `useLayer()` and the types of a layer's frame. Small and static — a view that may be a layer
- * imports it. The layer stack that renders them (`layer-stack.tsx`) loads with the first layer (E71), the default frame
+ * Layers as views see them: `useLayer()` and the types of a layer's frame. Small and static — a view that may be a layer
+ * imports it. The layer stack that renders them (`layer-stack.tsx`) loads with the first layer, the default frame
  * (`LayerDialog`, `layer-dialog.tsx`) with it unless the app imports it for a frame of its own.
  */
 
@@ -26,7 +26,7 @@ export interface LayerFrameProps {
  */
 export type LayerFrame = ComponentType<LayerFrameProps>;
 
-/** A view's look as a layer (E53): `Edit.layer = 'slideover'`, or a frame of its own. Default: the app's frame, a modal. */
+/** A view's look as a layer: `Edit.layer = 'slideover'`, or a frame of its own. Default: the app's frame, a modal. */
 export type PageLayer = LayerVariant | LayerFrame;
 
 /** What `useLayer()` tells a view — the layer it is rendered in, or that it is none (`isLayer: false`, a page). */
@@ -91,7 +91,7 @@ export interface UseLayerOptions {
 }
 
 /**
- * The layer around this view (E53) — `close()` it, react to it closing (`onClose`), know how deep it is, or whether the
+ * The layer around this view — `close()` it, react to it closing (`onClose`), know how deep it is, or whether the
  * view is a layer at all (`isLayer`: a view can be a page and a layer).
  *
  * ```tsx

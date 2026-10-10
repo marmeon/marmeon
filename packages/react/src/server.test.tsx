@@ -76,7 +76,7 @@ describe('createSsrRenderer', () => {
     expect(html).toBe('<p>Hello <!-- -->Ada<!-- --> at <!-- -->/hi</p>');
   });
 
-  it('counter-check: renders a page that builds reloads and optimistic patches while rendering (W9 step 10b: it failed with R11)', async () => {
+  it('renders a page that builds reloads and optimistic patches while rendering', async () => {
     const render = createSsrRenderer(resolve);
     const { html } = await renderAll(render, { component: 'greeting/Inbox', props: { count: 3 }, url: '/inbox' });
     expect(html).toBe('<p>3<!-- --> <!-- -->1<!-- --> <!-- -->object</p>');
@@ -141,7 +141,7 @@ describe('<Pagination>', () => {
     expect(html).toContain('rel="prev"');
   });
 
-  it('takes its links from the parsed query (E55): the rest of it kept, its defaults left out — the address is never parsed', async () => {
+  it('takes its links from the parsed query: the rest of it kept, its defaults left out — the address is never parsed', async () => {
     // The URL says one thing, the page's parsed query another: the links follow the query (the schema's view of the URL).
     const { html } = await renderAll(createSsrRenderer(resolve), {
       component: 'people/List',
@@ -154,7 +154,7 @@ describe('<Pagination>', () => {
     expect(hrefs, 'the links parsed the address').toEqual(['/people?q=ada&per_page=50', '/people?q=ada&per_page=50', '/people?q=ada&page=3&per_page=50', '/people?q=ada&page=3&per_page=50']);
   });
 
-  it('speaks English by itself — the page’s language comes from the app (labels, E38), whatever the page’s locale', async () => {
+  it('speaks English by itself — the page’s language comes from the app (labels), whatever the page’s locale', async () => {
     const english = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'de' });
     expect(english.html).toContain('aria-label="Pagination"');
     expect(english.html).toContain('Next ›');
@@ -177,7 +177,7 @@ describe('<Pagination>', () => {
   });
 });
 
-describe('streaming SSR (E37)', () => {
+describe('streaming SSR', () => {
   /** A promise the test settles — what a slow part of a page waits for. */
   function later<T>() {
     let settle!: (value: T) => void;
@@ -310,7 +310,7 @@ describe('streaming SSR (E37)', () => {
     expect(onWarning).toHaveBeenCalledWith(expect.stringContaining('<Head title="Late"> in [app/LateHead] rendered after the document head was sent'));
   });
 
-  it('takes no development branch without NODE_ENV — production (E201, E217): no late-<Head> warning, short codes — SSR reads NODE_ENV at run time', async () => {
+  it('takes no development branch without NODE_ENV — production: no late-<Head> warning, short codes — SSR reads NODE_ENV at run time', async () => {
     vi.stubEnv('NODE_ENV', undefined);
     try {
       const slow = later<string>();

@@ -43,7 +43,7 @@ describe('@marmeon/react in the browser', () => {
     expect(modules).toEqual(expect.arrayContaining(['react/src/app.tsx', 'http/src/client/navigation.ts']));
   }, 30_000);
 
-  it('the table subpaths (W9 step 6): the table’s browser half and the client core, no server code — TanStack only in the bridge, and only as an import', async () => {
+  it('the table subpaths: the table’s browser half and the client core, no server code — TanStack only in the bridge, and only as an import', async () => {
     const core = (id: string) => id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts';
     const table = await bundled(fileURLToPath(new URL('./table.ts', import.meta.url)));
     expect(table.modules.filter((id) => !id.startsWith('react/src/') && !id.startsWith('table/src/client/') && !core(id))).toEqual([]);

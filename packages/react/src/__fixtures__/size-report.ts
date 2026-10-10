@@ -1,15 +1,15 @@
 /**
- * `pnpm size` — where the bytes of the client core and the React adapter go (Wave 5c, E75): the scenarios of
+ * `pnpm size` — where the bytes of the client core and the React adapter go: the scenarios of
  * `bundle-size.test.ts` and the real apps' client builds, every byte attributed to its module by source map — and the
  * marginal cost of core + adapter (gzip with and without their bytes), which module granularity does not distort.
  * Checks the apps' marginal cost of core + adapter against `appsGzipKB` in `packages/react/size-budget.json` (the scenarios are
  * `pnpm test`'s job). Marginal, not the attributed share: the share is a scaled stand-alone gzip per module, which grows with
- * the number of modules (Wave 5c step 2: +2.96 KB attributed for +1.05 KB real) — it would punish splitting the core up.
+ * the number of modules (+2.96 KB attributed for +1.05 KB real) — it would punish splitting the core up.
  * Measures `dist/` — run `pnpm build` first. Nothing is written.
  *
  *   pnpm size                 # scenarios and apps
  *   pnpm size web-app         # one app (or scenario), with every module
- *   MARMEON_SIZE_BUDGET=update pnpm size   # lower the apps' limits to the measured size + 0.5 KB (E186), never raise one
+ *   MARMEON_SIZE_BUDGET=update pnpm size   # lower the apps' limits to the measured size + 0.5 KB, never raise one
  */
 import { join } from 'node:path';
 import {
@@ -36,7 +36,7 @@ const budget = readBudget();
 function groupOf(module: string): string {
   if (/^http\/(dist|src)\/(client\/|page\.)/.test(module) || /^router\/(dist|src)\/url\./.test(module)) return 'client core';
   if (module.startsWith('react/')) return 'React adapter';
-  // The table's browser half (W9 step 6): framework code an app has with `useTable`.
+  // The table's browser half: framework code an app has with `useTable`.
   if (/^table\/(dist|src)\/client\//.test(module)) return 'table (client)';
   if (module.startsWith('i18n/')) return 'i18n';
   if (/^node_modules\/(react-dom|scheduler)\//.test(module)) return 'react-dom';
@@ -98,7 +98,7 @@ for (const app of APPS) {
   const marginal = print(app, `${app}${line ? ` (core + adapter marginal limit ${line.limit})` : ''}`, bundle, { top });
   if (!line) continue;
   const size = kb(marginal);
-  // update: a saving lowers the limit to the size + the reserve (E186); a size over its limit stays red — never raised.
+  // update: a saving lowers the limit to the size + the reserve; a size over its limit stays red — never raised.
   const lower = update ? loweredLimit(size, line) : undefined;
   if (lower !== undefined) lowered[app] = lower;
   const problem = budgetProblem(`${app}: core + adapter (marginal)`, size, lower === undefined ? line : { ...line, limit: lower });

@@ -3,7 +3,7 @@ import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAc
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 import { useIslandScope } from './island-scope.ts';
 
-/** Names that look like something never to keep (E63): a password, a token, a secret, a card. */
+/** Names that look like something never to keep: a password, a token, a secret, a card. */
 type LooksSensitive<K extends string> = Lowercase<K> extends `${string}${'password' | 'secret' | 'token' | 'card' | 'cvc'}${string}` ? true : false;
 
 type IsPassword<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
@@ -29,24 +29,20 @@ export function useRememberStore(key: string): { store: Remembered | undefined; 
   const navigator = useRouterContext().navigator();
   const entry = useContext(RegionOwnerContext)?.entry;
   const island = useIslandScope();
-  // The feature attaches on first use (E70): an app that remembers nothing carries none of it.
+  // The feature attaches on first use: an app that remembers nothing carries none of it.
   return { store: entry ? navigator?.use(remember).of(entry) : undefined, key: island === undefined ? key : `island:${island}:${key}` };
 }
 
 /**
- * State that survives Back/Forward (E63) — `useState`, remembered with the history entry: leave the page, come back, and it
- * is as it was (an open tab, a filter, a draft). In memory only (E36): never in `history.state` or any storage — a reload,
- * signing in or out, a new build or a language switch start over, and so does an entry the cache let go of. Per history
- * entry: the page's, or the layer's it is rendered in; an island's are its own.
+ * State that survives Back/Forward — `useState`, remembered with the history entry (the page's, the layer's it is rendered
+ * in, or an island's own). In memory only: never in `history.state` or any storage.
  *
  * ```tsx
  * const [tab, setTab] = useRemember('links-tab', 'links');
  * ```
  *
- * Never sensitive data: fields named like a password, token, secret or card (`/password|secret|token|card|cvc/i`) and files are
- * left out of what is kept, at any depth — a key named so is a compile error unless `{ sensitive: true }` (never for passwords).
- * Signing in or out in another tab of the browser loads this one again (tab sync, on by default), and its remembered
- * state goes with it.
+ * Never sensitive data: fields named like a password, token, secret or card and files are left out at any depth — a key
+ * named so is a compile error unless `{ sensitive: true }` (never for passwords). See docs/navigation.md#remembered-state.
  */
 export function useRemember<T, const K extends string = string>(key: RememberKey<K>, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>];
 export function useRemember<T, const K extends string = string>(key: SensitiveKey<K>, initial: T | (() => T), options: UseRememberOptions): [T, Dispatch<SetStateAction<T>>];

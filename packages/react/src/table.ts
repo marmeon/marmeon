@@ -1,12 +1,6 @@
 /**
- * `@marmeon/react/table` — the headless table of `@marmeon/table` for React (W9 step 6, E183): `useTable(props.members)` gives a
- * component what it needs to render a server-driven table its own way — the visible columns with their header attributes, the rows,
- * sorting, filters, search and pages (visits of the page's URL), the selection, row and bulk actions, exports and the text of a live
- * region. It renders nothing itself.
- *
- * A subpath of its own with `@marmeon/table` as an optional peer: an app gets it only when it installs the table package and
- * imports this module — `@marmeon/react` itself never imports it, so discovery never pulls the table into a React app that has
- * no tables (E76, the W5.9 lesson with i18n). Its code is in the bundle of the page that imports it, nowhere else.
+ * `@marmeon/react/table` — the headless table of `@marmeon/table` for React. A subpath of its own with `@marmeon/table` as an
+ * optional peer: `@marmeon/react` itself never imports it, so an app without tables never bundles it.
  */
 import { exportUrl, keyOf, sortUrl, tableStatus, TableController } from '@marmeon/table/client';
 import type {
@@ -31,7 +25,7 @@ import { RegionOwnerContext, useRouterContext } from './app.tsx';
 export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterOf, RowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@marmeon/table/client';
 
 /**
- * The words of a table — English by default, the app's through its translations (E38): `labels: { column: (name) => t(`column.${name}`),
+ * The words of a table — English by default, the app's through its translations: `labels: { column: (name) => t(`column.${name}`),
  * status: (info) => t('status', info), … }`.
  */
 export interface TableLabels<T extends AnyTableData> {
@@ -185,9 +179,8 @@ const noSubscription = () => () => {};
  * <p {...table.statusProps}>{table.status}</p>
  * ```
  *
- * Sorting, filters, search and pages are visits of the page's URL (query state, E55) — the server parses them again, strictly; the
- * selection lives with the history entry in memory (a sort, a filter or a page starts with none, Back brings it back; a sign-out
- * empties it); an action is an action request (E59), after which the table's prop is reloaded and replaces what it showed.
+ * Sorting, filters, search and pages are visits of the page's URL; the selection lives in memory with the history entry
+ * (a sign-out empties it). See docs/tables.md#in-the-browser.
  */
 export function useTable<T extends AnyTableData>(data: T, options: UseTableOptions<T> = {}): Table<T> {
   const router = useRouterContext();

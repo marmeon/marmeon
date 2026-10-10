@@ -1,5 +1,5 @@
 /*
- * @marmeon/react — the default look of the framework's components (E202): the form of a link that sends (<Link> to an action),
+ * @marmeon/react — the default look of the framework's components: the form of a link that sends (<Link> to an action),
  * the layer frame (LayerDialog), the confirmation dialog (ConfirmDialog), the dialogs of a failed visit (VisitFailure) and the
  * built-in error page. Import it once, in the
  * app's client entry: `import '@marmeon/react/styles.css';` — a stylesheet of the app's origin, allowed under a strict
@@ -15,7 +15,7 @@
   display: contents;
 }
 
-/* The layer frame: a native <dialog>, opened modally (E53). */
+/* The layer frame: a native <dialog>, opened modally. */
 :where(.marmeon-layer) {
   padding: 0;
   border: none;
@@ -55,7 +55,7 @@
   border: none;
 }
 
-/* The confirmation dialog (E64). */
+/* The confirmation dialog. */
 :where(.marmeon-confirm) {
   padding: 1.25rem 1.5rem;
   border: none;

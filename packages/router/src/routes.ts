@@ -80,11 +80,11 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
 /** What the controller of route `N` answers with (awaited) — `never` for a closure. */
 type AnswerOf<N> = Instance<Entry<N> extends { readonly controller: infer C } ? C : never> extends { handle: (...args: never[]) => infer R } ? Awaited<R> : never;
 
-/** Whether route `N` is an island: its controller answers with `this.island(…)` (E48). */
+/** Whether route `N` is an island: its controller answers with `this.island(…)`. */
 type IsIsland<N> = [Extract<AnswerOf<N>, RegionResultMarker>] extends [never] ? false : true;
 
 /**
- * Names of island routes the browser may know — what `<Island route>` takes (E48): GET routes whose controller answers
+ * Names of island routes the browser may know — what `<Island route>` takes: GET routes whose controller answers
  * with `this.island(…)`. Any string while no routes are generated.
  */
 export type IslandRouteName = Registered extends true ? { [N in BrowserRouteName]: IsIsland<N> extends true ? N : never }[BrowserRouteName] : string;
@@ -113,10 +113,10 @@ export type CheckPageRouteName<N extends string> = string extends N
       : N
     : CheckBrowserRouteName<N>;
 
-/** Whether route `N` can open a layer: its controller answers with `this.view(…).layer(…)` (E53) — in some branch, at least. */
+/** Whether route `N` can open a layer: its controller answers with `this.view(…).layer(…)` — in some branch, at least. */
 type IsLayer<N> = [Extract<AnswerOf<N>, LayerResultMarker>] extends [never] ? false : true;
 
-/** Names of layer routes the browser may know — what `<Link layer>` opens (E53). Any string while no routes are generated. */
+/** Names of layer routes the browser may know — what `<Link layer>` opens. Any string while no routes are generated. */
 export type LayerRouteName = Registered extends true ? { [N in BrowserRouteName]: IsLayer<N> extends true ? N : never }[BrowserRouteName] : string;
 
 /**
@@ -143,7 +143,7 @@ export type LayerBaseName = Registered extends true
   : string;
 
 /**
- * `N` when it can be a layer's base (E53); otherwise a message: an island, a route of another method, or no route at all
+ * `N` when it can be a layer's base; otherwise a message: an island, a route of another method, or no route at all
  * (with "did you mean").
  */
 export type CheckLayerBase<N extends string> = string extends N
@@ -189,7 +189,7 @@ export type RouteQueryOf<N extends string> = true extends IsUnion<N> ? never : C
 export type QueryFields<Q> = { readonly [K in keyof Q]?: (Q[K] extends readonly (infer E)[] ? readonly E[] : Q[K]) | undefined };
 
 /**
- * The query a URL of route `N` may carry (E55): with a query schema, its fields — a wrong key or value is a compile
+ * The query a URL of route `N` may carry: with a query schema, its fields — a wrong key or value is a compile
  * error, renaming a field breaks every link that sets it; without one (or for a name that is not one literal), any.
  * Values are written with `String()`, lists as repeated keys — the server parses them back.
  */

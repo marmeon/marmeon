@@ -27,16 +27,10 @@ export interface RoutesModuleOptions {
 }
 
 /**
- * `virtual:marmeon/routes` — the browser's route manifest (E57), from `.marmeon/routes.json`:
- *
- * - **client build:** only the names client code writes out (`<Link route>`, `route()` of `useRoute()`,
- *   `useForm(name, …)` …), collected in `transform` over exactly the modules the build loads and put in at
- *   `renderChunk`. A route only the server links to (`redirect().route()`) never reaches the bundle.
- * - **SSR build:** every route the browser may learn — server code, nothing leaks.
- * - **dev:** every route the browser may learn; the same collector runs, so a name built at runtime is an error in dev
- *   as in the build, and resolving a name the collector never saw warns that production lacks it.
- *
- * `.internal()` routes, API routes and `clientRoutes.except` are never in it — naming one in client code fails.
+ * `virtual:marmeon/routes` — the browser's route manifest, from `.marmeon/routes.json`. A client build carries only the
+ * names collected in `transform` over the modules it loads (put in at `renderChunk`); the SSR build and dev carry every
+ * route the browser may learn. In dev the same collector runs, so a name built at runtime is an error there too, and
+ * resolving a name it never saw warns that production lacks it. See docs/urls.md#which-routes-the-browser-knows.
  */
 export function routesModule(options: RoutesModuleOptions = {}): Plugin {
   const sinks = options.sinks ?? ROUTE_SINKS;

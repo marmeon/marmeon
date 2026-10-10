@@ -60,13 +60,13 @@ type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf
 export type IslandElementProps<N extends string = string> = {
   /** An island route (its controller answers `this.island(…)`) — a page route is a compile error. */
   route: CheckIslandRouteName<N>;
-  /** Its first query, typed by its query schema (E55) — `useIsland().reload({ query })` changes it later. */
+  /** Its first query, typed by its query schema — `useIsland().reload({ query })` changes it later. */
   query?: QueryParams<N>;
   /** Shown until the island is there. */
   fallback?: ReactNode;
   /**
    * Shown when the island's route turns the user away — its middleware redirects (not signed in, not verified), or it
-   * answers 401/403. Default: nothing. The page never navigates because of an island (E52).
+   * answers 401/403. Default: nothing. The page never navigates because of an island.
    */
   unauthorized?: ReactNode;
   /** Shown when it failed (a 5xx, offline, an error while rendering it) — `retry` asks again. Default: a short notice. */
@@ -103,7 +103,7 @@ const noSubscription = () => () => {};
 const noReload = () => Promise.resolve();
 
 /**
- * A part of the page that loads by itself — the view of another route (E48, E50): its own controller, middleware,
+ * A part of the page that loads by itself — the view of another route: its own controller, middleware,
  * authorization and query, reusable on any page.
  *
  * ```tsx
@@ -112,13 +112,8 @@ const noReload = () => Promise.resolve();
  * <Island route="dashboard.members" fallback={<WidgetSkeleton />} unauthorized={<p>Verify your address to see this.</p>} />
  * ```
  *
- * On a full page load the server resolves it while the page streams (E49) — in-process, through its route's middleware,
- * read-only — behind a Suspense boundary: the page does not wait for it, and it arrives in the same response with its
- * data, so the browser shows it without a request. After a client-side visit it loads in the browser (parallel to the
- * other islands; two identical ones share one request). Either way it lives in the memory of the page's history entry:
- * Back/Forward shows it again without a request, and nothing of it goes into `history.state`. A redirect, 401 or 403 of
- * its route shows `unauthorized`, a failure `error` — the page never navigates, and the other islands stay. Islands are
- * never prefetched (E52); `load="visible"` ones always load in the browser. Links inside navigate the page (E51).
+ * It lives in the memory of the page's history entry — nothing of it goes into `history.state` — and is never prefetched.
+ * Links inside navigate the page. See docs/deferred-props.md#how-islands-load.
  */
 export function Island<const N extends BrowserRouteNameInput>(props: IslandElementProps<N>) {
   const manifest = useContext(RoutesContext);
@@ -153,14 +148,14 @@ export function Island<const N extends BrowserRouteNameInput>(props: IslandEleme
 
 type BodyProps = IslandElementProps & { url: string; scriptId: string; streamed: boolean; onShown: () => void };
 
-/** On the server: the island as the page's request resolved it (E49). In the browser: its region. */
+/** On the server: the island as the page's request resolved it. In the browser: its region. */
 function IslandBody(props: BodyProps) {
   const ssr = useContext(SsrContext);
   return ssr ? <ServerIsland {...props} ssr={ssr} /> : <BrowserIsland {...props} />;
 }
 
 /**
- * The island on the server (E49): its request, resolved in-process, then its view — and, in the same boundary, what the
+ * The island on the server: its request, resolved in-process, then its view — and, in the same boundary, what the
  * browser needs to show it without a request: a data block with the region object, or with only the outcome
  * (`unauthorized`, `forbidden`: no data ever leaves). Left to the browser (`browser`): the fallback, and no data block.
  */
@@ -202,7 +197,7 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
   const region = useMemo(() => {
     if (!navigator || !owner) return null;
     const result = text === undefined ? undefined : parseResult(text);
-    // The islands feature attaches with the first island (E70) — in the browser only (BrowserIsland never renders on the server).
+    // The islands feature attaches with the first island — in the browser only (BrowserIsland never renders on the server).
     return navigator.use(islands).region(url, { owner, initial: result && regionInitial(result) });
   }, [navigator, owner, url, text]);
   // Hydrating, the markup is the server's: what it streamed (or loading, for an island it left to the browser).
@@ -387,7 +382,7 @@ export interface IslandState<C extends IslandAction = IslandAction> {
   /** Asks the server again: the same query, another one, or some props — only this island. */
   reload(options?: IslandReloadOptions<C>): Promise<void>;
   /**
-   * A patch of the island's props for an action (E59) — shown at once, rolled back unless it succeeds; typed against its props:
+   * A patch of the island's props for an action — shown at once, rolled back unless it succeeds; typed against its props:
    * `submit({ optimistic: island.optimistic((props) => ({ entries: [] })) })`.
    */
   optimistic<R extends object>(patch: ((props: IslandPropsOf<C>) => R) & NoInfer<CheckedPatch<R, IslandPropsOf<C>>>): OptimisticUpdate;
@@ -400,7 +395,7 @@ function onServer(): never {
 }
 
 /**
- * The island around this component (E51) — inside the view an `<Island>` renders:
+ * The island around this component — inside the view an `<Island>` renders:
  *
  * ```tsx
  * export default function RecentSignIns({ entries }: IslandProps<ShowRecentSignInsController>) {

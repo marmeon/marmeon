@@ -150,7 +150,7 @@ async function start() {
 /** React reveals streamed boundaries in batches (up to ~300 ms after the last one) — wait for that, then for what follows. */
 const revealed = () => act(async () => void (await new Promise((done) => setTimeout(done, 350))));
 
-describe('islands in the SSR stream (E49)', () => {
+describe('islands in the SSR stream', () => {
   it('renders each island in the HTML with its data — the outcome only for a refused one', async () => {
     const html = await serve({ component: 'app/Dashboard', props: {}, url: '/dashboard', version: null });
     expect(asked.sort()).toEqual(['/islands/broken', '/islands/members', '/islands/sign-ins?limit=5', '/islands/stale']);
@@ -179,7 +179,7 @@ describe('islands in the SSR stream (E49)', () => {
     expect($('[data-island="stale"]')!.getAttribute('data-status')).toBe('ready');
   });
 
-  it('counter-check: without the data blocks every island is a request of its own after hydrating', async () => {
+  it('without the data blocks every island is a request of its own after hydrating', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await serve({ component: 'app/Dashboard', props: {}, url: '/dashboard', version: null });
     for (const script of [...document.querySelectorAll('script[id^="marmeon-island-"]')]) script.remove();
@@ -187,7 +187,7 @@ describe('islands in the SSR stream (E49)', () => {
     expect(requests.map((url) => url.split('?')[0]).sort()).toEqual(['/islands/broken', '/islands/members', '/islands/sign-ins', '/islands/stale']);
   });
 
-  it('counter-check: a re-render of the page while an island still streams does not make the browser load it again', async () => {
+  it('a re-render of the page while an island still streams does not make the browser load it again', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const page: PageObject = { component: 'app/Counter', props: {}, url: '/dashboard', version: null };
     let release!: () => void;
@@ -242,7 +242,7 @@ describe('islands in the SSR stream (E49)', () => {
   });
 });
 
-describe('deferred props in the SSR stream (E49)', () => {
+describe('deferred props in the SSR stream', () => {
   const profile: PageObject = { component: 'app/Profile', props: { name: 'Ada' }, url: '/users/1', version: null, deferredProps: { default: ['activity'] } };
 
   it('streams the group with the page and lands it without a request', async () => {
@@ -256,7 +256,7 @@ describe('deferred props in the SSR stream (E49)', () => {
     expect(reported(errors)).toEqual([]);
   });
 
-  it('counter-check: without streamedProps the browser asks for the group', async () => {
+  it('without streamedProps the browser asks for the group', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await serve(profile, { complete: false });
     expect(JSON.parse($(`#${PAGE_SCRIPT_ID}`)!.textContent!).streamedProps).toBeUndefined();

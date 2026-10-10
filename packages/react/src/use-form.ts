@@ -14,7 +14,7 @@ type Field<F> = keyof F & string;
 type Primitive = string | number | boolean | bigint | symbol | null | undefined | Date | Blob;
 
 /**
- * The paths into a form's data (E64) — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Five levels
+ * The paths into a form's data — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Five levels
  * deep at most.
  */
 export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends 5
@@ -25,7 +25,7 @@ export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends
       ? `${number}` | `${number}.${FieldPath<Item, [...Depth, 0]>}`
       : { [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, 0]> extends infer Deeper extends string ? `${K}.${Deeper}` : never) }[keyof F & string];
 
-/** What a remembered form may not keep (E63) — in `remember.include`, the message for a password field. */
+/** What a remembered form may not keep — in `remember.include`, the message for a password field. */
 export type PasswordNeverRemembered = 'password fields are never remembered — they stay in the field until the page is left';
 
 /** The fields of a form whose names look sensitive (a token, a secret, a card) — what `remember.include` may name. Never passwords. */
@@ -38,7 +38,7 @@ type SensitiveFormField<F> = keyof {
 } &
   string;
 
-/** How a form remembers its input across Back/Forward (E63). */
+/** How a form remembers its input across Back/Forward. */
 export interface RememberFormOptions<F> {
   /** The key it is kept under in its history entry — default `form:<route name>` (a route form). */
   key?: string;
@@ -49,27 +49,24 @@ export interface RememberFormOptions<F> {
   include?: readonly (PasswordNeverRemembered | SensitiveFormField<F>)[];
 }
 
-/** How a form behaves beyond its data (E64). */
+/** How a form behaves beyond its data. */
 export interface FormOptions<F = Record<string, unknown>> {
   /**
-   * The navigation guard: while the form is dirty, leaving asks first — a visit elsewhere, Back/Forward, closing its layer —
-   * and closing the tab gets the browser's question. `true`, or the question to ask. Its own submit passes; after it
-   * succeeded, what was sent is where the form starts over (not dirty any more).
+   * The navigation guard: while the form is dirty, leaving asks first. `true`, or the question to ask. Its own submit
+   * passes. See docs/forms.md#unsaved-changes.
    */
   guard?: boolean | string;
   /**
-   * Remember the input across Back/Forward (E63): leave the page (or close its layer by Back), come back, and what was typed —
-   * and the errors shown — is still there; the form is still dirty (its guard still asks). In memory only, per history entry:
-   * a reload, signing in or out, a new build start over. Password-, token-, secret- and card-like fields and files are never
-   * kept (`include` lets the non-password ones in). The key the input is kept under (a form by controller needs one), or the options.
+   * Remember the input across Back/Forward, in memory only, per history entry — the key it is kept under (a form by
+   * controller needs one), or the options. Password-, token-, secret- and card-like fields and files are never kept
+   * (`include` lets the non-password ones in). See docs/forms.md#remembering-input.
    */
   remember?: string | RememberFormOptions<F>;
 }
 
 /**
- * Live validation of a route form (E62): its fields checked against the server's request schema while they are filled in — the
- * route's middleware, `authorize` and schema run, its controller never does. Only touched fields are checked; password fields
- * are never sent (they are checked when the form is sent); errors land in `errors`, `validating(field)` tells a check is under way.
+ * Live validation of a route form: its touched fields checked against the server's request schema while they are filled
+ * in. Password fields are never sent. See docs/forms.md#validating-while-typing.
  */
 export interface LiveValidationSetting<F> {
   /**
@@ -83,16 +80,16 @@ export interface LiveValidationSetting<F> {
   fields?: readonly (PasswordNeverLive | (keyof { [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true } & string))[];
 }
 
-/** How a route form behaves beyond its data: the guard (E64) — and live validation (E62), which needs its route's URL. */
+/** How a route form behaves beyond its data: the guard — and live validation, which needs its route's URL. */
 export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
   /** Check fields against the server while they are filled in: `true`, or when and which (see {@link LiveValidationSetting}). */
   validate?: true | LiveValidationSetting<F>;
-  /** Remember the input across Back/Forward (E63) — `true` (kept as `form:<route name>`), a key, or the options. See {@link FormOptions.remember}. */
+  /** Remember the input across Back/Forward — `true` (kept as `form:<route name>`), a key, or the options. See {@link FormOptions.remember}. */
   remember?: true | string | RememberFormOptions<F>;
 }
 
 /**
- * How a form is sent — the visit's callbacks with Inertia's meanings (E44): `onError` gets the *validation* errors
+ * How a form is sent — the visit's callbacks with Inertia's meanings: `onError` gets the *validation* errors
  * (here the first message per field), `onException` a request that failed (offline, 5xx — the app also shows it over
  * the page), and `onFinish` runs after every submit.
  */
@@ -148,21 +145,21 @@ export interface FormField {
   readonly name: string;
 }
 
-/** A form for a named route (E40): it knows method, URL and fields — `form.submit()`. */
+/** A form for a named route: it knows method, URL and fields — `form.submit()`. */
 export interface RouteForm<F> extends FormState<F> {
   /** Sends the data with the route's method to its URL. */
   submit(options?: FormSubmitOptions): Promise<void>;
   readonly method: VisitMethod;
   readonly url: string;
   /**
-   * Live validation (E62, `validate` option): checks the touched fields now — when `field` was changed (so in `onBlur`:
+   * Live validation (`validate` option): checks the touched fields now — when `field` was changed (so in `onBlur`:
    * tabbing through an untouched field asks nothing). Without `field`: every touched one. Without the option: nothing.
    */
   validate<const K extends string>(field?: CheckLiveField<F, K>): void;
   /** Whether a live check of `field` (or of any field) is under way — for a spinner, `aria-busy`. */
   validating<const K extends string>(field?: CheckLiveField<F, K>): boolean;
   /**
-   * An upload field (W6.9, its rule is `upload()`), bound for `<FileInput field={form.field('avatar')} />`. The field's value is
+   * An upload field (its rule is `upload()`), bound for `<FileInput field={form.field('avatar')} />`. The field's value is
    * then the {@link Upload} — `form.data.avatar?.uploading`, `.progress`, `.preview`, `.error`, `.cancel()` — and goes to the
    * server as its token.
    */
@@ -186,7 +183,7 @@ type CheckFormRoute<N extends string> =
       : N
     : CheckBrowserRouteName<N>;
 
-/** What a route form with required parameters says when they are left out — `useForm(name, initial)` (step 9's finding). */
+/** What a route form with required parameters says when they are left out — `useForm(name, initial)`. */
 type ParamsFirst<N extends string> = `'${N}' takes route parameters — pass them before the initial data: useForm('${N}', params, initial)`;
 
 /**
@@ -198,7 +195,7 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
   : [params: ParamsOf<N>, initial: RouteFormFields<N>] | [initial: ParamsFirst<N>];
 
 /**
- * Form state and submission, typed from the endpoint's request schema. By route name (E40), the form knows
+ * Form state and submission, typed from the endpoint's request schema. By route name, the form knows
  * method, URL and fields — from `bootstrap/routes.ts`:
  *
  * ```tsx
@@ -209,10 +206,7 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
  * ```
  *
  * Or by controller, sent to any URL: `useForm<UpdateUserProfileController>(initial)` and `form.put(url)`.
- *
- * The fields are the schema's *input* (what the browser sends), and the errors come
- * back from the server — a failed submit redirects back with `errors` in the page
- * props, without a reload and without losing what was typed.
+ * The fields are the schema's *input* (what the browser sends). See docs/forms.md#forms-by-route-name.
  */
 export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
 export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
@@ -235,7 +229,7 @@ export function useForm(...args: unknown[]): unknown {
   const { visit } = useRouterContext();
   const manifest = useContext(RoutesContext);
   const target = name === undefined ? undefined : resolveRoute(manifest, name, params);
-  // Remembered input (E63): what this history entry kept of the form, back where it was typed — sensitive fields never were.
+  // Remembered input: what this history entry kept of the form, back where it was typed — sensitive fields never were.
   const remember = rememberSetting(options.remember, name);
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');
   const kept = remember && store?.has(rememberKey) ? (store.get(rememberKey) as KeptForm | undefined) : undefined;
@@ -249,7 +243,7 @@ export function useForm(...args: unknown[]): unknown {
     setDefaults(data);
   }
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
-  // The navigation guard (E64), while dirty — its own submit passes it. A remembered input that differs is dirty, too.
+  // The navigation guard, while dirty — its own submit passes it. A remembered input that differs is dirty, too.
   const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>(() => kept?.errors ?? {});
   const include = remember?.include.join(',');
@@ -316,7 +310,7 @@ export function useForm(...args: unknown[]): unknown {
   );
 
   const submit = (...submitArgs: unknown[]): Promise<void> => {
-    // A route form is listed while under way, by its name (`usePendingSubmissions(name)`: ghost rows, E59).
+    // A route form is listed while under way, by its name (`usePendingSubmissions(name)`: ghost rows).
     if (target) return send(target.method as VisitMethod, target.url, { name, ...(submitArgs[0] as FormSubmitOptions | undefined) } as FormSubmitOptions);
     return send(submitArgs[0] as VisitMethod, submitArgs[1] as string, submitArgs[2] as FormSubmitOptions | undefined);
   };
@@ -368,7 +362,7 @@ export function useForm(...args: unknown[]): unknown {
 const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
 
-/** What a remembered form keeps (E63). */
+/** What a remembered form keeps. */
 interface KeptForm {
   readonly data: Record<string, unknown>;
   readonly errors: Partial<Record<string, string>>;
@@ -391,9 +385,9 @@ function isPending(pending: readonly string[], field?: string): boolean {
 }
 
 /**
- * The live validation of a route form (E62) — the core's `LiveValidation`, with its results merged into the form's errors:
+ * The live validation of a route form — the core's `LiveValidation`, with its results merged into the form's errors:
  * a checked field's message is replaced by what the server said now (or removed); fields not checked keep theirs. Its code
- * loads on the form's first use (E74): an app whose forms check nothing live never downloads it.
+ * loads on the form's first use: an app whose forms check nothing live never downloads it.
  */
 function useLiveValidation(
   target: { method: string; url: string } | undefined,

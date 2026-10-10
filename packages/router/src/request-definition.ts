@@ -14,16 +14,13 @@ export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardR
  * schema: (resolve) => (resolve(RegistrationMode).private ? privately : publicly),
  * ```
  *
- * Such a rule is part of the schema, so it runs on submit. **A live validation (E62) never runs a schema of another library**
- * (E206): the router cannot tell which of its checks ask the database, so a free and a taken value would get different answers
- * while the field is typed — it answers 204 without running it, unless the request says {@link RequestDefinition.live}.
- *
- * `rules` of @marmeon/validation need no factory: `r.string().unique(UserRepository, 'email')` gets the request's `resolve`
- * when it validates ({@link ValidationContext}) — and does not run in a live validation unless it says `.live()` (E197).
+ * **A live validation never runs a schema of another library** unless the request says {@link RequestDefinition.live}.
+ * `rules` of @marmeon/validation need no factory: they get `resolve` through {@link ValidationContext}.
+ * See docs/validation.md#other-libraries.
  */
 export type SchemaFactory<TSchema extends StandardSchemaV1> = (resolve: ClassResolver) => TSchema;
 
-/** What an invalid query field does — never a 422: links outlive their pages, and people type URLs (E56). */
+/** What an invalid query field does — never a 422: links outlive their pages, and people type URLs. */
 export interface QueryOptions {
   /**
    * `'fallback'` (the default): an invalid field takes its default, an unknown one is ignored. `'redirect'`: the same,
@@ -35,7 +32,7 @@ export interface QueryOptions {
 
 /**
  * What an endpoint accepts (REPR): the schema of its body, the schema of its query and who may call it.
- * Declared next to the controller and attached with `static request = …` (E13). Body and query never mix (E65):
+ * Declared next to the controller and attached with `static request = …`. Body and query never mix:
  * `schema` validates the body only — a GET has none, so a GET route takes `query` instead.
  */
 export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx = any, TQuery extends StandardSchemaV1 = any> {
@@ -47,7 +44,7 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
   /**
    * Runs after route binding, before validation; `false` answers 403 (or it throws its own `HttpError`).
    * Its context type is what the route must provide. `resolve` builds classes from the request's container
-   * scope — how `can(Policy, …)` of @marmeon/auth gets its policy without the router knowing a container (E28).
+   * scope — how `can(Policy, …)` of @marmeon/auth gets its policy without the router knowing a container.
    */
   readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
   /** Own messages for the framework's rules, Laravel's `messages()` — see {@link ValidationLabels}. */
@@ -55,26 +52,21 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
   /** Names of the fields in messages (`:attribute`), Laravel's `attributes()` — see {@link ValidationLabels}. */
   readonly attributes?: Readonly<Record<string, string>> | undefined;
   /**
-   * `true`: a live validation (E62) runs a body schema of **another library** too (Zod, ArkType …) — fail-closed without it
-   * (E206): such a schema answers 204 live without running, because the router cannot keep its database checks out (a `refine`
-   * that asks whether an address is taken would tell it to anyone typing one). Only for a schema none of whose checks tells
-   * something a submit would not. `rules` of @marmeon/validation always run live and decide per rule (`.live()`, E197).
+   * `true`: a live validation runs a body schema of **another library** too (Zod, ArkType …). Fail-closed without it: such a
+   * schema answers 204 live without running, because the router cannot keep its database checks out (a `refine` that asks
+   * whether an address is taken would tell anyone typing one). Only for a schema none of whose checks tells more than a submit.
    */
   readonly live?: boolean | undefined;
 }
 
 /**
  * How a request's validation messages read — Laravel's `messages()` and `attributes()` of a form request. Values are
- * translation keys (in the request's language — `trans()` keys) or plain texts:
+ * translation keys or plain texts. See docs/validation.md#messages.
  *
  * ```ts
  * messages:   { 'email.unique': 'profile.validation.email_taken', required: 'Fill this in.' },   // '<field>.<rule>' or '<rule>'
  * attributes: { email: 'profile.fields.email', 'links.*.url': 'link' },                          // '*' stands for one segment
  * ```
- *
- * A message names a rule of the framework: `<rule>` is the part after `marmeon.validation.` of the rule's key (`max` for
- * `marmeon.validation.max.string`). A message may use the rule's placeholders (`{attribute}`, `{max}` …). Messages of other
- * libraries, and those a rule was given itself, are left as they are — they only get the field's name for `{attribute}`.
  */
 export interface ValidationLabels {
   readonly messages?: Readonly<Record<string, string>> | undefined;
@@ -90,7 +82,7 @@ export interface ValidationContext {
   readonly resolve: ClassResolver;
   /** The request, for rules that depend on it (`unique(…, { ignore: (ctx) => ctx.user.id })`). */
   readonly ctx: HttpContext;
-  /** A live validation (E62): rules that ask something outside the value (the database) do not run, unless they say `.live()`. */
+  /** A live validation: rules that ask something outside the value (the database) do not run, unless they say `.live()`. */
   readonly live: boolean;
 }
 
@@ -114,7 +106,7 @@ type First<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: i
 
 /**
  * `TQuery` when it describes a query; otherwise the message the compiler shows as the expected type:
- * - total (E56): an empty query must be valid, so each field can fall back — never a 422;
+ * - total: an empty query must be valid, so each field can fall back — never a 422;
  * - string input: the URL has strings, so a number is parsed (`r.integer()` of @marmeon/validation takes its spelling);
  * - serializable output: what a link puts back into the URL (`String()`) must parse to the same value.
  */
@@ -143,7 +135,7 @@ export type CheckQuery<TQuery extends StandardSchemaV1> =
  *   handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) { ctx.body.name; }
  * }
  *
- * // A GET: the query, parsed — an invalid field falls back to its default (E56).
+ * // A GET: the query, parsed — an invalid field falls back to its default.
  * export const ListPeopleRequest = defineRequest({
  *   query: r.query({ sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1) }),
  * });
@@ -159,7 +151,7 @@ export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery e
   messages?: Readonly<Record<string, string>>;
   /** Names of the fields in messages: `{ email: 'profile.fields.email' }` ({@link ValidationLabels}). */
   attributes?: Readonly<Record<string, string>>;
-  /** A schema of another library runs in a live validation too (E206) — see {@link RequestDefinition.live}. */
+  /** A schema of another library runs in a live validation too — see {@link RequestDefinition.live}. */
   live?: boolean;
 }): RequestDefinition<TSchema, TCtx, TQuery> {
   return definition as RequestDefinition<TSchema, TCtx, TQuery>;
@@ -235,22 +227,17 @@ interface Translation extends TextKey {
 }
 
 /**
- * On an issue of a rule that does not run in a live validation (E197: `unique`, `exists`, async rules without `.live()`): a live
+ * On an issue of a rule that does not run in a live validation (`unique`, `exists`, async rules without `.live()`): a live
  * validation drops it even when the rule ran — the schema was called without the request's {@link ValidationContext}, say
  * inside another library's schema. Set by @marmeon/validation; a symbol: never serialized, never shown.
  */
 export const NOT_LIVE = Symbol.for('marmeon.validation.notLive');
 
 /**
- * A validation message by translation key, for schemas — a message function as `rules` of @marmeon/validation (and Valibot, Zod)
- * accept them: `r.string().custom(isSlug, translatable('teams.validation.slug', {}, 'Letters and dashes only.'))`. It leaves the
- * key on the issue, and the request's translator turns it into the request's language
- * ({@link ValidationError.translate}); without a translator, the issue keeps `fallback` (or the key).
- *
- * The message may name the field: `{attribute}` — its path (`password_confirmation` → "password confirmation", Laravel's
- * rule), or the request's {@link ValidationLabels.attributes}.
- *
- * Apps use the typed `trans()` of @marmeon/i18n. A plain string that is a known key works too, with any library.
+ * A validation message by translation key, as a message function for schemas:
+ * `r.string().custom(isSlug, translatable('teams.validation.slug', {}, 'Letters and dashes only.'))`. The request's translator
+ * shows it in the request's language; without one, the issue keeps `fallback` (or the key). Apps use the typed `trans()` of
+ * @marmeon/i18n. See docs/validation.md#messages.
  */
 export function translatable(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): (issue: object) => string {
   return (issue) => {
@@ -399,7 +386,7 @@ export interface ValidatedRequest {
 /**
  * Runs before a body schema validates the input (`router.beforeValidation(hook)`) — after `authorize`, for a submit and a live
  * validation alike. A hook may replace values of `input` with what the schema expects instead: @marmeon/storage puts the
- * verified upload in place of an upload token (W6.9), which needs the request (its session) that a schema never sees.
+ * verified upload in place of an upload token, which needs the request (its session) that a schema never sees.
  */
 export type ValidationHook = (input: Record<string, unknown>, context: ValidationHookContext) => void | Promise<void>;
 
@@ -413,7 +400,7 @@ export interface ValidationHookContext {
 /** How {@link validateRequest} runs. */
 export interface ValidateOptions {
   /**
-   * A live validation (E62): check these fields only — the body's issues outside them are dropped, and a valid result has no
+   * A live validation: check these fields only — the body's issues outside them are dropped, and a valid result has no
    * body (the controller does not run). A request without a body schema has nothing to check: 400.
    */
   readonly only?: readonly string[] | undefined;
@@ -430,7 +417,7 @@ export async function authorizeRequest(definition: RequestDefinition, ctx: HttpC
 
 /**
  * Runs a request definition: authorize (403), then parse the query (never fails — invalid fields fall back), then
- * validate the body (422). Body and query never mix (E65): `schema` sees `ctx.input()`, which is the body alone.
+ * validate the body (422). Body and query never mix: `schema` sees `ctx.input()`, which is the body alone.
  */
 export async function validateRequest(
   definition: RequestDefinition,
@@ -445,8 +432,8 @@ export async function validateRequest(
     return query ? { query } : {};
   }
   const schema: StandardSchemaV1 = typeof definition.schema === 'function' ? definition.schema(resolve) : definition.schema;
-  // E206: a live validation runs `rules` (which keep their database checks out, E197) — another library's schema only when the
-  // request opts in. Fail-closed: the router cannot see which of its checks ask the database, so it answers as for a valid field.
+  // A live validation runs `rules` (which keep their database checks out), another library's schema only when the request
+  // opts in. Fail-closed: the router cannot see which of its checks ask the database, so it answers as for a valid field.
   if (only && !definition.live && !runsLive(schema)) return query ? { query } : {};
   const input = await ctx.input();
   for (const hook of hooks) await hook(input, { ctx, schema, resolve });
@@ -455,7 +442,7 @@ export async function validateRequest(
   const labels: ValidationLabels = { messages: definition.messages, attributes: definition.attributes };
   if (only) {
     // The named fields' issues only — the others are not filled in yet (or never sent: passwords). No input goes back. And
-    // never what a rule that is not live found, should it have run (E197): free and taken values get the same answer.
+    // never what a rule that is not live found, should it have run: free and taken values get the same answer.
     const issues = (result.issues ?? []).filter((issue) => issueOfFields(issue, only) && !(issue as { [NOT_LIVE]?: boolean })[NOT_LIVE]);
     if (issues.length > 0) throw ValidationError.fromIssues(issues, {}, labels);
     return query ? { query } : {};
@@ -464,10 +451,10 @@ export async function validateRequest(
   return query ? { body: result.value, query } : { body: result.value };
 }
 
-/** The vendor of @marmeon/validation's rules — the only schemas a live validation runs without the request's `live: true` (E206). */
+/** The vendor of @marmeon/validation's rules — the only schemas a live validation runs without the request's `live: true`. */
 const LIVE_VENDOR = 'marmeon';
 
-/** Whether a live validation runs `schema` by itself: `rules` of @marmeon/validation, which decide per rule (E197). */
+/** Whether a live validation runs `schema` by itself: `rules` of @marmeon/validation, which decide per rule. */
 function runsLive(schema: StandardSchemaV1): boolean {
   return schema['~standard'].vendor === LIVE_VENDOR;
 }
@@ -477,7 +464,7 @@ export function nothingToValidate(): HttpError {
   return new HttpError(400, 'A live validation needs a route with a request schema: this route validates no body.');
 }
 
-/** A query, parsed against its schema (E56). */
+/** A query, parsed against its schema. */
 export interface ParsedQuery {
   /** The parsed query, defaults filled in — `ctx.query`. */
   readonly value: Record<string, unknown>;
@@ -507,10 +494,8 @@ export function queryInput(search: URLSearchParams): Record<string, string | str
 }
 
 /**
- * Parses a query against its schema — and never fails for what the URL holds (E56): a field the schema rejects is
- * taken out, and the rest is validated again, so it falls back to its default (by the issues' paths, so it works with
- * any Standard Schema library — at most twice per field). One value where the schema wants a list is tried as a list
- * of one first (`?tag=a` for `r.array(…)`). Keys the schema does not know are left out of {@link ParsedQuery.canonical}.
+ * Parses a query against its schema and never fails for what the URL holds: a field the schema rejects falls back to its
+ * default, found by the issues' paths so any Standard Schema library works. See docs/requests.md#how-a-query-is-parsed.
  *
  * Throws only for a schema that is not total — one an empty query fails (the types refuse it: `CheckQuery`).
  */

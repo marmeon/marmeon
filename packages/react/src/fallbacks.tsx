@@ -70,7 +70,7 @@ function NetworkNotice({ onDismiss }: { onDismiss: () => void }) {
 /** When the failure chunk cannot load: the notice for a visit, nothing for a page that threw — never an error of its own. */
 const unloaded = { RenderErrorFallback: () => null, ServerFailure: NetworkNotice } as unknown as typeof import('./failure.tsx');
 
-// The rest of what a failure shows is a chunk of its own (E202, like the layers, E71): the server's error page in a dialog and the
+// The rest of what a failure shows is a chunk of its own (like the layers): the server's error page in a dialog and the
 // app's error page for a page that threw — loaded when it happens.
 const loadFailure = () => import('./failure.tsx').catch(() => unloaded);
 const LazyRenderError = lazy(() => loadFailure().then((module) => ({ default: module.RenderErrorFallback })));

@@ -28,44 +28,40 @@ export interface CreateMarmeonAppOptions {
   /** `routes` of `virtual:marmeon/routes`: what `route()`, `<Link route>` and `useForm(name, …)` resolve. */
   routes?: RouteManifest;
   /**
-   * The layout of pages without their own `Page.layout` (E35), by page name — the same as the SSR entry's:
+   * The layout of pages without their own `Page.layout`, by page name — the same as the SSR entry's:
    * `layout: (name) => (name.startsWith('auth/') ? null : AppLayout)`.
    */
   layout?: DefaultLayout;
   /**
    * The app's language files — `createMessageLoader(lang)` with `lang` from `virtual:marmeon/lang` — the same as the SSR
-   * entry's. Only the page's locale is loaded (one chunk per file), before hydrating; `useTranslation` reads them.
+   * entry's. Only the page's locale is loaded, before hydrating.
    */
   messages?: MessageLoader;
   /**
-   * An indicator of visits under way (E82, opt-in): `progress: progressBar({ delay: 250 })` shows the core's bar for visits
+   * An indicator of visits under way (opt-in): `progress: progressBar({ delay: 250 })` shows the core's bar for visits
    * slower than `delay`; none without it.
    */
   progress?: MarmeonAppProps['progress'];
   /**
-   * The frame around every layer's view (E53) — the same as the SSR entry's. Default `LayerDialog` (a native modal
+   * The frame around every layer's view — the same as the SSR entry's. Default `LayerDialog` (a native modal
    * `<dialog>`); wrap it for the app's labels: `layer: (props) => <LayerDialog {...props} closeLabel="Schließen" />`.
    */
   layer?: LayerFrame;
   /**
-   * The dialog that asks the user (E64) — a link's, an action's or a form's `confirm`, the navigation guard's question:
+   * The dialog that asks the user — a link's, an action's or a form's `confirm`, the navigation guard's question:
    * `ConfirmDialog` (wrap it for the app's labels), or the app's own. Default: the browser's `confirm()` and `prompt()`.
    */
   confirm?: ConfirmComponent;
   /**
-   * Tab sync (W8 step 8, E148/E149) — on by default: when another tab of the browser signs in or out (or switches the language),
-   * this one lets go of everything it keeps (pages in memory, islands, pages fetched ahead, once props, remembered input) and
-   * loads again — or, with unsaved changes on screen, asks first. Its code loads with the first page, before hydrating.
-   * `false` leaves it out: then a tab keeps what it shows after a sign-out elsewhere until its next request (the known risk E66).
+   * Tab sync — on by default: when another tab signs in or out (or switches the language), this one lets go of everything
+   * it keeps and loads again. `false` leaves it out: a tab then keeps what it shows after a sign-out elsewhere until its
+   * next request. See docs/client-features.md#tab-sync.
    */
   tabSync?: false;
   /**
-   * View transitions for every page change (E185) — off by default; a visit (`router.visit(url, { viewTransition: true })`) or a link
-   * (`<Link viewTransition>`) turns one on for itself. `true` (or `{ types: ['slide'] }`): the core's — `document.startViewTransition`
-   * around each page swap, the browser crossfades the page, the app's CSS animates the rest (`::view-transition-*`,
-   * `:active-view-transition-type(back)`). `'react'`: React 19.3's — each page change renders in `startTransition` with its types
-   * (`addTransitionType`), the `<ViewTransition>` components of the views animate (enter, exit, share); React starts the transition,
-   * the core never does. Both skip it under `prefers-reduced-motion: reduce` and in a hidden tab. Its code loads with the first page change.
+   * View transitions for every page change — off by default. `true` (or `{ types: ['slide'] }`): the core's
+   * `document.startViewTransition` around each page swap. `'react'`: React's — each page change renders in `startTransition`
+   * with its types, and the views' `<ViewTransition>` components animate. See docs/navigation.md#view-transitions.
    */
   viewTransition?: MarmeonAppProps['viewTransition'];
   /**
@@ -83,18 +79,14 @@ export interface CreateMarmeonAppOptions {
 export async function createMarmeonApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, tabSync, viewTransition, onRecoverableError }: CreateMarmeonAppOptions): Promise<void> {
   const page = readInitialPage();
 
-  // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
-  // the page's locale. The history entry is the navigator's (<MarmeonApp> starts it): its key and URL — never the
-  // page's props (E36).
-  // A deep link's layers (E53) too: the layer stack with the core's layers (E71) and their views render in the server's markup.
-  // Tab sync (E149) loads beside them — a chunk of its own, attached from the start: no message of another tab is missed. A chunk
-  // that cannot load leaves it out (the page works without it).
+  // Resolve before hydrating so the first client render matches the server HTML: the component, the messages of the
+  // page's locale and a deep link's layers. The history entry holds its key and URL, never the page's props. Tab sync is
+  // attached from the start, so no message of another tab is missed; a chunk that cannot load leaves it out.
   const [Component, catalog, root, synced, fallback] = await Promise.all([
     resolve(page.component),
     loadPageMessages(page, messages),
     rootElement(rootId),
     tabSync === false ? undefined : loadTabSync().catch(() => undefined),
-    // Without the Navigation API (E184): the History fallback, a chunk of its own.
     window.navigation ? undefined : loadHistoryFallback(),
     ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
   ]);
@@ -125,8 +117,7 @@ export async function createMarmeonApp({ resolve, rootId = 'app', title, routes,
 
 /** React's own report (the console), and in development the page's name and a notice on the page. */
 function reportRecoverable(error: unknown, component: string): void {
-  // Development (and tests) only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the explanations.
-  // Positive (E201): any build but development (and the tests) reports like production — no notice on the page.
+  // Checked positively: any build but development and tests reports like production — no notice on the page.
   if (!(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')) {
     globalThis.reportError?.(error);
     return;
@@ -139,7 +130,7 @@ function reportRecoverable(error: unknown, component: string): void {
       'locale formatting, `typeof window` branches) — render those in an effect, or set the page’s ssr = false.';
   console.error(message, error);
   showNotice(message);
-  // The devtools' bar (W7 step 9) lists it in its SSR tab — `__MARMEON_DEVTOOLS_HOOK__` exists only where its client was served.
+  // The devtools' bar lists it in its SSR tab — `__MARMEON_DEVTOOLS_HOOK__` exists only where its client was served.
   (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.recoverable?.(error, component, server);
 }
 

@@ -141,7 +141,7 @@ describe('routes in the browser', () => {
     expect(() => resolveRoute(routes, 'people.show')).toThrow('Missing required parameter [person] for route [people.show].');
   });
 
-  it('says the same with its code in production — only the code and the name (E80)', async () => {
+  it('says the same with its code in production — only the code and the name', async () => {
     expect(() => resolveRoute(routes, 'admin.users')).toThrow(/^\[marmeon:C2\] Route \[admin\.users\] is not defined/);
     const environment = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';

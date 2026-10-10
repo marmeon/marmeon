@@ -46,7 +46,7 @@ const MARKER = 'data-marmeon-head';
 export function Head(props: HeadProps) {
   const island = useContext(IslandHeadContext);
   if (island === null) return <PageHead {...props} />;
-  // An island renders after the document head went out (streamed, E49) — and beside a page that has its own.
+  // An island renders after the document head went out (streamed) — and beside a page that has its own.
   // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the message.
   if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
     throw new Error(`[marmeon:R13] <Head> in island [${island}] — islands cannot change the document head; set it on the page.`);

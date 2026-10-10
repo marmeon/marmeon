@@ -30,10 +30,9 @@ export function defineRoutes(register: (Route: Route) => void): RouteDefinitions
 }
 
 /**
- * A request a package answers in the route's place (`router.intercept(…)`): it runs the route's middleware and bindings, then the
- * route's `authorize` (403) — and the interceptor answers; the controller is never built (like a live validation, E62).
- * @marmeon/storage answers upload targets this way (W6.9: `x-marmeon-upload` names the field) — who may submit the form
- * may upload its files, by the same rules.
+ * A request a package answers in the route's place (`router.intercept(…)`): it runs the route's middleware, bindings and
+ * `authorize` (403), then the interceptor answers; the controller is never built. @marmeon/storage answers upload targets
+ * this way, so who may submit a form may upload its files.
  */
 export interface RouteInterceptor {
   /** Whether this request is the interceptor's (a header it looks for). */
@@ -198,7 +197,7 @@ export class Router {
         // before `authorize` (which may look at the bound record) — Laravel's middleware priority.
         const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
         const { action } = route;
-        // A live validation (E62): as far as the validation — the controller is never built, `handle` never runs.
+        // An interceptor or a live validation: the controller is never built, `handle` never runs.
         const interceptor = this.#interceptors.find((candidate) => candidate.claims(finalCtx.request));
         if (interceptor) {
           const request = isControllerClass(action) ? action.request : undefined;
@@ -221,7 +220,7 @@ export class Router {
             const { body, query } = await validateRequest(action.request, finalCtx, resolve, { hooks: this.#validationHooks });
             if (query) {
               const method = finalCtx.request.method;
-              // E56: a URL with an invalid or unknown field may go to its canonical form instead (GET only).
+              // A URL with an invalid or unknown field may go to its canonical form instead (GET only).
               if (query.dropped.length > 0 && action.request.queryOptions?.onInvalid === 'redirect' && (method === 'GET' || method === 'HEAD')) {
                 return canonicalRedirect(finalCtx.request, query.canonical);
               }
@@ -236,8 +235,7 @@ export class Router {
           try {
             result = await (resolve(action) as unknown as { handle: (ctx: HttpContext) => unknown }).handle(handlerCtx);
           } catch (error) {
-            // A ValidationError of the handler (`failOnDuplicate()`'s 422, one of its own) speaks with the request's `messages` and
-            // `attributes` too — like the schema's (W10 step 9b).
+            // A ValidationError of the handler (`failOnDuplicate()`'s 422) gets the request's `messages` and `attributes` too.
             throw action.request ? withRequestLabels(error, action.request) : error;
           }
         } else {
@@ -282,7 +280,7 @@ export class Router {
   }
 }
 
-/** 302 to the same path with only the valid, non-default fields of the query (E56). */
+/** 302 to the same path with only the valid, non-default fields of the query. */
 function canonicalRedirect(request: Request, canonical: Readonly<Record<string, unknown>>): Response {
   const search = toSearchParams(canonical as Query).toString();
   const { pathname } = new URL(request.url);

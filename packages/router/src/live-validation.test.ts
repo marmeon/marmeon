@@ -3,7 +3,7 @@ import { isLiveValidation, issueOfFields, liveValidationFields, VALIDATE_HEADER 
 
 const request = (header?: string) => new Request('http://localhost/x', { method: 'POST', headers: header === undefined ? {} : { [VALIDATE_HEADER]: header } });
 
-describe('live validation (E62)', () => {
+describe('live validation', () => {
   it('reads the named fields — trimmed, deduplicated, paths allowed, nonsense left out', () => {
     expect(liveValidationFields(request())).toBeUndefined();
     expect(liveValidationFields(request(' name , email,name ,address.city, links.0.url'))).toEqual(['name', 'email', 'address.city', 'links.0.url']);

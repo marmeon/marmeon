@@ -50,10 +50,8 @@ export interface MarmeonOptions {
    */
   routeSinks?: readonly RouteSink[];
   /**
-   * More server modules — globs relative to the app root — besides the conventions in `SERVER_MODULES` (controllers, jobs,
-   * listeners, mails, policies, providers, repositories, a module's `index.ts`/`routes.ts`/`config.ts`, `config/`, …).
-   * Client code (pages, layouts, the client entry and what they import) never imports one as a value: a dev error and a
-   * failed build (E121). `'!glob'` takes modules out of the conventions.
+   * More server modules — globs relative to the app root — besides the conventions in `SERVER_MODULES`; `'!glob'` takes
+   * modules out of them. See docs/vite.md#server-code-in-the-browser.
    */
   serverModules?: readonly string[];
   /**
@@ -69,11 +67,9 @@ function isThirdParty(id: string): boolean {
 }
 
 /**
- * How the client build splits what the first page loads (Wave 5c): two chunks — the third-party libraries (`vendor`: the UI
- * library and its DOM renderer, cached across the app's own deployments) and the rest (`index`: the framework's client core and
- * adapter with the app's entry and layouts). Without it, every module a lazy chunk shares with the first page became a chunk
- * of its own (the web app loaded 9 initial chunks, each compressed on its own). Only what the first page loads (`$initial`):
- * what loads on first use — pages, layers, live validation, prefetching, instant visits — stays in its own chunks.
+ * How the client build splits what the first page loads: `vendor` (third-party libraries, cached across the app's own
+ * deployments) and `index` (the framework, the app's entry and layouts). Without it, every module a lazy chunk shares with the
+ * first page becomes an initial chunk of its own. What loads on first use keeps its own chunks.
  */
 export const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions = {
   groups: [
@@ -87,23 +83,12 @@ const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
 const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
 
 /**
- * The Vite plugin of a Marmeon app. UI-agnostic: the adapter brings its own plugin.
+ * The Vite plugin of a Marmeon app. UI-agnostic: the adapter brings its own plugin. See docs/vite.md#introduction.
  *
  * ```ts
  * export default defineConfig({ plugins: [marmeon(), react()] });          // vite.config.ts
  * export default defineConfig({ plugins: [marmeon({ test: true })] });     // vitest.config.ts
  * ```
- *
- * - resolves workspace packages to their sources only while serving (dev, tests) — never in a build;
- * - dedupes the peers of the framework packages the app depends on (one React for the adapter and the app);
- * - runs the constructor-injection transform (`@marmeon/core/vite`);
- * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
- * - marks `index.html`'s tags for the response's CSP nonce (Vite's `html.cspNonce`, E147) — the server fills it in;
- * - splits the client build's initial load into two chunks, `vendor` and `index` ({@link CLIENT_CHUNKS});
- * - serves `virtual:marmeon/pages`, `virtual:marmeon/lang` and `virtual:marmeon/routes` (types: `@marmeon/vite/client`) —
- *   the route manifest with only the names client code writes out (E57);
- * - refuses client code that imports a server module as a value — a controller, a job, a repository … (E121, {@link serverImports}):
- *   an error in Vite's overlay while serving, a failed build, and in tests too.
  */
 export function marmeon(options: MarmeonOptions = {}): Plugin[] {
   const entries: MarmeonEntries = { ...DEFAULT_ENTRIES, ...options.entries };
@@ -115,7 +100,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     api,
     config(config, { command, mode, isSsrBuild }) {
       const root = resolve(config.root ?? process.cwd());
-      // Sources while serving (dev server, Vitest); a build always takes what a published package ships. Positive (E201).
+      // Sources only while serving in development or test; a build always takes what a published package ships.
       const source = command === 'serve' && (mode === 'development' || mode === 'test') ? [SOURCE_CONDITION] : [];
       const result: UserConfig = {
         resolve: { conditions: [...source, ...defaultClientConditions], dedupe: adapterPeers(root) },
@@ -123,13 +108,12 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
         // it, tests would load builds only a bundler can run (the AWS SDK's ES build, with extensionless imports).
         ssr: { resolve: { conditions: [...source, ...(options.test ? defaultServerConditions.filter((condition) => condition !== 'module') : defaultServerConditions)] } },
       };
-      // Every script, style and preload tag of index.html (and the `csp-nonce` meta Vite's own code reads) carries the placeholder;
-      // the server puts each response's CSP nonce in its place, or takes the attribute out (E147) — only this value is replaced.
+      // Tags (and the `csp-nonce` meta Vite reads) carry the placeholder; the server replaces only this value with the
+      // response's nonce, or takes the attribute out.
       if (!options.test) result.html = { cspNonce: CSP_NONCE_PLACEHOLDER };
       if (command === 'serve' && !options.test) {
-        // Vite scans index.html as written for the dependencies to pre-bundle — but this plugin adds the client entry, and the
-        // server the devtools' bar: found only on the first request, each re-bundling reloads the page (a 504 "Outdated Optimize
-        // Dep" for a chunk already asked for). Scan the entry and the pages, and name the bar when an installed package brings it.
+        // Vite scans index.html as written, which lacks the client entry and the devtools' bar: found only on the first request,
+        // each re-bundling reloads the page (a 504 "Outdated Optimize Dep").
         result.optimizeDeps = { entries: [entries.client, ...[pages].flat()], include: installedModules(root, PREBUNDLED) };
       }
       if (command === 'build' && !options.test) {
@@ -148,10 +132,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     },
   };
 
-  // Built pages start their client entry as soon as it is loaded (`async`), not once the whole document has arrived
-  // (a module script's default): a streamed page hydrates its shell while slow Suspense boundaries still stream in.
-  // The page object is in the head, before the markup. Not while serving: the dev runtime's preambles (React Refresh)
-  // must run first, so in development a streamed page hydrates once it has arrived completely.
+  // `async`: a streamed page hydrates its shell while slow Suspense boundaries still stream in (the page object is in the
+  // head). Build only: the dev runtime's preambles (React Refresh) must run first.
   const asyncEntry: Plugin = {
     name: 'marmeon:async-entry',
     apply: 'build',
@@ -177,10 +159,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
 }
 
 /**
- * A virtual module `virtual:marmeon/<name>` whose default export is `import.meta.glob(pattern)` —
- * one place for a glob that framework code needs (pages; language files later). Patterns are
- * relative to the app root; the keys are root-absolute (`/modules/…`). Vite keeps the module up
- * to date when matching files are added or removed.
+ * A virtual module `virtual:marmeon/<name>` whose default export is `import.meta.glob(pattern)`. Patterns are relative to
+ * the app root; the keys are root-absolute (`/modules/…`).
  */
 export function virtualGlob(name: string, pattern: string | string[], options: { eager?: boolean } = {}): Plugin {
   const id = `virtual:marmeon/${name}`;
@@ -200,8 +180,7 @@ export function virtualGlob(name: string, pattern: string | string[], options: {
 
 /**
  * The non-optional peer dependencies of the app's framework packages (`@marmeon/*`, the CLI `marmeon`, or with a
- * `"marmeon"` field) — e.g. `react` and `react-dom` for `@marmeon/react`. Deduped, so the
- * adapter and the app share one copy even when the adapter is linked from a workspace.
+ * `"marmeon"` field) — deduped, so the adapter and the app share one React even when the adapter is linked from a workspace.
  */
 export function adapterPeers(root: string): string[] {
   const app = readJson(join(root, 'package.json'));

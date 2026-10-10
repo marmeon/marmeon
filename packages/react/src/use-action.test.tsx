@@ -10,7 +10,7 @@ import { useAction, usePendingSubmissions } from './use-action.ts';
 import { Link } from './link.tsx';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +67,7 @@ Profile.revalidateOnBack = ['activity'];
 
 type Feed = { data: { id: number }[]; meta: { nextCursor: string | null } };
 
-/** A merge()d list with "load more" — and a delete that reloads it (E183: the reload replaces it, the row stays gone). */
+/** A merge()d list with "load more" — and a delete that reloads it (the reload replaces it, the row stays gone). */
 function Inbox({ inbox }: { inbox: Feed }) {
   const router = useRouter();
   const destroy = useAction('inbox.destroy');
@@ -149,7 +149,7 @@ function gate() {
   return { promise, open };
 }
 
-describe('useAction (E59)', () => {
+describe('useAction', () => {
   it('removes optimistically by the route name — and rolls back on a 404, showing why', async () => {
     const answer = gate();
     server = () => answer.promise;
@@ -199,7 +199,7 @@ describe('useAction (E59)', () => {
     expect(container.querySelectorAll('[data-testid="ghost"]')).toHaveLength(0);
   });
 
-  it('revalidateOnBack (E58): Back shows the profile from memory at once, then reloads only `activity` — the view says so', async () => {
+  it('revalidateOnBack: Back shows the profile from memory at once, then reloads only `activity` — the view says so', async () => {
     server = (url, init) => {
       if (url.startsWith('/people')) return new Response(JSON.stringify(page('People', '/people')), { headers: { [PAGE_HEADER]: 'true' } });
       const only = (init.headers as Record<string, string>)[PARTIAL_DATA_HEADER];

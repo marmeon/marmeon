@@ -3,7 +3,7 @@ import { useId, useLayoutEffect, useRef, useState, type ComponentType, type CSSP
 
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from '@marmeon/http/client';
 
-/** What the app's confirmation dialog gets (E64): the question, and how to answer it. */
+/** What the app's confirmation dialog gets: the question, and how to answer it. */
 export interface ConfirmProps {
   readonly request: ConfirmRequest;
   /**
@@ -36,12 +36,9 @@ export interface ConfirmDialogProps extends ConfirmProps {
 }
 
 /**
- * The default confirmation dialog (E64): a native `<dialog>` opened modally, `role="alertdialog"`, named by its title and
- * described by its message. Focus starts on the safe choice — no (`Cancel`, `Stay`) — or in the field of a type-to-confirm
- * question, whose yes stays disabled until the text matches; Escape is no; focus returns to what had it. Its look comes from
- * `@marmeon/react/styles.css` (classes `marmeon-confirm…`, E202); style it by those or by `data-marmeon-confirm`, `data-kind`,
- * `data-destructive`. Wrap it for the app's labels:
- * `confirm: (props) => <ConfirmDialog {...props} cancelLabel={t('cancel')} />`.
+ * The default confirmation dialog: a native modal `<dialog>`, `role="alertdialog"`. Focus starts on the safe choice (no) or
+ * in the field of a type-to-confirm question, whose yes stays disabled until the text matches. Wrap it for the app's labels:
+ * `confirm: (props) => <ConfirmDialog {...props} cancelLabel={t('cancel')} />`. See docs/dialogs.md#asking-the-user.
  */
 export function ConfirmDialog({
   request,

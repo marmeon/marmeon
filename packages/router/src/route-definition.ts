@@ -70,11 +70,9 @@ export class RouteDefinition {
   }
 
   /**
-   * Runs the route's requests one at a time per session (Laravel's `block()`, E145): `StartSession` takes an atomic lock on the
-   * session (needs `@marmeon/cache` — locks since E103) before it loads it and frees it after saving it. A second request of
-   * the same browser waits up to `waitSeconds` (then 423); a lock a crashed request held expires after `lockSeconds`. For routes
-   * that read the session, decide on it and write it back — where merging concurrent writes (compare-and-set, the default) is
-   * not enough:
+   * Runs the route's requests one at a time per session (Laravel's `block()`): `StartSession` holds an atomic lock (needs
+   * `@marmeon/cache`) from loading the session until it is saved. A second request of the same browser waits up to
+   * `waitSeconds` (then 423); a crashed request's lock expires after `lockSeconds`. See docs/routing.md#one-request-at-a-time.
    *
    * ```ts
    * Route.post('/cart/checkout', CheckoutController).name('cart.checkout').block();       // 10 s lock, waits up to 10 s

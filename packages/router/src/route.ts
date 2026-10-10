@@ -54,10 +54,10 @@ type RouteAction<
       : `Route.bind('${Missing & string}') needs a :${Missing & string} parameter in the path`
     : never;
 
-/** What a GET route says to a controller whose request validates a body (E65): there is none. */
+/** What a GET route says to a controller whose request validates a body: there is none. */
 export const GET_HAS_NO_BODY = 'a GET request has no body — validate its URL with `query` (defineRequest({ query }))';
 
-/** A GET route's action: like any other, but a request with a body `schema` is refused (E65). */
+/** A GET route's action: like any other, but a request with a body `schema` is refused. */
 type GetRouteAction<
   TState extends object,
   TParams extends object,
@@ -67,10 +67,10 @@ type GetRouteAction<
   TQuery extends StandardSchemaV1,
 > = [TSchema] extends [never] ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery> : typeof GET_HAS_NO_BODY;
 
-/** What a route of another method than GET says to a controller that answers with an island (E52). */
+/** What a route of another method than GET says to a controller that answers with an island. */
 export const ISLAND_IS_GET_ONLY = 'this.island(…) answers GET requests only — an island reads, it never changes anything: register it with Route.get';
 
-/** The action of a route that is not a GET: like any other, but an island (`this.island(…)`) is refused (E52). */
+/** The action of a route that is not a GET: like any other, but an island (`this.island(…)`) is refused. */
 type NonGetRouteAction<
   TState extends object,
   TParams extends object,
@@ -169,7 +169,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   // -- Route registration ----------------------------------------------------
 
-  /** A GET route (HEAD too). Its controller reads the URL — `query` — never a body: a request with a `schema` is a type error (E65). */
+  /** A GET route (HEAD too). Its controller reads the URL — `query` — never a body: a request with a `schema` is a type error. */
   get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
     action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
@@ -237,7 +237,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string): RouteDefinition {
     const fullPath = joinPaths(this.#attributes.prefix, path);
-    // The types refuse this already (E65); a route built without them fails at boot.
+    // The types refuse this already; a route built without them fails at boot.
     const request = typeof action === 'function' ? (action as { request?: { schema?: unknown } }).request : undefined;
     if (request?.schema && methods.every((method) => method === 'GET' || method === 'HEAD')) {
       throw new Error(`Route GET ${fullPath}: ${GET_HAS_NO_BODY} — ${(action as { name?: string }).name || 'its controller'} has a body schema.`);

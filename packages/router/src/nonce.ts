@@ -1,5 +1,5 @@
 /**
- * The CSP nonce of one response (E147): 16 random bytes, base64 — made on first use, then the same for everything the
+ * The CSP nonce of one response: 16 random bytes, base64 — made on first use, then the same for everything the
  * response carries (the `Content-Security-Policy` header, React's streamed scripts, the document's `<script>` and
  * `<style>` tags). A request that never renders a document (a JSON visit, an API call) never makes one.
  *
@@ -32,10 +32,7 @@ export class RequestNonce {
 const pool = new Uint8Array(4096);
 let used = pool.length;
 
-/**
- * 16 random bytes as base64 (128 bits, as the CSP specification asks for at least) — bytes of the pool, each used once.
- * `getRandomValues` per nonce costs ≈ 1 µs; from the pool ≈ 0.15 µs.
- */
+/** 16 random bytes as base64 (128 bits, as the CSP specification asks for at least) — bytes of the pool, each used once. */
 export function createNonce(): string {
   if (used + 16 > pool.length) {
     crypto.getRandomValues(pool);

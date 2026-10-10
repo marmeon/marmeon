@@ -6,7 +6,7 @@ export interface LayerDialogProps extends LayerFrameProps {
   closeLabel?: string;
   className?: string;
   /**
-   * Inline properties over the default look — applied after the mount, through the CSSOM (E202): the server renders no `style`
+   * Inline properties over the default look — applied after the mount, through the CSSOM: the server renders no `style`
    * attribute, which a strict `style-src` would block (React does not add one it skipped while hydrating). A deep link shows the
    * frame without them until it hydrates; for a look that is there at once, give it a class of the app's stylesheet (`className`).
    */
@@ -14,12 +14,9 @@ export interface LayerDialogProps extends LayerFrameProps {
 }
 
 /**
- * The default frame of a layer: a native `<dialog>`, opened modally — the browser keeps focus inside it and makes the page
- * (and the layers beneath) inert; named by its first heading, described by an element with `data-layer-description`. Escape, the close button and a click on the
- * backdrop close it (Back in the history); focus returns to what opened it. Its look comes from `@marmeon/react/styles.css`
- * (classes `marmeon-layer`, `marmeon-layer--<variant>`, `marmeon-layer__content`, `marmeon-layer__close`; E202) — no inline
- * style, so a strict `style-src` blocks nothing; style it by those or by `data-marmeon-layer`/`data-variant`. Wrap it for the app's labels:
- * `createMarmeonApp({ layer: (props) => <LayerDialog {...props} closeLabel={t('close')} /> })`.
+ * The default frame of a layer: a native `<dialog>`, opened modally. No inline style, so a strict `style-src` blocks nothing.
+ * Wrap it for the app's labels: `createMarmeonApp({ layer: (props) => <LayerDialog {...props} closeLabel={t('close')} /> })`.
+ * See docs/dialogs.md#the-frame.
  */
 export function LayerDialog({ layer, variant, children, closeLabel = 'Close', className, style }: LayerDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -27,7 +24,7 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
   // What had the focus — the link that opened it — gets it back when the layer goes. Read while rendering: by the time the
   // effects run, an `autoFocus` field inside has taken it.
   const [opener] = useState(() => (typeof document === 'undefined' ? null : document.activeElement));
-  // The `style` prop only once mounted (E202): React writes it through the CSSOM then — never as a server-rendered attribute.
+  // The `style` prop only once mounted: React writes it through the CSSOM then — never as a server-rendered attribute.
   const [mounted, setMounted] = useState(false);
   useLayoutEffect(() => {
     setMounted(true);

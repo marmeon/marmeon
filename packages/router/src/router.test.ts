@@ -79,7 +79,6 @@ describe('Route registration', () => {
   });
 
   it('puts parameters the path does not take, and the query, into the query string — like signed URLs', () => {
-    // Before W5.2, extra parameters were dropped silently.
     expect(router.url('teams.members.show', { team: 'core', id: 7, tab: 'links' })).toBe('/teams/core/members/7?tab=links');
     expect(router.url('home', {}, { q: 'a b', page: 2, tag: ['x', 'y'], empty: null, gone: undefined, on: true })).toBe(
       '/?q=a+b&page=2&tag=x&tag=y&on=true',

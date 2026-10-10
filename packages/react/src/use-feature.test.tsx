@@ -8,12 +8,12 @@ import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, RouterContext, useFeature, useRouterContext, type RouterValue } from './app.tsx';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** `useFeature` (Wave 5c step 3, E73): what an adapter component uses of a feature of the client core, attached on first use. */
+/** `useFeature`: what an adapter component uses of a feature of the client core, attached on first use. */
 
 const page: PageObject = { component: 'users/Show', props: {}, url: '/users/1', version: null };
 

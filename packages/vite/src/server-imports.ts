@@ -10,9 +10,8 @@ export interface ServerModule {
 }
 
 /**
- * The app's server modules by convention — what client code must never import as a value (E121). A module's
- * views, layouts and language files are client code; what runs a request, a job or the boot is server code. Patterns are
- * globs relative to the app root. `marmeon({ serverModules })` adds patterns and, with a leading `!`, takes some out.
+ * The app's server modules by convention — what client code must never import as a value. Globs relative to the app root;
+ * `marmeon({ serverModules })` adds patterns and, with a leading `!`, takes some out.
  */
 export const SERVER_MODULES: readonly ServerModule[] = [
   { pattern: 'modules/*/controllers/**', what: 'a controller' },
@@ -80,18 +79,12 @@ interface State {
 }
 
 /**
- * `marmeon:server-imports` — client code never imports a server module as a value (E121): a value import bundles the
- * module, and everything it imports, into the browser. A controller class is a value even where only its type is used,
- * so `import { ShowLoginController }` in a view ships the controller; `import type` does not (it is erased).
+ * `marmeon:server-imports` — refuses client code that imports a server module as a value, which would bundle it into the
+ * browser. See docs/vite.md#server-code-in-the-browser.
  *
- * - **client environment** (the dev server's browser modules, the client build): every module of the app is client code.
- *   A value import of a server module ({@link SERVER_MODULES}) is a transform error — Vite's overlay in dev, a failed
- *   build — with file, line and column, and the chain from the page when the import is indirect (view → helper → controller).
- * - **server environments** (SSR in dev and in tests, Vitest with `marmeon({ test: true })`): pages, layouts and the client
- *   entry are client code, and so is what they import as values; server code itself may import anything.
- * - **SSR build:** nothing to do — it may bundle server modules, and the client build has checked the client code.
- *
- * Only build time: the hook reads the source and returns nothing, so no code reaches a chunk.
+ * In the client environment every module of the app is client code. In a server environment (SSR in dev and tests,
+ * Vitest) only the pages, layouts, the client entry and their value imports are; server code may import anything. The
+ * SSR build is not checked: the client build has checked what reaches the browser.
  */
 export function serverImports(options: ServerImportsOptions): Plugin {
   const extra = options.serverModules ?? [];

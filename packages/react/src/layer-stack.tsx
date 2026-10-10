@@ -10,7 +10,7 @@ import { RoutesContext } from './routes.ts';
 import { loadView, viewOf } from './views.ts';
 
 /*
- * The layer stack (E53) — loaded with the first layer (E71): the core loads it when the server answers with one (the app's
+ * The layer stack — loaded with the first layer: the core loads it when the server answers with one (the app's
  * navigator is given it as `loadLayers`: one chunk with the core's layers), `<Link layer>` when it renders, `createMarmeonApp`
  * and the SSR entry before they render a deep link's document.
  */
@@ -21,7 +21,7 @@ export { layers };
 const noSubscription = () => () => {};
 
 /**
- * The layers over the page (E53), bottom first — each in its frame, with a router of its own (`usePage`, `useRouter`,
+ * The layers over the page, bottom first — each in its frame, with a router of its own (`usePage`, `useRouter`,
  * `useForm` and links inside act as the layer), its islands in its own memory. The page beneath does not scroll while any
  * is open.
  * @internal
@@ -51,7 +51,7 @@ export function LayerStack({ entries, resolve, frame, base }: { entries: readonl
 
 function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry; isTop: boolean; resolve: ResolvePage; frame: LayerFrame | undefined; base: RouterValue }) {
   const { layer } = entry;
-  // What its view renders: its props with the optimistic patches under way over them (E59).
+  // What its view renders: its props with the optimistic patches under way over them.
   const live = useSyncExternalStore(layer?.subscribe ?? noSubscription, () => layer?.view ?? entry.page, () => entry.page);
   const manifest = useContext(RoutesContext);
   // An answer with another view (a wizard's next step, the new token replacing its form): shown once its view is loaded —
@@ -76,11 +76,11 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       ...base,
       page,
       layer,
-      // A visit or a form inside the layer is the layer's (E53): its answer replaces it, opens another or closes it.
+      // A visit or a form inside the layer is the layer's: its answer replaces it, opens another or closes it.
       visit: (url, options) => (layer ? layer.visit(url, options) : Promise.resolve(undefined)),
       reload: (options) => (layer ? layer.reload(options) : Promise.resolve(undefined)),
       prefetch: (url, options) => base.prefetch(url, { ...options, layer: true }),
-      // An action's patches and reloads from inside the layer are the layer's (E59).
+      // An action's patches and reloads from inside the layer are the layer's.
       optimistic: (patch) => {
         if (!layer) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
         return layer.optimistic(patch as never);

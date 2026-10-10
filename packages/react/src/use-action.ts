@@ -24,10 +24,10 @@ export type { ActionException } from '@marmeon/http/client';
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
 
 /**
- * How an action of route `N` ended, typed by its controller (E59):
+ * How an action of route `N` ended, typed by its controller:
  * - `data`: it answered `this.json(…)` — `data` is what JSON made of it (`Serialize<T>`); only when the controller has such a branch;
  * - `redirect`: it redirected — reported, not followed (`onRedirect: 'visit'` follows it); only when the controller can;
- * - `flash` (with both): the flash messages its controller flashed (E60) — they also fire for `useFlash`, once;
+ * - `flash` (with both): the flash messages its controller flashed — they also fire for `useFlash`, once;
  * - `invalid`: 422 — the first message per field of its request schema;
  * - `exception`: offline, or a failure status (401/419 after signing out, 403, 404, 5xx) — shown, never retried by itself;
  * - `cancelled`: `cancel()`, a newer call with the same `key`, or the page was left.
@@ -64,7 +64,7 @@ export type ActionSubmitOptions<N extends string, RequiresParams extends boolean
   ParamsOption<N, RequiresParams> &
   QueryOption<N> & {
     /**
-     * Shown at once, rolled back unless it succeeds (model 1) — `router.optimistic((props) => …)`, typed against the page (or
+     * Shown at once, rolled back unless it succeeds — `router.optimistic((props) => …)`, typed against the page (or
      * layer, or island) it patches.
      */
     optimistic?: OptimisticUpdate | readonly OptimisticUpdate[];
@@ -78,7 +78,7 @@ export type ActionSubmitOptions<N extends string, RequiresParams extends boolean
     /** `'visit'`: follow the controller's redirect afterwards. Default: report it (`{ kind: 'redirect' }`). */
     onRedirect?: 'visit';
     /**
-     * Ask first (E64): `confirm: t('links.confirm_remove')`, or `{ message, prompt: 'DELETE' }` to type a text. A no sends
+     * Ask first: `confirm: t('links.confirm_remove')`, or `{ message, prompt: 'DELETE' }` to type a text. A no sends
      * nothing — the call ends `cancelled`, nothing optimistic shows.
      */
     confirm?: Confirm;
@@ -88,7 +88,7 @@ type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends A
   ? [options?: ActionSubmitOptions<N, RequiresParams>]
   : [options: ActionSubmitOptions<N, RequiresParams>];
 
-/** A call of an action under way, as `usePendingSubmissions` and `action.submissions` list it — a ghost row's data (E59 model 2). */
+/** A call of an action under way, as `usePendingSubmissions` and `action.submissions` list it — a ghost row's data. */
 export interface PendingSubmission<N extends string> {
   readonly id: number;
   /** What it sends: the route's request schema input. */
@@ -134,7 +134,7 @@ function flatten<T>(value: T | readonly T[] | readonly (T | readonly T[])[] | un
 }
 
 /**
- * A non-navigating request to a named route (E59) — Inertia's `useHttp`, React Router's `useFetcher`, typed by the route:
+ * A non-navigating request to a named route — Inertia's `useHttp`, React Router's `useFetcher`, typed by the route:
  * the body by its controller's request schema, the result by what its controller returns (`this.json(…)`, a redirect).
  *
  * ```tsx
@@ -179,7 +179,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       setErrors({});
       let outcome: ActionOutcome;
       try {
-        // The feature attaches on first use (E70): an app without actions carries none of it.
+        // The feature attaches on first use: an app without actions carries none of it.
         outcome = await navigator.use(actions).run(target.url, {
           method,
           ...(method === 'get' ? {} : { data: body ?? {} }),
@@ -234,8 +234,8 @@ const noSubscription = () => () => {};
 
 /**
  * The calls under way to route `N` — of every component, actions and route forms (`useForm(name, …)`) alike, oldest first:
- * optimistic UI derived from what is being sent (E59 model 2, React Router's pending UI) — ghost rows, with nothing to roll
- * back. A call is listed until the props it reloads have landed, so its row never blinks out before the real one is there.
+ * ghost rows derived from what is being sent (React Router's pending UI), with nothing to roll back. A call is listed until
+ * the props it reloads have landed, so its row never blinks out before the real one is there.
  *
  * ```tsx
  * const adding = usePendingSubmissions('user-profile.links.store');
@@ -243,7 +243,7 @@ const noSubscription = () => () => {};
  * ```
  */
 export function usePendingSubmissions<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>): readonly PendingSubmission<N>[] {
-  // Attached while rendering (E70): a route form's visit is listed from then on — the component showing its ghost rows is there first.
+  // Attached while rendering: a route form's visit is listed from then on — the component showing its ghost rows is there first.
   const submissions = useRouterContext().navigator()?.use(actions).submissions();
   const all = useSyncExternalStore(submissions?.subscribe ?? noSubscription, () => submissions?.list ?? NO_SUBMISSIONS, () => NO_SUBMISSIONS);
   return useMemo(

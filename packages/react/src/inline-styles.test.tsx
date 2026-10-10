@@ -17,7 +17,7 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
 
 /*
- * E202: the framework renders no `style` attribute — a strict `style-src` (without 'unsafe-inline') blocks every one, and nonces
+ * the framework renders no `style` attribute — a strict `style-src` (without 'unsafe-inline') blocks every one, and nonces
  * do not cover attributes. The look comes from `@marmeon/react/styles.css` (classes); `LayerDialog`'s `style` prop is written
  * through the CSSOM once mounted, which no policy blocks.
  */
@@ -68,7 +68,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-/** What the server renders for the deep link — the stack and the layer's view loaded first, as the SSR entry does (E71). */
+/** What the server renders for the deep link — the stack and the layer's view loaded first, as the SSR entry does. */
 async function serverRender(frame?: typeof WideFrame): Promise<{ html: string; Component: PageComponent }> {
   const Component = await resolve('app/Profile');
   await Promise.all([loadLayerStack(), loadView(resolve, 'app/Edit')]);
@@ -76,7 +76,7 @@ async function serverRender(frame?: typeof WideFrame): Promise<{ html: string; C
   return { html, Component };
 }
 
-describe('LayerDialog renders no style attribute (E202)', () => {
+describe('LayerDialog renders no style attribute', () => {
   it('on the server: a deep link’s dialog, its content box and close button carry classes of styles.css — no style, not even the app’s', async () => {
     for (const frame of [undefined, WideFrame]) {
       const { html } = await serverRender(frame);
@@ -114,7 +114,7 @@ describe('LayerDialog renders no style attribute (E202)', () => {
   });
 });
 
-describe('the failure dialogs, the error page and the confirmation dialog render no style attribute (E202)', () => {
+describe('the failure dialogs, the error page and the confirmation dialog render no style attribute', () => {
   type Server = Extract<VisitException, { type: 'server' }>;
   const servers: Server[] = [
     { type: 'server', status: 502, page: undefined, html: '<h1>Bad gateway</h1>' } as Server,

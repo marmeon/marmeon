@@ -9,7 +9,7 @@ export interface CookieOptions {
   domain?: string;
   /**
    * HTTPS only. Defaults to the request's {@link CookieDefaults} — with `@marmeon/session`, `SESSION_SECURE_COOKIE`,
-   * which follows `APP_URL` (`https:` → `true`, E162) — else `false`. `false` here turns it off for this cookie.
+   * which follows `APP_URL` (`https:` → `true`) — else `false`. `false` here turns it off for this cookie.
    */
   secure?: boolean;
   /** Defaults to `true` — scripts cannot read the cookie (like Laravel). */
@@ -20,7 +20,7 @@ export interface CookieOptions {
 
 /**
  * What every cookie of a request gets unless its `set` says otherwise (Laravel's `CookieJar` defaults): the kernel takes them
- * from the container (`CookieDefaults`, bound by `@marmeon/session` from its config, E162).
+ * from the container (`CookieDefaults`, bound by `@marmeon/session` from its config).
  */
 export interface CookieDefaults {
   /** `Secure` on every cookie that does not set `secure` itself. */
@@ -116,7 +116,7 @@ export class CookieJar {
   }
 
   /**
-   * Locks the jar for a read-only request (an island, E52): every `set`/`delete` asks `permit` first, which throws or
+   * Locks the jar for a read-only request (an island): every `set`/`delete` asks `permit` first, which throws or
    * answers false — then nothing is queued.
    */
   lock(permit: (what: string) => boolean): void {

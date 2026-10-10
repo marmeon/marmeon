@@ -24,7 +24,7 @@ async function rejection(promise: Promise<unknown>): Promise<HttpError> {
 }
 
 describe('ctx.input()', () => {
-  it('parses JSON bodies — never merging the query in (E65)', async () => {
+  it('parses JSON bodies — never merging the query in', async () => {
     const request = post('/?page=2&name=query', JSON.stringify({ name: 'Ada', tags: ['a'], age: 36 }), {
       'content-type': 'application/json; charset=utf-8',
     });
@@ -33,7 +33,7 @@ describe('ctx.input()', () => {
     expect(state.query.get('page')).toBe('2');
   });
 
-  it('counter-check (E65): a field missing from the body cannot come from the URL — JSON, forms and multipart alike', async () => {
+  it('a field missing from the body cannot come from the URL — JSON, forms and multipart alike', async () => {
     const url = '/register?password=geheim123&role=admin';
     const multipart = new FormData();
     multipart.set('name', 'Ada');
@@ -174,7 +174,7 @@ describe('clientIp', () => {
     expect(clientIp('10.0.0.2', '198.51.100.7, 10.0.0.1', ['10.0.0.1', '10.0.0.2'])).toBe('198.51.100.7');
   });
 
-  it("'*' trusts the direct peer only (E172): the entry it added — what anybody wrote before it never counts", () => {
+  it("'*' trusts the direct peer only: the entry it added — what anybody wrote before it never counts", () => {
     expect(clientIp('10.0.0.1', '6.6.6.6, 198.51.100.7', ['*'])).toBe('198.51.100.7'); // a client's own entry, then the proxy's
     expect(clientIp('10.0.0.1', '198.51.100.7, 10.0.0.5', ['*'])).toBe('10.0.0.5'); // two proxies: name the ranges instead
     expect(clientIp('10.0.0.1', null, ['*'])).toBe('10.0.0.1');
@@ -190,7 +190,7 @@ describe('clientIp', () => {
   });
 });
 
-describe('ctx.nonce() — the response\'s CSP nonce (E147)', () => {
+describe('ctx.nonce() — the response\'s CSP nonce', () => {
   it('is made on first use and stays the same for the response; another response gets another', () => {
     const holder = new RequestNonce();
     const state = createRequestState(new Request(URL_BASE), { nonce: holder });

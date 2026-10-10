@@ -60,10 +60,8 @@ export type Next<TAdd extends object> = keyof TAdd extends never
  * A pipeline stage. `TRequires` is the context it needs from earlier middleware,
  * `TAdds` is what it contributes to later middleware and the final handler.
  *
- * `handle` is declared as a property (not a method) on purpose: property
- * function types are checked contravariantly under `strictFunctionTypes`, which
- * is what lets the compiler reject middleware whose requirements are unmet —
- * even when a middleware class writes `handle` as an ordinary method.
+ * `handle` is a property, not a method: property function types are checked contravariantly under
+ * `strictFunctionTypes`, so middleware whose requirements are unmet is a compile error.
  */
 export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> {
   readonly handle: (ctx: HttpContext<TRequires>, next: Next<TAdds>) => Response | Promise<Response>;
@@ -108,12 +106,8 @@ export type AnyMiddleware = MiddlewareLike<any, any>;
 export type Handler<TCtx, TResult = unknown> = (ctx: TCtx) => TResult;
 
 /**
- * What a controller instance must offer to serve a route with context `TCtx`.
- *
- * `handle` is declared as a property on purpose: even when a controller writes
- * `handle(ctx)` as a method, TypeScript compares it against this *property*
- * strictly (contravariantly), so a controller that needs more context than
- * the route provides is a compile error.
+ * What a controller instance must offer to serve a route with context `TCtx`. `handle` is a property, so a controller
+ * that needs more context than the route provides is a compile error (checked contravariantly).
  */
 export interface Invokable<TCtx, TResult = unknown> {
   readonly handle: (ctx: TCtx) => TResult;
@@ -123,12 +117,9 @@ export interface Invokable<TCtx, TResult = unknown> {
  * An invokable controller (REPR): one class per endpoint, one `handle(ctx)`.
  * Constructor arguments are the container's concern.
  *
- * With `static request = defineRequest(…)`, the route checks both halves against
- * its context: `authorize(ctx)` must accept the route's context, and `handle`
- * gets it plus the validated `body` and the parsed `query`. *One* type with an optional `request` on
- * purpose: a union of "with" and "without request" let a controller whose
- * `authorize` needs more context than the route has slip through the "without"
- * branch — and made TypeScript explain the wrong branch (type spike for E13).
+ * With `static request = defineRequest(…)`, `authorize(ctx)` must accept the route's context, and `handle` gets it
+ * plus the validated `body` and the parsed `query`. One type with an optional `request`: a union of "with" and
+ * "without request" lets an `authorize` that needs more context slip through the "without" branch.
  */
 export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, TQuery extends StandardSchemaV1 = any, TResult = unknown> = (new (
   ...args: any[]
@@ -193,14 +184,14 @@ export type Action<TCtx, TSchema extends StandardSchemaV1 = never, TQuery extend
 
 /**
  * What a region result carries — `this.island(…)` of @marmeon/http — so the router can tell an island's controller
- * by its type alone (it never imports http): islands are GET routes (E52), `<Island route>` takes only them, `<Link>` none.
+ * by its type alone (it never imports http): islands are GET routes, `<Island route>` takes only them, `<Link>` none.
  */
 export interface RegionResultMarker {
   readonly region: 'island';
 }
 
 /**
- * What a layer result carries — `this.view(…).layer({ base })` of @marmeon/http (E53) — so the router's types can tell a
+ * What a layer result carries — `this.view(…).layer({ base })` of @marmeon/http — so the router's types can tell a
  * layer route by its controller alone: `<Link layer>` takes only them.
  */
 export interface LayerResultMarker {

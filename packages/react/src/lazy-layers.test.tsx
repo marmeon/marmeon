@@ -6,11 +6,11 @@ import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 /**
- * Layers as a chunk of their own (Wave 5c step 5, E71): the core loads them — with the React layer stack, one round trip —
+ * Layers as a chunk of their own: the core loads them — with the React layer stack, one round trip —
  * when the server answers with a layer and nothing loaded them; `<Link layer>` loads them where it renders; a deep link's
  * document hydrates with them. Each test starts from fresh modules: nothing of the layer code is loaded yet, as in a tab
  * that just opened the app.
@@ -33,7 +33,7 @@ async function freshApp() {
     return (
       <main>
         <h1 data-testid="name">{name}</h1>
-        {/* A plain visit the server answers with a layer (E53: it may, to any visit) — no `<Link layer>` on the page. */}
+        {/* A plain visit the server answers with a layer (it may, to any visit) — no `<Link layer>` on the page. */}
         <button type="button" data-testid="plain" onClick={() => void router.visit('/users/1/edit')}>
           Edit
         </button>
@@ -90,7 +90,7 @@ const $ = (selector: string) => document.querySelector(selector);
 const dialogs = () => [...document.querySelectorAll('dialog[data-marmeon-layer]')];
 const wait = (ms = 20) => act(async () => void (await new Promise((done) => setTimeout(done, ms))));
 const click = (selector: string) => act(async () => ($(selector) as HTMLElement).click());
-/** The development hint that the layers loaded only once the server answered with one (E71). */
+/** The development hint that the layers loaded only once the server answered with one. */
 const loadedLate = () => info.mock.calls.filter(([message]) => String(message).includes('[marmeon:C7]'));
 
 async function mount(initial: PageObject) {
@@ -101,7 +101,7 @@ async function mount(initial: PageObject) {
   await act(async () => root!.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
-describe('layers loaded on demand in React (E71)', () => {
+describe('layers loaded on demand in React', () => {
   it('a plain visit answered with a layer: the layers and their stack load then — the layer opens over the page, Back closes it', async () => {
     await mount(page('Profile', '/users/1', { name: 'Ada' }));
     const heading = $('[data-testid="name"]');

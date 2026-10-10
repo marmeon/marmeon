@@ -5,11 +5,11 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { budgetProblem, limitFor, loweredLimit, lowerLimits, readBudget, RESERVE_KB, SHRINK_KB } from './__fixtures__/bundle.ts';
 
 /**
- * The budget's mechanics (E75, E186 — "the reserve stays"): a limit is the measured size + 0.5 KB at most; `update` lowers it to
+ * The budget's mechanics ("the reserve stays"): a limit is the measured size + 0.5 KB at most; `update` lowers it to
  * that after a saving and never raises it; extra cost eats the reserve, which is never refilled. The sizes themselves are
  * `bundle-size.test.ts`'s job (it needs `dist/`); these are plain numbers.
  */
-describe('the size budget keeps a reserve of 0.5 KB and only goes down (E186)', () => {
+describe('the size budget keeps a reserve of 0.5 KB and only goes down', () => {
   it('a limit at the measured size + 0.5 holds; more than + 0.6 asks for a lower limit, naming the rule', () => {
     expect(RESERVE_KB).toBe(0.5);
     expect(SHRINK_KB).toBe(0.6);

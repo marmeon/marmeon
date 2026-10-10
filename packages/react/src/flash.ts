@@ -6,10 +6,9 @@ import { useRouterContext } from './app.tsx';
 export type FlashHandler<K extends FlashKey> = (data: FlashMessage<K>['data'], message: FlashMessage<K>) => void;
 
 /**
- * Runs `handler` for every flash message of `key` (E60) — exactly once per message: with the answer that delivered it (a page,
- * a partial reload, a layer, an action), never again for a reload, Back/Forward or a page shown from memory, and twice for
- * the same message flashed twice. Messages that arrived before this component mounted and that nobody heard yet come at once
- * (the first page's). Typed by the app's `FlashData`.
+ * Runs `handler` for every flash message of `key` — exactly once per message, never again for a reload, Back/Forward or a
+ * page shown from memory. Messages nobody heard before this component mounted come at once. Typed by the app's `FlashData`.
+ * See docs/pages.md#flash-messages.
  *
  * ```tsx
  * useFlash('toast', (toast) => toaster.show(toast));     // in the layout

@@ -28,7 +28,7 @@ describe('collectRouteReferences', () => {
     expect(names).toEqual(['auth.login', 'user-profile.edit', 'user-profile.me', 'user-profile.show', 'user-profile.update']);
   });
 
-  it('collects the route of useQueryState(name, …) — its page needs its pattern (W5b step 2)', () => {
+  it('collects the route of useQueryState(name, …) — its page needs its pattern', () => {
     const { names, problems } = collect(`
       import { useQueryState } from '@marmeon/react';
       export default function People() {
@@ -43,7 +43,7 @@ describe('collectRouteReferences', () => {
     );
   });
 
-  it('collects a layer link’s route — `layer` is a flag, never a name (W5b step 5)', () => {
+  it('collects a layer link’s route — `layer` is a flag, never a name', () => {
     const { names, problems } = collect(`
       import { Link } from '@marmeon/react';
       export default function Page({ profile, asLayer }: Props) {

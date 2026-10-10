@@ -11,7 +11,7 @@ import { usePoll } from './use-poll.ts';
 import { WhenVisible } from './when-visible.tsx';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -134,7 +134,7 @@ describe('<Link prefetch>', () => {
     expect(requests.map((r) => r.url)).toEqual(['/c', '/b']);
   });
 
-  it('counter-check: an action (method="post") is never prefetched — not on hover, not when pressed', async () => {
+  it('an action (method="post") is never prefetched — not on hover, not when pressed', async () => {
     await mount(page('Links', '/a'));
     await pointer('post', 'mouseover');
     await pointer('post', 'mousedown');

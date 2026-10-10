@@ -9,12 +9,12 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useForm } from './use-form.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Live validation in React (W5b step 9, E62): `useForm(…, { validate })`. */
+/** Live validation in React: `useForm(…, { validate })`. */
 
 function Register({ on }: { on?: 'blur' | 'change' }) {
   const form = useForm('register', {}, { name: '', email: '', password: '' }, { validate: on ? { on, debounce: 20 } : true });
@@ -96,7 +96,7 @@ function validator({ fields, body }: Sent): Response {
     : new Response(null, { status: 204, headers: { [VALIDATED_HEADER]: named.join(',') } });
 }
 
-describe('useForm(…, { validate }) — live validation (E62)', () => {
+describe('useForm(…, { validate }) — live validation', () => {
   it('shows an error when a changed field is left, clears it when fixed — never for an untouched one, never with a password', async () => {
     server = validator;
     await mount(page());

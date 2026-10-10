@@ -14,7 +14,7 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -150,7 +150,7 @@ const wait = (ms = 10) => act(async () => void (await new Promise((resolve) => s
 const click = (selector: string) => act(async () => ($(selector) as HTMLElement).click());
 const dialogs = () => [...container.querySelectorAll('dialog[data-marmeon-layer]')];
 
-describe('Layers in React (E53)', () => {
+describe('Layers in React', () => {
   it('<Link layer> opens the view in a modal dialog over the page — the page stays, its island is not loaded again', async () => {
     await mount(page('Profile', '/users/1', { name: 'Ada' }));
     await wait();
@@ -159,7 +159,7 @@ describe('Layers in React (E53)', () => {
     const heading = $('[data-testid="name"]');
 
     await click('[data-testid="edit"]');
-    // The first layer of the file: the stack's chunk loads with it (E71) — under a busy test run, that may take more than a tick.
+    // The first layer of the file: the stack's chunk loads with it — under a busy test run, that may take more than a tick.
     for (let tries = 0; tries < 100 && dialogs().length === 0; tries++) await wait();
     expect(requests.at(-1)).toMatchObject({ url: '/users/1/edit', headers: { [REGION_HEADER]: 'layer' } });
     const [dialog] = dialogs();
@@ -179,11 +179,11 @@ describe('Layers in React (E53)', () => {
     expect(location.pathname).toBe('/users/1');
     expect($('[data-testid="name"]')).toBe(heading);
     expect(document.documentElement.style.overflow).toBe('');
-    // Counter-check: closing does not load the page's island again (its owner stays the page's).
+    // Closing does not load the page's island again (its owner stays the page's).
     expect(islands()).toBe(1);
   });
 
-  it('counter-check: focus goes back to the link that opened the layer when it closes', async () => {
+  it('focus goes back to the link that opened the layer when it closes', async () => {
     await mount(page('Profile', '/users/1', { name: 'Ada' }));
     await wait();
     const opener = $('[data-testid="edit"]') as HTMLAnchorElement;
@@ -228,7 +228,7 @@ describe('Layers in React (E53)', () => {
     expect(dialogs()).toHaveLength(1);
   });
 
-  it('a form inside the layer shows its optimistic patch while it is sent — the layer’s, gone when the answer lands (E59)', async () => {
+  it('a form inside the layer shows its optimistic patch while it is sent — the layer’s, gone when the answer lands', async () => {
     let answer!: (response: Response) => void;
     const saving = server;
     server = (url, init) => (init.method === 'PUT' ? new Promise((resolve) => (answer = resolve)) : saving(url, init));
@@ -343,7 +343,7 @@ describe('Layers in React (E53)', () => {
   it('a deep link’s document renders its layers over the page — on the server as in the browser', async () => {
     const document = { ...page('Profile', '/users/1', { name: 'Ada' }), layers: [layer('Edit', '/users/1/edit', { name: 'Ada' })] };
     const Profile = await resolve('app/Profile');
-    // What createMarmeonApp and the SSR entry load before rendering a deep link (E71): the layer stack, the layer's view.
+    // What createMarmeonApp and the SSR entry load before rendering a deep link: the layer stack, the layer's view.
     await Promise.all([loadLayerStack(), loadView(resolve, 'app/Edit')]);
     const html = renderToString(<MarmeonApp initialPage={document} initialComponent={Profile} resolve={resolve} routes={routes} />);
     expect(html).toContain('data-marmeon-layer="app/Edit"');

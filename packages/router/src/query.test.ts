@@ -37,7 +37,7 @@ class CanonicalPeopleController {
 
 const parse = async (search: string) => parseQuery(peopleQuery, new URLSearchParams(search));
 
-describe('query schema (E55, E56)', () => {
+describe('query schema', () => {
   it('parses the query: defaults filled in, strings turned into numbers, booleans and lists', async () => {
     const parsed = await parse('q=%20ada%20&sort=-name&page=3&archived=true&tag=admin&tag=staff');
     expect(parsed.value).toEqual({ q: 'ada', sort: '-name', page: 3, archived: true, tag: ['admin', 'staff'] });
@@ -45,7 +45,7 @@ describe('query schema (E55, E56)', () => {
     expect((await parse('')).value).toEqual({ q: '', sort: 'name', page: 1, archived: false, tag: [] });
   });
 
-  it('counter-check (E56): an invalid field falls back to its default — the others stay, nothing answers 422', async () => {
+  it('an invalid field falls back to its default — the others stay, nothing answers 422', async () => {
     const parsed = await parse('sort=DROP%20TABLE&page=0&q=ada&archived=maybe');
     expect(parsed.value).toEqual({ q: 'ada', sort: 'name', page: 1, archived: false, tag: [] });
     expect([...parsed.dropped].sort()).toEqual(['archived', 'page', 'sort']);
@@ -125,7 +125,7 @@ describe('query schema (E55, E56)', () => {
       expect(seen?.pageQuery).toEqual({ values: { sort: '-name', page: 2 }, defaults: { q: '', sort: 'name', page: 1, archived: false, tag: [] } });
     });
 
-    it('counter-check (E56): ?sort=DROP TABLE → the default, 200 — never a 422', async () => {
+    it('falls back to the default for ?sort=DROP TABLE — 200, never a 422', async () => {
       const response = await dispatch('GET', '/people?sort=DROP%20TABLE');
       expect(response.status).toBe(200);
       expect(((await response.json()) as { query: { sort: string } }).query.sort).toBe('name');
@@ -146,13 +146,13 @@ describe('query schema (E55, E56)', () => {
       expect(((await response.json()) as { query: { sort: string; page: number } }).query).toMatchObject({ sort: 'name', page: 4 });
     });
 
-    it('keeps a raw URLSearchParams in ctx.query without a query schema (no break)', async () => {
+    it('keeps a raw URLSearchParams in ctx.query without a query schema', async () => {
       const raw = new Router().load(defineRoutes((Route) => Route.get('/raw', (ctx) => ({ q: ctx.query.get('q') }))));
       const response = await raw.dispatch(raw.routes[0]!, { request: new Request('http://app.test/raw?q=ada'), params: {} });
       expect(await response.json()).toEqual({ q: 'ada' });
     });
 
-    it('refuses a GET route whose request validates a body — at boot, for code the types did not check (E65)', () => {
+    it('refuses a GET route whose request validates a body — at boot, for code the types did not check', () => {
       const WithBody = defineRequest({ schema: v.object({ name: v.string() }) });
       class ShowWithBodyController {
         static request = WithBody;
@@ -168,7 +168,7 @@ describe('query schema (E55, E56)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Type guarantees. Never called. (The directives were removed once to read the messages — see the vault, W5b step 2.)
+// Type guarantees. Never called.
 // ---------------------------------------------------------------------------
 
 declare const GuestRoute: Route<EmptyObject>;
@@ -185,7 +185,7 @@ export function queryTypeTests(): void {
   }>();
   GuestRoute.get('/people', ListPeopleController);
 
-  // A body schema on a GET route: a GET request has no body (E65).
+  // A body schema on a GET route: a GET request has no body.
   const ShowRequest = defineRequest({ schema: v.object({ name: v.string() }) });
   class ShowController {
     static request = ShowRequest;

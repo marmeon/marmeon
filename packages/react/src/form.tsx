@@ -60,14 +60,14 @@ type NameOf<P extends string, V, Depth extends unknown[]> = V extends Primitive 
 
 type Nested<P extends string, V, Depth extends unknown[]> = { [K in keyof V & string]-?: NameOf<`${P}[${K}]`, NonNullable<V[K]>, [...Depth, 0]> }[keyof V & string];
 
-/** A GET form writes the query (E55, E65): its fields are the route's query schema's — never a body. */
+/** A GET form writes the query: its fields are the route's query schema's — never a body. */
 type QueryFieldsOf<N extends string> = [RouteQueryOf<N>] extends [never] ? {} : RouteQueryOf<N>;
 
 /** The fields of `<Form route>`: a GET route's query schema, any other route's request schema (none: a button-only form). */
 export type FormFieldsOf<N extends string> = [MethodOf<N>] extends ['get'] ? QueryFieldsOf<N> : RouteFormFields<N> extends Record<string, unknown> ? (string extends keyof RouteFormFields<N> ? {} : RouteFormFields<N>) : RouteFormFields<N>;
 
 /**
- * A route `<Form>` may send to: one the browser knows — a GET route only with a query schema (its fields are the query, E65:
+ * A route `<Form>` may send to: one the browser knows — a GET route only with a query schema (its fields are the query:
  * a form never puts body fields into a URL).
  */
 export type CheckFormElementRoute<N extends string> =
@@ -96,14 +96,14 @@ export interface FormRenderState<F> {
   /** Whether a field differs from where the form started (`data-dirty` on the form) — any field, or the one named. */
   isDirty(name?: FieldName<F>): boolean;
   /**
-   * The attributes of a field, its name checked against the route's fields (E64) — spread them onto any input, shadcn's
+   * The attributes of a field, its name checked against the route's fields — spread them onto any input, shadcn's
    * `<Input>` too: `<input {...form.field('label')} />` gives `name="label"` and `aria-invalid` while it has an error. (A
    * `name` written out by hand is not checked: the DOM's names are strings.)
    */
   field(name: FieldName<F>): { name: string; 'aria-invalid'?: true };
   /** The first message of a field — `form.error('links[0][url]')`. */
   error(name: FieldName<F>): string | undefined;
-  /** Whether a live check of the field (or any) is under way (E62, `validate`). */
+  /** Whether a live check of the field (or any) is under way (`validate`). */
   validating(name?: FieldName<F>): boolean;
   /** Sends it — what pressing its submit button does. */
   submit(): void;
@@ -118,17 +118,17 @@ type SensitiveName<F> = Extract<FieldName<F>, `${string}${'secret' | 'token' | '
 type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
 
 export type FormProps<N extends string> = {
-  /** The route it sends to — method and URL from it; a GET route writes its query (E65). */
+  /** The route it sends to — method and URL from it; a GET route writes its query. */
   route: CheckFormElementRoute<N>;
   children: ReactNode | ((form: FormRenderState<FormFieldsOf<N>>) => ReactNode);
-  /** Ask first (E64): `confirm="Revoke the token?"`, or with a title, labels or a text to type. A no sends nothing. */
+  /** Ask first: `confirm="Revoke the token?"`, or with a title, labels or a text to type. A no sends nothing. */
   confirm?: Confirm;
-  /** Live validation (E62): fields checked against the server's schema when they are left (or while typed into). Not for GET. */
+  /** Live validation: fields checked against the server's schema when they are left (or while typed into). Not for GET. */
   validate?: true | Omit<LiveValidationSetting<FormFieldsOf<N>>, 'fields'> & { fields?: readonly string[] };
-  /** The navigation guard (E64) while the form is dirty — `true`, or the question to ask. Its own submit passes. */
+  /** The navigation guard while the form is dirty — `true`, or the question to ask. Its own submit passes. */
   guard?: boolean | string;
   /**
-   * Remember the input across Back/Forward (E63): `true` (as `form:<route>`), a key, or `{ key, include }` — in memory only, never
+   * Remember the input across Back/Forward: `true` (as `form:<route>`), a key, or `{ key, include }` — in memory only, never
    * password-, token-, secret- or card-like fields (`include` lets the non-password ones in) or files.
    */
   remember?: true | string | { key?: string; include?: readonly (PasswordNeverRemembered | SensitiveName<FormFieldsOf<N>>)[] };
@@ -151,9 +151,8 @@ const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
 
 /**
- * An uncontrolled form for a named route (E64, Inertia's `<Form>`): it reads its fields from the DOM — any input with a
- * `name`, shadcn's included — and sends them like `useForm` does: the route's method and URL, the XSRF token, the errors
- * back by field, `data-pending` while under way, `confirm`, live validation, the navigation guard, remembered input.
+ * An uncontrolled form for a named route (Inertia's `<Form>`): it reads its fields from the DOM — any input with a
+ * `name` — and sends them like `useForm` does. See docs/forms.md#forms-without-state.
  *
  * ```tsx
  * <Form route="auth.tokens.store" resetOnSuccess>
@@ -167,9 +166,8 @@ const NOTHING_PENDING: readonly string[] = [];
  * </Form>
  * ```
  *
- * Without JavaScript it is a real `<form>`: `method="post"` (`_method` for PUT, PATCH and DELETE) and the CSRF token as
- * `_token`; a GET route's form writes its query. Its fields never go into a URL otherwise (E65): a POST sends them in the body.
- * With JavaScript the body is the fields as the server would parse them (a file: multipart, with upload progress).
+ * Without JavaScript it is a real `<form>` (`_method`, the CSRF token as `_token`). Only a GET route's form writes its
+ * fields into the URL; any other sends them in the body.
  */
 export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>) {
   const {
@@ -206,7 +204,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  // Dirty (E64): the entries now against where the form started — the markup's defaults, or what the last success sent.
+  // Dirty: the entries now against where the form started — the markup's defaults, or what the last success sent.
   const baseline = useRef<[string, string][] | undefined>(undefined);
   const [dirtyNames, setDirtyNames] = useState<readonly string[]>([]);
   const measure = useCallback(() => {
@@ -222,7 +220,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   const dirty = dirtyNames.length > 0;
   const guard = useGuard(guardSetting !== undefined && guardSetting !== false && dirty, typeof guardSetting === 'string' ? guardSetting : undefined);
 
-  // Remembered input (E63): the entries (never sensitive ones, never files) and the errors, with the history entry.
+  // Remembered input: the entries (never sensitive ones, never files) and the errors, with the history entry.
   const remember = rememberSetting === undefined ? undefined : rememberOf(rememberSetting, route as string);
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');
   useLayoutEffect(() => {
@@ -250,7 +248,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   );
   useEffect(() => keep(errors), [keep, errors]);
 
-  // Live validation (E62): the form's data as the server would parse it, the field left by its path.
+  // Live validation: the form's data as the server would parse it, the field left by its path.
   const live = useFormLiveValidation(method, target.url, validate, element, errors, setErrors);
 
   const send = async (submitter?: HTMLElement | null) => {
@@ -265,7 +263,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     let url = target.url;
     let body: VisitOptions['data'];
     if (method === 'get') {
-      // A GET form writes the query — its fields, nothing else (E55, E65); defaults of the page on screen left out.
+      // A GET form writes the query — its fields, nothing else; defaults of the page on screen left out.
       const query: Record<string, string | string[]> = {};
       for (const [name, value] of entries) {
         if (typeof value !== 'string') continue;
@@ -381,7 +379,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
       {...(processing ? { 'data-pending': '' } : {})}
       {...(dirty ? { 'data-dirty': '' } : {})}
     >
-      {/* `_method` first: the server looks for it at the start of the body only (W5b.10). */}
+      {/* `_method` first: the server looks for it at the start of the body only. */}
       {native === 'post' && method !== 'post' && <input type="hidden" name={FORM_METHOD_FIELD} value={method.toUpperCase()} />}
       {native === 'post' && page.csrf !== undefined && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
       {typeof children === 'function' ? (children as (form: FormRenderState<Record<string, unknown>>) => ReactNode)(state) : children}
@@ -389,7 +387,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   );
 }
 
-/** What a remembered `<Form>` keeps (E63): its entries, which names it kept (the others were left out), its errors. */
+/** What a remembered `<Form>` keeps: its entries, which names it kept (the others were left out), its errors. */
 interface KeptEntries {
   readonly entries: [string, string][];
   readonly names: string[];
@@ -402,7 +400,7 @@ function rememberOf(setting: NonNullable<FormProps<string>['remember']>, route: 
   return { key: setting.key ?? `form:${route}`, include: ((setting.include ?? []) as readonly string[]).map(fieldPath) };
 }
 
-/** The live validation of an uncontrolled form (E62) — its data read from the DOM when a check is sent. */
+/** The live validation of an uncontrolled form — its data read from the DOM when a check is sent. */
 function useFormLiveValidation(
   method: VisitMethod,
   url: string,

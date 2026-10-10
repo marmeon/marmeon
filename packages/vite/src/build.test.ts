@@ -96,7 +96,7 @@ describe('marmeon build with the marmeon() plugin', () => {
 
     // The client entry comes from the plugin, not from index.html.
     // `async`: a streamed page hydrates its shell while the rest still arrives.
-    // Every tag carries the nonce placeholder (Vite's `html.cspNonce`, E147) — the server fills in each response's nonce.
+    // Every tag carries the nonce placeholder (Vite's `html.cspNonce`) — the server fills in each response's nonce.
     const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
     expect(html).toMatch(/<script type="module" async crossorigin src="\/assets\/index-[\w-]+\.js" nonce="__marmeon_csp_nonce__"><\/script>/);
     expect(html).toContain('<meta property="csp-nonce" nonce="__marmeon_csp_nonce__">');
@@ -191,7 +191,7 @@ describe('marmeon build with the marmeon() plugin', () => {
 });
 
 /**
- * The browser's route manifest (E57): `.marmeon/routes.json` as `marmeon route:types` writes it — a fake adapter
+ * The browser's route manifest: `.marmeon/routes.json` as `marmeon route:types` writes it — a fake adapter
  * stands in for @marmeon/react, so the collector finds its sinks without a UI framework.
  */
 function routesApp(client: string): string {
@@ -279,7 +279,7 @@ function serverCodeApp(files: Record<string, string>): string {
   });
 }
 
-describe('server imports in a build (E121)', () => {
+describe('server imports in a build', () => {
   it('fails the build for a page that imports a controller as a value — file, line and the fix, no stack', () => {
     const root = serverCodeApp({ 'modules/demo/views/Home.ts': "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (page: ShowHomeController) => page;\n" });
     const { code, out } = build(root, '--no-typecheck');

@@ -5,10 +5,9 @@ import { useRouterContext } from './app.tsx';
 import type { FormField } from './use-form.ts';
 
 /**
- * Uploads `file` for an upload field (W6.9) — what `<FileInput>` does when a file is chosen, for a drop zone or a cropped
+ * Uploads `file` for an upload field — what `<FileInput>` does when a file is chosen, for a drop zone or a cropped
  * image of your own: `const send = useUpload(form.field('avatar'))`, then `send(file)`. The field's value becomes the
- * {@link Upload} at once (`uploading`, `progress`, `preview`), then follows it until the file arrived (its token is what the
- * form sends) or failed (`error`). A file chosen while one is on its way replaces it. The uploads' code loads on first use.
+ * {@link Upload}; a file chosen while one is on its way replaces it. See docs/forms.md#uploads.
  */
 export function useUpload(field: FormField): (file: File) => Promise<void> {
   const navigator = useRouterContext().navigator();
@@ -32,10 +31,9 @@ export interface FileInputProps extends Omit<InputHTMLAttributes<HTMLInputElemen
 }
 
 /**
- * A file input for an upload field (W6.9, Livewire's model): a chosen file is uploaded at once — to a target the form's
- * route hands out for the field — and the field holds the {@link Upload}: show `form.data.avatar?.progress`, its `preview`
- * (`blob:`), its `error`, and `cancel()` it; `form.data.avatar?.uploading` while it is on its way. The form then sends the
- * token, never the file — checked on the server by size and by its bytes.
+ * A file input for an upload field (Livewire's model): a chosen file is uploaded at once, and the field holds the
+ * {@link Upload} (`progress`, `preview`, `error`, `cancel()`). The form then sends the token, never the file. See
+ * docs/forms.md#uploads.
  *
  * ```tsx
  * const form = useForm('user-profile.avatar.update', { user: me.id }, { avatar: null });
@@ -43,7 +41,7 @@ export interface FileInputProps extends Omit<InputHTMLAttributes<HTMLInputElemen
  * {form.data.avatar?.uploading && <progress value={form.data.avatar.progress} max={1} />}
  * ```
  *
- * The uploads' code loads when the input renders (E74). A file still on its way when the input goes is cancelled.
+ * A file still on its way when the input goes is cancelled.
  */
 export function FileInput({ field, onChange, ...attributes }: FileInputProps) {
   const navigator = useRouterContext().navigator();

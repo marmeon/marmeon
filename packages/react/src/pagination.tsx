@@ -14,7 +14,7 @@ export interface PaginationLabels {
   readonly page: (page: number) => string;
 }
 
-/** Its texts without `labels`: English. Every other language comes from the app's messages (E38) — `labels={{ next: t('next') }}`. */
+/** Its texts without `labels`: English. Every other language comes from the app's messages — `labels={{ next: t('next') }}`. */
 const ENGLISH: PaginationLabels = { navigation: 'Pagination', previous: '‹ Previous', next: 'Next ›', page: (page) => `Page ${page}` };
 
 export interface PaginationProps {
@@ -28,7 +28,7 @@ export interface PaginationProps {
 }
 
 /**
- * Links to the pages of a list (`paginate()`'s `meta`). The links come from the page's parsed query (E55: the route's schema, with
+ * Links to the pages of a list (`paginate()`'s `meta`). The links come from the page's parsed query (the route's schema, with
  * `pageQuery()` in it) — the rest of it stays (a filter, the sort, the page size) and the defaults stay out (`?page=1` is no
  * page's URL). Renders nothing for a single page.
  */
@@ -75,7 +75,7 @@ let warned: Set<string> | undefined;
 
 /**
  * The URL of page `number` of the page on screen: its parsed query with `param` set — from the schema, never by parsing the
- * address (E55). A page whose route has no query schema keeps its query string as it is.
+ * address. A page whose route has no query schema keeps its query string as it is.
  */
 function pageHref(page: Pick<PageObject, 'url' | 'component' | 'query' | 'queryDefaults'>, param: string): (number: number) => string {
   if (page.queryDefaults) {

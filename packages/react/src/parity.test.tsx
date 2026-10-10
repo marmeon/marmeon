@@ -13,12 +13,12 @@ import { useRemember } from './remember.ts';
 import { useNewVersion } from './state.ts';
 import { useForm } from './use-form.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Remember state, `<Form>`, instant visits and the new-version banner in React (W5b step 10, E63/E64). */
+/** Remember state, `<Form>`, instant visits and the new-version banner in React. */
 
 let navigator: Navigator | null = null;
 let owner: RegionOwner | null = null;
@@ -172,7 +172,7 @@ const back = () =>
 /** Everything the browser keeps beyond this document's memory: history states, both storages, cookies. */
 const persisted = () => [...states, JSON.stringify(history.state), JSON.stringify({ ...sessionStorage }), JSON.stringify({ ...localStorage }), document.cookie].join('\n');
 
-describe('useRemember and useForm({ remember }) (E63)', () => {
+describe('useRemember and useForm({ remember })', () => {
   it('survives Back/Forward in memory — and never lands in history.state, sessionStorage, localStorage or a cookie', async () => {
     server = () => json(page('People', '/people'));
     await mount(page('Edit', '/users/1', { name: 'Ada' }));
@@ -192,7 +192,7 @@ describe('useRemember and useForm({ remember }) (E63)', () => {
     expect(persisted()).not.toContain('activity');
   });
 
-  it('counter-check: a password is never remembered (nor a card number without `include`) — not even in memory', async () => {
+  it('a password is never remembered (nor a card number without `include`) — not even in memory', async () => {
     server = () => json(page('People', '/people'));
     await mount(page('Edit', '/users/1', { name: 'Ada' }));
     await type('password', 'hunter2-MARKER');
@@ -209,7 +209,7 @@ describe('useRemember and useForm({ remember }) (E63)', () => {
     expect(($('card') as HTMLInputElement).value).toBe('');
   });
 
-  it('counter-check: forgotten when the document is left — signing out answers 409', async () => {
+  it('forgotten when the document is left — signing out answers 409', async () => {
     server = (_url, init) => (init.method === 'POST' ? new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', [RELOAD_HEADER]: 'history' } }) : json(page('People', '/people')));
     const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     await mount(page('Edit', '/users/1', { name: 'Ada' }));
@@ -222,7 +222,7 @@ describe('useRemember and useForm({ remember }) (E63)', () => {
   });
 });
 
-describe('<Form> (E64) — uncontrolled, typed by its route', () => {
+describe('<Form> — uncontrolled, typed by its route', () => {
   it('renders a real form for browsers without JavaScript: the route’s URL, POST, `_token` — `_method` for PUT', async () => {
     await mount(page('Tokens', '/tokens', {}, { csrf: 'the-token' }));
     const tokens = $('token-form') as HTMLFormElement;
@@ -277,8 +277,8 @@ describe('<Form> (E64) — uncontrolled, typed by its route', () => {
   });
 });
 
-describe('instant visits (E64)', () => {
-  it('counter-check: shows the view’s placeholder with what the link gave it — the view itself only ever with its page', async () => {
+describe('instant visits', () => {
+  it('shows the view’s placeholder with what the link gave it — the view itself only ever with its page', async () => {
     let open!: (response: Response) => void;
     server = () => new Promise((resolve) => (open = resolve));
     history.replaceState(null, '', '/people');
@@ -298,7 +298,7 @@ describe('instant visits (E64)', () => {
   });
 });
 
-describe('a new build (E64)', () => {
+describe('a new build', () => {
   it('postponed by the app (`version` prevented): `useNewVersion()` says where it waits — no reload', async () => {
     const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     server = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/people', [RELOAD_HEADER]: 'version' } });

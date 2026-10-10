@@ -46,7 +46,7 @@ describe('Router — groups, global middleware, terminate', () => {
   }
   const request = (path: string) => ({ request: new Request(`http://app.test${path}`), params: {} });
 
-  it('works the list out once per route — and again after a group changed, also after requests ran (W8 step 9)', async () => {
+  it('works the list out once per route — and again after a group changed, also after requests ran', async () => {
     const { router, log } = setup();
     const page = router.findByName('page')!;
     expect(router.middlewareFor(page)).toBe(router.middlewareFor(page)); // the same list, not sorted again per request

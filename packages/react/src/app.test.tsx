@@ -11,7 +11,7 @@ import { resolveModulePages, type DefaultLayout, type PageComponent } from './pa
 import { useForm } from './use-form.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -150,13 +150,13 @@ const $ = (selector: string) => container.querySelector(selector);
 const click = (testId: string) => act(async () => ($(`[data-testid="${testId}"]`) as HTMLButtonElement).click());
 /** Lets fetches, renders and effects finish. */
 const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
-/** What a failure shows is a chunk of its own (W10 step 7, E202): under a busy test run it may take more than a tick to load. */
+/** What a failure shows is a chunk of its own: under a busy test run it may take more than a tick to load. */
 const shown = async (selector: string) => {
   for (let tries = 0; tries < 200 && !$(selector); tries++) await settle();
   return $(selector);
 };
 
-describe('persistent layouts (E35)', () => {
+describe('persistent layouts', () => {
   it('keeps the layout mounted across navigations: its state survives', async () => {
     server = (url) => respond(page('B', new URL(url, location.href).pathname));
     await mount(page('A', '/a'));
@@ -203,7 +203,7 @@ describe('persistent layouts (E35)', () => {
     expect($('[data-page="bare"]')).not.toBeNull();
   });
 
-  it('counter-check: a layout rendered by the page itself (no `layout`) is remounted on every navigation', async () => {
+  it('a layout rendered by the page itself (no `layout`) is remounted on every navigation', async () => {
     function Inline({ name }: { name: string }) {
       return (
         <AppLayout>
@@ -255,7 +255,7 @@ describe('error boundaries', () => {
     expect([...container.querySelectorAll('[data-page="fragile"] li')].map((li) => li.textContent)).toEqual(['new', 'shape']);
   });
 
-  it('counter-check: a page that renders fine is never fetched again', async () => {
+  it('a page that renders fine is never fetched again', async () => {
     let requests = 0;
     server = () => (requests++, respond(page('B', '/b')));
     await mount(page('Fragile', '/fragile', { items: { data: ['fine'] } }));
@@ -298,7 +298,7 @@ describe('failed visits', () => {
   });
 });
 
-describe('form callbacks (E44: Inertia’s meanings)', () => {
+describe('form callbacks (Inertia’s meanings)', () => {
   it('onError gets the validation errors (first message per field), onException a failed request', async () => {
     calls.length = 0;
     server = () => respond(page('Form', '/form', { errors: { name: ['The name is required.', 'Too short.'] } }));
@@ -339,7 +339,7 @@ describe('usePage inside layouts', () => {
   });
 });
 
-describe('deferred and optional props (E7)', () => {
+describe('deferred and optional props', () => {
   it('renders the page with the fallback first, then the deferred prop the browser loads after mount', async () => {
     let release!: () => void;
     const requests: Record<string, string>[] = [];

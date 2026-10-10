@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
 /**
- * View transitions in the React adapter (E185, W9 step 8). `viewTransition: 'react'`: a page change renders in `startTransition`
+ * View transitions in the React adapter. `viewTransition: 'react'`: a page change renders in `startTransition`
  * with its types (`addTransitionType`) — React 19.3 starts the transition for the views' `<ViewTransition>`, the core starts none.
  * `true`: the core's — React starts none (no transition lane). Without the option a page change is the plain update it was: no
  * `startTransition`, so nothing a transition changes (Suspense, the order of a placeholder and its page, the scroll, the guard, the
@@ -17,7 +17,7 @@ import { Deferred } from './deferred.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useBlocker } from './state.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 // Not in act(): React starts no view transition inside an act scope — these tests wait for real tasks instead.
@@ -58,7 +58,7 @@ function Person({ id }: { id: number }) {
 Person.layout = Layout;
 Person.placeholder = () => <main data-page="person-placeholder" />;
 
-/** A page with a deferred prop (E7): its fallback first, the prop after the page is on screen. */
+/** A page with a deferred prop: its fallback first, the prop after the page is on screen. */
 function Activity({ items }: { items?: string[] }) {
   return (
     <div data-page="activity">
@@ -70,7 +70,7 @@ function Activity({ items }: { items?: string[] }) {
 }
 Activity.layout = Layout;
 
-/** Unsaved changes: the guard asks before the page is left (E64). */
+/** Unsaved changes: the guard asks before the page is left. */
 function Dirty() {
   useBlocker({ when: true, message: 'Unsaved changes.' });
   return <p data-page="dirty" />;
@@ -109,7 +109,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.replaceChildren(container);
   started = [];
-  // The document's view transitions (E185), as a browser has them: the old state is captured, then the update runs.
+  // The document's view transitions, as a browser has them: the old state is captured, then the update runs.
   Object.assign(document, {
     startViewTransition: ({ update, types = [] }: { update: () => unknown; types?: string[] }) => {
       started.push(`${/view-transitions\.ts/.test(new Error().stack ?? '') ? 'core' : 'react'}:${types.join(' ')}`);
@@ -156,7 +156,7 @@ const visit = async (url: string, options?: Parameters<Navigator['visit']>[1]) =
   await settle();
 };
 
-describe('view transitions in the React adapter (E185)', () => {
+describe('view transitions in the React adapter', () => {
   it("'react': the page changes in startTransition with its types — React starts the one transition, the core none", async () => {
     await mount(page('People', '/people'), { viewTransition: 'react' });
     await visit('/people/1');
@@ -196,7 +196,7 @@ describe('view transitions in the React adapter (E185)', () => {
     expect(started, 'a view transition without the option — the page changed in a React transition').toEqual([]);
   });
 
-  it('without the option, a page that suspends shows the layout’s fallback at once — as before (no transition keeps the old page)', async () => {
+  it('without the option, a page that suspends shows the layout’s fallback at once (no transition keeps the old page)', async () => {
     let open!: () => void;
     gate = new Promise<void>((resolve) => (open = resolve));
     history.replaceState(null, '', '/calm');

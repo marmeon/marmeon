@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import type { ResolvePage } from './pages.ts';
 
-// The failure chunk (E202) cannot load — offline, or a proxy answers every asset with a 502: what a failure shows must not fail too.
+// The failure chunk cannot load — offline, or a proxy answers every asset with a 502: what a failure shows must not fail too.
 vi.mock('./failure.tsx', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });

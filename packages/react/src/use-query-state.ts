@@ -30,7 +30,7 @@ export type UseQueryStateOptions<N extends string = string> = Omit<QueryStateOpt
 export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
 
 /**
- * Typed URL state (E55): the page's query as its controller's `query` schema parsed it — and a setter that changes
+ * Typed URL state: the page's query as its controller's `query` schema parsed it — and a setter that changes
  * the URL with a visit of the same page (partial with `only`, keeping component state and scroll):
  *
  * ```tsx
@@ -39,9 +39,8 @@ export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
  * <button onClick={() => setQuery((current) => ({ sort: current.sort === 'name' ? '-name' : 'name' }))}>Sort</button>
  * ```
  *
- * The state changes at once (what is typed shows), the URL after `debounce` ms; Back/Forward and links bring the state
- * of their page. Only on the page of route `name` (checked at runtime); a route without a query schema is a compile
- * error. The browser never parses the URL — the page object carries the parsed query.
+ * The state changes at once, the URL after `debounce` ms. Only on the page of route `name`; a route without a query schema
+ * is a compile error. See docs/pagination.md#searching-and-sorting.
  */
 export function useQueryState<const N extends BrowserRouteNameInput>(
   name: CheckQueryRoute<N>,
@@ -62,7 +61,7 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
   useEffect(() => {
     const navigator = router.navigator();
     if (!navigator) return undefined;
-    // The feature attaches on first use (E70) — an app without query state carries none of it.
+    // The feature attaches on first use — an app without query state carries none of it.
     const current = navigator.use(queryState).create(latest.current as QueryStateOptions);
     state.current = current;
     const stop = current.subscribe(() => setDraft(current.draft));

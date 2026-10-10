@@ -19,7 +19,7 @@ import {
 } from './__fixtures__/bundle.ts';
 
 /**
- * What a browser downloads for the client core and the React adapter (Wave 5c, E75): sizes held by a ratchet and a
+ * What a browser downloads for the client core and the React adapter: sizes held by a ratchet and a
  * leak test per feature. Built as an app builds them (Vite app mode, production, minified) against the packages'
  * `dist/` — run `pnpm build` first. React and i18n are not counted.
  *
@@ -32,14 +32,14 @@ type LeakScenario = 'core' | 'emptyApp' | 'minimalApp';
 
 /**
  * What each scenario uses on purpose: `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
- * static in it — a guard loaded later could not stop a navigation that came first; E74 loads only `validate` on first use).
+ * static in it — a guard loaded later could not stop a navigation that came first; only `validate` loads on first use).
  */
 const USES: Record<Scenario, readonly string[]> = {
   core: [],
   emptyApp: [],
   minimalApp: ['guard', 'remember'],
   everything: [],
-  // The headless table (W9 step 6): sorting and filters are query state; its actions (the actions feature, the page's reloads) are
+  // The headless table: sorting and filters are query state; its actions (the actions feature, the page's reloads) are
   // a chunk loaded with the first run.
   table: ['table', 'queryState'],
 };
@@ -49,61 +49,60 @@ const inApp = (...names: string[]) => ({ base: 'emptyApp' as const, entry: appEn
 
 /**
  * The optional features and how to recognise them in a bundle: by module (`<package>/<path>` without src/dist and
- * extension) — the navigator's part of each lives in `http/client/features/` since Wave 5c step 2. Step 4 takes them out
- * of the default registration one by one (those still in it are `stillLeaking`): then the hook or component that uses one
+ * extension) — the navigator's part of each lives in `http/client/features/`, and the hook or component that uses one
  * attaches it. `use` is the import an app uses it through, on top of a scenario; `brings`, the features it builds on.
  */
 const FEATURES = {
-  // The core loads them when the server answers with a layer (E71), <Link layer> where it renders (E74): the core's layers and
+  // The core loads them when the server answers with a layer, <Link layer> where it renders: the core's layers and
   // the React layer stack in chunks of their own. `react/layer` (useLayer) and `react/layer-dialog` (the default frame) are no
   // markers: views and an app's frame import them, small and static.
   layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer-stack'], use: inApp('Link'), lazy: true },
   islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
   actions: { markers: ['http/client/features/actions', 'http/client/action', 'react/use-action'], use: inApp('useAction') },
-  // The page's patches (E59): with `useRouter()` (`router.optimistic`/`reloading`), loaded with the first use (W9 step 7), in a chunk of
+  // The page's patches: with `useRouter()` (`router.optimistic`/`reloading`), loaded with the first use, in a chunk of
   // its own. `optimistic.ts` (the patch queue) is no marker: layers and islands keep their own patches with it; the core applies a
   // visit's (`patches.ts`).
   optimistic: { markers: ['http/client/features/optimistic'], use: inApp('useRouter'), lazy: true },
-  // useForm(…, { validate }): on a form's first use (E74), in a chunk of its own. useForm remembers (static).
+  // useForm(…, { validate }): on a form's first use, in a chunk of its own. useForm remembers (static).
   liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['guard', 'remember'], lazy: true },
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
-  // The progress bar (E82): opt-in, `createMarmeonApp({ progress: progressBar() })` — `aria-busy` (`http/client/busy`) is every app's.
+  // The progress bar: opt-in, `createMarmeonApp({ progress: progressBar() })` — `aria-busy` (`http/client/busy`) is every app's.
   progress: { markers: ['http/client/progress'], use: inApp('progressBar') },
-  // <Link prefetch>, router.prefetch: on the first prefetch (E74), in a chunk of its own.
+  // <Link prefetch>, router.prefetch: on the first prefetch, in a chunk of its own.
   prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link'), lazy: true },
-  // Any view of resolveModulePages may declare it (E58): the resolver brings it, <MarmeonApp> attaches it.
+  // Any view of resolveModulePages may declare it: the resolver brings it, <MarmeonApp> attaches it.
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
   // useBlocker, useForm({ guard }), <Form guard>: static (a guard loaded later could not stop what came first). Asking — a
   // visit's, an action's `confirm`, the guard's question — is the core's (`http/client/confirm`).
   guard: { markers: ['http/client/features/guard'], use: inApp('useBlocker') },
-  // <Link instant>: loaded where one renders (E74), in a chunk of its own.
+  // <Link instant>: loaded where one renders, in a chunk of its own.
   instant: { markers: ['http/client/features/instant'], use: inApp('Link'), lazy: true },
   form: { markers: ['react/form'], use: inApp('Form'), brings: ['guard', 'remember'] }, // <Form remember guard>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
-  // Uploads (W6.9): <FileInput> (static, small) loads the feature where it renders, in a chunk of its own with the XHR code —
-  // which the core also loads with the first FormData visit with progress (W5c.6). Running uploads and tokens: its slot only.
+  // Uploads: <FileInput> (static, small) loads the feature where it renders, in a chunk of its own with the XHR code —
+  // which the core also loads with the first FormData visit with progress. Running uploads and tokens: its slot only.
   uploads: { markers: ['http/client/upload', 'http/client/features/uploads'], use: inApp('FileInput'), lazy: true },
-  // W6.10: server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
+  // server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
   // asks for the waiting updates (`useLiveUpdates`) loads it too. The stream, sequences and hints: its document slot only.
   live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
-  // The client hook API (E132, W7 step 9): a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
+  // The client hook API: a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
   hooks: { markers: ['http/client/features/hooks'], use: { base: 'emptyApp' as const, entry: `${appEntry()}import { hooks } from '@marmeon/http/client';\nglobalThis.__hooks = hooks;\n` } },
-  // Tab sync (W8 step 8, E149): a default feature of `createMarmeonApp` — loaded with the first page, before hydrating, in a chunk of
+  // Tab sync: a default feature of `createMarmeonApp` — loaded with the first page, before hydrating, in a chunk of
   // its own; `createMarmeonApp({ tabSync: false })` never loads it. The core alone carries none of it.
   tabSync: { markers: ['http/client/features/tab-sync', 'http/tab-sync-protocol'], use: inApp(), lazy: true },
-  // The History fallback (W9 step 7, E184): `createMarmeonApp` loads it beside the first page only where the browser has no Navigation
+  // The History fallback: `createMarmeonApp` loads it beside the first page only where the browser has no Navigation
   // API — a chunk of its own, never in a first download. The core alone carries none of it (an adapter loads it).
   history: { markers: ['http/client/features/history-fallback'], use: inApp(), lazy: true },
-  // View transitions (W9 step 8, E185): the core loads them before the first page change that asks for one (a visit's, a link's, the
+  // View transitions: the core loads them before the first page change that asks for one (a visit's, a link's, the
   // app's `viewTransition`) — a chunk of its own, never in a first download; only the loader is.
   viewTransitions: { markers: ['http/client/features/view-transitions'], use: inApp(), lazy: true },
-  // What a failure shows (W10 step 7, E202): the dialogs of a failed visit and the error page for a page that threw — a chunk
+  // What a failure shows: the dialogs of a failed visit and the error page for a page that threw — a chunk
   // <MarmeonApp> loads when it happens, never in a first download (the error boundary stays). `react/error-page` is no marker: the
   // adapter's main entry exports `ErrorPage` (everything holds it); the built-in page itself is checked on its own below.
   failures: { markers: ['react/failure'], use: inApp(), lazy: true },
-  // The headless table (W9 step 6, E183): `@marmeon/react/table` and what it builds on — the core's row selection (a slot of the
+  // The headless table: `@marmeon/react/table` and what it builds on — the core's row selection (a slot of the
   // entry) and the table's UI-free controller. Only with its own import: never in an app without tables (its subpath, an optional peer).
   table: { markers: ['http/client/features/selection', 'table/client/table', 'react/table'], use: { base: 'emptyApp' as const, entry: tableEntry() }, brings: ['queryState'] },
   // The TanStack Table bridge (`@marmeon/react/table-tanstack`, TanStack v9 an optional peer): TanStack only where the app imports it.
@@ -123,7 +122,7 @@ const FEATURES = {
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
-/** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
+/** The features no app carries unless it uses them. */
 const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack', 'viewTransitions', 'failures'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
@@ -142,7 +141,7 @@ function featuresIn({ modules, lazyModules, code }: AppBundle, lazy = false): st
 }
 
 /**
- * The leak test's `devtools` marker (W7 steps 8 and 9, E115): a module of @marmeon/devtools or the bar's data feature of the
+ * The leak test's `devtools` marker: a module of @marmeon/devtools or the bar's data feature of the
  * client core (`http/client/features/devtools`), or the devtools' paths, markup and dev hook in the code (`/_marmeon/devtools`,
  * `@marmeon/devtools`, `data-marmeon-devtools`, `__MARMEON_DEVTOOLS_HOOK__` — the core calls it only under
  * `process.env.NODE_ENV !== 'production'`). Not the bare word — react-dom's production build names `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
@@ -178,12 +177,12 @@ const bundle = (name: string): AppBundle => {
   return found;
 };
 
-describe('the client bundle stays within its budget (E75: a ratchet)', () => {
+describe('the client bundle stays within its budget (a ratchet)', () => {
   it.each(Object.keys(SCENARIOS) as Scenario[])('%s', (name) => {
     const line = budget.gzipKB[name];
     expect(line, `${BUDGET_WHERE} has no limit for "${name}"`).toBeDefined();
     const size = kb(bundle(name).gzip);
-    // update: a saving lowers the limit to the size + the reserve (E186); a size over its limit stays red — never raised.
+    // update: a saving lowers the limit to the size + the reserve; a size over its limit stays red — never raised.
     const lower = update ? loweredLimit(size, line) : undefined;
     if (lower !== undefined) lowered[name] = lower;
     const problem = budgetProblem(name, size, lower === undefined ? line : { ...line, limit: lower });
@@ -197,9 +196,9 @@ describe('the client bundle stays within its budget (E75: a ratchet)', () => {
   });
 });
 
-describe('an app holds only the features it uses (E75: leak test)', () => {
-  // `stillLeaking` lists what is in there today without being used; Wave 5c shrinks it to []. A new leak fails, and so
-  // does a listed one that is gone — then take it off the list.
+describe('an app holds only the features it uses (leak test)', () => {
+  // `stillLeaking` lists what is in there without being used. A new leak fails, and so does a listed one that is gone —
+  // then take it off the list.
   it.each(['core', 'emptyApp', 'minimalApp'] as const)('%s', (name) => {
     const leaking = featuresIn(bundle(name)).filter((feature) => !USES[name].includes(feature));
     expect(leaking, `Features in "${name}" it does not use — update stillLeaking.${name} in ${BUDGET_WHERE} only when one is gone`).toEqual(
@@ -207,8 +206,7 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     );
   });
 
-  // Taken out of the default registration in Wave 5c step 4 (E70, E74): in none of these unless it is used — whatever
-  // stillLeaking says (a feature may not come back onto that list).
+  // In none of these unless it is used — whatever stillLeaking says (a feature may not come back onto that list).
   it.each(EXTRACTED)('%s is in no scenario that does not use it', (feature) => {
     for (const name of ['core', 'emptyApp', 'minimalApp'] as const) {
       if (USES[name].includes(feature)) continue;
@@ -216,21 +214,21 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     }
   });
 
-  // E71: whatever an app imports, the layers are a chunk the core loads when the server answers with one — never in the first
-  // download, and always there to load (a layer may answer any visit, E53).
+  // whatever an app imports, the layers are a chunk the core loads when the server answers with one — never in the first
+  // download, and always there to load (a layer may answer any visit).
   it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the layers are a chunk of their own in %s — loaded on demand', (name) => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('layers');
     expect(featuresIn(built, true)).toContain('layers');
   });
 
-  // W5c.6 / W6.9: the XHR code is no part of any first download — the core loads it with the first FormData visit with progress.
+  // the XHR code is no part of any first download — the core loads it with the first FormData visit with progress.
   it('the core alone carries uploads only in a chunk it loads on demand', () => {
     expect(featuresIn(bundle('core'))).not.toContain('uploads');
     expect(featuresIn(bundle('core'), true)).toContain('uploads');
   });
 
-  // W6.10: an answer may follow a live channel whatever the app imported — the core loads the feature then (server-driven, like the
+  // an answer may follow a live channel whatever the app imported — the core loads the feature then (server-driven, like the
   // layers): never in a first download, always there to load.
   it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('live props are a chunk of their own in %s — loaded on demand', (name) => {
     const built = bundle(name);
@@ -238,29 +236,29 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect(featuresIn(built, true)).toContain('live');
   });
 
-  // W8 step 8 (E149): every app of createMarmeonApp loads tab sync — in a chunk of its own, never in a first download; the core alone
-  // carries none of it, not even lazily (the core's limit stays where it was).
+  // every app of createMarmeonApp loads tab sync — in a chunk of its own, never in a first download; the core alone
+  // carries none of it, not even lazily.
   it.each(['emptyApp', 'minimalApp', 'everything'] as const)('tab sync is a chunk of its own in %s — loaded by createMarmeonApp', (name) => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('tabSync');
     expect(featuresIn(built, true)).toContain('tabSync');
   });
 
-  // W9 step 7 (E184): the History fallback only where the browser has no Navigation API — a chunk createMarmeonApp loads then.
+  // the History fallback only where the browser has no Navigation API — a chunk createMarmeonApp loads then.
   it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the History fallback is a chunk of its own in %s — never in the first download', (name) => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('history');
     expect(featuresIn(built, true)).toContain('history');
   });
 
-  // W9 step 8 (E185): whatever an app imports, view transitions are a chunk the core loads with the first visit that asks for one.
+  // whatever an app imports, view transitions are a chunk the core loads with the first visit that asks for one.
   it.each(['core', 'emptyApp', 'minimalApp', 'everything', 'table'] as const)('view transitions are a chunk of their own in %s — never in the first download', (name) => {
     const built = bundle(name);
     expect(featuresIn(built), 'view transitions in the first download').not.toContain('viewTransitions');
     expect(featuresIn(built, true)).toContain('viewTransitions');
   });
 
-  // W10 step 7 (E202): what a failure shows — the failure dialogs, the error page for a page that threw, the built-in error page — is
+  // what a failure shows — the failure dialogs, the error page for a page that threw, the built-in error page — is
   // a chunk of its own in every app of <MarmeonApp>; its styles are classes of styles.css, so none of it is in the first download.
   it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the failure dialogs are a chunk of their own in %s — never in the first download', (name) => {
     const built = bundle(name);
@@ -279,7 +277,7 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect([...featuresIn(bundle('core')), ...featuresIn(bundle('core'), true)]).not.toContain('history');
   });
 
-  // W9 step 7: useRouter() loads the page's optimistic patches with the first router.optimistic()/reloading() — every app with a router
+  // useRouter() loads the page's optimistic patches with the first router.optimistic()/reloading() — every app with a router
   // (the docs app's header search) carries only the loader.
   it('the page’s optimistic patches are a chunk of their own in everything — loaded with the first router.optimistic()', () => {
     expect(featuresIn(bundle('everything'))).not.toContain('optimistic');
@@ -291,7 +289,7 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect(featuresIn(bundle('core'), true)).not.toContain('tabSync');
   });
 
-  // W9 step 6 (E183, E186): the headless table and the TanStack bridge come with their own imports only — in no other scenario, not
+  // the headless table and the TanStack bridge come with their own imports only — in no other scenario, not
   // even in `everything` (all of the adapter's main entry: their subpaths have optional peers), and TanStack not with `useTable` alone.
   it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the headless table and TanStack are in no bundle of %s — first download or lazy', (name) => {
     const built = bundle(name);
@@ -323,13 +321,13 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
       const built = await appClientBuild(join(PACKAGES, '../apps/web-app'));
       expect(featuresIn(built)).not.toContain('layers');
       expect(built.lazyModules).toEqual(expect.arrayContaining(['http/dist/client/features/layers.js', 'http/dist/client/layer.js', 'react/dist/layer-stack.js']));
-      // E115 (W7 step 8): the devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
+      // the devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
       expect(devtoolsIn(built), 'web-app').toEqual([]);
-      // W9 step 6: the members table (useTable) comes with its page — a lazy chunk; TanStack is in no chunk (the app has no bridge).
+      // the members table (useTable) comes with its page — a lazy chunk; TanStack is in no chunk (the app has no bridge).
       expect(featuresIn(built)).not.toContain('table');
       expect(featuresIn(built, true)).toContain('table');
       expect([...featuresIn(built), ...featuresIn(built, true)]).not.toContain('tanstack');
-      // W10 step 3 (E197): validation is the server's — the lab's form imports types of its rules only; no rule, no Valibot in any chunk.
+      // validation is the server's — the lab's form imports types of its rules only; no rule, no Valibot in any chunk.
       const leaked = [...built.modules, ...built.lazyModules].filter((id) => id.startsWith('validation/') || id.includes('valibot'));
       expect(leaked, `web-app client chunks with validation code: ${leaked.join(', ')}`).toEqual([]);
     } finally {
@@ -337,7 +335,7 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     }
   }, 60_000);
 
-  it('the docs app carries no devtools either — it has them as a dev dependency and uses them under marmeon dev (W7 step 10)', async () => {
+  it('the docs app carries no devtools either — it has them as a dev dependency and uses them under marmeon dev', async () => {
     const node = process.env.NODE_ENV;
     try {
       expect(devtoolsIn(await appClientBuild(join(PACKAGES, '../apps/docs'))), 'docs').toEqual([]);
@@ -346,20 +344,20 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     }
   }, 60_000);
 
-  it('no scenario carries devtools code (E115: development only, never in a build)', () => {
+  it('no scenario carries devtools code (development only, never in a build)', () => {
     for (const [name, built] of bundles) expect(devtoolsIn(built), name).toEqual([]);
   });
 
   it.each(FEATURE_NAMES)('%s comes with its own import — and recognisably so', (feature) => {
     const { use, brings = [], lazy = false }: { use: { base: LeakScenario }; brings?: readonly string[]; lazy?: boolean } = FEATURES[feature];
     const built = bundle(`feature:${feature}`);
-    // A feature loaded on first use (E74) comes with its component, but in a chunk of its own — not in the first download.
+    // A feature loaded on first use comes with its component, but in a chunk of its own — not in the first download.
     expect(featuresIn(built)).toEqual(sorted([...USES[use.base], ...budget.stillLeaking[use.base], ...(lazy ? [] : [feature]), ...brings]));
     if (lazy) expect(featuresIn(built, true)).toContain(feature);
   });
 });
 
-describe('no injection metadata in the browser (E76)', () => {
+describe('no injection metadata in the browser', () => {
   it('no bundle carries an injection list or reason', () => {
     for (const [name, { code }] of bundles) {
       expect(code.match(/marmeon\.injection[^"'`]*|static inject\b|Cannot inject[^"'`]{0,60}/)?.[0], name).toBeUndefined();
@@ -380,11 +378,11 @@ describe('no injection metadata in the browser (E76)', () => {
       const globs: string[] = JSON.parse(readFileSync(join(PACKAGES, name!, 'package.json'), 'utf8')).marmeon?.browser ?? [];
       return !source || !globs.some((glob) => matchesGlob(source, glob));
     });
-    expect(uncovered, 'Browser modules outside their package\'s "marmeon": { "browser": [...] } — add them there (E76)').toEqual([]);
+    expect(uncovered, 'Browser modules outside their package\'s "marmeon": { "browser": [...] } — add them there').toEqual([]);
   }, 60_000);
 });
 
-describe('a production bundle says codes, not explanations (E80)', () => {
+describe('a production bundle says codes, not explanations', () => {
   // A few of the explanations the development build throws or warns: none may ship. A production error is its code
   // and a name (`[marmeon:R2] users/Show`); docs/errors.md ("Error codes") says what each code means.
   const EXPLANATIONS = [

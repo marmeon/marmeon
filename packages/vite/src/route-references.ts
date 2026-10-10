@@ -1,8 +1,8 @@
 import { parseSync } from 'oxc-parser';
 
 /**
- * A place where client code hands a route name to the framework — what the browser's route manifest is built from
- * (E57). Sinks are keyed by the package that exports them, so another UI adapter brings its own rows.
+ * A place where client code hands a route name to the framework — what the browser's route manifest is built from.
+ * Sinks are keyed by the package that exports them, so another UI adapter brings its own rows.
  *
  * - `element`: a JSX attribute, `<Link route="…">`.
  * - `call`: an argument of a function, `useForm('…', …)`. `minArguments`: calls with fewer arguments take no name
@@ -17,10 +17,8 @@ export type RouteSink =
 const REACT = '@marmeon/react';
 
 /**
- * The sinks of the React adapter. Rows for APIs that do not exist yet (`<Form route>`, `usePending`) are here already, so they
- * reach the manifest from their first day — and so does the error for a name built at runtime. A layer link is
- * `<Link route="…" layer>` (E53): `layer` is a flag, the name is the `route` row's. `useAction(name)` (E59) resolves its URL from
- * the manifest; `usePendingSubmissions(name)` only compares names (no URL), so it needs no row.
+ * The sinks of the React adapter. A layer link needs no row of its own: `layer` is a flag, the name is the `route` row's.
+ * `usePendingSubmissions(name)` only compares names (no URL), so it needs no row. See docs/urls.md#which-routes-the-browser-knows.
  */
 export const ROUTE_SINKS: readonly RouteSink[] = [
   { module: REACT, export: 'Link', kind: 'element', prop: 'route' },
@@ -83,11 +81,10 @@ const SKIPPED_KEYS = new Set(['typeAnnotation', 'typeParameters', 'typeArguments
 /**
  * The route names a module hands to the framework, and the places where it hands one the build cannot know.
  *
- * Seen: string literals, template literals without expressions, both branches of a conditional, `as const` /
- * `satisfies` / parentheses, and `const` bindings of those — including an `as const` object or array indexed by a
- * variable (all its values). Imports are resolved by binding, so `import { Link as L }` and `import * as B` count.
- * Anything else — a template with expressions, a concatenation, a prop, a function parameter — is a problem with a
- * readable message: the browser's manifest would lack the name, and the page would throw in production.
+ * Seen: string literals, templates without expressions, both branches of a conditional, `as const` / `satisfies` /
+ * parentheses, and `const` bindings of those — an `as const` object or array indexed by a variable gives all its values.
+ * Imports are resolved by binding (`import { Link as L }`, `import * as B`). Anything else is a problem: the browser's
+ * manifest would lack the name. See docs/urls.md#names-written-out.
  */
 export function collectRouteReferences(code: string, filename: string, options: CollectOptions = {}): { references: RouteReference[]; problems: RouteReferenceProblem[] } {
   const sinks = options.sinks ?? ROUTE_SINKS;

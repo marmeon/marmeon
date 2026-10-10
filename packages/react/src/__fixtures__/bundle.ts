@@ -9,9 +9,8 @@ import { gzipSync } from 'node:zlib';
 import { build, type InlineConfig, type Rolldown } from 'vite';
 
 /**
- * Bundle measurements for the size budget, the leak test (Wave 5c, E75) and `pnpm size` — the method of the spike
- * `2026-10-02-client-kern-tree-shaking`, made repeatable: Vite's **app** mode as `marmeon build` runs it (not `lib`
- * mode, which leaves ES libraries partly unminified), production defines, minified, gzip level 9 per chunk.
+ * Bundle measurements for the size budget, the leak test and `pnpm size`: Vite's **app** mode as `marmeon build` runs it
+ * (not `lib` mode, which leaves ES libraries partly unminified), production defines, minified, gzip level 9 per chunk.
  */
 
 /** `packages/` — module ids are reported relative to it (`http/dist/client/navigation.js`). */
@@ -46,7 +45,7 @@ export interface AppBundle {
   readonly initial: readonly BundleChunk[];
   /** Chunks loaded on demand (`import()`): listed, not counted. */
   readonly lazy: readonly BundleChunk[];
-  /** The modules in those chunks (features loaded on first use, E74). */
+  /** The modules in those chunks (features loaded on first use). */
   readonly lazyModules: readonly string[];
   /** Those chunks' code, joined. */
   readonly lazyCode: string;
@@ -81,7 +80,7 @@ function appDirectory(): string {
     }
   };
   for (const name of ['http', 'i18n', 'react', 'table']) link(join(PACKAGES, name), join(dir, 'node_modules', '@marmeon', name));
-  // TanStack Table (W9 step 6): an optional peer of the React adapter, for its bridge's scenario — where the adapter has it installed.
+  // TanStack Table: an optional peer of the React adapter, for its bridge's scenario — where the adapter has it installed.
   mkdirSync(join(dir, 'node_modules', '@tanstack'), { recursive: true });
   link(realpathSync(join(PACKAGES, 'react/node_modules/@tanstack/react-table')), join(dir, 'node_modules', '@tanstack', 'react-table'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'bundle-measurement', private: true, type: 'module' }));
@@ -141,7 +140,7 @@ export async function appClientBuild(root: string, { sourcemap = false }: Pick<B
 }
 
 /**
- * The browser's route manifest (`.marmeon/routes.json`, E57) the build reads — `marmeon build` writes it first, a fresh
+ * The browser's route manifest (`.marmeon/routes.json`) the build reads — `marmeon build` writes it first, a fresh
  * checkout (CI) has none: `marmeon route:types` writes it, in the app's committed test environment (no `.env` needed).
  * It also writes `bootstrap/routes.ts`, unchanged while `pnpm types:check` is green.
  */
@@ -157,7 +156,7 @@ function writeBrowserRoutes(root: string): void {
 const PRELOAD_HELPER = '\0vite/preload-helper.js';
 
 /**
- * Measured without Vite's preload helper (≈ 0.5 KB gzip, Max 02.10.: E75 as decided at the end of Wave 5c): the first `import()`
+ * Measured without Vite's preload helper (≈ 0.5 KB gzip): the first `import()`
  * of a build brings it — every app with lazy pages ships it whatever the framework does, so it is no framework code. A stub
  * takes its place in the measured builds only (it loads the chunk without preloading its dependencies); nothing ships it.
  */
@@ -324,7 +323,7 @@ function segmentsOf(chunk: Rolldown.OutputChunk, dir: string, entry: string | un
  */
 function attribute(chunk: Rolldown.OutputChunk, dir: string, entry: string | undefined): Map<string, ModuleShare> {
   const texts = new Map<string, string[]>();
-  // Line breaks are left out of the shares (they always were): only the marginal measure needs them, to rebuild the code.
+  // Line breaks are left out of the shares: only the marginal measure needs them, to rebuild the code.
   for (const [module, text] of segmentsOf(chunk, dir, entry)) if (text !== '\n') (texts.get(module) ?? texts.set(module, []).get(module)!).push(text);
 
   const raw = [...texts].map(([module, parts]) => {
@@ -353,7 +352,7 @@ export const coreEntry = (...names: string[]) => entryOf('@marmeon/http/client',
 /** An entry with `createMarmeonApp` and `names` from `@marmeon/react`. */
 export const appEntry = (...names: string[]) => entryOf('@marmeon/react', ['createMarmeonApp', ...names]);
 
-/** An app without pages that renders a server-driven table (`useTable`, W9 step 6) — on top of {@link appEntry}. */
+/** An app without pages that renders a server-driven table (`useTable`) — on top of {@link appEntry}. */
 export const tableEntry = (...extra: string[]) =>
   `${appEntry()}import { useTable } from '@marmeon/react/table';\n${extra.join('')}globalThis.__table = useTable;\n`;
 
@@ -367,7 +366,7 @@ export const SCENARIOS = {
   minimalApp: appEntry('Link', 'useForm', 'usePage', 'Head'),
   /** All of `@marmeon/react` — its main entry: subpaths with optional peers (`./table`, `./table-tanstack`) are not part of it. */
   everything: `import * as all from '@marmeon/react';\nglobalThis.__keep = all;\n`,
-  /** An app without pages and the headless table (`@marmeon/react/table`, W9 step 6, E186: its own limit). */
+  /** An app without pages and the headless table (`@marmeon/react/table`: its own limit). */
   table: tableEntry(),
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
@@ -393,7 +392,7 @@ export const readBudget = (): Budget => JSON.parse(readFileSync(BUDGET_FILE, 'ut
 
 /**
  * Lowers limits in place, so the file keeps its layout: `"emptyApp": { "limit": 14.08` → `"emptyApp": { "limit": 13.95`. Never
- * raises one — a limit that would go up stays as it is (E75).
+ * raises one — a limit that would go up stays as it is.
  */
 export function lowerLimits(limits: Readonly<Record<string, number>>, file = BUDGET_FILE): void {
   let text = readFileSync(file, 'utf8');
@@ -406,8 +405,8 @@ export function lowerLimits(limits: Readonly<Record<string, number>>, file = BUD
 }
 
 /**
- * The reserve above the measured size that every limit keeps (E186, Wave 9: "the reserve stays"). Set once at the start of Wave 9
- * (every limit = measured + 0.5); a saving lowers a limit to the new size + 0.5, extra cost eats the reserve and is never refilled.
+ * The reserve above the measured size that every limit keeps ("the reserve stays"): a saving lowers a limit to the new
+ * size + 0.5, extra cost eats the reserve and is never refilled.
  */
 export const RESERVE_KB = 0.5;
 /**
@@ -417,7 +416,7 @@ export const RESERVE_KB = 0.5;
 export const SHRINK_KB = 0.6;
 /** The rule, for the messages. */
 export const BUDGET_RULE =
-  `E75/E186: limits only go down; a limit is the measured size + ${RESERVE_KB} KB at most — MARMEON_SIZE_BUDGET=update lowers it ` +
+  `limits only go down; a limit is the measured size + ${RESERVE_KB} KB at most — MARMEON_SIZE_BUDGET=update lowers it ` +
   'to that after a saving and never raises one; extra cost eats the reserve, which is never refilled';
 
 export const kb = (bytes: number): number => Math.round((bytes / 1024) * 100) / 100;

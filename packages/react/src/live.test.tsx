@@ -10,7 +10,7 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useBlocker } from './state.ts';
 import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -89,7 +89,7 @@ async function mount() {
   for (let i = 0; i < 50 && FakeSource.opened.length === 0; i++) await wait(5);
 }
 
-describe('useLiveUpdates() — live props that wait for unsaved changes (W6.10)', () => {
+describe('useLiveUpdates() — live props that wait for unsaved changes', () => {
   it('a page that follows a channel reloads on a hint by itself — the hook says nothing waits', async () => {
     await mount();
     expect(FakeSource.opened).toHaveLength(1);

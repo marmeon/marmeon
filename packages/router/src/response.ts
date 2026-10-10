@@ -16,11 +16,10 @@ export function ownResponse<R extends Response>(response: R): R {
 
 /**
  * `response`, ready for its headers to be set: itself when this request owns it ({@link ownResponse}), else a copy it owns from
- * now on — at most one copy per request, whatever number of middleware add headers (Wave 8 step 9: four copies per page before).
+ * now on — at most one copy per request, however many middleware add headers.
  *
- * A response the framework did not make is copied rather than changed: an app may return the same `Response` object twice (a
- * constant `new Response(null, { status: 204 })`), and a cookie set in place would reach the next request that gets it; its
- * headers may also be immutable (`Response.redirect`, `fetch`).
+ * A response the framework did not make is copied rather than changed: an app may return the same `Response` object twice, and
+ * a cookie set in place would reach the next request that gets it; its headers may also be immutable (`Response.redirect`, `fetch`).
  *
  * ```ts
  * async handle(ctx: HttpContext, next: Next<{}>) {

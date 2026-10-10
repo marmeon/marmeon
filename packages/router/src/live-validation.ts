@@ -1,11 +1,9 @@
 import type { StandardIssue } from './request-definition.ts';
 
 /**
- * Live validation (E62, Laravel's Precognition): a request to the route a form submits to — same method, same URL, same
- * body — that names the fields to check: `x-marmeon-validate: name,email`. The route runs as far as its validation: its
- * middleware (CSRF, authentication, throttling), its bindings, `authorize`, the request schema — then it answers `204` (the
- * named fields are valid) or `422` with the errors of the named fields only. Its controller's `handle` never runs: nothing is
- * created, sent or changed (the kernel also makes the request read-only, like an island's).
+ * Live validation (Laravel's Precognition): the form's own request plus `x-marmeon-validate: name,email`. The route runs as far
+ * as its validation and answers `204` or `422`; its controller's `handle` never runs, and the kernel makes the request
+ * read-only. See docs/validation.md#live-validation.
  *
  * The browser's copy of these names is in `@marmeon/http/page` (which may not import the router).
  */
@@ -34,7 +32,7 @@ export function liveValidationFields(request: Request): readonly string[] | unde
   return [...new Set(fields)].slice(0, MAX_FIELDS);
 }
 
-/** Whether `request` is a live validation (E62) — its controller's `handle` never runs. */
+/** Whether `request` is a live validation — its controller's `handle` never runs. */
 export function isLiveValidation(request: Request): boolean {
   return request.headers.has(VALIDATE_HEADER);
 }

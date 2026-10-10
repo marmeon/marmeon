@@ -11,7 +11,7 @@ import { MarmeonApp, useRouter } from './app.tsx';
 import { useLocale, useTranslation } from './i18n.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

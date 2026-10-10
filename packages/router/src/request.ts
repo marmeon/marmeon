@@ -3,7 +3,7 @@ import { HttpError } from './errors.ts';
 import { RequestNonce } from './nonce.ts';
 
 /**
- * Request input: the body, nested by bracket notation (`user[name]`, `tags[]`). Never the query (E65): a field of the
+ * Request input: the body, nested by bracket notation (`user[name]`, `tags[]`). Never the query: a field of the
  * body cannot be set through the URL — a link, a log line or a `Referer` must not be able to fill in a form.
  */
 export type Input = Record<string, unknown>;
@@ -15,7 +15,7 @@ export interface RequestStateOptions {
   ip?: string | undefined;
   /** The response's CSP nonce (the kernel binds the same one in the request's scope). Default: a fresh one. */
   nonce?: RequestNonce;
-  /** What the request's cookies get unless `set` says otherwise — `secure` from the session's config (E162). */
+  /** What the request's cookies get unless `set` says otherwise — `secure` from the session's config. */
   cookies?: CookieDefaults;
 }
 
@@ -30,7 +30,7 @@ export interface RequestState {
    */
   readonly query: URLSearchParams;
   /**
-   * The body — and only the body (E65): unlike Laravel's `$request->all()`, the query is never merged in, so no
+   * The body — and only the body: unlike Laravel's `$request->all()`, the query is never merged in, so no
    * field can be set through the URL (read it from `ctx.query`). A GET or HEAD request has no body: `{}`.
    * JSON, `application/x-www-form-urlencoded` and `multipart/form-data` (files are
    * `File`s) are parsed alike. Parsed once and cached: a request body can only be
@@ -39,14 +39,14 @@ export interface RequestState {
   input(): Promise<Input>;
   /**
    * The body if something read it already (`input()` resolved), else undefined — never reads it itself. For observers
-   * (the devtools record what the app read, E118), which must not consume or wait for a body.
+   * (the devtools record what the app read), which must not consume or wait for a body.
    */
   readonly inputRead?: () => Input | undefined;
   readonly cookies: CookieJar;
   /** The client's IP address — behind trusted proxies taken from `X-Forwarded-For`. Undefined in tests. */
   readonly ip: string | undefined;
   /**
-   * The response's CSP nonce (E147) — made on the first call, the same for the whole response: what a script or style tag
+   * The response's CSP nonce — made on the first call, the same for the whole response: what a script or style tag
    * of HTML the app writes itself needs (`<script nonce="…">`) under `contentSecurityPolicy()`. Documents rendered from
    * `index.html` carry it already.
    */
@@ -85,7 +85,7 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
  * is not a trusted proxy. Left entries are whatever the client claimed, so they
  * count only once every hop to their right is trusted. `'*'` trusts the direct peer
  * only — whoever connects is the proxy, and the address it saw is the right-most entry
- * (E172, Laravel's and Symfony's `*`): what anybody wrote further left never counts.
+ * (Laravel's and Symfony's `*`): what anybody wrote further left never counts.
  *
  * `trusted`: the proxies' addresses (`'*'` for all), or a check — the server's, which also knows CIDR ranges
  * (`TRUSTED_PROXIES=10.0.0.0/8`). Addresses reach it without the IPv4-mapped `::ffff:` prefix.
@@ -94,7 +94,7 @@ export function clientIp(remote: string | undefined, forwardedFor: string | null
   const normalize = (address: string) => address.trim().replace(/^::ffff:/, '');
   if (remote === undefined) return undefined;
   if (typeof trusted !== 'function' && trusted.includes('*')) {
-    // The direct peer is the proxy (E172): the entry it added — the right-most —, never one before it.
+    // The direct peer is the proxy: the entry it added — the right-most —, never one before it.
     const nearest = forwardedFor?.split(',').map(normalize).filter(Boolean).at(-1);
     return nearest ?? normalize(remote);
   }
