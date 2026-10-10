@@ -19,6 +19,10 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   listed twice, when a file is listed twice, lies elsewhere or is gone, when a page names the root `README.md`, and when a
   `docs/*.md` has no entry in a section.
   `UPGRADING.md` is marked `changes: true`: its sections come after every other hit of the search.
+- **The search** (`modules/docs/search.ts`, a route on the server) finds the sections that have every word of the query. The
+  page's name weighs most, then the heading — also a heading of the words of a name the section uses, `onOneServer` under "One
+  server only" — then how often the prose has the word, and last whether a code block uses it: a section that explains a word
+  comes before an example that only calls it.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; no `docs/*.md` carries it any more, and `pnpm check:source` refuses it.
 - **The text speaks to app developers.** `pnpm check:source` rule 5 refuses decision numbers and comparisons with another
@@ -54,8 +58,8 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   template, the apps, the package READMEs and the root README name (the READMEs by their GitHub URL) leads to a page and its
   anchor (a path to a package README fails, and so does an anchor GitHub cannot make or, outside the READMEs, a page without
   one). `styles.test.ts` reads the stylesheet's phone layout: the menu is an overlay that scrolls.
-  `docs.test.ts` checks the sections and their pages, previous and next, the start page, the search, caching, the policy and
-  the headers, cookies, the 404 (also for `/packages/…`) and the boot checks.
+  `search.test.ts` checks the search's order. `docs.test.ts` checks the sections and their pages, previous and next, the start
+  page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks.
 
 Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image),
 `DOCS_CACHE_MAX_AGE` (300 s), `DOCS_SEARCH_PER_MINUTE` (120).

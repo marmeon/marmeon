@@ -42,7 +42,10 @@ export interface Section {
   readonly heading: string;
   readonly anchor: string;
   readonly depth: number;
+  /** Its prose: paragraphs, lists, tables, callouts — inline code included. */
   readonly text: string;
+  /** Its code blocks — a word used in an example counts less than one the prose explains. */
+  readonly code: string;
 }
 
 export interface RenderedMarkdown {
@@ -76,10 +79,10 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
   const toc: TocEntry[] = [];
   const anchors: string[] = [];
   const fileLinks: string[] = [];
-  const sections: { heading: string; anchor: string; depth: number; text: string[] }[] = [];
+  const sections: { heading: string; anchor: string; depth: number; text: string[]; code: string[] }[] = [];
   let title = '';
   let pending = false;
-  let section = { heading: '', anchor: '', depth: 1, text: [] as string[] };
+  let section = { heading: '', anchor: '', depth: 1, text: [] as string[], code: [] as string[] };
   sections.push(section);
 
   const root: Building = element('div');
@@ -109,7 +112,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
           continue;
         }
         if (depth === 2 || depth === 3) toc.push({ depth, text, id });
-        section = { heading: text, anchor: id, depth, text: [] };
+        section = { heading: text, anchor: id, depth, text: [], code: [] };
         sections.push(section);
         const heading = element(token.tag, { id });
         append(heading);
@@ -185,7 +188,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
         const code = { html: options.highlight(token.content, lang) };
         // The file a block shows, above it: a caption of text — React escapes it, quotes and markup alike.
         append(title ? { t: 'figure', a: { class: 'code' }, c: [{ t: 'figcaption', c: [title] }, code] } : code);
-        section.text.push(token.content);
+        section.code.push(token.content);
         break;
       }
       case 'hr':
@@ -271,9 +274,14 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
     fileLinks,
     pending,
     sections: sections
-      .map((s) => ({ heading: s.heading, anchor: s.anchor, depth: s.depth, text: s.text.join(' ').replace(/\s+/g, ' ').trim() }))
-      .filter((s) => s.text || s.anchor),
+      .map((s) => ({ heading: s.heading, anchor: s.anchor, depth: s.depth, text: squash(s.text), code: squash(s.code) }))
+      .filter((s) => s.text || s.code || s.anchor),
   };
+}
+
+/** Pieces of text as one line: runs of whitespace one space. */
+function squash(pieces: readonly string[]): string {
+  return pieces.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 /** A fence's info string: its language (the first word) and the file it shows — ```` ```ts title="modules/notes/routes.ts" ````. */

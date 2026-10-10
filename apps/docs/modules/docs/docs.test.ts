@@ -50,6 +50,13 @@ describe('the search (a server route, E133)', () => {
     expect(missed[0]!.href).toBe('/docs/scheduling#missed-runs');
   });
 
+  it('puts a section that explains a word before code that only uses it: "One server only" among the first three for onOneServer', async () => {
+    const hits = results(await app.navigating().get('/search?q=onOneServer').assertOk());
+    const at = hits.findIndex((hit) => hit.href === '/docs/scheduling#one-server-only');
+    expect(at, JSON.stringify(hits.slice(0, 12).map((hit) => hit.href))).toBeGreaterThanOrEqual(0);
+    expect(at, JSON.stringify(hits.slice(0, 12).map((hit) => hit.href))).toBeLessThan(3);
+  });
+
   it('takes all words, case-insensitively, at most 20 hits', async () => {
     const hits = results(await app.navigating().get('/search?q=QUEUE%20worker').assertOk());
     expect(hits.length).toBeGreaterThan(0);

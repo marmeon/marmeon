@@ -66,11 +66,11 @@ describe('the markdown of a page', () => {
     expect(markup).toContain('<pre>const x = 1;\n</pre>');
   });
 
-  it('splits the page into sections for the search: heading, anchor and text (code included)', () => {
+  it('splits the page into sections for the search: heading, anchor, its prose and its code blocks apart', () => {
     const { sections } = render('# @marmeon/x\n\nIntro.\n\n## Locks\n\nUse `onOneServer()`.\n\n```ts\ns.command(x).onOneServer();\n```');
     expect(sections).toEqual([
-      { heading: '@marmeon/x', anchor: '', depth: 1, text: 'Intro.' },
-      { heading: 'Locks', anchor: 'locks', depth: 2, text: 'Use onOneServer(). s.command(x).onOneServer();' },
+      { heading: '@marmeon/x', anchor: '', depth: 1, text: 'Intro.', code: '' },
+      { heading: 'Locks', anchor: 'locks', depth: 2, text: 'Use onOneServer().', code: 's.command(x).onOneServer();' },
     ]);
   });
 
@@ -94,7 +94,7 @@ describe('the markdown of a page', () => {
     const { body, sections } = render('# H\n\n```ts title="a/b.ts"\nconst x = 1;\n```');
     expect(html(body)).toBe('<figure class="code"><figcaption>a/b.ts</figcaption><pre>const x = 1;\n</pre></figure>');
     expect(body).toEqual([{ t: 'figure', a: { class: 'code' }, c: [{ t: 'figcaption', c: ['a/b.ts'] }, { html: '<pre>const x = 1;\n</pre>' }] }]);
-    expect(sections[0]!.text).toBe('const x = 1;');
+    expect(sections[0]).toMatchObject({ text: '', code: 'const x = 1;' });
   });
 
   it('highlights a titled block in its language (the first word) and leaves a block without title as it was', () => {

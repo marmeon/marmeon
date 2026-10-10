@@ -178,7 +178,7 @@ export class DocsRepository {
     const late = new Set(entries.filter(({ entry }) => entry.changes).map(({ entry }) => `/docs/${entry.slug}`));
     const index = new SearchIndex(
       all.flatMap(({ page: { path, title }, rendered }) =>
-        rendered.sections.map((section) => ({ path, page: title, heading: section.heading, anchor: section.anchor, text: section.text, late: late.has(path) })),
+        rendered.sections.map((section) => ({ path, page: title, heading: section.heading, anchor: section.anchor, text: section.text, code: section.code, late: late.has(path) })),
       ),
     );
     const groups: NavigationGroup[] = docs.sections.map((section) => ({
