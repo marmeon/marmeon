@@ -13,7 +13,8 @@ import { defineGegenproben } from '../define.ts';
  *   submits anyway (G8d) sends without asking before the app started. Fix round 1: the page's token goes to this site only (G8e: a
  *   link to another origin carries it); a sending link back in a `<p>` (G8f: the web app's VerifyEmail) fails `assertHydrates()`,
  *   whose nesting check names it. Final review: another origin as the URL parser reads it, not by the href's first characters (G8g:
- *   `"/\t/elsewhere.example"`, `"/\n/…"` and `" //…"` get the token).
+ *   `"/\t/elsewhere.example"`, `"/\n/…"` and `" //…"` get the token); against one base only again (G8h: `http:elsewhere.example`, a
+ *   scheme without `//`, is relative to an http base — the token would go to that host from an https page, in cleartext).
  * - **A read-only request's message names its own cause** — the layer's base (G9) and the deferred prop streamed after the headers
  *   (G9b) without a rule of their own fall back to an island's: "an island is read-only … Do that in the page".
  * - **A provider with only `static solutions` is one** (G11) — without the check's third static it stops the start.
@@ -113,6 +114,13 @@ export default defineGegenproben({
       patch: [{ file: LINK, find: '{page.csrf !== undefined && sameOrigin(href) && <input', replace: '{page.csrf !== undefined && !/^(?:[a-z][a-z\\d+.-]*:|[/\\\\]{2})/i.test(href) && <input' }],
       run: LINK_FORM,
       expect: /action=\\"\/\\t\/elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\" value=\\"t0ken\\"\/>.*action=\\" \/\/elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\".*: expected/,
+    },
+    {
+      id: 'G8h',
+      title: "the link resolves the href against an http base only: http:elsewhere.example (no //) reads as this site and gets the page's CSRF token",
+      patch: [{ file: LINK, find: "    return ['http:', 'https:'].every((protocol) => {", replace: "    return ['http:'].every((protocol) => {" }],
+      run: LINK_FORM,
+      expect: /action=\\"http:elsewhere\.example\/hook\\" method=\\"post\\"><input type=\\"hidden\\" name=\\"_token\\" value=\\"t0ken\\"\/>.*: expected/,
     },
     {
       id: 'G8f',

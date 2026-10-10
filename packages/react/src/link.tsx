@@ -335,11 +335,16 @@ const noSubscription = () => () => {};
 /**
  * Whether `href` stays on this site, as the browser's URL parser reads it — not by its first characters: the parser drops tabs and
  * newlines anywhere and leading spaces, and reads `/\` as `//` (`"/\t/evil.example"` and `" //evil.example"` lead to another host).
- * A scheme (`https:`, `mailto:`) counts as another origin. Resolved against a placeholder host, so it needs no `window` (server rendering).
+ * Resolved against a placeholder host of each special scheme, so it needs no `window` (server rendering): a scheme without `//`
+ * (`http:evil.example`) is relative only to a page of that very scheme — on the other it names another host — so both bases must
+ * keep their host and their scheme. Any other scheme (`mailto:`) counts as another origin.
  */
 function sameOrigin(href: string): boolean {
   try {
-    return new URL(href, 'http://local.invalid').host === 'local.invalid';
+    return ['http:', 'https:'].every((protocol) => {
+      const url = new URL(href, `${protocol}//local.invalid`);
+      return url.host === 'local.invalid' && url.protocol === protocol;
+    });
   } catch {
     return false;
   }

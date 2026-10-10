@@ -52,6 +52,28 @@ function Page({ id }: { id: number }) {
       <Link href={'/\\elsewhere.example/hook'} method="post">
         Backslash
       </Link>
+      {/* The scheme of the page without `//`: relative to a page of the same scheme, another host to a page of the other. */}
+      <Link href="http:elsewhere.example/hook" method="post">
+        Scheme only
+      </Link>
+      <Link href="http:/elsewhere.example/hook" method="post">
+        Scheme and one slash
+      </Link>
+      <Link href="HTTP:elsewhere.example/hook" method="post">
+        Scheme in capitals
+      </Link>
+      <Link href=" https:elsewhere.example/hook" method="post">
+        Scheme after a space
+      </Link>
+      <Link href={'http:\\elsewhere.example/hook'} method="post">
+        Scheme and a backslash
+      </Link>
+      <Link href="?tab=links" method="post">
+        Query
+      </Link>
+      <Link href="notes/1" method="post">
+        Relative
+      </Link>
       <p>{route('people.show', { person: id, page: 2 })}</p>
       <p>
         {form.method} {form.url}
@@ -97,6 +119,14 @@ describe('routes in the browser', () => {
       form('/\n/elsewhere.example/hook', '', '<button type="submit">Newline</button>'),
       form(' //elsewhere.example/hook', '', '<button type="submit">Leading space</button>'),
       form('/\\elsewhere.example/hook', '', '<button type="submit">Backslash</button>'),
+      form('http:elsewhere.example/hook', '', '<button type="submit">Scheme only</button>'),
+      form('http:/elsewhere.example/hook', '', '<button type="submit">Scheme and one slash</button>'),
+      form('HTTP:elsewhere.example/hook', '', '<button type="submit">Scheme in capitals</button>'),
+      form(' https:elsewhere.example/hook', '', '<button type="submit">Scheme after a space</button>'),
+      form('http:\\elsewhere.example/hook', '', '<button type="submit">Scheme and a backslash</button>'),
+      // This site's own relative hrefs keep the token.
+      form('?tab=links', token, '<button type="submit">Query</button>'),
+      form('notes/1', token, '<button type="submit">Relative</button>'),
     ]);
   });
 
