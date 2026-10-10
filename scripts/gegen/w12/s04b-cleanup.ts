@@ -6,7 +6,9 @@ import { defineGegenproben } from '../define.ts';
  * - **What existed only for older apps stays gone** (45–47, E216): `make:session-table` takes `--upgrade` again (G45); the database
  *   session store wraps a driver's error in the upgrade advice again (G45b); the web app's sessions table no longer the stub's
  *   (G46: made without `version`); `paginationFrom` exported again (G47); `create-marmeon` parses `--private-registration` again
- *   (G47b); the starter's users table made without `first_verified_at` again, as if a later migration added it (G47c).
+ *   (G47b); the starter's users table made without `first_verified_at` again, as if a later migration added it (G47c). Final
+ *   review: the web app's users table alike — made without `first_verified_at`, a later migration adding it with a backfill (G47d);
+ *   a later migration that names one of the folded columns beside the full table (G47e).
  * - **A named connection reads the server in parts or as one URL** (50) — `defineConnection` without the conversion hands the parts
  *   to the connections as they are (G50); the URL no longer wins over the parts (G50b: the default connection's DB_URL).
  * - **The small items** — the lint preset warns about `#event` again (G27); the configuration hint takes the first capital word
@@ -27,6 +29,9 @@ const SOURCE = { command: ['node', 'scripts/check-source.ts'] } as const;
 const SEARCH = 'apps/docs/modules/docs/search.ts';
 const SEARCH_UNIT = (name: string) => ({ vitest: 'apps/docs/modules/docs/search.test.ts', name }) as const;
 const CONNECTIONS = (name: string) => ({ vitest: 'packages/database/src/database.test.ts', name }) as const;
+const WEB_USERS = 'apps/web-app/modules/auth/migrations/2026_10_01_120000_create_users_table.ts';
+const WEB_AVATAR = 'apps/web-app/modules/auth/migrations/2026_10_03_120000_add_avatar_path_to_users_table.ts';
+const WEB_USERS_FOLDED = { vitest: 'packages/auth/src/make-auth.test.ts', name: "the web app's users table is made with the starter's account columns" } as const;
 const LEAKY = { vitest: 'packages/queue/src/queue.test.ts', name: "masked by the app's Redactor" } as const;
 
 export default defineGegenproben({
@@ -87,6 +92,35 @@ export default defineGegenproben({
       patch: [{ file: 'packages/auth/stubs/react/modules/auth/migrations/0001_01_01_000000_create_users_table.ts', find: "      table.timestamp('first_verified_at').nullable();\n", replace: '' }],
       run: { vitest: 'packages/auth/src/make-auth.test.ts', name: 'makes one module, private by default' },
       expect: /to contain '\\'first_verified_at\\''/,
+    },
+    {
+      id: 'G47d',
+      title: "the web app's users table made without first_verified_at again, a later migration adding it with a backfill for rows no app has",
+      patch: [
+        { file: WEB_USERS, find: "      table.timestamp('first_verified_at').nullable();\n", replace: '' },
+        {
+          file: WEB_AVATAR,
+          find: "  up: (schema) => schema.alter('users', (table) => table.string('avatar_path', 255).nullable()),",
+          replace:
+            "  up: async (schema) => {\n    await schema.alter('users', (table) => table.string('avatar_path', 255).nullable());\n    await schema.alter('users', (table) => table.timestamp('first_verified_at').nullable());\n    await sql`update users set first_verified_at = email_verified_at where email_verified_at is not null`.execute(schema.db);\n  },",
+        },
+        { file: WEB_AVATAR, find: "import { defineMigration } from '@marmeon/database';", replace: "import { defineMigration, sql } from '@marmeon/database';" },
+      ],
+      run: WEB_USERS_FOLDED,
+      expect: /2026_10_01_120000_create_users_table\.ts makes no first_verified_at/,
+    },
+    {
+      id: 'G47e',
+      title: "a later migration of the web app's users table names a folded column again, beside the table that has it",
+      patch: [
+        {
+          file: WEB_AVATAR,
+          find: "  down: (schema) => schema.alter('users', (table) => table.dropColumn('avatar_path')),",
+          replace: "  down: (schema) => schema.alter('users', (table) => (table.dropColumn('avatar_path'), table.dropColumn('pending_email'))),",
+        },
+      ],
+      run: WEB_USERS_FOLDED,
+      expect: /later migrations of the users table add the starter's account columns: 2026_10_03_120000_add_avatar_path_to_users_table\.ts/,
     },
     // --- The database's variables -----------------------------------------------------------------------------------------------
     {

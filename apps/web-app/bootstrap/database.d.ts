@@ -124,15 +124,15 @@ declare module '@marmeon/database' {
       email: string;
       password: Secret<string>;
       bio: Generated<string>;
+      first_verified_at: Timestamp | null;
+      pending_email: string | null;
+      pending_email_token: Secret<string | null>;
+      pending_email_expires_at: Timestamp | null;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
       email_verified_at: Timestamp | null;
       locale: string | null;
       avatar_path: string | null;
-      pending_email: string | null;
-      pending_email_token: Secret<string | null>;
-      pending_email_expires_at: Timestamp | null;
-      first_verified_at: Timestamp | null;
     };
   }
   interface TableOwners {

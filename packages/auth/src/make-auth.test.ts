@@ -170,6 +170,18 @@ describe('make:auth', () => {
     expect(plain.lines).toContain('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
   });
 
+  it("the web app's users table is made with the starter's account columns — no later migration adds them", () => {
+    const folder = join(repo, 'apps/web-app/modules/auth/migrations');
+    const files = readdirSync(folder).filter((file) => file.includes('users_table'));
+    const create = files.find((file) => file.endsWith('_create_users_table.ts'))!;
+    const columns = ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at'];
+    const users = readFileSync(join(folder, create), 'utf8');
+    for (const column of columns) expect(users, `${create} makes no ${column}`).toContain(`'${column}'`);
+    // Another migration that names one of them adds it to a table made without it — and backfills rows no app has.
+    const later = files.filter((file) => file !== create && columns.some((column) => readFileSync(join(folder, file), 'utf8').includes(`'${column}'`)));
+    expect(later, `later migrations of the users table add the starter's account columns: ${later.join(', ')}`).toEqual([]);
+  });
+
   /**
    * The acceptance of wave 4 (E30): a new app gets a complete auth area whose own tests pass — generated,
    * migrated, type-checked and tested as a user would. On Postgres too when `pnpm test:pgsql` runs.
