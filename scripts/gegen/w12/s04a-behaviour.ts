@@ -97,7 +97,7 @@ export default defineGegenproben({
       title: 'a link with confirm submits its form: before the app started it sends without asking',
       patch: [{ file: LINK, find: "<button type={confirm === undefined ? 'submit' : 'button'}", replace: '<button type="submit"' }],
       run: LINK_FORM,
-      expect: /<button type=\\"submit\\">Sign out everywhere<\/button><\/form>"\]: expected/,
+      expect: /<button type=\\"submit\\">Sign out everywhere<\/button><\/form>",.*: expected/,
     },
     {
       id: 'G8e',
