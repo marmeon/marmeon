@@ -31,8 +31,32 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body.match(/<li class="principle"/g)).toHaveLength(7);
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
-    expect(body.match(/<h3>/g)).toHaveLength(7);
+    expect(body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="modules-title"')).match(/<h3>/g)).toHaveLength(7);
     for (const mistake of ['user_ud', 'ctx.params.nte', 'notes.indx', 'note.titel', 'form.errors.titel']) expect(body).toContain(mistake);
+  }, SSR_TEST_TIMEOUT);
+
+  it('has the six sections after the chain, each named by its heading', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    for (const name of ['modules', 'batteries', 'secure', 'testing', 'devtools', 'start']) {
+      expect(body, name).toMatch(new RegExp(`<section class="${name}" aria-labelledby="${name}-title"`));
+      expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
+    }
+    expect(body.match(/<h2[ >]/g)).toHaveLength(8);
+    expect(body).toContain('<nav aria-label="Start reading">');
+    expect(body).toContain('aria-label="Files of the notes module"');
+    for (const group of ['In every new app', 'Add when you need it']) expect(body).toContain(group);
+    expect(body.match(/<li><code>(<span class="package-scope">@marmeon\/<\/span>)?[a-z0-9]+<\/code>/g)).toHaveLength(16 + 3 + 6);
+  }, SSR_TEST_TIMEOUT);
+
+  it('shows the test snippet and masks every secret in the devtools picture', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).toContain('modules/notes/show.test.ts');
+    const start = body.indexOf('<figure class="devtools-panel"');
+    const panel = body.slice(start, body.indexOf('</figure>', start));
+    expect(panel).toContain('aria-label="Devtools panel, illustration"');
+    expect(panel.match(/••••/g)).toHaveLength(2);
+    expect(panel).not.toMatch(/<a [^>]*href/);
+    for (const secret of ['password', 'secret', 'token=', 'bearer', 'cookie=', 'app_key']) expect(panel.toLowerCase(), secret).not.toContain(secret);
   }, SSR_TEST_TIMEOUT);
 
   it('highlights every snippet on the server, with classes and without a style attribute', async () => {

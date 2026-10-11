@@ -3,6 +3,12 @@ import { Head, Link, usePage } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import { ChainStep } from '../components/ChainStep.tsx';
 import { CodeBlock } from '../components/CodeBlock.tsx';
+import { BatteriesSection } from '../components/landing/BatteriesSection.tsx';
+import { DevtoolsSection } from '../components/landing/DevtoolsSection.tsx';
+import { ModulesSection } from '../components/landing/ModulesSection.tsx';
+import { SecureSection } from '../components/landing/SecureSection.tsx';
+import { StartSection } from '../components/landing/StartSection.tsx';
+import { TestingSection } from '../components/landing/TestingSection.tsx';
 import { Terminal } from '../components/Terminal.tsx';
 import type { ShowLandingController } from '../controllers/ShowLandingController.ts';
 import { GITHUB_URL } from '../links.ts';
@@ -21,11 +27,11 @@ const PRINCIPLES: { name: string; text: ReactNode }[] = [
     ),
   },
   { name: 'Batteries included, behind contracts', text: 'Mail, the queue, notifications, storage, events, live updates and the schedule each have a fake for tests.' },
-  { name: 'Secure by default', text: 'Protections fail closed outside development.' },
+  { name: 'Secure by default', text: 'In production, and wherever nobody set the environment, protections stay on.' },
 ];
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
 
-/** `/`: what Marmeon is, its principles, and one type followed from the database to the form. */
+/** `/`: what Marmeon is, its principles, one type followed from the database to the form, and the rest of the framework in six sections. */
 export default function Landing({ snippets }: PageProps<ShowLandingController>) {
   const version = usePage().props.site?.version;
   return (
@@ -203,6 +209,13 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
           </ol>
         </div>
       </section>
+
+      <ModulesSection />
+      <BatteriesSection />
+      <SecureSection />
+      <TestingSection snippet={snippets.test} />
+      <DevtoolsSection />
+      <StartSection />
     </div>
   );
 }

@@ -1,5 +1,5 @@
-/* The landing page's sections: hero, principles, one type end to end. */
-.landing-inner {
+/* The landing page's sections: hero, principles, one type end to end, modules, batteries, security, testing, devtools, get started. */
+.landing .landing-inner {
   max-width: 1280px;
   margin: 0 auto;
   padding-inline: clamp(20px, 4vw, 48px);
@@ -41,44 +41,44 @@
 }
 
 /* Hero */
-.hero {
+.landing .hero {
   padding-top: clamp(48px, 7vw, 96px);
 }
 
-.hero-inner {
+.landing .hero-inner {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
   gap: clamp(32px, 4vw, 56px);
   align-items: end;
 }
 
-.hero-copy {
+.landing .hero-copy {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.hero h1 {
+.landing .hero h1 {
   font-size: clamp(2.625rem, 1.4rem + 4.6vw, 5.125rem);
   line-height: 1.03;
   letter-spacing: -0.018em;
 }
 
-.hero-start {
+.landing .hero-start {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 18px;
 }
 
-.hero-actions {
+.landing .hero-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3) var(--space-4);
 }
 
-.hero-facts {
+.landing .hero-facts {
   margin: 0;
   color: var(--muted);
   font-family: var(--font-mono);
@@ -86,25 +86,25 @@
   letter-spacing: 0.04em;
 }
 
-.hero-code {
+.landing .hero-code {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
   gap: var(--space-5);
   margin-top: clamp(40px, 5vw, 64px);
 }
 
-.hero-note {
+.landing .hero-note {
   margin: var(--space-4) 0 0;
   color: var(--muted);
   font-size: var(--text-sm);
 }
 
 /* Principles */
-.principles .landing-inner {
+.landing .principles .landing-inner {
   padding-block: clamp(56px, 7vw, 88px) clamp(56px, 7vw, 96px);
 }
 
-.principle-list {
+.landing .principle-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
   gap: var(--space-6) 40px;
@@ -113,48 +113,48 @@
   list-style: none;
 }
 
-.principles .section-label {
+.landing .principles .section-label {
   margin-bottom: var(--space-6);
   padding-top: 36px;
   border-top: 1px solid var(--line-strong);
 }
 
-.principle {
+.landing .principle {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.principle-numeral {
+.landing .principle-numeral {
   color: var(--accent);
   font-size: 1.625rem;
   font-weight: 600;
   letter-spacing: 0.08em;
 }
 
-.principle strong {
+.landing .principle strong {
   color: var(--fg);
   font-size: 1.125rem;
   font-weight: 600;
 }
 
-.principle-text {
+.landing .principle-text {
   color: var(--fg-2);
   font-size: 1rem;
   line-height: 1.5;
 }
 
 /* One type, end to end */
-.chain {
+.landing .chain {
   border-block: 1px solid var(--line);
   background: var(--bg-raised);
 }
 
-.chain .landing-inner {
+.landing .chain .landing-inner {
   padding-block: clamp(64px, 8vw, 112px);
 }
 
-.chain-intro {
+.landing .chain-intro {
   display: flex;
   max-width: 760px;
   flex-direction: column;
@@ -162,17 +162,17 @@
   margin-bottom: clamp(40px, 5vw, 64px);
 }
 
-.chain-intro .section-label {
+.landing .chain-intro .section-label {
   color: var(--accent);
 }
 
-.chain-intro h2 {
+.landing .chain-intro h2 {
   font-size: clamp(2.125rem, 1.5rem + 2.6vw, 3.375rem);
   line-height: 1.08;
   letter-spacing: -0.012em;
 }
 
-.chain-intro p:last-child {
+.landing .chain-intro p:last-child {
   margin: 0;
   color: var(--fg-2);
   font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
@@ -180,7 +180,7 @@
   text-wrap: pretty;
 }
 
-.chain-list {
+.landing .chain-list {
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -188,20 +188,20 @@
   list-style: none;
 }
 
-.chain-step {
+.landing .chain-step {
   display: flex;
   gap: clamp(14px, 2vw, 28px);
 }
 
 /* The rail joining the numbers: a line below each number, none under the last. */
-.chain-rail {
+.landing .chain-rail {
   display: flex;
   flex: 0 0 36px;
   flex-direction: column;
   align-items: center;
 }
 
-.chain-rail::after {
+.landing .chain-rail::after {
   flex: 1;
   width: 1px;
   margin-block: 6px;
@@ -209,11 +209,11 @@
   content: '';
 }
 
-.chain-step:last-child .chain-rail::after {
+.landing .chain-step:last-child .chain-rail::after {
   display: none;
 }
 
-.chain-number {
+.landing .chain-number {
   display: flex;
   width: 36px;
   height: 36px;
@@ -227,7 +227,7 @@
   font-weight: 600;
 }
 
-.chain-body {
+.landing .chain-body {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -236,11 +236,11 @@
   padding: 4px 0 var(--space-7);
 }
 
-.chain-step:last-child .chain-body {
+.landing .chain-step:last-child .chain-body {
   padding-bottom: 0;
 }
 
-.chain-text {
+.landing .chain-text {
   display: flex;
   flex: 1 1 240px;
   flex-direction: column;
@@ -248,25 +248,25 @@
   gap: 6px;
 }
 
-.chain-text h3 {
+.landing .chain-text h3 {
   font-size: var(--text-h3);
   font-weight: 600;
 }
 
-.chain-text > code {
+.landing .chain-text > code {
   color: var(--muted);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
 
-.chain-text p {
+.landing .chain-text p {
   margin: 0;
   color: var(--fg-2);
   font-size: 1rem;
   line-height: 1.55;
 }
 
-.chain-code {
+.landing .chain-code {
   display: flex;
   min-width: 0;
   flex: 3 1 420px;
@@ -274,17 +274,17 @@
   gap: var(--space-2);
 }
 
-.chain-code pre.code {
+.landing .chain-code pre.code {
   background: var(--bg);
   font-size: 0.84375rem;
 }
 
-.chain-code figure.code {
+.landing .chain-code figure.code {
   background: var(--bg);
 }
 
 /* The misspelt line under the code that is right: it names what the compiler says. */
-.chain-mistake {
+.landing .chain-mistake {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -298,7 +298,7 @@
   color: var(--fg);
 }
 
-.chain-mistake code {
+.landing .chain-mistake code {
   min-width: 0;
   overflow-x: auto;
   font-size: 0.84375rem;
@@ -308,7 +308,7 @@
   white-space: pre;
 }
 
-.chain-error {
+.landing .chain-error {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -320,13 +320,538 @@
 }
 
 @media (max-width: 519px) {
-  .chain-rail {
+  .landing .chain-rail {
     flex-basis: 28px;
   }
 
-  .chain-number {
+  .landing .chain-number {
     width: 28px;
     height: 28px;
     font-size: 0.8125rem;
+  }
+}
+
+/* The sections after the chain share an introduction and a two-column layout. */
+.landing .modules .landing-inner,
+.landing .batteries .landing-inner,
+.landing .secure .landing-inner,
+.landing .testing .landing-inner,
+.landing .devtools .landing-inner,
+.landing .start .landing-inner {
+  padding-block: clamp(64px, 8vw, 112px);
+}
+
+.landing .landing-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+}
+
+.landing .landing-columns > * {
+  min-width: 0;
+}
+
+.landing .section-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.landing .section-intro--wide {
+  max-width: 760px;
+  margin-bottom: clamp(32px, 4vw, 48px);
+}
+
+.landing .section-intro .section-label {
+  color: var(--accent);
+}
+
+.landing .section-intro h2 {
+  font-size: clamp(2.125rem, 1.5rem + 2.6vw, 3.375rem);
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+}
+
+.landing .section-intro > p:not(.section-label) {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.landing .section-intro > .terminal {
+  align-self: stretch;
+}
+
+.landing .group-label {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.landing .group-label--small {
+  margin-bottom: var(--space-3);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+}
+
+/* Modules: the file tree */
+.landing .file-tree {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--bg-raised);
+}
+
+.landing .file-tree figcaption {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+}
+
+.landing .file-tree ul {
+  margin: 0;
+  padding: 10px 0 14px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  list-style: none;
+}
+
+.landing .file-tree li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 8px 18px;
+}
+
+/* The branch glyphs are decoration: the second value of `content` is their empty text alternative. */
+.landing .file-tree li > span:first-child::before {
+  color: var(--line-strong);
+  content: '├─ ';
+  content: '├─ ' / '';
+  white-space: pre;
+}
+
+.landing .file-tree li:last-child > span:first-child::before {
+  content: '└─ ';
+  content: '└─ ' / '';
+}
+
+.landing .file-tree-folder {
+  color: var(--accent);
+}
+
+.landing .file-tree-role {
+  color: var(--muted);
+  font-family: var(--font-text);
+  font-size: 0.9375rem;
+}
+
+/* Batteries */
+.landing .batteries {
+  border-top: 1px solid var(--line);
+}
+
+.landing .package-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 1px;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+  list-style: none;
+}
+
+.landing .group-label--small + .package-grid {
+  margin-bottom: var(--space-7);
+}
+
+.landing .package-grid--added {
+  margin-bottom: 0;
+}
+
+.landing .package-grid li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--bg);
+}
+
+.landing .package-grid--added li {
+  background: var(--bg-raised);
+}
+
+.landing .package-grid code {
+  overflow-wrap: anywhere;
+}
+
+.landing .package-grid li > span {
+  color: var(--fg-2);
+  font-size: 0.96875rem;
+  line-height: 1.5;
+}
+
+.landing .package-scope {
+  color: var(--muted);
+}
+
+/* Secure by default: a dark band in both themes */
+.landing .secure {
+  background: var(--term-bg);
+  color: var(--term-fg);
+}
+
+.landing .secure h2 {
+  color: var(--term-fg);
+}
+
+.landing .secure .section-intro .section-label {
+  color: var(--term-accent);
+}
+
+.landing .protection-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  column-gap: var(--space-7);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .protection-list li {
+  display: flex;
+  gap: var(--space-4);
+  padding: 20px 0;
+  border-top: 1px solid var(--term-line);
+}
+
+.landing .protection-list svg {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  color: var(--term-accent);
+}
+
+.landing .protection-list li > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.landing .protection-list strong {
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+.landing .protection-list li span {
+  color: var(--term-dim-text);
+  line-height: 1.55;
+}
+
+.landing .secure a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--term-accent);
+}
+
+.landing .secure a:hover {
+  color: var(--term-fg);
+}
+
+/* Testing */
+.landing .fake-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing .fake-list li {
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2);
+}
+
+.landing .testing .section-intro .group-label {
+  margin: var(--space-2) 0 calc(-1 * var(--space-2));
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+}
+
+/* Devtools: a picture of the panel, not the panel */
+.landing .devtools {
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.landing .devtools-panel {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-3);
+  background: var(--bg);
+}
+
+.landing .devtools-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+}
+
+.landing .devtools-bar > span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing .devtools-env {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--warning-fg);
+  border-radius: var(--radius-1);
+  color: var(--warning-fg);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-body {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.landing .devtools-nav {
+  display: flex;
+  flex: 1 1 160px;
+  max-width: 200px;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 12px 8px;
+  border-right: 1px solid var(--line);
+  font-size: 0.9375rem;
+  list-style: none;
+}
+
+.landing .devtools-nav li {
+  padding: 8px 10px;
+  border-radius: var(--radius-2);
+  color: var(--fg-2);
+}
+
+.landing .devtools-nav .is-current {
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.landing .devtools-list {
+  flex: 2 1 360px;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.landing .devtools-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 48px;
+  gap: var(--space-3);
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.landing .devtools-row:last-child {
+  border-bottom: 0;
+}
+
+.landing .devtools-row > span:nth-child(2) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.landing .devtools-row--head {
+  padding-block: 10px;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-row.is-current {
+  background: var(--accent-tint);
+}
+
+.landing .devtools-method {
+  font-weight: 600;
+}
+
+.landing .devtools-route {
+  color: var(--muted);
+}
+
+.landing .devtools-failed {
+  color: var(--caution-fg);
+}
+
+.landing .devtools-detail {
+  display: flex;
+  min-width: 0;
+  flex: 3 1 380px;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 16px 20px 20px;
+  font-size: 0.9375rem;
+}
+
+.landing .devtools-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.landing .devtools-title span {
+  color: var(--muted);
+  font-size: 0.78125rem;
+}
+
+.landing .devtools-detail dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.landing .devtools-detail dt {
+  color: var(--muted);
+}
+
+.landing .devtools-detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.landing .devtools-detail .devtools-masked {
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+
+.landing .devtools-queries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.landing .devtools-queries-label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+.landing .devtools-queries code {
+  color: var(--fg-2);
+  font-size: 0.78125rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* Get started */
+.landing .start-reading nav ul {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.landing .start-reading nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 22px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.landing .start-reading nav a:hover .start-reading-title {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.landing .start-reading-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.landing .start-reading-title {
+  color: var(--fg);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.landing .start-reading-arrow {
+  color: var(--accent);
+  font-size: 1.375rem;
+}
+
+.landing .start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: 28px;
+}
+
+@media (max-width: 519px) {
+  .landing .devtools-nav {
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .landing .devtools-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .landing .devtools-row {
+    grid-template-columns: 52px 1fr 40px;
   }
 }

@@ -28,6 +28,8 @@
   --term-fg: #eef0ec;
   --term-dim: #9aa0a6;
   --term-line: #2c2f33;
+  --term-accent: #7cc4ad;
+  --term-dim-text: #c3c7c3;
   --output-bg: #f1f1ed;
   --button-bg: #16181b;
   --button-fg: #f6f6f3;
@@ -115,6 +117,8 @@
     --term-fg: #e8e9e5;
     --term-dim: #8f959b;
     --term-line: #26292c;
+    --term-accent: #7cc4ad;
+    --term-dim-text: #b9bdb9;
     --output-bg: #15181a;
     --button-bg: #e8e9e5;
     --button-fg: #111315;
