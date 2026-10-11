@@ -1,7 +1,7 @@
 import cluster from 'node:cluster';
 import { Application, CLUSTER_WORKER, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
-import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
+import { CONNECTION_HEADER, defineRoutes, FRAMEWORK_ROUTES, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { LiveConfig } from './config.ts';
@@ -148,7 +148,7 @@ export class LiveServiceProvider implements ServiceProvider {
 
     // The stream: in the web group (the session says whose it is), read-only by its path (the kernel, LIVE_PATH).
     container.make(Router).load(
-      { group: 'web' },
+      { group: 'web', framework: FRAMEWORK_ROUTES },
       defineRoutes((Route) => {
         Route.get(LIVE_PATH, LiveStreamController);
       }),

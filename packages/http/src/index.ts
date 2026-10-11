@@ -96,7 +96,7 @@ export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { defineMiddleware, defineRequest, defineRoutes, editableResponse, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
+export { defineMiddleware, defineRequest, defineRoutes, editableResponse, FRAMEWORK_ROUTES, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
 export type {
   ContextOf,
   CookieJar,

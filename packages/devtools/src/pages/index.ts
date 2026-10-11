@@ -56,6 +56,7 @@ export async function registerDevtoolsPages(options: PagesOptions): Promise<bool
 
   app.container.make(router.Router).load(
     // No group: no session, no cookies. The guard runs for every route here.
+    { framework: router.FRAMEWORK_ROUTES },
     router.defineRoutes((Route) => {
       Route.middleware(guard)
         .prefix(BASE)

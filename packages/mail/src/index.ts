@@ -140,6 +140,7 @@ async function registerPreviews(app: Application): Promise<void> {
   // No middleware group: no session, no cookies — a page for the developer's browser only. Behind the guard of every development
   // route: 403 for any host but loopback and APP_URL's (DNS rebinding), `no-store`, CORP/COOP same-origin, no CORS.
   app.container.make(router.Router).load(
+    { framework: router.FRAMEWORK_ROUTES },
     router.defineRoutes((Route) => {
       Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));
       Route.get('/_marmeon/mail/:module/:mail', devOnly(hosts, (ctx) => previews.show(`${ctx.params.module}/${ctx.params.mail}`, new URL(ctx.request.url))));

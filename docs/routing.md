@@ -553,6 +553,15 @@ in the visitor's language:
 There is no fallback route. A controller answers 404 itself with `abort(404)`, and a binding does when it finds nothing. The
 [error handling](errors.md#your-own-error-page) page shows how to change the error page.
 
+## The framework's paths
+
+Every path under `/_marmeon/` belongs to the framework. `/_marmeon/session` (how open tabs learn that the session changed)
+is always there. The packages add theirs: `/_marmeon/live` with `@marmeon/live`, `/_marmeon/uploads` and `/_marmeon/storage`
+with `@marmeon/storage` (uploads only once configured); in development there are also `/_marmeon/devtools` and
+`/_marmeon/mail`. These paths take precedence over a wildcard or parameter route of your app, such as `/:page{.+}`. A route of your app or of a package that lies under that prefix, whether you write
+the path out or build it with a `prefix`, would hide one of these routes or inherit its special treatment. So the app does not
+start: the error names the method and the path. Give your routes a prefix of your own, such as `/_playground` below.
+
 ## Development-only routes
 
 Some routes are for your own browser while you develop: the devtools at `/_marmeon/devtools` and the mail previews at

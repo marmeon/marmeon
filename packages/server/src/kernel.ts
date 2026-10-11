@@ -633,7 +633,7 @@ export function createHttpKernel(
     return final;
   };
 
-  for (const route of router.routes) {
+  for (const route of router.registrationOrder) {
     app.on([...route.methods], route.path, (c) => {
       matched.set(c.req.raw, route);
       if (debug) parameters.set(c.req.raw, c.req.param());

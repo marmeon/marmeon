@@ -27,7 +27,9 @@ export function servedPublicDisks(options: StorageOptions): { name: string; path
  */
 export function registerStorageRoutes(http: Http, container: Container, options: StorageOptions): void {
   const storage = () => container.make(Storage) as unknown as StorageManager;
-  const routes = http.defineRoutes((Route) => {
+  // The public disks' paths come from the app's configuration: they load without the framework's marker, so a `url` under
+  // /_marmeon/ fails the start instead of hiding the signed route below.
+  const publicDisks = http.defineRoutes((Route) => {
     for (const { name, path } of servedPublicDisks(options)) {
       Route.get(`${path}/:path{.+}`, async (ctx) => {
         const key = keyFromPath(new URL(ctx.request.url).pathname, path);
@@ -35,6 +37,8 @@ export function registerStorageRoutes(http: Http, container: Container, options:
         return serveFile(storage().named(name), key, ctx.request, { cacheControl: 'public, max-age=0, must-revalidate' });
       });
     }
+  });
+  const temporary = http.defineRoutes((Route) => {
     Route.middleware(http.signed()).get(`${TEMPORARY_PREFIX}/:disk/:path{.+}`, async (ctx) => {
       const url = new URL(ctx.request.url);
       const rest = url.pathname.slice(TEMPORARY_PREFIX.length + 1);
@@ -55,5 +59,7 @@ export function registerStorageRoutes(http: Http, container: Container, options:
       });
     });
   });
-  container.make(http.Router).load(routes);
+  const router = container.make(http.Router);
+  router.load(publicDisks);
+  router.load({ framework: http.FRAMEWORK_ROUTES }, temporary);
 }

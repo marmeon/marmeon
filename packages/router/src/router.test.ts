@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineMiddleware, defineRoutes, Router, type EmptyObject, type HttpContext, type Next } from './index.ts';
+import { defineMiddleware, defineRoutes, FRAMEWORK_ROUTES, Router, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
 
 interface User {
   id: string;
@@ -197,5 +197,59 @@ defineRoutes((Route) => {
     // @ts-expect-error — optional params are not guaranteed.
     const required: string = ctx.params.page;
     return [slug, page, required];
+  });
+});
+
+describe('The framework prefix', () => {
+  const reserved = /paths under \/_marmeon\/ belong to the framework/;
+
+  it('refuses a route under /_marmeon/ and names its method and path', () => {
+    const load = () => new Router().load(defineRoutes((Route) => Route.get('/_marmeon/session', () => 'x')));
+    expect(load).toThrow(reserved);
+    expect(load).toThrow('GET /_marmeon/session');
+  });
+
+  it('refuses the prefix itself', () => {
+    expect(() => new Router().load(defineRoutes((Route) => Route.get('/_marmeon', () => 'x')))).toThrow(reserved);
+  });
+
+  it('refuses it through the prefix option of load()', () => {
+    expect(() => new Router().load({ prefix: '/_marmeon' }, defineRoutes((Route) => Route.get('/x', () => 'x')))).toThrow(reserved);
+  });
+
+  it('refuses it through a route group', () => {
+    expect(() => new Router().load(defineRoutes((Route) => Route.prefix('/_marmeon').group((Route) => Route.post('/x', () => 'x'))))).toThrow(/POST \/_marmeon\/x/);
+  });
+
+  it('ignores the case of the prefix', () => {
+    expect(() => new Router().load(defineRoutes((Route) => Route.get('/_MARMEON/x', () => 'x')))).toThrow(reserved);
+    expect(() => new Router().load(defineRoutes((Route) => Route.get('/_Marmeon', () => 'x')))).toThrow(reserved);
+  });
+
+  it('does not accept anything but the marker', () => {
+    // @ts-expect-error — only the marker is a valid value.
+    const options: LoadOptions = { framework: true };
+    expect(() => new Router().load(options, defineRoutes((Route) => Route.get('/_marmeon/x', () => 'x')))).toThrow(reserved);
+  });
+
+  it('lets look-alike paths through', () => {
+    const router = new Router().load(
+      defineRoutes((Route) => {
+        Route.get('/_marmeonish', () => 'x');
+        Route.get('/x/_marmeon/y', () => 'x');
+      }),
+    );
+    expect(router.routes).toHaveLength(2);
+  });
+
+  it('lets the framework load its own routes, next to others', () => {
+    const router = new Router().load(
+      { framework: FRAMEWORK_ROUTES },
+      defineRoutes((Route) => {
+        Route.get('/_marmeon/session', () => 'x');
+        Route.get('/other', () => 'x');
+      }),
+    );
+    expect(router.routes.map((route) => route.path)).toEqual(['/_marmeon/session', '/other']);
   });
 });

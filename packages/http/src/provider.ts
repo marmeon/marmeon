@@ -1,6 +1,6 @@
 import { Application, type Container, type ServiceProvider } from '@marmeon/core';
 import { Encrypter } from '@marmeon/encryption';
-import { defineRoutes, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@marmeon/router';
+import { defineRoutes, FRAMEWORK_ROUTES, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@marmeon/router';
 import { AfterResponse } from './after-response.ts';
 import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { ClearClientHistory, ClientHistory } from './client-history.ts';
@@ -84,7 +84,7 @@ export class HttpServiceProvider implements ServiceProvider {
     // The tabs' word from the server: the epoch now — in the web group (the session and the locale say it), read-only
     // (the kernel: it starts, writes and extends no session), no name (no route manifest ships it).
     router.load(
-      { group: 'web' },
+      { group: 'web', framework: FRAMEWORK_ROUTES },
       defineRoutes((Route) => {
         Route.get(SESSION_PATH, SessionEpochController).internal();
       }),

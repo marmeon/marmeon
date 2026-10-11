@@ -109,7 +109,7 @@ export function registerUploads(http: Http, container: Container, uploads: () =>
   container.scoped(ReceiveUploadController, (scope: Resolver) => new ReceiveUploadController(() => sessionScope(http, (key) => scope.make(key as never))));
 
   router.load(
-    { group: 'web' },
+    { group: 'web', framework: http.FRAMEWORK_ROUTES },
     http.defineRoutes((Route) => {
       Route.middleware(http.signed()).put(`${UPLOADS_PREFIX}/:id`, ReceiveUploadController);
     }),

@@ -1,8 +1,8 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Clock, createApplication, env, TestClock, type ConfigDefinition } from '@marmeon/core';
+import { Clock, createApplication, defineModule, env, TestClock, type ConfigDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider } from '@marmeon/http';
+import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
@@ -376,5 +376,34 @@ describe('the fake', () => {
     await disk.put('invoices/7.pdf', '%PDF');
     expect(await diskAttachment(disk, 'invoices/7.pdf')).toEqual({ filename: '7.pdf', content: new Uint8Array(Buffer.from('%PDF')), contentType: 'application/pdf' });
     expect((await diskAttachment(disk, 'invoices/7.pdf', { filename: 'Rechnung.pdf' })).filename).toBe('Rechnung.pdf');
+  });
+});
+
+describe('the signed storage route against greedy app routes', () => {
+  // The storage routes load after the modules': a catch-all must not answer in their place (the signature check decides: 403).
+  it.each([
+    ['a catch-all parameter', '/:page{.+}', '/some/page/x/y'],
+    ['a wildcard', '/*', '/some/page/x/y'],
+    ['a parameter before a literal', '/:a/storage/:b/:c', '/q/storage/b/c'],
+  ])('is not hidden by %s', async (_name, path, other) => {
+    const app = await createApplication({
+      root: freshDirectory(),
+      discover: false,
+      env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
+      config: [storageConfig(freshDirectory())],
+      providers: [EncryptionServiceProvider, HttpServiceProvider, StorageServiceProvider],
+      modules: [defineModule({ name: 'greedy', routes: defineRoutes((Route) => Route.get(path, () => 'app')) })],
+    });
+    const kernel = createHttpKernel(app);
+    expect((await kernel.request('/_marmeon/storage/local/a.txt')).status).toBe(403);
+    expect(await (await kernel.request(other)).text()).toBe('app');
+  });
+});
+
+describe('public disks under the framework prefix', () => {
+  it.each(['/_marmeon/x', '/_marmeon/storage', '/_marmeon', '/_MARMEON/storage'])('stop the app at start for a disk url of %s', async (url) => {
+    const base = freshDirectory();
+    const config = defineStorage({ default: 'local', disks: { local: { driver: 'local', root: join(base, 'private'), visibility: 'public', url } } });
+    await expect(boot(config)).rejects.toThrow(/GET \/_marmeon\S*: paths under \/_marmeon\/ belong to the framework/i);
   });
 });

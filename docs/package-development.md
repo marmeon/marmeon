@@ -211,7 +211,8 @@ Load named routes in `register()`. `marmeon build` writes the app's route types 
 routes loaded in `boot()` serve requests but are not in `bootstrap/routes.ts`. Loading a route builds nothing, and the `Router`
 is bound by `@marmeon/http`, whose provider registers before yours when your package depends on it. Routes without a name may load
 in `boot()`. Prefix the paths and the names with the package's name, and protect a route the way an app would, with its own
-middleware such as `authenticate()`.
+middleware such as `authenticate()`. The prefix `/_marmeon/` belongs to the framework: a package route there stops the app at
+start (see [the framework's paths](routing.md#the-frameworks-paths)).
 
 ### Hooks of the router
 

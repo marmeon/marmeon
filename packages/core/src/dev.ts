@@ -89,7 +89,7 @@ export function notInDevelopment(): Response {
  * `same-origin`, `nosniff`, no CORS).
  *
  * ```ts
- * Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));
+ * Route.get('/_playground', devOnly(hosts, () => previews.index()));
  * defineMiddleware('DevtoolsGuard', devOnly(hosts, (_ctx, next) => next()));
  * ```
  */

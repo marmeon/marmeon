@@ -16,6 +16,8 @@ export class RouteDefinition {
   readonly bindings: readonly RouteBinding[];
   readonly #namePrefix: string;
   #name: string | undefined;
+  /** @internal Set by `Router.load` for a framework route under `/_marmeon/`, which the server registers before all others. */
+  reserved = false;
   #internal: boolean;
   #blocking: RouteBlocking | undefined;
 

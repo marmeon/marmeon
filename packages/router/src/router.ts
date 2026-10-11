@@ -77,11 +77,27 @@ export interface DispatchOptions {
   onError?: (error: unknown, ctx: HttpContext) => Response | Promise<Response>;
 }
 
+/**
+ * Lets `load()` take routes under `/_marmeon/`, which belong to the framework (docs/routing.md#the-frameworks-paths).
+ * @internal Only the framework's own packages load routes with it.
+ */
+export const FRAMEWORK_ROUTES = Symbol.for('marmeon.router.framework');
+
+/** The path prefix only routes loaded with {@link FRAMEWORK_ROUTES} may use. */
+const RESERVED_PREFIX = '/_marmeon';
+
+const isReserved = (path: string): boolean => {
+  const lower = path.toLowerCase();
+  return lower === RESERVED_PREFIX || lower.startsWith(`${RESERVED_PREFIX}/`);
+};
+
 export interface LoadOptions {
   /** Middleware group of these routes (`web`, `api`). */
   group?: string;
   /** Path prefix for all of them, e.g. `/api`. */
   prefix?: string;
+  /** @internal */
+  framework?: typeof FRAMEWORK_ROUTES;
 }
 
 /** Turns an action's result into a response: a `Response` as it is, nothing as 204, strings as HTML, everything else as JSON. */
@@ -111,6 +127,16 @@ export class Router {
     return this.#routes;
   }
 
+  /**
+   * The routes in the order the server registers them: the framework's paths under `/_marmeon/` first, so no parameter or
+   * wildcard route of an app matches ahead of them. The order inside each group is the order of loading.
+   *
+   * @internal
+   */
+  get registrationOrder(): readonly RouteDefinition[] {
+    return [...this.#routes.filter((route) => route.reserved), ...this.#routes.filter((route) => !route.reserved)];
+  }
+
   load(...definitions: RouteDefinitions[]): this;
   load(options: LoadOptions, ...definitions: RouteDefinitions[]): this;
   load(...args: (LoadOptions | RouteDefinitions)[]): this {
@@ -124,7 +150,19 @@ export class Router {
       middleware: [],
       group: options.group,
     });
+    const before = this.#routes.length;
     for (const definition of definitions) definition.register(root);
+    if (options.framework === FRAMEWORK_ROUTES) {
+      for (const route of this.#routes.slice(before)) route.reserved = isReserved(route.path);
+    }
+    // Compared lowercase and against the marker itself, not truthiness: a path that looks like the framework's must fail closed.
+    if (options.framework !== FRAMEWORK_ROUTES) {
+      for (const route of this.#routes.slice(before)) {
+        if (isReserved(route.path)) {
+          throw new Error(`${route.methods.join('|')} ${route.path}: paths under /_marmeon/ belong to the framework — give the routes of an app or a package a prefix of their own. See docs/routing.md#the-frameworks-paths.`);
+        }
+      }
+    }
     this.#indexNames();
     return this;
   }
