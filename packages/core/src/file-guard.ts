@@ -1,4 +1,5 @@
-import { open, rm, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { open, readFile, rm, stat } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 export interface FileGuardOptions {
@@ -12,22 +13,25 @@ export interface FileGuardOptions {
 
 /**
  * Runs `work` while holding `<file>.guard` — one writer at a time per file, across processes (the file stores of the session
- * and the cache). The guard is a file created exclusively (`wx`); a holder removes only its own (by inode). A guard older than
+ * and the cache). The guard is a file created exclusively (`wx`); a holder removes only its own (by the token it wrote into it — inode numbers are reused at once by some filesystems). A guard older than
  * `staleMs` is broken by one waiter at a time, and only while it is still the file found stale (same inode) — removing it by
  * name would let two waiters that both saw it stale delete each other's fresh guards: two writers at once.
  */
 export async function withFileGuard<T>(file: string, work: () => Promise<T>, { staleMs = 2_000, timeoutMs = 10_000, busy }: FileGuardOptions = {}): Promise<T> {
   const guard = `${file}.guard`;
   const started = performance.now();
-  let own: { dev: number; ino: number };
+  const token = randomUUID();
   for (;;) {
     try {
       const handle = await open(guard, 'wx', 0o600);
       try {
-        const { dev, ino } = await handle.stat();
-        own = { dev, ino };
-      } finally {
+        await handle.writeFile(token);
         await handle.close();
+      } catch (error) {
+        // We just created it exclusively: leave no empty, ownerless guard that would block writers until `staleMs`.
+        await handle.close().catch(() => undefined);
+        await rm(guard, { force: true }).catch(() => undefined);
+        throw error;
       }
       break;
     } catch (error) {
@@ -43,8 +47,8 @@ export async function withFileGuard<T>(file: string, work: () => Promise<T>, { s
     return await work();
   } finally {
     // Only our own guard: one taken over meanwhile (we were slower than `staleMs`) belongs to its new holder.
-    const current = await stat(guard).catch(() => undefined);
-    if (current && current.dev === own.dev && current.ino === own.ino) await rm(guard, { force: true });
+    const current = await readFile(guard, 'utf8').catch(() => undefined);
+    if (current === token) await rm(guard, { force: true });
   }
 }
 

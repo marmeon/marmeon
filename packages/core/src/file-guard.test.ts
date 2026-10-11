@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { open } from 'node:fs/promises';
+import { describe, expect, it, vi } from 'vitest';
 import { withFileGuard } from './file-guard.ts';
 
 const WORKER = fileURLToPath(new URL('./__fixtures__/guard-worker.ts', import.meta.url));
@@ -55,8 +56,31 @@ describe('withFileGuard — one writer per file, across processes', () => {
         writeFileSync(`${file}.guard`, 'another holder');
       });
       expect(readFileSync(`${file}.guard`, 'utf8')).toBe('another holder');
+      rmSync(`${file}.guard`);
+      // A new holder that got the same inode (filesystems reuse them at once): overwritten in place, still not ours.
+      await withFileGuard(file, async () => {
+        writeFileSync(`${file}.guard`, 'same inode');
+      });
+      expect(readFileSync(`${file}.guard`, 'utf8')).toBe('same inode');
       await expect(withFileGuard(file, async () => 1, { timeoutMs: 50, busy: (seconds) => `busy for ${seconds} s` })).rejects.toThrow('busy for 0.05 s');
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves no guard behind when writing its token fails, and never runs the work', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-guard-'));
+    const probe = await open(join(dir, 'probe'), 'w');
+    const writeFile = vi.spyOn(Object.getPrototypeOf(probe), 'writeFile').mockRejectedValueOnce(Object.assign(new Error('no space'), { code: 'ENOSPC' }));
+    await probe.close();
+    try {
+      const file = join(dir, 'entry');
+      const work = vi.fn(async () => 1);
+      await expect(withFileGuard(file, work)).rejects.toMatchObject({ code: 'ENOSPC' });
+      expect(work).not.toHaveBeenCalled();
+      expect(existsSync(`${file}.guard`)).toBe(false);
+    } finally {
+      writeFile.mockRestore();
       rmSync(dir, { recursive: true, force: true });
     }
   });
