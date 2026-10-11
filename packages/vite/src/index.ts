@@ -37,7 +37,7 @@ export interface MarmeonOptions {
   /** Entries relative to the app root — override only if the app keeps them elsewhere. */
   entries?: Partial<MarmeonEntries>;
   /** Page components, as a glob relative to the app root (`virtual:marmeon/pages`). Default `modules/*\/views/**\/*.tsx`.
-   * Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. See docs/vite.md. */
+   * Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. See docs/vite.md#options. */
   pages?: string | string[];
   /**
    * Language files, as a glob relative to the app root (`virtual:marmeon/lang`, one chunk per file — the browser loads
