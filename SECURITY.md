@@ -6,6 +6,9 @@ Please do not report a vulnerability in a public issue, a pull request or a disc
 reporting**: the repository's *Security* tab → *Report a vulnerability*
 (<https://github.com/marmeon/marmeon/security/advisories/new>). Only the maintainers see the report.
 
+Without a GitHub account, or when GitHub is not an option, write to **<security@marmeon.com>** — only the maintainers read it,
+too. The steps below are the same either way.
+
 Please include what you can of:
 
 - the package and version (or commit), Node's version, the driver or configuration involved;
