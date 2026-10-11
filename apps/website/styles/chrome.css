@@ -46,6 +46,13 @@
   font-size: 0.9375rem;
 }
 
+.site-footer-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: none;
+}
+
 /* Header */
 .site-header {
   border-bottom: 1px solid var(--line);

@@ -7,7 +7,9 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="site-footer-inner">
         <div className="site-footer-about">
-          <Wordmark small />
+          <Link route="site.home" className="site-footer-brand" aria-label="Marmeon, home">
+            <Wordmark small />
+          </Link>
           <span className="site-footer-legal">
             <a href={LICENSE_URL} rel="noopener">
               MIT licence

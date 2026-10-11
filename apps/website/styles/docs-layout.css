@@ -23,13 +23,22 @@
 .docs-brand {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
   flex: 0 0 auto;
 }
 
-.docs-brand,
-.docs-brand:hover {
+.docs-brand-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   text-decoration: none;
+}
+
+.docs-brand-link:hover {
+  text-decoration: none;
+}
+
+.docs-brand-docs {
+  padding-left: var(--space-3);
 }
 
 .docs-search {

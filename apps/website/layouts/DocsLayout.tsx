@@ -50,9 +50,14 @@ export function DocsLayout({ children }: LayoutProps) {
         Skip to content
       </a>
       <header className="docs-top">
-        <Link route="docs.home" className="docs-brand" aria-label="Marmeon documentation, start page">
-          <Wordmark suffix="docs" />
-        </Link>
+        <div className="docs-brand">
+          <Link route="site.home" className="docs-brand-link" aria-label="Marmeon, home">
+            <Wordmark />
+          </Link>
+          <Link route="docs.home" className="docs-brand-link docs-brand-docs">
+            <span className="wordmark-suffix">docs</span>
+          </Link>
+        </div>
         {!onSearchPage && (
           <form method="get" action={searchUrl} role="search" className="docs-search" onSubmit={search}>
             <label htmlFor="docs-search-field" className="visually-hidden">

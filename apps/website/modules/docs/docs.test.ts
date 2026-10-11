@@ -254,6 +254,15 @@ describe('the content of a page, rendered on the server', () => {
     expect(html).toMatch(/<div class="table"><table>/);
   }, SSR_TEST_TIMEOUT);
 
+  it('links home from the top bar and the footer, and to the docs start page from the "docs" suffix', async () => {
+    const html = (await ssr.get('/docs/routing', document).assertOk()).body;
+    const home = /<a [^>]*href="\/"[^>]*aria-label="Marmeon, home"|<a [^>]*aria-label="Marmeon, home"[^>]*href="\/"/;
+    const top = html.slice(html.indexOf('<header class="docs-top"'), html.indexOf('</header>'));
+    expect(top).toMatch(home);
+    expect(top).toMatch(/<a [^>]*href="\/docs"[^>]*><span class="wordmark-suffix">docs<\/span><\/a>/);
+    expect(html.slice(html.indexOf('<footer class="site-footer"'))).toMatch(home);
+  }, SSR_TEST_TIMEOUT);
+
   it('has no copy button in the document: it appears once the page runs in a browser', async () => {
     const html = (await ssr.get('/docs/routing', document).assertOk()).body;
     expect(html).toContain('class="code-block"');
