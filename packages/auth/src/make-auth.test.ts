@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { AUTH_STYLES_IMPORT, MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, STUBS } from './make-auth.ts';
@@ -192,9 +193,10 @@ describe('make:auth', () => {
       const root = blankApp();
       const env = { ...process.env };
       for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST') delete env[key];
+      // Plain text whatever the CI colours: the assertions match the child Vitest's summary.
       const run = (command: string, args: string[], extra: Record<string, string> = {}, base = env) => {
-        const result = spawnSync(command, args, { cwd: root, env: { ...base, ...extra }, encoding: 'utf8', timeout: 240_000 });
-        return { code: result.status, out: `${result.stdout}${result.stderr}` };
+        const result = spawnSync(command, args, { cwd: root, env: { ...base, NO_COLOR: '1', FORCE_COLOR: '0', ...extra }, encoding: 'utf8', timeout: 240_000 });
+        return { code: result.status, out: stripVTControlCharacters(`${result.stdout}${result.stderr}`) };
       };
       // The CLI steps stay on the app's SQLite file; under `pnpm test:pgsql` only the generated tests use Postgres
       // (their own worker databases) — never the shared one.

@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { stripVTControlCharacters } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
@@ -286,9 +287,10 @@ it(
     const env = { ...process.env };
     for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV') delete env[key];
     const { DB_CONNECTION: _connection, DB_URL: _url, ...sqliteEnv } = env;
+    // Plain text whatever the CI colours: the assertions match the child Vitest's summary.
     const run = (command: string, args: string[], extra: Record<string, string> = {}, base = env) => {
-      const result = spawnSync(command, args, { cwd: root, env: { ...base, ...extra }, encoding: 'utf8', timeout: 240_000 });
-      return { code: result.status, out: `${result.stdout}${result.stderr}` };
+      const result = spawnSync(command, args, { cwd: root, env: { ...base, NO_COLOR: '1', FORCE_COLOR: '0', ...extra }, encoding: 'utf8', timeout: 240_000 });
+      return { code: result.status, out: stripVTControlCharacters(`${result.stdout}${result.stderr}`) };
     };
     // As the scaffolder runs them after the install: NODE_ENV from the app's .env (development).
     const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], {}, sqliteEnv);
