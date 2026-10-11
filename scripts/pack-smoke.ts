@@ -350,7 +350,8 @@ class Smoke {
               .stdout.split('\n')
               .map((line) => line.trim().split(/\s+/))
               .filter(([, pgid]) => pgid === String(child.pid));
-            if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node$/.test(group[0]![2] ?? '')) {
+            // `comm` is the executable path on macOS, but the main thread's name on Linux, which Node sets to `node-MainThread`.
+            if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node(-MainThread)?$/.test(group[0]![2] ?? '')) {
               throw new SmokeError(`marmeon start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
             }
             await check?.(`http://127.0.0.1:${port}`, () => output);
