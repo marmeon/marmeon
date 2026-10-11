@@ -23,6 +23,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const DOCKER_OFFLINE = /failed to resolve source metadata|failed to do request|dial tcp|i\/o timeout|TLS handshake timeout|no such host|ERR_PNPM_META_FETCH_FAIL|EAI_AGAIN|ENOTFOUND/;
 /** The docs' policy in production (apps/website SiteServiceProvider, SITE_CSP). */
 const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'";
+/** The policy of the compose stack, which sets Fathom's site id by default (SITE_FATHOM_SITE): its script may load. */
+const DEPLOYED_POLICY = POLICY.replace("script-src 'self';", "script-src 'self' https://cdn.usefathom.com/script.js;");
 /** Never in the image: what only builds or tests the docs. */
 const DEV_PACKAGES = /^(vite|vitest|typescript|@vitejs\+|oxlint|@oxlint\+|@marmeon\+(devtools|testing|vite))(@|$)/;
 
@@ -171,7 +173,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
   let built = false;
   let composed = false;
   // WEBSITE_DOMAIN=localhost: Caddy signs with its own CA; the port Caddy listens on is moved to a free one (compose.smoke.yaml).
-  const composeEnv: Record<string, string> = { APP_KEY: key, WEBSITE_DOMAIN: 'localhost', WEBSITE_REDIRECT_DOMAINS: 'redirect.localhost', WEBSITE_TAG: tag, SMOKE_PORT: String(await freePort()) };
+  const composeEnv: Record<string, string> = { APP_KEY: key, WEBSITE_DOMAIN: 'localhost', WEBSITE_REDIRECT_DOMAINS: 'redirect.localhost', WEBSITE_FATHOM_SITE: 'IBAFAHEM', WEBSITE_TAG: tag, SMOKE_PORT: String(await freePort()) };
   const compose = (args: string[], expect: number | 'any' = 0) =>
     docker(['compose', '-p', project, '-f', 'compose.yaml', '-f', join(work, 'compose.smoke.yaml'), ...args], { cwd: join(root, 'deploy/website'), extraEnv: composeEnv, expect });
   const step = async <T>(name: string, run: () => Promise<T> | T): Promise<T> => {
@@ -253,7 +255,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
         if (page.version !== 'HTTP/2' || page.status !== 200) problems.push(`${path}: ${page.version} ${page.status}, expected HTTP/2 200`);
         if (page.headers.has('set-cookie')) problems.push(`${path}: Set-Cookie behind Caddy: ${page.headers.get('set-cookie')}`);
         if (!page.headers.get('strict-transport-security')?.startsWith('max-age=')) problems.push(`${path}: no Strict-Transport-Security`);
-        if (page.headers.get('content-security-policy') !== POLICY) problems.push(`${path}: Content-Security-Policy "${page.headers.get('content-security-policy')}"`);
+        if (page.headers.get('content-security-policy') !== DEPLOYED_POLICY) problems.push(`${path}: Content-Security-Policy "${page.headers.get('content-security-policy')}"`);
       }
       // An old client's visit: the docs build the reload URL from what Caddy forwarded — trusted, it is Caddy's https address.
       const stale = curl(`${base}/docs/deployment`, { 'x-marmeon': 'true', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });

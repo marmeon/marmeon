@@ -5,6 +5,8 @@ import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOpt
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
+import { FATHOM_SCRIPT } from './fathom.ts';
+import { ShareAnalytics } from './middleware/ShareAnalytics.ts';
 import { SecurityHeaders } from './middleware/SecurityHeaders.ts';
 import { ShareSite } from './middleware/ShareSite.ts';
 import { SiteInfo } from './SiteInfo.ts';
@@ -22,6 +24,11 @@ export const PUBLIC_GROUP = 'public';
  * blocks are spans), and the entry, its chunks and tab sync's chunk come from `/assets/` — `'self'`.
  */
 export const SITE_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], styleSrc: ["'self'"], frameAncestors: ["'none'"] };
+
+/** The policy when Fathom Analytics is on: its script may load; the beacon goes out as an image or request, which the policy leaves open. */
+export function siteCsp(fathom: boolean): ContentSecurityPolicyOptions {
+  return fathom ? { ...SITE_CSP, scriptSrc: ["'self'", FATHOM_SCRIPT] } : SITE_CSP;
+}
 
 /**
  * In development Vite's client, React Refresh's preamble and the devtools' bar are inline scripts: the strict default with a
@@ -51,7 +58,10 @@ export class SiteServiceProvider implements ServiceProvider {
     const config = app.container.make(SiteConfig);
     const router = app.container.make(Router);
     // Global: the 404 page (no route, no group) gets the policy and the headers too.
-    router.middleware.append(GLOBAL, SecurityHeaders).append(GLOBAL, contentSecurityPolicy(config.development ? SITE_DEV_CSP : SITE_CSP));
+    router.middleware
+      .append(GLOBAL, SecurityHeaders)
+      .append(GLOBAL, contentSecurityPolicy(config.development ? SITE_DEV_CSP : siteCsp(config.fathomSite !== undefined)))
+      .append(GLOBAL, ShareAnalytics);
     router.middleware
       .append(PUBLIC_GROUP, CachePublicly, MiddlewarePriority.encryptCookies - 50) // outermost: it sees the group's final answer
       .append(PUBLIC_GROUP, CheckAssetVersion, MiddlewarePriority.checkAssetVersion)

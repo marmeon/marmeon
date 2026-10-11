@@ -4,6 +4,7 @@
 #
 #   WEBSITE_DOMAIN=marmeon.com
 #   WEBSITE_REDIRECT_DOMAINS=www.marmeon.com, marmeon.de, www.marmeon.de, marmeon.dev, www.marmeon.dev   # optional (WEBSITE_DOMAIN and APP_KEY are required): 301 to WEBSITE_DOMAIN
+#   WEBSITE_FATHOM_SITE=IBAFAHEM   # optional (default: the production site): the Fathom Analytics site id; empty: no analytics, no script, no CSP change
 #   APP_KEY=base64:…            # docker run --rm marmeon-website key:generate --show  (or: openssl rand -base64 32, prefixed base64:)
 #
 #   docker compose up -d --build        # build the image from this checkout and start both containers
@@ -30,6 +31,8 @@ services:
       APP_KEY: ${APP_KEY:?set APP_KEY in deploy/website/.env (marmeon key:generate --show)}
       APP_URL: https://${WEBSITE_DOMAIN:?set WEBSITE_DOMAIN in deploy/website/.env, e.g. docs.example.com}
       APP_NAME: Marmeon
+      # Fathom Analytics (production only: the script and Fathom's origin in script-src). Empty in deploy/website/.env turns it off.
+      SITE_FATHOM_SITE: ${WEBSITE_FATHOM_SITE-IBAFAHEM}
       # Only Caddy shares the network below with the docs — so its X-Forwarded-For/-Proto/-Host count: the search's rate
       # limit sees each visitor's address, not Caddy's. Change the subnets together with the network.
       TRUSTED_PROXIES: 172.30.80.0/24,fd5b:c0de:d0c5::/64

@@ -59,6 +59,11 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   entry, its chunks and tab sync's chunk come from `/assets/`. `style-src 'self'` allows stylesheets from `/assets/` only (fonts and the
   favicon come from there too, under `font-src` and `img-src`, which stay open): no `style` attribute (not in SVG either), no inline `<style>`, no CSS-in-JS. The links test checks every page for inline
   scripts, handlers and `style` attributes.
+  **Analytics:** with `SITE_FATHOM_SITE` set (a Fathom site id; anything but uppercase letters and digits stops the boot) and in production
+  only, every document — landing, docs, 404 — carries Fathom's external script in its head (`bootstrap/ssr.tsx`, handed the id by
+  `ShareAnalytics`; not a `<Head>`, so the client router never reloads it; every pageview, the first included, is sent by `Pageviews` (`data-auto="false"`; Fathom's `data-spa` mode cannot see the Navigation API) with the page's address without query or hash — Fathom itself reads the address bar's query and sends `q`, so a page whose address has one (the docs search) is not counted) and
+  `script-src` adds `https://cdn.usefathom.com/script.js`. The policy has no `default-src`, `img-src` or `connect-src`, so the beacon needs
+  nothing else; its beacon image gets `img.style.position` through the CSSOM, which `style-src` does not govern. Without an id the page and the policy are the ones above.
   In development (`no-cache`, nothing shared) Vite's client, React Refresh and the devtools' bar are inline: the strict nonce
   policy there.
 - **Styles** (`styles/`): `app.css` is the only entry (`index.html`) and only `@import`s the parts. `tokens.css` holds every
@@ -82,7 +87,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks (the reserved slug included).
 
 Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image) and
-`DOCS_SEARCH_PER_MINUTE` (120); `config/site.ts` has `SITE_CACHE_MAX_AGE` (300 s).
+`DOCS_SEARCH_PER_MINUTE` (120); `config/site.ts` has `SITE_CACHE_MAX_AGE` (300 s) and `SITE_FATHOM_SITE` (empty: no analytics).
 
 ## Deployment
 
