@@ -14,3 +14,4 @@
   - marmeon@0.1.0
   - @marmeon/core@0.1.0
   - @marmeon/router@0.1.0
+  - @marmeon/validation@0.1.0

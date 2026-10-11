@@ -1,7 +1,8 @@
 # @marmeon/database
 
-The data layer of Marmeon apps on Kysely: connections, migrations per module, generated table types, repositories, factories,
-transactions and pagination.
+The data layer of Marmeon apps on Kysely: connections, migrations per module, generated table types, repositories, relations
+derived from foreign keys (`with`), `tryInsert`/`tryUpdate` returning a `Result`, factories, transactions that roll back on `err`
+and pagination.
 
 ## Installation
 

@@ -280,9 +280,11 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
   nothing, and prerelease versions and Changesets' pre mode are refused.
 - **How a release happens** (`.github/workflows/release.yml`): on every push to `main`, the Changesets action opens or updates
   the *Version packages* pull request (`changeset version`: the versions, the changelogs). Merging it runs the checks again and
-  **stages** every package that is not on npm yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
+  **stages** every package version npm does not have yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
   repository) and provenance. Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
   authentication; then `changeset git-tag` tags the release. The trusted-publisher configuration on npm allows staging only.
+  A package's very first version has to be published by hand, before trusted publishing can be set up for it; the workflow covers
+  every version after that.
   `check-changesets` also holds the configuration to it: the version pull request comes from `changesets/action`, the release job
   runs on a GitHub-hosted runner (trusted publishing needs one), `.changeset/config.json` has `baseBranch` `main`, public
   access and unversioned private packages, and `scripts/npm-trust.sh` names every package.

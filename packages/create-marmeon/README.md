@@ -10,9 +10,16 @@ Nothing to install — run it through your package manager:
 ```sh
 pnpm create marmeon my-app            # on a terminal it asks: the starter kit? Docker files? pnpm or npm? git?
 pnpm create marmeon my-app --yes      # the defaults, nothing asked: the starter kit, pnpm, install, a first commit
-npm create marmeon@latest my-app -- --npm
 cd my-app
 pnpm dev                              # http://localhost:3000 — the server with Vite, a queue worker and the scheduler
+```
+
+With npm, the creator's own flags follow a `--`:
+
+```sh
+npm create marmeon@latest my-app -- --npm
+cd my-app
+npm run dev
 ```
 
 ## Options

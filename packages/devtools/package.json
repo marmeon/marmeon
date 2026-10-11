@@ -5,8 +5,7 @@
   "keywords": [
     "marmeon",
     "devtools",
-    "debugging",
-    "telescope"
+    "debugging"
   ],
   "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/devtools#readme",
   "bugs": {

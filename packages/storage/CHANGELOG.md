@@ -17,3 +17,4 @@
   - @marmeon/encryption@0.1.0
   - @marmeon/http@0.1.0
   - @marmeon/router@0.1.0
+  - @marmeon/validation@0.1.0

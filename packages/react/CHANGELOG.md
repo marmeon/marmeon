@@ -13,3 +13,4 @@
 - Updated dependencies
   - @marmeon/http@0.1.0
   - @marmeon/i18n@0.1.0
+  - @marmeon/table@0.1.0

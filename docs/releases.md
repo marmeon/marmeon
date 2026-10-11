@@ -46,8 +46,9 @@ version. The [security policy](../SECURITY.md) explains how to report a vulnerab
 ## A broken release
 
 A release is never taken back from npm. A broken one is deprecated there, with the version to use instead, and the next patch
-fixes it. Every release is staged first and goes public only after a maintainer approves it with two-factor authentication. The
-packages carry npm provenance from the release workflow, so you can check where each one was built. The
+fixes it. What the release workflow publishes is staged first and goes public only after a maintainer approves it with two-factor
+authentication, and it carries npm provenance, so you can check where it was built. A package's very first version has to be
+published by hand, before trusted publishing can be set up for it. The
 [contribution guide](../CONTRIBUTING.md#changesets-and-releases) describes the process.
 
 ## The first day after a release

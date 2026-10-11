@@ -12,8 +12,10 @@
 
 - Updated dependencies
   - marmeon@0.1.0
+  - @marmeon/cache@0.1.0
   - @marmeon/core@0.1.0
   - @marmeon/database@0.1.0
   - @marmeon/http@0.1.0
   - @marmeon/router@0.1.0
   - @marmeon/session@0.1.0
+  - @marmeon/validation@0.1.0
