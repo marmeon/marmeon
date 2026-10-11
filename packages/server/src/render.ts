@@ -376,7 +376,7 @@ export function createResponseFactory(
     while (layerBases && parent && next !== undefined) {
       const answer = await layerBases(next, parent);
       if (answer.status !== 'page') {
-        if (answer.httpStatus >= 500) logger.error(`The base ${next} of the layer [${layer.component}] failed (${answer.httpStatus}) — the layer shows alone`, { component: layer.component });
+        if (answer.httpStatus >= 500) logger.error(`The base ${redactor.text(next)} of the layer [${layer.component}] failed (${answer.httpStatus}) — the layer shows alone`, { component: layer.component });
         break;
       }
       if (!answer.page.layer) {

@@ -201,7 +201,7 @@ export function createHttpKernel(
     const base = new URL(parent.request.url);
     const target = new URL(url, base);
     if (target.origin !== base.origin) {
-      logger.error(`An island comes from this site, not from ${target.origin} (${url})`);
+      logger.error(`An island comes from this site, not from ${target.origin} (${redactor.text(url)})`);
       return { status: 'exception', failure: {} };
     }
     const headers = new Headers();
@@ -542,18 +542,19 @@ export function createHttpKernel(
     // (a tab becoming visible is no activity), takes no flash data, sets no cookie.
     const epoch = pathname === SESSION_PATH;
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
+    const shownPath = redactor.text(pathname);
     if ((island || parent || live || upload || stream || epoch) && readOnly) {
       const reason = live
-        ? `a live validation (${request.method} ${pathname})`
+        ? `a live validation (${request.method} ${shownPath})`
         : epoch
-          ? `the session's epoch (${request.method} ${pathname})`
+          ? `the session's epoch (${request.method} ${shownPath})`
           : upload
-          ? `an upload (${request.method} ${pathname})`
+          ? `an upload (${request.method} ${shownPath})`
           : stream
-            ? `an event stream (${request.method} ${pathname})`
+            ? `an event stream (${request.method} ${shownPath})`
             : island
-              ? `an island request (${request.method} ${pathname})`
-              : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
+              ? `an island request (${request.method} ${shownPath})`
+              : `a layer's base, resolved for its deep link (${request.method} ${shownPath})`;
       const rule = live
         ? 'a live validation is read-only — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
         : epoch
@@ -606,7 +607,7 @@ export function createHttpKernel(
     // streams on, computing its deferred props — cannot change the session, cookies or work after the response.
     if (!island && !parent && readOnly) {
       readOnly.engage({
-        reason: `${request.method} ${pathname} after its response headers were sent (a deferred prop, streamed with the page)`,
+        reason: `${request.method} ${shownPath} after its response headers were sent (a deferred prop, streamed with the page)`,
         rule: 'the response headers are out — a deferred prop streamed with the page cannot change the session, cookies or flash data, nor defer work after the response. Do that in the controller before it returns the page, or in an action.',
         strict: strictReadOnly,
         report: (message) => logger.error(message),

@@ -216,7 +216,7 @@ export class AlertOnFailedTask {
 
   handle(event: ScheduledTaskFailed): void {
     const message = event.error instanceof Error ? event.error.message : String(event.error);
-    this.#logger.error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, { task: event.task });
+    this.#logger.error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, { alert: true, task: event.task });
   }
 }
 ```
