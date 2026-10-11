@@ -15,3 +15,4 @@ storage/
 !/packages/create-marmeon/template/base/storage/
 .claude/*
 !.claude/launch.json
+CLAUDE.local.md
