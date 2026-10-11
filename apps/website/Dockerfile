@@ -12,7 +12,7 @@
 
 ARG NODE_IMAGE=node:26-slim
 
-# ── Build: the framework, the docs' bundles, then the docs app alone with its production dependencies ─────────────────────
+# ── Build: the framework, the docs' bundles, then the website alone with its production dependencies ─────────────────────
 FROM ${NODE_IMAGE} AS build
 # pnpm as the repository pins it ("packageManager" in package.json) — Node ships no Corepack since 25.
 RUN npm install --global --no-audit --no-fund pnpm@12.9.1
@@ -31,7 +31,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 RUN pnpm run build \
  && cd apps/website \
  && NODE_ENV=production node ../../packages/cli/bin/marmeon.js build
-# The docs app as it runs: its files ("files" in its package.json — no tests, no .env), only its production dependencies, the
+# The website as it runs: its files ("files" in its package.json — no tests, no .env), only its production dependencies, the
 # framework's packages copied with their dist/ (pnpm deploy); the build's output; then the discovery manifest of exactly these
 # packages, so the start rewrites nothing and the files may be read-only. The copies keep the workspace's manifests —
 # `exports` with the source condition — which nothing sets here: `marmeon` gives it only inside the workspace, so every

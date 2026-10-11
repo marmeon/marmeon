@@ -1,9 +1,10 @@
 # Marmeon website
 
-The website of Marmeon: the landing page (`modules/site`) at `/` and its documentation (`modules/docs`). The documentation — the pages under `docs/` in ten sections, and the policies at the root (`UPGRADING.md`,
-`CONTRIBUTING.md`, `SECURITY.md`) — as a normal Marmeon app, not a static export: server-rendered React pages in a layout,
-`<Link prefetch>` between them, a search route on the server. The start page is `/docs`, every page `/docs/<slug>` and the search `/docs/search` — so `search` is a reserved slug. Deployed as an image behind Caddy
-([below](#deployment)).
+The website of Marmeon: the landing page (`modules/site`) at `/` and the documentation (`modules/docs`) under `/docs` — the
+pages in `docs/` in ten sections and the policies at the root (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`). It is a
+normal Marmeon app, not a static export: server-rendered React pages in a layout, `<Link prefetch>` between them, a search
+route on the server. The start page is `/docs`, every page `/docs/<slug>` and the search `/docs/search` — so `search` is a
+reserved slug. Deployed as an image behind Caddy ([below](#deployment)).
 
 ```sh
 pnpm website:dev      # from the repository root: http://localhost:3970 (writes .env with a fresh APP_KEY the first time)
@@ -86,7 +87,7 @@ Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `
 ## Deployment
 
 `apps/website/Dockerfile` is the monorepo variant of what `marmeon make:docker` writes: built from the repository's root, it
-installs the workspace, builds the packages and the docs, then `pnpm deploy --prod` takes the docs app alone — its `files` (no
+installs the workspace, builds the packages and the docs, then `pnpm deploy --prod` takes the website alone — its `files` (no
 tests, no `.env`), its production dependencies, the framework's packages with their `dist/` (their manifests keep the
 workspace's `exports` with the source condition — `marmeon` sets it only inside the workspace, so the copies run `dist/`) — and
 the discovery manifest is written for exactly these packages. `marmeon build` runs without a key or any other secret; PID 1 of

@@ -1,3 +1,4 @@
+import { Link } from '@marmeon/react';
 import { Mark } from '../Mark.tsx';
 
 const SECTIONS = ['Requests', 'Queries', 'Jobs', 'Mails'];
@@ -17,14 +18,13 @@ export function DevtoolsSection() {
           <p className="section-label">Devtools</p>
           <h2 id="devtools-title">See what a request did.</h2>
           <p>
-            In development, devtools records requests, queries, jobs and mails at <code>/_marmeon/devtools</code>. Secrets are masked. In production it is not
-            there.
+            In development, devtools records requests, queries, jobs and mails and shows them on a page of its own. Secrets are masked. In production it is not there. <Link href="/docs/devtools">Devtools</Link>
           </p>
         </div>
         <figure className="devtools-panel" aria-label="Devtools panel, illustration">
           <div className="devtools-bar" aria-hidden="true">
             <Mark size={16} />
-            <span>localhost:3000/_marmeon/devtools</span>
+            <span>localhost:3000</span>
             <span className="devtools-env">DEVELOPMENT</span>
           </div>
           <div className="devtools-body" aria-hidden="true">

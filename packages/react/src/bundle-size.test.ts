@@ -278,7 +278,7 @@ describe('an app holds only the features it uses (leak test)', () => {
   });
 
   // useRouter() loads the page's optimistic patches with the first router.optimistic()/reloading() — every app with a router
-  // (the docs app's header search) carries only the loader.
+  // (the website's docs header search) carries only the loader.
   it('the page’s optimistic patches are a chunk of their own in everything — loaded with the first router.optimistic()', () => {
     expect(featuresIn(bundle('everything'))).not.toContain('optimistic');
     expect(featuresIn(bundle('everything'), true)).toContain('optimistic');
@@ -335,7 +335,7 @@ describe('an app holds only the features it uses (leak test)', () => {
     }
   }, 60_000);
 
-  it('the docs app carries no devtools either — it has them as a dev dependency and uses them under marmeon dev', async () => {
+  it('the website carries no devtools either — it has them as a dev dependency and uses them under marmeon dev', async () => {
     const node = process.env.NODE_ENV;
     try {
       expect(devtoolsIn(await appClientBuild(join(PACKAGES, '../apps/website'))), 'website').toEqual([]);

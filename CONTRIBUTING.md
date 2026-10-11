@@ -535,12 +535,12 @@ other page.
 - **Configuration** is a table with the columns Variable, Default and Effect. The default is the one in the code's schema.
 - **Links** are relative links to other docs pages: `[route model binding](routing.md#route-model-binding)`. Link to an anchor
   only on a page that is written; a page still marked pending gets a link without one. Never link to a package README or a
-  source file — a reader of the docs app cannot follow it.
+  source file — a reader of the website cannot follow it.
 - **Placeholders.** Every page is written: `pnpm check:source` refuses a page that carries `<!-- docs:pending -->` as a line
-  of its own. While you write a new page, the marker on line 2 marks it "draft" in the navigation of `pnpm website:dev` (the docs
-  app removes the line); delete it before you commit.
+  of its own. While you write a new page, the marker on line 2 marks it "draft" in the navigation of `pnpm website:dev` (the website
+  removes the line); delete it before you commit.
 - **Code that names a page** — a solution's `docs`, an error message, a comment — names its repository path with the anchor:
-  `docs/migrations.md#running-migrations`. A test of the docs app (`apps/website/modules/docs/links.test.ts`) follows every such path
+  `docs/migrations.md#running-migrations`. A test of the website (`apps/website/modules/docs/links.test.ts`) follows every such path
   in the packages' code, the stubs, the starter's template, the apps, the package READMEs and the root README to its page and
   anchor, refuses a path to a package README, and refuses a page without its anchor outside the READMEs (which list pages).
 - **Length:** as long as the topic needs. A page past about 600 lines probably wants splitting — propose it rather than
@@ -548,7 +548,7 @@ other page.
 - **Package READMEs are cards for npm**, not documentation: one sentence on what the package is, how to install it (or that a
   new app has it), one short example taken from its docs page, the page's links and the licence line. npm shows a README without
   the repository, so a card links with absolute GitHub URLs
-  (`https://github.com/marmeon/marmeon/blob/main/docs/<page>.md#<anchor>`) — the docs app's links test checks each page and
+  (`https://github.com/marmeon/marmeon/blob/main/docs/<page>.md#<anchor>`) — the website's links test checks each page and
   anchor. A package that needs a third-party driver names the exact install command. Everything else belongs on a docs page.
 
 When the code and a README disagree, the code is right: describe what it does, and report the difference (or the bug) rather

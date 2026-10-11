@@ -41,7 +41,7 @@ export const parts: readonly Part[] = [
   { name: 'test:s3', command: pnpm('test:s3'), services: ['s3'], after: ['build'] },
   { name: 'size', command: pnpm('size'), after: ['build'] },
   { name: 'types:check', command: pnpm('types:check') },
-  // The docs app: its production build, started on a free port and asked by a smoke test (scripts/website.ts).
+  // The website: its production build, started on a free port and asked by a smoke test (scripts/website.ts).
   { name: 'website:check', command: pnpm('website:check'), after: ['build'] },
   // The tarballs: a clean build, pnpm pack of every package, the content rules, publint and attw.
   { name: 'pack:check', command: pnpm('pack:check') },

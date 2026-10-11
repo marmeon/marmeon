@@ -1,5 +1,5 @@
 /**
- * The docs app (`apps/website`, a normal Marmeon app, no static export):
+ * The website (`apps/website`, a normal Marmeon app, no static export):
  *
  *   pnpm website:dev    # marmeon dev on http://localhost:3970 (PORT wins); writes apps/website/.env with a fresh APP_KEY first
  *   pnpm website:check  # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
