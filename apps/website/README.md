@@ -6,6 +6,10 @@ normal Marmeon app, not a static export: server-rendered React pages in a layout
 route on the server. The start page is `/docs`, every page `/docs/<slug>` and the search `/docs/search` — so `search` is a
 reserved slug. Deployed as an image behind Caddy ([below](#deployment)).
 
+The imprint (`/imprint`) and the privacy policy (`/privacy`) are Markdown files in `content/legal/`: edit the text there, no code
+change needed. They are read at boot (a missing file stops the start), are no pages of the docs (not in its navigation or
+search) and ship in the image through `files` in `package.json`.
+
 ```sh
 pnpm website:dev      # from the repository root: http://localhost:3970 (writes .env with a fresh APP_KEY the first time)
 pnpm website:check    # marmeon build, the production server on a free port, a smoke test — part of `pnpm run ci`
@@ -97,7 +101,7 @@ tests, no `.env`), its production dependencies, the framework's packages with th
 workspace's `exports` with the source condition — `marmeon` sets it only inside the workspace, so the copies run `dist/`) — and
 the discovery manifest is written for exactly these packages. `marmeon build` runs without a key or any other secret; PID 1 of
 the image is `tini` (signals, orphans). The pages are copied into `/app/content`: a new version of the docs is
-a new image. `node:26-slim`, `USER node`, `NODE_ENV=production`, the root file system may be read-only (only `storage/` — the
+a new image; `/app/content` also holds `content/legal` (from `pnpm deploy`). `node:26-slim`, `USER node`, `NODE_ENV=production`, the root file system may be read-only (only `storage/` — the
 rate limit's cache and the compile cache — is written). `apps/website/Dockerfile.dockerignore` keeps every `.env`, `node_modules`,
 the builds and the other apps' code out of the build context.
 

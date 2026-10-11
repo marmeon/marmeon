@@ -8,7 +8,8 @@
 #     -v marmeon-website-storage:/app/storage marmeon-website
 #
 # deploy/website/compose.yaml runs it behind Caddy (TLS, HTTP/2 and HTTP/3). The pages are this checkout's docs, copied into the
-# image (/app/content): a new version of the docs is a new image.
+# image (/app/content): a new version of the docs is a new image. /app/content also holds content/legal (the imprint and the
+# privacy policy), which `pnpm deploy` brings with the app's files.
 
 ARG NODE_IMAGE=node:26-slim
 

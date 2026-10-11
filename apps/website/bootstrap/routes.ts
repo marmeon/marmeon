@@ -4,7 +4,9 @@
 import type { SearchController } from '../modules/docs/controllers/SearchController.ts';
 import type { ShowDocController } from '../modules/docs/controllers/ShowDocController.ts';
 import type { ShowHomeController } from '../modules/docs/controllers/ShowHomeController.ts';
+import type { ShowImprintController } from '../modules/site/controllers/ShowImprintController.ts';
 import type { ShowLandingController } from '../modules/site/controllers/ShowLandingController.ts';
+import type { ShowPrivacyController } from '../modules/site/controllers/ShowPrivacyController.ts';
 
 declare module '@marmeon/router' {
   interface Routes {
@@ -12,6 +14,8 @@ declare module '@marmeon/router' {
     'docs.page': { method: 'get'; path: '/docs/:page'; controller: typeof ShowDocController };
     'docs.search': { method: 'get'; path: '/docs/search'; controller: typeof SearchController };
     'site.home': { method: 'get'; path: '/'; controller: typeof ShowLandingController };
+    'site.imprint': { method: 'get'; path: '/imprint'; controller: typeof ShowImprintController };
+    'site.privacy': { method: 'get'; path: '/privacy'; controller: typeof ShowPrivacyController };
   }
 }
 
@@ -22,5 +26,6 @@ declare module '@marmeon/http/page' {
     'docs/Search': true;
     'errors/Error': true;
     'site/Landing': true;
+    'site/Legal': true;
   }
 }

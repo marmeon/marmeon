@@ -124,10 +124,12 @@ export function inspectionProblems(found: Inspection, repository = root): string
   const dev = found.store.filter((entry) => DEV_PACKAGES.test(entry));
   if (dev.length > 0) problems.push(`dev dependencies in the image: ${dev.join(', ')} (pnpm deploy --prod)`);
   const pages = entries().map((entry) => `content/${entry.file ?? `docs/${entry.slug}.md`}`);
-  const absent = pages.filter((file) => !found.content.includes(file));
+  // The imprint and the privacy policy come with the app's own files (`content/legal/`, "files" in package.json).
+  const legal = ['imprint', 'privacy'].map((name) => `content/legal/${name}.md`);
+  const absent = [...pages, ...legal].filter((file) => !found.content.includes(file));
   if (absent.length > 0) problems.push(`/app/content lacks ${absent.slice(0, 8).join(', ')}`);
-  // Only the pages: docs/*.md and the policies at the root — no package's README or manifest (they are no pages).
-  const others = found.content.filter((file) => !pages.includes(file) && !/^content\/docs\/[^/]+\.md$/.test(file));
+  // Only the pages: docs/*.md, the policies at the root and the two legal texts — no package's README or manifest (they are no pages).
+  const others = found.content.filter((file) => !pages.includes(file) && !legal.includes(file) && !/^content\/docs\/[^/]+\.md$/.test(file));
   if (others.length > 0) problems.push(`/app/content has what is no page: ${others.slice(0, 8).join(', ')}${others.length > 8 ? ` … (${others.length})` : ''}`);
   const docs = readdirSync(join(repository, 'docs')).filter((name) => name.endsWith('.md')).map((name) => `content/docs/${name}`);
   const unshipped = docs.filter((file) => !found.content.includes(file));

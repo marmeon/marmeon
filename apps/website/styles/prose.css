@@ -19,7 +19,8 @@
 
 .doc h2,
 .doc h3,
-.doc h4 {
+.doc h4,
+.doc h5 {
   position: relative;
   color: var(--fg);
   font-weight: 600;
@@ -37,7 +38,8 @@
   line-height: 1.25;
 }
 
-.doc h4 {
+.doc h4,
+.doc h5 {
   margin: 28px 0 8px;
   font-size: var(--text-body);
   line-height: 1.3;
@@ -82,7 +84,7 @@
   transition: opacity var(--duration-fast);
 }
 
-.doc :is(h2, h3, h4):is(:hover, :focus-within) a.anchor {
+.doc :is(h2, h3, h4, h5):is(:hover, :focus-within) a.anchor {
   opacity: 1;
 }
 

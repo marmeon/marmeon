@@ -74,7 +74,7 @@ async function check(): Promise<number> {
     console.error(`website:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
     return 1;
   }
-  console.log(`website:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 2} pages) and stop in ${seconds} s`);
+  console.log(`website:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 4} pages) and stop in ${seconds} s`);
   return 0;
 }
 
@@ -102,8 +102,8 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     return response;
   };
 
-  // The landing and the docs' start page: both public, cacheable, revalidated with 304.
-  for (const [path, heading] of [['/', 'One type, from the database column to the form error.'], ['/docs', '>Marmeon</h1>']] as const) {
+  // The landing, the docs' start page and the legal pages: all public, cacheable, revalidated with 304.
+  for (const [path, heading] of [['/', 'One type, from the database column to the form error.'], ['/docs', '>Marmeon</h1>'], ['/imprint', '>Site Notice</h1>'], ['/privacy', '>Privacy Policy</h1>']] as const) {
     const home = await publicPage(path, heading);
     expect(/^public, max-age=\d+$/.test(home.headers.get('cache-control') ?? ''), `${path}: Cache-Control is "${home.headers.get('cache-control')}"`);
     const vary = (home.headers.get('vary') ?? '').toLowerCase();

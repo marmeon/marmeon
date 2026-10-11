@@ -23,7 +23,7 @@ afterAll(() => app?.close());
 const repo = resolve(import.meta.dirname, '../../../..');
 
 const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
-const PAGES = ['/', '/docs', ...DOCS];
+const PAGES = ['/', '/docs', '/imprint', '/privacy', ...DOCS];
 /** Pages besides the docs' own: the search, with and without a query, and the 404 — scanned for inline scripts and styles only. */
 const EXTRA = ['/docs/search', '/docs/search?q=route', '/no/such/page'];
 const html = { headers: { accept: 'text/html' } };

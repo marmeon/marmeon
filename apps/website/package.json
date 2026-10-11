@@ -10,6 +10,7 @@
   "files": [
     "bootstrap",
     "config",
+    "content",
     "layouts",
     "modules",
     "styles",
