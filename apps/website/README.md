@@ -36,7 +36,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
-  anchors via github-slugger; code highlighted by Shiki on the server — one Shiki per process) and indexes the pages when the app
+  anchors via github-slugger; code highlighted by Shiki on the server — one Shiki per process — with the `marmeon` theme in `shiki-theme.ts`: one placeholder colour per role, turned into a class by `highlight.ts`; the colours live in `styles/code.css`) and indexes the pages when the app
   boots — again when one changes under `marmeon dev`. An app singleton without request data, and the route binder of
   `/docs/:page` (`DocBinding`).
 - **Pages** are a tree of elements, not HTML: links to other pages become `<Link prefetch>`, links to source files code text. A

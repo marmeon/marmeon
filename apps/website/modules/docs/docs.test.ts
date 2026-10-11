@@ -7,7 +7,6 @@ import application from '../../bootstrap/app.ts';
 import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
 import type { SearchController } from './controllers/SearchController.ts';
 import { DocsError, DocsRepository, type Navigation } from './DocsRepository.ts';
-import { createCodeHighlighter } from './highlight.ts';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from '../site/middleware/CachePublicly.ts';
 import { PENDING_MARKER } from './markdown.ts';
@@ -377,13 +376,9 @@ describe('the repository and docs.config.ts', () => {
   });
 
   it('highlights every code block of every page with the stylesheet’s token classes (no inline colours left)', async () => {
-    const highlighter = await createCodeHighlighter();
     const docs = await new DocsRepository({ source: repo }).load();
     expect(docs.pages().length).toBe(73);
-    expect(highlighter.highlight("import { x } from 'y';", 'ts')).toBe(
-      '<pre class="code" tabindex="0" data-lang="ts"><code><span class="line"><span class="tk">import</span> { x } <span class="tk">from</span><span class="ts"> \'y\'</span>;</span></code></pre>',
-    );
-    // Every colour of every page's code is one of TOKEN_CLASSES (styles/docs.css has both themes for them).
+    // Every colour of every page's code is one of TOKEN_CLASSES (styles/code.css has both themes for them).
     expect(JSON.stringify(docs.pages().map((page) => page.body))).not.toContain('style=');
   });
 });

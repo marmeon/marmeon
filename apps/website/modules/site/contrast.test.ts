@@ -41,6 +41,7 @@ const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ['--accent-strong', '--accent-tint', 4.5],
   ['--term-fg', '--term-bg', 4.5],
   ['--term-dim', '--term-bg', 4.5],
+  ['--fg-2', '--output-bg', 4.5],
   ['--mark-fg', '--mark-bg', 4.5],
   ['--focus', '--bg', 3],
   ['--focus', '--bg-raised', 3],

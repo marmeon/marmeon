@@ -285,16 +285,6 @@ figure.code pre.code {
   border-radius: 0 0 8px 8px;
 }
 
-pre.code {
-  margin: 0;
-  padding: 14px 16px;
-  overflow-x: auto;
-  background: var(--code-bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font: 13.5px/1.55 var(--mono);
-}
-
 .doc blockquote {
   margin: 16px 0;
   padding: 0 16px;
@@ -494,25 +484,6 @@ mark {
   background: var(--mark);
   color: inherit;
   border-radius: 2px;
-}
-
-/* Highlighted code: GitHub light, and GitHub dark (highlight.ts → TOKEN_CLASSES) */
-.tk { color: #d73a49; }
-.tf { color: #6f42c1; }
-.ts { color: #032f62; }
-.tc { color: #6a737d; }
-.tn { color: #005cc5; }
-.tv { color: #e36209; }
-.tt { color: #22863a; }
-
-@media (prefers-color-scheme: dark) {
-  .tk { color: #f97583; }
-  .tf { color: #b392f0; }
-  .ts { color: #9ecbff; }
-  .tc { color: #6a737d; }
-  .tn { color: #79b8ff; }
-  .tv { color: #ffab70; }
-  .tt { color: #85e89d; }
 }
 
 /* Narrower: no table of contents; a phone: the navigation behind "Menu" */

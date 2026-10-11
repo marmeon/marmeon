@@ -1,1 +1,65 @@
-/* Syntax classes, code blocks, terminal and output blocks. */
+/* Syntax classes, code blocks, terminal and output blocks. The classes come from modules/docs/highlight.ts. */
+.tk {
+  color: var(--syn-keyword);
+}
+.ty {
+  color: var(--syn-type);
+}
+.ts {
+  color: var(--syn-string);
+}
+.tf {
+  color: var(--syn-function);
+  font-weight: 600;
+}
+.tc {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+.tg {
+  color: var(--syn-tag);
+}
+.tp {
+  color: var(--syn-punctuation);
+}
+
+pre.code {
+  margin: 0;
+  padding: 16px 18px 18px;
+  overflow-x: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--syn-text);
+  font: 400 var(--text-code) / 1.75 var(--font-mono);
+  tab-size: 2;
+}
+
+pre.code:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A command is never source: dark in both themes, no syntax colour but the dimmed comment. */
+pre.code[data-lang='sh'] {
+  background: var(--term-bg);
+  border-color: var(--term-line);
+  color: var(--term-fg);
+  line-height: 1.85;
+}
+pre.code[data-lang='sh'] :is(.tk, .ty, .ts, .tf, .tg, .tp) {
+  color: inherit;
+  font-weight: inherit;
+}
+pre.code[data-lang='sh'] .tc {
+  color: var(--term-dim);
+}
+
+/* Output is what the machine printed: a dashed edge, no syntax colour. */
+pre.code[data-lang='text'] {
+  background: var(--output-bg);
+  border: 1px dashed var(--line-strong);
+  color: var(--fg-2);
+  font-size: 0.84375rem;
+  line-height: 1.7;
+}
