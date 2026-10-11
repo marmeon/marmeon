@@ -54,3 +54,37 @@ describe('the landing page', () => {
     expect(again.status).toBe(304);
   });
 });
+
+describe('the shared chrome', () => {
+  it('renders the header with the docs and GitHub links, the version badge and the footer', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).toContain('<a class="skip-link" href="#content">');
+    expect(body).toMatch(/<nav aria-label="Main"[^>]*>.*href="\/docs".*<\/nav>/);
+    expect(body).toMatch(/<a href="https:\/\/github\.com\/marmeon\/marmeon" rel="noopener">GitHub<\/a>/);
+    expect(body).toContain(`<span class="badge">${coreVersion}</span>`);
+    expect(body).toContain('<details class="site-menu"');
+    const footer = body.slice(body.indexOf('<footer'));
+    for (const href of ['/docs', '/docs/security-policy', '/docs/releases', 'https://github.com/marmeon/marmeon/blob/main/LICENSE']) expect(footer).toContain(`href="${href}"`);
+    expect(footer).toContain('MIT licence');
+  }, SSR_TEST_TIMEOUT);
+
+  it('renders no copy button on the server: it appears with JavaScript only', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).not.toContain('copy-button');
+    expect(body).not.toContain('aria-live');
+  }, SSR_TEST_TIMEOUT);
+
+  it('gives an unknown path the header and footer but no version badge', async () => {
+    const response = await app.get('/nothing-here', document);
+    expect(response.status).toBe(404);
+    expect(response.body).toContain('class="site-header"');
+    expect(response.body).toContain('class="site-footer"');
+    expect(response.body).not.toContain('class="badge"');
+  }, SSR_TEST_TIMEOUT);
+
+  it('keeps the docs layout for the docs pages', async () => {
+    const body = (await app.get('/docs/routing', document).assertOk()).body;
+    expect(body).toContain('class="shell"');
+    expect(body).not.toContain('class="site-header"');
+  }, SSR_TEST_TIMEOUT);
+});

@@ -11,6 +11,10 @@ pnpm website:check    # marmeon build, the production server on a free port, a s
 pnpm website:image    # the image: built from this checkout, checked, run read-only and behind Caddy — part of the `image` part
 ```
 
+- **Layouts**: `layouts/DocsLayout.tsx` for the `docs/*` pages, `layouts/SiteLayout.tsx` (skip link, header with the version
+  badge, footer) for the landing page and the error pages; `bootstrap/layouts.ts` picks by page name. The shared pieces — mark,
+  wordmark, version badge, copy button, terminal, code block — live in `modules/site/components`. The copy button renders only
+  in the browser, so a page without JavaScript carries none.
 - **`docs.config.ts`** lists the sections and their pages, in reading order: a slug (`/docs/<slug>`), the label in the
   navigation, and the file — `docs/<slug>.md`, or a policy at the root via `file`. Previous and next lead through every page of
   every section in this order. There are no package pages: the package READMEs are short cards for npm that link here, and

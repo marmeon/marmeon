@@ -1,1 +1,298 @@
-/* Site header, footer, wordmark, copy button. */
+/* Site header, footer, wordmark, copy button, terminal. */
+
+/* Mark and wordmark */
+.mark-plate {
+  fill: var(--fg);
+}
+
+.mark-groove {
+  fill: none;
+  stroke: var(--bg);
+  stroke-linecap: square;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--fg);
+}
+
+.wordmark-name {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  font-variation-settings: 'opsz' 20;
+}
+
+.wordmark-suffix {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wordmark--small {
+  gap: 10px;
+}
+
+.wordmark--small .mark {
+  width: 20px;
+  height: 20px;
+}
+
+.wordmark--small .wordmark-name {
+  font-size: 0.9375rem;
+}
+
+/* Header */
+.site-header {
+  border-bottom: 1px solid var(--line);
+}
+
+.site-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-4) clamp(20px, 4vw, 48px);
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.site-header-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: 1rem;
+}
+
+.site-nav a,
+.site-menu-panel a,
+.site-footer-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--fg);
+}
+
+.site-nav a {
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-footer-nav a:hover {
+  color: var(--accent);
+}
+
+/* The menu on a narrow screen: a <details>, usable without JavaScript. */
+.site-menu {
+  display: none;
+}
+
+.site-menu summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--control-line);
+  border-radius: var(--radius-2);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  list-style: none;
+  cursor: pointer;
+}
+
+.site-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-menu-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--bg-raised);
+}
+
+.site-header-end {
+  position: relative;
+}
+
+.site-menu[open] .site-menu-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+}
+
+@media (max-width: 719px) {
+  .site-nav {
+    display: none;
+  }
+
+  .site-menu {
+    display: block;
+  }
+}
+
+/* Footer */
+.site-footer {
+  border-top: 1px solid var(--line-strong);
+}
+
+.site-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px clamp(20px, 4vw, 48px) 48px;
+}
+
+.site-footer-about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.site-footer-legal {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.site-footer-legal a {
+  color: inherit;
+}
+
+.site-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) 28px;
+  font-size: 1rem;
+}
+
+/* Copy button */
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  cursor: pointer;
+  transition: background-color var(--duration-fast);
+}
+
+.copy-button:hover {
+  background: var(--bg-sunken);
+}
+
+.copy-done {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+/* Code block: the copy button sits in the caption bar, or in the corner when there is no caption. */
+.code > figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: 0;
+}
+
+.code > figcaption .copy-button {
+  min-height: 44px;
+  margin-right: calc(-1 * var(--space-3));
+}
+
+.code-block {
+  position: relative;
+}
+
+.code-block > .copy-button {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  background: var(--bg-raised);
+}
+
+/* Terminal: dark in both themes, so a command never looks like source. */
+.terminal {
+  overflow: hidden;
+  border-radius: var(--radius-3);
+  background: var(--term-bg);
+  color: var(--term-fg);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 6px 0 var(--space-4);
+  border-bottom: 1px solid var(--term-line);
+}
+
+.terminal-label {
+  color: var(--term-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.12em;
+}
+
+.terminal .copy-button {
+  border-color: var(--term-line);
+  color: var(--term-fg);
+}
+
+.terminal .copy-button:hover {
+  background: var(--term-line);
+}
+
+.terminal .copy-done {
+  color: var(--term-dim);
+}
+
+.terminal pre {
+  margin: 0;
+  padding: 14px 18px 18px;
+  overflow-x: auto;
+  font: 400 0.90625rem/1.85 var(--font-mono);
+}
+
+.terminal .prompt {
+  color: var(--term-dim);
+  user-select: none;
+}

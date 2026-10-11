@@ -91,11 +91,11 @@ describe('pages', () => {
     await app.navigating().get('/packages/http').assertNotFound();
   });
 
-  it('a path without a route is a 404 page in the layout — without the navigation (no shared props there), rendered on the server', async () => {
+  it('a path without a route is a 404 page in the site layout — without the navigation (no shared props there), rendered on the server', async () => {
     const ssr = await createTestApp(application, { ssr: true });
     const response = await ssr.get('/no/such/page', { headers: { accept: 'text/html' } }).assertNotFound().assertServerRendered();
     expect(response.body).toContain('Not Found');
-    expect(response.body).toContain('class="frame bare"');
+    expect(response.body).toContain('class="site-header"');
     expect(response.body).not.toContain('id="sidebar"');
   }, SSR_TEST_TIMEOUT);
 
