@@ -11,17 +11,17 @@
  * A run that is killed before its teardown leaves its directory (`marmeon-run-<pid>-…`): the next run removes it once that process is
  * gone.
  *
- * Removed with the directory on purpose (not leftovers): the worker databases of `createTestApp` (`marmeon-test-<app>-<worker>.sqlite`
- * with `-wal`/`-shm`: one per app and worker slot, kept for the worker's whole life and reused by its next test file — like the Postgres
- * `_test_` databases `packages/database/src/__fixtures__/test-databases.ts` drops at the end) and the bundle measurements' workspace
- * (`marmeon-bundle-<checkout>`, shared by the size tests of a run, `packages/react/src/__fixtures__/bundle.ts`).
+ * Removed with the directory on purpose (not leftovers): the bundle measurements' workspace
+ * (`marmeon-bundle-<checkout>`, shared by the size tests of a run, `packages/react/src/__fixtures__/bundle.ts`). The SQLite worker
+ * databases of `createTestApp` live in the app's `storage/framework/testing/`, not here: a `marmeon-test-*.sqlite` file in the run's
+ * directory is a leftover.
  */
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /** What a run keeps until its end on purpose (see above). */
-export const RUN_SCOPED = [/^marmeon-test-[0-9a-z]+-\d+\.sqlite(-wal|-shm|-journal)?$/, /^marmeon-bundle-[0-9a-f]{12}$/];
+export const RUN_SCOPED = [/^marmeon-bundle-[0-9a-f]{12}$/];
 
 /** The `marmeon-*` entries a run left in its directory, without the run-scoped ones. */
 export function leftovers(entries: readonly string[]): string[] {

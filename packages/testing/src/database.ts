@@ -1,6 +1,5 @@
-import { rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdirSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { Logger, resolveConfig, type Application } from '@marmeon/core';
 
 type DatabaseModule = typeof import('@marmeon/database');
@@ -10,8 +9,8 @@ type Env = Readonly<Record<string, string | undefined>>;
 const prepared = new Map<string, Promise<void>>();
 
 /**
- * Where a refreshed test app keeps its data: one database per test worker — a temporary
- * SQLite file, or a Postgres database named after the app's with `_test_<worker>` — so parallel
+ * Where a refreshed test app keeps its data: one database per test worker — a SQLite
+ * file under the app's `storage/framework/testing/`, or a Postgres database named after the app's with `_test_<worker>` — so parallel
  * workers never meet. Returns the environment that points the app there.
  */
 export interface WorkerDatabase {
@@ -30,7 +29,10 @@ export async function workerDatabase(database: DatabaseModule, root: string, env
 
   if (options.driver === 'sqlite') {
     // A file, not `:memory:`: an in-memory database lives only as long as its connection, and every test app has its own.
-    const file = join(tmpdir(), `marmeon-test-${hash(root)}-${worker}.sqlite`);
+    // Inside the app, not the shared temporary directory: there, other users could predict the name and plant a file or link.
+    const file = join(root, 'storage', 'framework', 'testing', `database-${worker}.sqlite`);
+    // Before the app boots: the connection check wants the folder to exist.
+    mkdirSync(dirname(file), { recursive: true });
     return { key: file, env: { DB_CONNECTION: 'sqlite', DB_DATABASE: file } };
   }
   const url = new URL(options.url);

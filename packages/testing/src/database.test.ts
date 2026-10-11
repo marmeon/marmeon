@@ -2,8 +2,11 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineModule, type ApplicationOptions } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@marmeon/database';
 import { Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
-import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { workerDatabase } from './database.ts';
 import { createTestApp, type TestApp } from './index.ts';
 
 interface NotesTables {
@@ -36,7 +39,7 @@ const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as cons
 
 describe.each(drivers)('a refreshed database on %s', (driver) => {
   const definition: ApplicationOptions = {
-    root: tmpdir(),
+    root: tempDir('marmeon-testing-db-'),
     discover: false,
     env: { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_DATABASE: ':memory:' }) },
     providers: [EncryptionServiceProvider, HttpServiceProvider, DatabaseServiceProvider],
@@ -118,6 +121,40 @@ it('types database assertions by the table', () => void (async (app: TestApp) =>
 
 describe('createTestApp options', () => {
   it('only seeds a refreshed database', async () => {
-    await expect(createTestApp({ root: tmpdir(), discover: false, env: {} }, { seed: true })).rejects.toThrow("add database: 'refresh'");
+    await expect(createTestApp({ root: tempDir('marmeon-testing-db-'), discover: false, env: {} }, { seed: true })).rejects.toThrow("add database: 'refresh'");
+  });
+});
+
+describe('where the worker databases live', () => {
+  const env = { APP_KEY: 'unused' };
+
+  it('puts the SQLite file inside the app, one per worker — never in the shared temporary directory', async () => {
+    const root = tempDir('marmeon-testing-db-');
+    const worker = await workerDatabase(await import('@marmeon/database'), root, env);
+    expect(worker.key).toBe(join(root, 'storage', 'framework', 'testing', `database-${process.env.VITEST_POOL_ID ?? '0'}.sqlite`));
+    expect(worker.env.DB_DATABASE).toBe(worker.key);
+  });
+
+  it('creates the folder in a root that has no storage directory', async () => {
+    const root = tempDir('marmeon-testing-db-');
+    const app = await createTestApp(
+      { root, discover: false, env: { APP_KEY: generateKey() }, providers: [EncryptionServiceProvider, DatabaseServiceProvider] },
+      { database: 'refresh' },
+    );
+    try {
+      expect(existsSync(join(root, 'storage', 'framework', 'testing'))).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('names a Postgres database as before: the configured one, with _test_, the root’s hash and the worker', async () => {
+    const worker = await workerDatabase(await import('@marmeon/database'), '/some/app', {
+      ...env,
+      DB_CONNECTION: 'pgsql',
+      DB_URL: 'postgres://u:p@localhost:5432/shop',
+    });
+    expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_[0-9a-z]+_\d+$/);
+    expect(worker.adminUrl).toBe('postgres://u:p@localhost:5432/shop');
   });
 });

@@ -1,4 +1,4 @@
-import { tmpdir } from 'node:os';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { defineModule, type ApplicationOptions } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, inTransaction, type Generated } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -47,7 +47,7 @@ const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as cons
 
 describe.each(drivers)('work after the response on %s', (driver) => {
   const definition: ApplicationOptions = {
-    root: tmpdir(),
+    root: tempDir('marmeon-testing-db-'),
     discover: false,
     env: { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_DATABASE: ':memory:' }) },
     providers: [EncryptionServiceProvider, HttpServiceProvider, DatabaseServiceProvider],
