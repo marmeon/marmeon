@@ -264,7 +264,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
 describe('the repository and docs.config.ts', () => {
   /** A copy of the repository's pages — the real ones are never touched. */
   function copy(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'marmeon-docs-'));
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-website-'));
     mkdirSync(join(dir, 'docs'));
     for (const entry of ENTRIES) cpSync(join(repo, fileOf(entry)), join(dir, fileOf(entry)));
     return dir;

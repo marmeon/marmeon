@@ -338,7 +338,7 @@ describe('an app holds only the features it uses (leak test)', () => {
   it('the docs app carries no devtools either — it has them as a dev dependency and uses them under marmeon dev', async () => {
     const node = process.env.NODE_ENV;
     try {
-      expect(devtoolsIn(await appClientBuild(join(PACKAGES, '../apps/docs'))), 'docs').toEqual([]);
+      expect(devtoolsIn(await appClientBuild(join(PACKAGES, '../apps/website'))), 'website').toEqual([]);
     } finally {
       process.env.NODE_ENV = node;
     }

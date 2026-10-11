@@ -6,7 +6,7 @@ rulebook — read only the section a task touches, not the whole file.
 ## Layout
 
 - `packages/<name>/src` — the framework (`core`, `http`, `database`, `auth`, `react`, …); tests sit next to the code.
-- `apps/web-app` shows every feature, `apps/blank-app` is the minimal app, `apps/docs` serves `docs/*.md`.
+- `apps/web-app` shows every feature, `apps/blank-app` is the minimal app, `apps/website` serves `docs/*.md`.
 - `scripts/` — the repository's checks (`ci.ts`, `check-source.ts`, …).
 
 ## Commands

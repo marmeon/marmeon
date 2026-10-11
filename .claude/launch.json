@@ -24,7 +24,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "source ~/.nvm/nvm.sh && nvm use >/dev/null && PORT=3970 pnpm docs:dev"
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && PORT=3970 pnpm website:dev"
       ],
       "port": 3970
     },
@@ -33,7 +33,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "source ~/.nvm/nvm.sh && nvm use >/dev/null && pnpm build && cd apps/docs && pnpm build && PORT=3971 pnpm start"
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && pnpm build && cd apps/website && pnpm build && PORT=3971 pnpm start"
       ],
       "port": 3971
     }

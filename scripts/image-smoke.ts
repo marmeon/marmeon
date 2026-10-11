@@ -2,7 +2,7 @@
  * `pnpm image:smoke` — the app as an image: `create-marmeon app --docker` from the tarballs (as in `pack:smoke`, outside the
  * monorepo) is built with Docker, then the container's life: non-root, no .env* in the image, migrate, `/up` and `/login` 200,
  * healthy, SIGTERM with SHUTDOWN_DELAY=1 → `/up/ready` 503 at once and exit 0 (tini is PID 1, no `docker run --init`, and reaps
- * orphans), a read-only root, `--workers=2`, a stuck job ends the container with 70. Then the docs' image (`docs-image.ts`).
+ * orphans), a read-only root, `--workers=2`, a stuck job ends the container with 70. Then the docs' image (`website-image.ts`).
  *
  * Containers, volume and image: `marmeon-image-smoke-…`, removed afterwards. No Docker or registry: exit 75, skipped, never green.
  *
@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { assertReapsOrphans, docsImage } from './docs-image.ts';
+import { assertReapsOrphans, websiteImage } from './website-image.ts';
 import { packAll } from './packages.ts';
 import { assertIsolated, cleanEnvironment, freePort, Offline, OFFLINE, scaffold, SKIPPED, SmokeError, unpackScaffolder } from './pack-smoke.ts';
 
@@ -280,8 +280,8 @@ async function main(): Promise<number> {
 
 if (import.meta.main) {
   const app = await main();
-  // Then the docs' image (scripts/docs-image.ts — alone: pnpm docs:image); not with --npm, the manual variant of the app.
-  const docs = process.argv.includes('--npm') ? 0 : await docsImage({ keep: process.argv.includes('--keep') });
-  process.exitCode = app !== 0 && app !== SKIPPED ? app : docs !== 0 && docs !== SKIPPED ? docs : app === SKIPPED || docs === SKIPPED ? SKIPPED : 0;
+  // Then the docs' image (scripts/website-image.ts — alone: pnpm website:image); not with --npm, the manual variant of the app.
+  const website = process.argv.includes('--npm') ? 0 : await websiteImage({ keep: process.argv.includes('--keep') });
+  process.exitCode = app !== 0 && app !== SKIPPED ? app : website !== 0 && website !== SKIPPED ? website : app === SKIPPED || website === SKIPPED ? SKIPPED : 0;
 }
 

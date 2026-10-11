@@ -1,24 +1,24 @@
-# The docs (apps/docs) on one server behind Caddy: Caddy fetches the certificate for DOCS_DOMAIN and speaks HTTP/1.1, 2 and 3;
+# The docs (apps/website) on one server behind Caddy: Caddy fetches the certificate for WEBSITE_DOMAIN and speaks HTTP/1.1, 2 and 3;
 # the docs answer only Caddy. Run it from this directory, next to a .env with the two settings below (never in the repository —
 # .gitignore and the image's .dockerignore keep it out):
 #
-#   DOCS_DOMAIN=docs.example.com
-#   APP_KEY=base64:…            # docker run --rm marmeon-docs key:generate --show  (or: openssl rand -base64 32, prefixed base64:)
+#   WEBSITE_DOMAIN=docs.example.com
+#   APP_KEY=base64:…            # docker run --rm marmeon-website key:generate --show  (or: openssl rand -base64 32, prefixed base64:)
 #
 #   docker compose up -d --build        # build the image from this checkout and start both containers
 #   docker compose logs -f docs         # the docs' JSON log
 #
 # Updates, rollback, backups: docs/deployment.md.
-name: marmeon-docs
+name: marmeon-website
 
 services:
   docs:
     build:
       context: ../..
-      dockerfile: apps/docs/Dockerfile
-    # DOCS_TAG names a build (e.g. the commit): DOCS_TAG=$(git rev-parse --short HEAD) docker compose up -d --build; an older tag
+      dockerfile: apps/website/Dockerfile
+    # WEBSITE_TAG names a build (e.g. the commit): WEBSITE_TAG=$(git rev-parse --short HEAD) docker compose up -d --build; an older tag
     # that is still on the machine starts again without a build (the rollback).
-    image: marmeon-docs:${DOCS_TAG:-latest}
+    image: marmeon-website:${WEBSITE_TAG:-latest}
     # No `init: true`: the image's PID 1 is tini — it passes signals on and reaps orphans.
     restart: unless-stopped
     # The image's files cannot change (the discovery manifest is built in); only storage/ and /tmp are writable.
@@ -26,9 +26,9 @@ services:
     tmpfs:
       - /tmp
     environment:
-      APP_KEY: ${APP_KEY:?set APP_KEY in deploy/docs/.env (marmeon key:generate --show)}
-      APP_URL: https://${DOCS_DOMAIN:?set DOCS_DOMAIN in deploy/docs/.env, e.g. docs.example.com}
-      APP_NAME: Marmeon docs
+      APP_KEY: ${APP_KEY:?set APP_KEY in deploy/website/.env (marmeon key:generate --show)}
+      APP_URL: https://${WEBSITE_DOMAIN:?set WEBSITE_DOMAIN in deploy/website/.env, e.g. docs.example.com}
+      APP_NAME: Marmeon
       # Only Caddy shares the network below with the docs — so its X-Forwarded-For/-Proto/-Host count: the search's rate
       # limit sees each visitor's address, not Caddy's. Change the subnets together with the network.
       TRUSTED_PROXIES: 172.30.80.0/24,fd5b:c0de:d0c5::/64
@@ -48,7 +48,7 @@ services:
       - '443:443'
       - '443:443/udp'
     environment:
-      DOCS_DOMAIN: ${DOCS_DOMAIN}
+      WEBSITE_DOMAIN: ${WEBSITE_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # The certificates and Caddy's ACME account: keep this volume (a new one asks Let's Encrypt again — rate-limited).

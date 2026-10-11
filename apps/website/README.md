@@ -6,9 +6,9 @@ The documentation of Marmeon — the pages under `docs/` in ten sections, and th
 ([below](#deployment)).
 
 ```sh
-pnpm docs:dev      # from the repository root: http://localhost:3970 (writes .env with a fresh APP_KEY the first time)
-pnpm docs:check    # marmeon build, the production server on a free port, a smoke test — part of `pnpm run ci`
-pnpm docs:image    # the image: built from this checkout, checked, run read-only and behind Caddy — part of the `image` part
+pnpm website:dev      # from the repository root: http://localhost:3970 (writes .env with a fresh APP_KEY the first time)
+pnpm website:check    # marmeon build, the production server on a free port, a smoke test — part of `pnpm run ci`
+pnpm website:image    # the image: built from this checkout, checked, run read-only and behind Caddy — part of the `image` part
 ```
 
 - **`docs.config.ts`** lists the sections and their pages, in reading order: a slug (`/docs/<slug>`), the label in the
@@ -49,7 +49,7 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   policy there.
 - **Headers:** `modules/docs/middleware/SecurityHeaders.ts`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
-  `Strict-Transport-Security` comes from Caddy (`deploy/docs/Caddyfile`). `pnpm docs:check` and `pnpm docs:image` check `nosniff`
+  `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`
   on the pages they fetch.
 - **Tests:** `modules/docs/links.test.ts` renders every page on the server and checks every link and anchor, that no page
   runs an inline script, and that a page names only files that exist (a link to a README is "no such page", a link to a
@@ -65,25 +65,25 @@ Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/a
 
 ## Deployment
 
-`apps/docs/Dockerfile` is the monorepo variant of what `marmeon make:docker` writes: built from the repository's root, it
+`apps/website/Dockerfile` is the monorepo variant of what `marmeon make:docker` writes: built from the repository's root, it
 installs the workspace, builds the packages and the docs, then `pnpm deploy --prod` takes the docs app alone — its `files` (no
 tests, no `.env`), its production dependencies, the framework's packages with their `dist/` (their manifests keep the
 workspace's `exports` with the source condition — `marmeon` sets it only inside the workspace, so the copies run `dist/`) — and
 the discovery manifest is written for exactly these packages. `marmeon build` runs without a key or any other secret; PID 1 of
 the image is `tini` (signals, orphans). The pages are copied into `/app/content`: a new version of the docs is
 a new image. `node:26-slim`, `USER node`, `NODE_ENV=production`, the root file system may be read-only (only `storage/` — the
-rate limit's cache and the compile cache — is written). `apps/docs/Dockerfile.dockerignore` keeps every `.env`, `node_modules`,
+rate limit's cache and the compile cache — is written). `apps/website/Dockerfile.dockerignore` keeps every `.env`, `node_modules`,
 the builds and the other apps' code out of the build context.
 
 ```sh
-docker build -f apps/docs/Dockerfile -t marmeon-docs .    # from the repository's root
+docker build -f apps/website/Dockerfile -t marmeon-website .    # from the repository's root
 ```
 
-`deploy/docs/compose.yaml` runs it behind Caddy on one server: Caddy gets the certificate for `DOCS_DOMAIN`, speaks HTTP/1.1, 2
+`deploy/website/compose.yaml` runs it behind Caddy on one server: Caddy gets the certificate for `WEBSITE_DOMAIN`, speaks HTTP/1.1, 2
 and 3, sets `Strict-Transport-Security` and compresses the pages (they carry no secret — an app's pages would, BREACH); it sets
 `X-Forwarded-*` itself and drops a client's. The docs trust them from the Compose network's two subnets only (`TRUSTED_PROXIES`,
 IPv4 and IPv6 — with IPv6 on the network every visitor keeps their address for the search's rate limit), run read-only with a
-`tmpfs` for `/tmp` and a `storage` volume, and Caddy waits for them to be healthy. Next to the file, a `.env` holds `DOCS_DOMAIN`
-and `APP_KEY` (never committed); then `docker compose up -d --build` — `DOCS_TAG=$(git rev-parse --short HEAD)` names the build,
+`tmpfs` for `/tmp` and a `storage` volume, and Caddy waits for them to be healthy. Next to the file, a `.env` holds `WEBSITE_DOMAIN`
+and `APP_KEY` (never committed); then `docker compose up -d --build` — `WEBSITE_TAG=$(git rev-parse --short HEAD)` names the build,
 and an older tag still on the machine starts again without one (the way back). The guide for a server — firewall, DNS, updates,
 rollback — is [deployment](../../docs/deployment.md#one-server-with-compose).

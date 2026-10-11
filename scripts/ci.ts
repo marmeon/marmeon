@@ -41,8 +41,8 @@ export const parts: readonly Part[] = [
   { name: 'test:s3', command: pnpm('test:s3'), services: ['s3'], after: ['build'] },
   { name: 'size', command: pnpm('size'), after: ['build'] },
   { name: 'types:check', command: pnpm('types:check') },
-  // The docs app: its production build, started on a free port and asked by a smoke test (scripts/docs.ts).
-  { name: 'docs:check', command: pnpm('docs:check'), after: ['build'] },
+  // The docs app: its production build, started on a free port and asked by a smoke test (scripts/website.ts).
+  { name: 'website:check', command: pnpm('website:check'), after: ['build'] },
   // The tarballs: a clean build, pnpm pack of every package, the content rules, publint and attw.
   { name: 'pack:check', command: pnpm('pack:check') },
   // create-marmeon from the tarballs, outside the monorepo: the starter kit with pnpm and a blank app with npm — install, tests,
@@ -50,8 +50,8 @@ export const parts: readonly Part[] = [
   // (exit 75) — reported as such, never as green.
   { name: 'pack:smoke', command: pnpm('pack:smoke'), services: ['redis'], after: ['build', 'pack:check'] },
   // create-marmeon --docker as an image (marmeon make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
-  // --workers, a worker's exit 70, the image's size; then the docs' image (apps/docs/Dockerfile) — its contents, read-only, behind
-  // Caddy over HTTP/2 (deploy/docs). Without Docker (or the registry) it is skipped (exit 75), never green.
+  // --workers, a worker's exit 70, the image's size; then the docs' image (apps/website/Dockerfile) — its contents, read-only, behind
+  // Caddy over HTTP/2 (deploy/website). Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
   // The release rules: one fixed group and one version, no `major` changeset below 1.0.0,
   // release.yml (staged publishing with OIDC), npm-trust.sh, UPGRADING.md (its entries from the first release on), LICENSE and policies.

@@ -1,13 +1,13 @@
 /**
- * The docs app (`apps/docs`, a normal Marmeon app, no static export):
+ * The docs app (`apps/website`, a normal Marmeon app, no static export):
  *
- *   pnpm docs:dev       # marmeon dev on http://localhost:3970 (PORT wins); writes apps/docs/.env with a fresh APP_KEY first
- *   pnpm docs:check     # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
+ *   pnpm website:dev    # marmeon dev on http://localhost:3970 (PORT wins); writes apps/website/.env with a fresh APP_KEY first
+ *   pnpm website:check  # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
  * The smoke test asks the production build for the start page, every docs page (200, server-rendered, the static `'self'`
  * policy without a nonce), the search, `/up`, caching headers, no `Set-Cookie` on a public page, a 404 for an unknown page and a
- * package's old page, and a 10 000-character query (no 500). The docs' image is `scripts/docs-image.ts`.
+ * package's old page, and a 10 000-character query (no 500). The docs' image is `scripts/website-image.ts`.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -15,21 +15,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import docsConfig from '../apps/docs/docs.config.ts';
+import docsConfig from '../apps/website/docs.config.ts';
 
-const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
+const app = fileURLToPath(new URL('../apps/website/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
 const marmeon = fileURLToPath(new URL('../packages/cli/bin/marmeon.js', import.meta.url));
 const mode = process.argv[2];
 /** Every page of the docs' sections, in their order — with its file (`docs/<slug>.md` or a policy at the root). */
 const pages = docsConfig.sections.flatMap((section) => section.pages.map((entry) => ({ slug: entry.slug, file: entry.file ?? `docs/${entry.slug}.md` })));
-/** The docs' policy in production (apps/docs DocsServiceProvider, DOCS_CSP). */
+/** The docs' policy in production (apps/website DocsServiceProvider, DOCS_CSP). */
 const DOCS_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
 if (mode === 'dev') await dev();
 else if (mode === 'check') process.exitCode = await check();
 else {
-  console.error('Usage: node scripts/docs.ts dev | check');
+  console.error('Usage: node scripts/website.ts dev | check');
   process.exitCode = 2;
 }
 
@@ -51,13 +51,13 @@ async function check(): Promise<number> {
   };
   delete env.NODE_ENV; // `marmeon build` builds for production without one (a development NODE_ENV of .env is set aside), `marmeon start` sets production
 
-  console.log('docs:check: marmeon build');
+  console.log('website:check: marmeon build');
   const build = spawnSync(process.execPath, [marmeon, 'build'], { cwd: app, stdio: 'inherit', env });
   if (build.status !== 0) return fail(`marmeon build exited with ${build.status}`);
 
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
-  console.log(`docs:check: marmeon start on ${base}`);
+  console.log(`website:check: marmeon start on ${base}`);
   const server = spawn(process.execPath, [marmeon, 'start'], { cwd: app, stdio: ['ignore', 'inherit', 'inherit'], env: { ...env, HOST: '127.0.0.1', PORT: String(port), APP_URL: base } });
   const failures: string[] = [];
   let checks = 0;
@@ -71,10 +71,10 @@ async function check(): Promise<number> {
   }
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
   if (failures.length > 0) {
-    console.error(`docs:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
+    console.error(`website:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
     return 1;
   }
-  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 1} pages) and stop in ${seconds} s`);
+  console.log(`website:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 1} pages) and stop in ${seconds} s`);
   return 0;
 }
 
@@ -178,6 +178,6 @@ function freePort(): Promise<number> {
 }
 
 function fail(message: string): number {
-  console.error(`docs:check: ✗ ${message}`);
+  console.error(`website:check: ✗ ${message}`);
   return 1;
 }

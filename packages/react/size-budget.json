@@ -13,7 +13,7 @@
   "appsGzipKB": {
     "blank-app": { "limit": 14.26 },
     "web-app": { "limit": 22.14 },
-    "docs": { "limit": 16.90 }
+    "website": { "limit": 16.90 }
   },
   "stillLeaking": {
     "core": [],

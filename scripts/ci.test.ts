@@ -90,7 +90,7 @@ describe('check:source — no app, stub or template installs the validation engi
       // A package's own sources keep it inside (env schemas, tests) — and prose naming it is no import.
       { path: 'packages/queue/src/config.ts', text: `import * as v from '${engine}';` },
       { path: 'packages/validation/README.md', text: `${engine} is the engine — never re-exported.` },
-      { path: 'apps/docs/modules/docs/notes.ts', text: `// ${engine} stays inside @marmeon/validation` },
+      { path: 'apps/website/modules/docs/notes.ts', text: `// ${engine} stays inside @marmeon/validation` },
     ]);
     expect(hits).toEqual([
       `apps/web-app/config/app.ts:2: import * as v from '${engine}';`,
@@ -106,7 +106,7 @@ describe('check:source — no app, stub or template installs the validation engi
       { path: 'apps/blank-app/package.json', text: manifest({ [engine]: '^1.5.0' }) },
       { path: 'packages/create-marmeon/template/base/_package.json', text: manifest({ '@marmeon/validation': 'workspace:*', [engine]: '^1.5.0' }) },
       { path: 'packages/validation/package.json', text: manifest({ [engine]: '^1.5.0' }) },
-      { path: 'apps/docs/package.json', text: manifest({ '@marmeon/validation': 'workspace:*' }) },
+      { path: 'apps/website/package.json', text: manifest({ '@marmeon/validation': 'workspace:*' }) },
     ])).toEqual([
       `apps/blank-app/package.json: dependencies lists ${engine} — an app validates with @marmeon/validation`,
       `packages/create-marmeon/template/base/_package.json: dependencies lists ${engine} — an app validates with @marmeon/validation`,
@@ -207,11 +207,11 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
 
   it("reads the apps' READMEs and .env files — what a reader of an app sees first and copies — not the apps' code", () => {
     expect(textRuleHits([
-      { path: 'apps/docs/.env.test', text: '# like Laravel' },
+      { path: 'apps/website/.env.test', text: '# like Laravel' },
       { path: 'apps/blank-app/README.md', text: 'as in Rails' },
       { path: 'apps/web-app/modules/auth/routes.ts', text: '// like Laravel' },
       { path: 'apps/web-app/sub/README.md', text: 'like Laravel' },
-    ], frameworks)).toEqual(['apps/docs/.env.test:1: # like Laravel', 'apps/blank-app/README.md:1: as in Rails']);
+    ], frameworks)).toEqual(['apps/website/.env.test:1: # like Laravel', 'apps/blank-app/README.md:1: as in Rails']);
     expect(textRuleWhere('apps/web-app/.env.example')).toBe("in an app's README or .env files");
   });
 
@@ -317,13 +317,13 @@ describe('rule 7: no references to the private record', () => {
     for (const word of ["it('counter-·check: refuses it')", '// see the Counter-·Checks at the end', '// a Gegen·probe', '// the Gegen·proben of the step']) {
       expect(what(word), word).toEqual(['a wave reference']);
     }
-    expect(what('kept for good (Ma·x, 07.·10.)', 'deploy/docs/compose.yaml')).toEqual(['a personal date']);
+    expect(what('kept for good (Ma·x, 07.·10.)', 'deploy/website/compose.yaml')).toEqual(['a personal date']);
     // A day and a month with their dots count in a test's title too: write the month's name (`29 March`, below).
     expect(what("it('runs once on the day the clocks go forward (29.·03.)', () => {});", 'scripts/bench/stats.test.ts')).toEqual(['a personal date']);
     expect(what('the plan in Marmeon/Naechste-·Schritte.md', 'docs/queues.md')).toEqual(['a path into the private record']);
     expect(what('written to /private/·tmp/claude-501/x', 'README.md')).toEqual(['a path into the private record']);
     expect(what('a template in scratch·pad/w8s8/tabs.mjs', 'CONTRIBUTING.md')).toEqual(['a path into the private record']);
-    expect(what('the deployment guide in the Obsi·dian va·ult', 'deploy/docs/Caddyfile')).toEqual(['a path into the private record']);
+    expect(what('the deployment guide in the Obsi·dian va·ult', 'deploy/website/Caddyfile')).toEqual(['a path into the private record']);
   });
 
   it('takes no hex value, exponent, phone format, test name, cookie attribute, date of test data, version or CSS for one', () => {

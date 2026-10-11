@@ -1,8 +1,8 @@
-# What never enters the build context of apps/docs/Dockerfile (the repository's root) — and so never the image. Docker reads
+# What never enters the build context of apps/website/Dockerfile (the repository's root) — and so never the image. Docker reads
 # this file because it sits next to the Dockerfile under its name.
 #
 # Every .env file of every app and package: the image gets its configuration from the environment when it runs (APP_KEY,
-# APP_URL), and deploy/docs/.env holds the server's secrets — next to the compose file, inside this context.
+# APP_URL), and deploy/website/.env holds the server's secrets — next to the compose file, inside this context.
 **/.env*
 # Installed and built inside the image.
 **/node_modules

@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 # The docs as an image — the monorepo variant of what `marmeon make:docker` writes for an app: the framework is built from
 # this checkout instead of installed from npm. Build it from the repository's root (the build context is the whole repository;
-# apps/docs/Dockerfile.dockerignore keeps .env files, node_modules, builds and the other apps' code out):
+# apps/website/Dockerfile.dockerignore keeps .env files, node_modules, builds and the other apps' code out):
 #
-#   docker build -f apps/docs/Dockerfile -t marmeon-docs .
+#   docker build -f apps/website/Dockerfile -t marmeon-website .
 #   docker run --read-only -p 3000:3000 -e APP_KEY=base64:… -e APP_URL=https://docs.example.com \
-#     -v marmeon-docs-storage:/app/storage marmeon-docs
+#     -v marmeon-website-storage:/app/storage marmeon-website
 #
-# deploy/docs/compose.yaml runs it behind Caddy (TLS, HTTP/2 and HTTP/3). The pages are this checkout's docs, copied into the
+# deploy/website/compose.yaml runs it behind Caddy (TLS, HTTP/2 and HTTP/3). The pages are this checkout's docs, copied into the
 # image (/app/content): a new version of the docs is a new image.
 
 ARG NODE_IMAGE=node:26-slim
@@ -21,24 +21,24 @@ WORKDIR /repo
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm fetch --store-dir /pnpm/store
 COPY . .
-# No .env file in the build, ever (Dockerfile.dockerignore): the server's secrets live in deploy/docs/.env — inside this context.
+# No .env file in the build, ever (Dockerfile.dockerignore): the server's secrets live in deploy/website/.env — inside this context.
 RUN if find . -name '.env*' -not -path '*/node_modules/*' | grep -q .; then \
-      echo 'A .env file is in the build context — apps/docs/Dockerfile.dockerignore must keep it out:' >&2; \
+      echo 'A .env file is in the build context — apps/website/Dockerfile.dockerignore must keep it out:' >&2; \
       find . -name '.env*' -not -path '*/node_modules/*' >&2; exit 1; fi
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile --offline --store-dir /pnpm/store
 # The packages' dist/ — what the docs run on, as an app installed from npm would — then the docs' build (bundles, compressed
 # assets, injection lists). `marmeon build` needs no key and no other secret: it registers the app without booting it.
 RUN pnpm run build \
- && cd apps/docs \
+ && cd apps/website \
  && NODE_ENV=production node ../../packages/cli/bin/marmeon.js build
 # The docs app as it runs: its files ("files" in its package.json — no tests, no .env), only its production dependencies, the
 # framework's packages copied with their dist/ (pnpm deploy); the build's output; then the discovery manifest of exactly these
 # packages, so the start rewrites nothing and the files may be read-only. The copies keep the workspace's manifests —
 # `exports` with the source condition — which nothing sets here: `marmeon` gives it only inside the workspace, so every
 # command runs dist/ like a published package.
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @marmeon/docs deploy --prod --prefer-offline --store-dir /pnpm/store /out \
- && cp -R apps/docs/dist /out/dist \
- && mkdir -p /out/.marmeon && cp apps/docs/.marmeon/injections.json /out/.marmeon/ \
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @marmeon/website deploy --prod --prefer-offline --store-dir /pnpm/store /out \
+ && cp -R apps/website/dist /out/dist \
+ && mkdir -p /out/.marmeon && cp apps/website/.marmeon/injections.json /out/.marmeon/ \
  && cd /out && node_modules/.bin/marmeon discover
 # The pages: the docs of this checkout — docs/*.md and the policies at the root. The packages' READMEs are cards for npm, no pages.
 RUN mkdir -p /out/content/docs \
@@ -52,7 +52,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf 
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DOCS_SOURCE=/app/content PATH=/app/node_modules/.bin:$PATH
 WORKDIR /app
 # The code belongs to root and everyone may read it (pnpm writes its lockfile with 0600); storage/ — the rate limit's cache and
-# Node's compile cache — belongs to the user the docs run as. Mount a volume there (deploy/docs/compose.yaml does).
+# Node's compile cache — belongs to the user the docs run as. Mount a volume there (deploy/website/compose.yaml does).
 COPY --from=build --chmod=a+rX /out ./
 RUN mkdir -p storage/framework/cache && chown -R node:node storage
 USER node

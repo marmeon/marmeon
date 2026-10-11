@@ -174,7 +174,7 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
     what: 'the pending marker',
     pattern: /^\s*<!-- docs:pending -->\s*$/,
     files: [DOCS_PAGES],
-    why: 'every page is written — write it, or take it out of apps/docs/docs.config.ts and docs/',
+    why: 'every page is written — write it, or take it out of apps/website/docs.config.ts and docs/',
   },
   {
     what: 'a comparison with another framework',

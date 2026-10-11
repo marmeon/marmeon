@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   check:
-    name: build, typecheck, lint, test, size, types:check, docs:check, check-changesets
+    name: build, typecheck, lint, test, size, types:check, website:check, check-changesets
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -28,7 +28,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run ci --only build,typecheck,lint,test,size,types:check,docs:check,check-changesets
+      - run: pnpm run ci --only build,typecheck,lint,test,size,types:check,website:check,check-changesets
 
   pack:
     # The tarballs: pack:check builds clean and checks every tarball (rules, publint, attw); pack:smoke runs the packed
@@ -61,7 +61,7 @@ jobs:
   image:
     # create-marmeon --docker as a Docker image: marmeon make:docker → docker build → docker run (non-root, no .env, /up, the health
     # check, SIGTERM with SHUTDOWN_DELAY → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size; then the docs' image
-    # (apps/docs/Dockerfile): its contents, read-only, and deploy/docs/compose.yaml behind Caddy over HTTP/2.
+    # (apps/website/Dockerfile): its contents, read-only, and deploy/website/compose.yaml behind Caddy over HTTP/2.
     name: image
     runs-on: ubuntu-latest
     timeout-minutes: 20

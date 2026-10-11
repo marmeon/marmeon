@@ -89,13 +89,13 @@ package store, the registry and Docker — without them they are reported as ski
 packages/*        the framework's packages, each with a short README for npm
 apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: what create-marmeon --minimal writes (pnpm template:sync), and what make:auth is tested against
-apps/docs         the documentation as a Marmeon app: docs/*.md and the policies at the root (pnpm docs:dev; apps/docs/Dockerfile, deploy/docs)
-docs              the documentation's pages, in the order apps/docs/docs.config.ts lists them
+apps/website      the documentation as a Marmeon app: docs/*.md and the policies at the root (pnpm website:dev; apps/website/Dockerfile, deploy/website)
+docs              the documentation's pages, in the order apps/website/docs.config.ts lists them
 scripts/ci.ts     pnpm run ci — its 15 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 scripts/test      the test suite's temporary directory per run and tempDir() — the repository's own, not exported by a package
                   (pnpm test fails when a test leaves an entry behind)
-deploy/docs       the docs' Compose file and Caddyfile (one server)
+deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next
 .changeset        Changesets: the pending changes, one fixed group (pnpm changeset; scripts/check-changesets.ts checks the release rules)
 .github/workflows ci.yml (pnpm run ci in six jobs) and release.yml (the version pull request, then staged publishing)
@@ -104,8 +104,8 @@ UPGRADING.md      what changes for apps from one version to the next
 ```sh
 pnpm run ci            # everything, as CI runs it (pnpm ci without `run` is pnpm's clean install)
 pnpm test              # the test suite; test:pgsql, test:redis, test:s3 against the containers (docker compose up -d)
-pnpm docs:dev          # the docs on http://localhost:3970
-pnpm docs:image        # the docs' image (apps/docs/Dockerfile): built, run read-only and behind Caddy (deploy/docs) — part of `image`
+pnpm website:dev       # the docs on http://localhost:3970
+pnpm website:image     # the docs' image (apps/website/Dockerfile): built, run read-only and behind Caddy (deploy/website) — part of `image`
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
 pnpm pack:smoke        # create-marmeon from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-marmeon (a test fails while they differ)
@@ -120,7 +120,7 @@ Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <pat
 `pnpm run ci` runs 15 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
 and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle limits —
-[The size budget](#the-size-budget)), `types:check` (the apps' generated route and table types are current), `docs:check`,
+[The size budget](#the-size-budget)), `types:check` (the apps' generated route and table types are current), `website:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-changesets`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `ci.yml` splits the parts
@@ -509,11 +509,11 @@ shortened, never deleted.
 
 ## Writing documentation
 
-The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/docs/docs.config.ts` lists
+The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/website/docs.config.ts` lists
 them. They are the only source, written in English for people who build apps. **A change to a public API, an environment
 default or a command changes its docs page in the same commit.** No check compiles the examples, so that commit is where they
 stay true. Comments in the code follow [Comments](#comments).
-`pnpm docs:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
+`pnpm website:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
 other page.
 
 - **Structure.** `# Title`, then `## Introduction`: what the feature is, what it is for, and a first example, in one to three
@@ -536,10 +536,10 @@ other page.
   only on a page that is written; a page still marked pending gets a link without one. Never link to a package README or a
   source file — a reader of the docs app cannot follow it.
 - **Placeholders.** Every page is written: `pnpm check:source` refuses a page that carries `<!-- docs:pending -->` as a line
-  of its own. While you write a new page, the marker on line 2 marks it "draft" in the navigation of `pnpm docs:dev` (the docs
+  of its own. While you write a new page, the marker on line 2 marks it "draft" in the navigation of `pnpm website:dev` (the docs
   app removes the line); delete it before you commit.
 - **Code that names a page** — a solution's `docs`, an error message, a comment — names its repository path with the anchor:
-  `docs/migrations.md#running-migrations`. A test of the docs app (`apps/docs/modules/docs/links.test.ts`) follows every such path
+  `docs/migrations.md#running-migrations`. A test of the docs app (`apps/website/modules/docs/links.test.ts`) follows every such path
   in the packages' code, the stubs, the starter's template, the apps, the package READMEs and the root README to its page and
   anchor, refuses a path to a package README, and refuses a page without its anchor outside the READMEs (which list pages).
 - **Length:** as long as the topic needs. A page past about 600 lines probably wants splitting — propose it rather than

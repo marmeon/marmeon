@@ -62,7 +62,7 @@ pnpm dev                          # the server with Vite, a queue worker and the
 
 ## Documentation
 
-The documentation lives in [`docs/`](docs/) — and, once it is online, as a Marmeon app of its own (`apps/docs`). Start with
+The documentation lives in [`docs/`](docs/) — and, once it is online, as a Marmeon app of its own (`apps/website`). Start with
 [Installation](docs/installation.md), [Directory Structure](docs/structure.md) and [Routing](docs/routing.md); the
 [Packages](docs/packages.md) page says what each package brings. The [Security](docs/security.md) page sums up what an app
 protects by itself and what it leaves to you, and the [Upgrade Guide](UPGRADING.md) lists every change from one version to the

@@ -1,14 +1,14 @@
 /**
- * `pnpm docs:image` — the docs as the image they are deployed with (the `image` part of `pnpm run ci`, after the starter kit's
- * image): `apps/docs/Dockerfile` built from this checkout, then checked as an image (non-root, no `.env*`, tests or dev
+ * `pnpm website:image` — the docs as the image they are deployed with (the `image` part of `pnpm run ci`, after the starter kit's
+ * image): `apps/website/Dockerfile` built from this checkout, then checked as an image (non-root, no `.env*`, tests or dev
  * dependencies, tini is PID 1), as a container (read-only root, `/up` 200, every page 200 without Set-Cookie, healthy, SIGTERM →
- * exit 0) and behind Caddy (`deploy/docs/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation).
+ * exit 0) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation).
  *
- * Image `marmeon-docs:smoke-…`, Compose project `marmeon-docs-smoke-…`: both and the volumes are removed afterwards. Without
+ * Image `marmeon-website:smoke-…`, Compose project `marmeon-website-smoke-…`: both and the volumes are removed afterwards. Without
  * Docker, or when the build cannot reach the registry: exit 75 — skipped, never green.
  *
- *   pnpm docs:image           # build, check, remove
- *   pnpm docs:image --keep    # leaves the image (printed)
+ *   pnpm website:image           # build, check, remove
+ *   pnpm website:image --keep    # leaves the image (printed)
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,12 +16,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import docsConfig from '../apps/docs/docs.config.ts';
+import docsConfig from '../apps/website/docs.config.ts';
 import { cleanEnvironment, freePort, Offline, OFFLINE, SKIPPED, SmokeError } from './pack-smoke.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const DOCKER_OFFLINE = /failed to resolve source metadata|failed to do request|dial tcp|i\/o timeout|TLS handshake timeout|no such host|ERR_PNPM_META_FETCH_FAIL|EAI_AGAIN|ENOTFOUND/;
-/** The docs' policy in production (apps/docs DocsServiceProvider, DOCS_CSP). */
+/** The docs' policy in production (apps/website DocsServiceProvider, DOCS_CSP). */
 const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 /** Never in the image: what only builds or tests the docs. */
 const DEV_PACKAGES = /^(vite|vitest|typescript|@vitejs\+|oxlint|@oxlint\+|@marmeon\+(devtools|testing|vite))(@|$)/;
@@ -115,9 +115,9 @@ export function inspectionProblems(found: Inspection, repository = root): string
   const expected = ['.marmeon', 'README.md', 'bootstrap', 'config', 'content', 'dist', 'docs.config.ts', 'index.html', 'layouts', 'modules', 'node_modules', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'storage', 'styles'];
   const extra = found.top.filter((name) => !expected.includes(name));
   const missing = expected.filter((name) => !found.top.includes(name));
-  if (extra.length > 0) problems.push(`/app has what the docs do not run on: ${extra.join(', ')} (apps/docs "files", the Dockerfile's copies)`);
+  if (extra.length > 0) problems.push(`/app has what the docs do not run on: ${extra.join(', ')} (apps/website "files", the Dockerfile's copies)`);
   if (missing.length > 0) problems.push(`/app lacks ${missing.join(', ')}`);
-  if (found.env.length > 0) problems.push(`.env files in the image: ${found.env.join(', ')} (Dockerfile.dockerignore, apps/docs "files")`);
+  if (found.env.length > 0) problems.push(`.env files in the image: ${found.env.join(', ')} (Dockerfile.dockerignore, apps/website "files")`);
   if (found.tests.length > 0) problems.push(`tests in the image: ${found.tests.slice(0, 8).join(', ')}${found.tests.length > 8 ? ` … (${found.tests.length})` : ''}`);
   const dev = found.store.filter((entry) => DEV_PACKAGES.test(entry));
   if (dev.length > 0) problems.push(`dev dependencies in the image: ${dev.join(', ')} (pnpm deploy --prod)`);
@@ -153,7 +153,7 @@ function curl(url: string, headers: Record<string, string> = {}): { version: str
   return { version, status: Number(status), headers: map, length: Number(blocks.at(-1)) };
 }
 
-export async function docsImage({ keep = false }: { keep?: boolean } = {}): Promise<number> {
+export async function websiteImage({ keep = false }: { keep?: boolean } = {}): Promise<number> {
   const started = performance.now();
   const probe = spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], { env, encoding: 'utf8' });
   if (probe.status !== 0) {
@@ -162,18 +162,18 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
   }
   const id = `${process.pid}-${Date.now().toString(36)}`;
   const tag = `smoke-${id}`;
-  const image = `marmeon-docs:${tag}`;
-  const volume = `marmeon-docs-smoke-${id}`;
-  const project = `marmeon-docs-smoke-${id}`;
-  const work = mkdtempSync(join(tmpdir(), 'marmeon-docs-image-'));
+  const image = `marmeon-website:${tag}`;
+  const volume = `marmeon-website-smoke-${id}`;
+  const project = `marmeon-website-smoke-${id}`;
+  const work = mkdtempSync(join(tmpdir(), 'marmeon-website-image-'));
   const containers = new Set<string>();
   const key = `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
   let built = false;
   let composed = false;
-  // DOCS_DOMAIN=localhost: Caddy signs with its own CA; the port Caddy listens on is moved to a free one (compose.smoke.yaml).
-  const composeEnv: Record<string, string> = { APP_KEY: key, DOCS_DOMAIN: 'localhost', DOCS_TAG: tag, SMOKE_PORT: String(await freePort()) };
+  // WEBSITE_DOMAIN=localhost: Caddy signs with its own CA; the port Caddy listens on is moved to a free one (compose.smoke.yaml).
+  const composeEnv: Record<string, string> = { APP_KEY: key, WEBSITE_DOMAIN: 'localhost', WEBSITE_TAG: tag, SMOKE_PORT: String(await freePort()) };
   const compose = (args: string[], expect: number | 'any' = 0) =>
-    docker(['compose', '-p', project, '-f', 'compose.yaml', '-f', join(work, 'compose.smoke.yaml'), ...args], { cwd: join(root, 'deploy/docs'), extraEnv: composeEnv, expect });
+    docker(['compose', '-p', project, '-f', 'compose.yaml', '-f', join(work, 'compose.smoke.yaml'), ...args], { cwd: join(root, 'deploy/website'), extraEnv: composeEnv, expect });
   const step = async <T>(name: string, run: () => Promise<T> | T): Promise<T> => {
     const begin = performance.now();
     process.stdout.write(`docs image: ${name} … `);
@@ -189,13 +189,13 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
   const logs = (name: string) => () => docker(['logs', name], { expect: 'any' }).output;
 
   try {
-    await step('deploy/docs/compose.yaml valid', () => {
+    await step('deploy/website/compose.yaml valid', () => {
       writeFileSync(join(work, 'compose.smoke.yaml'), "services:\n  caddy:\n    ports: !override\n      - '127.0.0.1:${SMOKE_PORT}:443'\n");
       compose(['config', '-q']);
     });
-    const buildSeconds = await step(`docker build -f apps/docs/Dockerfile -t ${image} .`, () => {
+    const buildSeconds = await step(`docker build -f apps/website/Dockerfile -t ${image} .`, () => {
       const begin = performance.now();
-      docker(['build', '--progress=plain', '-f', 'apps/docs/Dockerfile', '-t', image, '.'], { extraEnv: { DOCKER_BUILDKIT: '1' } });
+      docker(['build', '--progress=plain', '-f', 'apps/website/Dockerfile', '-t', image, '.'], { extraEnv: { DOCKER_BUILDKIT: '1' } });
       built = true;
       return (performance.now() - begin) / 1000;
     });
@@ -213,7 +213,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
     });
     await step('read-only root, the storage volume → /up, every page 200 without Set-Cookie, the static policy, healthy, a quiet log; SIGTERM → exit 0', async () => {
       const port = await freePort();
-      const name = `marmeon-docs-smoke-${id}-docs`;
+      const name = `marmeon-website-smoke-${id}-docs`;
       containers.add(name);
       docker(['run', '-d', '--name', name, '--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, '-e', `APP_KEY=${key}`, '-e', `APP_URL=http://127.0.0.1:${port}`, '-v', `${volume}:/app/storage`, '--health-interval=1s', '--health-start-period=1s', image]);
       const base = `http://127.0.0.1:${port}`;
@@ -241,7 +241,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       docker(['rm', '-f', '-v', name]);
       containers.delete(name);
     });
-    await step('behind Caddy (deploy/docs/compose.yaml): HTTP/2, no Set-Cookie, HSTS, X-Forwarded-* trusted, compressed documents with 304', async () => {
+    await step('behind Caddy (deploy/website/compose.yaml): HTTP/2, no Set-Cookie, HSTS, X-Forwarded-* trusted, compressed documents with 304', async () => {
       const port = Number(composeEnv.SMOKE_PORT);
       composed = true;
       compose(['up', '-d', '--no-build', '--wait', '--wait-timeout', '90']);
@@ -295,5 +295,5 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
 
 if (import.meta.main) {
   const { values } = parseArgs({ options: { keep: { type: 'boolean' } } });
-  process.exitCode = await docsImage({ keep: values.keep === true });
+  process.exitCode = await websiteImage({ keep: values.keep === true });
 }
