@@ -14,9 +14,11 @@
  *      From the first release on, every release's section (`## Upgrading to 0.2.0 from 0.1.0`, steps as `###` inside it) has its
  *      entries listed in {@link UPGRADING_ANCHORS}, and every listed entry stands under its release — each with an impact and its
  *      likelihood, and no placeholder left. The first section switches the requirement on: it is refused until its entries are listed.
- *      A release's section must be headed exactly `## Upgrading to <version> from <version>` (level 2, the version as x.y.z): under
- *      any other heading the check sees no release — entries there are refused as standing under no release, and a section
- *      without entries goes unnoticed.
+ *      A release's section must be headed exactly `## Upgrading to <version> from <version>` (level 2, the version as x.y.z): every
+ *      heading of level 1–4 that starts with "Upgrading to" or "Upgrading from" (the page title `# Upgrading` aside) and is not so headed is refused.
+ *      The sections are bound to the packages' version: `to` is above `from` and at most the version the pending changesets make
+ *      ({@link targetVersion}); prerelease versions and Changesets' pre mode are refused, the binding cannot follow them. And a pending `minor` in 0.x (or a `major`) needs its section, with entries
+ *      listed. No changeset and no section: nothing to say.
  *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode"), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
  *      private vulnerability reporting, the deprecation policy in the root README.
  * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).
@@ -41,7 +43,21 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {};
 
 /** A release's section: `## Upgrading to <version> from <version>`. Steps (`### …`) inside it keep the release as the section. */
-const RELEASE_SECTION = /^## Upgrading to (\d+\.\d+\.\d+\S*)\b/;
+const RELEASE_SECTION = /^## Upgrading to (\d+\.\d+\.\d+) from (\d+\.\d+\.\d+)\s*$/;
+
+type Bump = 'major' | 'minor' | 'patch';
+
+/** `x.y.z` as numbers (a suffix such as `-beta.1` is ignored). */
+const parts = (version: string): [number, number, number] => {
+  const [major = 0, minor = 0, patch = 0] = version.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  return [major, minor, patch];
+};
+
+/** Negative, zero or positive as `a` is below, equal to or above `b`. */
+function compareVersions(a: string, b: string): number {
+  const [left, right] = [parts(a), parts(b)];
+  return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+}
 
 /** GitHub's anchor for a heading: lower case, punctuation dropped (not `-` and `_`), every space a hyphen. */
 export function slug(heading: string): string {
@@ -125,27 +141,61 @@ export function checkGroup(repository: string, packages: readonly FrameworkPacka
   return problems;
 }
 
+/** The changeset files with the lines of their front matter (`name` and `bump` unset for a line that is no `"package": bump`); `lines` is `undefined` without front matter. */
+function readChangesets(repository: string): { file: string; lines: { line: string; name?: string; bump?: string }[] | undefined }[] {
+  const dir = join(repository, '.changeset');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.md') && name !== 'README.md')
+    .sort()
+    .map((file) => {
+      const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(dir, file), 'utf8'));
+      if (!front) return { file, lines: undefined };
+      const lines = front[1]!
+        .split(/\r?\n/)
+        .filter((entry) => entry.trim() !== '')
+        .map((line) => {
+          const entry = /^\s*["']?([^"':]+)["']?\s*:\s*(\w+)\s*$/.exec(line);
+          return entry ? { line, name: entry[1]!, bump: entry[2]! } : { line };
+        });
+      return { file, lines };
+    });
+}
+
+/** The highest bump of the pending changesets, `undefined` without one. The fixed group carries every package along. */
+export function pendingBump(repository: string): Bump | undefined {
+  const order: Bump[] = ['patch', 'minor', 'major'];
+  let highest = -1;
+  for (const { lines } of readChangesets(repository)) {
+    for (const { bump } of lines ?? []) highest = Math.max(highest, order.indexOf(bump as Bump));
+  }
+  return order[highest];
+}
+
+/** The version the pending changesets make of `current`; `current` itself without a bump. */
+export function targetVersion(current: string, bump: Bump | undefined): string {
+  const [major, minor, patch] = parts(current);
+  if (bump === 'major') return `${major + 1}.0.0`;
+  if (bump === 'minor') return `${major}.${minor + 1}.0`;
+  if (bump === 'patch') return `${major}.${minor}.${patch + 1}`;
+  return current;
+}
+
 /** 3 · the changeset files. */
 export function checkChangesets(repository: string, packages: readonly FrameworkPackage[]): string[] {
   const problems: string[] = [];
-  const dir = join(repository, '.changeset');
-  if (!existsSync(dir)) return problems;
   const versions = new Map(packages.map((pkg) => [pkg.name, pkg.manifest.version]));
   const workspace = workspacePackages(repository);
-  for (const file of readdirSync(dir).filter((name) => name.endsWith('.md') && name !== 'README.md').sort()) {
-    const text = readFileSync(join(dir, file), 'utf8');
-    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-    if (!front) {
+  for (const { file, lines } of readChangesets(repository)) {
+    if (!lines) {
       problems.push(`.changeset/${file} has no front matter (---) naming packages and bumps`);
       continue;
     }
-    for (const line of front[1]!.split(/\r?\n/).filter((entry) => entry.trim() !== '')) {
-      const entry = /^\s*["']?([^"':]+)["']?\s*:\s*(\w+)\s*$/.exec(line);
-      if (!entry) {
+    for (const { line, name, bump } of lines) {
+      if (name === undefined || bump === undefined) {
         problems.push(`.changeset/${file}: "${line.trim()}" is no "package": bump line`);
         continue;
       }
-      const [, name, bump] = entry as unknown as [string, string, string];
       const version = versions.get(name);
       if (version === undefined) {
         problems.push(`.changeset/${file}: ${name} is ${workspace.has(name) ? 'private — it is never released' : 'no package of the repository'}`);
@@ -224,15 +274,23 @@ export function checkTrust(repository: string): string[] {
   return [];
 }
 
-/** 6 · `UPGRADING.md`: nothing before the first release; from then on every listed entry under its release. */
-export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS): string[] {
+/**
+ * 6 · `UPGRADING.md`: nothing before the first release; from then on every listed entry under its release. With the packages'
+ * `version` and the pending `bump`, the sections are bound to them: none above the version the changesets make, and the section
+ * of a pending breaking release (`minor` in 0.x, `major`) with its entries listed.
+ */
+export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS, version?: string, bump?: Bump): string[] {
   const file = join(repository, 'UPGRADING.md');
   if (!existsSync(file)) return ['UPGRADING.md is missing'];
   const problems: string[] = [];
+  if (version !== undefined && (version.includes('-') || existsSync(join(repository, '.changeset/pre.json')))) {
+    problems.push(`the packages are at ${version}${version.includes('-') ? '' : ' in Changesets pre mode'} — prerelease versions are not supported by this check: the sections of UPGRADING.md cannot be bound to them`);
+    version = undefined;
+  }
   const text = readFileSync(file, 'utf8');
   /** Entry anchor → the release it stands under (`undefined`: before any release section) and its text. */
   const entries = new Map<string, { release: string | undefined; body: string }>();
-  const releases = new Set<string>();
+  const releases = new Map<string, string>();
   let release: string | undefined;
   let current: string | undefined;
   for (const line of text.split('\n')) {
@@ -241,9 +299,21 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
       if (current !== undefined) entries.get(current)!.body += `${line}\n`;
       continue;
     }
+    const section = RELEASE_SECTION.exec(line);
+    if (/^upgrading\s+(to|from)\b/i.test(heading[2]!) && !(heading[1] === '#' && heading[2] === 'Upgrading') && !section) {
+      problems.push(`UPGRADING.md: "${line}" — a release's section is headed exactly "## Upgrading to <x.y.z> from <x.y.z>"`);
+    }
     if (heading[1]!.length <= 2) {
-      release = RELEASE_SECTION.exec(line)?.[1];
-      if (release !== undefined) releases.add(release);
+      release = section?.[1];
+      if (section) {
+        const [, to, from] = section as unknown as [string, string, string];
+        releases.set(to, from);
+        if (compareVersions(to, from) <= 0) problems.push(`UPGRADING.md: "${line}" — a release upgrades from a lower version to a higher one`);
+        if (version !== undefined && compareVersions(to, targetVersion(version, bump)) > 0) {
+          const makes = bump === undefined ? '' : ` and the changesets make ${targetVersion(version, bump)}`;
+          problems.push(`UPGRADING.md has a section for ${to}, but the packages are at ${version}${makes}`);
+        }
+      }
     }
     current = heading[1] === '####' ? slug(heading[2]!) : undefined;
     if (current === undefined) continue;
@@ -254,9 +324,19 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
       problems.push(`UPGRADING.md: #${current} stands under no release — an entry goes under its "## Upgrading to <version> from <version>"`);
     }
   }
-  for (const version of releases) {
-    if (!(version in anchors)) {
-      problems.push(`UPGRADING.md has the section of ${version}, and scripts/check-changesets.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["${version}"]`);
+  for (const released of releases.keys()) {
+    if (!(released in anchors)) {
+      problems.push(`UPGRADING.md has the section of ${released}, and scripts/check-changesets.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["${released}"]`);
+    }
+  }
+  if (version !== undefined && (bump === 'major' || (bump === 'minor' && parts(version)[0] < 1))) {
+    const target = targetVersion(version, bump);
+    const heading = `## Upgrading to ${target} from ${version}`;
+    const from = releases.get(target);
+    if (from === undefined) problems.push(`the changesets make ${target}, a breaking release — UPGRADING.md needs its section "${heading}"`);
+    else if (from !== version) problems.push(`UPGRADING.md: the section of ${target} upgrades from ${from}, but the packages are at ${version} — "${heading}"`);
+    else if (target in anchors && anchors[target]!.length === 0) {
+      problems.push(`the changesets make ${target}, a breaking release — scripts/check-changesets.ts lists none of its entries: UPGRADING_ANCHORS["${target}"]`);
     }
   }
   for (const [version, list] of Object.entries(anchors)) {
@@ -306,7 +386,7 @@ export function check(repository: string = root): string[] {
     ...checkChangesets(repository, packages),
     ...checkWorkflow(repository),
     ...checkTrust(repository),
-    ...checkUpgrading(repository),
+    ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version, pendingBump(repository)),
     ...checkPolicies(repository),
   ];
 }

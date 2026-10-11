@@ -267,8 +267,11 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
   `check-changesets` refuses an entry that stands under no release. The first `## Upgrading to <version> from <version>` section
   switches the requirement on: `check-changesets` refuses it until `UPGRADING_ANCHORS` lists its entries under that version, and
   from then on every listed entry must stand under its release, with its impact and its likelihood. Head a release's section
-  exactly so — level 2, the version as x.y.z, steps as `###` inside it: under any other heading the check sees no release, so an
-  entry there is refused as standing under no release and a section without entries goes unnoticed.
+  exactly so — level 2, the version as x.y.z, steps as `###` inside it: any other heading that starts with "Upgrading to" or
+  "Upgrading from" is refused. The sections follow the packages' version: `to` is above `from` and no higher than the version
+  the pending changesets make, and a pending `minor` in 0.x (or a `major`) needs its section `## Upgrading to <next> from
+  <current>` with its entries listed in `UPGRADING_ANCHORS` — in the pull request of the changeset. A patch asks for
+  nothing, and prerelease versions and Changesets' pre mode are refused.
 - **How a release happens** (`.github/workflows/release.yml`): on every push to `main`, the Changesets action opens or updates
   the *Version packages* pull request (`changeset version`: the versions, the changelogs). Merging it runs the checks again and
   **stages** every package that is not on npm yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
