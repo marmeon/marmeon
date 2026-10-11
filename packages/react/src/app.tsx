@@ -304,10 +304,6 @@ function pagePatches(navigator: Navigator | null): PatchTarget {
   return loaded ? loaded.target(key) : laterTarget(navigator.load(loadOptimistic).then((feature) => feature.target(key)));
 }
 
-/** An options object for `progress` (`{ delay }`), as a type error that says what to write instead. */
-type ProgressHint = "progress takes an indicator — progress: progressBar({ delay: 250 }), import { progressBar } from '@marmeon/react'; leave it out for none";
-type ProgressBefore = { readonly delay?: ProgressHint; readonly color?: ProgressHint };
-
 /** @internal The app's progress indicator — none by default. Anything but an indicator throws with what to import. */
 export function progressIndicator(progress: MarmeonAppProps['progress'] | unknown): ProgressIndicator | undefined {
   if (progress === undefined) return undefined;
@@ -334,7 +330,7 @@ export interface MarmeonAppProps {
    * than `delay` — or the app's own (`(navigator) => stop`). None by default: `aria-busy` on `<html>`, `data-pending` on links and
    * `usePending()` are there either way.
    */
-  progress?: ProgressIndicator | ProgressBefore | ProgressHint;
+  progress?: ProgressIndicator;
   /** Server rendering only: where `<Head>` records itself. */
   headCollector?: HeadCollector;
   /**

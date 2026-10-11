@@ -5,20 +5,13 @@
  * component, only when `window.navigation` is missing). Every entry it writes is counted (`index`, a position like the scroll):
  * the browser moved already when `popstate` fires, so the navigation guard goes back (`history.go`), asks, and goes again.
  */
-import { isPageObject } from '../../page.ts';
 import { DEFAULT_LEAVE_MESSAGE } from '../confirm.ts';
 import { defineFeature } from '../feature.ts';
-import { isHistoryState, newKey, type HistoryState } from '../history.ts';
-import { TOP } from '../scroll.ts';
+import { isHistoryState, type HistoryState } from '../history.ts';
 
-/**
- * A history state to follow — the navigator's, or a whole page an older client kept in the history: never shown from it,
- * only its URL (a key of its own: the server is asked). Anything else (a fragment's, another script's) is none.
- */
+/** A history state to follow — the navigator's own. Anything else (a page object, a fragment's, another script's) is none: page data is never shown from `history.state`. */
 function stateOf(value: unknown): HistoryState | undefined {
-  if (isHistoryState(value)) return value;
-  if (isPageObject(value)) return { component: value.component, url: value.url, key: newKey(), scroll: TOP.scroll };
-  return undefined;
+  return isHistoryState(value) ? value : undefined;
 }
 
 /** Where an entry is in the tab's history, as this fallback counted it — undefined for an entry it did not write. */

@@ -5,10 +5,10 @@
   ],
   "gzipKB": {
     "core": { "limit": 11.57 },
-    "emptyApp": { "limit": 13.74 },
+    "emptyApp": { "limit": 13.72 },
     "minimalApp": { "limit": 18.26 },
     "everything": { "limit": 31.62, "ceiling": true },
-    "table": { "limit": 17.09 }
+    "table": { "limit": 17.06 }
   },
   "appsGzipKB": {
     "blank-app": { "limit": 14.26 },

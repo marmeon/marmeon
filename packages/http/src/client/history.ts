@@ -44,9 +44,9 @@ export function entry(page: PageObject, key: string, position: Scroll): HistoryS
   return withPosition({ component: page.component, url: page.url, key, scroll: position.scroll }, position);
 }
 
-/** The state with the position — `scrollRegions` only when the page has any (and never the old name, `regions`). */
+/** The state with the position — `scrollRegions` only when the page has any. */
 export function withPosition(state: HistoryState, { scroll, scrollRegions }: Scroll): HistoryState {
-  const { scrollRegions: _old, regions: _legacy, ...rest } = state as HistoryState & { regions?: unknown };
+  const { scrollRegions: _old, ...rest } = state;
   return scrollRegions.length > 0 ? { ...rest, scroll, scrollRegions } : { ...rest, scroll };
 }
 
@@ -135,8 +135,8 @@ export class HistoryWriter {
   /** The state of the current entry — positions only. */
   get state(): unknown {
     const { navigation, history } = this.#window;
-    // `history.state` also with the Navigation API: the entry an older client wrote (a reload after an upgrade) keeps its place.
-    return navigation?.currentEntry?.getState() ?? history.state;
+    // Without the Navigation API the History fallback writes its entries with `pushState`, so `history.state` is the entry.
+    return navigation ? navigation.currentEntry?.getState() : history.state;
   }
 
   /**

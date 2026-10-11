@@ -77,9 +77,9 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(JSON.parse(win.current.state).key).toBe(JSON.parse(win.entries[0]!.state).key);
     });
 
-    it('never shows the props an older client left in history.state — the History fallback asks the server; the Navigation API path leaves the entry to the browser', async () => {
+    it('never shows the props a script left in history.state', async () => {
       const win = new FakeWindow(`${ORIGIN}/settings/tokens`);
-      // Written by an older client: the whole page, plain-text token included.
+      // Written by a script: the whole page, plain-text token included.
       win.history.pushState(page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }), '', '/settings/tokens');
       win.history.pushState(null, '', '/login');
       win.handler = () => pageResponse(page('/login', {}, 'auth/Login'));
@@ -87,8 +87,8 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
 
       win.back();
       await settle();
-      // With the Navigation API, an entry without the navigator's state is the browser's (it has no state of the Navigation API).
-      expect(win.requests.map((request) => request.url)).toEqual(path === 'history' ? [`${ORIGIN}/settings/tokens`] : []);
+      // An entry without the navigator's state is the browser's (or another script's): the navigator leaves it alone.
+      expect(win.requests).toEqual([]);
       expect(shown.map((p) => p.props)).not.toContainEqual({ plainText: 'marmeon_1|secret-token' });
       expect(visible().component).toBe('auth/Login');
     });
@@ -399,17 +399,6 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       boot(win, page('/a'));
       expect(win.scrollY).toBe(700);
       expect(win.regions[0]!.scrollTop).toBe(90);
-    });
-
-    it('restores an entry an older document wrote — with its scroll regions still called `regions`', () => {
-      const win = new FakeWindow(`${ORIGIN}/a`);
-      win.regions = [{ scrollLeft: 0, scrollTop: 0 }];
-      win.history.replaceState({ component: 'pages/Show', url: '/a', key: 'k0', scroll: { x: 0, y: 300 }, regions: [{ x: 0, y: 40 }] }, '', `${ORIGIN}/a`);
-      boot(win, page('/a'));
-      expect([win.scrollY, win.regions[0]!.scrollTop]).toEqual([300, 40]);
-      // Written back under the new name only.
-      expect(JSON.parse(win.current.state)).toMatchObject({ key: 'k0', scrollRegions: [{ x: 0, y: 40 }] });
-      expect(JSON.parse(win.current.state)).not.toHaveProperty('regions');
     });
 
     it('keeps the position with preserveScroll', async () => {
