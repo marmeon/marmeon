@@ -45,12 +45,20 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
   the navigation as route middleware (`ShareNavigation`); the landing does not carry it.
-- **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` on every document —
+- **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'` on every document —
   **no nonce**, because the pages are cached publicly and a nonce (one per response) must never reach a shared cache. The pages
   need none: the server renders no inline script (the page object is inert JSON, nothing streams, code blocks are spans), and the
-  entry, its chunks and tab sync's chunk come from `/assets/`. The links test checks every page for inline scripts and handlers.
+  entry, its chunks and tab sync's chunk come from `/assets/`. `style-src 'self'` allows stylesheets from `/assets/` only (fonts and the
+  favicon come from there too, under `font-src` and `img-src`, which stay open): no `style` attribute (not in SVG either), no inline `<style>`, no CSS-in-JS. The links test checks every page for inline
+  scripts, handlers and `style` attributes.
   In development (`no-cache`, nothing shared) Vite's client, React Refresh and the devtools' bar are inline: the strict nonce
   policy there.
+- **Styles** (`styles/`): `app.css` is the only entry (`index.html`) and only `@import`s the parts. `tokens.css` holds every
+  colour, size, space and radius as a custom property — light by default, dark under `prefers-color-scheme` — and the fonts:
+  Source Serif 4 (text, with its optical-size axis) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which
+  Vite bundles into `/assets/` (dev dependencies; the image needs none). `base.css` has the reset, links, buttons, focus ring and
+  helpers. `favicon.svg` carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the tokens
+  in both themes.
 - **Headers:** `modules/site/middleware/SecurityHeaders.ts`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`

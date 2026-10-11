@@ -14,12 +14,13 @@ import routes from './routes.ts';
 export const PUBLIC_GROUP = 'public';
 
 /**
- * The Content-Security-Policy in production: scripts from this origin only. The pages are cached publicly
+ * The Content-Security-Policy in production: scripts and styles from this origin only — no `style` attribute, no inline
+ * `<style>`; the fonts and the stylesheet come from `/assets/`. The pages are cached publicly
  * (`CachePublicly`), and a nonce — one per response — must never reach a shared cache, where everybody would get the
  * same one. They need none: the server renders no inline script (the page object is inert JSON, nothing streams, the code
  * blocks are spans), and the entry, its chunks and tab sync's chunk come from `/assets/` — `'self'`.
  */
-export const SITE_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], frameAncestors: ["'none'"] };
+export const SITE_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], styleSrc: ["'self'"], frameAncestors: ["'none'"] };
 
 /**
  * In development Vite's client, React Refresh's preamble and the devtools' bar are inline scripts: the strict default with a

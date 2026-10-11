@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <style>
+    .face { fill: #16181b; }
+    .groove { stroke: #f6f6f3; }
+    @media (prefers-color-scheme: dark) {
+      .face { fill: #e8e9e5; }
+      .groove { stroke: #111315; }
+    }
+  </style>
+  <rect class="face" width="16" height="16" rx="1.5"/>
+  <path class="groove" d="M4 12.5V4.5L8 9.5l4-5v8" fill="none" stroke-width="2" stroke-linecap="square"/>
+</svg>

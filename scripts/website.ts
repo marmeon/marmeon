@@ -24,7 +24,7 @@ const mode = process.argv[2];
 /** Every page of the docs' sections, in their order — with its file (`docs/<slug>.md` or a policy at the root). */
 const pages = docsConfig.sections.flatMap((section) => section.pages.map((entry) => ({ slug: entry.slug, file: entry.file ?? `docs/${entry.slug}.md` })));
 /** The docs' policy in production (apps/website SiteServiceProvider, SITE_CSP). */
-const DOCS_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+const DOCS_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'";
 
 if (mode === 'dev') await dev();
 else if (mode === 'check') process.exitCode = await check();
@@ -133,6 +133,16 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   await search('onOneServer', '/docs/scheduling');
   await search('afterRollback', '/docs/transactions');
   await search('SHUTDOWN_DELAY', '/docs/deployment');
+
+  // The favicon is a built asset (Vite rewrites the link), the stylesheet one too: both come from /assets/ (the stylesheet is what `style-src 'self'` allows).
+  const landing = await get('/');
+  const icon = /<link rel="icon"[^>]*href="([^"]+)"/.exec(landing.body)?.[1];
+  expect(icon?.startsWith('/assets/') === true, `/: the favicon link is "${icon}", expected an /assets/ path`);
+  if (icon) {
+    const favicon = await get(icon);
+    expect(favicon.response.status === 200 && favicon.response.headers.get('content-type')?.startsWith('image/svg+xml') === true, `${icon}: ${favicon.response.status} ${favicon.response.headers.get('content-type')}, expected 200 image/svg+xml`);
+  }
+  expect(/<link rel="stylesheet"[^>]*href="\/assets\/[^"]+\.css"/.test(landing.body), '/: no stylesheet from /assets/');
 
   const packagePage = await get('/packages/http');
   expect(packagePage.response.status === 404, `/packages/http: status ${packagePage.response.status}, expected 404 (the READMEs are no pages)`);

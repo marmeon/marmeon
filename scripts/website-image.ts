@@ -22,7 +22,7 @@ import { cleanEnvironment, freePort, Offline, OFFLINE, SKIPPED, SmokeError } fro
 const root = fileURLToPath(new URL('..', import.meta.url));
 const DOCKER_OFFLINE = /failed to resolve source metadata|failed to do request|dial tcp|i\/o timeout|TLS handshake timeout|no such host|ERR_PNPM_META_FETCH_FAIL|EAI_AGAIN|ENOTFOUND/;
 /** The docs' policy in production (apps/website SiteServiceProvider, SITE_CSP). */
-const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'";
 /** Never in the image: what only builds or tests the docs. */
 const DEV_PACKAGES = /^(vite|vitest|typescript|@vitejs\+|oxlint|@oxlint\+|@marmeon\+(devtools|testing|vite))(@|$)/;
 

@@ -1,0 +1,156 @@
+/* Design tokens: light by default, dark under prefers-color-scheme. Fonts are bundled from the @fontsource packages (served from /assets/). */
+@import '@fontsource-variable/source-serif-4/opsz.css';
+@import '@fontsource-variable/source-serif-4/opsz-italic.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-400-italic.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f6f6f3;
+  --bg-raised: #ffffff;
+  --bg-sunken: #ecede9;
+  --fg: #16181b;
+  --fg-body: #1f2226;
+  --fg-2: #33373c;
+  --muted: #585d63;
+  --line: #d6d7d2;
+  --line-strong: #b9bbb5;
+  --control-line: #7f8489;
+  --accent: #1b5a4c;
+  --accent-strong: #0f3f35;
+  --accent-tint: #e2eee8;
+  --mark-bg: #f3e2b8;
+  --mark-fg: #16181b;
+  --term-bg: #16181b;
+  --term-fg: #eef0ec;
+  --term-dim: #9aa0a6;
+  --term-line: #2c2f33;
+  --output-bg: #f1f1ed;
+  --button-bg: #16181b;
+  --button-fg: #f6f6f3;
+  --button-hover-bg: #0f3f35;
+  --button-hover-fg: #ffffff;
+  --focus: #1b5a4c;
+
+  --note-fg: #2b4f8a;
+  --note-bg: #eef1f7;
+  --note-line: #bcc8dd;
+  --tip-fg: #1b5a4c;
+  --tip-bg: #edf4f0;
+  --tip-line: #b7d1c6;
+  --important-fg: #6e2a5a;
+  --important-bg: #f5edf2;
+  --important-line: #d9bccd;
+  --warning-fg: #7a4a00;
+  --warning-bg: #f8f1e3;
+  --warning-line: #dcc28f;
+  --caution-fg: #9b2c1a;
+  --caution-bg: #f8ecea;
+  --caution-line: #e0b5ad;
+
+  --syn-text: #16181b;
+  --syn-keyword: #1b5a4c;
+  --syn-type: #2b4f8a;
+  --syn-string: #8a4a0e;
+  --syn-function: #16181b;
+  --syn-comment: #646a70;
+  --syn-tag: #6e2a5a;
+  --syn-punctuation: #4a4f55;
+
+  --font-text: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-display: clamp(2.625rem, 1.6rem + 4.4vw, 5.125rem);
+  --text-h1: clamp(2.25rem, 1.6rem + 2.8vw, 3.375rem);
+  --text-section: clamp(2.125rem, 1.7rem + 1.8vw, 3.375rem);
+  --text-h2: 1.875rem;
+  --text-h3: 1.375rem;
+  --text-lead: 1.3125rem;
+  --text-body: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-label: 0.75rem;
+  --text-code: 0.875rem;
+  --measure: 43rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+
+  --radius-1: 2px;
+  --radius-2: 3px;
+  --radius-3: 4px;
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus);
+  --duration-fast: 120ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111315;
+    --bg-raised: #181b1e;
+    --bg-sunken: #202428;
+    --fg: #e8e9e5;
+    --fg-body: #d6d8d4;
+    --fg-2: #c9ccc8;
+    --muted: #9da3a8;
+    --line: #2a2e32;
+    --line-strong: #3d4247;
+    --control-line: #6b7177;
+    --accent: #7cc4ad;
+    --accent-strong: #a3d9c7;
+    --accent-tint: #1a2b26;
+    --mark-bg: #4a3d1e;
+    --mark-fg: #f5e6c2;
+    --term-bg: #0b0c0d;
+    --term-fg: #e8e9e5;
+    --term-dim: #8f959b;
+    --term-line: #26292c;
+    --output-bg: #15181a;
+    --button-bg: #e8e9e5;
+    --button-fg: #111315;
+    --button-hover-bg: #a3d9c7;
+    --button-hover-fg: #0b1f1a;
+    --focus: #7cc4ad;
+
+    --note-fg: #9cb8e8;
+    --note-bg: #161d29;
+    --note-line: #2c3d5c;
+    --tip-fg: #7cc4ad;
+    --tip-bg: #15211d;
+    --tip-line: #2a4a40;
+    --important-fg: #d9a5c8;
+    --important-bg: #24171f;
+    --important-line: #4d3044;
+    --warning-fg: #e3bf74;
+    --warning-bg: #241e12;
+    --warning-line: #54452a;
+    --caution-fg: #f0a093;
+    --caution-bg: #281715;
+    --caution-line: #5a302a;
+
+    --syn-text: #e8e9e5;
+    --syn-keyword: #7cc4ad;
+    --syn-type: #9cb8e8;
+    --syn-string: #e3bf74;
+    --syn-function: #f2f3ef;
+    --syn-comment: #959ba1;
+    --syn-tag: #d9a5c8;
+    --syn-punctuation: #b5b9b6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+  }
+}

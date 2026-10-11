@@ -28,7 +28,7 @@ describe('the landing page', () => {
     expect(response.headers.get('set-cookie')).toBeNull();
     expect(response.headers.get('cache-control')).toBe('public, max-age=300');
     expect(response.headers.get('etag')).toMatch(/^"[\w-]{27}"$/);
-    expect(response.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    expect(response.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'");
     expect(response.body).not.toMatch(/<[a-z]+ [^>]*\bnonce=/);
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     const json = await app.navigating().get('/').assertOk();

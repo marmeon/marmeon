@@ -24,6 +24,8 @@ const repo = resolve(import.meta.dirname, '../../../..');
 
 const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
 const PAGES = ['/', '/docs', ...DOCS];
+/** Pages besides the docs' own: the search, with and without a query, and the 404 — scanned for inline scripts and styles only. */
+const EXTRA = ['/docs/search', '/docs/search?q=route', '/no/such/page'];
 const html = { headers: { accept: 'text/html' } };
 
 /** The links of the page's content and navigation, and the ids on it — read from the server-rendered markup. */
@@ -45,24 +47,49 @@ function executableInline(body: string): string[] {
   return [...scripts, ...handlers];
 }
 
+/** The elements of a document that carry a `style` attribute (or an inline `<style>`) — what `style-src 'self'` would refuse. */
+function inlineStyles(body: string): string[] {
+  return [...body.matchAll(/<[a-z][^>]*\sstyle=[^>]*>|<style\b/gi)].map(([found]) => found.slice(0, 120));
+}
+
 describe('every page', () => {
   const rendered = new Map<string, { hrefs: string[]; ids: Set<string> }>();
   const inline = new Map<string, string[]>();
+  const styled = new Map<string, string[]>();
   const policies = new Set<string | null>();
 
   it.each(PAGES)('%s answers 200, rendered on the server, and hydrates', async (path) => {
     const response = await app.get(path, html).assertOk().assertServerRendered().assertHydrates();
     rendered.set(path, scan(response.body));
     inline.set(path, executableInline(response.body));
+    styled.set(path, inlineStyles(response.body));
+    policies.add(response.headers.get('content-security-policy'));
+  }, SSR_TEST_TIMEOUT);
+
+  it.each(EXTRA)('%s renders without inline scripts or styles', async (path) => {
+    const response = await app.get(path, html);
+    expect(response.status).toBe(path === '/no/such/page' ? 404 : 200);
+    inline.set(path, executableInline(response.body));
+    styled.set(path, inlineStyles(response.body));
     policies.add(response.headers.get('content-security-policy'));
   }, SSR_TEST_TIMEOUT);
 
   it("runs no inline script — the 'self' policy of a publicly cached page holds without a nonce", () => {
-    expect(inline.size).toBe(PAGES.length);
+    expect(inline.size).toBe(PAGES.length + EXTRA.length);
     expect([...inline].filter(([, found]) => found.length > 0)).toEqual([]);
     // One policy for every page, without a nonce: the body — and so the ETag — is the same for everybody.
-    expect([...policies]).toEqual(["script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"]);
+    expect([...policies]).toEqual(["script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'"]);
     expect(SITE_CSP.scriptSrc).toEqual(["'self'"]);
+  });
+
+  it("carries no style attribute and no inline <style> — the 'self' style policy holds", () => {
+    expect(styled.size).toBe(PAGES.length + EXTRA.length);
+    expect([...styled].filter(([, found]) => found.length > 0)).toEqual([]);
+    // The matcher itself: it finds what it is meant to refuse.
+    expect(inlineStyles('<p class="a" style="color: red">x</p>')).toHaveLength(1);
+    expect(inlineStyles('<svg><path style="fill:red"/></svg>')).toHaveLength(1);
+    expect(inlineStyles('<style>p { color: red }</style>')).toHaveLength(1);
+    expect(inlineStyles('<p class="style-guide">no <code>style=</code> here</p>')).toEqual([]);
   });
 
   it('links only to pages and anchors that exist (links as on GitHub)', () => {

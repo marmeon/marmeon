@@ -222,7 +222,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     const ssr = await createTestApp(application, { ssr: true });
     const first = await ssr.get('/docs/csp', document).assertOk();
     const second = await ssr.get('/docs/csp', document).assertOk();
-    expect(first.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    expect(first.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'");
     // No nonce attribute on a tag (the CSP page's text mentions `nonce=` — escaped, inside the page).
     expect(first.body).not.toMatch(/<[a-z]+ [^>]*\bnonce=/);
     expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
