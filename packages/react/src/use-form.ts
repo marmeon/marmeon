@@ -195,14 +195,22 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
   : [params: ParamsOf<N>, initial: RouteFormFields<N>] | [initial: ParamsFirst<N>];
 
 /**
- * Form state and submission, typed from the endpoint's request schema — by route name (method, URL and fields from
- * `bootstrap/routes.ts`), or by controller, sent to any URL (`useForm<UpdateUserProfileController>(initial)`, `form.put(url)`).
- * The fields are the schema's *input* (what the browser sends). See docs/forms.md#forms-by-route-name.
+ * Form state typed by a controller's request schema, sent to a URL you pass to `form.post(url)`.
+ * The fields are the schema's *input* (what the browser sends): `useForm<StoreNoteController>(initial)`.
+ * See docs/forms.md#forms-by-controller.
  */
 export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
+/**
+ * Form state for a named route, with method, URL and fields taken from `bootstrap/routes.ts`.
+ * `form.submit()` sends it. See docs/forms.md#forms-by-route-name.
+ */
 export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
 // Last: TS reports a mistake against the last overload whose arity fits — this one for four arguments (a wrong option, a
 // password field in `validate.fields`), the one above for two or three (the route's message).
+/**
+ * Form state for a named route with parameters, initial data and options such as live `validate`.
+ * See docs/forms.md#validating-while-typing.
+ */
 export function useForm<const N extends BrowserRouteNameInput>(
   name: CheckFormRoute<N>,
   params: ParamsOf<N>,
