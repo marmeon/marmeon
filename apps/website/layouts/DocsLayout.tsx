@@ -14,8 +14,9 @@ const TYPING = 'input, textarea, select, [contenteditable]';
  * nothing but the navigation — and copes without it: an error page for a path without a route (a 404) gets no shared props.
  */
 export function DocsLayout({ children }: LayoutProps) {
-  const { props, url } = usePage();
-  const nav = props.nav;
+  const { props, url, component } = usePage();
+  // The start page and the search are wide and centred, without the section navigation.
+  const nav = component === 'docs/Home' || component === 'docs/Search' ? undefined : props.nav;
   const router = useRouter();
   const route = useRoute();
   const searchUrl = route('docs.search');

@@ -138,6 +138,16 @@ describe('the layout of a docs page (server-rendered)', () => {
     expect(body).toContain('<details class="toc-mobile">');
     expect(body).toContain('<details class="docs-menu">');
   }, SSR_TEST_TIMEOUT);
+
+  it('renders the start page and the search without the section navigation — the search also without the top field', async () => {
+    const ssr = await createTestApp(application, { ssr: true });
+    for (const path of ['/docs', '/docs/search?q=routing']) {
+      const { body } = await ssr.get(path, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
+      expect(body, path).not.toContain('class="sidebar"');
+      expect(body, path).not.toContain('class="docs-menu"');
+      expect(body, path).toContain('class="docs-top"');
+    }
+  }, SSR_TEST_TIMEOUT);
 });
 
 describe('the docs: sections of pages under /docs', () => {

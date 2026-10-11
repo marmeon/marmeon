@@ -27,6 +27,7 @@
   flex: 0 0 auto;
 }
 
+.docs-brand,
 .docs-brand:hover {
   text-decoration: none;
 }

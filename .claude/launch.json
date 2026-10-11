@@ -20,7 +20,7 @@
       "port": 3961
     },
     {
-      "name": "docs",
+      "name": "website",
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
@@ -29,7 +29,7 @@
       "port": 3970
     },
     {
-      "name": "docs-prod",
+      "name": "website-prod",
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
