@@ -8,6 +8,7 @@ import { CachePublicly } from './middleware/CachePublicly.ts';
 import { SecurityHeaders } from './middleware/SecurityHeaders.ts';
 import { ShareSite } from './middleware/ShareSite.ts';
 import { SiteInfo } from './SiteInfo.ts';
+import { SiteSnippets } from './SiteSnippets.ts';
 import routes from './routes.ts';
 
 /** The middleware group of the website's public pages: without cookies, session or CSRF. */
@@ -40,11 +41,13 @@ export class SiteServiceProvider implements ServiceProvider {
     // The routes while registering, not in boot(): `marmeon build` writes the route types from an app that boots nothing.
     container.make(Router).load({ group: PUBLIC_GROUP }, routes);
     container.singleton(SiteInfo, () => new SiteInfo(frameworkVersion()));
+    container.singleton(SiteSnippets, () => new SiteSnippets());
   }
 
-  boot(app: Application): void {
+  async boot(app: Application): Promise<void> {
     // Read the version now: a manifest that cannot be found stops the start, not the first request.
     app.container.make(SiteInfo);
+    await app.container.make(SiteSnippets).load();
     const config = app.container.make(SiteConfig);
     const router = app.container.make(Router);
     // Global: the 404 page (no route, no group) gets the policy and the headers too.

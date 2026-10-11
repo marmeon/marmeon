@@ -52,6 +52,27 @@ function inlineStyles(body: string): string[] {
   return [...body.matchAll(/<[a-z][^>]*\sstyle=[^>]*>|<style\b/gi)].map(([found]) => found.slice(0, 120));
 }
 
+/** The links of the scanned pages that stay on the site and lead nowhere: no such page, or no such anchor on it. */
+function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>): { broken: string[]; internal: number } {
+  const broken: string[] = [];
+  let internal = 0;
+  for (const [path, { hrefs }] of pages) {
+    for (const href of hrefs) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) continue; // another site
+      internal++;
+      const [target = '', anchor] = href.split('#') as [string, string | undefined];
+      const page = target === '' ? path : target.split('?')[0]!;
+      const found = pages.get(page);
+      if (!found) {
+        if (page !== '/docs/search') broken.push(`${path}: ${href} — no such page`);
+        continue;
+      }
+      if (anchor !== undefined && anchor !== '' && !found.ids.has(anchor)) broken.push(`${path}: ${href} — no #${anchor} on ${page}`);
+    }
+  }
+  return { broken, internal };
+}
+
 describe('every page', () => {
   const rendered = new Map<string, { hrefs: string[]; ids: Set<string> }>();
   const inline = new Map<string, string[]>();
@@ -94,22 +115,7 @@ describe('every page', () => {
 
   it('links only to pages and anchors that exist (links as on GitHub)', () => {
     expect(rendered.size).toBe(PAGES.length);
-    const broken: string[] = [];
-    let internal = 0;
-    for (const [path, { hrefs }] of rendered) {
-      for (const href of hrefs) {
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) continue; // another site
-        internal++;
-        const [target = '', anchor] = href.split('#') as [string, string | undefined];
-        const page = target === '' ? path : target.split('?')[0]!;
-        const found = rendered.get(page);
-        if (!found) {
-          if (page !== '/docs/search') broken.push(`${path}: ${href} — no such page`);
-          continue;
-        }
-        if (anchor !== undefined && anchor !== '' && !found.ids.has(anchor)) broken.push(`${path}: ${href} — no #${anchor} on ${page}`);
-      }
-    }
+    const { broken, internal } = checkLinks(rendered);
     // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
     expect(broken, broken.join('\n')).toEqual([]);
     // Measured 8 161 (the start page and the 73 pages of the docs; the header's and the navigation's 70-odd links on each page count
@@ -123,6 +129,18 @@ describe('every page', () => {
     const what = (file: string) => (!existsSync(join(repo, file)) ? 'no such file' : statSync(join(repo, file)).isFile() ? undefined : 'a directory, not a file');
     const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.flatMap((file) => (what(file) ? [`${page.file}: ${file} — ${what(file)}`] : [])));
     expect(missing, missing.join('\n')).toEqual([]);
+  });
+});
+
+describe('the link check', () => {
+  it('finds a link to an anchor or a page that does not exist, and passes one that does', () => {
+    const pages = new Map([
+      ['/', { hrefs: ['/docs/queries#table-types', '/docs/queries#table-typo', '/docs/nowhere', 'https://example.org/x'], ids: new Set<string>() }],
+      ['/docs/queries', { hrefs: [], ids: new Set(['table-types']) }],
+    ]);
+    const { broken, internal } = checkLinks(pages);
+    expect(internal).toBe(3);
+    expect(broken).toEqual(['/: /docs/queries#table-typo — no #table-typo on /docs/queries', '/: /docs/nowhere — no such page']);
   });
 });
 

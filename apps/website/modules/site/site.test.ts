@@ -4,6 +4,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
+import { SNIPPETS } from './snippets.ts';
 
 const repo = resolve(import.meta.dirname, '../../../..');
 const document = { headers: { accept: 'text/html' } };
@@ -16,11 +17,36 @@ beforeAll(async () => {
 afterAll(() => app?.close());
 
 describe('the landing page', () => {
-  it('answers / rendered on the server, with a way into the docs', async () => {
+  it('answers / rendered on the server, with one h1 and the three ways in', async () => {
     const response = await app.get('/', document).assertOk().assertServerRendered().assertHydrates();
-    expect(response.body).toContain('<h1>Marmeon</h1>');
-    expect(response.body).toContain('href="/docs/installation"');
-    expect(response.body).toContain('href="/docs"');
+    expect(response.body.match(/<h1[ >]/g)).toHaveLength(1);
+    expect(response.body).toContain('One type, from the database column to the form error.');
+    expect(response.body).toMatch(/<a [^>]*class="button"[^>]*href="\/docs\/installation"|<a [^>]*href="\/docs\/installation"[^>]*class="button"/);
+    expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--secondary"|<a [^>]*class="button button--secondary"[^>]*href="\/docs"/);
+    expect(response.body).toMatch(/<a [^>]*class="button button--text"[^>]*href="https:\/\/github\.com\/marmeon\/marmeon"/);
+    expect(response.body).toContain('pnpm create marmeon my-app');
+  }, SSR_TEST_TIMEOUT);
+
+  it('lists the seven principles and the seven steps of the chain', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body.match(/<li class="principle"/g)).toHaveLength(7);
+    expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
+    expect(body.match(/<h3>/g)).toHaveLength(7);
+    for (const mistake of ['user_ud', 'ctx.params.nte', 'notes.indx', 'note.titel', 'form.errors.titel']) expect(body).toContain(mistake);
+  }, SSR_TEST_TIMEOUT);
+
+  it('highlights every snippet on the server, with classes and without a style attribute', async () => {
+    const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props as { snippets: Record<string, { file?: string; html: string }> };
+    const snippets = Object.entries(props.snippets);
+    expect(snippets.map(([name]) => name)).toEqual(Object.keys(SNIPPETS));
+    for (const [name, { html }] of snippets) {
+      expect(html, name).toContain('<pre class="code"');
+      expect(html, name).toMatch(/class="t[kyfsgcp]"/);
+      expect(html, name).not.toContain('style=');
+    }
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).toContain('<span class="tk">export</span>');
+    expect(body).not.toMatch(/<[a-z][^>]*\sstyle=/i);
   }, SSR_TEST_TIMEOUT);
 
   it('is public: cacheable with an ETag, no cookie, a policy without a nonce', async () => {

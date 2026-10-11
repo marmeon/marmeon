@@ -1,1 +1,332 @@
-/* The landing page's sections. */
+/* The landing page's sections: hero, principles, one type end to end. */
+.landing-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-inline: clamp(20px, 4vw, 48px);
+}
+
+.landing .eyebrow,
+.landing .section-label {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.landing h1,
+.landing h2,
+.landing h3 {
+  margin: 0;
+  color: var(--fg);
+  font-variation-settings: 'opsz' 60;
+  font-weight: 560;
+  text-wrap: balance;
+}
+
+.landing .lead {
+  max-width: 34em;
+  margin: 0;
+  color: var(--fg-2);
+  font-size: clamp(1.125rem, 1rem + 0.5vw, 1.3125rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.landing :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+/* Hero */
+.hero {
+  padding-top: clamp(48px, 7vw, 96px);
+}
+
+.hero-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
+  gap: clamp(32px, 4vw, 56px);
+  align-items: end;
+}
+
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.hero h1 {
+  font-size: clamp(2.625rem, 1.4rem + 4.6vw, 5.125rem);
+  line-height: 1.03;
+  letter-spacing: -0.018em;
+}
+
+.hero-start {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.hero-facts {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  letter-spacing: 0.04em;
+}
+
+.hero-code {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
+  gap: var(--space-5);
+  margin-top: clamp(40px, 5vw, 64px);
+}
+
+.hero-note {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* Principles */
+.principles .landing-inner {
+  padding-block: clamp(56px, 7vw, 88px) clamp(56px, 7vw, 96px);
+}
+
+.principle-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  gap: var(--space-6) 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.principles .section-label {
+  margin-bottom: var(--space-6);
+  padding-top: 36px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.principle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.principle-numeral {
+  color: var(--accent);
+  font-size: 1.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.principle strong {
+  color: var(--fg);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.principle-text {
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* One type, end to end */
+.chain {
+  border-block: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.chain .landing-inner {
+  padding-block: clamp(64px, 8vw, 112px);
+}
+
+.chain-intro {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: clamp(40px, 5vw, 64px);
+}
+
+.chain-intro .section-label {
+  color: var(--accent);
+}
+
+.chain-intro h2 {
+  font-size: clamp(2.125rem, 1.5rem + 2.6vw, 3.375rem);
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+}
+
+.chain-intro p:last-child {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.chain-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chain-step {
+  display: flex;
+  gap: clamp(14px, 2vw, 28px);
+}
+
+/* The rail joining the numbers: a line below each number, none under the last. */
+.chain-rail {
+  display: flex;
+  flex: 0 0 36px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.chain-rail::after {
+  flex: 1;
+  width: 1px;
+  margin-block: 6px;
+  background: var(--line-strong);
+  content: '';
+}
+
+.chain-step:last-child .chain-rail::after {
+  display: none;
+}
+
+.chain-number {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-1);
+  background: var(--fg);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.chain-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 14px 40px;
+  padding: 4px 0 var(--space-7);
+}
+
+.chain-step:last-child .chain-body {
+  padding-bottom: 0;
+}
+
+.chain-text {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.chain-text h3 {
+  font-size: var(--text-h3);
+  font-weight: 600;
+}
+
+.chain-text > code {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.chain-text p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.chain-code {
+  display: flex;
+  min-width: 0;
+  flex: 3 1 420px;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.chain-code pre.code {
+  background: var(--bg);
+  font-size: 0.84375rem;
+}
+
+.chain-code figure.code {
+  background: var(--bg);
+}
+
+/* The misspelt line under the code that is right: it names what the compiler says. */
+.chain-mistake {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 10px 16px;
+  border: 1px dashed var(--caution-line);
+  border-radius: var(--radius-3);
+  background: var(--caution-bg);
+  color: var(--fg);
+}
+
+.chain-mistake code {
+  min-width: 0;
+  overflow-x: auto;
+  font-size: 0.84375rem;
+  text-decoration: underline wavy var(--caution-fg);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  white-space: pre;
+}
+
+.chain-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--caution-fg);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+@media (max-width: 519px) {
+  .chain-rail {
+    flex-basis: 28px;
+  }
+
+  .chain-number {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8125rem;
+  }
+}
