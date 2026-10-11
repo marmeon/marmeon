@@ -90,7 +90,7 @@ List it in `bootstrap/app.ts`, beside the app's other configuration: `config: [A
 
 | Driver | Options, besides `visibility: 'private' \| 'public'` |
 | --- | --- |
-| `local` | `root`, relative to the app. `url` for a public disk: a path the app serves, such as `/storage`, or the absolute URL of a CDN in front of the directory. |
+| `local` | `root`, relative to the app. `url` for a public disk: a path the app serves, such as `/storage`, or the absolute URL of a CDN in front of the directory. It must not lie under `/_marmeon/`: the app does not start (see [the framework's paths](routing.md#the-frameworks-paths)). |
 | `s3` | `bucket`, `region`, `endpoint` for an S3-compatible store, `forcePathStyle`, `credentials`, `root` as a prefix in the bucket, `url` for a public disk. |
 | `memory` | `url`. The files are gone with the process: for tests. |
 

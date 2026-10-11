@@ -284,7 +284,9 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
   repository) and provenance. Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
   authentication; then `changeset git-tag` tags the release. The trusted-publisher configuration on npm allows staging only.
   A package's very first version has to be published by hand, before trusted publishing can be set up for it; the workflow covers
-  every version after that.
+  every version after that. The workflow is read-only by default, `id-token: write` belongs to the staging job alone, and no npm
+  token is stored. The policies stay in place: the `LICENSE` holder, private reporting in `SECURITY.md` and the deprecation
+  policy in the README.
   `check-changesets` also holds the configuration to it: the version pull request comes from `changesets/action`, the release job
   runs on a GitHub-hosted runner (trusted publishing needs one), `.changeset/config.json` has `baseBranch` `main`, public
   access and unversioned private packages, and `scripts/npm-trust.sh` names every package.

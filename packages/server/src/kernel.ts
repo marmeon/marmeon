@@ -532,17 +532,19 @@ export function createHttpKernel(
     // An upload's target or its bytes: a request beside the page — like a live validation, it never writes the session
     // (flash data meant for the next page stays) or cookies.
     const upload = request.headers.has(UPLOAD_HEADER);
-    const { pathname } = new URL(request.url);
+    // Decided by the route that matched, not by the raw path: Hono matches the decoded path, so `/%5Fmarmeon/live` reaches
+    // the same route and must get the same treatment. (No route matched for a not-found request.)
+    const routePath = matched.get(request)?.path;
     // An event stream (the live stream: `EventSource` asks for `text/event-stream`) stays open beside the page for as long
     // as the tab does: it reads the session to check who listens, never writes it — no cookie, no flash data taken. The live
     // stream's path is read-only by itself: a request without the header (a script, a proxy that drops it) must not
     // start, extend or save a session there either.
-    const stream = pathname === LIVE_PATH || request.headers.get('accept')?.includes('text/event-stream') === true;
+    const stream = routePath === LIVE_PATH || request.headers.get('accept')?.includes('text/event-stream') === true;
     // The tabs' question for the session's epoch: it reads the session, never writes it — it starts none, extends none
     // (a tab becoming visible is no activity), takes no flash data, sets no cookie.
-    const epoch = pathname === SESSION_PATH;
+    const epoch = routePath === SESSION_PATH;
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
-    const shownPath = redactor.text(pathname);
+    const shownPath = redactor.text(new URL(request.url).pathname);
     if ((island || parent || live || upload || stream || epoch) && readOnly) {
       const reason = live
         ? `a live validation (${request.method} ${shownPath})`
