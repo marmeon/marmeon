@@ -1,27 +1,13 @@
 /**
- * `pnpm check-changesets` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule.
+ * `pnpm check-changesets` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule: one fixed group that
+ * covers every published package and no private one, one version across them, valid changesets (no `major` below 1.0.0),
+ * `.github/workflows/release.yml` (read-only by default, `id-token: write` only in the job that stages the packages, staged with
+ * pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token), `scripts/npm-trust.sh` (staged
+ * publishing only), the policies (LICENSE, DCO, SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages'
+ * version ({@link UPGRADING_ANCHORS}, {@link targetVersion}). Besides: actionlint over the workflows when it is installed
+ * (a note, never a failure).
  *
- *   1. **One fixed group** — `.changeset/config.json` has exactly one `fixed` group, and it covers every published package
- *      (`@marmeon/*`, `marmeon`, `create-marmeon`) and no private one; public access, `main`, private packages unversioned.
- *   2. **One version** — every published package has the same version (lockstep: the exact peers name it).
- *   3. **The changesets** — each names known, published packages with `patch`, `minor` or `major`; **no `major` below 1.0.0**:
- *      in 0.x a breaking change is a `minor` (with its UPGRADING.md entry once there was a release) — Changesets would jump to 1.0.0.
- *   4. **The release workflow** — `.github/workflows/release.yml`: read-only by default, `id-token: write` only in the job that
- *      stages the packages, staged with pnpm (`pnpm stage publish` through `release:stage`) after `pack:check`, never `npm publish`,
- *      a plain `pnpm publish` or an npm token; the version pull request through Changesets; a GitHub-hosted runner.
- *   5. **`scripts/npm-trust.sh`** names every package (`node scripts/npm-trust.ts` writes it) and allows staged publishing only.
- *   6. **`UPGRADING.md`** — before the first release a short page without entries: an entry needs a release to stand under.
- *      From the first release on, every release's section (`## Upgrading to 0.2.0 from 0.1.0`, steps as `###` inside it) has its
- *      entries listed in {@link UPGRADING_ANCHORS}, and every listed entry stands under its release — each with an impact and its
- *      likelihood, and no placeholder left. The first section switches the requirement on: it is refused until its entries are listed.
- *      A release's section must be headed exactly `## Upgrading to <version> from <version>` (level 2, the version as x.y.z): every
- *      heading of level 1–4 that starts with "Upgrading to" or "Upgrading from" (the page title `# Upgrading` aside) and is not so headed is refused.
- *      The sections are bound to the packages' version: `to` is above `from` and at most the version the pending changesets make
- *      ({@link targetVersion}); prerelease versions and Changesets' pre mode are refused, the binding cannot follow them. And a pending `minor` in 0.x (or a `major`) needs its section, with entries
- *      listed. No changeset and no section: nothing to say.
- *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode"), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
- *      private vulnerability reporting, the deprecation policy in the root README.
- * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).
+ * Each rule in full: CONTRIBUTING.md, "Changesets and releases".
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';

@@ -1,21 +1,10 @@
 /**
- * `pnpm image:smoke` — the app as an image: `create-marmeon app --docker` from the tarballs (as in
- * `pack:smoke`: outside the monorepo, the framework from its tarballs inside the app's `vendor/` — the build context) — the
- * starter kit with the files of `marmeon make:docker` — is built with Docker; then the container's life:
+ * `pnpm image:smoke` — the app as an image: `create-marmeon app --docker` from the tarballs (as in `pack:smoke`, outside the
+ * monorepo) is built with Docker, then the container's life: non-root, no .env* in the image, migrate, `/up` and `/login` 200,
+ * healthy, SIGTERM with SHUTDOWN_DELAY=1 → `/up/ready` 503 at once and exit 0 (tini is PID 1, no `docker run --init`, and reaps
+ * orphans), a read-only root, `--workers=2`, a stuck job ends the container with 70. Then the docs' image (`docs-image.ts`).
  *
- *   compose.production.yaml valid · docker build → runs as a user other than root · no .env* in the image (.env and
- *   .env.production are in the context) · migrate --force · start → GET /up 200, /login 200
- *   (sessions written to the storage volume) · the image's health check turns healthy · SIGTERM with SHUTDOWN_DELAY=1 →
- *   /up/ready 503 at once, exit 0 after the delay — all without `docker run --init`: tini is the image's PID 1 · tini reaps
- *   an orphaned process (no zombie) · a read-only root file system starts · start --workers=2 → SIGTERM → exit 0 · a worker
- *   with a stuck job ends the container with 70 · the image's size
- *
- * Then the docs' image (`scripts/docs-image.ts`, `pnpm docs:image` alone): `apps/docs/Dockerfile` built from this checkout, its
- * contents, the container read-only, and `deploy/docs/compose.yaml` behind Caddy over HTTP/2.
- *
- * Containers, the volume and the image are named `marmeon-image-smoke-…` and removed afterwards (Docker's build cache
- * stays — the next build reuses the dependency layers). Without Docker, or when the build cannot reach the registry, the run
- * ends with exit 75 — `pnpm run ci` shows it as skipped, never as green.
+ * Containers, volume and image: `marmeon-image-smoke-…`, removed afterwards. No Docker or registry: exit 75, skipped, never green.
  *
  *   pnpm image:smoke          # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm image:smoke --keep   # leaves the app, the image and the volume (printed) — a red run keeps its app only with --keep

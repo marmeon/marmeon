@@ -1,29 +1,14 @@
 /**
- * `pnpm pack:check` — are the tarballs fit to publish? A part of `pnpm run ci`.
+ * `pnpm pack:check` — are the tarballs fit to publish? A part of `pnpm run ci`. The rules in full: CONTRIBUTING.md, "Changesets
+ * and releases". Tarballs are made with `pnpm pack`: only pnpm applies `publishConfig.exports`.
  *
- *   pnpm pack:check                          # clean build → pnpm pack of every package → the rules below → publint → attw
+ *   pnpm pack:check                          # clean build → pnpm pack of every package → the rules → publint → attw
  *   node scripts/pack-check.ts --no-build    # the tarballs of the current dist/ (quicker; CI always builds clean)
  *   node scripts/pack-check.ts --keep        # leave the tarballs and their unpacked contents in $TMPDIR (the path is printed)
  *
- * The rules, per tarball (made with `pnpm pack` — only pnpm applies `publishConfig.exports`):
- *   - no tests, type tests, `__fixtures__`, `test-helpers` or build info — except in `stubs/` and `template/`, which ship whole
- *     (the generators and create-marmeon copy them into apps, tests included);
- *   - nothing in `dist/` without its source in `src/` (a leftover of an earlier build — `tsc -b` never deletes), and every
- *     source map's sources are in the tarball (declaration and source maps point to `src/`, which ships for them);
- *   - `LICENSE` (the root's, byte for byte — `pnpm license:sync`) and `README.md`;
- *   - the packed manifest without the `@marmeon/source` condition and without `workspace:` ranges; every internal
- *     dependency (also optional peers) at exactly the package's own version (lockstep — the exact peers name the release);
- *   - every `exports`/`bin` target in the tarball, none of them TypeScript source (Node does not strip types under node_modules);
- *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
- *   - the driver rule (`checkDriverRule` in scripts/packages.ts): one wrapped driver is a dependency, one of several an optional
- *     peer, a library the app must share one instance of (OpenTelemetry API, React, Vite) a peer;
- *   - no file names the private record (rule 7 of `pnpm check:source`, the same patterns);
- * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
- * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported); a package with
- * only a bin (create-marmeon) has no entry point for attw to check.
- * `create-marmeon` besides: no dependencies at all (it is the first thing a stranger runs — no supply chain behind
- * it), and its template has no `.env` and no `APP_KEY` with a value (a new app gets a fresh one).
- * Also: the root `tsconfig.json` references every package.
+ * No tests or build info (`stubs/` and `template/` ship whole), no `dist/` file without its source, `LICENSE` byte for byte, no
+ * `@marmeon/source` condition or `workspace:` range, internal dependencies at the exact own version, every `exports`/`bin` target
+ * present and not TypeScript, no file naming the private record (rule 7 of `check:source`); `create-marmeon`: no dependencies.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, type Dirent } from 'node:fs';
@@ -33,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { publint } from 'publint';
 import { formatMessage } from 'publint/utils';
-import { PRIVATE_RECORD_RULES, privateRecordHits, type SourceFile } from './check-source.ts';
+import { privateRecordHits, privateRecordWhy, type SourceFile } from './check-source.ts';
 import { checkDriverRule, frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
 import { licenseDrift } from './sync-license.ts';
 
@@ -109,7 +94,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   // The driver rule: which third-party library is a dependency, an optional peer or a shared peer.
   for (const problem of checkDriverRule(pkg.short, manifest)) problems.push(problem);
   for (const hit of privateRecordInTarball(packed, dir)) {
-    problems.push(`${hit} — no references to the private record (${PRIVATE_RECORD_RULES.find((rule) => rule.what === hit.split(': ')[1])?.why})`);
+    problems.push(`${hit} — no references to the private record (${privateRecordWhy(hit)})`);
   }
 
   for (const [where, target] of exportTargets(manifest)) {

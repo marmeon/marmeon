@@ -1,21 +1,13 @@
 /**
- * `pnpm run ci` — every check of the repository, in one run: the parts below one after the other, each with
- * its exit code and duration, a summary at the end, and an exit code other than 0 as soon as one part is red.
+ * `pnpm run ci` — every check of the repository, one part after the other, each with its exit code and duration; exit 1 when one
+ * is red. `run` is needed: `pnpm ci` is pnpm's own clean install (it deletes every `node_modules`, and checks nothing).
  *
  *   pnpm run ci                          # everything
- *   pnpm run ci --only test,size         # some parts (in the order below)
- *   pnpm run ci --skip test:s3           # all but some
- *   pnpm run ci --bail                   # stop at the first red part
- *   pnpm run ci --no-compose             # the databases are already there (service containers in GitHub Actions)
- *   pnpm run ci --list                   # the parts
+ *   pnpm run ci --only test,size         # some parts (in the order below); --skip a,b likewise
+ *   pnpm run ci --bail | --no-compose | --list   # stop at the first red · the databases already run · the parts
  *
- * `run` is needed: `pnpm ci` without it is pnpm's own clean install (it deletes every `node_modules` and installs
- * again — exit 0, nothing checked). `node scripts/ci.ts …` works too.
- *
- * The suites that need a database start it with `docker compose up -d --wait <service>` from this repository's
- * `compose.yaml` — only its own containers (`marmeon-*`), never another project's. The Postgres and Redis suites run
- * one after the other, never at once: they share their test databases.
- *
+ * The suites that need a database start only this repository's `compose.yaml` containers (`marmeon-*`, `docker compose up -d
+ * --wait`), never another project's, and the Postgres and Redis suites run one after the other: they share their databases.
  * A new check is one more entry in `parts`.
  */
 import { spawn, type ChildProcess } from 'node:child_process';

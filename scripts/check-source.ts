@@ -1,21 +1,8 @@
 /**
- * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit.
- *
- *   1. **The old name is gone:** no file — tracked, or new and not ignored — and no path says the framework's name from before
- *      0.1.0, in any case. Only the company name may contain it.
- *   2. **No app installs a validation engine:** apps, the starter's template, the stubs and what a generator writes validate with
- *      `rules` of @marmeon/validation — no file outside `packages/<name>/src/` imports Valibot, no app manifest lists it.
- *   3. **`NODE_ENV` is checked positively** in code people run or copy: no `!== 'production'`, no `NODE_ENV === 'production'`, no
- *      `import.meta.env.DEV` / `!import.meta.env.PROD` — each sends a missing `NODE_ENV` (production) down the development branch.
- *   4. **The old default prefix of API tokens is gone**, everywhere.
- *   5. **The docs speak to their readers:** no page under `docs/` is pending, and the docs, the package cards, the root texts,
- *      what every new app copies and the apps' READMEs and `.env` files compare Marmeon with no other framework.
- *   6. **The framework's messages speak to app developers:** no string of a package's code or launchers names a decision, a wave
- *      or another framework (read with oxc-parser — comments, names and regular expressions are rule 7's).
- *   7. **No references to the private record:** no tracked file names a decision number, a wave or a step, a personal date or a
- *      path into the maintainers' notes (`pnpm pack:check` holds the packed tarballs to the same patterns).
- *   8. **A mutant is never switched off without a reason:** every disable comment of the mutation tester in code says why, in
- *      three words or more, and a disabled range is restored in the same file (and never covers all mutators).
+ * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit. The rules: the
+ * old name is gone, no Valibot outside a package's `src/`, `NODE_ENV` is checked positively, the old token prefix is gone, the
+ * docs and the framework's messages speak to their readers, no reference to the private record, no mutant switched off without
+ * a reason.
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -259,6 +246,11 @@ export const PRIVATE_RECORD_RULES: readonly TextRule[] = [
   },
 ];
 
+/** Why the rule behind a `privateRecordHits` hit exists (`path:line: what: text` → its `why`). */
+export function privateRecordWhy(hit: string): string | undefined {
+  return PRIVATE_RECORD_RULES.find((rule) => rule.what === hit.split(': ')[1])?.why;
+}
+
 /** Rule 7: every line that names the private record — `path:line: what: text`. */
 export function privateRecordHits(files: Iterable<SourceFile>): string[] {
   const hits: string[] = [];
@@ -396,7 +388,7 @@ export function checkSource(repository: string = root): string[] {
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
     ...mutationCommentHits(files).map((hit) => `mutation testing (a disabled mutant hides the test gap it would show; CONTRIBUTING.md › Rules over the source): ${hit}`),
-    ...privateRecordHits(files).map((hit) => `no references to the private record (${PRIVATE_RECORD_RULES.find((rule) => rule.what === hit.split(': ')[1])?.why}): ${hit}`),
+    ...privateRecordHits(files).map((hit) => `no references to the private record (${privateRecordWhy(hit)}): ${hit}`),
   ];
 }
 

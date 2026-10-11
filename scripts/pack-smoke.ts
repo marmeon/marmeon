@@ -1,39 +1,14 @@
 /**
- * `pnpm pack:smoke` — the framework as a stranger gets it: the tarballs of every package, and a new app made
- * from them OUTSIDE the monorepo by the `create-marmeon` tarball — twice. A part of `pnpm run ci`.
- *
- *   create-marmeon without a directory and without a terminal → exit 2 at once (never a prompt that waits)
- *   create-marmeon app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
- *     → migrate (development from .env) → vitest run → lint → build without .env (no key; nothing shaped like an APP_KEY and
- *     not the app's own in dist/ or .marmeon/) → start → GET /login 200
- *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
- *     .br, immutable), GET / 200, a sign-up with a known address answered like a new one (private registration) → start
- *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns → pnpm install --prod → node_modules/.bin/marmeon → start → GET /login 200
- *     → SMTP from the production install (nodemailer comes with @marmeon/mail) → pnpm add @marmeon/redis @marmeon/storage (their
- *     tarballs, nothing else), build: start with CACHE_DRIVER=redis SESSION_DRIVER=redis on the Redis of compose.yaml (`redis` came with
- *     @marmeon/redis — the app's package.json has none) → an S3 default disk without the AWS SDK: the start fails with the exact command
- *   create-marmeon app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
- *     node_modules finds every package the pnpm app's does
- *
- * Every `marmeon start` must be exactly one Node process (no launcher in front of the server — signals, exit codes and
- * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group — and must load neither oxc-parser (the
- * injection lists come from `marmeon build`) nor pino-pretty (JSON logs), with no "build artifacts" warning: a preloaded
- * hook records every module the start loads.
+ * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm, `--minimal --npm`) made from the
+ * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, `install --prod`, Redis and S3 steps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
  *   pnpm pack:smoke --offline [--store-dir <dir>]   # never the network: only what pnpm's store (or that one) and npm's cache have
  *
- * The apps live in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@marmeon or a
- * pnpm-workspace.yaml (checked by path — nothing of the repository can leak in). The scaffolder takes the framework from
- * `MARMEON_CREATE_TARBALLS` (its maintainers' switch, CONTRIBUTING.md, "The starter's template"): the tarballs go into the app's
- * `vendor/marmeon/`, every `@marmeon/*` dependency and override points there (the exact versions of this checkout are on no
- * registry), and for pnpm nothing is hoisted — a package that imports what it does not declare (a devDependency, say) fails
- * here as it would for a user.
- *
- * Third-party packages come from pnpm's store, npm's cache or the registry. When none is reachable the run ends with exit 75
- * and "skipped" — `pnpm run ci` reports that as skipped, never as green. The Redis step needs the Redis of compose.yaml
- * (`MARMEON_TEST_REDIS_URL`, default redis://127.0.0.1:56379 — `pnpm run ci` starts it); without it the run is red.
+ * Nothing hoisted: an undeclared import fails here. Framework from `MARMEON_CREATE_TARBALLS` (CONTRIBUTING.md, "The starter's
+ * template"). No reachable package source: exit 75, skipped, never green. The Redis step needs compose.yaml's Redis; else red.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -665,7 +640,7 @@ async function main(): Promise<number> {
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
       if (listed.length < 5) throw new SmokeError(`marmeon build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
     });
-    await pnpmApp.step('marmeon start → GET /login 200 (CSP nonce, precompressed assets), GET / 200, private registration', () =>
+    await pnpmApp.step('marmeon start → GET /login 200 (CSP nonce, no cookie for a guest, a cross-site post refused, precompressed assets), GET / 200, private registration', () =>
       pnpmApp.serve('/login', async (base, output) => {
         await checkProductionHttp(base);
         await checkRegistration(true)(base, output);

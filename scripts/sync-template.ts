@@ -1,20 +1,12 @@
 /**
- * `pnpm template:sync` — the blank app becomes the template of `create-marmeon` (the blank app is what
- * `create-marmeon --minimal` writes). Edit `apps/blank-app`, then sync: its files (tracked and new, never ignored ones like
- * `.env`) go to `packages/create-marmeon/template/base/`, with three differences —
- *
- *   - `.gitignore` files are stored as `_gitignore` (npm would turn them into `.npmignore` when it packs) and `package.json` as
- *     `_package.json` (a nested package.json in a tarball confuses tools — publint, bundlers); the scaffolder renames them back;
- *   - `tsconfig.json` is standalone: the repository's shared settings (`tsconfig.base.json`) without the source condition and
- *     the declaration output, then the blank app's own — a new app has no monorepo to extend;
- *   - `README.md` is left out: the scaffolder writes each app its own;
- *   - every `APP_KEY=` in a `.env*` file is empty — the scaffolder writes a fresh key into the app's `.env` and `.env.test`, so no
- *     two apps share one (the blank app's test key stays in the repository).
+ * `pnpm template:sync` — the blank app becomes the template of `create-marmeon`: its files (tracked and new, never ignored ones
+ * like `.env`) go to `packages/create-marmeon/template/base/`, with the differences CONTRIBUTING.md names ("The starter's
+ * template": `_gitignore` and `_package.json`, a standalone tsconfig, no README, every `APP_KEY=` empty).
  *
  *   pnpm template:sync                          # write the template
  *   node scripts/sync-template.ts --check       # exit 1 and name every file that differs (packages/create-marmeon tests it too)
  *
- * The starter kit's own files (`template/kit/`: the home module) are not synced — they live only there.
+ * The starter kit's own files (`template/kit/`) are not synced.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, type Dirent } from 'node:fs';

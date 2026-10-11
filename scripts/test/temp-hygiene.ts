@@ -1,20 +1,14 @@
 /**
  * Vitest global setup of the repository (`vitest.config.ts`): every run gets a temporary directory of its own — `TMPDIR` points
- * into it for the workers and every process a test starts, so `os.tmpdir()` is the run's — and at the end the run fails when a test
- * left a `marmeon-*` entry in it, with the list. Then the directory goes, whatever it holds.
+ * into it for the workers and every process a test starts — and at the end the run fails when a test left a `marmeon-*` entry in
+ * it, with the list. Then the directory goes, whatever it holds. (Per run, not a count of `os.tmpdir()` before and after: other
+ * processes write there at the same time.)
  *
- * A directory per run instead of counting `os.tmpdir()` before and after: other processes write there at the same time — a second
- * `pnpm test` (another checkout), `pnpm bench` (its worktrees under `marmeon-bench/`), `pack:smoke`, the system — so
- * a shared count would blame this run for their entries, or miss its own ones they removed. Inside the run's directory every entry is
- * this run's.
+ * A run killed before its teardown leaves `marmeon-run-<pid>-…`: the next run removes it once that process is gone.
  *
- * A run that is killed before its teardown leaves its directory (`marmeon-run-<pid>-…`): the next run removes it once that process is
- * gone.
- *
- * Removed with the directory on purpose (not leftovers): the bundle measurements' workspace
- * (`marmeon-bundle-<checkout>`, shared by the size tests of a run, `packages/react/src/__fixtures__/bundle.ts`). The SQLite worker
- * databases of `createTestApp` live in the app's `storage/framework/testing/`, not here: a `marmeon-test-*.sqlite` file in the run's
- * directory is a leftover.
+ * Kept until the end on purpose: only the bundle measurements' workspace (`marmeon-bundle-<checkout>`,
+ * `packages/react/src/__fixtures__/bundle.ts`). The worker databases of `createTestApp` live in the app's `storage/`: a
+ * `marmeon-test-*.sqlite` file here is a leftover. CONTRIBUTING.md, "The test suites against real services".
  */
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

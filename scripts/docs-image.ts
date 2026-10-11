@@ -1,21 +1,11 @@
 /**
- * `pnpm docs:image` — the docs as the image they are deployed with (part of the `image` part of `pnpm run ci`, after the
- * starter kit's image): `apps/docs/Dockerfile` built from this checkout, then
+ * `pnpm docs:image` — the docs as the image they are deployed with (the `image` part of `pnpm run ci`, after the starter kit's
+ * image): `apps/docs/Dockerfile` built from this checkout, then checked as an image (non-root, no `.env*`, tests or dev
+ * dependencies, tini is PID 1), as a container (read-only root, `/up` 200, every page 200 without Set-Cookie, healthy, SIGTERM →
+ * exit 0) and behind Caddy (`deploy/docs/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation).
  *
- *   the image: runs as a user other than root · no .env*, no test, no other app's code, no config of the build (vite, vitest,
- *   tsconfig) · no dev dependency · every page of the docs in /app/content, and no package README · a command besides start (route:types --check, no
- *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and marmeon gives the
- *   source condition only inside the workspace · tini is PID 1 and reaps an orphaned process
- *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page
- *   and every page of the docs 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
- *   reaps an orphan · no warning in the log · SIGTERM → exit 0
- *   behind Caddy (deploy/docs/compose.yaml itself, Caddy's port moved to a free one on 127.0.0.1, DOCS_DOMAIN=localhost — Caddy's
- *   own CA): HTTP/2 · no Set-Cookie · Strict-Transport-Security · X-Forwarded-Proto/-Host trusted (an old client's 409 names
- *   https://localhost:<port>) · documents compressed, and a revalidation with the compressed ETag answers 304
- *
- * The image is tagged `marmeon-docs:smoke-…`, the Compose project `marmeon-docs-smoke-…`; both, the containers and the
- * volumes are removed afterwards (the build cache stays). Without Docker, or when the build cannot reach the registry, it ends
- * with exit 75 — skipped, never green.
+ * Image `marmeon-docs:smoke-…`, Compose project `marmeon-docs-smoke-…`: both and the volumes are removed afterwards. Without
+ * Docker, or when the build cannot reach the registry: exit 75 — skipped, never green.
  *
  *   pnpm docs:image           # build, check, remove
  *   pnpm docs:image --keep    # leaves the image (printed)

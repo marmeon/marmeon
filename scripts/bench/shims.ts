@@ -1,18 +1,14 @@
 /**
- * `pnpm bench … --without <measures>`: switches the request path's four security measures off in a measured process — and counts how
- * often each one runs, so that "off" is proven, not assumed (`requests.ts` aborts when a measure that is off ran even once).
- * Preloaded into the worker (`--import`) of the checkout being measured; nothing of this exists outside `pnpm bench`.
+ * `pnpm bench … --without <measures>`: switches the request path's four security measures off in a measured process — and counts
+ * how often each one runs, so that "off" is proven, not assumed (`requests.ts` aborts when a measure that is off ran). Preloaded
+ * (`--import`) into the worker of the checkout being measured; nothing of this exists outside `pnpm bench`.
  *
- * Each measure is a small rewrite of one source file as it is loaded (a `module.registerHooks` load hook): the measure's code is
- * routed through `globalThis.__marmeonBench.run(measure, original, args)`, which counts the call and runs the original — or,
- * when the measure is off, returns what the code gives without the measure, without running it. An anchor that is no longer
- * found exactly once in its file stops the process (the code moved: update the anchor here).
+ * Each measure is a rewrite of one source file as it loads (a `module.registerHooks` load hook) that routes its code through
+ * `globalThis.__marmeonBench.run(measure, original, args)`. An anchor no longer found exactly once stops the process (the code
+ * moved: update the anchor here).
  *
- *   session-hash     stores key a session by SHA-256(id) — off: by the plain id
- *   fetch-metadata   VerifyCsrfToken's Fetch Metadata/Origin stage — off: every unsafe request needs the token
- *   csp              contentSecurityPolicy() with its nonce — off: the worker leaves the middleware out of the app
- *                    (this file only counts its calls)
- *   epoch            PageObject.epoch, an HMAC per page — off: no epoch at all
+ *   session-hash (off: keyed by the plain id) · fetch-metadata (VerifyCsrfToken's stage; off: every unsafe request needs the
+ *   token) · csp (off: the worker leaves the middleware out, this file only counts) · epoch (HMAC per page; off: no epoch)
  */
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';

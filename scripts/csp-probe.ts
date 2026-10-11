@@ -1,22 +1,12 @@
 /**
- * The CSP probe: a built app in headless Chrome under a strict style policy — every document gets a second
- * `Content-Security-Policy: style-src 'self'` (no `'unsafe-inline'`, no nonce; both policies apply) — and a counter of
- * `securitypolicyviolation` events installed before the first script. Green when nothing is blocked and the framework's look
- * arrived (from `@marmeon/react/styles.css`, not from inline styles):
+ * The CSP probe: a built app in headless Chrome under a second, strict policy (`style-src 'self'`, no `'unsafe-inline'`, no
+ * nonce) and a counter of `securitypolicyviolation` events. Green when nothing is blocked and the framework's look arrived from
+ * `@marmeon/react/styles.css`. Never a gate (CONTRIBUTING.md, "The repository").
  *
  *   node scripts/csp-probe.ts --app apps/web-app [--build]               # builds (with --build), starts `marmeon start`, probes
  *   node scripts/csp-probe.ts --app <kit> --profile kit [--build]        # a starter kit (pack:smoke --keep, create-marmeon)
  *   node scripts/csp-probe.ts --url http://127.0.0.1:3961 --profile web-app   # a server that already runs
- *   node scripts/csp-probe.ts --app apps/web-app --build --throwaway     # a fresh checkout (a new git worktree)
- *
- * `--app` starts the app as it is: its `.env` and its database (seeded — the profile signs in). `--throwaway` needs neither: a
- * generated `APP_NAME`, `APP_URL` and `APP_KEY`, and SQLite files in a temporary directory (`DB_DATABASE`, `SYSTEM_DB_DATABASE`),
- * migrated and seeded first (`marmeon migrate:fresh --seed --force --no-types`) and removed afterwards; `--env` still wins.
- *
- * What it does, per profile: the guest and the signed-in pages (sign-in over HTTP, the cookie set with `Network.setCookie` —
- * a form sign-in leaves headless Chrome deaf to CDP input), a layer by deep link and by a real click (focus inside, Escape closes
- * it, focus back on the link), a visit whose request fails (the notice of an unreachable server) and one answered with a 500 (the
- * dialog with the built-in error page, both lazy chunks). The app's own policy is reported as it is.
+ *   node scripts/csp-probe.ts --app apps/web-app --build --throwaway     # a fresh checkout: generated keys, temporary SQLite, seeded
  *
  * Needs Google Chrome (`--chrome <path>` or `CHROME`). Starts and stops its own processes by PID. Exit 0 green, 1 red, 2 setup.
  */
@@ -83,7 +73,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => pr
 
 /**
  * `--throwaway`: what a fresh checkout lacks — the variables the app cannot start without and a database with the profile's users —
- * in a temporary directory, never the app's own `.env` or `storage/`.
+ * in a temporary directory (its SQLite files are removed afterwards), never the app's own `.env` or `storage/`. `--env` still wins.
  */
 function throwaway(app: string, env: Record<string, string>): { env: Record<string, string>; dir: string } {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-csp-probe-db-')));
@@ -186,7 +176,9 @@ class Tab {
     await tab.send('Page.enable');
     await tab.send('Runtime.enable');
     await tab.send('Network.enable');
+    // Sign-in happens over HTTP and the cookie is set here: a form sign-in leaves headless Chrome deaf to CDP input.
     for (const cookie of cookies) await tab.send('Network.setCookie', { ...cookie, url: base });
+    // The counter must exist before the first script of any document runs, or early violations go uncounted.
     await tab.send('Page.addScriptToEvaluateOnNewDocument', {
       source:
         "window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI || ''} ${(e.sample || '').slice(0, 60)}`.trim()));",

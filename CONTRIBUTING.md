@@ -113,6 +113,10 @@ pnpm changeset         # a changeset for your change (below); pnpm check-changes
 pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome under style-src 'self': 0 CSP violations (never a gate)
 ```
 
+`pnpm csp:probe` with `--build` builds, then starts the app (or probes `--url`; `--throwaway`: generated keys and a seeded temporary SQLite, for a fresh checkout),
+signs in over HTTP and visits the guest and signed-in pages, a layer by deep link and by click, and a failing visit — in headless
+Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <path>` or `CHROME`).
+
 `pnpm run ci` runs 15 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
 and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle limits —
@@ -159,6 +163,8 @@ kernel as a browser would — the cookies as the server set them, the body read;
 side runs from a `git worktree` under `$TMPDIR/marmeon-bench/` (this checkout as a snapshot with its uncommitted changes; before a
 run each one must import what a measured process imports — a missing module reinstalls its `node_modules`), the sides
 alternate in fresh processes, and the report gives the median, the mean's 95 % confidence interval and Welch's test per pair.
+`--in-place` measures the checkout itself instead of a snapshot; the repository's own `apps/web-app/.env` (read under `.env.test`)
+and the location of the worktrees changed results by several per cent, so every side runs from the same place.
 `--without <measure>` (`session-hash`, `fetch-metadata`, `csp`, `epoch`; `all` for all four) switches one of the request path's
 security measures off in one variant — counted, and refused when one still runs — so its cost shows on its own.
 
@@ -277,9 +283,27 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
   **stages** every package that is not on npm yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
   repository) and provenance. Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
   authentication; then `changeset git-tag` tags the release. The trusted-publisher configuration on npm allows staging only.
+  `check-changesets` also holds the configuration to it: the version pull request comes from `changesets/action`, the release job
+  runs on a GitHub-hosted runner (trusted publishing needs one), `.changeset/config.json` has `baseBranch` `main`, public
+  access and unversioned private packages, and `scripts/npm-trust.sh` names every package.
 - Packages are packed and published with **pnpm** only — `npm pack` and `npm publish` ignore `publishConfig.exports` and would
   ship the `@marmeon/source` condition, TypeScript sources Node does not strip under `node_modules` (`pnpm pack:check` proves the
   tarballs).
+- **`pnpm pack:check`** holds each tarball to these rules: no tests, type tests, `__fixtures__`, `test-helpers` or build info
+  (`stubs/` and `template/` ship whole — generators and create-marmeon copy them into apps, tests included); no `dist/` file
+  without its source in `src/` (a leftover of an earlier build) and every source map's sources in the tarball; `LICENSE` byte
+  for byte the root's (`pnpm license:sync`) and a `README.md`; the packed manifest without the `@marmeon/source` condition and
+  `workspace:` ranges, every internal dependency (optional peers too) at the package's own version; every `exports`/`bin` target
+  in the tarball and none of them TypeScript source; MIT, a repository with the package's directory, `engines.node`, public
+  access with provenance; the driver rule (`checkDriverRule` in `scripts/packages.ts`: one wrapped driver is a dependency, one
+  of several an optional peer, a library the app must share one instance of — OpenTelemetry API, React, Vite — a peer); no
+  reference to the private record. Then publint (warnings count) and attw with the `esm-only` profile (the packages are ESM
+  only, so the CommonJS resolutions are not checked). `create-marmeon` has no dependencies at all — it is the first thing a
+  stranger runs — and its template has no `.env` and no `APP_KEY` with a value. The root `tsconfig.json` references every package.
+- `pnpm pack:smoke` makes a starter-kit app (pnpm) and a minimal one (npm) from the tarballs outside the repository and runs
+  install, tests, lint, build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
+  pino-pretty; the Redis step needs the Redis of `compose.yaml`. The apps live under `$TMPDIR`, with no `node_modules/@marmeon`
+  or `pnpm-workspace.yaml` above them.
 - A broken version is never unpublished; it is deprecated (`npm deprecate 'marmeon@0.2.1' 'Broken: use 0.2.2'`, for every
   package of the release) and fixed by the next patch.
 - `scripts/npm-trust.sh` is generated (`node scripts/npm-trust.ts`) — the `npm trust github` call for every package, run once by
@@ -318,7 +342,8 @@ neither. Any other set gets its own file — Vitest adds `development`: `manifes
 
 `packages/create-marmeon/template/base` is `apps/blank-app`: change the blank app, then run `pnpm template:sync` — a test fails
 while the two differ (`node scripts/sync-template.ts --check` names every file). The template stores `.gitignore` and
-`package.json` as `_gitignore` and `_package.json`, makes `tsconfig.json` standalone, empties every `APP_KEY=` and leaves
+`package.json` as `_gitignore` and `_package.json` (npm turns a `.gitignore` into `.npmignore` when it packs, and a nested `package.json` in a
+tarball confuses publint and bundlers; the scaffolder renames them back), makes `tsconfig.json` standalone, empties every `APP_KEY=` and leaves
 `README.md` out — the scaffolder writes each app its own README and keys. `template/kit` holds what the starter kit adds: the
 home module and the app's dialog.
 

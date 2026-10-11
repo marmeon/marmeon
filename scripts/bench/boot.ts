@@ -5,14 +5,9 @@
  *   pnpm bench boot --app <dir A> --app <dir B> [--runs 9]   # A/B: the apps start alternately (fair under changing load)
  *   pnpm bench boot --app apps/web-app --no-profile
  *
- * Each app needs a build (`marmeon build`): the starts run what production runs — `node_modules/marmeon/bin/marmeon.js
- * start` in the app, without `NODE_ENV` (so: production), without this process's `NODE_OPTIONS`, a fresh process each time.
- * One unmeasured start per app comes first (it warms the disk cache and Node's compile cache).
- *
- * The breakdown is the CPU profile of one more start (`--cpu-prof`, ended at the first request by `loads.ts`), each sample
- * attributed to: module loading (read, compile, the loader), type stripping, the injection lists (hash check or analysis),
- * discovery, the app's boot (`createApplication`), the server (renderer, listener), module evaluation and the rest. The
- * profiler slows the start: the shares count, the absolute numbers are only roughly those of an unprofiled start.
+ * Each app needs a build: the starts run what production runs (`node_modules/marmeon/bin/marmeon.js start`, no `NODE_ENV`, no
+ * `NODE_OPTIONS`, a fresh process) after one unmeasured warm-up start. The breakdown is the CPU profile of one more start
+ * (`--cpu-prof`, ended at the first request by `loads.ts`); the profiler slows it, so the shares count, not the absolute numbers.
  */
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';

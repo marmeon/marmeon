@@ -5,12 +5,9 @@
  *   pnpm docs:check     # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
- * The smoke test asks the running production build for the start page, every page of the docs'
- * sections (`/docs/<slug>`: `docs/*.md`, `UPGRADING.md`, …) (200, server-rendered, the static `'self'`
- * Content-Security-Policy without a nonce), the search (`onOneServer` → the scheduling page, `afterRollback` → transactions,
- * `SHUTDOWN_DELAY` → the deployment page), `/up`, no `Set-Cookie` on any public page, caching headers (`public`, `ETag`,
- * `Vary`, `304`), an unknown page and a package's old page (404 — the READMEs are cards for npm) and a 10 000-character query
- * (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
+ * The smoke test asks the production build for the start page, every docs page (200, server-rendered, the static `'self'`
+ * policy without a nonce), the search, `/up`, caching headers, no `Set-Cookie` on a public page, a 404 for an unknown page and a
+ * package's old page, and a 10 000-character query (no 500). The docs' image is `scripts/docs-image.ts`.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';

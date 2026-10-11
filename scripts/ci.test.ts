@@ -1,6 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -16,13 +17,15 @@ import {
   oldTokenPrefixHits,
   PRIVATE_RECORD_RULES,
   privateRecordHits,
+  privateRecordWhy,
   runtimeStringHits,
   textRuleHits,
   textRuleWhere,
 } from './check-source.ts';
 import { parts } from './ci.ts';
-import { privateRecordInTarball } from './pack-check.ts';
+import { checkTarball, privateRecordInTarball } from './pack-check.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
+import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 /** This file's samples of the private record carry a `·` inside each reference, so the file passes rule 7 itself; `ref()` takes it out. */
@@ -346,6 +349,69 @@ describe('rule 7: no references to the private record', () => {
   it('names each rule in the problems of check:source', () => {
     expect(PRIVATE_RECORD_RULES.map((rule) => rule.what)).toEqual(['a decision number', 'a wave reference', 'a personal date', 'a path into the private record']);
   });
+
+  it('finds the why of a hit by its rule', () => {
+    for (const rule of PRIVATE_RECORD_RULES) expect(privateRecordWhy(`a.ts:1: ${rule.what}: text`)).toBe(rule.why);
+    expect(privateRecordWhy('a.ts:1: something else: text')).toBeUndefined();
+  });
+});
+
+describe('check:source — a problem names its rule and why', () => {
+  /** A repository of its own (`git init`) holding `files`, read by `checkSource` as the real one is. */
+  const problemsOf = (files: Record<string, string>) => {
+    const dir = tempDir('marmeon-ci-test-');
+    expect(spawnSync('git', ['init', '-q'], { cwd: dir }).status).toBe(0);
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), ref(text));
+    }
+    return checkSource(dir);
+  };
+
+  it('names the rule and its why for rules 3, 4, 6 and 8, and the rule for rules 1 and 2', () => {
+    const problems = problemsOf({
+      'notes/name.txt': OLD_NAME,
+      'apps/x/engine.ts': `import * as v from '${ENGINE}';`,
+      'apps/x/env.ts': "if (process.env.NODE_ENV !== 'production') run();",
+      'notes/token.txt': `${OLD_TOKEN_PREFIX}1`,
+      'packages/x/src/message.ts': "export const message = 'works like Laravel';",
+      'packages/x/src/mutant.ts': '// Stryker disable next-line StringLiteral',
+    });
+    const label = (start: string, path: string) => expect(problems, start).toContainEqual(expect.stringMatching(new RegExp(`^${start}.*${path}:1:`)));
+    label('the old name: ', 'notes/name.txt');
+    label(`no ${ENGINE} in apps, stubs and templates: `, 'apps/x/engine.ts');
+    label('NODE_ENV checked positively \\(only development and test are development; a missing NODE_ENV is production\\): ', 'apps/x/env.ts');
+    label('the old token prefix \\(API tokens start with marmeon_\\): ', 'notes/token.txt');
+    label("the framework's messages speak to app developers \\(say what holds, not its decision or wave\\): ", 'packages/x/src/message.ts');
+    label('mutation testing \\(a disabled mutant hides the test gap it would show; CONTRIBUTING.md › Rules over the source\\): ', 'packages/x/src/mutant.ts');
+  });
+
+  it('names the what and the why of each docs rule', () => {
+    const samples: Record<string, [string, string]> = {
+      'the pending marker': ['docs/draft.md', '<!-- docs:pending -->'],
+      'a comparison with another framework': ['docs/compare.md', 'Like Laravel, but typed.'],
+    };
+    expect(Object.keys(samples)).toEqual(DOC_TEXT_RULES.map((rule) => rule.what));
+    const problems = problemsOf(Object.fromEntries(Object.values(samples)));
+    for (const rule of DOC_TEXT_RULES) {
+      const [path, text] = samples[rule.what]!;
+      expect(problems).toContainEqual(`${rule.what} in the docs (${rule.why}): ${path}:1: ${text}`);
+    }
+  });
+
+  it('names the what and the why of each rule on the private record', () => {
+    const samples: Record<string, string> = {
+      'a decision number': '// kept (E·12)',
+      'a wave reference': '// added in Wa·ve 3',
+      'a personal date': '// agreed on 07.·10.',
+      'a path into the private record': '// see scratch·pad/x',
+    };
+    expect(Object.keys(samples)).toEqual(PRIVATE_RECORD_RULES.map((rule) => rule.what));
+    const problems = problemsOf(Object.fromEntries(Object.values(samples).map((text, index) => [`notes/${index}.txt`, text])));
+    PRIVATE_RECORD_RULES.forEach((rule, index) => {
+      expect(problems).toContainEqual(expect.stringContaining(`no references to the private record (${rule.why}): notes/${index}.txt:1: ${rule.what}: `));
+    });
+  });
 });
 
 describe('rule 8: no mutant is disabled without a reason', () => {
@@ -419,6 +485,39 @@ describe('pack:check — no references to the private record in the tarballs', (
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('pack:check — the rules over an unpacked tarball', () => {
+  const manifest = { name: '@marmeon/sample', version: '0.1.0', license: 'MIT' };
+
+  /** Unpacks a tarball of `files` into a temporary directory and returns what `checkTarball` says about it. */
+  const problemsOf = (files: Record<string, string>) => {
+    const dir = tempDir('marmeon-ci-test-');
+    for (const [path, text] of Object.entries({ 'package.json': JSON.stringify(manifest), ...files })) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+    const packed = { name: manifest.name, version: manifest.version, tarball: join(dir, 'sample.tgz'), files: Object.keys({ 'package.json': '', ...files }) };
+    const pkg = { name: manifest.name, short: 'sample', dir: join(dir, 'no-such-package'), manifest };
+    return checkTarball(packed, dir, pkg, 'The license.\n');
+  };
+
+  it('names a missing LICENSE and a test file', () => {
+    const problems = problemsOf({ 'README.md': '# Sample\n', 'dist/index.js': '', 'src/index.ts': '', 'dist/index.test.js': '', 'src/index.test.ts': '' });
+    expect(problems).toContain('LICENSE is missing — pnpm license:sync');
+    expect(problems).toContain('dist/index.test.js is a test — exclude it in "files"');
+  });
+
+  it('names a LICENSE that is not the root one, and a missing README', () => {
+    const problems = problemsOf({ LICENSE: 'Another license.\n' });
+    expect(problems).toContain('LICENSE is not the root LICENSE — pnpm license:sync');
+    expect(problems).toContain('README.md is missing');
+  });
+
+  it('finds nothing to name when LICENSE and README are there and no test ships', () => {
+    const problems = problemsOf({ LICENSE: 'The license.\n', 'README.md': '# Sample\n' });
+    expect(problems.filter((problem) => /LICENSE|README|is a test/.test(problem))).toEqual([]);
   });
 });
 

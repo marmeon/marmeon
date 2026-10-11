@@ -1,6 +1,5 @@
 /**
  * `pnpm bench login|people` — the request path, in-process against the web app (no gate, never part of `pnpm run ci`).
- *
  *   pnpm bench login                                   # this checkout: /login with a guest session and without a cookie
  *   pnpm bench login --base f785159 --runs 6           # A/B: alternating, each run a fresh process; median, 95 % CI, Welch test
  *   pnpm bench login --base f785159 --without all      # adds this checkout with the four security measures off (shims.ts; counted, proven 0)
@@ -8,18 +7,8 @@
  *   pnpm bench people                                  # GET /people signed in
  *   pnpm bench login --profile [--base f785159]        # CPU profile of the measured requests: top lists (self, inclusive) and the diff
  *
- * Every side runs from a `git worktree` under `$TMPDIR/marmeon-bench/` — the base at its commit, this checkout as a snapshot (HEAD
- * plus the working tree's changes and untracked files; `--in-place` measures the checkout itself). Same place, same conditions: the
- * repository's own `apps/web-app/.env` (read under `.env.test`) and its location changed results by several per cent.
- * Worktrees are kept for the next run (`git worktree remove` cleans up); before a run each one is smoke-tested — it imports what a
- * measured process imports, and a missing module (macOS cleans `$TMPDIR` file by file) removes its `node_modules` and installs
- * again (`integrity.ts`). A run: `--rounds` × `--requests` per scenario after a
- * warm-up of 500; the run's number is the median of its rounds, in µs per request. Noise on a laptop is ±3–5 % between runs —
- * compare sides measured in the same `pnpm bench` call only.
- *
- * Options: `--scenario <name>` (repeatable: login, login-guest, login-document, people), `--encrypt` (`SESSION_ENCRYPT=true`; off
- * by default — the budget is measured without; `--encrypt-too`: every variant twice, plain and encrypted), `--rounds 3`, `--requests 10000`, `--runs 6`, `--checkout <label>=<dir>` (repeatable: a
- * checkout prepared by hand, installed — e.g. this one with a change taken back, to attribute a saving).
+ * Every side runs from a worktree under `$TMPDIR/marmeon-bench/` (CONTRIBUTING.md, "Benchmarks"); compare sides of one call only.
+ * Options: `--scenario <name>` (repeatable), `--encrypt`/`--encrypt-too`, `--rounds`, `--requests`, `--runs`, `--in-place`, `--checkout <label>=<dir>`.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';

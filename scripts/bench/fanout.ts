@@ -1,17 +1,14 @@
 /**
- * `pnpm bench fanout` — what one live hint costs the process that holds the streams (the channel index). In-process:
- * a `LiveHub` with the memory backend and N open streams, each following a channel of its own and one channel they all share;
- * every stream's `hello` read, then hints:
- *
- *   - one follower — a hint on a channel only one stream follows (the common case: `users.<id>`): with the index, independent of N;
- *   - all followers — a hint on the channel every stream follows: O(N) by nature (each stream gets its event).
+ * `pnpm bench fanout` — what one live hint costs the process that holds the streams (the channel index). In-process: a `LiveHub`
+ * with the memory backend and N open streams, each following a channel of its own and one they all share. A hint on a channel
+ * only one stream follows is independent of N with the index; a hint on the shared one is O(N) by nature.
  *
  *   pnpm bench fanout                         # 50 000 streams
  *   pnpm bench fanout --streams 10000 --runs 15
  *   pnpm bench fanout --live <dir>            # another checkout's packages/live/dist (a base built there) — the numbers before
  *
- * "enqueue" is the refresh until the hub handed the hint to every follower (the backend delivers synchronously in memory); "read"
- * until every follower's reader got it. Medians. Never a gate.
+ * "enqueue" is the refresh until the hub handed the hint to every follower; "read" until every follower's reader got it. Medians.
+ * Never a gate.
  */
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
