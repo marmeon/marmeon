@@ -135,7 +135,8 @@ describe('API tokens', () => {
   });
 });
 
-describe('the pages, rendered on the server', () => {
+// Each test starts its own Vite dev server — seconds on a busy machine.
+describe('the pages, rendered on the server', { timeout: 30_000 }, () => {
   it('carry no style attribute — the layouts name classes of auth.css (a strict style-src blocks inline styles)', async () => {
     // This test's app renders through the app's Vite setup (one open app at a time).
     await app.close();
