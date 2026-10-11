@@ -221,6 +221,11 @@ checked over every file of the repository — tracked, or new and not ignored. E
    of its own — a hex value, an exponent, `E2E`, `E.164` or `E164` is none), a wave or a step of the maintainers' plan, a
    personal date or a path into the maintainers' notes — a comment says what holds and links a page under `docs/`
    ([Comments](#comments)). `pnpm pack:check` holds every file of the packed tarballs to the same patterns.
+8. **No mutant is switched off without a reason**: every `disable` comment of the mutation tester in code
+   (`// Stryker disable next-line <Mutator>[, <Mutator>]: <why>`, also inside `/* */`; comments are read with oxc-parser, in
+   Stryker's own grammar) names its mutators and gives a reason of at least three words after a colon directly behind them — why the
+   mutant changes nothing anyone can observe. A range (`disable` without `next-line`) must be closed by `restore` comments
+   covering every one of its mutators later in the same file and never covers `all`; `disable next-line all: <why>` needs only its reason.
 
 A new rule joins the same script, with its test.
 

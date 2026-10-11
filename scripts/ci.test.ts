@@ -9,6 +9,7 @@ import {
   ENGINE,
   engineHits,
   negativeEnvHits,
+  mutationCommentHits,
   oldNameHits,
   OLD_NAME,
   OLD_TOKEN_PREFIX,
@@ -344,6 +345,64 @@ describe('rule 7: no references to the private record', () => {
 
   it('names each rule in the problems of check:source', () => {
     expect(PRIVATE_RECORD_RULES.map((rule) => rule.what)).toEqual(['a decision number', 'a wave reference', 'a personal date', 'a path into the private record']);
+  });
+});
+
+describe('rule 8: no mutant is disabled without a reason', () => {
+  const tool = 'Stryker';
+  const comment = (action: string, rest: string) => `// ${tool} ${action} ${rest}`;
+  const hits = (...lines: string[]) => mutationCommentHits([{ path: 'packages/database/src/x.ts', text: lines.join('\n') }]);
+
+  it('accepts a next-line disable with a reason and a range that is restored', () => {
+    expect(hits(comment('disable next-line', 'EqualityOperator: the loop ends at the same index either way'))).toEqual([]);
+    expect(hits(comment('disable', 'StringLiteral: only the text of a log line changes'), 'log();', comment('restore', 'StringLiteral'))).toEqual([]);
+    expect(hits(comment('disable', 'StringLiteral,ArrayDeclaration: only labels change here'), comment('restore', 'StringLiteral, ArrayDeclaration'))).toEqual([]);
+    expect(hits(comment('disable', 'StringLiteral: only the text of a log line changes'), comment('restore', 'all'))).toEqual([]);
+    expect(hits(`/* ${tool} disable next-line ObjectLiteral: an empty object and the default are the same */`)).toEqual([]);
+  });
+
+  it('names a disable without a reason or with too short a reason', () => {
+    expect(hits(comment('disable next-line', 'StringLiteral'))).toEqual([expect.stringContaining('x.ts:1: a disabled mutant needs a reason')]);
+    expect(hits(comment('disable next-line', 'StringLiteral: because'))).toHaveLength(1);
+    expect(hits(comment('disable next-line', 'StringLiteral: not needed'))).toHaveLength(1);
+    expect(hits(comment('disable next-line', 'StringLiteral:   '))).toHaveLength(1);
+    expect(hits(`/* ${tool} disable next-line ObjectLiteral */`)).toHaveLength(1);
+  });
+
+  it('names a disabled range that is never restored, or restored for other mutators only', () => {
+    expect(hits('a();', comment('disable', 'StringLiteral: only the text of a log line changes'), 'b();')).toEqual([
+      expect.stringContaining('x.ts:2: the range disabled for StringLiteral is never restored'),
+    ]);
+    expect(hits(comment('disable', 'StringLiteral: only the text of a log line changes'), comment('restore', 'ArrayDeclaration'))).toHaveLength(1);
+    expect(hits(comment('restore', 'StringLiteral'), comment('disable', 'StringLiteral: only the text of a log line changes'))).toHaveLength(1);
+  });
+
+  it('refuses a range over all mutators; a next-line disable of all needs its reason only', () => {
+    expect(hits(comment('disable', 'all: nothing in here is worth a mutant'), comment('restore', 'all'))).toEqual([expect.stringContaining('must name its mutators')]);
+    expect(hits(comment('disable next-line', 'all: nothing in this line is worth a mutant'))).toEqual([]);
+  });
+
+  it('reads a directive as the mutation tester does: mutators up to the first other character, the reason right behind a colon', () => {
+    expect(hits(comment('disable', 'all - see: one two three'), comment('restore', 'all'))).toEqual([expect.stringContaining('needs a reason'), expect.stringContaining('must name its mutators')]);
+    expect(hits(comment('disable next-line', 'all; x: a b c'))).toEqual([expect.stringContaining('needs a reason')]);
+  });
+
+  it('reads comments, not lines: a block over several lines, a second directive on one line, JSX; a string is no comment', () => {
+    expect(hits(`/*\n${tool} disable all: nothing to see here */`, comment('restore', 'all'))).toEqual([expect.stringContaining('x.ts:1: a disabled range must name')]);
+    expect(hits(`/* note */ ${comment('disable next-line', 'StringLiteral')}`)).toEqual([expect.stringContaining('needs a reason')]);
+    expect(mutationCommentHits([{ path: 'packages/react/src/x.tsx', text: `const a = <p>{/* ${tool} disable next-line StringLiteral */}</p>;` }])).toHaveLength(1);
+    expect(hits(`const a = '${comment('disable', 'StringLiteral')}';`, `const b = \`${comment('disable', 'all')}\`;`)).toEqual([]);
+  });
+
+  it('closes a range name by name: a restore split across two comments counts, one name left open does not', () => {
+    const disable = comment('disable', 'StringLiteral, ArrayDeclaration: only labels change here');
+    expect(hits(disable, comment('restore', 'StringLiteral'), comment('restore', 'ArrayDeclaration'))).toEqual([]);
+    expect(hits(disable, comment('restore', 'StringLiteral'))).toEqual([expect.stringContaining('disabled for ArrayDeclaration is never restored')]);
+  });
+
+  it('reads code files only, and holds for the repository', () => {
+    expect(mutationCommentHits([{ path: 'CONTRIBUTING.md', text: comment('disable', 'x') }])).toEqual([]);
+    expect(checkSource(root).filter((problem) => problem.startsWith('mutation testing'))).toEqual([]);
   });
 });
 

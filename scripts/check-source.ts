@@ -14,6 +14,8 @@
  *      or another framework (read with oxc-parser — comments, names and regular expressions are rule 7's).
  *   7. **No references to the private record:** no tracked file names a decision number, a wave or a step, a personal date or a
  *      path into the maintainers' notes (`pnpm pack:check` holds the packed tarballs to the same patterns).
+ *   8. **A mutant is never switched off without a reason:** every disable comment of the mutation tester in code says why, in
+ *      three words or more, and a disabled range is restored in the same file (and never covers all mutators).
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -278,7 +280,11 @@ const RUNTIME_TEXT_RULES = [...PRIVATE_RECORD_RULES, ...DOC_TEXT_RULES].filter((
 
 /** What rule 6 uses of oxc-parser: an ESTree program, and the errors of a file it cannot read. */
 interface OxcParser {
-  parseSync(filename: string, text: string): { program: unknown; errors: readonly { message: string }[] };
+  parseSync(filename: string, text: string): {
+    program: unknown;
+    comments: readonly { value: string; start: number }[];
+    errors: readonly { message: string }[];
+  };
 }
 /** oxc-parser — the parser of `@marmeon/core` (this script runs from the repository's root, which does not depend on it). */
 const oxc = (): OxcParser => createRequire(join(root, 'packages/core/package.json'))('oxc-parser') as OxcParser;
@@ -317,6 +323,48 @@ export function runtimeStringHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
+/** A comment's text as the mutation tester reads a directive: the mutators end at the first character outside letters, commas and spaces; the reason is what follows a colon right there. */
+const MUTATION_COMMENT = /^\s?Stryker (disable|restore)(?: (next-line))? ([a-zA-Z, ]+)(?::(.+)?)?/;
+const MIN_REASON_WORDS = 3;
+
+/**
+ * Rule 8: every disable comment of the mutation tester in code names its reason (`: …`, at least three words); a disabled range
+ * (without `next-line`) is restored later in the same file and never covers `all` — `path:line: problem`.
+ */
+export function mutationCommentHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!CODE.test(path) || !text.includes('Stryker')) continue;
+    const { comments, errors } = oxc().parseSync(path, text);
+    if (errors.length > 0) throw new Error(`${path}: oxc-parser cannot read it: ${errors[0]!.message}`);
+    const lineOf = (offset: number) => text.slice(0, offset).split('\n').length;
+    const open: { line: number; mutators: Set<string> }[] = [];
+    for (const comment of comments) {
+      const found = MUTATION_COMMENT.exec(comment.value);
+      if (!found) continue;
+      const [, action, nextLine, list = '', reason = ''] = found;
+      const mutators = list.split(',').map((name) => name.trim()).filter(Boolean);
+      const line = lineOf(comment.start);
+      const where = `${path}:${line}`;
+      if (action === 'restore') {
+        for (const range of open) for (const name of mutators) range.mutators.delete(name);
+        if (mutators.includes('all')) open.length = 0;
+        continue;
+      }
+      if (reason.trim().split(/\s+/).filter(Boolean).length < MIN_REASON_WORDS) {
+        hits.push(`${where}: a disabled mutant needs a reason of at least ${MIN_REASON_WORDS} words right after a colon behind the mutators — say why it changes nothing`);
+      }
+      if (nextLine) continue;
+      if (mutators.includes('all')) hits.push(`${where}: a disabled range must name its mutators, not all — disable the lines that need it, one by one`);
+      else open.push({ line, mutators: new Set(mutators) });
+    }
+    for (const { line, mutators } of open) {
+      if (mutators.size > 0) hits.push(`${path}:${line}: the range disabled for ${[...mutators].join(', ')} is never restored — close it with a restore comment`);
+    }
+  }
+  return hits;
+}
+
 /** The repository's files as git sees them: tracked, and new ones that are not ignored — text only, as they are on disk. */
 export function repositoryFiles(repository: string = root): SourceFile[] {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: repository, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -347,6 +395,7 @@ export function checkSource(repository: string = root): string[] {
     ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (API tokens start with marmeon_): ${hit}`),
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
+    ...mutationCommentHits(files).map((hit) => `mutation testing (a disabled mutant hides the test gap it would show; CONTRIBUTING.md › Rules over the source): ${hit}`),
     ...privateRecordHits(files).map((hit) => `no references to the private record (${PRIVATE_RECORD_RULES.find((rule) => rule.what === hit.split(': ')[1])?.why}): ${hit}`),
   ];
 }
@@ -359,7 +408,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes.`,
+      `check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled.`,
     );
   }
 }
