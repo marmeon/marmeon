@@ -163,6 +163,8 @@ const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY|UPGRADING)\.md$/;
 const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
 /** What a reader of one of the apps sees first and copies: its README and its `.env` files. */
 const APP_TEXTS = /^apps\/[^/]+\/(?:README\.md|\.env\.[^/]+)$/;
+/** The website's own pages (landing, marketing text): they speak to readers like the docs do. */
+const SITE_TEXTS = /^apps\/website\/modules\/site\/.+\.tsx?$/;
 /** Every file. */
 const ALL_TRACKED = /^/;
 /** Every file but the lockfile: its integrity hashes are base64, which holds a decision number or a wave by chance. */
@@ -179,15 +181,16 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
   {
     what: 'a comparison with another framework',
     pattern: /\b(?:Laravel|Breeze|Inertia|Rails|Django|Symfony|AdonisJS|NestJS|Next\.js|Nuxt)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS, SITE_TEXTS],
     why: 'describe Marmeon as it is — a reader may know no other framework',
   },
 ];
 
-/** Where a hit of rule 5 (`path:line: text`, or a path) stands, for its message: the docs, what every new app copies, or an app's texts. */
+/** Where a hit of rule 5 (`path:line: text`, or a path) stands, for its message: the docs, what every new app copies, an app's texts, or the website's own pages. */
 export function textRuleWhere(hit: string): string {
   const path = hit.replace(/:\d+: [\s\S]*$/, '');
   if (APP_COPIES.test(path)) return 'in what every new app copies';
+  if (SITE_TEXTS.test(path)) return 'on the website';
   return APP_TEXTS.test(path) ? "in an app's README or .env files" : 'in the docs';
 }
 

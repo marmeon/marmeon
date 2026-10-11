@@ -217,7 +217,8 @@ checked over every file of the repository — tracked, or new and not ignored. E
    ([Writing documentation](#writing-documentation)) — every page is written. The pages, the packages' READMEs, the root
    `README.md`, the three policies the docs show (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`), what every new app copies
    (the starter's template `packages/create-marmeon/template/` and the packages' stubs `packages/<name>/stubs/`) and what a
-   reader of one of the apps sees first (its `README.md` and `.env` files) compare Marmeon with no other framework. Each part is
+   reader of one of the apps sees first (its `README.md` and `.env` files), and the website's own pages
+   (`apps/website/modules/site/`) compare Marmeon with no other framework. Each part is
    an entry of `DOC_TEXT_RULES` with its pattern and the files it reads.
 6. **The framework's messages speak to app developers**: no string of a package's code (`packages/<name>/src/`, tests and
    fixtures aside) or of its launchers (`packages/<name>/bin/*.js`) names a decision number, a wave or another framework —

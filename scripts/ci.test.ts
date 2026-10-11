@@ -239,6 +239,20 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     ]);
   });
 
+  it("reads the website's own pages, not the docs module's code", () => {
+    expect(textRuleHits([
+      { path: 'apps/website/modules/docs/views/Page.tsx', text: '// like Laravel' },
+      { path: 'apps/website/modules/site/views/Landing.tsx', text: '<p>Like Laravel, but typed.</p>' },
+      { path: 'apps/website/modules/site/snippets.ts', text: "const a = 'Rails'" },
+      { path: 'apps/website/modules/site/styles.css', text: '/* Rails */' },
+    ], frameworks)).toEqual([
+      'apps/website/modules/site/views/Landing.tsx:1: <p>Like Laravel, but typed.</p>',
+      "apps/website/modules/site/snippets.ts:1: const a = 'Rails'",
+    ]);
+    expect(textRuleWhere('apps/website/modules/site/views/Landing.tsx:1: x')).toBe('on the website');
+    expect(textRuleWhere('apps/website/modules/docs/views/Page.tsx:1: x')).toBe('in the docs');
+  });
+
   it('names each rule in the problems of check:source — and where it was found', () => {
     expect(DOC_TEXT_RULES.map((entry) => entry.what)).toEqual(['the pending marker', 'a comparison with another framework']);
     expect(textRuleWhere('docs/queues.md')).toBe('in the docs');
