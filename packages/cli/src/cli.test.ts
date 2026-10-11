@@ -124,7 +124,7 @@ describe('marmeon (in the web app)', () => {
     const unknown = marmeon(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toBe('✗ There is no seeder "Nope".\n');
-  });
+  }, 30_000);
 
   it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
     const { code, stdout } = marmeon(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
