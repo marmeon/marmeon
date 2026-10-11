@@ -1,8 +1,8 @@
-# Marmeon docs
+# Marmeon website
 
-The documentation of Marmeon — the pages under `docs/` in ten sections, and the policies at the root (`UPGRADING.md`,
+The website of Marmeon: the landing page (`modules/site`) at `/` and its documentation (`modules/docs`). The documentation — the pages under `docs/` in ten sections, and the policies at the root (`UPGRADING.md`,
 `CONTRIBUTING.md`, `SECURITY.md`) — as a normal Marmeon app, not a static export: server-rendered React pages in a layout,
-`<Link prefetch>` between them, a search route on the server. Every page is `/docs/<slug>`. Deployed as an image behind Caddy
+`<Link prefetch>` between them, a search route on the server. The start page is `/docs`, every page `/docs/<slug>` and the search `/docs/search` — so `search` is a reserved slug. Deployed as an image behind Caddy
 ([below](#deployment)).
 
 ```sh
@@ -30,7 +30,10 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   and `.env` files; rule 7 refuses decision numbers, wave references, personal dates and paths into the maintainers' notes in
   every tracked file. Rule 6 reads the strings of the packages' code and launchers — messages, solutions, command output — for a
   decision number, a wave or another framework.
-- **The start page** (`/`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
+- **The landing** (`/`, `modules/site`) is the app's own; for now a placeholder with the way into the docs. `modules/site` owns the
+  `public` group, the answers' headers and the Content-Security-Policy; the version of the framework it shows comes from
+  `@marmeon/core`'s manifest (shared once as `site.version`).
+- **The docs' start page** (`/docs`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
   The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
   anchors via github-slugger; code highlighted by Shiki on the server — one Shiki per process) and indexes the pages when the app
@@ -39,15 +42,16 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **Pages** are a tree of elements, not HTML: links to other pages become `<Link prefetch>`, links to source files code text. A
   code block names its file with `title="…"` in its info string (```` ```ts title="modules/notes/routes.ts" ````): a caption
   above the block.
-- **Routes** live in a middleware group of their own (`docs`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
-  with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart.
+- **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
+  with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
+  the navigation as route middleware (`ShareNavigation`); the landing does not carry it.
 - **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` on every document —
   **no nonce**, because the pages are cached publicly and a nonce (one per response) must never reach a shared cache. The pages
   need none: the server renders no inline script (the page object is inert JSON, nothing streams, code blocks are spans), and the
   entry, its chunks and tab sync's chunk come from `/assets/`. The links test checks every page for inline scripts and handlers.
   In development (`no-cache`, nothing shared) Vite's client, React Refresh and the devtools' bar are inline: the strict nonce
   policy there.
-- **Headers:** `modules/docs/middleware/SecurityHeaders.ts`, global like the policy (so the 404 has them too): `nosniff`,
+- **Headers:** `modules/site/middleware/SecurityHeaders.ts`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`
   on the pages they fetch.
@@ -57,11 +61,12 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   template, the apps, the package READMEs and the root README name (the READMEs by their GitHub URL) leads to a page and its
   anchor (a path to a package README fails, and so does an anchor GitHub cannot make or, outside the READMEs, a page without
   one). `styles.test.ts` reads the stylesheet's phone layout: the menu is an overlay that scrolls.
-  `search.test.ts` checks the search's order. `docs.test.ts` checks the sections and their pages, previous and next, the start
-  page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks.
+  `search.test.ts` checks the search's order. `modules/site/site.test.ts` checks the landing (server-rendered, public, no navigation, the
+  version). `docs.test.ts` checks the sections and their pages, previous and next, the start
+  page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks (the reserved slug included).
 
-Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image),
-`DOCS_CACHE_MAX_AGE` (300 s), `DOCS_SEARCH_PER_MINUTE` (120).
+Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image) and
+`DOCS_SEARCH_PER_MINUTE` (120); `config/site.ts` has `SITE_CACHE_MAX_AGE` (300 s).
 
 ## Deployment
 

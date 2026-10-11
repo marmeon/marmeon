@@ -1,4 +1,4 @@
-import { Link, usePage, useRouter, type LayoutProps } from '@marmeon/react';
+import { Link, usePage, useRoute, useRouter, type LayoutProps } from '@marmeon/react';
 import { useEffect, useState, type FormEvent } from 'react';
 
 /**
@@ -9,6 +9,8 @@ export function DocsLayout({ children }: LayoutProps) {
   const { props, url } = usePage();
   const nav = props.nav;
   const router = useRouter();
+  const route = useRoute();
+  const searchUrl = route('docs.search');
   const [menu, setMenu] = useState(false);
   useEffect(() => setMenu(false), [url]);
 
@@ -16,7 +18,7 @@ export function DocsLayout({ children }: LayoutProps) {
   const search = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const q = new FormData(event.currentTarget).get('q');
-    void router.visit(`/search?q=${encodeURIComponent(typeof q === 'string' ? q : '')}`);
+    void router.visit(`${searchUrl}?q=${encodeURIComponent(typeof q === 'string' ? q : '')}`);
   };
 
   return (
@@ -30,8 +32,8 @@ export function DocsLayout({ children }: LayoutProps) {
         <Link route="docs.home" className="brand">
           Marmeon <span>docs</span>
         </Link>
-        {!url.startsWith('/search') && (
-          <form method="get" action="/search" role="search" className="top-search" onSubmit={search}>
+        {url.split('?')[0] !== searchUrl && (
+          <form method="get" action={searchUrl} role="search" className="top-search" onSubmit={search}>
             <input type="search" name="q" placeholder="Search" aria-label="Search the docs" maxLength={100} />
           </form>
         )}

@@ -9,11 +9,11 @@ const START = [
   { label: 'Routing', path: '/docs/routing' },
 ];
 
-/** `/`: what Marmeon is, where to start, then every section of the docs with its pages. */
+/** `/docs`: what Marmeon is, where to start, then every section of the docs with its pages. */
 export default function Home({ sections }: PageProps<ShowHomeController>) {
   return (
     <div className="page home">
-      <Head title="" />
+      <Head title="Documentation" />
       <article className="doc">
         <h1>Marmeon</h1>
         <p className="lead">

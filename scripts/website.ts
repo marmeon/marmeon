@@ -5,9 +5,9 @@
  *   pnpm website:check  # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
- * The smoke test asks the production build for the start page, every docs page (200, server-rendered, the static `'self'`
- * policy without a nonce), the search, `/up`, caching headers, no `Set-Cookie` on a public page, a 404 for an unknown page and a
- * package's old page, and a 10 000-character query (no 500). The docs' image is `scripts/website-image.ts`.
+ * The smoke test asks the production build for the landing, the docs' start page, every docs page (200, server-rendered, the static `'self'`
+ * policy without a nonce), the search, `/up`, caching headers, no `Set-Cookie` on a public page, a 404 for an unknown page, a
+ * package's old page and the old `/search`, and a 10 000-character query (no 500). The docs' image is `scripts/website-image.ts`.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -23,7 +23,7 @@ const marmeon = fileURLToPath(new URL('../packages/cli/bin/marmeon.js', import.m
 const mode = process.argv[2];
 /** Every page of the docs' sections, in their order — with its file (`docs/<slug>.md` or a policy at the root). */
 const pages = docsConfig.sections.flatMap((section) => section.pages.map((entry) => ({ slug: entry.slug, file: entry.file ?? `docs/${entry.slug}.md` })));
-/** The docs' policy in production (apps/website DocsServiceProvider, DOCS_CSP). */
+/** The docs' policy in production (apps/website SiteServiceProvider, SITE_CSP). */
 const DOCS_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
 if (mode === 'dev') await dev();
@@ -74,7 +74,7 @@ async function check(): Promise<number> {
     console.error(`website:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
     return 1;
   }
-  console.log(`website:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 1} pages) and stop in ${seconds} s`);
+  console.log(`website:check: ✓ build, start, smoke test (${checks} checks, ${pages.length + 2} pages) and stop in ${seconds} s`);
   return 0;
 }
 
@@ -102,15 +102,18 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     return response;
   };
 
-  const home = await publicPage('/', '<h1>Marmeon</h1>');
-  expect(/^public, max-age=\d+$/.test(home.headers.get('cache-control') ?? ''), `/: Cache-Control is "${home.headers.get('cache-control')}"`);
-  const vary = (home.headers.get('vary') ?? '').toLowerCase();
-  for (const header of ['x-marmeon', 'x-marmeon-partial-data', 'purpose', 'x-marmeon-version']) expect(vary.includes(header), `/: Vary lacks ${header} ("${vary}")`);
-  const etag = home.headers.get('etag');
-  expect(etag !== null, '/: no ETag');
-  if (etag) {
-    const again = await fetch(`${base}/`, { headers: { 'if-none-match': etag } });
-    expect(again.status === 304, `/ with If-None-Match: status ${again.status}, expected 304`);
+  // The landing and the docs' start page: both public, cacheable, revalidated with 304.
+  for (const [path, heading] of [['/', '<h1>Marmeon</h1>'], ['/docs', '<h1>Marmeon</h1>']] as const) {
+    const home = await publicPage(path, heading);
+    expect(/^public, max-age=\d+$/.test(home.headers.get('cache-control') ?? ''), `${path}: Cache-Control is "${home.headers.get('cache-control')}"`);
+    const vary = (home.headers.get('vary') ?? '').toLowerCase();
+    for (const header of ['x-marmeon', 'x-marmeon-partial-data', 'purpose', 'x-marmeon-version']) expect(vary.includes(header), `${path}: Vary lacks ${header} ("${vary}")`);
+    const etag = home.headers.get('etag');
+    expect(etag !== null, `${path}: no ETag`);
+    if (etag) {
+      const again = await fetch(base + path, { headers: { 'if-none-match': etag } });
+      expect(again.status === 304, `${path} with If-None-Match: status ${again.status}, expected 304`);
+    }
   }
 
   // Each page's heading is its file's first `#` line (React escapes `&` and quotes in it).
@@ -120,11 +123,11 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   }
 
   const search = async (q: string, page: string) => {
-    const response = await publicPage(`/search?q=${encodeURIComponent(q)}`, `href="${page}`);
+    const response = await publicPage(`/docs/search?q=${encodeURIComponent(q)}`, `href="${page}`);
     // The same URL as a visit: the page object (JSON), not the document — Vary keeps them apart in a cache.
-    const visit = await get(`/search?q=${encodeURIComponent(q)}`, { 'x-marmeon': 'true', accept: 'text/html, application/json' });
-    expect(visit.response.headers.get('content-type')?.startsWith('application/json') === true, `/search as a visit: ${visit.response.headers.get('content-type')}`);
-    expect(visit.body.includes(`"href":"${page}`), `/search?q=${q} as a visit: no result on ${page}`);
+    const visit = await get(`/docs/search?q=${encodeURIComponent(q)}`, { 'x-marmeon': 'true', accept: 'text/html, application/json' });
+    expect(visit.response.headers.get('content-type')?.startsWith('application/json') === true, `/docs/search as a visit: ${visit.response.headers.get('content-type')}`);
+    expect(visit.body.includes(`"href":"${page}`), `/docs/search?q=${q} as a visit: no result on ${page}`);
     return response;
   };
   await search('onOneServer', '/docs/scheduling');
@@ -135,8 +138,10 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   expect(packagePage.response.status === 404, `/packages/http: status ${packagePage.response.status}, expected 404 (the READMEs are no pages)`);
   const noPage = await get('/docs/no-such-page');
   expect(noPage.response.status === 404, `/docs/no-such-page: status ${noPage.response.status}, expected 404`);
-  const long = await get(`/search?q=${'a'.repeat(10_000)}`);
-  expect(long.response.status < 500, `/search with 10 000 characters: status ${long.response.status}`);
+  const oldSearch = await get('/search?q=onOneServer');
+  expect(oldSearch.response.status === 404, `/search: status ${oldSearch.response.status}, expected 404 (the search lives at /docs/search)`);
+  const long = await get(`/docs/search?q=${'a'.repeat(10_000)}`);
+  expect(long.response.status < 500, `/docs/search with 10 000 characters: status ${long.response.status}`);
 
   const up = await get('/up');
   expect(up.response.status === 200, `/up: status ${up.response.status}`);

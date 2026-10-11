@@ -11,7 +11,7 @@ import {
   REGION_HEADER,
   VERSION_HEADER,
 } from '@marmeon/http/page';
-import { DocsConfig } from '../../../config/docs.ts';
+import { SiteConfig } from '../../../config/site.ts';
 
 /**
  * The request headers a page answer depends on besides its URL — a cache must keep one copy per combination: the
@@ -38,9 +38,9 @@ export const PAGE_VARY = [
  * sets no cookie and says nothing about caching itself (a `no-store` answer stays one).
  */
 export class CachePublicly {
-  readonly #config: DocsConfig;
+  readonly #config: SiteConfig;
 
-  constructor(config: DocsConfig) {
+  constructor(config: SiteConfig) {
     this.#config = config;
   }
 

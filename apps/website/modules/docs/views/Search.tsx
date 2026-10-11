@@ -1,14 +1,15 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useQueryState } from '@marmeon/react';
+import { Head, Link, useQueryState, useRoute } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import type { SearchController } from '../controllers/SearchController.ts';
 
 /**
- * `/search?q=…`: typing reloads only the results (one partial reload per pause, replacing the history entry). Without
+ * `/docs/search?q=…`: typing reloads only the results (one partial reload per pause, replacing the history entry). Without
  * JavaScript the form is an ordinary GET form to the same URL.
  */
 export default function Search({ results }: PageProps<SearchController>) {
   const [query, setQuery] = useQueryState('docs.search', { only: ['results'], debounce: 200, history: 'replace' });
+  const route = useRoute();
   const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
 
   return (
@@ -16,7 +17,7 @@ export default function Search({ results }: PageProps<SearchController>) {
       <Head title={query.q ? `Search: ${query.q}` : 'Search'} />
       <article className="doc">
         <h1>Search</h1>
-        <form method="get" action="/search" role="search" onSubmit={(event) => event.preventDefault()}>
+        <form method="get" action={route('docs.search')} role="search" onSubmit={(event) => event.preventDefault()}>
           <input
             type="search"
             name="q"

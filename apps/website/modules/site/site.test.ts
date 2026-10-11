@@ -1,0 +1,56 @@
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { createTestApp, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
+
+const repo = resolve(import.meta.dirname, '../../../..');
+const document = { headers: { accept: 'text/html' } };
+const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.json'), 'utf8')) as { version: string }).version;
+
+let app: TestApp;
+beforeAll(async () => {
+  app = await createTestApp(application, { ssr: true });
+}, 60_000);
+afterAll(() => app?.close());
+
+describe('the landing page', () => {
+  it('answers / rendered on the server, with a way into the docs', async () => {
+    const response = await app.get('/', document).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('<h1>Marmeon</h1>');
+    expect(response.body).toContain('href="/docs/installation"');
+    expect(response.body).toContain('href="/docs"');
+  }, SSR_TEST_TIMEOUT);
+
+  it('is public: cacheable with an ETag, no cookie, a policy without a nonce', async () => {
+    const response = await app.get('/', document).assertOk();
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(response.headers.get('etag')).toMatch(/^"[\w-]{27}"$/);
+    expect(response.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    expect(response.body).not.toMatch(/<[a-z]+ [^>]*\bnonce=/);
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    const json = await app.navigating().get('/').assertOk();
+    expect(json.headers.get('etag')).not.toBe(response.headers.get('etag'));
+    for (const answer of [response, json]) {
+      const vary = answer.headers.get('vary')!.toLowerCase().split(/\s*,\s*/);
+      expect(vary).toEqual(expect.arrayContaining(['x-marmeon', 'x-marmeon-partial-component', 'x-marmeon-partial-data', 'x-marmeon-partial-except', 'purpose', 'x-marmeon-once', 'x-marmeon-version']));
+    }
+  });
+
+  it('shares the framework version but not the docs navigation (the navigation belongs to the docs routes)', async () => {
+    const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props;
+    expect(props.site).toEqual({ version: coreVersion });
+    expect(props).not.toHaveProperty('nav');
+    const docs = (await app.navigating().get('/docs/routing').assertOk()).page()!.props;
+    expect(docs).toHaveProperty('nav');
+    expect(docs.site).toEqual({ version: coreVersion });
+  });
+
+  it('answers a revalidation with 304', async () => {
+    const etag = (await app.get('/', document).assertOk()).headers.get('etag')!;
+    const again = await app.get('/', { headers: { accept: 'text/html', 'if-none-match': etag } });
+    expect(again.status).toBe(304);
+  });
+});

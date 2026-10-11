@@ -232,6 +232,11 @@ function checkPages(source: string, sections: readonly DocsSection[]): string[] 
       problems.push(`The page slug '${entry.slug}' in docs.config.ts is not lower-case words with dashes.`);
       continue;
     }
+    if (entry.slug === 'search') {
+      // The route /docs/search comes before /docs/:page: a page of this name could never be reached.
+      problems.push("The page slug 'search' is reserved — /docs/search is the search.");
+      continue;
+    }
     if (slugs.has(entry.slug)) {
       problems.push(`The page slug '${entry.slug}' is listed twice in docs.config.ts.`);
       continue;

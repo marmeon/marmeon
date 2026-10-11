@@ -5,12 +5,12 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
-import { DOCS_CSP } from './DocsServiceProvider.ts';
+import { SITE_CSP } from '../site/SiteServiceProvider.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 /**
- * The link check (instead of checking a static export): every page — the start page and the docs — renders on the server,
+ * The link check (instead of checking a static export): every page — the landing, the docs' start page and the docs — renders on the server,
  * and every link on it that stays in the docs leads to a page that exists — and to an anchor that exists on it. A link of a page
  * that breaks on GitHub breaks here; a link to a package README (a card for npm, no page) is "no such page".
  */
@@ -23,7 +23,7 @@ afterAll(() => app?.close());
 const repo = resolve(import.meta.dirname, '../../../..');
 
 const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
-const PAGES = ['/', ...DOCS];
+const PAGES = ['/', '/docs', ...DOCS];
 const html = { headers: { accept: 'text/html' } };
 
 /** The links of the page's content and navigation, and the ids on it — read from the server-rendered markup. */
@@ -62,7 +62,7 @@ describe('every page', () => {
     expect([...inline].filter(([, found]) => found.length > 0)).toEqual([]);
     // One policy for every page, without a nonce: the body — and so the ETag — is the same for everybody.
     expect([...policies]).toEqual(["script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"]);
-    expect(DOCS_CSP.scriptSrc).toEqual(["'self'"]);
+    expect(SITE_CSP.scriptSrc).toEqual(["'self'"]);
   });
 
   it('links only to pages and anchors that exist (links as on GitHub)', () => {
@@ -77,7 +77,7 @@ describe('every page', () => {
         const page = target === '' ? path : target.split('?')[0]!;
         const found = rendered.get(page);
         if (!found) {
-          if (page !== '/search') broken.push(`${path}: ${href} — no such page`);
+          if (page !== '/docs/search') broken.push(`${path}: ${href} — no such page`);
           continue;
         }
         if (anchor !== undefined && anchor !== '' && !found.ids.has(anchor)) broken.push(`${path}: ${href} — no #${anchor} on ${page}`);

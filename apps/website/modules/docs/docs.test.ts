@@ -8,8 +8,8 @@ import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
 import type { SearchController } from './controllers/SearchController.ts';
 import { DocsError, DocsRepository, type Navigation } from './DocsRepository.ts';
 import { createCodeHighlighter } from './highlight.ts';
-import { CachePublicly } from './middleware/CachePublicly.ts';
-import { DocsConfig } from '../../config/docs.ts';
+import { SiteConfig } from '../../config/site.ts';
+import { CachePublicly } from '../site/middleware/CachePublicly.ts';
 import { PENDING_MARKER } from './markdown.ts';
 import type { SearchResult } from './search.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
@@ -43,34 +43,34 @@ const results = (response: { page(): { props: unknown } | undefined }) => (respo
 
 describe('the search (a server route)', () => {
   it('finds onOneServer() on the scheduling page and "missed runs" under its heading — anchors into the section', async () => {
-    const hits = results(await app.navigating().get('/search?q=onOneServer').assertOk().assertPage('docs/Search'));
+    const hits = results(await app.navigating().get('/docs/search?q=onOneServer').assertOk().assertPage('docs/Search'));
     const scheduling = hits.find((result) => result.href.startsWith('/docs/scheduling#'));
     expect(scheduling?.excerpt.toLowerCase()).toContain('ononeserver');
-    const missed = results(await app.navigating().get('/search?q=missed%20runs').assertOk());
+    const missed = results(await app.navigating().get('/docs/search?q=missed%20runs').assertOk());
     expect(missed[0]!.href).toBe('/docs/scheduling#missed-runs');
   });
 
   it('puts a section that explains a word before code that only uses it: "One server only" among the first three for onOneServer', async () => {
-    const hits = results(await app.navigating().get('/search?q=onOneServer').assertOk());
+    const hits = results(await app.navigating().get('/docs/search?q=onOneServer').assertOk());
     const at = hits.findIndex((hit) => hit.href === '/docs/scheduling#one-server-only');
     expect(at, JSON.stringify(hits.slice(0, 12).map((hit) => hit.href))).toBeGreaterThanOrEqual(0);
     expect(at, JSON.stringify(hits.slice(0, 12).map((hit) => hit.href))).toBeLessThan(3);
   });
 
   it('takes all words, case-insensitively, at most 20 hits', async () => {
-    const hits = results(await app.navigating().get('/search?q=QUEUE%20worker').assertOk());
+    const hits = results(await app.navigating().get('/docs/search?q=QUEUE%20worker').assertOk());
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.length).toBeLessThanOrEqual(20);
-    expect(results(await app.navigating().get('/search?q=onOneServer%20xyzzy').assertOk())).toEqual([]);
+    expect(results(await app.navigating().get('/docs/search?q=onOneServer%20xyzzy').assertOk())).toEqual([]);
   });
 
   it('typing reloads only the results — a partial reload of the page on screen', async () => {
-    const response = await app.reloading<SearchController>('docs/Search', { only: ['results'] }).get('/search?q=scheduler').assertOk();
+    const response = await app.reloading<SearchController>('docs/Search', { only: ['results'] }).get('/docs/search?q=scheduler').assertOk();
     expect(Object.keys(response.page()!.props)).toEqual(['results']);
   });
 
   it('a query over 100 characters is invalid and falls back to the empty search (no 422, no 500, no work)', async () => {
-    const response = await app.navigating().get(`/search?q=${'onOneServer'.repeat(910)}`).assertOk();
+    const response = await app.navigating().get(`/docs/search?q=${'onOneServer'.repeat(910)}`).assertOk();
     expect(results(response)).toEqual([]);
     // The invalid value is dropped: the page's query is empty, its default the empty search.
     expect(response.page()!.query).toEqual({});
@@ -79,9 +79,9 @@ describe('the search (a server route)', () => {
 
   it('is throttled per client (the route’s limiter, DOCS_SEARCH_PER_MINUTE)', async () => {
     const limited = await createTestApp(application, { env: { DOCS_SEARCH_PER_MINUTE: '2' } });
-    await limited.get('/search?q=a').assertOk();
-    await limited.get('/search?q=b').assertOk();
-    await limited.get('/search?q=c').assertStatus(429);
+    await limited.get('/docs/search?q=a').assertOk();
+    await limited.get('/docs/search?q=b').assertOk();
+    await limited.get('/docs/search?q=c').assertStatus(429);
   });
 });
 
@@ -138,6 +138,11 @@ describe('the docs: sections of pages under /docs', () => {
     await app.get('/guides/deployment').assertNotFound();
   });
 
+  it('the search lives at /docs/search only — the old /search is a 404, not a redirect', async () => {
+    await app.get('/search?q=onOneServer').assertNotFound();
+    await app.get('/docs/search?q=onOneServer').assertOk();
+  });
+
   it('leads from page to page across the sections — the first has no previous page, the last no next', async () => {
     /** `previous ← page → next`, the pages under /docs by their slugs — short enough that a failure shows the whole line. */
     const neighbours = async (slug: string) => {
@@ -152,7 +157,7 @@ describe('the docs: sections of pages under /docs', () => {
   });
 
   it('the start page lists every docs page exactly once, in its section — and no package page', async () => {
-    const page = (await app.navigating().get('/').assertOk().assertPage('docs/Home')).page()!;
+    const page = (await app.navigating().get('/docs').assertOk().assertPage('docs/Home')).page()!;
     const sections = page.props.sections as { title: string; pages: { label: string; path: string }[] }[];
     expect(sections.map((section) => section.title)).toEqual(SECTIONS);
     expect(sections.flatMap((section) => section.pages)).toEqual(ENTRIES.map((entry) => ({ label: entry.label, path: `/docs/${entry.slug}` })));
@@ -162,7 +167,7 @@ describe('the docs: sections of pages under /docs', () => {
   it('finds the release policy’s sections — and the record of changes comes after every other hit', async () => {
     // "likely" scores the same in the upgrade guide and in the release policy's "How to upgrade": by order alone the guide, the
     // first page of the navigation, would come first.
-    const hits = results(await app.navigating().get('/search?q=likely').assertOk());
+    const hits = results(await app.navigating().get('/docs/search?q=likely').assertOk());
     expect(hits.some((hit) => hit.href.startsWith('/docs/releases'))).toBe(true);
     const late = hits.map((hit) => hit.href.startsWith('/docs/upgrading'));
     expect(late).toContain(true);
@@ -181,8 +186,8 @@ describe('the docs: sections of pages under /docs', () => {
 describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', () => {
   const document = { headers: { accept: 'text/html' } };
 
-  it('sets no cookie, on any page — the docs group has no session, no CSRF, no encrypted cookies', async () => {
-    for (const path of ['/', '/docs/session', '/docs/security', '/search?q=csrf']) {
+  it('sets no cookie, on any page — the public group has no session, no CSRF, no encrypted cookies', async () => {
+    for (const path of ['/', '/docs', '/docs/session', '/docs/security', '/docs/search?q=csrf']) {
       const response = await app.get(path, document).assertOk();
       expect(response.headers.get('set-cookie'), path).toBeNull();
       expect(response.headers.get('cache-control'), path).toMatch(/^public, max-age=300$/);
@@ -240,7 +245,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   }, SSR_TEST_TIMEOUT);
 
   it('never marks an answer with a cookie public (a cache would hand the cookie to everyone)', async () => {
-    const config = app.make(DocsConfig);
+    const config = app.make(SiteConfig);
     const request = new Request('http://localhost/');
     const answer = (headers: Record<string, string>) => async () => new Response('page', { headers });
     const ctx = { request } as Parameters<CachePublicly['handle']>[0];
@@ -308,6 +313,13 @@ describe('the repository and docs.config.ts', () => {
       "The page 'other' names docs/routing.md — a page's file is docs/<slug>.md or a Markdown file at the root.",
       "The page 'readme' names README.md — the root README is no page of the docs (the start page is the app's own).",
     ]);
+  }, ciTimeout);
+
+  it('refuses the slug "search": /docs/search is the search, a page of that name would be hidden by it', async () => {
+    const docs = { sections: [...docsConfig.sections, { title: 'More', pages: [{ slug: 'search', label: 'Search' }] }] };
+    const error = await new DocsRepository({ source: repo, docs }).load().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DocsError);
+    expect((error as DocsError).problems).toEqual(["The page slug 'search' is reserved — /docs/search is the search."]);
   }, ciTimeout);
 
   it('marks a page that carries the pending marker in the navigation — and not one without it', async () => {

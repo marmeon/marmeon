@@ -21,7 +21,7 @@ import { cleanEnvironment, freePort, Offline, OFFLINE, SKIPPED, SmokeError } fro
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const DOCKER_OFFLINE = /failed to resolve source metadata|failed to do request|dial tcp|i\/o timeout|TLS handshake timeout|no such host|ERR_PNPM_META_FETCH_FAIL|EAI_AGAIN|ENOTFOUND/;
-/** The docs' policy in production (apps/website DocsServiceProvider, DOCS_CSP). */
+/** The docs' policy in production (apps/website SiteServiceProvider, SITE_CSP). */
 const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 /** Never in the image: what only builds or tests the docs. */
 const DEV_PACKAGES = /^(vite|vitest|typescript|@vitejs\+|oxlint|@oxlint\+|@marmeon\+(devtools|testing|vite))(@|$)/;
@@ -58,9 +58,9 @@ async function until<T>(what: string, check: () => Promise<T | undefined> | T | 
 /** The docs' pages in the order of their sections. */
 const entries = () => docsConfig.sections.flatMap((section) => section.pages);
 
-/** Every page of the docs: the start page and the sections' pages. */
+/** Every page of the website: the landing, the docs' start page and the sections' pages. */
 export function docsPages(): string[] {
-  return ['/', ...entries().map((entry) => `/docs/${entry.slug}`)];
+  return ['/', '/docs', ...entries().map((entry) => `/docs/${entry.slug}`)];
 }
 
 /** Lists, inside the image, what must not be there (printed as JSON by Node — the image has no find). */
@@ -248,7 +248,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
       const base = `https://localhost:${port}`;
       await until('Caddy answering over HTTPS', () => (curl(`${base}/up`).status === 200 ? true : undefined), 60_000, () => compose(['logs'], 'any').output);
       const problems: string[] = [];
-      for (const path of ['/', '/docs/installation', '/docs/session']) {
+      for (const path of ['/', '/docs', '/docs/installation', '/docs/session']) {
         const page = curl(base + path, { accept: 'text/html' });
         if (page.version !== 'HTTP/2' || page.status !== 200) problems.push(`${path}: ${page.version} ${page.status}, expected HTTP/2 200`);
         if (page.headers.has('set-cookie')) problems.push(`${path}: Set-Cookie behind Caddy: ${page.headers.get('set-cookie')}`);

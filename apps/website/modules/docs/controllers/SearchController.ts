@@ -10,7 +10,7 @@ export const SearchRequest = defineRequest({
   query: r.query({ q: r.string().trim().max(100).default('') }),
 });
 
-/** `/search?q=…`: a page like any other — the index lives in the DocsRepository on the server, not in the browser. */
+/** `/docs/search?q=…`: a page like any other — the index lives in the DocsRepository on the server, not in the browser. */
 export class SearchController extends Controller {
   static request = SearchRequest;
   readonly #docs: DocsRepository;

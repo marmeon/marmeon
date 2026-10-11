@@ -4,12 +4,14 @@
 import type { SearchController } from '../modules/docs/controllers/SearchController.ts';
 import type { ShowDocController } from '../modules/docs/controllers/ShowDocController.ts';
 import type { ShowHomeController } from '../modules/docs/controllers/ShowHomeController.ts';
+import type { ShowLandingController } from '../modules/site/controllers/ShowLandingController.ts';
 
 declare module '@marmeon/router' {
   interface Routes {
-    'docs.home': { method: 'get'; path: '/'; controller: typeof ShowHomeController };
+    'docs.home': { method: 'get'; path: '/docs'; controller: typeof ShowHomeController };
     'docs.page': { method: 'get'; path: '/docs/:page'; controller: typeof ShowDocController };
-    'docs.search': { method: 'get'; path: '/search'; controller: typeof SearchController };
+    'docs.search': { method: 'get'; path: '/docs/search'; controller: typeof SearchController };
+    'site.home': { method: 'get'; path: '/'; controller: typeof ShowLandingController };
   }
 }
 
@@ -19,5 +21,6 @@ declare module '@marmeon/http/page' {
     'docs/Page': true;
     'docs/Search': true;
     'errors/Error': true;
+    'site/Landing': true;
   }
 }
