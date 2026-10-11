@@ -14,7 +14,7 @@ export class ShowDocController extends Controller {
   handle(ctx: HttpContext<{}, { page: DocPage }>) {
     const { title, section, body, toc } = ctx.params.page;
     const { previous, next } = this.#docs.neighbours(ctx.params.page);
-    const link = (other: DocPage | null) => (other ? { path: other.path, title: other.title } : null);
+    const link = (other: DocPage | null) => (other ? { path: other.path, title: other.title, section: other.section } : null);
     return this.view('docs/Page', { title, section, body, toc, previous: link(previous), next: link(next) });
   }
 }

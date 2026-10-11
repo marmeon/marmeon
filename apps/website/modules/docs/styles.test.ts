@@ -3,10 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The stylesheet's phone layout, read as text: the docs tests render on the server and see no layout, and a browser test of the
+ * The stylesheet's layout rules, read as text: the docs tests render on the server and see no layout, and a browser test of the
  * menu would need a browser in CI. A menu that grows with its content instead of scrolling is visible in the rules.
  */
-const css = readFileSync(resolve(import.meta.dirname, '../../styles/docs.css'), 'utf8');
+const css = readFileSync(resolve(import.meta.dirname, '../../styles/docs-layout.css'), 'utf8');
 
 /** The declarations of `selector`'s rule in `text` (the first one), as property → value. */
 function rule(text: string, selector: string): Map<string, string> {
@@ -35,16 +35,22 @@ function phone(text: string): string {
   throw new Error('the phone layout is not closed');
 }
 
-describe('the phone layout of the stylesheet', () => {
-  it('opens the navigation as an overlay between the header and the bottom that scrolls — not as a box as tall as its links', () => {
-    const desktop = rule(css, '.sidebar');
-    const overlay = rule(phone(css), '.sidebar');
-    const value = (property: string) => overlay.get(property) ?? desktop.get(property);
-    expect(value('position')).toBe('fixed');
-    expect(value('inset')).toBe('56px 0 0 0');
-    // `align-self: start` of the sticky desktop sidebar would size the fixed box to its content (2 564 px at 375 px wide), so
-    // nothing scrolls and the links below the screen cannot be reached.
-    expect(['auto', 'normal', 'stretch']).toContain(value('align-self'));
-    expect(value('overflow-y')).toBe('auto');
+describe('the layout of the docs', () => {
+  it('opens the phone menu as a panel that scrolls itself — not as a box as tall as its links', () => {
+    const panel = rule(css, '.docs-menu-panel');
+    expect(panel.get('overflow-y')).toBe('auto');
+    expect(panel.get('max-height')).toMatch(/100dvh/);
+  });
+
+  it('shows the side navigation or the phone menu, each once per breakpoint', () => {
+    expect(rule(css, '.docs-menu').get('display')).toBe('none');
+    expect(rule(phone(css), '.docs-menu').get('display')).toBe('block');
+    expect(rule(phone(css), '.sidebar').get('display')).toBe('none');
+  });
+
+  it('keeps the desktop sidebar beside the page and scrolling on its own', () => {
+    const sidebar = rule(css, '.sidebar');
+    expect(sidebar.get('position')).toBe('sticky');
+    expect(sidebar.get('overflow-y')).toBe('auto');
   });
 });

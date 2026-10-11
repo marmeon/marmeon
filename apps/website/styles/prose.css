@@ -1,1 +1,279 @@
-/* Typography of a docs page: prose, inline code, callouts, tables. */
+/* Typography of a docs page: prose, inline code, anchors, code blocks with their caption bar, callouts, tables. */
+.doc {
+  min-width: 0;
+  max-width: var(--measure);
+  color: var(--fg-body);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+
+.doc h1 {
+  margin: 0 0 18px;
+  color: var(--fg);
+  font-size: var(--text-h1);
+  font-weight: 580;
+  font-variation-settings: 'opsz' 60;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+}
+
+.doc h2,
+.doc h3,
+.doc h4 {
+  position: relative;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.doc h2 {
+  margin: 48px 0 12px;
+  font-size: var(--text-h2);
+  line-height: 1.2;
+}
+
+.doc h3 {
+  margin: 36px 0 10px;
+  font-size: var(--text-h3);
+  line-height: 1.25;
+}
+
+.doc h4 {
+  margin: 28px 0 8px;
+  font-size: var(--text-body);
+  line-height: 1.3;
+}
+
+.doc p,
+.doc ul,
+.doc ol {
+  margin: 0 0 18px;
+}
+
+.doc ul,
+.doc ol {
+  padding-left: 1.4em;
+}
+
+.doc li + li {
+  margin-top: 6px;
+}
+
+.doc li > :is(ul, ol) {
+  margin: 6px 0 0;
+}
+
+.doc a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.doc a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* The "#" before a heading: shown on hover and when focus is inside the heading. */
+.doc a.anchor {
+  position: absolute;
+  left: -28px;
+  color: var(--accent);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.doc :is(h2, h3, h4):is(:hover, :focus-within) a.anchor {
+  opacity: 1;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.doc :not(pre) > code,
+.doc .file {
+  padding: 0.08em 0.34em;
+  border-radius: var(--radius-2);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+  overflow-wrap: anywhere;
+}
+
+.doc a > code {
+  background: none;
+  color: inherit;
+}
+
+.doc .file code {
+  padding: 0;
+  background: none;
+}
+
+.doc hr {
+  margin: 32px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.doc blockquote {
+  margin: 0 0 24px;
+  padding: 0 0 0 var(--space-4);
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted);
+}
+
+/* Code blocks sit in the text with room below; the frame itself is the component's (chrome.css). */
+.doc .code-block,
+.doc figure.code {
+  margin-bottom: 24px;
+}
+
+/* Callouts: a label with a glyph of its own shape per kind, so colour is never the only signal. */
+.doc .callout {
+  --callout-fg: var(--note-fg);
+  --callout-bg: var(--note-bg);
+  --callout-line: var(--note-line);
+  --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M0 0h12v12H0z'/%3E%3C/svg%3E");
+  margin: 0 0 28px;
+  padding: 14px 18px 16px;
+  border: 1px solid var(--callout-line);
+  border-radius: var(--radius-3);
+  background: var(--callout-bg);
+  color: var(--fg-body);
+  font-size: 0.94em;
+  line-height: 1.6;
+}
+
+.doc .callout.tip {
+  --callout-fg: var(--tip-fg);
+  --callout-bg: var(--tip-bg);
+  --callout-line: var(--tip-line);
+  --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 0l6 6-6 6-6-6z'/%3E%3C/svg%3E");
+}
+
+.doc .callout.important {
+  --callout-fg: var(--important-fg);
+  --callout-bg: var(--important-bg);
+  --callout-line: var(--important-line);
+  --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 0a6 6 0 1 0 0 12A6 6 0 1 0 6 0z'/%3E%3C/svg%3E");
+}
+
+.doc .callout.warning {
+  --callout-fg: var(--warning-fg);
+  --callout-bg: var(--warning-bg);
+  --callout-line: var(--warning-line);
+  --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 0l6 12H0z'/%3E%3C/svg%3E");
+}
+
+.doc .callout.caution {
+  --callout-fg: var(--caution-fg);
+  --callout-bg: var(--caution-bg);
+  --callout-line: var(--caution-line);
+  --callout-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3.5 0h5L12 3.5v5L8.5 12h-5L0 8.5v-5z'/%3E%3C/svg%3E");
+}
+
+.doc .callout > :last-child {
+  margin-bottom: 0;
+}
+
+.doc .callout p {
+  margin-bottom: 6px;
+}
+
+.doc .callout-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--callout-fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.doc .callout-title::before {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--callout-fg);
+  content: '';
+  mask: var(--callout-glyph) center / contain no-repeat;
+}
+
+/* Tables: hairlines above, below and between rows, no vertical rules. A wide one scrolls inside its own box. */
+.doc .table {
+  margin: 0 0 24px;
+  overflow-x: auto;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.doc table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.doc th {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.doc td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc :is(th, td):first-child {
+  padding-left: 0;
+}
+
+.doc :is(th, td):last-child {
+  padding-right: 0;
+}
+
+.doc tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* A code name in the first column never breaks inside the row. */
+.doc td:first-child code {
+  white-space: nowrap;
+}
+
+.doc :is(th, td).left {
+  text-align: left;
+}
+
+.doc :is(th, td).center {
+  text-align: center;
+}
+
+.doc :is(th, td).right {
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .doc a.anchor {
+    display: none;
+  }
+}

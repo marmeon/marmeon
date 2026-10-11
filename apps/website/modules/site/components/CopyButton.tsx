@@ -29,17 +29,22 @@ export function CopyButton({ text, source, label }: { text?: string; source?: Re
 
   return (
     <>
-      <button type="button" className="copy-button" aria-label={label} onClick={() => void copy()}>
-        Copy
+      <button type="button" className="copy-button" data-copied={copied || undefined} aria-label={label} onClick={() => void copy()}>
+        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={copied ? 1.8 : 1.4}>
+          {copied ? (
+            <path d="M3 8.5l3 3 7-7" />
+          ) : (
+            <>
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1" />
+              <path d="M10.5 3.5V3a.5.5 0 0 0-.5-.5H3a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5h.5" />
+            </>
+          )}
+        </svg>
+        {copied ? 'Copied' : 'Copy'}
       </button>
       <span className="visually-hidden" aria-live="polite">
         {copied ? 'Copied' : ''}
       </span>
-      {copied && (
-        <span className="copy-done" aria-hidden="true">
-          Copied
-        </span>
-      )}
     </>
   );
 }

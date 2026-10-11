@@ -26,7 +26,8 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **The search** (`modules/docs/search.ts`, a route on the server) finds the sections that have every word of the query. The
   page's name weighs most, then the heading — also a heading of the words of a name the section uses, `onOneServer` under "One
   server only" — then how often the prose has the word, and last whether a code block uses it: a section that explains a word
-  comes before an example that only calls it.
+  comes before an example that only calls it. The page lists the hits grouped by page, each with its navigation section, and
+  works as a plain GET form without JavaScript.
 - **Every page is written.** A page still to be written would carry the line `<!-- docs:pending -->`, which the app strips and
   marks "draft" in the navigation; `pnpm check:source` refuses it in `docs/`.
 - **The text speaks to app developers.** `pnpm check:source` rule 5 refuses comparisons with another framework in the pages,
@@ -48,7 +49,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   above the block.
 - **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
-  the navigation as route middleware (`ShareNavigation`); the landing does not carry it.
+  the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. `/` focuses the search field.
 - **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'` on every document —
   **no nonce**, because the pages are cached publicly and a nonce (one per response) must never reach a shared cache. The pages
   need none: the server renders no inline script (the page object is inert JSON, nothing streams, code blocks are spans), and the
@@ -72,7 +73,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   directory fails) — and that every `docs/<page>.md#<anchor>` the framework's code, every package's stubs, the starter's
   template, the apps, the package READMEs and the root README name (the READMEs by their GitHub URL) leads to a page and its
   anchor (a path to a package README fails, and so does an anchor GitHub cannot make or, outside the READMEs, a page without
-  one). `styles.test.ts` reads the stylesheet's phone layout: the menu is an overlay that scrolls.
+  one). `styles.test.ts` reads the layout stylesheet: the phone menu is a panel that scrolls, and the side navigation and the menu are each shown at one breakpoint.
   `search.test.ts` checks the search's order. `modules/site/site.test.ts` checks the landing (server-rendered, public, no navigation, the
   version). `docs.test.ts` checks the sections and their pages, previous and next, the start
   page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks (the reserved slug included).

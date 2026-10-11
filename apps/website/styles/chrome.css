@@ -197,55 +197,84 @@
   font-size: 1rem;
 }
 
-/* Copy button */
+/* Copy button: quiet text with an icon; once copied its own label turns to "Copied" in the accent colour. */
 .copy-button {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
+  gap: 6px;
   min-height: 44px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line-strong);
+  padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-2);
   background: transparent;
-  color: var(--fg);
+  color: var(--muted);
   font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-size: 0.71875rem;
   cursor: pointer;
-  transition: background-color var(--duration-fast);
+  transition:
+    background-color var(--duration-fast),
+    color var(--duration-fast);
 }
 
 .copy-button:hover {
   background: var(--bg-sunken);
+  color: var(--fg);
 }
 
-.copy-done {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+.copy-button[data-copied] {
+  color: var(--accent);
 }
 
-/* Code block: the copy button sits in the caption bar, or in the corner when there is no caption. */
+/* Code block: a framed figure with the file name and the copy button in a bar above it; without a name the button sits in the corner. */
+.code-block {
+  position: relative;
+  min-width: 0;
+}
+
+.code-block > .copy-button {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  background: var(--bg-raised);
+}
+
+figure.code {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--bg-raised);
+}
+
 .code > figcaption {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding-block: 0;
+  padding: 0 6px 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
 }
 
-.code > figcaption .copy-button {
-  min-height: 44px;
-  margin-right: calc(-1 * var(--space-3));
+.code-caption {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.code-block {
-  position: relative;
+/* The frame is the figure's; the block inside it has no edge of its own. */
+figure.code .code-block {
+  margin: 0;
 }
 
-.code-block > .copy-button {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  background: var(--bg-raised);
+figure.code pre.code {
+  border: 0;
+  border-radius: 0;
 }
 
 /* Terminal: dark in both themes, so a command never looks like source. */
@@ -273,16 +302,17 @@
 }
 
 .terminal .copy-button {
-  border-color: var(--term-line);
+  border: 1px solid var(--term-line);
   color: var(--term-fg);
 }
 
 .terminal .copy-button:hover {
   background: var(--term-line);
+  color: var(--term-fg);
 }
 
-.terminal .copy-done {
-  color: var(--term-dim);
+.terminal .copy-button[data-copied] {
+  color: var(--term-fg);
 }
 
 .terminal pre {

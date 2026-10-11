@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { SearchIndex, type IndexedSection } from './search.ts';
+import { groupByPage } from './search-groups.ts';
 
-const section = (heading: string, text: string, code = ''): IndexedSection => ({ path: '/docs/cache', page: 'Cache', heading, anchor: heading.toLowerCase().replaceAll(' ', '-'), text, code });
+const section = (heading: string, text: string, code = ''): IndexedSection => ({ path: '/docs/cache', page: 'Cache', section: 'The Basics', heading, anchor: heading.toLowerCase().replaceAll(' ', '-'), text, code });
 
 describe('the search index', () => {
   it('puts a sentence that names a word before code that uses it, however often the code does', () => {
@@ -27,5 +28,25 @@ describe('the search index', () => {
     expect(named, JSON.stringify(named)).toEqual(['One server only', 'Missed runs']);
     // Typed in lower case, the name has no words to look for.
     expect(index.search('ononeserver').map((hit) => hit.heading)).toEqual(['Missed runs', 'One server only']);
+  });
+});
+
+describe('grouping hits by page', () => {
+  const hit = (page: string, heading: string, section = 'The Basics') => ({ href: `/docs/${page.toLowerCase()}#${heading.toLowerCase()}`, page, section, heading, excerpt: `${heading} text` });
+
+  it('keeps the order of each page’s first hit and gathers the later hits of a page under it', () => {
+    const groups = groupByPage([hit('Routing', 'Names'), hit('Forms', 'Fields', 'Frontend'), hit('Routing', 'Linking'), hit('Cache', 'Flush')]);
+    expect(groups.map((group) => group.page)).toEqual(['Routing', 'Forms', 'Cache']);
+    expect(groups[0]!.hits.map((entry) => entry.heading)).toEqual(['Names', 'Linking']);
+  });
+
+  it('names the page’s path without an anchor and its section', () => {
+    const [group] = groupByPage([hit('Forms', 'Fields', 'Frontend')]);
+    expect(group).toMatchObject({ page: 'Forms', href: '/docs/forms', section: 'Frontend' });
+    expect(group!.hits[0]).toEqual({ heading: 'Fields', href: '/docs/forms#fields', excerpt: 'Fields text' });
+  });
+
+  it('is empty for no hits', () => {
+    expect(groupByPage([])).toEqual([]);
   });
 });

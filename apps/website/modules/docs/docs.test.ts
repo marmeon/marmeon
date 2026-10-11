@@ -68,6 +68,17 @@ describe('the search (a server route)', () => {
     expect(Object.keys(response.page()!.props)).toEqual(['results']);
   });
 
+  it('renders the hits grouped by page, with the page’s section, and no hit block without a query', async () => {
+    const ssr = await createTestApp(application, { ssr: true });
+    const document = { headers: { accept: 'text/html' } };
+    const found = (await ssr.get('/docs/search?q=onOneServer', document).assertOk()).body;
+    expect(found).toMatch(/<section class="search-group" aria-label="Task Scheduling"><h2><a [^>]*href="\/docs\/scheduling"[^>]*>Task Scheduling<\/a><span class="visually-hidden"> – <\/span><span class="search-section">Digging Deeper<\/span><\/h2>/);
+    expect(found).toContain('<button type="submit"');
+    const empty = (await ssr.get('/docs/search', document).assertOk()).body;
+    expect(empty).not.toContain('search-group');
+    expect(empty).toContain('role="status"');
+  }, SSR_TEST_TIMEOUT);
+
   it('a query over 100 characters is invalid and falls back to the empty search (no 422, no 500, no work)', async () => {
     const response = await app.navigating().get(`/docs/search?q=${'onOneServer'.repeat(910)}`).assertOk();
     expect(results(response)).toEqual([]);
@@ -107,6 +118,26 @@ describe('pages', () => {
     expect(nav.groups.flatMap((group) => group.pages.map((entry) => entry.label))).toEqual(ENTRIES.map((entry) => entry.label));
     expect(page.props).toMatchObject({ previous: { path: '/docs/context' }, next: { path: '/docs/middleware' }, section: 'The Basics', title: 'Routing' });
   });
+});
+
+describe('the layout of a docs page (server-rendered)', () => {
+  it('opens the current section only, marks the current page and a draft, names the neighbours’ sections, and searches without JavaScript', async () => {
+    const ssr = await createTestApp(application, { ssr: true });
+    const response = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
+    // React separates adjacent text nodes with comments.
+    const body = response.body.replace(/<!-- -->/g, '');
+    const section = (title: string) => new RegExp(`<details class="nav-section"( open="")?><summary>${title}<`);
+    expect(section('The Basics').exec(body)?.[1]).toBe(' open=""');
+    expect(section('Frontend').exec(body)?.[1]).toBeUndefined();
+    expect(body).toContain('aria-current="page"');
+    expect(body).toMatch(/<a [^>]*aria-current="page"[^>]*>Routing</);
+    expect(body).toContain('Previous · Architecture Concepts');
+    expect(body).toContain('<span class="pager-title">Context</span>');
+    expect(body).toContain('Next · The Basics');
+    expect(body).toMatch(/<form [^>]*action="\/docs\/search"/);
+    expect(body).toContain('<details class="toc-mobile">');
+    expect(body).toContain('<details class="docs-menu">');
+  }, SSR_TEST_TIMEOUT);
 });
 
 describe('the docs: sections of pages under /docs', () => {
@@ -163,6 +194,19 @@ describe('the docs: sections of pages under /docs', () => {
     expect(JSON.stringify(sections)).not.toContain('/packages/');
   });
 
+  it('the start page links the three first steps to existing pages and shows the terminal without a copy button', async () => {
+    const docs = app.make(DocsRepository);
+    const ssr = await createTestApp(application, { ssr: true });
+    const html = (await ssr.get('/docs', { headers: { accept: 'text/html' } }).assertOk()).body;
+    for (const slug of ['installation', 'structure', 'routing']) {
+      expect(docs.doc(slug), slug).toBeDefined();
+      expect(html).toContain(`href="/docs/${slug}"`);
+    }
+    expect(html).toContain('pnpm create marmeon my-app');
+    expect(html).toContain('class="terminal"');
+    expect(html).not.toContain('copy-button');
+  }, SSR_TEST_TIMEOUT);
+
   it('finds the release policy’s sections — and the record of changes comes after every other hit', async () => {
     // "likely" scores the same in the upgrade guide and in the release policy's "How to upgrade": by order alone the guide, the
     // first page of the navigation, would come first.
@@ -180,6 +224,31 @@ describe('the docs: sections of pages under /docs', () => {
     expect(docs.pages().flatMap((page) => page.fileLinks).filter((file) => /^docs\/|^[A-Z]+\.md$/.test(file) && file !== 'README.md')).toEqual([]);
     expect(docs.pages().some((page) => page.fileLinks.includes('README.md'))).toBe(true);
   });
+});
+
+describe('the content of a page, rendered on the server', () => {
+  const document = { headers: { accept: 'text/html' } };
+  let ssr: TestApp;
+  beforeEach(async () => {
+    ssr = await createTestApp(application, { ssr: true });
+  });
+
+  it('renders a callout as aside.callout with role="note" and its title', async () => {
+    const html = (await ssr.get('/docs/routing', document).assertOk()).body;
+    expect(html).toMatch(/<aside class="callout [a-z]+" role="note"><p class="callout-title">[A-Za-z]+<\/p>/);
+  }, SSR_TEST_TIMEOUT);
+
+  it('renders a code block with a file name as figure.code > figcaption, and a table inside div.table', async () => {
+    const html = (await ssr.get('/docs/routing', document).assertOk()).body;
+    expect(html).toMatch(/<figure class="code"><figcaption><span class="code-caption">modules\/notes\/routes\.ts<\/span>/);
+    expect(html).toMatch(/<div class="table"><table>/);
+  }, SSR_TEST_TIMEOUT);
+
+  it('has no copy button in the document: it appears once the page runs in a browser', async () => {
+    const html = (await ssr.get('/docs/routing', document).assertOk()).body;
+    expect(html).toContain('class="code-block"');
+    expect(html).not.toContain('copy-button');
+  }, SSR_TEST_TIMEOUT);
 });
 
 describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', () => {
@@ -337,6 +406,19 @@ describe('the repository and docs.config.ts', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, ciTimeout);
+
+  it('shows a page with the pending marker as "draft" in the rendered navigation', async () => {
+    const dir = copy();
+    try {
+      writeFileSync(join(dir, 'docs/middleware.md'), `# Middleware\n${PENDING_MARKER}\n\n> [!NOTE]\n> This page is being written.\n`);
+      const ssr = await createTestApp(application, { ssr: true, env: { DOCS_SOURCE: dir } });
+      const { body } = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
+      expect(body).toMatch(/>Middleware<span class="draft">draft<\/span>/);
+      expect(body).not.toMatch(/>Routing<span class="draft">/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, SSR_TEST_TIMEOUT);
 
   it('starts without the packages — their READMEs are no pages', async () => {
     const dir = copy();

@@ -176,9 +176,10 @@ export class DocsRepository {
       all.push(rendered);
     }
     const late = new Set(entries.filter(({ entry }) => entry.changes).map(({ entry }) => `/docs/${entry.slug}`));
+    const sectionOf = new Map(entries.map(({ entry, section }) => [`/docs/${entry.slug}`, section]));
     const index = new SearchIndex(
       all.flatMap(({ page: { path, title }, rendered }) =>
-        rendered.sections.map((section) => ({ path, page: title, heading: section.heading, anchor: section.anchor, text: section.text, code: section.code, late: late.has(path) })),
+        rendered.sections.map((hit) => ({ path, page: title, section: sectionOf.get(path)!, heading: hit.heading, anchor: hit.anchor, text: hit.text, code: hit.code, late: late.has(path) })),
       ),
     );
     const groups: NavigationGroup[] = docs.sections.map((section) => ({

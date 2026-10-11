@@ -4,6 +4,8 @@ export interface IndexedSection {
   readonly path: string;
   /** The page's title — `Task Scheduling`. */
   readonly page: string;
+  /** The section of the navigation the page is in — `The Basics`. */
+  readonly section: string;
   readonly heading: string;
   readonly anchor: string;
   /** Its prose. */
@@ -18,6 +20,8 @@ export interface IndexedSection {
 export interface SearchResult {
   readonly href: string;
   readonly page: string;
+  /** The navigation section of the page. */
+  readonly section: string;
   readonly heading: string;
   readonly excerpt: string;
 }
@@ -101,6 +105,7 @@ export class SearchIndex {
     return hits.slice(0, limit).map(({ entry }) => ({
       href: entry.anchor ? `${entry.path}#${entry.anchor}` : entry.path,
       page: entry.page,
+      section: entry.section,
       heading: entry.heading,
       // From the prose when it has a word of the query; from the code when only the code has one.
       excerpt: lowers.some((term) => entry.lowerText.includes(term)) || !entry.code ? excerpt(entry.text, entry.lowerText, lowers) : excerpt(entry.code, entry.lowerCode, lowers),
