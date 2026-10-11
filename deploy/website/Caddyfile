@@ -2,6 +2,16 @@
 # and 443 must reach the server, the DNS record must point at it), renews it, redirects HTTP to HTTPS and speaks HTTP/1.1, HTTP/2
 # and HTTP/3. It sets X-Forwarded-For/-Proto/-Host itself (a client's own are dropped), which the docs trust from TRUSTED_PROXIES.
 # Trying it locally: WEBSITE_DOMAIN=localhost — Caddy then signs with its own local CA instead.
+#
+# {$WEBSITE_REDIRECT_DOMAINS} (comma-separated site addresses: the www host and the other domains) answer a permanent redirect (301) to
+# the one fixed https://{$WEBSITE_DOMAIN}, path and query kept. The target never comes from the request's Host, so it is no open
+# redirect. Caddy fetches a certificate for each of these hosts too (a .dev host is HSTS-preloaded: HTTPS is the only way in). Unset
+# or empty, compose.yaml passes the http://redirects.invalid placeholder: a plain-HTTP address nobody asks for, no certificate.
+{$WEBSITE_REDIRECT_DOMAINS:http://redirects.invalid} {
+	header Strict-Transport-Security "max-age=31536000"
+	redir https://{$WEBSITE_DOMAIN}{uri} permanent
+}
+
 {$WEBSITE_DOMAIN} {
 	# The docs' pages carry no secret — no session, no CSRF token, no cookie — so compressing them is safe (BREACH needs a secret
 	# in the page; an app's Caddyfile from `marmeon make:docker` has no `encode`). The assets come compressed already (.br/.gz).

@@ -1,8 +1,9 @@
-# The docs (apps/website) on one server behind Caddy: Caddy fetches the certificate for WEBSITE_DOMAIN and speaks HTTP/1.1, 2 and 3;
-# the docs answer only Caddy. Run it from this directory, next to a .env with the two settings below (never in the repository —
+# The website (apps/website) on one server behind Caddy: Caddy fetches the certificate for WEBSITE_DOMAIN and speaks HTTP/1.1, 2 and 3;
+# the docs answer only Caddy. Run it from this directory, next to a .env with the settings below (never in the repository —
 # .gitignore and the image's .dockerignore keep it out):
 #
-#   WEBSITE_DOMAIN=docs.example.com
+#   WEBSITE_DOMAIN=marmeon.com
+#   WEBSITE_REDIRECT_DOMAINS=www.marmeon.com, marmeon.de, www.marmeon.de, marmeon.dev, www.marmeon.dev   # optional (WEBSITE_DOMAIN and APP_KEY are required): 301 to WEBSITE_DOMAIN
 #   APP_KEY=base64:…            # docker run --rm marmeon-website key:generate --show  (or: openssl rand -base64 32, prefixed base64:)
 #
 #   docker compose up -d --build        # build the image from this checkout and start both containers
@@ -49,6 +50,8 @@ services:
       - '443:443/udp'
     environment:
       WEBSITE_DOMAIN: ${WEBSITE_DOMAIN}
+      # The hosts that redirect to WEBSITE_DOMAIN (comma-separated); empty: none (the placeholder is never asked for).
+      WEBSITE_REDIRECT_DOMAINS: ${WEBSITE_REDIRECT_DOMAINS:-http://redirects.invalid}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # The certificates and Caddy's ACME account: keep this volume (a new one asks Let's Encrypt again — rate-limited).

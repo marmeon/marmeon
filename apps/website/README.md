@@ -105,6 +105,17 @@ and 3, sets `Strict-Transport-Security` and compresses the pages (they carry no 
 `X-Forwarded-*` itself and drops a client's. The docs trust them from the Compose network's two subnets only (`TRUSTED_PROXIES`,
 IPv4 and IPv6 — with IPv6 on the network every visitor keeps their address for the search's rate limit), run read-only with a
 `tmpfs` for `/tmp` and a `storage` volume, and Caddy waits for them to be healthy. Next to the file, a `.env` holds `WEBSITE_DOMAIN`
-and `APP_KEY` (never committed); then `docker compose up -d --build` — `WEBSITE_TAG=$(git rev-parse --short HEAD)` names the build,
+(`marmeon.com`, the apex; the docs are under `/docs`), `WEBSITE_REDIRECT_DOMAINS` and `APP_KEY` (never committed); then `docker compose up -d --build` — `WEBSITE_TAG=$(git rev-parse --short HEAD)` names the build,
 and an older tag still on the machine starts again without one (the way back). The guide for a server — firewall, DNS, updates,
 rollback — is [deployment](../../docs/deployment.md#one-server-with-compose).
+
+```sh
+WEBSITE_DOMAIN=marmeon.com
+WEBSITE_REDIRECT_DOMAINS=www.marmeon.com, marmeon.de, www.marmeon.de, marmeon.dev, www.marmeon.dev
+```
+
+Every host in `WEBSITE_REDIRECT_DOMAINS` (comma-separated Caddy addresses; empty or unset: none) gets its own certificate and
+answers `301` to `https://$WEBSITE_DOMAIN` with path and query kept. The target is the configured domain, never the request's
+`Host`, so it is no open redirect; HTTPS on the `.dev` hosts is mandatory (HSTS preload), which is why they need a certificate too.
+DNS: an `A` and an `AAAA` record for each of the six names to the server, before the first start (Let's Encrypt validates over
+ports 80 and 443).

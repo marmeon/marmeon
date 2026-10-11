@@ -2,7 +2,7 @@
  * `pnpm website:image` — the docs as the image they are deployed with (the `image` part of `pnpm run ci`, after the starter kit's
  * image): `apps/website/Dockerfile` built from this checkout, then checked as an image (non-root, no `.env*`, tests or dev
  * dependencies, tini is PID 1), as a container (read-only root, `/up` 200, every page 200 without Set-Cookie, healthy, SIGTERM →
- * exit 0) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation).
+ * exit 0) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation, a redirect host answering 301).
  *
  * Image `marmeon-website:smoke-…`, Compose project `marmeon-website-smoke-…`: both and the volumes are removed afterwards. Without
  * Docker, or when the build cannot reach the registry: exit 75 — skipped, never green.
@@ -171,7 +171,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
   let built = false;
   let composed = false;
   // WEBSITE_DOMAIN=localhost: Caddy signs with its own CA; the port Caddy listens on is moved to a free one (compose.smoke.yaml).
-  const composeEnv: Record<string, string> = { APP_KEY: key, WEBSITE_DOMAIN: 'localhost', WEBSITE_TAG: tag, SMOKE_PORT: String(await freePort()) };
+  const composeEnv: Record<string, string> = { APP_KEY: key, WEBSITE_DOMAIN: 'localhost', WEBSITE_REDIRECT_DOMAINS: 'redirect.localhost', WEBSITE_TAG: tag, SMOKE_PORT: String(await freePort()) };
   const compose = (args: string[], expect: number | 'any' = 0) =>
     docker(['compose', '-p', project, '-f', 'compose.yaml', '-f', join(work, 'compose.smoke.yaml'), ...args], { cwd: join(root, 'deploy/website'), extraEnv: composeEnv, expect });
   const step = async <T>(name: string, run: () => Promise<T> | T): Promise<T> => {
@@ -241,7 +241,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
       docker(['rm', '-f', '-v', name]);
       containers.delete(name);
     });
-    await step('behind Caddy (deploy/website/compose.yaml): HTTP/2, no Set-Cookie, HSTS, X-Forwarded-* trusted, compressed documents with 304', async () => {
+    await step('behind Caddy (deploy/website/compose.yaml): HTTP/2, no Set-Cookie, HSTS, X-Forwarded-* trusted, compressed documents with 304, a redirect host → 301', async () => {
       const port = Number(composeEnv.SMOKE_PORT);
       composed = true;
       compose(['up', '-d', '--no-build', '--wait', '--wait-timeout', '90']);
@@ -268,6 +268,11 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
       const etag = compressed.headers.get('etag');
       const again = etag ? curl(`${base}/docs/validation`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip', 'if-none-match': etag }) : undefined;
       if (again?.status !== 304) problems.push(`/docs/validation revalidated with ${etag}: ${again?.status}, expected 304`);
+      // A redirect host: permanent (301) to the configured domain, path and query kept (curl resolves *.localhost to the loopback).
+      const moved = curl(`https://redirect.localhost:${port}/docs/session?q=1`);
+      if (moved.status !== 301 || moved.headers.get('location') !== 'https://localhost/docs/session?q=1') {
+        problems.push(`a redirect host: ${moved.status}, Location "${moved.headers.get('location')}" — expected 301 and https://localhost/docs/session?q=1 (WEBSITE_REDIRECT_DOMAINS)`);
+      }
       if (problems.length > 0) throw new SmokeError(`behind Caddy:\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n${compose(['logs', '--tail', '40'], 'any').output}`);
     });
     const size = Number(docker(['image', 'inspect', '-f', '{{.Size}}', image]).output.trim());
