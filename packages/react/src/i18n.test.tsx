@@ -29,7 +29,7 @@ function Greeting({ name }: { name: string }) {
 }
 
 const pages: Record<string, PageComponent> = { Greeting };
-const resolve = resolveModulePages({ '../modules/app/views/Greeting.tsx': async () => ({ default: Greeting }) });
+const resolve = resolveModulePages({ '/modules/app/views/Greeting.tsx': async () => ({ default: Greeting }) });
 const page = (url: string, locale: string): PageObject => ({ component: 'app/Greeting', props: { name: 'Ada' }, url, version: null, locale });
 
 const loads: string[] = [];

@@ -248,6 +248,9 @@ declare module '@marmeon/core' {
 The provider reads it from `app.modules`. The same works for the framework's other extensible types, such as `SharedProps` of
 `@marmeon/http/page` for a prop on every page.
 
+A page name with `::` (`package::Page`) belongs to a package: an app's page files may not contain it, and
+`marmeon route:types` fails when one does (see [where pages live](pages.md#where-pages-live)).
+
 ## Building and publishing
 
 Node strips types only outside `node_modules`, so a published package runs its compiled JavaScript. Publish `dist/` with its `.js`

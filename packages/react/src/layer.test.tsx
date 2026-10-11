@@ -98,7 +98,7 @@ function AsPage() {
 }
 
 const pages: Record<string, PageComponent> = { Profile, Edit, Confirm, SignIns, AsPage, Done };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   edit: { method: 'get', path: '/users/1/edit' },
   confirm: { method: 'get', path: '/users/1/confirm' },

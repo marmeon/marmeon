@@ -37,8 +37,8 @@ function WithPart() {
 }
 
 const resolve = resolveModulePages({
-  '../modules/users/views/Profile.tsx': async () => ({ default: Profile }),
-  '../modules/users/views/WithPart.tsx': async () => ({ default: WithPart }),
+  '/modules/users/views/Profile.tsx': async () => ({ default: Profile }),
+  '/modules/users/views/WithPart.tsx': async () => ({ default: WithPart }),
 });
 
 /** The document as the server sends it: the page object in the head, `markup` in `#app`. */

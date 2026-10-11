@@ -55,7 +55,7 @@ function Misplaced() {
 }
 
 const pages: Record<string, PageComponent> = { People, Early, Misplaced };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const NAMES = ['Ada', 'Alan', 'Grace'];
 const peoplePage = (url: string): PageObject => {
   const search = new URL(url, 'https://app.test').searchParams;

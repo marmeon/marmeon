@@ -136,9 +136,13 @@ export class RouteTypes {
   }
 
   #views(): string[] {
-    return globSync(PAGES_GLOB, { cwd: this.#app.root })
-      .map((file) => pageName(file))
-      .filter((name): name is string => name !== undefined);
+    const files = globSync(PAGES_GLOB, { cwd: this.#app.root }).map((file) => ({ file: file.replaceAll('\\', '/'), name: pageName(file) }));
+    // `::` separates a package from its page (`package::Page`): an app page must not take such a name.
+    const reserved = files.filter(({ name }) => name?.includes('::')).map(({ file }) => file);
+    if (reserved.length > 0) {
+      throw new Error(reserved.map((file) => `${file}: "::" is reserved for the pages of packages (package::Page) — rename the file or its folder.`).join('\n'));
+    }
+    return files.map(({ name }) => name).filter((name): name is string => name !== undefined);
   }
 
   /**

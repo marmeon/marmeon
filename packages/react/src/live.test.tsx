@@ -53,7 +53,7 @@ function Board() {
 }
 
 const pages: Record<string, PageComponent> = { Board };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const board = (cards: string[]): PageObject => ({ component: 'app/Board', props: { cards }, url: '/board', version: null, live: [{ channel: 'board.1', only: ['cards'], token: 'token' }] });
 
 let root: Root;

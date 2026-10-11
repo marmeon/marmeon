@@ -94,7 +94,7 @@ function Slow() {
 Slow.layout = Waiting;
 
 const pages: Record<string, PageComponent> = { People, Person, Activity, Dirty, Calm, Slow };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, view]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: view })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, view]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: view })])));
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
 const respond = (body: PageObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true' } });
 

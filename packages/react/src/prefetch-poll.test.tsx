@@ -63,7 +63,7 @@ function Lazy({ stats, list }: { stats?: number; list: { data: number[]; next: s
 }
 
 const pages: Record<string, PageComponent> = { Links, B, Polling, Lazy };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
 const respond = (body: PageObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true' } });
 

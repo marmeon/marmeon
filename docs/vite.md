@@ -101,7 +101,7 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | Option | Default | Effect |
 | --- | --- | --- |
 | `entries` | `{ client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' }` | Where the entries are, relative to the app root. |
-| `pages` | `'modules/*/views/**/*.tsx'` | Which files are pages. |
+| `pages` | `'modules/*/views/**/*.tsx'` | Which files are pages. Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. |
 | `lang` | `['modules/*/lang/*.ts', 'lang/*.ts']` | Which files are language files. |
 | `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |

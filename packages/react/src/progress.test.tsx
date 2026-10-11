@@ -20,7 +20,7 @@ function A() {
 }
 const B = () => <p data-page="b">B</p>;
 const pages: Record<string, PageComponent> = { A, B };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const page = (name: string, url: string): PageObject => ({ component: `app/${name}`, props: {}, url, version: null });
 
 let answer: () => void;

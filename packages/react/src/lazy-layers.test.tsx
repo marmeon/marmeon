@@ -60,7 +60,7 @@ async function freshApp() {
     );
   }
   const views = { Profile, Linked, Edit };
-  const resolve = resolveModulePages(Object.fromEntries(Object.entries(views).map(([name, view]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: view })])));
+  const resolve = resolveModulePages(Object.fromEntries(Object.entries(views).map(([name, view]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: view })])));
   return { MarmeonApp, createMarmeonApp, createSsrRenderer, resolve };
 }
 

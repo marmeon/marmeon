@@ -81,9 +81,12 @@ export type CheckViewName<V extends string> = string extends V
 /** The routes the browser knows — `routes` of `virtual:marmeon/routes` (the `marmeon()` Vite plugin). */
 export type RouteManifest = Readonly<Record<string, { readonly method: string; readonly path: string; readonly view?: string }>>;
 
-/** `modules/user-profile/views/Show.tsx` → `user-profile/Show` (the page naming convention), or undefined. */
+/**
+ * `modules/user-profile/views/Show.tsx` → `user-profile/Show` (the page naming convention), or undefined. Bound to the app's
+ * root, so a file outside its modules (`node_modules/x/modules/…`) never gets the name of an app page.
+ */
 export function pageName(path: string): string | undefined {
-  const match = /(?:^|\/)modules\/([^/]+)\/views\/(.+)\.[jt]sx$/.exec(path.replaceAll('\\', '/'));
+  const match = /^\/?modules\/([^/]+)\/views\/(.+)\.[jt]sx$/.exec(path.replaceAll('\\', '/'));
   return match ? `${match[1]}/${match[2]}` : undefined;
 }
 

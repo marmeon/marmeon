@@ -42,7 +42,7 @@ function Edit() {
 }
 
 const pages: Record<string, PageComponent> = { Profile, Edit };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {};
 const page = (name: string, url: string): PageObject => ({ component: `app/${name}`, props: {}, url, version: null });
 /** A deep link to the edit layer over the profile. */

@@ -35,6 +35,10 @@ A page's name is its path below `views/`, prefixed with the module: `modules/not
 `modules/notes/views/settings/Sharing.tsx` is `notes/settings/Sharing`. The page is the file's default export.
 `marmeon make:controller ShowNote --module=notes --view` writes a controller and its page in one go.
 
+Only files under `modules/<module>/views/` of the app are pages. A path with `::` is reserved for the pages of packages
+(`package::Page`): `marmeon route:types`, and with it `marmeon build`, fails and names each such file, and the app never
+registers such a page, neither in the browser nor in server rendering. Rename the file or its folder.
+
 A name with no file behind it is a compile error in the controller, because `marmeon route:types` lists every view in
 `bootstrap/routes.ts`. Each page is a chunk of its own, loaded the first time the browser shows it.
 

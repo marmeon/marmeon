@@ -114,7 +114,7 @@ function Profile({ name, activity, stats }: { name: string; activity?: string[];
 Profile.layout = AppLayout;
 
 const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile, Form, Profile };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
 
@@ -211,7 +211,7 @@ describe('persistent layouts', () => {
         </AppLayout>
       );
     }
-    const inline = resolveModulePages({ '../modules/app/views/Inline.tsx': async () => ({ default: Inline }) });
+    const inline = resolveModulePages({ '/modules/app/views/Inline.tsx': async () => ({ default: Inline }) });
     server = () => respond({ component: 'app/Inline', props: { name: 'b' }, url: '/b', version: null });
     root = createRoot(container);
     await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));

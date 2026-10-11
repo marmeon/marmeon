@@ -41,7 +41,7 @@ function Register({ on }: { on?: 'blur' | 'change' }) {
 }
 
 const pages: Record<string, PageComponent> = { Register };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = { register: { method: 'post', path: '/register' } };
 const page = (props: Record<string, unknown> = {}, extra: Partial<PageObject> = {}): PageObject => ({ component: 'app/Register', props, url: '/register', version: null, ...extra });
 

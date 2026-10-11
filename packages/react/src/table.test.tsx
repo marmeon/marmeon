@@ -167,7 +167,7 @@ function TanStackPage({ members: data }: { members: Members }) {
 }
 
 const pages: Record<string, PageComponent> = { Members: MembersPage as PageComponent, TanStack: TanStackPage as PageComponent };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 
 let requests: { method: string; url: string; headers: Record<string, string>; body: unknown }[];
 let root: Root;

@@ -40,7 +40,7 @@ function Avatar() {
 }
 
 const pages: Record<string, PageComponent> = { Avatar };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = { avatar: { method: 'put', path: '/avatar' } };
 const page = (): PageObject => ({ component: 'app/Avatar', props: {}, url: '/avatar', version: null });
 const TOKEN = `tu_00000000-0000-4000-8000-000000000000.${'b'.repeat(43)}`;

@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 // Slow under load: more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
@@ -183,6 +184,38 @@ describe('marmeon (in the web app)', () => {
     expect(invalid.code).toBe(1);
     expect(invalid.stderr).toContain("Unknown option '--verbose'");
   });
+});
+
+describe('marmeon route:types (reserved page names)', () => {
+  const blank = join(repo, 'apps/blank-app');
+
+  function appWith(views: string[]): string {
+    const app = realpathSync(tempDir('marmeon-views-'));
+    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
+    symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
+    mkdirSync(join(app, 'storage'));
+    for (const view of views) {
+      mkdirSync(dirname(join(app, view)), { recursive: true });
+      writeFileSync(join(app, view), 'export default function Page() { return null; }\n');
+    }
+    return app;
+  }
+
+  it('fails and names every page file whose path has "::"', () => {
+    const app = appWith(['modules/a/views/x::y.tsx', 'modules/a/views/p::q/Show.tsx', 'modules/a/views/Fine.tsx']);
+    const { code, stderr } = marmeon(app, ['route:types']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('modules/a/views/x::y.tsx: "::" is reserved for the pages of packages (package::Page) — rename the file or its folder.');
+    expect(stderr).toContain('modules/a/views/p::q/Show.tsx: "::" is reserved');
+    expect(stderr).not.toContain('Fine.tsx');
+    expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).not.toContain('::'); // left as it was
+  }, ciTimeout);
+
+  it('lists the pages of the app’s modules when none has "::"', () => {
+    const app = appWith(['modules/a/views/Fine.tsx']);
+    expect(marmeon(app, ['route:types']).code).toBe(0);
+    expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'a/Fine': true;");
+  }, ciTimeout);
 });
 
 describe('marmeon make:* (generated code compiles)', () => {

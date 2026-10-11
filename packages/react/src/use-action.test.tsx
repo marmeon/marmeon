@@ -101,7 +101,7 @@ function People() {
 }
 
 const pages: Record<string, PageComponent> = { Profile, People, Inbox };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'links.destroy': { method: 'delete', path: '/links/:link' },
   'links.store': { method: 'post', path: '/links' },

@@ -44,13 +44,13 @@ function Inbox({ count }: { count: number }) {
 }
 
 const resolve = resolveModulePages({
-  '../modules/greeting/views/Inbox.tsx': async () => ({ default: Inbox }),
-  '../modules/greeting/views/Titled.tsx': async () => ({ default: Titled }),
-  '../modules/greeting/views/Hello.tsx': async () => ({ default: Greeting }),
-  '../modules/broken/views/NoDefault.tsx': async () => ({}),
+  '/modules/greeting/views/Inbox.tsx': async () => ({ default: Inbox }),
+  '/modules/greeting/views/Titled.tsx': async () => ({ default: Titled }),
+  '/modules/greeting/views/Hello.tsx': async () => ({ default: Greeting }),
+  '/modules/broken/views/NoDefault.tsx': async () => ({}),
   '../elsewhere/Ignored.tsx': async () => ({ default: Greeting }),
-  '../modules/people/views/List.tsx': async () => ({ default: ({ page, lastPage }: { page: number; lastPage: number }) => <Pagination meta={{ page, perPage: 5, total: lastPage * 5, lastPage, from: 1, to: 5 }} /> }),
-  '../modules/people/views/Labelled.tsx': async () => ({
+  '/modules/people/views/List.tsx': async () => ({ default: ({ page, lastPage }: { page: number; lastPage: number }) => <Pagination meta={{ page, perPage: 5, total: lastPage * 5, lastPage, from: 1, to: 5 }} /> }),
+  '/modules/people/views/Labelled.tsx': async () => ({
     default: ({ page, lastPage }: { page: number; lastPage: number }) => (
       <Pagination meta={{ page, perPage: 5, total: lastPage * 5, lastPage, from: 1, to: 5 }} labels={{ next: 'Suivant', page: (number) => `Page n° ${number}` }} />
     ),
@@ -58,6 +58,16 @@ const resolve = resolveModulePages({
 });
 
 describe('resolveModulePages', () => {
+  it('never registers a name with "::" — those belong to the pages of packages', async () => {
+    const reserved = resolveModulePages({ '/modules/a/views/x::y.tsx': async () => ({ default: Greeting }) });
+    await expect(reserved('a/x::y')).rejects.toThrow(/\[marmeon:R2\]/);
+  });
+
+  it('ignores a file outside the app’s modules, even with the shape of a view', async () => {
+    const outside = resolveModulePages({ '/node_modules/x/modules/a/views/B.tsx': async () => ({ default: Greeting }) });
+    await expect(outside('a/B')).rejects.toThrow(/\[marmeon:R2\]/);
+  });
+
   it('maps modules/<module>/views/<Page> to <module>/<Page>', async () => {
     expect(await resolve('greeting/Hello')).toBe(Greeting);
   });
@@ -116,9 +126,9 @@ describe('layouts on the server', () => {
   }
   Own.layout = [Shell, Inner];
   const withLayouts = resolveModulePages({
-    '../modules/app/views/Hello.tsx': async () => ({ default: Greeting }),
-    '../modules/app/views/Own.tsx': async () => ({ default: Own }),
-    '../modules/app/views/Broken.tsx': async () => ({ default: Object.assign(() => null, { layout: 'Shell' }) }),
+    '/modules/app/views/Hello.tsx': async () => ({ default: Greeting }),
+    '/modules/app/views/Own.tsx': async () => ({ default: Own }),
+    '/modules/app/views/Broken.tsx': async () => ({ default: Object.assign(() => null, { layout: 'Shell' }) }),
   });
 
   it('renders the page inside its layouts — its own, else the default', async () => {
@@ -237,12 +247,12 @@ describe('streaming SSR', () => {
       );
     }
     return resolveModulePages({
-      '../modules/app/views/Slow.tsx': async () => ({ default: Slow }),
-      '../modules/app/views/Complete.tsx': async () => ({ default: Complete }),
-      '../modules/app/views/BrowserOnly.tsx': async () => ({ default: BrowserOnly }),
-      '../modules/app/views/Throws.tsx': async () => ({ default: Throws }),
-      '../modules/app/views/LateHead.tsx': async () => ({ default: LateHead }),
-      '../modules/app/views/HeadBeside.tsx': async () => ({ default: HeadBeside }),
+      '/modules/app/views/Slow.tsx': async () => ({ default: Slow }),
+      '/modules/app/views/Complete.tsx': async () => ({ default: Complete }),
+      '/modules/app/views/BrowserOnly.tsx': async () => ({ default: BrowserOnly }),
+      '/modules/app/views/Throws.tsx': async () => ({ default: Throws }),
+      '/modules/app/views/LateHead.tsx': async () => ({ default: LateHead }),
+      '/modules/app/views/HeadBeside.tsx': async () => ({ default: HeadBeside }),
     });
   }
   const page = (component: string) => ({ component, props: {}, url: '/' });

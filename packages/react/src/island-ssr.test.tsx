@@ -79,7 +79,7 @@ function Profile({ name, activity }: { name: string; activity?: string[] }) {
 
 const resolve = resolveModulePages(
   Object.fromEntries(
-    Object.entries({ Dashboard, SignIns, Members, Titled, WithHead, Profile, Counter }).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })]),
+    Object.entries({ Dashboard, SignIns, Members, Titled, WithHead, Profile, Counter }).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })]),
   ),
 );
 const routes: RouteManifest = {

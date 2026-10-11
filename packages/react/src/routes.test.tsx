@@ -82,7 +82,7 @@ function Page({ id }: { id: number }) {
   );
 }
 
-const resolve = resolveModulePages({ '../modules/people/views/Page.tsx': async () => ({ default: Page }) });
+const resolve = resolveModulePages({ '/modules/people/views/Page.tsx': async () => ({ default: Page }) });
 
 describe('routes in the browser', () => {
   it('renders links, buttons, URLs and forms from the route manifest — the same on the server', async () => {

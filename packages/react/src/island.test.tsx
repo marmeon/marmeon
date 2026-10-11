@@ -63,7 +63,7 @@ function Lazy() {
 }
 
 const pages: Record<string, PageComponent> = { Dashboard, SignIns, Members, Thrower, People, Lazy, Outside };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'sign-ins': { method: 'get', path: '/islands/sign-ins' },
   members: { method: 'get', path: '/islands/members' },

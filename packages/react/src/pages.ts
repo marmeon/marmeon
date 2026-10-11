@@ -120,7 +120,7 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
   const pages = new Map<string, PageModules[string]>();
   for (const [path, load] of Object.entries(modules)) {
     const name = pageName(path);
-    if (name) pages.set(name, load);
+    if (name && !name.includes('::')) pages.set(name, load); // `::` belongs to the pages of packages; `route:types` refuses it, this holds if it did not run
   }
 
   const resolve = async (name: string): Promise<PageComponent> => {

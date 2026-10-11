@@ -98,7 +98,7 @@ function People() {
 People.layout = Layout;
 
 const pages: Record<string, PageComponent> = { Edit, Secret, People };
-const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
+const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'profile.edit': { method: 'get', path: '/users/1/edit' },
   'profile.update': { method: 'put', path: '/users/1' },
