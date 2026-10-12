@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { editDefinitionFile } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -34,8 +35,17 @@ export function publishMigration(input: CommandInput, migration: { name: string;
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, 'index.ts'), MODULE(module));
     input.output.success(`Created ${relative(input.root, join(directory, 'index.ts'))}`);
-  } else if (!/migrations\s*:/.test(readFileSync(join(directory, 'index.ts'), 'utf8'))) {
-    input.output.warn(`modules/${module}/index.ts has no \`migrations\` yet — add: migrations: new URL('./migrations/', import.meta.url)`);
+  } else {
+    const edited = editDefinitionFile(join(directory, 'index.ts'), {
+      define: { name: 'defineModule', from: '@marmeon/core' },
+      key: 'migrations',
+      add: { value: "new URL('./migrations/', import.meta.url)" },
+    }, `modules/${module}/index.ts`);
+    if (edited.status === 'added') input.output.success(`Registered the migrations folder in modules/${module}/index.ts`);
+    else if (edited.status === 'manual') {
+      input.output.warn(`Not registered — ${edited.reason}`);
+      input.output.line("  add: migrations: new URL('./migrations/', import.meta.url)");
+    }
   }
 
   const file = join(directory, 'migrations', `${timestamp(new Date())}_${migration.name}.ts`);
@@ -45,9 +55,10 @@ export function publishMigration(input: CommandInput, migration: { name: string;
 
   if (created) {
     const registered = register(join(input.root, 'bootstrap', 'app.ts'), module);
-    if (registered === 'added') input.output.success(`Registered the module in bootstrap/app.ts`);
-    else if (registered === 'manual') {
-      const variable = module.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
+    if (registered.status === 'added') input.output.success(`Registered the module in bootstrap/app.ts`);
+    else if (registered.status === 'manual') {
+      if (registered.reason) input.output.warn(`Not registered — ${registered.reason}`);
+      const variable = variableOf(module);
       input.output.line('Register the module in bootstrap/app.ts:');
       input.output.line(`  import ${variable} from '#modules/${module}';`);
       input.output.line(`  modules: [${variable}, …]`);
@@ -74,21 +85,21 @@ function timestamp(date: Date): string {
   return `${date.getUTCFullYear()}_${pad(date.getUTCMonth() + 1)}_${pad(date.getUTCDate())}_${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
 }
 
-/** Adds the module to `modules: [...]` of the application definition — or says it cannot. */
-function register(file: string, module: string): 'added' | 'manual' {
-  if (!existsSync(file)) return 'manual';
-  const source = readFileSync(file, 'utf8');
-  const variable = module.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
-  const modules = /modules:\s*\[([^\]]*)\]/.exec(source);
-  const imports = [...source.matchAll(/^import .*;$/gm)];
-  if (!modules || imports.length === 0) return 'manual';
-  const lastImport = imports.at(-1)!;
-  const list = modules[1]!.trim();
-  let patched = source.replace(modules[0], `modules: [${list ? `${list}, ${variable}` : variable}]`);
-  const at = lastImport.index + lastImport[0].length;
-  patched = `${patched.slice(0, at)}\nimport ${variable} from '#modules/${module}';${patched.slice(at)}`;
-  writeFileSync(file, patched);
-  return 'added';
+/** Adds the module to the end of `modules` of the application definition — or says why it cannot. */
+function register(file: string, module: string): { status: 'added' | 'present' } | { status: 'manual'; reason?: string } {
+  if (!existsSync(file)) return { status: 'manual' };
+  const edited = editDefinitionFile(file, {
+    define: { name: 'defineApplication', from: '@marmeon/core' },
+    key: 'modules',
+    add: { element: (names) => names[variableOf(module)]!, position: 'last' },
+    imports: [{ name: variableOf(module), from: `#modules/${module}`, kind: 'default' }],
+  }, 'bootstrap/app.ts');
+  return edited.status === 'manual' ? { status: 'manual', reason: edited.reason } : { status: edited.status };
+}
+
+/** `shop-cart` becomes `shopCart`, the name the module is imported as. */
+function variableOf(module: string): string {
+  return module.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
 }
 
 const MODULE = (name: string) => `import { defineModule } from '@marmeon/core';

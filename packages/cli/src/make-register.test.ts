@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -80,5 +80,14 @@ describe('make:job and make:notification register themselves', () => {
     expect(lines.some((line) => line.startsWith('! Not registered — modules/billing/index.ts: ') && line.endsWith('Add it yourself:'))).toBe(true);
     expect(lines).toContain("  import { SendInvoiceReminderJob } from './jobs/SendInvoiceReminderJob.ts';");
     expect(lines).toContain('  jobs: [SendInvoiceReminderJob]');
+  });
+
+  it('names the module file, never an absolute path, when the module has no index.ts', () => {
+    const { root, index } = app();
+    rmSync(index);
+    const { code, lines } = job(root);
+    expect(code).toBe(0);
+    expect(lines.some((line) => line.startsWith('! Not registered — modules/billing/index.ts: modules/billing/index.ts does not exist'))).toBe(true);
+    expect(lines.filter((line) => line.includes(root))).toEqual([]);
   });
 });

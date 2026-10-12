@@ -113,17 +113,18 @@ export function editDefinition(source: string, filename: string, edit: Definitio
 
 /**
  * {@link editDefinition} on a file. Writes only on `added`, atomically (a temporary file beside it, renamed into place); a missing
- * file is `manual`. See `docs/package-development.md#registering-what-a-generator-writes`.
+ * file is `manual`. `display` is the name reasons use (an app-relative path such as `bootstrap/app.ts`; default: `file`) and must
+ * keep the file's extension. See `docs/package-development.md#registering-what-a-generator-writes`.
  */
-export function editDefinitionFile(file: string, edit: DefinitionEdit): DefinitionEditOutcome {
-  if (!existsSync(file)) return manual(`${file} does not exist`);
+export function editDefinitionFile(file: string, edit: DefinitionEdit, display: string = file): DefinitionEditOutcome {
+  if (!existsSync(file)) return manual(`${display} does not exist`);
   const real = realpathSync(file); // a symlinked file is edited where it lives, the link stays
-  const outcome = editDefinition(readFileSync(real, 'utf8'), file, edit);
+  const outcome = editDefinition(readFileSync(real, 'utf8'), display, edit);
   if (outcome.status !== 'added') return outcome;
   try {
     accessSync(real, constants.W_OK);
   } catch {
-    return manual(`${file} is not writable`);
+    return manual(`${display} is not writable`);
   }
   const temporary = `${real}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {

@@ -181,6 +181,8 @@ is already bound to something else (a constant, class, type, interface, namespac
 property such as `migrations` instead of a list entry. `editDefinition` does the same on a source string, and `importedBindings`
 lists a file's imports for a generator that follows one.
 
+The reasons name the file by its path. Pass an app-relative name as the third argument, `editDefinitionFile(file, edit, 'bootstrap/app.ts')`, so that a message does not show an absolute path.
+
 ## Middleware
 
 `router.middleware.append(group, Middleware, priority)` adds a middleware to the global stack, `GLOBAL`, or to a group such as

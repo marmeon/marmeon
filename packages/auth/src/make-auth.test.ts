@@ -67,6 +67,44 @@ describe('make:auth', () => {
     expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
   });
 
+  it('registers in the real modules list — a commented-out one before the call is left alone', async () => {
+    const root = blankApp();
+    const bootstrap = join(root, 'bootstrap/app.ts');
+    const source = readFileSync(bootstrap, 'utf8');
+    writeFileSync(bootstrap, source.replace('export default defineApplication', '// modules: [legacy]\nexport default defineApplication'));
+    const { input, lines } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    const app = readFileSync(bootstrap, 'utf8');
+    expect(app).toContain('// modules: [legacy]\n');
+    expect(app).toMatch(/modules: \[auth, system\]/);
+    expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
+  });
+
+  it('leaves bootstrap/app.ts as it is when the modules list is not written out there, and says what to add', async () => {
+    const root = blankApp();
+    const bootstrap = join(root, 'bootstrap/app.ts');
+    const source = readFileSync(bootstrap, 'utf8').replace('modules: [system]', 'modules: appModules');
+    writeFileSync(bootstrap, source);
+    const { input, lines } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    expect(readFileSync(bootstrap, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('! Not registered — '))).toBe(true);
+    expect(lines).toContain('Register the module in bootstrap/app.ts:');
+    expect(lines).toContain("  import auth from '#modules/auth';");
+  });
+
+  it('counts a hand-written import of the module as registered even when the modules list is not written out', async () => {
+    const root = blankApp();
+    const bootstrap = join(root, 'bootstrap/app.ts');
+    const source = readFileSync(bootstrap, 'utf8').replace('modules: [system]', 'modules: appModules').replace("import system from '#modules/system';", "import system from '#modules/system';\nimport auth from '#modules/auth';");
+    writeFileSync(bootstrap, source);
+    const { input, lines, spawned } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    expect(readFileSync(bootstrap, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.includes('Not registered'))).toBe(false);
+    expect(spawned).toEqual([['route:types']]);
+  });
+
   it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app)', async () => {
     const root = blankApp();
     rmSync(join(root, '.oxlintrc.json'));

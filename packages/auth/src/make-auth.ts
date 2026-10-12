@@ -1,6 +1,7 @@
 import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { editDefinitionFile, importedBindings } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 
 /**
@@ -71,8 +72,9 @@ export class MakeAuthCommand {
     input.output.success(`Created modules/auth (${files.length} files)`);
 
     const registered = register(join(input.root, 'bootstrap', 'app.ts'));
-    if (registered === 'added') input.output.success('Registered the module in bootstrap/app.ts');
-    else if (registered === 'manual') {
+    if (registered.status === 'added') input.output.success('Registered the module in bootstrap/app.ts');
+    else if (registered.status === 'manual') {
+      if (registered.reason) input.output.warn(`Not registered — ${registered.reason}`);
       input.output.line('Register the module in bootstrap/app.ts:');
       input.output.line("  import auth from '#modules/auth';");
       input.output.line('  modules: [auth, …]');
@@ -90,7 +92,7 @@ export class MakeAuthCommand {
     const lists = dependencyLists(input.root);
     const devOnly = NEEDED.filter((name) => name in (lists.devDependencies ?? {}) && !(name in (lists.dependencies ?? {})));
     // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
-    const typed = runtime.length === 0 && registered !== 'manual' && (await input.spawn('route:types')) === 0;
+    const typed = runtime.length === 0 && registered.status !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
     if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add ${runtime.join(' ')}`);
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -D ${forTests.join(' ')}`);
@@ -133,21 +135,21 @@ function importStyles(file: string): 'added' | 'present' | 'manual' {
   return 'added';
 }
 
-/** Adds `auth` to `modules: [...]` of the application definition — or says it cannot. */
-function register(file: string): 'added' | 'present' | 'manual' {
-  if (!existsSync(file)) return 'manual';
-  const source = readFileSync(file, 'utf8');
-  if (/from '#modules\/auth'/.test(source)) return 'present';
-  const modules = /modules:\s*\[([^\]]*)\]/.exec(source);
-  const imports = [...source.matchAll(/^import .*;$/gm)];
-  if (!modules || imports.length === 0) return 'manual';
-  const lastImport = imports.at(-1)!;
-  const list = modules[1]!.trim();
-  let patched = source.replace(modules[0], `modules: [${list ? `auth, ${list}` : 'auth'}]`);
-  const at = lastImport.index + lastImport[0].length;
-  patched = `${patched.slice(0, at)}\nimport auth from '#modules/auth';${patched.slice(at)}`;
-  writeFileSync(file, patched);
-  return 'added';
+/** Adds `auth` to the front of `modules` of the application definition — or says why it cannot. */
+function register(file: string): { status: 'added' | 'present' } | { status: 'manual'; reason?: string } {
+  if (!existsSync(file)) return { status: 'manual' };
+  const edited = editDefinitionFile(file, {
+    define: { name: 'defineApplication', from: '@marmeon/core' },
+    key: 'modules',
+    add: { element: (names) => names.auth!, position: 'first' },
+    imports: [{ name: 'auth', from: '#modules/auth', kind: 'default' }],
+  }, 'bootstrap/app.ts');
+  if (edited.status !== 'manual') return { status: edited.status };
+  // A list the editor cannot read may still be the app's own, with auth imported by hand: that is registered.
+  const binding = [...importedBindings(readFileSync(file, 'utf8'), 'bootstrap/app.ts').values()].find(
+    (candidate) => candidate.from === '#modules/auth' && candidate.imported === 'default' && !candidate.typeOnly,
+  );
+  return binding ? { status: 'present' } : { status: 'manual', reason: edited.reason };
 }
 
 function missingDependencies(root: string): string[] {

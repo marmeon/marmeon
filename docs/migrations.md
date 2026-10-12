@@ -440,7 +440,8 @@ pnpm marmeon migrate
 | `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
-to `bootstrap/app.ts` when it does not exist yet. It refuses when any module already has a migration for the table. Each migration
+to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. When `bootstrap/app.ts`
+or the module's `index.ts` has another shape (a list kept in a variable, say), it leaves the file as it is and says what to add. It refuses when any module already has a migration for the table. Each migration
 reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `SESSION_CONNECTION`, `DB_QUEUE_CONNECTION`,
 `NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
 [connection](database.md#infrastructure-connections) the driver reads and writes.

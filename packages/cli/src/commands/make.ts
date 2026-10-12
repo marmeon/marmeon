@@ -58,7 +58,7 @@ function registerInModule(input: CommandInput, module: string, dir: string, edit
     printLines();
     return;
   }
-  const outcome = editDefinitionFile(join(dir, 'index.ts'), edit);
+  const outcome = editDefinitionFile(join(dir, 'index.ts'), edit, shown);
   if (outcome.status === 'added') input.output.success(`Registered ${label} in ${shown} (${edit.key})`);
   else if (outcome.status === 'present') input.output.line(`${label} is already registered in ${shown}`);
   else {

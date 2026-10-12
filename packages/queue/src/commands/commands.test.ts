@@ -226,4 +226,15 @@ describe('the queue commands', () => {
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [system]');
     expect(lines.at(-1)).toBe('Then: marmeon migrate');
   });
+
+  it('make:queue-table adds `migrations` to an existing system module that lacks it', async () => {
+    const root = tempDir('marmeon-queue-table-');
+    mkdirSync(join(root, 'modules/system'), { recursive: true });
+    writeFileSync(join(root, 'modules/system/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'system' });\n");
+    const { input: run, lines } = input(root);
+    expect(await new MakeQueueTableCommand().handle(run)).toBe(0);
+    expect(readFileSync(join(root, 'modules/system/index.ts'), 'utf8')).toContain("migrations: new URL('./migrations/', import.meta.url)");
+    expect(lines).toContain('✓ Registered the migrations folder in modules/system/index.ts');
+    expect(lines.some((line) => line.includes('has no `migrations` yet'))).toBe(false);
+  });
 });
