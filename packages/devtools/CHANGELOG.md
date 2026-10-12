@@ -1,5 +1,19 @@
 # @marmeon/devtools
 
+## 0.1.1
+
+### Patch Changes
+
+- f56608b: Publish every package through the release workflow, with npm provenance.
+- Updated dependencies [f56608b]
+  - marmeon@0.1.1
+  - @marmeon/core@0.1.1
+  - @marmeon/http@0.1.1
+  - @marmeon/queue@0.1.1
+  - @marmeon/router@0.1.1
+  - @marmeon/scheduler@0.1.1
+  - @marmeon/server@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # @marmeon/notifications
 
+## 0.1.1
+
+### Patch Changes
+
+- f56608b: Publish every package through the release workflow, with npm provenance.
+- Updated dependencies [f56608b]
+  - marmeon@0.1.1
+  - @marmeon/core@0.1.1
+  - @marmeon/database@0.1.1
+  - @marmeon/i18n@0.1.1
+  - @marmeon/mail@0.1.1
+  - @marmeon/queue@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
