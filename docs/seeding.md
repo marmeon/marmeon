@@ -123,6 +123,13 @@ export default defineModule({
 });
 ```
 
+### Generating a seeder
+
+`marmeon make:seeder Demo --module=auth` writes `modules/auth/seeders/DemoSeeder.ts` and adds it to the module's `seeders`. The
+seeders run in the order of that list, and the generator cannot know which rows a new seeder needs first, so it appends the seeder
+last and says so. Move it up when it must run earlier. When the module's `seeders` is not a list written out in `index.ts`, or
+with `--no-register`, the command prints the lines to add instead.
+
 ## Running seeders
 
 ```sh

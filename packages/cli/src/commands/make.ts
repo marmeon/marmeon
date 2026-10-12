@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { bindingNameOf, editDefinitionFile, editDefinition, importedBindings, type DefinitionEdit } from '@marmeon/core';
+import { BUILT_IN_NAMES } from '../built-in-names.ts';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
@@ -63,7 +64,13 @@ interface RegisterMessages {
 const indexOf = (module: string) => `modules/${module}/index.ts`;
 
 /** Adds what a generator wrote to its module's index.ts (or to `messages.target`, such as bootstrap/app.ts) — or prints the lines to add (see docs/console.md#generators). */
-function registerInModule(input: CommandInput, module: string, dir: string, edit: DefinitionEdit, messages: RegisterMessages): void {
+function registerInModule(
+  input: CommandInput,
+  module: string,
+  dir: string,
+  edit: DefinitionEdit,
+  messages: RegisterMessages,
+): 'added' | 'present' | 'manual' | 'printed' {
   const shown = messages.target?.shown ?? indexOf(module);
   const printLines = () => {
     for (const line of messages.manual) input.output.line(style('dim', `  ${line}`));
@@ -78,9 +85,12 @@ function registerInModule(input: CommandInput, module: string, dir: string, edit
     input.output.line();
     input.output.line(messages.heading);
     printLines();
-    return;
+    return 'printed';
   }
-  if (messages.unregistrable !== undefined) return notRegistered(messages.unregistrable);
+  if (messages.unregistrable !== undefined) {
+    notRegistered(messages.unregistrable);
+    return 'manual';
+  }
   const outcome = editDefinitionFile(file, edit, shown);
   if (outcome.status === 'added') {
     if (messages.added !== undefined) {
@@ -93,6 +103,7 @@ function registerInModule(input: CommandInput, module: string, dir: string, edit
       input.output.line(messages.present);
     }
   } else notRegistered(outcome.reason);
+  return outcome.status === 'manual' ? 'manual' : outcome.status;
 }
 
 export class MakeModuleCommand {
@@ -361,6 +372,83 @@ export class MakeNotificationCommand {
   }
 }
 
+export class MakeCommandCommand {
+  static command = 'make:command';
+  static description = 'Create a console command (listed by marmeon list)';
+  static usage = '<Name> --module=<module> [--no-register]';
+  static options = registeringOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const dir = moduleDir(input);
+    const name = className(input, 'Command');
+    if (!dir || !name) return 1;
+    const module = input.options.module as string;
+    // The name typed on the command line — from the class name once; renaming the class later keeps it.
+    const command = `${module}:${stableName(name, 'Command') || 'command'}`;
+    if (!write(input, join(dir, 'commands', `${name}.ts`), COMMAND(name, command))) return 1;
+    if (BUILT_IN_NAMES.includes(command)) {
+      input.output.warn(`${command} is a built-in command: the built-in runs and ${name} is never reached. Change static command.`);
+    }
+
+    registerInModule(
+      input,
+      module,
+      dir,
+      {
+        define: { name: 'defineModule', from: '@marmeon/core' },
+        key: 'commands',
+        add: { element: (names) => names[name]! },
+        imports: [{ name, from: `./commands/${name}.ts` }],
+      },
+      {
+        added: `Registered ${name} in ${indexOf(module)} (commands)`,
+        present: `${name} is already registered in ${indexOf(module)}`,
+        heading: `Register it in ${indexOf(module)}:`,
+        manual: [`import { ${name} } from './commands/${name}.ts';`, `commands: [${name}]`],
+      },
+    );
+    return 0;
+  }
+}
+
+export class MakeSeederCommand {
+  static command = 'make:seeder';
+  static description = 'Create a seeder (a class with handle(), run by db:seed)';
+  static usage = '<Name> --module=<module> [--no-register]';
+  static options = registeringOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const dir = moduleDir(input);
+    const name = className(input, 'Seeder');
+    if (!dir || !name) return 1;
+    const module = input.options.module as string;
+    if (!write(input, join(dir, 'seeders', `${name}.ts`), SEEDER(name))) return 1;
+
+    const outcome = registerInModule(
+      input,
+      module,
+      dir,
+      {
+        define: { name: 'defineModule', from: '@marmeon/core' },
+        key: 'seeders',
+        add: { element: (names) => names[name]! },
+        imports: [{ name, from: `./seeders/${name}.ts` }],
+      },
+      {
+        added: `Registered ${name} in ${indexOf(module)} (seeders)`,
+        present: `${name} is already registered in ${indexOf(module)}`,
+        heading: `Register it in ${indexOf(module)}:`,
+        manual: [`import { ${name} } from './seeders/${name}.ts';`, `seeders: [${name}]`],
+      },
+    );
+    // Seeders run in the order of the list, and the generator cannot know where this one belongs.
+    if (outcome === 'added') input.output.line(style('dim', `Seeders run in the order of \`seeders\`; ${name} was added last. Move it after the seeders whose rows it needs.`));
+    return 0;
+  }
+}
+
 export class MakeMiddlewareCommand {
   static command = 'make:middleware';
   static description = 'Create a middleware class';
@@ -575,6 +663,34 @@ export class ${name} {
 
   toDatabase(data: NotificationData<typeof ${name}>): DatabaseInput<typeof ${name}> {
     return { id: data.id };
+  }
+}
+`;
+
+const COMMAND = (name: string, command: string) => `import type { CommandInput } from 'marmeon';
+
+/** Dependencies go into the constructor — they are injected automatically. */
+export class ${name} {
+  /** The name typed on the command line; a part before the colon groups it in \`marmeon list\`. */
+  static command = '${command}';
+  static description = ''; // shown in \`marmeon list\`
+  // static usage = '[--force]';
+  // static options = { force: { type: 'boolean' } } as const;
+
+  handle({ output }: CommandInput): number {
+    output.success('Done.');
+    return 0;
+  }
+}
+`;
+
+const SEEDER = (name: string) => `import type { SeedContext } from '@marmeon/database';
+
+/** Dependencies go into the constructor — they are injected automatically. Runs in the order of \`seeders\` in the module. */
+export class ${name} {
+  async handle({ db, factory }: SeedContext): Promise<void> {
+    void db;
+    void factory; // await factory(UserFactory).count(10).create()
   }
 }
 `;

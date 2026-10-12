@@ -230,6 +230,7 @@ describe('marmeon make:* (generated code compiles)', () => {
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
     for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications', 'validation']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    link('marmeon', join(repo, 'packages', 'cli')); // the generated command imports its input type from it
     for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
@@ -256,6 +257,12 @@ describe('marmeon make:* (generated code compiles)', () => {
     );
     expect(marmeon(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain(
       '✓ Registered InvoiceOverdueNotification in modules/billing/index.ts (notifications)',
+    );
+    expect(marmeon(app, ['make:command', 'PruneInvoices', '--module=billing']).stdout).toContain(
+      '✓ Registered PruneInvoicesCommand in modules/billing/index.ts (commands)',
+    );
+    expect(marmeon(app, ['make:seeder', 'Invoice', '--module=billing']).stdout).toContain(
+      '✓ Registered InvoiceSeeder in modules/billing/index.ts (seeders)',
     );
     expect(marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
     // A reading endpoint is a GET, and a GET has no body: its request validates the query.
@@ -294,6 +301,8 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(index.match(/migrations:/g)).toHaveLength(1);
     expect(index).toMatch(/jobs: \[SendInvoiceReminderJob\]/);
     expect(index).toMatch(/notifications: \[InvoiceOverdueNotification\]/);
+    expect(index).toMatch(/commands: \[PruneInvoicesCommand\]/);
+    expect(index).toMatch(/seeders: \[InvoiceSeeder\]/);
     // The generated class passes the checks where a notification is sent (channels, toDatabase against static database).
     writeFileSync(
       join(app, 'modules/billing/send-overdue.ts'),
@@ -328,7 +337,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
-  }, 30_000); // thirteen CLI processes — seconds under a full parallel run
+  }, 30_000); // fifteen CLI processes — seconds under a full parallel run
 
   it('refuses to overwrite and explains missing modules', () => {
     marmeon(app, ['make:module', 'shop']);

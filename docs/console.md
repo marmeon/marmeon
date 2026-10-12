@@ -94,7 +94,7 @@ rotation on a server.
 
 ### Generators
 
-The `make:*` commands write a file into a module from a template. `make:module` adds the module to `bootstrap/app.ts`. `make:listener`, `make:job`, `make:notification` and `make:migration`
+The `make:*` commands write a file into a module from a template. `make:module` adds the module to `bootstrap/app.ts`. `make:listener`, `make:job`, `make:notification`, `make:command`, `make:seeder` and `make:migration`
 also add the class (or the migrations folder) to the module's `index.ts`, where the module lists such things. When `index.ts` has another shape (a list kept in a variable, say),
 they leave it as it is and print the lines to add; `--no-register` always prints them. The commands run without booting the
 app, and never overwrite a file unless you pass `--force`:
@@ -107,6 +107,8 @@ app, and never overwrite a file unless you pass `--force`:
 | `make:listener <Name> --event=<Event> --module=<m> [--no-register]` | A listener in `listeners/`, added to the module's `listeners` with its event. See [events](events.md#registering-listeners). |
 | `make:job <Name> --module=<m> [--no-register]` | A queued job in `jobs/`, added to the module's `jobs`. See [queues](queues.md#generating-a-job). |
 | `make:notification <Name> --module=<m> [--no-register]` | A notification in `notifications/`, added to the module's `notifications`. See [notifications](notifications.md#defining-notifications). |
+| `make:command <Name> --module=<m> [--no-register]` | A console command in `commands/` named `<m>:<name>`, added to the module's `commands`. See [writing commands](#writing-commands). |
+| `make:seeder <Name> --module=<m> [--no-register]` | A seeder in `seeders/`, added last to the module's `seeders`. See [seeding](seeding.md#generating-a-seeder). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
 
@@ -167,7 +169,8 @@ export class PruneArchivedNotesCommand {
 }
 ```
 
-A module lists its commands, and they appear in `marmeon list`:
+`marmeon make:command PruneArchivedNotes --module=notes` writes the class with the name `notes:prune-archived-notes` and lists it in
+the module. A module lists its commands, and they appear in `marmeon list`:
 
 ```ts title="modules/notes/index.ts"
 import { defineModule } from '@marmeon/core';

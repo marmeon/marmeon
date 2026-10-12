@@ -11,6 +11,7 @@ import { printCommandHelp, printCommandList } from './commands/list.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
 import {
+  MakeCommandCommand,
   MakeControllerCommand,
   MakeEventCommand,
   MakeJobCommand,
@@ -19,6 +20,7 @@ import {
   MakeMigrationCommand,
   MakeModuleCommand,
   MakeNotificationCommand,
+  MakeSeederCommand,
 } from './commands/make.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
@@ -30,7 +32,8 @@ import { spawnMarmeon } from './spawn.ts';
 
 export { spawnMarmeon, startMarmeon } from './spawn.ts';
 
-const BUILT_IN: readonly CommandClass[] = [
+/** The commands the CLI provides; `BUILT_IN_NAMES` lists their names for the generators. */
+export const BUILT_IN: readonly CommandClass[] = [
   ServeCommand,
   RouteListCommand,
   RouteTypesCommand,
@@ -45,6 +48,8 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeListenerCommand,
   MakeJobCommand,
   MakeNotificationCommand,
+  MakeCommandCommand,
+  MakeSeederCommand,
   MakeMiddlewareCommand,
   MakeMigrationCommand,
   MakeLintConfigCommand,

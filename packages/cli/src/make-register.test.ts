@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand } from './commands/make.ts';
+import { BUILT_IN } from './main.ts';
+import { BUILT_IN_NAMES } from './built-in-names.ts';
+import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand, MakeCommandCommand, MakeSeederCommand } from './commands/make.ts';
 
 const MODULE = `import { defineModule } from '@marmeon/core';
 
@@ -300,5 +302,87 @@ describe('make:module registers the module in bootstrap/app.ts', () => {
     expect(code).toBe(0);
     expect(lines).toContain('Register it in bootstrap/app.ts:');
     expect(lines.some((line) => line.startsWith('!'))).toBe(false);
+  });
+});
+
+describe('make:command and make:seeder register themselves', () => {
+  const command = (root: string, args = ['PruneInvoices'], options: Record<string, unknown> = {}) => run(new MakeCommandCommand(), root, args, options);
+  const seeder = (root: string, args = ['Invoice'], options: Record<string, unknown> = {}) => run(new MakeSeederCommand(), root, args, options);
+
+  it('writes a command named after its module and class, and lists it', () => {
+    const { root, index } = app();
+    const { code, lines } = command(root);
+    expect(code).toBe(0);
+    expect(lines).toContain('✓ Registered PruneInvoicesCommand in modules/billing/index.ts (commands)');
+    const text = readFileSync(index, 'utf8');
+    expect(text).toContain("import { PruneInvoicesCommand } from './commands/PruneInvoicesCommand.ts';");
+    expect(text).toContain('commands: [PruneInvoicesCommand]');
+    const file = readFileSync(join(root, 'modules/billing/commands/PruneInvoicesCommand.ts'), 'utf8');
+    expect(file).toContain("static command = 'billing:prune-invoices';");
+    expect(file).toContain("import type { CommandInput } from 'marmeon';");
+  });
+
+  it('writes a seeder, lists it last and says the order is the list', () => {
+    const { root, index } = app(MODULE.replace("  name: 'billing',", "  name: 'billing',\n  seeders: [Other],"));
+    const { code, lines } = seeder(root);
+    expect(code).toBe(0);
+    expect(lines).toContain('✓ Registered InvoiceSeeder in modules/billing/index.ts (seeders)');
+    expect(lines.some((line) => line.includes('order of `seeders`') && line.includes('added last'))).toBe(true);
+    expect(readFileSync(index, 'utf8')).toContain('seeders: [Other, InvoiceSeeder]');
+    expect(readFileSync(join(root, 'modules/billing/seeders/InvoiceSeeder.ts'), 'utf8')).toContain('async handle({ db, factory }: SeedContext)');
+  });
+
+  it('is idempotent with --force', () => {
+    const { root, index } = app();
+    command(root);
+    seeder(root);
+    const before = readFileSync(index, 'utf8');
+    expect(command(root, ['PruneInvoices'], { force: true }).lines).toContain('PruneInvoicesCommand is already registered in modules/billing/index.ts');
+    const again = seeder(root, ['Invoice'], { force: true }).lines;
+    expect(again).toContain('InvoiceSeeder is already registered in modules/billing/index.ts');
+    expect(again.some((line) => line.includes('added last'))).toBe(false);
+    expect(readFileSync(index, 'utf8')).toBe(before);
+  });
+
+  it('prints the lines and touches nothing with --no-register', () => {
+    const { root, index } = app();
+    const { lines } = command(root, ['PruneInvoices'], { 'no-register': true });
+    expect(readFileSync(index, 'utf8')).toBe(MODULE);
+    expect(lines).toContain('  commands: [PruneInvoicesCommand]');
+    const printed = seeder(root, ['Invoice'], { 'no-register': true }).lines;
+    expect(printed).toContain('  seeders: [InvoiceSeeder]');
+    expect(printed.some((line) => line.includes('added last'))).toBe(false);
+    expect(readFileSync(index, 'utf8')).toBe(MODULE);
+  });
+
+  it('falls back to the lines when the list is not written out', () => {
+    const source = MODULE.replace("  name: 'billing',", "  name: 'billing',\n  seeders: allSeeders,");
+    const { root, index } = app(source);
+    const { code, lines } = seeder(root);
+    expect(code).toBe(0);
+    expect(readFileSync(index, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('! Not registered — modules/billing/index.ts: '))).toBe(true);
+    expect(lines.some((line) => line.includes('added last'))).toBe(false);
+  });
+
+  it('warns when the generated name is a built-in command', () => {
+    const { root } = app();
+    mkdirSync(join(root, 'modules', 'make'), { recursive: true });
+    writeFileSync(join(root, 'modules', 'make', 'index.ts'), MODULE.replace('billing', 'make'));
+    const { code, lines } = run(new MakeCommandCommand(), root, ['Seeder'], { module: 'make' });
+    expect(code).toBe(0);
+    expect(lines.some((line) => line.startsWith('! make:seeder is a built-in command'))).toBe(true);
+    expect(command(root, ['PruneInvoices']).lines.some((line) => line.startsWith('!'))).toBe(false);
+  });
+
+  it('keeps the list of built-in names in step with the registered commands', () => {
+    expect([...BUILT_IN_NAMES].filter((name) => name !== 'list' && name !== 'help').sort()).toEqual(BUILT_IN.map((c) => c.command).sort());
+  });
+
+  it('refuses a name that is not PascalCase and writes nothing', () => {
+    const { root } = app();
+    expect(command(root, ['prune-invoices']).code).toBe(1);
+    expect(seeder(root, ['invoice']).code).toBe(1);
+    expect(() => readFileSync(join(root, 'modules/billing/seeders/invoiceSeeder.ts'))).toThrow();
   });
 });
