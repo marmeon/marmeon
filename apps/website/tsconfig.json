@@ -12,6 +12,7 @@
   },
   "include": [
     "bootstrap",
+    "build",
     "config",
     "layouts",
     "modules",
