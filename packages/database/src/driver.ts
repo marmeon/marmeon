@@ -1,6 +1,6 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
-import { changesSchema, type SchemaMetadata } from './metadata.ts';
+import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
@@ -331,7 +331,7 @@ export class MarmeonDriver implements Driver {
     // A savepoint rolled back by hand (`sql\`rollback to savepoint …\``, a repository bound with using(trx)). Postgres runs several
     // statements of SQL sent without parameters, so a `rollback` anywhere in any statement counts.
     if (metadata.holds(connection) && ROLLBACK.test(query.sql)) metadata.invalidate();
-    if (!changesSchema(query.query)) return;
+    if (!changesSchema(query.query) && !(query.query.kind === 'RawNode' && isRawSchemaChange(query.sql))) return;
     metadata.invalidate();
     if ((this.#depth.get(connection) ?? 0) > 0) metadata.hold(connection);
   }

@@ -225,10 +225,68 @@ const BOOKKEEPING = new Set([SECRETS_TABLE, MARKERS_TABLE]);
 
 /** Whether a statement changes what the metadata holds: DDL (indexes too: a unique one makes a hasOne), or the migrator's books. */
 export function changesSchema(node: RootOperationNode): boolean {
-  // Raw DDL (`sql\`alter table …\``) is not recognized: the next blueprint change reloads.
   if (DDL.has(node.kind)) return true;
   if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
   const target = node.kind === 'InsertQueryNode' ? node.into : node.kind === 'UpdateQueryNode' ? node.table : node.from.froms[0];
   // In any case: SQLite writes to `SECRET_COLUMNS` as to `secret_columns`.
   return target !== undefined && TableNode.is(target) && BOOKKEEPING.has(fold(target.table.identifier.name));
+}
+
+const STATEMENT_DDL = /(?:create|alter|drop)\b/iy;
+const DOLLAR_TAG = /\$(?:[A-Za-z_]\w*)?\$/y;
+
+/**
+ * Whether raw SQL (`sql\`alter table …\``) contains a statement that begins with `create`, `alter` or `drop`.
+ * Only a statement's start counts, after literals and comments are dropped: a query that merely mentions one of the words
+ * (a literal, a CTE named `created`) must not reload the metadata, because the reload would make it measurably slower than
+ * the same query without the word. A missed change leaves the metadata as loaded until the next recognized one; a stray match
+ * only reloads. An unterminated literal, quoted identifier, comment or dollar tag runs to the end of the text; nested comments
+ * and `E''` escapes are not parsed.
+ */
+export function isRawSchemaChange(sql: string): boolean {
+  const end = sql.length;
+  let i = 0;
+  let atStart = true;
+  while (i < end) {
+    const char = sql[i]!;
+    if (char === "'" || char === '"') {
+      i = endOfQuoted(sql, i, char);
+      atStart = false;
+    } else if (char === '-' && sql[i + 1] === '-') {
+      const newline = sql.indexOf('\n', i);
+      i = newline < 0 ? end : newline + 1;
+    } else if (char === '/' && sql[i + 1] === '*') {
+      const close = sql.indexOf('*/', i + 2);
+      i = close < 0 ? end : close + 2;
+    } else if (char === '$' && !/[\w$]/.test(sql[i - 1] ?? '') && (DOLLAR_TAG.lastIndex = i) >= 0 && DOLLAR_TAG.exec(sql)) {
+      const tag = sql.slice(i, DOLLAR_TAG.lastIndex);
+      const close = sql.indexOf(tag, i + tag.length);
+      i = close < 0 ? end : close + tag.length;
+      atStart = false;
+    } else if (char === ';') {
+      atStart = true;
+      i++;
+    } else if (/\s/.test(char)) {
+      i++;
+    } else {
+      if (atStart) {
+        STATEMENT_DDL.lastIndex = i;
+        if (STATEMENT_DDL.test(sql)) return true;
+      }
+      atStart = false;
+      i++;
+    }
+  }
+  return false;
+}
+
+/** Index after the quoted literal or identifier that opens at `start` (a doubled quote stays inside it). Linear, without recursion. */
+function endOfQuoted(sql: string, start: number, quote: string): number {
+  let from = start + 1;
+  for (;;) {
+    const close = sql.indexOf(quote, from);
+    if (close < 0) return sql.length;
+    if (sql[close + 1] !== quote) return close + 1;
+    from = close + 2;
+  }
 }

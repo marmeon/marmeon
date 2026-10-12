@@ -10,7 +10,7 @@ import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { deriveRelations, introspect } from './introspection.ts';
 import { MarmeonDriver } from './driver.ts';
-import { changesSchema, SchemaMetadata } from './metadata.ts';
+import { changesSchema, isRawSchemaChange, SchemaMetadata } from './metadata.ts';
 import { softDelete, softDeleteFilter } from './schema-resolver.ts';
 import { Connections, cursorPaginate, Migrator, Repository } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -239,6 +239,76 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     expect(metadata.fresh).toBe(true);
     await fresh.get<any>().schema.dropIndex('users_name_index').execute();
     expect(metadata.fresh).toBe(false);
+  });
+
+  it('is stale after raw DDL — outside a transaction, and held inside one', async () => {
+    const fresh = cold();
+    const metadata = fresh.metadata();
+    const db = fresh.get<any>();
+    const read = () => db.selectFrom('users').select('id').execute();
+    await read();
+    await sql`create table raw_probe (id integer)`.execute(db);
+    expect(metadata.fresh).toBe(false);
+    await read();
+    expect(metadata.fresh).toBe(true);
+    expect(metadata.kinds.has('raw_probe')).toBe(true);
+    await sql`alter table raw_probe add column pinned integer`.execute(db);
+    expect(metadata.fresh).toBe(false);
+    await read();
+    await sql`create unique index raw_probe_pinned on raw_probe (pinned)`.execute(db);
+    expect(metadata.fresh).toBe(false);
+    await read();
+    await fresh.transaction(async (transaction) => {
+      await read();
+      await sql`drop table raw_probe`.execute(transaction as unknown as Kysely<any>);
+      await read(); // the transaction's own view
+      expect(metadata.fresh).toBe(false);
+    });
+    await read();
+    expect(metadata.fresh).toBe(true);
+    expect(metadata.kinds.has('raw_probe')).toBe(false);
+  });
+
+  it('spells select-all out from the metadata after raw DDL — the new column is read, the secret one is not', async () => {
+    const fresh = cold();
+    const db = fresh.get<any>();
+    await sql`create table raw_secret_probe (id integer, hidden varchar(20))`.execute(db);
+    try {
+      await db.insertInto('secret_columns').values({ table_name: 'raw_secret_probe', column_name: 'hidden' }).execute();
+      await db.insertInto('raw_secret_probe').values({ id: 1, hidden: 'x' }).execute();
+      expect(Object.keys(await db.selectFrom('raw_secret_probe').selectAll().executeTakeFirstOrThrow())).toEqual(['id']);
+      await sql`alter table raw_secret_probe add column pinned integer`.execute(db);
+      const row = await db.selectFrom('raw_secret_probe').selectAll().executeTakeFirstOrThrow();
+      expect(Object.keys(row).sort()).toEqual(['id', 'pinned']);
+      expect(row).not.toHaveProperty('hidden');
+    } finally {
+      await sql`drop table raw_secret_probe`.execute(db);
+      await db.deleteFrom('secret_columns').where('table_name', '=', 'raw_secret_probe').execute();
+    }
+  });
+
+  it('classifies a literal of ten megabytes without overflowing the regex stack', () => {
+    expect(isRawSchemaChange(`select '${'a'.repeat(10_000_000)}'`)).toBe(false);
+    expect(isRawSchemaChange(`select '${"b''".repeat(5_000_000)}'; drop table x`)).toBe(true);
+  });
+
+  it('does not reload for raw SQL that only mentions DDL — a reload would be measurably slower', async () => {
+    const fresh = cold();
+    const metadata = fresh.metadata();
+    const db = fresh.get<any>();
+    await db.selectFrom('users').select('id').execute();
+    expect(metadata.fresh).toBe(true);
+    for (const statement of [
+      sql`select 'alter table x'`,
+      sql`/* create */ select 1`,
+      sql`-- drop
+select 1`,
+      sql`with created as (select 1 as one) select * from created`,
+      sql`select 'a; drop table users'`,
+    ]) {
+      await statement.execute(db);
+      expect(metadata.fresh).toBe(true);
+    }
   });
 
   it.runIf(driver === 'sqlite')('a query built while a migration adds soft deletes waits for it — and filters what it soft-deleted', async () => {
@@ -592,5 +662,28 @@ describe('SQLite connections', () => {
     } finally {
       await connections.destroy();
     }
+  });
+});
+
+describe('isRawSchemaChange', () => {
+  it('recognizes a statement that starts with create, alter or drop', () => {
+    expect(isRawSchemaChange('ALTER TABLE users ADD COLUMN x integer')).toBe(true);
+    expect(isRawSchemaChange('  \n create index i on users (name)')).toBe(true);
+    expect(isRawSchemaChange('/* note */ -- more\n drop table users')).toBe(true);
+    expect(isRawSchemaChange('select 1; drop table users')).toBe(true);
+  });
+
+  it('ignores the words anywhere else', () => {
+    expect(isRawSchemaChange('select 1')).toBe(false);
+    expect(isRawSchemaChange("select 'drop table x'")).toBe(false);
+    expect(isRawSchemaChange('select "alter" from t')).toBe(false);
+    expect(isRawSchemaChange('/* create */ select 1')).toBe(false);
+    expect(isRawSchemaChange('-- drop\nselect 1')).toBe(false);
+    expect(isRawSchemaChange('with created as (select 1) select * from created')).toBe(false);
+    expect(isRawSchemaChange('select dropped, altered, creates from t')).toBe(false);
+    expect(isRawSchemaChange('select $q$ ; drop table x $q$')).toBe(false);
+    expect(isRawSchemaChange(`select $${'t'.repeat(200)}$ ; drop table x $${'t'.repeat(200)}$`)).toBe(false);
+    expect(isRawSchemaChange('select a$b$c from t; alter table t add c int')).toBe(true);
+    expect(isRawSchemaChange('select $1; select $tag$a$tag$; drop table x')).toBe(true);
   });
 });

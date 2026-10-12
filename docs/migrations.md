@@ -121,8 +121,10 @@ depends on those marks waits for the migration to end, for at most 10 seconds, a
 Three cases remain:
 
 - A query built before the migration's first schema change and sent after it uses the schema it was built with.
-- A schema change written as raw SQL, such as `` sql`create view …` ``, is not recognized: the process keeps what it loaded until
-  the next change made with the schema methods, or a restart.
+- A schema change written as raw SQL is recognized when a statement begins with `create`, `alter` or `drop`, such as
+  `` sql`alter table …` ``. A word inside a literal or a comment does not count. A schema change that begins otherwise, such
+  as a `pragma` or Postgres's `select … into new_table`, is not recognized: the process keeps what it loaded until the next
+  recognized change, or a restart.
 - A process that did not run the migration does not see it. Restart the app's processes after `marmeon migrate` ran from another
   one, as a deployment does when it runs `migrate --force` before the new version takes requests.
 
