@@ -67,8 +67,8 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
         </div>
         <div className="landing-inner">
           <div className="hero-code">
-            <CodeBlock html={snippets.controller.html} caption={snippets.controller.file} />
-            <CodeBlock html={snippets.page.html} caption={snippets.page.file} />
+            <CodeBlock copy={false} html={snippets.controller.html} caption={snippets.controller.file} />
+            <CodeBlock copy={false} html={snippets.page.html} caption={snippets.page.file} />
           </div>
           <p className="hero-note">The page takes its prop types from the controller. Change one, and the other no longer compiles.</p>
         </div>
@@ -116,7 +116,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.migration.html} caption={snippets.migration.file} />
+              <CodeBlock copy={false} html={snippets.migration.html} caption={snippets.migration.file} />
             </ChainStep>
             <ChainStep
               number={2}
@@ -130,7 +130,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.tableType.html} caption={snippets.tableType.file} />
+              <CodeBlock copy={false} html={snippets.tableType.html} caption={snippets.tableType.file} />
             </ChainStep>
             <ChainStep
               number={3}
@@ -145,7 +145,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.repository.html} caption={snippets.repository.file} />
+              <CodeBlock copy={false} html={snippets.repository.html} caption={snippets.repository.file} />
             </ChainStep>
             <ChainStep
               number={4}
@@ -160,7 +160,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.controllerCall.html} />
+              <CodeBlock copy={false} html={snippets.controllerCall.html} />
             </ChainStep>
             <ChainStep
               number={5}
@@ -175,8 +175,8 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.routes.html} caption={snippets.routes.file} />
-              <CodeBlock html={snippets.routeLink.html} />
+              <CodeBlock copy={false} html={snippets.routes.html} caption={snippets.routes.file} />
+              <CodeBlock copy={false} html={snippets.routeLink.html} />
             </ChainStep>
             <ChainStep
               number={6}
@@ -191,7 +191,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.pageSignature.html} />
+              <CodeBlock copy={false} html={snippets.pageSignature.html} />
             </ChainStep>
             <ChainStep
               number={7}
@@ -206,7 +206,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
                 </>
               }
             >
-              <CodeBlock html={snippets.form.html} />
+              <CodeBlock copy={false} html={snippets.form.html} />
             </ChainStep>
           </ol>
         </div>

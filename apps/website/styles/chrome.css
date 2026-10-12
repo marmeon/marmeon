@@ -260,6 +260,7 @@ figure.code {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  min-height: 45px; /* the copy button's 44px plus the border */
   padding: 0 6px 0 var(--space-4);
   border-bottom: 1px solid var(--line);
 }

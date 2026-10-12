@@ -26,7 +26,7 @@ export function TestingSection({ snippet }: { snippet: HighlightedSnippet }) {
             <Link href="/docs/fakes">Fakes</Link>
           </p>
         </div>
-        <CodeBlock html={snippet.html} caption={snippet.file} />
+        <CodeBlock copy={false} html={snippet.html} caption={snippet.file} />
       </div>
     </section>
   );
