@@ -1,16 +1,17 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link } from '@marmeon/react';
+import { Link } from '@marmeon/react';
 import type { ShowDocController } from '../controllers/ShowDocController.ts';
 import { Markdown } from '../components/Markdown.tsx';
+import { SiteHead } from '../../site/components/SiteHead.tsx';
 import { Toc, TocMobile } from '../components/Toc.tsx';
 
 /** `/docs/:page`: a page of the docs. */
-export default function Page({ title, section, body, toc, markdown, previous, next }: PageProps<ShowDocController>) {
+export default function Page({ title, section, body, toc, description, path, markdown, previous, next }: PageProps<ShowDocController>) {
   return (
     <div className="page doc-page">
-      <Head title={title}>
+      <SiteHead title={title} description={description} path={path} type="article">
         <link rel="alternate" type="text/markdown" href={markdown} />
-      </Head>
+      </SiteHead>
       <article className="doc">
         <div className="doc-kicker">
           <p className="eyebrow">{section}</p>

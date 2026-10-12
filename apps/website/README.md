@@ -67,6 +67,12 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   the page object): the page's `.md` body, and for `/docs` the index of `/llms.txt`. Both variants carry `Vary: Accept` and have
   their own ETag, so a shared cache never serves one for the other.
   Every docs page shows a "View as Markdown" link to its `.md` above the heading — a plain `<a>` (no `<Link>`, no JavaScript).
+- **Head tags** (`modules/site/components/SiteHead.tsx`): every HTML page has `<meta name="description">`, `<link rel="canonical">` and
+  Open Graph (`og:title`, `og:description`, `og:url`, `og:type`, `og:site_name`; no image). A docs page describes itself with whole
+  sentences of its first paragraph, up to 160 characters (`modules/docs/description.ts`; when that gives under 110 characters and more
+  follows, the paragraph is cut at a word and ends in `…`); the other pages use the fixed texts in `modules/site/descriptions.ts`. The
+  canonical URL is the page's path from its data on the origin of the shared `site.url` (`APP_URL`) — never the request's URL, which
+  may carry a query or a forged host into a cached page. The search has a description only, and an error page names no canonical URL.
 - **Sitemap and robots.txt** (`modules/site/seo.ts`): `/sitemap.xml` lists the landing, `/docs`, every written page of the docs and the legal
   pages as absolute URLs from `APP_URL` — drafts left out, no `lastmod` (the image has no history; a wrong date does more harm than
   none). `/robots.txt` is the same in every environment: everything may be crawled but `/docs/search` (an endless URL space behind

@@ -132,6 +132,9 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   const browser = await get('/docs/routing', { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' });
   expect(browser.response.headers.get('content-type')?.startsWith('text/html') === true, `/docs/routing with a browser's Accept: content type ${browser.response.headers.get('content-type')}`);
   expect((browser.response.headers.get('vary') ?? '').toLowerCase().includes('accept'), "/docs/routing with a browser's Accept: Vary lacks Accept");
+  const head = await get('/docs/routing', { accept: 'text/html' });
+  expect(head.body.includes(`<link rel="canonical" href="${base}/docs/routing"`), `/docs/routing: no canonical link to ${base}/docs/routing`);
+  expect(/<meta name="description" content="[^"]{50,}"/.test(head.body), '/docs/routing: no meta description');
   const noMarkdown = await get('/docs/search.md');
   expect(noMarkdown.response.status === 404, `/docs/search.md: status ${noMarkdown.response.status}, expected 404`);
 

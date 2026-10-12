@@ -1,6 +1,8 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, usePage } from '@marmeon/react';
+import { Link, usePage } from '@marmeon/react';
 import type { ReactNode } from 'react';
+import { SiteHead } from '../../site/components/SiteHead.tsx';
+import { DESCRIPTIONS } from '../../site/descriptions.ts';
 import { Terminal } from '../../site/components/Terminal.tsx';
 import type { ShowHomeController } from '../controllers/ShowHomeController.ts';
 
@@ -66,9 +68,9 @@ export default function Home({ sections }: PageProps<ShowHomeController>) {
   const version = usePage().props.site?.version;
   return (
     <div className="docs-home">
-      <Head title="Documentation">
+      <SiteHead title="Documentation" description={DESCRIPTIONS.docs} path="/docs">
         <link rel="alternate" type="text/markdown" href="/llms.txt" />
-      </Head>
+      </SiteHead>
       <div className="docs-home-inner">
         <section className="docs-home-intro" aria-labelledby="home-title">
           <div className="docs-home-lead">

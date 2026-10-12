@@ -3,6 +3,7 @@ import { Head, Link, useLayer, useQueryState, useRoute } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import type { SearchController } from '../controllers/SearchController.ts';
 import { SearchFrame } from '../components/SearchFrame.tsx';
+import { DESCRIPTIONS } from '../../site/descriptions.ts';
 import { groupByPage } from '../search-groups.ts';
 
 /**
@@ -21,7 +22,9 @@ export default function Search({ results }: PageProps<SearchController>) {
 
   return (
     <div className="page search">
-      <Head title={query.q ? `Search: ${query.q}` : 'Search'} />
+      <Head title={query.q ? `Search: ${query.q}` : 'Search'}>
+        <meta name="description" content={DESCRIPTIONS.search} />
+      </Head>
       <div className="search-main">
         <Title className="visually-hidden">Search</Title>
         <form className="search-form" method="get" action={route('docs.search')} role="search" onSubmit={(event) => event.preventDefault()}>

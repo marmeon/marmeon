@@ -1,5 +1,5 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, usePage } from '@marmeon/react';
+import { Link, usePage } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import { ChainStep } from '../components/ChainStep.tsx';
 import { CodeBlock } from '../components/CodeBlock.tsx';
@@ -9,8 +9,10 @@ import { ModulesSection } from '../components/landing/ModulesSection.tsx';
 import { SecureSection } from '../components/landing/SecureSection.tsx';
 import { StartSection } from '../components/landing/StartSection.tsx';
 import { TestingSection } from '../components/landing/TestingSection.tsx';
+import { SiteHead } from '../components/SiteHead.tsx';
 import { Terminal } from '../components/Terminal.tsx';
 import type { ShowLandingController } from '../controllers/ShowLandingController.ts';
+import { DESCRIPTIONS } from '../descriptions.ts';
 import { GITHUB_URL } from '../links.ts';
 
 const PRINCIPLES: { name: string; text: ReactNode }[] = [
@@ -36,7 +38,7 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
   const version = usePage().props.site?.version;
   return (
     <div className="landing">
-      <Head title="" />
+      <SiteHead title="" description={DESCRIPTIONS.landing} path="/" />
       <section className="hero" aria-labelledby="hero-title">
         <div className="landing-inner hero-inner">
           <div className="hero-copy">

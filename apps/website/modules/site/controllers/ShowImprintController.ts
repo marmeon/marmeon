@@ -1,4 +1,5 @@
 import { Controller } from '@marmeon/http';
+import { DESCRIPTIONS } from '../descriptions.ts';
 import { LegalPages } from '../LegalPages.ts';
 
 /** `/imprint`: the site notice (`content/legal/imprint.md`). */
@@ -12,6 +13,6 @@ export class ShowImprintController extends Controller {
 
   handle() {
     const { title, body } = this.#legal.page('imprint');
-    return this.view('site/Legal', { title, body });
+    return this.view('site/Legal', { title, body, description: DESCRIPTIONS.imprint, path: '/imprint' });
   }
 }

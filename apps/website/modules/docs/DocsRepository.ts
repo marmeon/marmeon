@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { RouteBinder } from '@marmeon/http';
 import docsConfig, { type DocsDefinition, type DocsPageEntry, type DocsSection } from '../../docs.config.ts';
 import { createCodeHighlighter, type CodeHighlighter } from './highlight.ts';
+import { fallbackDescription, summarize } from './description.ts';
 import { renderMarkdown, type RenderedMarkdown } from './markdown.ts';
 import { replaceLinks, servedHref, sourceLinks, type SourceLink } from './markdown-source.ts';
 import { SearchIndex, type SearchResult } from './search.ts';
@@ -27,6 +28,8 @@ export interface DocPage {
   readonly fileLinks: readonly string[];
   /** The file as `/docs/<slug>.md` serves it: links to pages rewritten to their `.md` siblings, links to other files to GitHub. */
   readonly markdown: string;
+  /** The meta description: whole sentences of the first paragraph, up to 160 characters. */
+  readonly description: string;
 }
 
 /** An entry of the navigation: a page, and whether it is still to be written (the layout marks it "draft"). */
@@ -205,6 +208,7 @@ export class DocsRepository {
           anchors: rendered.anchors,
           fileLinks: rendered.fileLinks,
           markdown,
+          description: summarize(rendered.lead) ?? fallbackDescription(rendered.title || name, section),
         },
       };
     };

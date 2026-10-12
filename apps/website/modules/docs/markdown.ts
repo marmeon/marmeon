@@ -59,6 +59,8 @@ export interface RenderedMarkdown {
   readonly fileLinks: string[];
   /** The page carries {@link PENDING_MARKER}. */
   readonly pending: boolean;
+  /** The plain text of the first top-level paragraph after the title; `''` when there is none. */
+  readonly lead: string;
 }
 
 export interface RenderOptions {
@@ -83,6 +85,15 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
   let pending = false;
   let section = { heading: '', anchor: '', depth: 1, text: [] as string[], code: [] as string[] };
   sections.push(section);
+
+  let lead = '';
+  const titleAt = tokens.findIndex((token) => token.type === 'heading_open' && token.tag === 'h1');
+  for (let i = titleAt + 1; titleAt >= 0 && i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.type !== 'paragraph_open' || token.level !== 0 || token.hidden || tokens[i + 1]!.content.trim() === PENDING_MARKER) continue;
+    lead = plainText(tokens[i + 1]!.children ?? []).replace(/\s+/g, ' ').trim();
+    break;
+  }
 
   const root: Building = element('div');
   const stack: Building[] = [root];
@@ -272,6 +283,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
     anchors,
     fileLinks,
     pending,
+    lead,
     sections: sections
       .map((s) => ({ heading: s.heading, anchor: s.anchor, depth: s.depth, text: squash(s.text), code: squash(s.code) }))
       .filter((s) => s.text || s.code || s.anchor),
