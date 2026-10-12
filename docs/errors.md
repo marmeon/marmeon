@@ -155,6 +155,43 @@ A function with a declared return type needs no `default`: a missing case leaves
 HTTP stays with exceptions: `findOrFail()` answers 404 by throwing, and `abort()` stops a request. Returned from the callback of
 a transaction, an `err` rolls the transaction back, as the [transactions](transactions.md#returning-an-err) page explains.
 
+### Results the framework returns
+
+| API | `err` kinds | Page |
+| --- | --- | --- |
+| `repository.tryInsert()` | `duplicate` | [Queries](queries.md#writing) |
+| `repository.tryUpdate()` | `duplicate`, `missing` | [Queries](queries.md#writing) |
+| `auth.attempt()` | `invalid-credentials` | [Authentication](authentication.md#signing-in) |
+| `RememberTokenStore.consume()` | `invalid`, `stolen` | [Authentication](authentication.md#remember-me) |
+| `PasswordBroker.createToken()` | `unavailable` | [Password reset](passwords.md#asking-for-a-link) |
+| `PasswordBroker.reset()` | `invalid-token` | [Password reset](passwords.md#resetting-the-password) |
+| `PasswordResetTokenStore.create()` | `throttled` | [Password reset](passwords.md#a-store-of-your-own) |
+| `PasswordResetTokenStore.consume()` | `invalid-token` | [Password reset](passwords.md#a-store-of-your-own) |
+| `lock.get(callback)` | `locked` | [Cache](cache.md#locks) |
+
+`RememberTokenStore` and `PasswordResetTokenStore` are the contracts a store of your own implements, so the table lists the kinds
+each has to return. A `get(callback)` whose callback returns a `Result` gives a nested one: the lock's `ok` holds the callback's
+result. An exception from the callback is rethrown, not turned into an `err`.
+
+Some of these `err`s must survive the transaction they are returned from, because the work behind them is a protective one. They
+are made with [`commitAnyway()`](transactions.md#returning-an-err), and a store of your own does the same:
+
+- `RememberTokenStore.consume()` for `stolen` (all of the user's remember-me tokens are revoked) and for `invalid` on an expired
+  token (the token is deleted).
+- `PasswordResetTokenStore.consume()` and, through it, `PasswordBroker.reset()` for `invalid-token` on an expired token (the token
+  is deleted). `reset()` also commits the `invalid-token` of an account that is gone, so that the token stays used up.
+
+Every other `err` above commits nothing and rolls an enclosing transaction back when its callback returns it.
+
+Where a kind would tell whether an account exists, it is left out on purpose. `attempt()` answers `invalid-credentials` for an
+unknown identifier, a wrong password and an account without a password alike. `reset()` answers `invalid-token` for an unknown
+address and for a wrong, used or expired token. `createToken()` answers `unavailable` for an address without an account and for one
+whose last link went out moments ago. Do not add kinds of your own that tell these apart.
+
+Two calls are not `Result`s because nothing failed: a unique job that is already queued or running makes `dispatch()` return `undefined`, and
+`job.once()` returns `false` when the work already ran. Yes-or-no questions, such as `lock.get()` without a callback,
+`auth.check()` and `auth.confirmPassword()`, stay `boolean`.
+
 ## Reporting
 
 The exception handler's `report()` logs every server error at the `error` level: its message and its stack, masked as text by the
