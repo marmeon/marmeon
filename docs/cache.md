@@ -141,7 +141,9 @@ export class ExportNotesController extends Controller {
 ```
 
 - **`get()`** tries once and says whether it took the lock. `get(callback)` runs the callback while holding it, releases it
-  and returns the callback's result, or `false` when the lock was taken.
+  and returns `ok(result)`, or `err({ kind: 'locked' })` without calling it when someone else holds the lock — a
+  [`Result`](errors.md#results), so a callback that returns `false` is not mistaken for a taken lock. Returned from a
+  `transaction()` callback, `locked` rolls the transaction back ([transactions](transactions.md#returning-an-err)).
 - **`block(seconds, callback?)`** waits up to `seconds` for the lock, trying every 250 milliseconds, then throws
   `LockTimeoutError`. With a callback it runs it, releases the lock and returns the result.
 - **`release()`** frees the lock only while this lock object holds it. A lock that expired and was taken by another stays
@@ -150,6 +152,11 @@ export class ExportNotesController extends Controller {
 
 Each lock object has a random owner token. `cache.lock(name, seconds, owner)` makes an object with a known owner, so a job can
 release a lock that a request took, given the lock's `owner`. The number of seconds must be positive.
+
+```ts
+const exported = await this.#cache.lock('report', 60).get(() => this.#exports.build(ctx.user.id));
+if (!exported.ok) abort(423);
+```
 
 A lock taken for work inside a transaction must go when the transaction rolls back. `afterRollback(() => lock.release())` of
 `@marmeon/database` does that, and the [transactions](transactions.md#after-a-rollback) page explains it.

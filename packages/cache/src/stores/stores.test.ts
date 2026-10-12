@@ -1,4 +1,5 @@
 import { readdirSync } from 'node:fs';
+import { err, ok } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LockTimeoutError, StoreCache } from '../cache.ts';
 import { RateLimiter } from '../rate-limiter.ts';
@@ -168,10 +169,17 @@ describe.each(storeKinds)('the %s store', (kind) => {
 
     it('runs a callback while holding the lock and releases it afterwards — also when it throws', async () => {
       const { cache } = await open();
-      expect(await cache.lock('task', 10).get(() => 'done')).toBe('done');
+      expect(await cache.lock('task', 10).get(() => 'done')).toStrictEqual(ok('done'));
       await expect(cache.lock('task', 10).get(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
       expect(await cache.lock('task', 10).get()).toBe(true);
-      expect(await cache.lock('task', 10).get(() => 'never')).toBe(false);
+      const never = vi.fn(() => 'never');
+      expect(await cache.lock('task', 10).get(never)).toStrictEqual(err({ kind: 'locked' }));
+      expect(never).not.toHaveBeenCalled();
+    });
+
+    it('tells a callback that returns false from a lock that was taken', async () => {
+      const { cache } = await open();
+      expect(await cache.lock('flag', 10).get(() => false)).toStrictEqual(ok(false));
     });
 
     it('waits with block() until the lock is free, or throws LockTimeoutError', async () => {

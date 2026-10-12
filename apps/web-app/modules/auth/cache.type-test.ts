@@ -1,16 +1,19 @@
 // Type guarantees of the cache, locks and the test clock — compiled by `pnpm typecheck` / `marmeon build`, never run.
+import type { Result } from '@marmeon/core';
 import { Cache, Limit, RateLimiter } from '@marmeon/cache';
 import type { TestApp } from '@marmeon/testing';
 
 export async function LockCallbacks(cache: Cache) {
-  const report: 'built' | false = await cache.lock('report', 60).get(() => 'built' as const);
+  const report: Result<'built', { kind: 'locked' }> = await cache.lock('report', 60).get(() => 'built' as const);
+  // @ts-expect-error — get(callback) returns a Result, not the value or `false`
+  const old: 'built' | false = await cache.lock('report', 60).get(() => 'built' as const);
   const waited: number = await cache.lock('report', 60).block(5, async () => 42);
   const taken: boolean = await cache.lock('report', 60).get();
   // @ts-expect-error — without a callback, get() says whether it took the lock: a boolean, not the callback's value
   const wrong: string = await cache.lock('report', 60).get();
   // @ts-expect-error — the lock expires after seconds (a number); a forever lock does not exist
   cache.lock('report');
-  return { report, waited, taken, wrong };
+  return { report, old, waited, taken, wrong };
 }
 
 export async function AtomicCounting(cache: Cache, limiter: RateLimiter) {

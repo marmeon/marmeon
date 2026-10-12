@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, token, type Clock } from '@marmeon/core';
+import { SystemClock, err, ok, token, type Clock, type Result } from '@marmeon/core';
 
 /**
  * A key-value store with expiry. Values must survive `JSON.stringify`. `add`, `increment`
@@ -109,16 +109,17 @@ export class Lock {
   }
 
   /**
-   * Tries once to take the lock. With `callback`: runs it while holding the lock and releases it afterwards — the
-   * callback's result, or `false` when the lock was taken.
+   * Tries once to take the lock. With `callback`: runs it while holding the lock, releases it afterwards and returns
+   * `ok(its result)`, or `err({ kind: 'locked' })` without calling it when someone else holds the lock. See `docs/cache.md#locks`.
    */
   get(): Promise<boolean>;
-  get<T>(callback: () => T | Promise<T>): Promise<T | false>;
-  async get<T>(callback?: () => T | Promise<T>): Promise<T | boolean> {
+  get<T>(callback: () => T | Promise<T>): Promise<Result<Awaited<T>, { kind: 'locked' }>>;
+  async get<T>(callback?: () => T | Promise<T>): Promise<boolean | Result<Awaited<T>, { kind: 'locked' }>> {
     const acquired = await this.#store.lock(this.#key, this.owner, this.#clock.now() + this.seconds * 1000);
-    if (!acquired || !callback) return acquired;
+    if (!callback) return acquired;
+    if (!acquired) return err({ kind: 'locked' });
     try {
-      return await callback();
+      return ok(await callback());
     } finally {
       await this.release();
     }
