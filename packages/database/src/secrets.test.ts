@@ -103,6 +103,40 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     const cte = await db.with('a', (q) => q.selectFrom('accounts').selectAll()).selectFrom('a').selectAll().executeTakeFirstOrThrow();
     expect(cte).not.toHaveProperty('password');
     expect(cte).not.toHaveProperty('totp_secret');
+    const union = await db.selectFrom('accounts').selectAll().union(db.selectFrom('accounts').selectAll()).execute();
+    expect(union).toHaveLength(1);
+    expect(union[0]).not.toHaveProperty('password');
+    const aliased = await db.selectFrom('accounts as a').selectAll('a').executeTakeFirstOrThrow();
+    expect(aliased).not.toHaveProperty('password');
+    expect(aliased).not.toHaveProperty('totp_secret');
+  });
+
+
+  it('… also for a join that selects every column of both tables, and for returning * of an update and a delete', async () => {
+    await insertAda();
+    await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).execute();
+    const both = await db.selectFrom('users').innerJoin('accounts', 'accounts.email', 'users.email').selectAll('users').selectAll('accounts').executeTakeFirstOrThrow();
+    expect(both).not.toHaveProperty('password');
+    expect(both).not.toHaveProperty('totp_secret');
+    const inserted = await db.insertInto('accounts').values({ email: 'grace@example.com', password: HASH }).returningAll().execute();
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).not.toHaveProperty('password');
+    const updated = await db.updateTable('accounts').set({ password: `${HASH}y` }).returningAll().execute();
+    expect(updated).toHaveLength(2);
+    expect(updated[0]).not.toHaveProperty('password');
+    const deleted = await db.deleteFrom('accounts').returningAll().execute();
+    expect(deleted[0]).not.toHaveProperty('password');
+    expect(deleted[0]).not.toHaveProperty('totp_secret');
+  });
+
+  it('the same builder run with and without a secret() sibling never leaks the column to the run without it', async () => {
+    await insertAda();
+    const plain = db.selectFrom('accounts').selectAll();
+    const withSecret = plain.select((eb) => secret(eb, 'password'));
+    expect(await withSecret.executeTakeFirstOrThrow()).toMatchObject({ password: HASH });
+    expect(await plain.executeTakeFirstOrThrow()).not.toHaveProperty('password');
+    expect(await withSecret.executeTakeFirstOrThrow()).toMatchObject({ password: HASH });
+    expect(await plain.executeTakeFirstOrThrow()).not.toHaveProperty('password');
   });
 
   it('reads one only with secret() — explicit wins over select-all in the same query', async () => {

@@ -13,7 +13,6 @@ import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
 import { SchemaResolver } from './schema-resolver.ts';
-import { SecretColumnsPlugin } from './secrets.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
 /**
@@ -225,8 +224,8 @@ export class Connections {
       const relations = new RelationsPlugin(options.driver, metadata);
       const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations);
       const { dialect, driver } = withMarmeonDriver(base, { name, target: describeConnection(options), metadata, deferred: resolver, results: relations });
-      // In this order: placeholders resolved, then the relations' JSON built, then the result stripped of secret columns.
-      const plugins = [resolver, relations, new SecretColumnsPlugin(metadata)];
+      // In this order: placeholders resolved, then the relations' JSON built and the query checked for secret columns.
+      const plugins = [resolver, relations];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);

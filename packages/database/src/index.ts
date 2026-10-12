@@ -49,7 +49,7 @@ export type { Migration } from './migrations/migration.ts';
 export { MARKERS_TABLE, Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from './migrations/migrator.ts';
 export { SchemaMetadata } from './metadata.ts';
 export type { ColumnKind } from './metadata.ts';
-export { secret, SecretColumnsPlugin } from './secrets.ts';
+export { secret } from './secrets.ts';
 export { isSecretSelection } from './secret-guard.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
