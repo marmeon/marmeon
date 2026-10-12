@@ -54,7 +54,7 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 `marmeon build` prepares the app for production. In this order, it:
 
 1. precomputes the injection lists of the app's classes,
-2. writes the route types, `bootstrap/routes.ts`,
+2. writes the route types, `bootstrap/routes.ts` (and stops if the app cannot be registered, e.g. two commands with one name),
 3. type-checks the app against them, so a renamed route or a missing view fails the build,
 4. builds the browser's files into `dist/client/` and the server rendering into `dist/server/`,
 5. writes a `.br` and a `.gz` copy next to every script, stylesheet and other text asset that gets smaller by it,

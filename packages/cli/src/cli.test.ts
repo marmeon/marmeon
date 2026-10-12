@@ -211,6 +211,15 @@ describe('marmeon route:types (reserved page names)', () => {
     expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).not.toContain('::'); // left as it was
   }, ciTimeout);
 
+  it('stops marmeon build on a page path with "::"', () => {
+    const app = appWith(['modules/a/views/x::y.tsx']);
+    const { code, stderr } = marmeon(app, ['build', '--no-typecheck']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('"::" is reserved');
+    expect(stderr).toContain('Not built: marmeon route:types failed');
+    expect(existsSync(join(app, 'dist'))).toBe(false);
+  }, ciTimeout);
+
   it('lists the pages of the app’s modules when none has "::"', () => {
     const app = appWith(['modules/a/views/Fine.tsx']);
     expect(marmeon(app, ['route:types']).code).toBe(0);
@@ -264,6 +273,24 @@ describe('marmeon: two commands with one name', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('Two commands are named "db:seed"');
     expect(stdout).not.toContain('OURS RAN');
+  }, ciTimeout);
+
+  it('stops marmeon build before anything is built', () => {
+    const app = appWithCommand('db:seed');
+    const { code, stderr } = marmeon(app, ['build', '--no-typecheck']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('Two commands are named "db:seed"');
+    expect(stderr).toContain('Not built: marmeon route:types failed');
+    expect(existsSync(join(app, 'dist'))).toBe(false);
+  }, ciTimeout);
+
+  it('stops marmeon build when a module reuses the name build', () => {
+    const app = appWithCommand('build');
+    const { code, stderr } = marmeon(app, ['build', '--no-typecheck']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('BuildCommand (marmeon)');
+    expect(stderr).toContain('Not built:');
+    expect(existsSync(join(app, 'dist'))).toBe(false);
   }, ciTimeout);
 
   it('starts when the names differ', () => {

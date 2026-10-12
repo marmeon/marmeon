@@ -8,7 +8,7 @@ import { typecheckApp } from '../typecheck.ts';
 
 /**
  * `marmeon build`: the app's injection lists, the route types and a warning for job and notification classes no module lists (each in a process of its own, with the app in its build phase — no
- * `.env`, no key, so no secret can end up in `dist/`), the type check (`--no-typecheck` skips it), the client and SSR bundles
+ * `.env`, no key, so no secret can end up in `dist/`; the build stops when the app cannot be registered, e.g. a command name used twice or a broken module), the type check (`--no-typecheck` skips it), the client and SSR bundles
  * with the app's own Vite, the precompressed assets and the production discovery manifest. See
  * docs/deployment.md#building-and-starting.
  */
@@ -25,7 +25,7 @@ export class BuildCommand {
       output.success(`Precomputed the injection lists of ${injections.modules} module${injections.modules === 1 ? '' : 's'} → ${relative(root, injections.path)}`);
     }
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('route:types')) !== 0) {
-      output.error('Not built: marmeon route:types failed (it registers the app without booting it — see its error above).');
+      output.error('Not built: marmeon route:types failed — see its error above (it registers the app without booting it, so a broken module or a command name used twice stops it too).');
       return 1;
     }
     // Only a warning: classes no module lists. A process of its own, like route:types, so the app is not booted here.
