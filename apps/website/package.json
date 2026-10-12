@@ -17,6 +17,7 @@
     "docs.config.ts",
     "index.html",
     "!**/*.test.ts",
+    "!**/*.test.tsx",
     "!**/*.type-test.ts",
     "!**/*.test-support.ts"
   ],
