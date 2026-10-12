@@ -75,11 +75,10 @@ package store, the registry and Docker — without them they are reported as ski
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
   removes them when the test, or the file, is done.
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
-- **A change an app can notice** gets, from the first release (0.1.0) on, a changeset
+- **A change an app can notice** gets a changeset
   ([Changesets and releases](#changesets-and-releases)) and an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after,
   the way back — in the next version's section, in its place by impact and area; `scripts/check-changesets.ts` lists its anchor
-  under that version. Until the first release there is nothing to release against or upgrade from: a change needs neither, and
-  UPGRADING.md says so and holds no entry.
+  under that version. Until the first such entry, UPGRADING.md says so and holds none.
 - **A change to a public API, an environment default or a command** changes its page under `docs/` in the same commit
   ([Writing documentation](#writing-documentation)).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.
@@ -271,7 +270,7 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
 
 - **0.x:** `minor` for a breaking change, `patch` for everything else. A `major` changeset would jump to 1.0.0 — `pnpm run ci`
   (`scripts/check-changesets.ts`) refuses it below 1.0.0. 1.0 comes after the reference app.
-- **The upgrade guide** starts with the first release. Until then `UPGRADING.md` is a short page without entries, and
+- **The upgrade guide** starts with its first entry. Until then `UPGRADING.md` is a short page without entries, and
   `check-changesets` refuses an entry that stands under no release. The first `## Upgrading to <version> from <version>` section
   switches the requirement on: `check-changesets` refuses it until `UPGRADING_ANCHORS` lists its entries under that version, and
   from then on every listed entry must stand under its release, with its impact and its likelihood. Head a release's section

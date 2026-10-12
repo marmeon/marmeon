@@ -27,7 +27,7 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 }
 ```
 
-Status: 0.1.0 — prepared, not published yet. MIT licence (`LICENSE`, copyright [BespokeCode](https://bespokecode.de)). Node 26.10 or newer, pnpm 12.
+Status: 0.x on npm — a minor version may still break ([release policy](docs/releases.md#before-10)). MIT licence (`LICENSE`, copyright [BespokeCode](https://bespokecode.de)). Node 26.10 or newer, pnpm 12.
 
 ## Principles
 
@@ -57,16 +57,13 @@ pnpm dev                          # the server with Vite, a queue worker and the
 [installation](docs/installation.md) page walks through every step, and the
 [first day after a release](docs/installation.md#the-first-day-after-a-release) explains why pnpm may hold a new version back.
 
-> Not on npm yet: until the first release, `pnpm pack:smoke --keep` in this repository makes such an app from the packages'
-> tarballs and keeps it.
-
 ## Documentation
 
 The documentation lives in [`docs/`](docs/) — and, once it is online, as a Marmeon app of its own (`apps/website`). Start with
 [Installation](docs/installation.md), [Directory Structure](docs/structure.md) and [Routing](docs/routing.md); the
 [Packages](docs/packages.md) page says what each package brings. The [Security](docs/security.md) page sums up what an app
 protects by itself and what it leaves to you, and the [Upgrade Guide](UPGRADING.md) lists every change from one version to the
-next, from the first release on.
+next.
 
 ## Versions and deprecations
 

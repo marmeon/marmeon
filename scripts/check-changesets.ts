@@ -22,7 +22,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * The entries UPGRADING.md must keep, by release — the version of its section (`## Upgrading to 0.2.0 from 0.1.0` → `'0.2.0'`) to
  * GitHub's anchors of its entries (`#### Medium: …`). A reworded heading changes its anchor: update it here.
  *
- * Empty until the first release: there is nothing to upgrade from, and the page says so. The requirement switches on by
+ * Empty until the first entry: no release has needed one yet, and the page says so. The requirement switches on by
  * itself — the first `## Upgrading to …` section of UPGRADING.md is refused until its entries are listed here, and from then on every
  * listed entry must stand under its release.
  */
@@ -407,7 +407,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
-    const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no release yet)' : `${upgrading} UPGRADING entries`;
+    const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
       `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, release.yml, ` +
         `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
