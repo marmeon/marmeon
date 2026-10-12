@@ -248,7 +248,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(marmeon(app, ['make:controller', 'ShowInvoice', '--module=billing', '--view']).code).toBe(0);
     expect(marmeon(app, ['make:event', 'InvoicePaid', '-m', 'billing']).code).toBe(0);
     expect(marmeon(app, ['make:listener', 'SendReceipt', '--event=InvoicePaid', '--module=billing']).stdout).toContain(
-      'listeners: [listen(InvoicePaid, SendReceipt)]',
+      '✓ Registered SendReceipt in modules/billing/index.ts (listeners)',
     );
     expect(marmeon(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
     expect(marmeon(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain(
@@ -269,7 +269,7 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(existsSync(join(app, 'modules/billing/controllers/ArchiveInvoiceController.ts'))).toBe(false);
     expect(existsSync(join(app, 'modules/billing/views/ArchiveInvoice.tsx'))).toBe(false);
     expect(marmeon(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
-      "migrations: new URL('./migrations/', import.meta.url)",
+      '✓ Registered the migrations folder in modules/billing/index.ts',
     );
     expect(marmeon(app, ['make:migration', 'add_due_date_to_invoices_table', '--module=billing']).code).toBe(0);
     expect(marmeon(app, ['make:migration', 'backfill_totals', '--module=billing']).code).toBe(0);
@@ -287,6 +287,11 @@ describe('marmeon make:* (generated code compiles)', () => {
     const index = readFileSync(join(app, 'modules/billing/index.ts'), 'utf8');
     expect(index).toContain("import { SendInvoiceReminderJob } from './jobs/SendInvoiceReminderJob.ts';");
     expect(index).toContain("import { InvoiceOverdueNotification } from './notifications/InvoiceOverdueNotification.ts';");
+    expect(index).toContain("import { InvoicePaid } from './events/InvoicePaid.ts';");
+    expect(index).toContain("import { SendReceipt } from './listeners/SendReceipt.ts';");
+    expect(index).toMatch(/listeners: \[listen\(InvoicePaid, SendReceipt\)\]/);
+    expect(index).toContain("migrations: new URL('./migrations/', import.meta.url)");
+    expect(index.match(/migrations:/g)).toHaveLength(1);
     expect(index).toMatch(/jobs: \[SendInvoiceReminderJob\]/);
     expect(index).toMatch(/notifications: \[InvoiceOverdueNotification\]/);
     // The generated class passes the checks where a notification is sent (channels, toDatabase against static database).

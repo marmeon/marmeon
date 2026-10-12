@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { editDefinitionFile, type DefinitionEdit } from '@marmeon/core';
+import { editDefinitionFile, editDefinition, importedBindings, type DefinitionEdit } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
@@ -46,25 +46,50 @@ const moduleOption = { module: { type: 'string', short: 'm' }, force: { type: 'b
 
 const registeringOption = { ...moduleOption, 'no-register': { type: 'boolean' } } as const;
 
+/** What `registerInModule` says; a missing `added` or `present` line prints nothing for that outcome. */
+interface RegisterMessages {
+  readonly added?: string;
+  readonly present?: string;
+  /** The line above the dim lines when nothing is edited (`--no-register`). */
+  readonly heading: string;
+  /** The lines to add by hand. */
+  readonly manual: readonly string[];
+  /** A reason the generator already knows the edit cannot be made — printed like a `manual` outcome, nothing is edited. */
+  readonly unregistrable?: string;
+}
+
+const indexOf = (module: string) => `modules/${module}/index.ts`;
+
 /** Adds what a generator wrote to its module's index.ts — or prints the lines to add (see docs/console.md#generators). */
-function registerInModule(input: CommandInput, module: string, dir: string, edit: DefinitionEdit, label: string, manual: readonly string[]): void {
-  const shown = `modules/${module}/index.ts`;
+function registerInModule(input: CommandInput, module: string, dir: string, edit: DefinitionEdit, messages: RegisterMessages): void {
+  const shown = indexOf(module);
   const printLines = () => {
-    for (const line of manual) input.output.line(style('dim', `  ${line}`));
+    for (const line of messages.manual) input.output.line(style('dim', `  ${line}`));
   };
-  input.output.line();
+  const notRegistered = (reason: string) => {
+    input.output.line();
+    input.output.warn(`Not registered — ${shown}: ${reason}. Add it yourself:`);
+    printLines();
+  };
   if (input.options['no-register'] === true) {
-    input.output.line(`Register it in ${shown}:`);
+    input.output.line();
+    input.output.line(messages.heading);
     printLines();
     return;
   }
+  if (messages.unregistrable !== undefined) return notRegistered(messages.unregistrable);
   const outcome = editDefinitionFile(join(dir, 'index.ts'), edit, shown);
-  if (outcome.status === 'added') input.output.success(`Registered ${label} in ${shown} (${edit.key})`);
-  else if (outcome.status === 'present') input.output.line(`${label} is already registered in ${shown}`);
-  else {
-    input.output.warn(`Not registered — ${shown}: ${outcome.reason}. Add it yourself:`);
-    printLines();
-  }
+  if (outcome.status === 'added') {
+    if (messages.added !== undefined) {
+      input.output.line();
+      input.output.success(messages.added);
+    }
+  } else if (outcome.status === 'present') {
+    if (messages.present !== undefined) {
+      input.output.line();
+      input.output.line(messages.present);
+    }
+  } else notRegistered(outcome.reason);
 }
 
 export class MakeModuleCommand {
@@ -153,8 +178,8 @@ export class MakeEventCommand {
 export class MakeListenerCommand {
   static command = 'make:listener';
   static description = 'Create an event listener';
-  static usage = '<Name> --event=<Event> --module=<module>';
-  static options = { ...moduleOption, event: { type: 'string', short: 'e' } } as const;
+  static usage = '<Name> --event=<Event> --module=<module> [--no-register]';
+  static options = { ...registeringOption, event: { type: 'string', short: 'e' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -166,13 +191,71 @@ export class MakeListenerCommand {
       input.output.error('Pass the event: --event=<EventName>');
       return 1;
     }
-    if (!write(input, join(dir, 'listeners', `${name}.ts`), LISTENER(name, event))) return 1;
+    const module = input.options.module as string;
+    const source = eventSource(dir, module, event);
+    if (!write(input, join(dir, 'listeners', `${name}.ts`), LISTENER(name, event, source.listenerFrom, source.listenerImport))) return 1;
 
-    input.output.line();
-    input.output.line(`Register it in modules/${input.options.module}/index.ts:`);
-    input.output.line(style('dim', `  listeners: [listen(${event}, ${name})]`));
+    registerInModule(
+      input,
+      module,
+      dir,
+      {
+        define: { name: 'defineModule', from: '@marmeon/core' },
+        key: 'listeners',
+        add: { element: (names) => `${names.listen}(${names[event]}, ${names[name]})` },
+        imports: [
+          { name: 'listen', from: '@marmeon/core' },
+          { name: event, from: source.indexFrom, reuseAnyBinding: source.followed },
+          { name, from: `./listeners/${name}.ts` },
+        ],
+      },
+      {
+        added: `Registered ${name} in ${indexOf(module)} (listeners)`,
+        present: `${name} is already registered in ${indexOf(module)}`,
+        heading: `Register it in ${indexOf(module)}:`,
+        manual: [
+          `import { listen } from '@marmeon/core';`,
+          `import { ${event} } from '${source.indexFrom}';`,
+          `import { ${name} } from './listeners/${name}.ts';`,
+          `listeners: [listen(${event}, ${name})]`,
+        ],
+        unregistrable: source.problem,
+      },
+    );
     return 0;
   }
+}
+
+/**
+ * Where a listener finds its event: the module's own `events/`, else the value import `index.ts` already
+ * has for it (a package's event, another module's). Anything else is not guessed.
+ */
+function eventSource(
+  dir: string,
+  module: string,
+  event: string,
+): { indexFrom: string; listenerFrom: string; listenerImport: string; followed: boolean; problem?: string } {
+  const own = `events/${event}.ts`;
+  const ownSource = { indexFrom: `./${own}`, listenerFrom: `../${own}`, listenerImport: event, followed: false };
+  if (existsSync(join(dir, own))) return ownSource;
+  const index = join(dir, 'index.ts');
+  const text = existsSync(index) ? readFileSync(index, 'utf8') : undefined;
+  const binding = text === undefined ? undefined : importedBindings(text, 'index.ts').get(event);
+  if (binding && !binding.typeOnly && binding.imported !== 'default' && binding.imported !== '*') {
+    const from = binding.from;
+    const listenerFrom = from.startsWith('./') ? `../${from.slice(2)}` : from.startsWith('../') ? `../${from}` : from;
+    return { indexFrom: from, listenerFrom, listenerImport: binding.imported === event ? event : `${binding.imported} as ${event}`, followed: true };
+  }
+  // A file that does not parse has no bindings; the editor names that reason, not a missing event.
+  const probe =
+    text === undefined
+      ? undefined
+      : editDefinition(text, 'index.ts', { define: { name: 'defineModule', from: '@marmeon/core' }, key: 'probe', add: { value: '0' } });
+  if (probe?.status === 'manual' && probe.reason.includes('parse')) return { ...ownSource, problem: probe.reason };
+  return {
+    ...ownSource,
+    problem: `${event} is neither in modules/${module}/events/ nor imported by ${indexOf(module)} (create it with make:event, or import it there)`,
+  };
 }
 
 export class MakeJobCommand {
@@ -200,8 +283,12 @@ export class MakeJobCommand {
         add: { element: (names) => names[name]! },
         imports: [{ name, from: `./jobs/${name}.ts` }],
       },
-      name,
-      [`import { ${name} } from './jobs/${name}.ts';`, `jobs: [${name}]`],
+      {
+        added: `Registered ${name} in ${indexOf(module)} (jobs)`,
+        present: `${name} is already registered in ${indexOf(module)}`,
+        heading: `Register it in ${indexOf(module)}:`,
+        manual: [`import { ${name} } from './jobs/${name}.ts';`, `jobs: [${name}]`],
+      },
     );
     input.output.line(style('dim', `Dispatch it: await queue.dispatch(${name}, { id: 1 });   (constructor(queue: Queue), from @marmeon/queue)`));
     return 0;
@@ -242,8 +329,12 @@ export class MakeNotificationCommand {
         add: { element: (names) => names[name]! },
         imports: [{ name, from: `./notifications/${name}.ts` }],
       },
-      name,
-      [`import { ${name} } from './notifications/${name}.ts';`, `notifications: [${name}]`],
+      {
+        added: `Registered ${name} in ${indexOf(module)} (notifications)`,
+        present: `${name} is already registered in ${indexOf(module)}`,
+        heading: `Register it in ${indexOf(module)}:`,
+        manual: [`import { ${name} } from './notifications/${name}.ts';`, `notifications: [${name}]`],
+      },
     );
     input.output.line(
       style('dim', `Send it: await notifications.send({ type: 'user', id: user.id }, ${name}, { id: 1 });   (constructor(notifications: Notifications), from @marmeon/notifications)`),
@@ -279,8 +370,8 @@ const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 export class MakeMigrationCommand {
   static command = 'make:migration';
   static description = 'Create a migration in a module';
-  static usage = '<snake_case_name> --module=<module>';
-  static options = moduleOption;
+  static usage = '<snake_case_name> --module=<module> [--no-register]';
+  static options = registeringOption;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -297,11 +388,21 @@ export class MakeMigrationCommand {
     const contents = create ? CREATE_MIGRATION(create) : alter ? ALTER_MIGRATION(alter) : BLANK_MIGRATION;
     if (!write(input, join(dir, 'migrations', `${stamp}_${name}.ts`), contents)) return 1;
 
-    if (!readFileSync(join(dir, 'index.ts'), 'utf8').includes('migrations')) {
-      input.output.line();
-      input.output.line('Register the directory in the module (once):');
-      input.output.line(style('dim', "  defineModule({ …, migrations: new URL('./migrations/', import.meta.url) })"));
-    }
+    const module = input.options.module as string;
+    const index = join(dir, 'index.ts');
+    // Printing the hint again for a module that already has `migrations` would be noise.
+    if (input.options['no-register'] === true && existsSync(index) && readFileSync(index, 'utf8').includes('migrations')) return 0;
+    registerInModule(
+      input,
+      module,
+      dir,
+      { define: { name: 'defineModule', from: '@marmeon/core' }, key: 'migrations', add: { value: "new URL('./migrations/', import.meta.url)" } },
+      {
+        added: `Registered the migrations folder in ${indexOf(module)}`,
+        heading: 'Register the directory in the module (once):',
+        manual: ["defineModule({ …, migrations: new URL('./migrations/', import.meta.url) })"],
+      },
+    );
     return 0;
   }
 }
@@ -400,7 +501,7 @@ const EVENT = (name: string) => `export class ${name} {
 }
 `;
 
-const LISTENER = (name: string, event: string) => `import type { ${event} } from '../events/${event}.ts';
+const LISTENER = (name: string, event: string, from: string, imported = event) => `import type { ${imported} } from '${from}';
 
 /** Dependencies go into the constructor — they are injected automatically. */
 export class ${name} {

@@ -43,7 +43,8 @@ The name decides what the file starts with. `create_…_table` creates a table w
 snake_case, and `--module` must name a module that exists.
 
 The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the module's latest
-migration. A module lists the folder of its migrations once, and the command prints the line when it is missing:
+migration. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
+line when the file has another shape or you pass `--no-register`):
 
 ```ts title="modules/notes/index.ts"
 import { defineModule } from '@marmeon/core';

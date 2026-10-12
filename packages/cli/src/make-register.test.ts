@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { MakeJobCommand, MakeNotificationCommand } from './commands/make.ts';
+import { MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand } from './commands/make.ts';
 
 const MODULE = `import { defineModule } from '@marmeon/core';
 
@@ -89,5 +89,125 @@ describe('make:job and make:notification register themselves', () => {
     expect(code).toBe(0);
     expect(lines.some((line) => line.startsWith('! Not registered — modules/billing/index.ts: modules/billing/index.ts does not exist'))).toBe(true);
     expect(lines.filter((line) => line.includes(root))).toEqual([]);
+  });
+});
+
+const listener = (root: string, name = 'SendReceipt', event = 'InvoicePaid', options: Record<string, unknown> = {}) =>
+  run(new MakeListenerCommand(), root, [name], { event, ...options });
+const migration = (root: string, options: Record<string, unknown> = {}) => run(new MakeMigrationCommand(), root, ['create_invoices_table'], options);
+
+describe('make:listener registers the listener with its event', () => {
+  it('follows the module\'s own event and joins the existing core import', () => {
+    const { root, index } = app();
+    run(new MakeEventCommand(), root, ['InvoicePaid']);
+    const { code, lines } = listener(root);
+    expect(code).toBe(0);
+    expect(lines).toContain('✓ Registered SendReceipt in modules/billing/index.ts (listeners)');
+    const text = readFileSync(index, 'utf8');
+    expect(text).toContain("import { defineModule, listen } from '@marmeon/core';");
+    expect(text).toContain("import { InvoicePaid } from './events/InvoicePaid.ts';");
+    expect(text).toContain('listeners: [listen(InvoicePaid, SendReceipt)]');
+    expect(readFileSync(join(root, 'modules', 'billing', 'listeners', 'SendReceipt.ts'), 'utf8')).toContain("import type { InvoicePaid } from '../events/InvoicePaid.ts';");
+  });
+
+  it('follows an event the module already imports from a package, without a second import', () => {
+    const { root, index } = app(`import { Registered } from '@marmeon/auth';\n${MODULE}`);
+    listener(root, 'Welcome', 'Registered');
+    const text = readFileSync(index, 'utf8');
+    expect(readFileSync(join(root, 'modules', 'billing', 'listeners', 'Welcome.ts'), 'utf8')).toContain("import type { Registered } from '@marmeon/auth';");
+    expect(text.match(/import \{ Registered \}/g)).toHaveLength(1);
+    expect(text).toContain('listeners: [listen(Registered, Welcome)]');
+  });
+
+  it('points a relative import of the module at the listener folder', () => {
+    const { root } = app(`import { AccountDeleted } from '../auth/index.ts';\n${MODULE}`);
+    listener(root, 'Farewell', 'AccountDeleted');
+    expect(readFileSync(join(root, 'modules', 'billing', 'listeners', 'Farewell.ts'), 'utf8')).toContain("import type { AccountDeleted } from '../../auth/index.ts';");
+  });
+
+  it('does not register under a same-named binding that is not the module\'s own event', () => {
+    const source = `import { InvoicePaid } from '@marmeon/auth';\n${MODULE}`;
+    const { root, index } = app(source);
+    run(new MakeEventCommand(), root, ['InvoicePaid']);
+    const { code, lines } = listener(root);
+    expect(code).toBe(0);
+    expect(readFileSync(index, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('! Not registered'))).toBe(true);
+  });
+
+  it('follows an aliased import of the event', () => {
+    const { root, index } = app(`import { Registered as SignedUp } from '@marmeon/auth';\n${MODULE}`);
+    listener(root, 'Welcome', 'SignedUp');
+    const file = readFileSync(join(root, 'modules', 'billing', 'listeners', 'Welcome.ts'), 'utf8');
+    expect(file).toContain("import type { Registered as SignedUp } from '@marmeon/auth';");
+    expect(file).toContain('handle(event: SignedUp)');
+    expect(readFileSync(index, 'utf8')).toContain('listeners: [listen(SignedUp, Welcome)]');
+  });
+
+  it('rewrites a sibling and a parent import for the listener folder', () => {
+    const { root } = app(`import { Local } from './events.ts';\n${MODULE}`);
+    listener(root, 'A', 'Local');
+    expect(readFileSync(join(root, 'modules', 'billing', 'listeners', 'A.ts'), 'utf8')).toContain("from '../events.ts';");
+  });
+
+  it('reports a module that does not parse instead of a missing event', () => {
+    const source = 'export default defineModule({ ;;';
+    const { root, index } = app(source);
+    const { lines } = listener(root);
+    expect(readFileSync(index, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.includes('does not parse') && !line.includes('neither'))).toBe(true);
+  });
+
+  it('writes the listener but leaves the module alone when the event is found nowhere', () => {
+    const { root, index } = app();
+    const { code, lines } = listener(root);
+    expect(code).toBe(0);
+    expect(readFileSync(index, 'utf8')).toBe(MODULE);
+    expect(lines.some((line) => line.startsWith('! Not registered — modules/billing/index.ts: InvoicePaid is neither in modules/billing/events/ nor imported'))).toBe(true);
+    expect(lines).toContain('  listeners: [listen(InvoicePaid, SendReceipt)]');
+  });
+
+  it('is idempotent and keeps two listeners of one event', () => {
+    const { root, index } = app();
+    run(new MakeEventCommand(), root, ['InvoicePaid']);
+    listener(root);
+    const before = readFileSync(index, 'utf8');
+    expect(listener(root, 'SendReceipt', 'InvoicePaid', { force: true }).lines).toContain('SendReceipt is already registered in modules/billing/index.ts');
+    expect(readFileSync(index, 'utf8')).toBe(before);
+    listener(root, 'Audit');
+    expect(readFileSync(index, 'utf8')).toContain('listeners: [listen(InvoicePaid, SendReceipt), listen(InvoicePaid, Audit)]');
+  });
+});
+
+describe('make:migration registers the migrations folder once', () => {
+  it('adds the property on the first run and nothing on the second', () => {
+    const { root, index } = app();
+    const first = migration(root);
+    expect(first.lines).toContain('✓ Registered the migrations folder in modules/billing/index.ts');
+    const text = readFileSync(index, 'utf8');
+    expect(text).toContain("migrations: new URL('./migrations/', import.meta.url)");
+    const second = migration(root);
+    expect(readFileSync(index, 'utf8')).toBe(text);
+    expect(second.lines.some((line) => line.includes('already registered') || line.includes('Registered'))).toBe(false);
+  });
+
+  it('leaves a module with migrations written another way alone', () => {
+    const source = MODULE.replace("  name: 'billing',", "  name: 'billing',\n  migrations: 'modules/billing/migrations',");
+    const { root, index } = app(source);
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(readFileSync(index, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('!') || line.includes('Registered'))).toBe(false);
+  });
+
+  it('prints the hint with --no-register only while migrations is missing', () => {
+    const { root, index } = app();
+    const missing = migration(root, { 'no-register': true });
+    expect(readFileSync(index, 'utf8')).toBe(MODULE);
+    expect(missing.lines).toContain('Register the directory in the module (once):');
+    const source = MODULE.replace("  name: 'billing',", "  name: 'billing',\n  migrations: 'm',");
+    writeFileSync(index, source);
+    const present = migration(root, { 'no-register': true, force: true });
+    expect(present.lines.some((line) => line.includes('Register'))).toBe(false);
   });
 });

@@ -94,8 +94,8 @@ rotation on a server.
 
 ### Generators
 
-The `make:*` commands write a file into a module from a template. `make:job` and `make:notification` also add the class to the
-module's `index.ts`, where the module lists such classes. When `index.ts` has another shape (a list kept in a variable, say),
+The `make:*` commands write a file into a module from a template. `make:listener`, `make:job`, `make:notification` and `make:migration`
+also add the class (or the migrations folder) to the module's `index.ts`, where the module lists such things. When `index.ts` has another shape (a list kept in a variable, say),
 they leave it as it is and print the lines to add; `--no-register` always prints them. The commands run without booting the
 app, and never overwrite a file unless you pass `--force`:
 
@@ -104,11 +104,11 @@ app, and never overwrite a file unless you pass `--force`:
 | `make:module <name>` | `modules/<name>/index.ts` and `routes.ts`. Then add the module to `bootstrap/app.ts`. |
 | `make:controller <Name> --module=<m> [--view] [--request]` | A controller. `--view` adds its page, `--request` a query or body schema. See [controllers](controllers.md#creating-a-controller). |
 | `make:event <Name> --module=<m>` | An event class in `events/`. See [events](events.md#defining-events). |
-| `make:listener <Name> --event=<Event> --module=<m>` | A listener in `listeners/`. |
+| `make:listener <Name> --event=<Event> --module=<m> [--no-register]` | A listener in `listeners/`, added to the module's `listeners` with its event. See [events](events.md#registering-listeners). |
 | `make:job <Name> --module=<m> [--no-register]` | A queued job in `jobs/`, added to the module's `jobs`. See [queues](queues.md#generating-a-job). |
 | `make:notification <Name> --module=<m> [--no-register]` | A notification in `notifications/`, added to the module's `notifications`. See [notifications](notifications.md#defining-notifications). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
-| `make:migration <snake_case_name> --module=<m>` | A timestamped migration in `migrations/`. See [migrations](migrations.md#generating-migrations). |
+| `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 

@@ -74,7 +74,9 @@ A listener may also be a function, `(event) => …`, for a few lines that need n
 
 ## Registering listeners
 
-A module lists its listeners with `listen(Event, Listener)`:
+A module lists its listeners with `listen(Event, Listener)`. `make:listener` adds the entry and its imports. It takes the event from
+the module's `events/` folder, or from the import `index.ts` already has for it, so an event of another module or package is
+imported in `index.ts` first. When it finds the event in neither place it writes the listener and prints the lines to add:
 
 ```ts title="modules/search/index.ts"
 import { defineModule, listen } from '@marmeon/core';
