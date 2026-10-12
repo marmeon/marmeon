@@ -17,7 +17,8 @@
     "docs.config.ts",
     "index.html",
     "!**/*.test.ts",
-    "!**/*.type-test.ts"
+    "!**/*.type-test.ts",
+    "!**/*.test-support.ts"
   ],
   "scripts": {
     "dev": "marmeon dev",

@@ -76,7 +76,7 @@ const frameworkFiles = framework.flatMap((dir) => walk(dir));
 console.log(JSON.stringify({
   top: fs.readdirSync('.').sort(),
   env: [...app, ...frameworkFiles].filter((f) => /(^|\\/)\\.env/.test(f)),
-  tests: [...app, ...frameworkFiles].filter((f) => /\\.(test|type-test)\\.tsx?$|__fixtures__/.test(f)),
+  tests: [...app, ...frameworkFiles].filter((f) => /\\.(test|type-test)\\.tsx?$|\\.test-support\\.tsx?$|__fixtures__/.test(f)),
   store,
   content: app.filter((f) => f.startsWith('content/')).sort(),
 }));

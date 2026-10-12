@@ -5,10 +5,12 @@ import { Markdown } from '../components/Markdown.tsx';
 import { Toc, TocMobile } from '../components/Toc.tsx';
 
 /** `/docs/:page`: a page of the docs. */
-export default function Page({ title, section, body, toc, previous, next }: PageProps<ShowDocController>) {
+export default function Page({ title, section, body, toc, markdown, previous, next }: PageProps<ShowDocController>) {
   return (
     <div className="page doc-page">
-      <Head title={title} />
+      <Head title={title}>
+        <link rel="alternate" type="text/markdown" href={markdown} />
+      </Head>
       <article className="doc">
         <p className="eyebrow">{section}</p>
         <h1>{title}</h1>

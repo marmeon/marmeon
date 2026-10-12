@@ -122,6 +122,13 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     await publicPage(`/docs/${page.slug}`, `${title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')}</h1>`);
   }
 
+  const markdown = await get('/docs/routing.md');
+  expect(markdown.response.status === 200, `/docs/routing.md: status ${markdown.response.status}, expected 200`);
+  expect(markdown.response.headers.get('content-type')?.startsWith('text/markdown') === true, `/docs/routing.md: content type ${markdown.response.headers.get('content-type')}`);
+  expect(markdown.body.startsWith('# Routing'), '/docs/routing.md: the body does not start with "# Routing"');
+  const noMarkdown = await get('/docs/search.md');
+  expect(noMarkdown.response.status === 404, `/docs/search.md: status ${noMarkdown.response.status}, expected 404`);
+
   const search = async (q: string, page: string) => {
     const response = await publicPage(`/docs/search?q=${encodeURIComponent(q)}`, `href="${page}`);
     // The same URL as a visit: the page object (JSON), not the document — Vary keeps them apart in a cache.

@@ -4,6 +4,7 @@ import type { RouteBinder } from '@marmeon/http';
 import docsConfig, { type DocsDefinition, type DocsPageEntry, type DocsSection } from '../../docs.config.ts';
 import { createCodeHighlighter, type CodeHighlighter } from './highlight.ts';
 import { renderMarkdown, type RenderedMarkdown } from './markdown.ts';
+import { replaceLinks, servedHref, sourceLinks, type SourceLink } from './markdown-source.ts';
 import { SearchIndex, type SearchResult } from './search.ts';
 import type { DocNode, TocEntry } from './types.ts';
 
@@ -24,6 +25,8 @@ export interface DocPage {
   /** Every heading id — what a link's `#anchor` may name. */
   readonly anchors: readonly string[];
   readonly fileLinks: readonly string[];
+  /** The file as `/docs/<slug>.md` serves it: links to pages rewritten to their `.md` siblings, links to other files to GitHub. */
+  readonly markdown: string;
 }
 
 /** An entry of the navigation: a page, and whether it is still to be written (the layout marks it "draft"). */
@@ -70,6 +73,8 @@ interface Loaded {
   readonly docs: ReadonlyMap<string, DocPage>;
   readonly navigation: Navigation;
   readonly index: SearchIndex;
+  /** Each page's file as written and where its links are — checked against the renderer when read. */
+  readonly sources: ReadonlyMap<string, { readonly source: string; readonly links: readonly SourceLink[] }>;
 }
 
 /**
@@ -149,8 +154,24 @@ export class DocsRepository {
     const docOf = new Map(entries.map(({ entry }) => [fileOf(entry), `/docs/${entry.slug}`]));
     // Only the docs' files are pages: a link to the root README stays code text (the start page is the app's own).
     const pageOf = (file: string) => docOf.get(file);
+    const problemList: string[] = [];
+    const serve = (file: string, text: string, links: readonly SourceLink[], pageOf: (path: string) => string | undefined): string => {
+      try {
+        return replaceLinks(text, links, (link) => servedHref(link, { file, pageOf, self: pageOf(file)!, style: { kind: 'sibling' } }));
+      } catch (error) {
+        problemList.push(`${file}: a link cannot be resolved (${error instanceof Error ? error.message : String(error)})`);
+        return text;
+      }
+    };
+    const sources = new Map<string, { source: string; links: readonly SourceLink[] }>();
+    // Read once, here: a request never touches the file system (the pages are served from what the boot read).
     const page = (name: string, file: string, section: string): { page: DocPage; rendered: RenderedMarkdown } => {
-      const rendered = renderMarkdown(readFileSync(join(source, file), 'utf8'), { file, pageOf, highlight: highlighter.highlight });
+      const text = readFileSync(join(source, file), 'utf8');
+      const rendered = renderMarkdown(text, { file, pageOf, highlight: highlighter.highlight });
+      const scanned = sourceLinks(text);
+      if ('problem' in scanned) problemList.push(`${file}: ${scanned.problem}`);
+      else sources.set(name, { source: text, links: scanned.links });
+      const markdown = 'problem' in scanned ? text : serve(file, text, scanned.links, pageOf);
       return {
         rendered,
         page: {
@@ -164,6 +185,7 @@ export class DocsRepository {
           toc: rendered.toc,
           anchors: rendered.anchors,
           fileLinks: rendered.fileLinks,
+          markdown,
         },
       };
     };
@@ -175,6 +197,7 @@ export class DocsRepository {
       docPages.set(entry.slug, rendered.page);
       all.push(rendered);
     }
+    if (problemList.length > 0) throw new DocsError(problemList);
     const late = new Set(entries.filter(({ entry }) => entry.changes).map(({ entry }) => `/docs/${entry.slug}`));
     const sectionOf = new Map(entries.map(({ entry, section }) => [`/docs/${entry.slug}`, section]));
     const index = new SearchIndex(
@@ -191,7 +214,7 @@ export class DocsRepository {
         ...(docPages.get(entry.slug)!.pending ? { pending: true as const } : {}),
       })),
     }));
-    return { docs: docPages, navigation: { groups }, index };
+    return { docs: docPages, navigation: { groups }, index, sources };
   }
 
   /** Development: `docs/` and the root (for the policies that are pages) — for a changed, new or removed page (editors replace files). */
@@ -279,5 +302,18 @@ export class DocBinding implements RouteBinder<DocPage> {
 
   resolveRouteBinding(value: string): DocPage | undefined {
     return this.#docs.doc(value);
+  }
+}
+
+/** `/docs/:file` (`routing.md`) → its page, or a 404: only a page listed in `docs.config.ts` is served as Markdown. */
+export class DocSourceBinding implements RouteBinder<DocPage> {
+  readonly #docs: DocsRepository;
+
+  constructor(docs: DocsRepository) {
+    this.#docs = docs;
+  }
+
+  resolveRouteBinding(value: string): DocPage | undefined {
+    return value.endsWith('.md') ? this.#docs.doc(value.slice(0, -3)) : undefined;
   }
 }

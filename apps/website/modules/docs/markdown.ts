@@ -20,7 +20,7 @@ const element = (t: string, a?: Record<string, string> | null): Building => (a ?
  * `<script>`, it never reaches the page as markup. markdown-it also refuses `javascript:`, `vbscript:`, `file:` and
  * `data:` URLs in links (they stay text).
  */
-const markdown = new MarkdownIt('commonmark', { html: false, linkify: false, typographer: false }).enable(['table', 'strikethrough']);
+export const markdownParser = new MarkdownIt('commonmark', { html: false, linkify: false, typographer: false }).enable(['table', 'strikethrough']);
 
 /**
  * The mark of a page still to be written: a paragraph that holds nothing else, outside code — blank lines (or a block's edge)
@@ -73,7 +73,7 @@ const ALERTS: Record<string, string> = { NOTE: 'Note', TIP: 'Tip', IMPORTANT: 'I
 
 /** Renders one page: a node tree, its table of contents (H2/H3) and its sections for the search. */
 export function renderMarkdown(source: string, options: RenderOptions): RenderedMarkdown {
-  const tokens = markdown.parse(source, {});
+  const tokens = markdownParser.parse(source, {});
   const slugger = new GithubSlugger();
   const toc: TocEntry[] = [];
   const anchors: string[] = [];

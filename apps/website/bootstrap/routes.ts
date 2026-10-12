@@ -3,6 +3,7 @@
 
 import type { SearchController } from '../modules/docs/controllers/SearchController.ts';
 import type { ShowDocController } from '../modules/docs/controllers/ShowDocController.ts';
+import type { ShowDocSourceController } from '../modules/docs/controllers/ShowDocSourceController.ts';
 import type { ShowHomeController } from '../modules/docs/controllers/ShowHomeController.ts';
 import type { ShowImprintController } from '../modules/site/controllers/ShowImprintController.ts';
 import type { ShowLandingController } from '../modules/site/controllers/ShowLandingController.ts';
@@ -11,6 +12,7 @@ import type { ShowPrivacyController } from '../modules/site/controllers/ShowPriv
 declare module '@marmeon/router' {
   interface Routes {
     'docs.home': { method: 'get'; path: '/docs'; controller: typeof ShowHomeController };
+    'docs.markdown': { method: 'get'; path: '/docs/:file{[a-z0-9-]+\\.md}'; controller: typeof ShowDocSourceController };
     'docs.page': { method: 'get'; path: '/docs/:page'; controller: typeof ShowDocController };
     'docs.search': { method: 'get'; path: '/docs/search'; controller: typeof SearchController };
     'site.home': { method: 'get'; path: '/'; controller: typeof ShowLandingController };

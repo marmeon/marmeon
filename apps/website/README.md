@@ -54,6 +54,14 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
 - **Pages** are a tree of elements, not HTML: links to other pages become `<Link prefetch>`, links to source files code text. A
   code block names its file with `title="…"` in its info string (```` ```ts title="modules/notes/routes.ts" ````): a caption
   above the block.
+- **Markdown for tools:** every page is also served at `/docs/<slug>.md` (`text/markdown; charset=utf-8`, `Link: <…/docs/<slug>>; rel="canonical"`),
+  and its HTML page names it with `<link rel="alternate" type="text/markdown">`. The route comes before `/docs/:page` and takes
+  only `[a-z0-9-]+.md`; it answers from what the boot read, never from the file system. Links are rewritten where they would
+  break: a link to a page becomes its `.md` sibling (`../UPGRADING.md` → `upgrading.md`), a link to a file that is no page
+  (`README.md#principles`) points to GitHub; a `docs/*.md` file whose links are all siblings is served byte for byte. The
+  rewrite needs the exact place of each link, so a scanner finds them and the boot checks it against markdown-it: a link the two
+  read differently (a reference link, an image inside a link) stops the start — write links inline. Absolute URLs come from
+  `APP_URL` (`modules/site/public-url.ts`), never from the request's host: the answers are cached publicly.
 - **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
   the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. `/` focuses the search field.
