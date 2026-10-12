@@ -63,7 +63,8 @@ export class DefaultExceptionHandler implements ExceptionHandler {
           : raw;
     // A deliberate abort(4xx) is not a bug: no stack trace, not even in debug mode.
     const exception = debug && status >= 500 ? asError(error) : null;
-    const headers = error instanceof HttpError ? error.headers : {};
+    // Page or JSON depends on the request's headers: a shared cache must not hand one variant to a client wanting the other.
+    const headers = addVary(error instanceof HttpError ? error.headers : {}, ['Accept', PAGE_HEADER]);
 
     if (wantsPage(request)) {
       const props: ErrorPageProps = { status, title, message, exception };
@@ -80,9 +81,27 @@ export class DefaultExceptionHandler implements ExceptionHandler {
  */
 function renderInvalid(error: ValidationError, request: Request): unknown {
   if (expectsJson(request)) {
-    return Response.json({ message: error.message, errors: error.errors }, { status: 422 });
+    return Response.json({ message: error.message, errors: error.errors }, { status: 422, headers: { vary: INVALID_VARY } });
   }
-  return new RedirectResult().back().withErrors(error.errors).withInput(error.input);
+  return new RedirectResult().back().withErrors(error.errors).withInput(error.input).header('vary', INVALID_VARY);
+}
+
+/** What `expectsJson` reads: the 422 and the redirect back are chosen by it, so both name it. */
+const INVALID_VARY = 'Accept, X-Requested-With';
+
+/** Appends `names` to the `Vary` of `headers` (any spelling of the key), keeping what is there; `*` already covers all. */
+function addVary(headers: Readonly<Record<string, string>> | undefined, names: readonly string[]): Record<string, string> {
+  const rest: Record<string, string> = {};
+  const listed: string[] = [];
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (name.toLowerCase() === 'vary') listed.push(...value.split(/\s*,\s*/).filter(Boolean));
+    else rest[name] = value;
+  }
+  if (!listed.includes('*')) {
+    const known = new Set(listed.map((entry) => entry.toLowerCase()));
+    for (const name of names) if (!known.has(name.toLowerCase())) listed.push(name);
+  }
+  return { ...rest, vary: listed.join(', ') };
 }
 
 /** Page loads and client-side navigations get an error page; everything else JSON. */

@@ -63,6 +63,10 @@ The exception handler decides by what the request asks for:
 - **A validation error** goes back to the form with the errors and the input, or answers a JSON client with a 422 and
   `{ message, errors }`.
 
+Because the answer depends on the request's headers, every error answer carries `Vary` for the ones it was chosen by (`Accept`
+and `X-Marmeon`, and `X-Requested-With` for a validation error), so a shared cache keeps the page and the JSON apart. A `Vary` an
+`HttpError` brings itself is kept; these are added to it.
+
 Any error that is not an `HttpError` is a 500. Its own message never reaches the client in production: the page and the JSON say
 `Server Error`, so a database error cannot show its query. The headers of an `HttpError` go out with the answer, so a 503 carries
 its `Retry-After`.

@@ -108,6 +108,8 @@ describe('createHttpKernel — errors & logging', async () => {
       throw new Error('database password is hunter2 (postgres://app:hunter3@db/app)');
     });
     Route.get('/forbidden', () => abort(403, 'Only admins.'));
+    Route.get('/vary-own', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, 200, { Vary: 'Accept, X-Marmeon, Origin' }));
+    Route.get('/vary-star', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, 200, { vary: '*' }));
     Route.get('/cookie-boom', () => {
       throw new Error(`the upstream refused the request with ${LEAKY_COOKIE}`);
     });
@@ -185,6 +187,20 @@ describe('createHttpKernel — errors & logging', async () => {
       component: 'errors/Error',
       props: { status: 403, title: 'Forbidden', message: 'Only admins.', exception: null },
     });
+  });
+
+  it('lists Accept and every page header in Vary on an error page, once each', async () => {
+    const vary = (await app.request('/forbidden', page)).headers.get('vary')!.split(',').map((name) => name.trim().toLowerCase());
+    expect(vary).toContain('accept');
+    expect(vary).toContain('x-marmeon');
+    expect(new Set(vary).size).toBe(vary.length);
+  });
+
+  it('keeps the Vary a view result brings, adds the page headers and no duplicates', async () => {
+    const vary = (await app.request('/vary-own', page)).headers.get('vary')!.split(',').map((name) => name.trim().toLowerCase());
+    expect(vary).toEqual(expect.arrayContaining(['accept', 'origin', 'x-marmeon', 'x-marmeon-region', 'x-marmeon-once-scope']));
+    expect(new Set(vary).size).toBe(vary.length);
+    expect((await app.request('/vary-star', page)).headers.get('vary')).toBe('*');
   });
 
   it('routes unknown paths through the same handler', async () => {

@@ -181,6 +181,23 @@ const BOTS =
  */
 const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER].join(', ');
 
+/** `Vary` the result already carries (an error's own, or `Accept` from the exception handler), under any spelling. */
+function ownVary(headers: Readonly<Record<string, string>> | undefined): string[] {
+  return Object.entries(headers ?? {}).filter(([name]) => name.toLowerCase() === 'vary').flatMap(([, value]) => value.split(/\s*,\s*/).filter(Boolean));
+}
+
+function withoutVary(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => name.toLowerCase() !== 'vary'));
+}
+
+/** The page's `Vary` plus whatever the result listed — kept, so a cache still keeps its variants apart. */
+function pageVary(headers: Readonly<Record<string, string>> | undefined): string {
+  const own = ownVary(headers);
+  if (own.includes('*')) return '*';
+  const known = new Set(PAGE_VARY.toLowerCase().split(/\s*,\s*/));
+  return [PAGE_VARY, ...own.filter((name) => !known.has(name.toLowerCase()))].join(', ');
+}
+
 /**
  * The live subscriptions of a response, signed for the request's session — `PageObject.live`. A result that declares
  * some in an app without @marmeon/live is a mistake that says so.
@@ -483,8 +500,8 @@ export function createResponseFactory(
     // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it.
     const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash(documentOfRequest(ctx.request))));
     const headers = {
-      ...result.headers,
-      vary: PAGE_VARY,
+      ...withoutVary(result.headers),
+      vary: pageVary(result.headers),
       ...(flash.length > 0 ? { 'cache-control': 'no-store' } : {}),
       ...(waiting ? { [FLASH_WAITING_HEADER]: 'true' } : {}),
     };
