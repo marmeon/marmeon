@@ -7,6 +7,7 @@ export { DevDocument, withDevBody } from './dev-document.ts';
 export type { DevMarkup, DevRequest } from './dev-document.ts';
 export { DevRequestRecorder, MAX_RECORDED } from './error-page/recorder-token.ts';
 export type { RequestRecorder, RequestRecording } from './error-page/recorder-token.ts';
+export type { AssetPreloads, ManifestChunk, Preload, ViteManifest } from './preloads.ts';
 export { documentOf, renderDocument, HEAD_OUTLET, HTML_OUTLET } from './html.ts';
 export { marmeonEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
 export type { ViteDevOptions } from './vite.ts';

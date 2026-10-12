@@ -108,3 +108,13 @@ export async function documentOf(
     },
   });
 }
+
+/** `tags` put into the template's head — before the head outlet, else before `</head>`; a template with neither is left alone. */
+export function withPreloads(template: string, tags: string): string {
+  if (!tags) return template;
+  for (const marker of [HEAD_OUTLET, '</head>']) {
+    const at = template.indexOf(marker);
+    if (at !== -1) return template.slice(0, at) + tags + '\n' + template.slice(at);
+  }
+  return template;
+}

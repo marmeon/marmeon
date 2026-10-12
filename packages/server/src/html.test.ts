@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentOf, renderDocument, withLang } from './html.ts';
+import { documentOf, renderDocument, withLang, withPreloads } from './html.ts';
 
 const template = '<html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>';
 const page = { component: 'x/Y', props: { bio: '</script><script>alert(1)</script>' }, url: '/' };
@@ -88,5 +88,17 @@ describe('documentOf — streamed markup', () => {
 
   it('is a string for string markup', async () => {
     expect(await documentOf(template, page, { html: '<p>hi</p>' })).toContain('<div id="app"><p>hi</p></div>');
+  });
+});
+
+describe('withPreloads', () => {
+  it('puts the tags before the head outlet, else before </head>, else leaves the template alone', () => {
+    expect(withPreloads('<head><!--app-head--></head>', '<link>')).toBe('<head><link>\n<!--app-head--></head>');
+    expect(withPreloads('<head><title>x</title></head>', '<link>')).toBe('<head><title>x</title><link>\n</head>');
+    expect(withPreloads('<div></div>', '<link>')).toBe('<div></div>');
+  });
+
+  it('does not expand $& in the tags', () => {
+    expect(withPreloads('<head></head>', '<link href="$&">')).toContain('<link href="$&">');
   });
 });
