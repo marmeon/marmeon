@@ -159,6 +159,28 @@ Name a package's commands with a prefix of their own, such as `audit:`. A packag
 `DevProcesses` of `marmeon` adds a process that `marmeon dev` starts next to the server, as the queue does with its worker:
 `app.container.make(DevProcesses).add({ name: 'audit', args: ['audit:watch'] })`. The arguments are those of a `marmeon` command.
 
+### Registering what a generator writes
+
+A generator that writes a class for a module can also list it there. `editDefinitionFile` of `@marmeon/core` adds an entry to a list of the object that `defineModule` or `defineApplication` receives, together with the imports it needs. It only inserts: the rest of the file stays as it was, comments, quotes and line endings included. Running it twice adds nothing the second time.
+
+```ts
+import { join } from 'node:path';
+import { editDefinitionFile } from '@marmeon/core';
+
+const outcome = editDefinitionFile(join(root, 'bootstrap', 'app.ts'), {
+  define: { name: 'defineApplication', from: '@marmeon/core' },
+  key: 'modules',
+  add: { element: (names) => names.audit!, position: 'last' },
+  imports: [{ name: 'audit', from: '#modules/audit', kind: 'default' }],
+});
+```
+
+The outcome is `added` (the file is written), `present` (the entry is already there) or `manual`. A file the editor does not understand
+is `manual` and stays untouched: a list held in a variable, a spread that could set the key, two `defineModule` calls, a name that
+is already bound to something else (a constant, class, type, interface, namespace or `import … = require()`), a file that is not writable. The generator then prints the reason and the lines to add by hand. `add: { value }` sets a
+property such as `migrations` instead of a list entry. `editDefinition` does the same on a source string, and `importedBindings`
+lists a file's imports for a generator that follows one.
+
 ## Middleware
 
 `router.middleware.append(group, Middleware, priority)` adds a middleware to the global stack, `GLOBAL`, or to a group such as

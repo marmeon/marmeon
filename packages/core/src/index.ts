@@ -11,6 +11,8 @@ export { analyzeInjections, applyInsertions, injectConstructorDependencies, inse
 export type { InjectionSite, Insertion } from './injection/analyze.ts';
 export { computeInjectionArtifacts, INJECTIONS_FILE, PrecomputedInjections, writeInjectionArtifacts } from './injection/artifacts.ts';
 export type { InjectionsFile } from './injection/artifacts.ts';
+export { editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';
+export type { DefinitionEdit, DefinitionEditOutcome, DefinitionImport, ImportedBinding } from './definition-edit.ts';
 export { browserSources, isBrowserSource } from './injection/browser.ts';
 export { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './injection/embed.ts';
 export type { EmbedPackageOptions } from './injection/embed.ts';
