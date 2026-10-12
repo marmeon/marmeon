@@ -1,6 +1,6 @@
 {
   "name": "marmeon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The marmeon command: dev, build, start, generators, tinker and the commands of the app and its packages.",
   "keywords": [
     "marmeon",

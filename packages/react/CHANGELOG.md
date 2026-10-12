@@ -1,5 +1,15 @@
 # @marmeon/react
 
+## 0.1.1
+
+### Patch Changes
+
+- f56608b: Publish every package through the release workflow, with npm provenance.
+- Updated dependencies [f56608b]
+  - @marmeon/http@0.1.1
+  - @marmeon/i18n@0.1.1
+  - @marmeon/table@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

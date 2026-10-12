@@ -1,5 +1,11 @@
 # create-marmeon
 
+## 0.1.1
+
+### Patch Changes
+
+- f56608b: Publish every package through the release workflow, with npm provenance.
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/router",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The typed router of Marmeon: invokable controllers with request definitions, route model binding, middleware, URLs and cookies.",
   "keywords": [
     "marmeon",
