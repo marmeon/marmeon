@@ -30,12 +30,31 @@ export function LayerStack({ entries, resolve, frame, base }: { entries: readonl
   const open = entries.length > 0;
   useLayoutEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
-    // The page keeps its scroll position under the layers, and does not move.
+    // The page keeps its scroll position under the layers, and does not move. `overflow: hidden` alone does not hold on iOS, which
+    // scrolls the window to reveal a focused field: the body is fixed in place instead (CSSOM writes, which a strict `style-src`
+    // allows), and the scroll position put back on release. The frames' own restore ran before this (children's effects first).
     const root = document.documentElement;
-    const previous = root.style.overflow;
+    const body = document.body;
+    const y = window.scrollY;
+    const x = window.scrollX;
+    const previousOverflow = root.style.overflow;
+    const previous = ['position', 'top', 'left', 'right', 'width'].map((property) => [property, body.style.getPropertyValue(property)] as const);
+    // A classic scrollbar disappears with the overflow: its gutter stays reserved, so the page does not shift sideways.
+    const gutter = window.innerWidth > root.clientWidth;
+    const previousGutter = root.style.scrollbarGutter;
+    if (gutter) root.style.scrollbarGutter = 'stable';
     root.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `${-y}px`;
+    body.style.left = `${-x}px`;
+    body.style.right = '0';
+    body.style.width = '100%';
     return () => {
-      root.style.overflow = previous;
+      root.style.overflow = previousOverflow;
+      root.style.scrollbarGutter = previousGutter;
+      for (const [property, value] of previous) body.style.setProperty(property, value);
+      // Instant: a `scroll-behavior: smooth` on the page must not animate the way back.
+      window.scrollTo({ left: x, top: y, behavior: 'instant' });
     };
   }, [open]);
   if (!open) return null;

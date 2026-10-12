@@ -118,6 +118,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.replaceChildren(container);
   document.documentElement.style.overflow = '';
+  document.body.removeAttribute('style');
   requests = [];
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
     requests.push({ url: String(input), method: init.method ?? 'GET', headers: { ...(init.headers as Record<string, string>) } });
@@ -228,6 +229,58 @@ describe('Layers in React', () => {
       scrollTo.mockRestore();
       if (original) Object.defineProperty(window, 'scrollY', original);
       else delete (window as { scrollY?: number }).scrollY;
+    }
+  });
+
+  it('a modal layer fixes the body at the scroll position (iOS) and restores it when the last layer closes', async () => {
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    let scrollY = 600;
+    const original = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(((options: ScrollToOptions) => {
+      scrollY = options.top ?? scrollY;
+    }) as typeof window.scrollTo);
+    document.body.style.position = 'relative';
+    document.body.style.top = '5px';
+    try {
+      await click('[data-testid="edit"]');
+      await wait();
+      expect(document.body.style.position).toBe('fixed');
+      expect(document.body.style.top).toBe('-600px');
+      expect(document.body.style.width).toBe('100%');
+      scrollTo.mockClear();
+      await click('[data-testid="close"]');
+      await wait(30);
+      expect(dialogs()).toEqual([]);
+      expect(document.body.style.position).toBe('relative');
+      expect(document.body.style.top).toBe('5px');
+      expect(document.body.style.width).toBe('');
+      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 600, behavior: 'instant' });
+      expect(scrollY).toBe(600);
+    } finally {
+      scrollTo.mockRestore();
+      if (original) Object.defineProperty(window, 'scrollY', original);
+      else delete (window as { scrollY?: number }).scrollY;
+    }
+  });
+
+  it('reserves the scrollbar gutter while a layer is open, so the page does not shift, and restores it', async () => {
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    // A 15px classic scrollbar: the window is wider than the document's client width.
+    const original = Object.getOwnPropertyDescriptor(document.documentElement, 'clientWidth');
+    Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, get: () => window.innerWidth - 15 });
+    try {
+      await click('[data-testid="edit"]');
+      await wait();
+      expect(document.documentElement.style.scrollbarGutter).toBe('stable');
+      await click('[data-testid="close"]');
+      await wait(30);
+      expect(document.documentElement.style.scrollbarGutter).toBe('');
+    } finally {
+      if (original) Object.defineProperty(document.documentElement, 'clientWidth', original);
+      else delete (document.documentElement as { clientWidth?: number }).clientWidth;
     }
   });
 
@@ -364,6 +417,11 @@ describe('Layers in React', () => {
     await wait(30);
     expect(dialogs()).toHaveLength(1);
     expect($('[data-testid="depth"]')!.textContent).toBe('1');
+    // The lock is taken once and held until the last layer closes.
+    expect(document.body.style.position).toBe('fixed');
+    await act(async () => history.back());
+    await wait(30);
+    expect(document.body.style.position).toBe('');
   });
 
   it('an answer with another view replaces the layer in place: the dialog stays (never hidden while the view loads), named anew', async () => {
