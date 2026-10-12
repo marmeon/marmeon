@@ -199,6 +199,35 @@ describe('Layers in React', () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it('a click that does not focus the link (WebKit) still gives the focus back to it when the layer closes', async () => {
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    const opener = $('[data-testid="edit"]') as HTMLAnchorElement;
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => opener.click());
+    await wait();
+    expect(dialogs()).toHaveLength(1);
+
+    await click('[data-testid="close"]');
+    await wait(30);
+    expect(dialogs()).toEqual([]);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('a modified click leaves the link alone: no focus, no layer', async () => {
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    const opener = $('[data-testid="edit"]') as HTMLAnchorElement;
+    const before = requests.length;
+    await act(async () => void opener.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true })));
+    await act(async () => void opener.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true })));
+    await wait();
+    expect(document.activeElement).not.toBe(opener);
+    expect(dialogs()).toEqual([]);
+    expect(requests.length).toBe(before);
+  });
+
   it('Escape closes the layer (the dialog’s cancel) — closed by the layer, not by the browser', async () => {
     await mount(page('Profile', '/users/1', { name: 'Ada' }));
     await wait();

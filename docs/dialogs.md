@@ -208,7 +208,8 @@ screen, and signing out drops them with the pages.
 
 The frame around every layer is `LayerDialog` by default: a native `<dialog>`, opened modally. The browser keeps the focus inside
 it and makes the page beneath inert. Escape, the close button and a click on the backdrop close it, and the focus returns to the
-link that opened it. The dialog is named by the view's first heading, and described by an element with `data-layer-description`.
+link that opened it — also after a click in a browser that does not focus links. The dialog is named by the view's first heading,
+and described by an element with `data-layer-description`.
 
 Wrap the frame to word its close button in your app's language, and pass it to both entries as `layer`:
 

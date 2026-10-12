@@ -284,6 +284,8 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     const url = visitUrlOf(event, href, rest.target);
     if (url === undefined) return;
     event.preventDefault();
+    // WebKit does not focus a link on click, and a layer takes `document.activeElement` as its opener to give the focus back.
+    if (layer) event.currentTarget.focus({ preventScroll: true });
     void visit(url, options);
   };
 
