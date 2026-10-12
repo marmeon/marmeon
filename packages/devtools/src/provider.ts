@@ -58,7 +58,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
 
   async boot(app: Application): Promise<void> {
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([DevtoolsClearCommand, DevtoolsPruneCommand]);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([DevtoolsClearCommand, DevtoolsPruneCommand], '@marmeon/devtools');
 
     const config = app.container.make(DevtoolsConfig);
     const test = app.container.has(DevtoolsTestOptIn) ? app.container.make(DevtoolsTestOptIn) : undefined;

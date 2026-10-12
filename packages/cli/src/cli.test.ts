@@ -218,6 +218,54 @@ describe('marmeon route:types (reserved page names)', () => {
   }, ciTimeout);
 });
 
+describe('marmeon: two commands with one name', () => {
+  const blank = join(repo, 'apps/blank-app');
+
+  function appWithCommand(name: string): string {
+    const app = realpathSync(tempDir('marmeon-names-'));
+    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
+    symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
+    mkdirSync(join(app, 'storage'));
+    writeFileSync(
+      join(app, 'modules/system/Ours.ts'),
+      `export class OursCommand {\n  static command = '${name}';\n  static description = 'Ours';\n  handle() {\n    console.log('OURS RAN');\n  }\n}\n`,
+    );
+    writeFileSync(
+      join(app, 'modules/system/index.ts'),
+      "import { defineModule } from '@marmeon/core';\nimport { OursCommand } from './Ours.ts';\nexport default defineModule({ name: 'system', commands: [OursCommand], migrations: new URL('./migrations/', import.meta.url) });\n",
+    );
+    return app;
+  }
+
+  it('fails the start instead of running either command', () => {
+    const app = appWithCommand('route:list');
+    for (const args of [['route:list'], ['list']]) {
+      const { code, stdout, stderr } = marmeon(app, args);
+      expect(code).toBe(1);
+      expect(stderr).toContain('Two commands are named "route:list": OursCommand (module system) and RouteListCommand (marmeon)');
+      expect(stdout).not.toContain('OURS RAN');
+    }
+  }, ciTimeout);
+
+  it('fails the start when a module reuses the name of a package command', () => {
+    const app = appWithCommand('db:seed');
+    for (const args of [['list'], ['db:seed']]) {
+      const { code, stdout, stderr } = marmeon(app, args);
+      expect(code).toBe(1);
+      expect(stderr).toContain('Two commands are named "db:seed"');
+      expect(stderr).toContain('@marmeon/database');
+      expect(stdout).not.toContain('OURS RAN');
+    }
+  }, ciTimeout);
+
+  it('starts when the names differ', () => {
+    const app = appWithCommand('ours:run');
+    const { code, stdout } = marmeon(app, ['ours:run']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('OURS RAN');
+  }, ciTimeout);
+});
+
 describe('marmeon make:* (generated code compiles)', () => {
   let app: string;
 

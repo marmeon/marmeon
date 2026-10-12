@@ -11,7 +11,7 @@ declare module '@marmeon/core' {
 
 /**
  * Collects the modules' commands. Packages add theirs in `boot()`:
- * `app.container.make(CommandRegistry).add([MyCommand])`.
+ * `app.container.make(CommandRegistry).add([MyCommand], '@acme/my-package')`.
  */
 export class CliServiceProvider implements ServiceProvider {
   register(container: Container): void {
@@ -20,6 +20,7 @@ export class CliServiceProvider implements ServiceProvider {
   }
 
   boot(app: Application): void {
-    app.container.make(CommandRegistry).add(app.modules.flatMap((module) => module.commands ?? []));
+    const registry = app.container.make(CommandRegistry);
+    for (const module of app.modules) registry.add(module.commands ?? [], `module ${module.name}`);
   }
 }

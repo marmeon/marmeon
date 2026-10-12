@@ -36,7 +36,7 @@ export class SchedulerServiceProvider implements ServiceProvider {
 
     const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) {
-      app.container.make(cli.CommandRegistry).add([ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand]);
+      app.container.make(cli.CommandRegistry).add([ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand], '@marmeon/scheduler');
     }
     if (cli && app.container.has(cli.DevProcesses) && tasks.length > 0) {
       app.container.make(cli.DevProcesses).add({ name: 'schedule', args: ['schedule:work', '--stop-timeout=5'] });

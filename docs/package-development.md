@@ -73,7 +73,7 @@ export class AuditServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     app.container.make(Router).middleware.append(GLOBAL, RecordRequest, 50);
-    app.container.make(CommandRegistry).add([PruneAuditCommand]);
+    app.container.make(CommandRegistry).add([PruneAuditCommand], '@acme/audit');
   }
 
   async shutdown(app: Application): Promise<void> {
@@ -153,7 +153,7 @@ export class PruneAuditCommand {
 }
 ```
 
-Name a package's commands with a prefix of their own, such as `audit:`. A package's commands always run in a booted app.
+Pass the package name as the second argument of `add()`: if an app's command has the same name, the start fails with a message naming both. Name a package's commands with a prefix of their own, such as `audit:`. A package's commands always run in a booted app.
 `static boots` is read for the framework's built-in commands only.
 
 `DevProcesses` of `marmeon` adds a process that `marmeon dev` starts next to the server, as the queue does with its worker:
@@ -222,7 +222,7 @@ export class AuditServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     app.container.make(Router).middleware.append(GLOBAL, RecordRequest, 50);
-    app.container.make(CommandRegistry).add([PruneAuditCommand]);
+    app.container.make(CommandRegistry).add([PruneAuditCommand], '@acme/audit');
   }
 
   async shutdown(app: Application): Promise<void> {

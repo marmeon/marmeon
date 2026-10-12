@@ -1,4 +1,4 @@
-export { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand } from './command.ts';
+export { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand } from './command.ts';
 export type { Command, CommandClass, CommandInput } from './command.ts';
 export { DevProcesses } from './dev.ts';
 export type { DevProcess } from './dev.ts';

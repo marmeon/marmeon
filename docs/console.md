@@ -184,7 +184,7 @@ export default defineModule({
 });
 ```
 
-- **`static command`** is the name you type. A part before a colon groups it in the list.
+- **`static command`** is the name you type. A part before a colon groups it in the list. A name used twice by different commands — two modules, a module and a package, or a module and a built-in — fails the start with an error naming both classes (a built-in that runs without booting, such as `build`, `make:*` or `key:generate`, still runs; `marmeon list` or any booting command reports the clash); the same class listed twice is fine.
 - **`static usage`** is shown in errors, after the name: `Usage: marmeon notes:prune-archived [--days=30]`.
 - **`static options`** declares the options in the format of Node's `parseArgs`: `{ type: 'string' }` or `{ type: 'boolean' }`,
   with `short: 'd'` for a one-letter form. An option the command does not declare is an error before the command runs.

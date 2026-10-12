@@ -179,7 +179,7 @@ export class StorageServiceProvider implements ServiceProvider {
     checkS3Sdk(options, uploads.disk);
 
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([MakeUploadsTableCommand, PruneUploadsCommand]);
+    if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([MakeUploadsTableCommand, PruneUploadsCommand], '@marmeon/storage');
 
     let http: typeof import('@marmeon/http') | undefined;
     try {

@@ -100,7 +100,7 @@ export class CacheServiceProvider implements ServiceProvider {
     }
 
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeCacheTableCommand, CachePruneCommand, CacheClearCommand]);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeCacheTableCommand, CachePruneCommand, CacheClearCommand], '@marmeon/cache');
   }
 }
 

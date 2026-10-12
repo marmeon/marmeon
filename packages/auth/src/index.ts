@@ -112,6 +112,6 @@ export class AuthServiceProvider implements ServiceProvider {
     const config = app.container.make(AuthConfig);
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand]);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand], '@marmeon/auth');
   }
 }

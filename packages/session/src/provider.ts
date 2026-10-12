@@ -95,7 +95,7 @@ export class SessionServiceProvider implements ServiceProvider {
     }
 
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeSessionTableCommand, PruneSessionsCommand]);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeSessionTableCommand, PruneSessionsCommand], '@marmeon/session');
   }
 }
 

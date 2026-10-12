@@ -179,7 +179,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     }
 
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([PruneNotificationsCommand, MakeNotificationsTableCommand]);
+    if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([PruneNotificationsCommand, MakeNotificationsTableCommand], '@marmeon/notifications');
   }
 
   /** A translator in the recipient's language — `Translators.for(locale)` of @marmeon/i18n; without it, the scope's (or English fallbacks). */

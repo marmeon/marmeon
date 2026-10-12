@@ -146,7 +146,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (cli && app.container.has(cli.CommandRegistry)) {
       app.container
         .make(cli.CommandRegistry)
-        .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand]);
+        .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand], '@marmeon/queue');
     }
     // `marmeon dev` runs a worker next to the server — on every queue, like any worker without --queue, unless jobs run at dispatch anyway.
     if (cli && app.container.has(cli.DevProcesses) && config.default !== 'sync') {

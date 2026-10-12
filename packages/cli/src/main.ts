@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
 import { channels, messageBase, trace, type CommandRunMessage } from '@marmeon/core/diagnostics';
-import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, wantsHelp, type CommandClass } from './command.ts';
+import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
@@ -76,7 +76,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `marmeon build` needs.
     const loaded = await loadApplication(root, !listing && builtIn?.boots === 'build' ? 'build' : 'run');
     if (loaded instanceof Error) {
-      if (!listing) {
+      if (!listing || loaded instanceof CommandSetupError) {
         // Node's code (ERR_…) beside its message: what one searches for.
         const code = (loaded as { code?: unknown }).code;
         output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}`);
@@ -90,7 +90,14 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   }
 
   const registry = app?.container.has(CommandRegistry) ? app.container.make(CommandRegistry) : new CommandRegistry();
-  registry.add(BUILT_IN);
+  try {
+    registry.add(BUILT_IN, 'marmeon');
+  } catch (error) {
+    if (!(error instanceof CommandSetupError)) throw error;
+    output.error(error.message);
+    await app?.shutdown();
+    return 1;
+  }
 
   if (listing) {
     printCommandList({ output }, registry.all());

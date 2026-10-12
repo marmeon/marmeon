@@ -42,21 +42,41 @@ export interface CommandClass {
   readonly hidden?: boolean;
 }
 
+/** Two different commands share a name — the app cannot tell which one `marmeon <name>` means. */
+export class CommandSetupError extends Error {
+  override name = 'CommandSetupError';
+}
+
 /** All commands the app knows: built-ins, modules' `commands` and those packages add. */
 export class CommandRegistry {
-  readonly #commands = new Map<string, CommandClass>();
+  readonly #commands = new Map<string, { readonly command: CommandClass; readonly source: string }>();
 
-  add(commands: readonly CommandClass[]): this {
-    for (const command of commands) this.#commands.set(command.command, command);
+  /**
+   * Registers `commands`; adding the same class again is a no-op, a different class under a taken name throws a
+   * `CommandSetupError` naming both classes and their `source` (a package or module), so no package silently takes over
+   * an app's command. Built-ins that run before the app boots (`boots = false`) are checked once a booting command runs.
+   * See docs/package-development.md#commands.
+   */
+  add(commands: readonly CommandClass[], source = 'a package'): this {
+    for (const command of commands) {
+      const taken = this.#commands.get(command.command);
+      if (!taken) {
+        this.#commands.set(command.command, { command, source });
+      } else if (taken.command !== command) {
+        throw new CommandSetupError(
+          `Two commands are named "${command.command}": ${taken.command.name} (${taken.source}) and ${command.name} (${source}). Rename one — its static command is how marmeon finds it.`,
+        );
+      }
+    }
     return this;
   }
 
   get(name: string): CommandClass | undefined {
-    return this.#commands.get(name);
+    return this.#commands.get(name)?.command;
   }
 
   all(): CommandClass[] {
-    return [...this.#commands.values()].sort((a, b) => a.command.localeCompare(b.command));
+    return [...this.#commands.values()].map((entry) => entry.command).sort((a, b) => a.command.localeCompare(b.command));
   }
 }
 

@@ -55,7 +55,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
     if (cli && app.container.has(cli.CommandRegistry)) {
       app.container
         .make(cli.CommandRegistry)
-        .add([DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand]);
+        .add([DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand], '@marmeon/database');
     }
   }
 
