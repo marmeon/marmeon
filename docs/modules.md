@@ -93,8 +93,9 @@ needs it.
 pnpm marmeon make:module billing
 ```
 
-It writes `modules/billing/index.ts` and `modules/billing/routes.ts`, and prints the two lines that register the module in
-`bootstrap/app.ts`. The [directory structure](structure.md#your-first-module) page walks through a first module from there.
+It writes `modules/billing/index.ts` and `modules/billing/routes.ts`, and adds the module last in `modules` of
+`bootstrap/app.ts` (routes match in module order). When that file has another shape, or with `--no-register`, it prints the two
+lines to add instead. The [directory structure](structure.md#your-first-module) page walks through a first module from there.
 
 ### The order of modules
 

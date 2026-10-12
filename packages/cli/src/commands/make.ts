@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { editDefinitionFile, editDefinition, importedBindings, type DefinitionEdit } from '@marmeon/core';
+import { bindingNameOf, editDefinitionFile, editDefinition, importedBindings, type DefinitionEdit } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
@@ -56,13 +56,15 @@ interface RegisterMessages {
   readonly manual: readonly string[];
   /** A reason the generator already knows the edit cannot be made — printed like a `manual` outcome, nothing is edited. */
   readonly unregistrable?: string;
+  /** Edit this file instead of the module's index.ts, shown as `shown` (an app-relative path). A missing file prints the lines as `--no-register` does. */
+  readonly target?: { readonly file: string; readonly shown: string };
 }
 
 const indexOf = (module: string) => `modules/${module}/index.ts`;
 
-/** Adds what a generator wrote to its module's index.ts — or prints the lines to add (see docs/console.md#generators). */
+/** Adds what a generator wrote to its module's index.ts (or to `messages.target`, such as bootstrap/app.ts) — or prints the lines to add (see docs/console.md#generators). */
 function registerInModule(input: CommandInput, module: string, dir: string, edit: DefinitionEdit, messages: RegisterMessages): void {
-  const shown = indexOf(module);
+  const shown = messages.target?.shown ?? indexOf(module);
   const printLines = () => {
     for (const line of messages.manual) input.output.line(style('dim', `  ${line}`));
   };
@@ -71,14 +73,15 @@ function registerInModule(input: CommandInput, module: string, dir: string, edit
     input.output.warn(`Not registered — ${shown}: ${reason}. Add it yourself:`);
     printLines();
   };
-  if (input.options['no-register'] === true) {
+  const file = messages.target?.file ?? join(dir, 'index.ts');
+  if (input.options['no-register'] === true || (messages.target !== undefined && !existsSync(file))) {
     input.output.line();
     input.output.line(messages.heading);
     printLines();
     return;
   }
   if (messages.unregistrable !== undefined) return notRegistered(messages.unregistrable);
-  const outcome = editDefinitionFile(join(dir, 'index.ts'), edit, shown);
+  const outcome = editDefinitionFile(file, edit, shown);
   if (outcome.status === 'added') {
     if (messages.added !== undefined) {
       input.output.line();
@@ -95,8 +98,8 @@ function registerInModule(input: CommandInput, module: string, dir: string, edit
 export class MakeModuleCommand {
   static command = 'make:module';
   static description = 'Create a feature module';
-  static usage = '<name>';
-  static options = { force: { type: 'boolean' } } as const;
+  static usage = '<name> [--no-register]';
+  static options = { force: { type: 'boolean' }, 'no-register': { type: 'boolean' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -106,15 +109,29 @@ export class MakeModuleCommand {
       return 1;
     }
     const dir = join(input.root, 'modules', name);
-    const variable = name.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
+    const variable = bindingNameOf(name);
     const ok =
       write(input, join(dir, 'index.ts'), MODULE(name)) && write(input, join(dir, 'routes.ts'), ROUTES);
     if (!ok) return 1;
 
-    input.output.line();
-    input.output.line(`Register it in bootstrap/app.ts:`);
-    input.output.line(style('dim', `  import ${variable} from '#modules/${name}';`));
-    input.output.line(style('dim', `  modules: [..., ${variable}]`));
+    registerInModule(
+      input,
+      name,
+      dir,
+      {
+        define: { name: 'defineApplication', from: '@marmeon/core' },
+        key: 'modules',
+        add: { element: (names) => names[variable]!, position: 'last' },
+        imports: [{ name: variable, from: `#modules/${name}`, kind: 'default' }],
+      },
+      {
+        added: 'Registered the module in bootstrap/app.ts',
+        present: `${name} is already registered in bootstrap/app.ts`,
+        heading: 'Register it in bootstrap/app.ts:',
+        manual: [`import ${variable} from '#modules/${name}';`, `modules: [..., ${variable}]`],
+        target: { file: join(input.root, 'bootstrap', 'app.ts'), shown: 'bootstrap/app.ts' },
+      },
+    );
     return 0;
   }
 }

@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';
+import { bindingNameOf, editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';
 import type { DefinitionEdit } from './definition-edit.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -330,5 +330,22 @@ describe('importedBindings', () => {
     expect(bindings.get('D')?.typeOnly).toBe(true);
     expect(bindings.get('ns')?.imported).toBe('*');
     expect(bindings.get('E')?.typeOnly).toBe(true);
+  });
+});
+
+describe('names that can be imported', () => {
+  it('leaves a reserved word or a non-identifier unimported', () => {
+    for (const name of ['let', 'static', 'class', 'eval', 'undefined', 'my-name']) {
+      const edit: DefinitionEdit = { ...job(), imports: [{ name, from: '#modules/x', kind: 'default' }] };
+      expect(manual(`${head}export default defineModule({ name: 'x' });\n`, edit)).toContain('is not a name that can be imported');
+    }
+  });
+
+  it('maps a module name to a valid binding', () => {
+    expect(bindingNameOf('shop-cart')).toBe('shopCart');
+    expect(bindingNameOf('let')).toBe('letModule');
+    expect(bindingNameOf('class')).toBe('classModule');
+    expect(bindingNameOf('undefined')).toBe('undefinedModule');
+    expect(bindingNameOf('2fa')).toBe('module2fa');
   });
 });

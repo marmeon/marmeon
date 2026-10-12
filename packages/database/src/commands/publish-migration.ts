@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { editDefinitionFile } from '@marmeon/core';
+import { bindingNameOf, editDefinitionFile } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -58,10 +58,10 @@ export function publishMigration(input: CommandInput, migration: { name: string;
     if (registered.status === 'added') input.output.success(`Registered the module in bootstrap/app.ts`);
     else if (registered.status === 'manual') {
       if (registered.reason) input.output.warn(`Not registered — ${registered.reason}`);
-      const variable = variableOf(module);
+      const variable = bindingNameOf(module);
       input.output.line('Register the module in bootstrap/app.ts:');
       input.output.line(`  import ${variable} from '#modules/${module}';`);
-      input.output.line(`  modules: [${variable}, …]`);
+      input.output.line(`  modules: [..., ${variable}]`);
     }
   }
   input.output.line('Then: marmeon migrate');
@@ -91,15 +91,10 @@ function register(file: string, module: string): { status: 'added' | 'present' }
   const edited = editDefinitionFile(file, {
     define: { name: 'defineApplication', from: '@marmeon/core' },
     key: 'modules',
-    add: { element: (names) => names[variableOf(module)]!, position: 'last' },
-    imports: [{ name: variableOf(module), from: `#modules/${module}`, kind: 'default' }],
+    add: { element: (names) => names[bindingNameOf(module)]!, position: 'last' },
+    imports: [{ name: bindingNameOf(module), from: `#modules/${module}`, kind: 'default' }],
   }, 'bootstrap/app.ts');
   return edited.status === 'manual' ? { status: 'manual', reason: edited.reason } : { status: edited.status };
-}
-
-/** `shop-cart` becomes `shopCart`, the name the module is imported as. */
-function variableOf(module: string): string {
-  return module.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
 }
 
 const MODULE = (name: string) => `import { defineModule } from '@marmeon/core';

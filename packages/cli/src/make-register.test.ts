@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand } from './commands/make.ts';
+import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand } from './commands/make.ts';
 
 const MODULE = `import { defineModule } from '@marmeon/core';
 
@@ -209,5 +209,96 @@ describe('make:migration registers the migrations folder once', () => {
     writeFileSync(index, source);
     const present = migration(root, { 'no-register': true, force: true });
     expect(present.lines.some((line) => line.includes('Register'))).toBe(false);
+  });
+});
+
+const APP = `import { defineApplication } from '@marmeon/core';
+import system from '#modules/system';
+
+export default defineApplication({
+  modules: [system],
+});
+`;
+
+function bootstrapApp(source: string | null = APP): { root: string; file: string } {
+  const root = tempDir('marmeon-make-register-');
+  const file = join(root, 'bootstrap', 'app.ts');
+  if (source !== null) {
+    mkdirSync(join(root, 'bootstrap'), { recursive: true });
+    writeFileSync(file, source);
+  }
+  return { root, file };
+}
+
+const makeModule = (root: string, name: string, options: Record<string, unknown> = {}) => run(new MakeModuleCommand(), root, [name], options);
+
+describe('make:module registers the module in bootstrap/app.ts', () => {
+  it('adds the import after the last one and the module at the end of the list', () => {
+    const { root, file } = bootstrapApp();
+    const { code, lines } = makeModule(root, 'billing');
+    expect(code).toBe(0);
+    expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
+    expect(readFileSync(file, 'utf8')).toBe(
+      APP.replace("import system from '#modules/system';", "import system from '#modules/system';\nimport billing from '#modules/billing';").replace(
+        '[system]',
+        '[system, billing]',
+      ),
+    );
+    makeModule(root, 'shop-cart');
+    const text = readFileSync(file, 'utf8');
+    expect(text).toContain("import shopCart from '#modules/shop-cart';");
+    expect(text).toContain('modules: [system, billing, shopCart]');
+  });
+
+  it('imports a module named like a reserved word under a valid name', () => {
+    const { root, file } = bootstrapApp();
+    makeModule(root, 'let');
+    makeModule(root, 'class');
+    const text = readFileSync(file, 'utf8');
+    expect(text).toContain("import letModule from '#modules/let';");
+    expect(text).toContain("import classModule from '#modules/class';");
+    expect(text).toContain('modules: [system, letModule, classModule]');
+  });
+
+  it('leaves the file byte for byte the same when the module is registered', () => {
+    const { root, file } = bootstrapApp();
+    makeModule(root, 'billing');
+    const before = readFileSync(file, 'utf8');
+    const { lines } = makeModule(root, 'billing', { force: true });
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    expect(lines).toContain('billing is already registered in bootstrap/app.ts');
+  });
+
+  it('prints the lines and touches nothing with --no-register', () => {
+    const { root, file } = bootstrapApp();
+    const { lines } = makeModule(root, 'billing', { 'no-register': true });
+    expect(readFileSync(file, 'utf8')).toBe(APP);
+    expect(lines).toContain('Register it in bootstrap/app.ts:');
+  });
+
+  it('falls back to the lines when the list is not written out', () => {
+    const source = APP.replace('[system]', 'allModules');
+    const { root, file } = bootstrapApp(source);
+    const { code, lines } = makeModule(root, 'billing');
+    expect(code).toBe(0);
+    expect(readFileSync(file, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('! Not registered — bootstrap/app.ts:'))).toBe(true);
+    expect(lines).toContain("  modules: [..., billing]");
+  });
+
+  it('does not register under a name that is already bound to something else', () => {
+    const source = APP.replace("import system", "import billing from '#modules/other';\nimport system");
+    const { root, file } = bootstrapApp(source);
+    const { lines } = makeModule(root, 'billing');
+    expect(readFileSync(file, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('! Not registered'))).toBe(true);
+  });
+
+  it('prints the lines without a warning when the app has no bootstrap/app.ts', () => {
+    const { root } = bootstrapApp(null);
+    const { code, lines } = makeModule(root, 'billing');
+    expect(code).toBe(0);
+    expect(lines).toContain('Register it in bootstrap/app.ts:');
+    expect(lines.some((line) => line.startsWith('!'))).toBe(false);
   });
 });

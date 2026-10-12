@@ -39,6 +39,24 @@ export interface ImportedBinding {
   readonly typeOnly: boolean;
 }
 
+const RESERVED = new Set(
+  `break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with yield let static implements interface package private protected public await eval arguments undefined`.split(' '),
+);
+
+function isBindingName(name: string): boolean {
+  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED.has(name);
+}
+
+/**
+ * The name a module `shop-cart` is imported as (`shopCart`) — suffixed with `Module` when that would be a reserved word
+ * (`let` becomes `letModule`), so the import is always valid. See `docs/package-development.md#registering-what-a-generator-writes`.
+ */
+export function bindingNameOf(kebab: string): string {
+  const name = kebab.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
+  if (/^\d/.test(name)) return `module${name}`;
+  return RESERVED.has(name) ? `${name}Module` : name;
+}
+
 type Splice = readonly [start: number, end: number, text: string];
 
 /**
@@ -49,6 +67,8 @@ type Splice = readonly [start: number, end: number, text: string];
 export function editDefinition(source: string, filename: string, edit: DefinitionEdit): DefinitionEditOutcome {
   const parsed = parseSync(filename, source);
   if (parsed.errors.length > 0) return manual(`${filename} does not parse`);
+  const invalid = edit.imports?.find((item) => !isBindingName(item.name));
+  if (invalid) return manual(`"${invalid.name}" is not a name that can be imported`);
   const program: Node = parsed.program;
   const body: Node[] = program.body;
   const where = `${edit.define.name}({ … })`;

@@ -94,14 +94,14 @@ rotation on a server.
 
 ### Generators
 
-The `make:*` commands write a file into a module from a template. `make:listener`, `make:job`, `make:notification` and `make:migration`
+The `make:*` commands write a file into a module from a template. `make:module` adds the module to `bootstrap/app.ts`. `make:listener`, `make:job`, `make:notification` and `make:migration`
 also add the class (or the migrations folder) to the module's `index.ts`, where the module lists such things. When `index.ts` has another shape (a list kept in a variable, say),
 they leave it as it is and print the lines to add; `--no-register` always prints them. The commands run without booting the
 app, and never overwrite a file unless you pass `--force`:
 
 | Command | Writes |
 | --- | --- |
-| `make:module <name>` | `modules/<name>/index.ts` and `routes.ts`. Then add the module to `bootstrap/app.ts`. |
+| `make:module <name> [--no-register]` | `modules/<name>/index.ts` and `routes.ts`; adds the module last in `modules` of `bootstrap/app.ts`. |
 | `make:controller <Name> --module=<m> [--view] [--request]` | A controller. `--view` adds its page, `--request` a query or body schema. See [controllers](controllers.md#creating-a-controller). |
 | `make:event <Name> --module=<m>` | An event class in `events/`. See [events](events.md#defining-events). |
 | `make:listener <Name> --event=<Event> --module=<m> [--no-register]` | A listener in `listeners/`, added to the module's `listeners` with its event. See [events](events.md#registering-listeners). |

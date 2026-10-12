@@ -206,7 +206,7 @@ With npm, run the commands as `npx marmeon …`. `pnpm marmeon list` shows every
 
 ### Register it
 
-The app loads a module only when `bootstrap/app.ts` lists it. `make:module` prints the two lines to add:
+The app loads a module only when `bootstrap/app.ts` lists it. `make:module` adds the module last in `modules` (routes match in module order), which gives:
 
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
@@ -214,15 +214,15 @@ import { defineApplication } from '@marmeon/core';
 import { contentSecurityPolicy } from '@marmeon/http';
 import auth from '#modules/auth';
 import home from '#modules/home';
-import notes from '#modules/notes';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
 import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
+import notes from '#modules/notes';
 
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
-  modules: [auth, home, notes, system],
+  modules: [auth, home, system, notes],
   middleware: {
     global: [SecurityHeaders, contentSecurityPolicy()],
   },

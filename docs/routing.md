@@ -39,7 +39,7 @@ export default defineModule({
 ```
 
 `marmeon make:module notes` writes both files for you. The app loads a module only when it is listed in `modules` of
-`bootstrap/app.ts`, so add it there, as the command's output reminds you. A module can list two route files, and each one is
+`bootstrap/app.ts`, and `make:module` adds it there (last, as routes match in module order). A module can list two route files, and each one is
 loaded into its own middleware group:
 
 | Module key | Group | Prefix | What the group does |
