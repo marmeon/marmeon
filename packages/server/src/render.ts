@@ -57,7 +57,8 @@ import {
   type SsrRender,
 } from '@marmeon/http';
 import { defaultToResponse, ownResponse, RequestNonce, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@marmeon/router';
-import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce } from './html.ts';
+import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads } from './html.ts';
+import { preloadTags, type AssetPreloads } from './preloads.ts';
 
 export interface PageRenderOptions {
   /** Wait for the whole page before sending — for bots (see {@link isBot}). */
@@ -118,13 +119,18 @@ export interface DocumentRendererOptions {
   fixStack?(error: unknown): void;
   /** Development: see {@link PageRenderer.failed}. */
   failed?: PageRenderer['failed'];
+  /** What each document preloads for its page (production: computed from the build's manifest). */
+  preloads?: AssetPreloads;
   version?: string;
 }
 
 const renders = channels.tracing('render.ssr');
 
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
-export function createDocumentRenderer({ template, ssr, fixStack, failed, version }: DocumentRendererOptions): PageRenderer {
+export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version }: DocumentRendererOptions): PageRenderer {
+  // After `withNonce`, so the tags carry the real nonce and never meet the placeholder.
+  const documentFor = (document: string, page: PageObject, nonce: string | undefined) =>
+    withPreloads(withNonce(document, nonce), preloads ? preloadTags(preloads.forPage(page), nonce) : '');
   const fixed = (error: unknown) => {
     if (error instanceof Error) fixStack?.(error);
     return error;
@@ -144,13 +150,13 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, versio
           ...(resolveDeferred ? { resolveDeferred } : {}),
           ...(nonce ? { nonce } : {}),
         });
-        return await documentOf(withNonce(document, nonce), page, result, (reason) => stopped.abort(reason));
+        return await documentOf(documentFor(document, page, nonce), page, result, (reason) => stopped.abort(reason));
       } catch (error) {
         throw fixed(error);
       }
     },
     async shell(page, request, nonce) {
-      return renderDocument(withNonce(await template(request), nonce), page, { html: '' });
+      return renderDocument(documentFor(await template(request), page, nonce), page, { html: '' });
     },
     ...(failed ? { failed } : {}),
     version,

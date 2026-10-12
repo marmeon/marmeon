@@ -13,6 +13,7 @@ import { withNonce } from './html.ts';
 import { createHttpKernel, startServer } from './kernel.ts';
 import { ServerConfig, ServerServiceProvider } from './provider.ts';
 import { forwardedRequest, isProxyEntry, proxyMatcher } from './proxies.ts';
+import { assetPreloads } from './preloads.ts';
 import { createDocumentRenderer } from './render.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -151,6 +152,14 @@ describe('the build\'s assets', async () => {
     expect(png.headers.get('vary')).toBeNull();
   });
 
+  it('never serves the manifest — it names the source path of every page', async () => {
+    mkdirSync(join(clientDir, '.vite'));
+    writeFileSync(join(clientDir, '.vite/manifest.json'), '{}');
+    for (const path of ['/.vite/manifest.json', '/assets/..%2f.vite/manifest.json', '/assets/%2e%2e%2f.vite%2fmanifest.json']) {
+      expect((await app.request(path, { headers: { accept: 'application/json' } })).status).toBe(404);
+    }
+  });
+
   it('a missing asset is a 404, not cached; a document is never compressed here (BREACH) — whatever the browser accepts', async () => {
     const missing = await app.request('/assets/gone-123.js', { headers: { accept: 'application/json' } });
     expect(missing.status).toBe(404);
@@ -213,6 +222,23 @@ describe('the CSP nonce', async () => {
     expect(nonceOf(second)).not.toBe(nonce);
   });
 
+  it('the preloads the server adds carry the response\'s nonce — the very one of the policy', async () => {
+    const preloaded = createHttpKernel(application, {
+      renderer: createDocumentRenderer({
+        template: () => TEMPLATE,
+        ssr: () => render,
+        preloads: assetPreloads({ 'modules/pages/views/Show.tsx': { file: 'assets/Show-1.js' } }),
+      }),
+    });
+    const response = await preloaded.request('/page', { headers: { accept: 'text/html' } });
+    const nonce = nonceOf(response);
+    const html = await response.text();
+    expect(html).toContain(`<link rel="modulepreload" href="/assets/Show-1.js" crossorigin nonce="${nonce}">`);
+    expect(html).not.toContain(CSP_NONCE_PLACEHOLDER);
+    const visit = await preloaded.request('/page', { headers: { [PAGE_HEADER]: 'true', accept: 'text/html' } });
+    expect(await visit.text()).not.toContain('<link');
+  });
+
   it('a JSON visit or answer neither makes a nonce nor gets the header — nothing in it depends on one', async () => {
     const before = rendered.length;
     const visit = await app.request('/page', { headers: { [PAGE_HEADER]: 'true', accept: 'text/html, application/xhtml+xml' } });
@@ -253,6 +279,12 @@ describe('the CSP nonce', async () => {
     expect(html).not.toContain('nonce=');
     expect(html).toContain('<meta property="csp-nonce">');
     expect(rendered.at(-1)).toBeUndefined();
+    const bare = createHttpKernel(plain, {
+      renderer: createDocumentRenderer({ template: () => TEMPLATE, ssr: () => render, preloads: assetPreloads({ 'modules/pages/views/Show.tsx': { file: 'assets/Show-1.js' } }) }),
+    });
+    const preloaded = await (await bare.request('/page', { headers: { accept: 'text/html' } })).text();
+    expect(preloaded).toContain('<link rel="modulepreload" href="/assets/Show-1.js" crossorigin>');
+    expect(preloaded).not.toContain('nonce=');
     expect(withNonce('<p>no placeholder</p>', 'abc')).toBe('<p>no placeholder</p>');
   });
 });

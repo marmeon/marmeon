@@ -70,6 +70,11 @@ your layouts. `vendor` stays cached across your own deployments, as long as the 
 that load on first use stay in chunks of their own. The client entry starts as soon as it has arrived, so a streamed page hydrates
 its first part while slower parts still arrive.
 
+In production, each document also names the scripts its page needs, so the browser fetches them with the document instead of
+after `index` has run: the page's chunk, the chunks it imports and the one for tab sync, as `<link rel="modulepreload">` tags.
+The server reads them from `dist/client/.vite/manifest.json` when it starts. Without that file the documents preload nothing; a
+file that is no Vite manifest stops the start. Nothing is preloaded in development, and the manifest is never served.
+
 Every script, stylesheet and preload tag of `index.html` gets a nonce placeholder. The server puts each response's nonce in its
 place, or removes the attribute when the response has no policy.
 

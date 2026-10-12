@@ -60,6 +60,9 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 5. writes a `.br` and a `.gz` copy next to every script, stylesheet and other text asset that gets smaller by it,
 6. writes the list of installed packages, `.marmeon/manifest.json`.
 
+Only `dist/client/assets/` is public. `dist/client/.vite/manifest.json` lists the source path of every page: the server reads it
+at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`.
+
 `--no-typecheck` skips the type check. The build needs no `.env` and no key: it loads the app without booting it, so no secret
 can end up in `dist/`. The [configuration](configuration.md#configuration-and-the-build) page explains what that means for a
 provider.
