@@ -68,6 +68,36 @@ describe('the search (a server route)', () => {
     expect(Object.keys(response.page()!.props)).toEqual(['results']);
   });
 
+  it('answers a layer request with the search as a layer, any other request with the page', async () => {
+    const layered = await app.layering().get('/docs/search?q=onOneServer').assertOk().assertLayer('docs/Search');
+    expect(results(layered).some((hit) => hit.href.startsWith('/docs/scheduling#'))).toBe(true);
+    const visited = await app.navigating().get('/docs/search?q=onOneServer').assertOk().assertPage('docs/Search');
+    expect(visited.page()!.layer).toBeUndefined();
+  });
+
+  it('a partial reload inside the layer answers the layer with the results only', async () => {
+    const response = await app.layering().reloading<SearchController>('docs/Search', { only: ['results'] }).get('/docs/search?q=scheduler').assertOk().assertLayer('docs/Search');
+    expect(Object.keys(response.page()!.props)).toEqual(['results']);
+  });
+
+  it('a document of the search URL has no dialog — the page with its heading and submit button', async () => {
+    const ssr = await createTestApp(application, { ssr: true });
+    const body = (await ssr.get('/docs/search?q=routing', { headers: { accept: 'text/html' } }).assertOk()).body;
+    expect(body).not.toContain('<dialog');
+    expect(body).toContain('<h1');
+    expect(body).toContain('<button type="submit"');
+  }, SSR_TEST_TIMEOUT);
+
+  it('keeps the layer and the page answer of one URL apart in a shared cache: different ETags, Vary names the region', async () => {
+    const layer = await app.layering().get('/docs/search?q=onOneServer').assertOk();
+    const visit = await app.navigating().get('/docs/search?q=onOneServer').assertOk();
+    expect(layer.headers.get('etag')).toMatch(/^"[\w-]{27}"$/);
+    expect(layer.headers.get('etag')).not.toBe(visit.headers.get('etag'));
+    for (const response of [layer, visit]) {
+      expect(response.headers.get('vary')!.toLowerCase().split(/\s*,\s*/)).toContain('x-marmeon-region');
+    }
+  });
+
   it('renders the hits grouped by page, with the page’s section, and no hit block without a query', async () => {
     const ssr = await createTestApp(application, { ssr: true });
     const document = { headers: { accept: 'text/html' } };

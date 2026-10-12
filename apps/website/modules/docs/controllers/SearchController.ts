@@ -1,4 +1,5 @@
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { regionOf } from '@marmeon/http/page';
 import { rules as r } from '@marmeon/validation';
 import { DocsRepository } from '../DocsRepository.ts';
 
@@ -22,6 +23,9 @@ export class SearchController extends Controller {
 
   handle(ctx: ContextOf<typeof SearchRequest>) {
     // A function: computed only when sent — typing reloads `only: ['results']`.
-    return this.view('docs/Search', { results: () => this.#docs.search(ctx.query.q, { limit: 20 }) });
+    const view = this.view('docs/Search', { results: () => this.#docs.search(ctx.query.q, { limit: 20 }) });
+    // Only the router's layer request gets the layer. A shared link, a reload and a visit without JavaScript are the page;
+    // so `base` is never rendered. Caches keep both answers apart through `Vary: x-marmeon-region` (CachePublicly).
+    return regionOf(ctx.request) === 'layer' ? view.layer({ base: 'docs.home' }) : view;
   }
 }
