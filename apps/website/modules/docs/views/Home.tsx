@@ -66,7 +66,9 @@ export default function Home({ sections }: PageProps<ShowHomeController>) {
   const version = usePage().props.site?.version;
   return (
     <div className="docs-home">
-      <Head title="Documentation" />
+      <Head title="Documentation">
+        <link rel="alternate" type="text/markdown" href="/llms.txt" />
+      </Head>
       <div className="docs-home-inner">
         <section className="docs-home-intro" aria-labelledby="home-title">
           <div className="docs-home-lead">

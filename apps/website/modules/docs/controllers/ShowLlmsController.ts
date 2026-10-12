@@ -4,7 +4,7 @@ import { publicUrl } from '../../site/public-url.ts';
 import { SiteInfo } from '../../site/SiteInfo.ts';
 import { textResponse } from '../../site/text-response.ts';
 import { DocsRepository } from '../DocsRepository.ts';
-import { llmsHeader, llmsIndex } from '../llms.ts';
+import { llmsHeader, llmsIndex, llmsSections } from '../llms.ts';
 
 /** `/llms.txt`: the docs' pages by section, each linked to its Markdown. Drafts are left out. */
 export class ShowLlmsController extends Controller {
@@ -21,13 +21,6 @@ export class ShowLlmsController extends Controller {
 
   handle() {
     const header = llmsHeader({ version: this.#site.version, docsUrl: publicUrl(this.#app, '/docs'), fullUrl: publicUrl(this.#app, '/llms-full.txt') });
-    const sections = this.#docs.sections().map((section) => ({
-      title: section.title,
-      pages: section.pages.flatMap((entry) => {
-        const page = this.#docs.doc(entry.name);
-        return page && !page.pending ? [{ title: page.title, url: publicUrl(this.#app, `${page.path}.md`) }] : [];
-      }),
-    }));
-    return textResponse(llmsIndex(header, sections), 'text/plain; charset=utf-8');
+    return textResponse(llmsIndex(header, llmsSections(this.#docs, (path) => publicUrl(this.#app, path))), 'text/plain; charset=utf-8');
   }
 }

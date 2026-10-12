@@ -126,6 +126,12 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   expect(markdown.response.status === 200, `/docs/routing.md: status ${markdown.response.status}, expected 200`);
   expect(markdown.response.headers.get('content-type')?.startsWith('text/markdown') === true, `/docs/routing.md: content type ${markdown.response.headers.get('content-type')}`);
   expect(markdown.body.startsWith('# Routing'), '/docs/routing.md: the body does not start with "# Routing"');
+  const negotiated = await get('/docs/routing', { accept: 'text/markdown' });
+  expect(negotiated.response.headers.get('content-type')?.startsWith('text/markdown') === true, `/docs/routing with Accept: text/markdown: content type ${negotiated.response.headers.get('content-type')}`);
+  expect((negotiated.response.headers.get('vary') ?? '').toLowerCase().includes('accept'), '/docs/routing with Accept: text/markdown: Vary lacks Accept');
+  const browser = await get('/docs/routing', { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' });
+  expect(browser.response.headers.get('content-type')?.startsWith('text/html') === true, `/docs/routing with a browser's Accept: content type ${browser.response.headers.get('content-type')}`);
+  expect((browser.response.headers.get('vary') ?? '').toLowerCase().includes('accept'), "/docs/routing with a browser's Accept: Vary lacks Accept");
   const noMarkdown = await get('/docs/search.md');
   expect(noMarkdown.response.status === 404, `/docs/search.md: status ${noMarkdown.response.status}, expected 404`);
 

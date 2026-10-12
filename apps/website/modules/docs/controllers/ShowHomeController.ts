@@ -1,16 +1,34 @@
-import { Controller } from '@marmeon/http';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { AppConfig } from '../../../config/app.ts';
+import { publicUrl } from '../../site/public-url.ts';
+import { SiteInfo } from '../../site/SiteInfo.ts';
 import { DocsRepository } from '../DocsRepository.ts';
+import { llmsHeader, llmsIndex, llmsSections } from '../llms.ts';
+import { markdownResponse } from '../markdown-response.ts';
+import { prefersMarkdown } from '../negotiate.ts';
 
-/** `/docs`: what Marmeon is, where to start, and every section of the docs with its pages. */
+/**
+ * `/docs`: what Marmeon is, where to start, and every section of the docs with its pages. A client that asks for Markdown gets
+ * the index of `/llms.txt` instead.
+ */
 export class ShowHomeController extends Controller {
   readonly #docs: DocsRepository;
+  readonly #app: AppConfig;
+  readonly #site: SiteInfo;
 
-  constructor(docs: DocsRepository) {
+  constructor(docs: DocsRepository, app: AppConfig, site: SiteInfo) {
     super();
     this.#docs = docs;
+    this.#app = app;
+    this.#site = site;
   }
 
-  handle() {
+  handle(ctx: HttpContext) {
+    if (prefersMarkdown(ctx.request)) {
+      const url = (path: string) => publicUrl(this.#app, path);
+      const header = llmsHeader({ version: this.#site.version, docsUrl: url('/docs'), fullUrl: url('/llms-full.txt') });
+      return markdownResponse(llmsIndex(header, llmsSections(this.#docs, url)), url('/docs'));
+    }
     const sections = this.#docs.sections().map(({ title, pages }) => ({ title, pages: pages.map(({ label, path }) => ({ label, path })) }));
     return this.view('docs/Home', { sections });
   }

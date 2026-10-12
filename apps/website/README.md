@@ -62,6 +62,10 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   rewrite needs the exact place of each link, so a scanner finds them and the boot checks it against markdown-it: a link the two
   read differently (a reference link, an image inside a link) stops the start — write links inline. Absolute URLs come from
   `APP_URL` (`modules/site/public-url.ts`), never from the request's host: the answers are cached publicly.
+  `/docs/<slug>` and `/docs` answer Markdown too when `Accept` names `text/markdown` with a weight at least that of `text/html`
+  (`modules/docs/negotiate.ts`; naming only `text/*` or `*/*` is not enough, so a browser always gets HTML; a Visit with `x-marmeon` always gets
+  the page object): the page's `.md` body, and for `/docs` the index of `/llms.txt`. Both variants carry `Vary: Accept` and have
+  their own ETag, so a shared cache never serves one for the other.
 - **Sitemap and robots.txt** (`modules/site/seo.ts`): `/sitemap.xml` lists the landing, `/docs`, every written page of the docs and the legal
   pages as absolute URLs from `APP_URL` — drafts left out, no `lastmod` (the image has no history; a wrong date does more harm than
   none). `/robots.txt` is the same in every environment: everything may be crawled but `/docs/search` (an endless URL space behind

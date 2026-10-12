@@ -8,6 +8,7 @@ import { ShowLlmsFullController } from './controllers/ShowLlmsFullController.ts'
 import { ShowDocSourceController } from './controllers/ShowDocSourceController.ts';
 import { DocBinding, DocSourceBinding } from './DocsRepository.ts';
 import { ShareNavigation } from './middleware/ShareNavigation.ts';
+import { VaryOnAccept } from './middleware/VaryOnAccept.ts';
 
 /** Loaded into the `public` group by the DocsServiceProvider (not `defineModule({ routes })`, which is the `web` group). */
 export default defineRoutes((Route) => {
@@ -18,10 +19,11 @@ export default defineRoutes((Route) => {
   Route.get('/llms-full.txt', ShowLlmsFullController).name('docs.llms-full');
   // The navigation (a few dozen entries) goes with the docs' pages only, not with the landing.
   Route.middleware(ShareNavigation).group((Route) => {
-    Route.get('/docs', ShowHomeController).name('docs.home');
+    // Markdown or HTML by `Accept` — caches must keep both apart.
+    Route.middleware(VaryOnAccept).get('/docs', ShowHomeController).name('docs.home');
     // Before `/docs/:page`: the search is a reserved slug (the repository refuses a page of that name).
     Route.middleware(throttle('docs.search')).get('/docs/search', SearchController).name('docs.search');
     // An unknown page is a 404: the binder asks the repository.
-    Route.bind('page', DocBinding).get('/docs/:page', ShowDocController).name('docs.page');
+    Route.middleware(VaryOnAccept).bind('page', DocBinding).get('/docs/:page', ShowDocController).name('docs.page');
   });
 });

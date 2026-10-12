@@ -1,3 +1,5 @@
+import type { DocsRepository } from './DocsRepository.ts';
+
 export const LLMS_TITLE = 'Marmeon';
 
 // Keeps pace with the first paragraph of the root README.
@@ -23,4 +25,15 @@ export function llmsIndex(header: string, sections: readonly { title: string; pa
 /** `/llms-full.txt`: the header, then every page's Markdown, each after a line naming where it is served. */
 export function llmsFull(header: string, pages: readonly { url: string; markdown: string }[]): string {
   return header + pages.map((page) => `\n---\n\n<!-- Source: ${page.url} -->\n\n${page.markdown.trimEnd()}\n`).join('');
+}
+
+/** The sections of `/llms.txt`: every written page (no draft) with its title and the URL of its Markdown, `url` turning a path into an absolute URL. */
+export function llmsSections(docs: Pick<DocsRepository, 'sections' | 'doc'>, url: (path: string) => string): { title: string; pages: { title: string; url: string }[] }[] {
+  return docs.sections().map((section) => ({
+    title: section.title,
+    pages: section.pages.flatMap((entry) => {
+      const page = docs.doc(entry.name);
+      return page && !page.pending ? [{ title: page.title, url: url(`${page.path}.md`) }] : [];
+    }),
+  }));
 }
