@@ -51,13 +51,20 @@ describe('marmeon()', () => {
   });
 
   it('builds the client to dist/client and the SSR entry to dist/server/ssr.js — not in test mode', () => {
-    expect(configFor(marmeon(), { command: 'build', mode: 'production' }).build).toEqual({ outDir: 'dist/client', emptyOutDir: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } });
+    expect(configFor(marmeon(), { command: 'build', mode: 'production' }).build).toEqual({ outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } });
     expect(configFor(marmeon({ entries: { ssr: 'src/server.tsx' } }), { command: 'build', mode: 'production', isSsrBuild: true }).build).toEqual({
       outDir: 'dist/server',
       emptyOutDir: true,
       rolldownOptions: { input: { ssr: join(app, 'src/server.tsx') } },
     });
     expect(configFor(marmeon({ test: true }), { command: 'build', mode: 'production' }).build).toBeUndefined();
+  });
+
+  it('writes Vite\'s manifest for the client build only — not for the SSR build, tests or serving', () => {
+    expect(configFor(marmeon(), { command: 'build', mode: 'production' }).build).toMatchObject({ manifest: true });
+    expect(configFor(marmeon(), { command: 'build', mode: 'production', isSsrBuild: true }).build).not.toHaveProperty('manifest');
+    expect(configFor(marmeon({ test: true }), { command: 'build', mode: 'production' }).build).toBeUndefined();
+    expect(configFor(marmeon(), { command: 'serve', mode: 'development' }).build).toBeUndefined();
   });
 
   it('pre-bundles from the client entry and the pages — and the devtools\' bar when an installed package brings it (no reload on the first request)', () => {

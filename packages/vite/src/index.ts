@@ -120,7 +120,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild
           ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }
-          : { outDir: 'dist/client', emptyOutDir: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } };
+          : // `manifest`: the server reads it at start to preload each page's chunks (docs/vite.md#building).
+            { outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } };
       }
       return result;
     },

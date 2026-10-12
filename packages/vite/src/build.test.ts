@@ -104,6 +104,12 @@ describe('marmeon build with the marmeon() plugin', () => {
     expect(client).toContain('/modules/demo/views/Home.ts');
     expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.startsWith('Home-'))).toBe(true);
 
+    // Vite's manifest sits beside index.html (not in assets/, which a CDN may serve); the server preloads from it.
+    const manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, { isEntry?: boolean }>;
+    expect(Object.values(manifest).some((chunk) => chunk.isEntry === true)).toBe(true);
+    expect(manifest['modules/demo/views/Home.ts']).toBeDefined();
+    expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.includes('manifest'))).toBe(false);
+
     // The overridden SSR entry still lands at dist/server/ssr.js, and runs as `marmeon start` runs it (no source condition).
     const ssr = spawnSync(process.execPath, ['--input-type=module', '-e', `const { render } = await import(${JSON.stringify(pathToFileURL(join(root, 'dist/server/ssr.js')).href)}); console.log((await render()).html);`], {
       encoding: 'utf8',
