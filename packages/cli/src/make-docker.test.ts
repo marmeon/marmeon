@@ -38,7 +38,8 @@ const pnpmApp = () =>
   });
 
 // `marmeon make:docker`: the image, its context, the roles, the proxies.
-describe('marmeon make:docker', () => {
+// Each test runs the CLI as a child process, up to five times: slow on a busy CI runner.
+describe('marmeon make:docker', { timeout: 30_000 }, () => {
   it('writes a multi-stage Dockerfile for a pnpm app: pinned pnpm, frozen lockfile, build, production install, non-root, health check, marmeon as the process', () => {
     const root = pnpmApp();
     const result = makeDocker(root);
