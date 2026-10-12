@@ -239,7 +239,7 @@ Links, forms and actions take `confirm`, and the navigation guard asks before un
 asks those questions. Without one, the browser's `confirm()` and `prompt()` ask. The starter kit passes `ConfirmDialog`, worded in
 the page's language:
 
-```tsx title="bootstrap/confirm.tsx"
+```tsx title="layouts/Confirm.tsx"
 import { ConfirmDialog, useTranslation, type ConfirmProps } from '@marmeon/react';
 
 export function Confirm(props: ConfirmProps) {

@@ -266,7 +266,7 @@ describe('the starter kit’s own files', () => {
   it('its client is the blank app’s — with its dialog (`confirm: Confirm`) and nothing else', () => {
     const base = readFileSync(join(TEMPLATE, 'base/bootstrap/client.tsx'), 'utf8');
     const kit = readFileSync(join(TEMPLATE, 'kit/bootstrap/client.tsx'), 'utf8');
-    const dialog = /^import \{ Confirm \} from '\.\/confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
+    const dialog = /^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
     expect(kit).not.toBe(base);
     expect(kit.replace(dialog, '')).toBe(base);
   });

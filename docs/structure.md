@@ -11,6 +11,7 @@ my-app/
 ├── bootstrap/        the app's definition, its browser and server entries, generated types
 ├── config/           the app's own settings
 ├── lang/             texts the whole app shares
+├── layouts/          the app's own components, such as its confirm dialog
 ├── middleware/       middleware for every request
 ├── modules/
 │   ├── auth/         sign-in, registration, password reset, API tokens
@@ -28,7 +29,7 @@ my-app/
 └── .oxlintrc.json
 ```
 
-A blank app from `pnpm create marmeon my-app --minimal` has the same skeleton without `lang/`, `bootstrap/confirm.tsx`,
+A blank app from `pnpm create marmeon my-app --minimal` has the same skeleton without `lang/`, `layouts/`,
 `modules/auth/` and `modules/home/`. This page walks through each part, then through your first module.
 
 ## The root directory
@@ -45,7 +46,6 @@ A blank app from `pnpm create marmeon my-app --minimal` has the same skeleton wi
 | `pages.ts` | Finds the page components under `modules/*/views/`, one code-split chunk per page. |
 | `head.ts` | The document title, shared by both entries. |
 | `i18n.ts` | Loads the language files for the page's locale, in the browser and on the server. |
-| `confirm.tsx` | The dialog the app asks its questions with, such as the one before unsaved changes are left. Starter kit only. |
 | `routes.ts` | Generated: every named route and every view, for the type checker. Commit it. |
 | `database.d.ts` | Generated: the types of the database tables. Commit it. |
 
@@ -82,8 +82,15 @@ config definitions.
 
 ### `lang/`
 
-The texts the whole app shares, such as the questions of `bootstrap/confirm.tsx`, one file per language: `lang/en.ts`,
+The texts the whole app shares, such as the questions of `layouts/Confirm.tsx`, one file per language: `lang/en.ts`,
 `lang/de.ts`. A module keeps its own texts in its `lang/` folder. The [localization](localization.md) page covers both.
+
+### `layouts/`
+
+Components the whole app shares, unlike a module's `layouts/`, which wraps that module's pages. The starter kit has
+`Confirm.tsx`, the dialog the app asks its questions with, such as the one before unsaved changes are left;
+`bootstrap/client.tsx` passes it to `createMarmeonApp`. The [dialogs](dialogs.md#asking-the-user) page shows it. Starter kit
+only.
 
 ### `middleware/`
 

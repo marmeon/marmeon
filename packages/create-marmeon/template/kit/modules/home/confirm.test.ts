@@ -3,11 +3,11 @@ import { Catalog } from '@marmeon/i18n/messages';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Confirm } from '../../bootstrap/confirm.tsx';
+import { Confirm } from '../../layouts/Confirm.tsx';
 import de from '../../lang/de.ts';
 import en from '../../lang/en.ts';
 
-// The app's dialog (bootstrap/confirm.tsx) — written by create-marmeon's starter kit; its test lives here, where the app's tests run.
+// The app's dialog (layouts/Confirm.tsx) — written by create-marmeon's starter kit; its test lives here, where the app's tests run.
 
 const catalog = new Catalog({ fallback: 'en' }).add('en', 'app', en).add('de', 'app', de);
 const ask = (locale: string, request: ConfirmRequest) =>

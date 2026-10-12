@@ -1,5 +1,5 @@
 /**
- * App-wide texts (namespace `app`) — the source language: the questions the app asks (`bootstrap/confirm.tsx`). Another
+ * App-wide texts (namespace `app`) — the source language: the questions the app asks (`layouts/Confirm.tsx`). Another
  * language is a file next to this one (`de.ts`), checked against it. Views read them with `useTranslation('app')`.
  */
 const en = {

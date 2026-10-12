@@ -36,6 +36,7 @@
     "bootstrap",
     "config",
     "lang",
+    "layouts",
     "middleware",
     "modules",
     "vite.config.ts"

@@ -1,7 +1,7 @@
 import { createMarmeonApp, progressBar } from '@marmeon/react';
 import '@marmeon/react/styles.css'; // the framework's look: layers, dialogs, the error page (a stylesheet, no inline style)
 import { routes } from 'virtual:marmeon/routes';
-import { Confirm } from './confirm.tsx';
+import { Confirm } from '../layouts/Confirm.tsx';
 import { title } from './head.ts';
 import { messages } from './i18n.ts';
 import { resolvePage } from './pages.ts';
