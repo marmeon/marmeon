@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
 import { cursorPaginate, isSecretSelection, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
-import { isJsonResult, isRedirectResult, json, RedirectResult, type JsonResult } from '@marmeon/http';
-import { expectsJson, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
+import { ACTION_HEADER, isJsonResult, isRedirectResult, json, PAGE_HEADER, RedirectResult, type JsonResult } from '@marmeon/http';
+import { addVary, expectsJson, EXPECTS_JSON_VARY, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
 import { AliasNode, IdentifierNode, type Kysely, type KyselyPlugin, type RootOperationNode, type SelectQueryBuilder } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
@@ -603,11 +603,13 @@ async function parseBody<S extends v.GenericSchema>(schema: S, ctx: HttpContext)
 function answer(ctx: HttpContext, result: unknown, counts: Omit<TableActionResult, 'data'>): unknown {
   if (result instanceof Response || isRedirectResult(result) || isJsonResult(result)) return result;
   const headers = ctx.request.headers;
-  const wantsJson = headers.get('x-marmeon-action') !== null || (expectsJson(ctx.request) && headers.get('x-marmeon') === null);
-  if (!wantsJson) return new RedirectResult().back('/');
+  const wantsJson = headers.get(ACTION_HEADER) !== null || (expectsJson(ctx.request) && headers.get(PAGE_HEADER) === null);
+  // Redirect or JSON depends on these request headers: a shared cache must not hand one variant to the other client.
+  const vary = addVary(undefined, [...EXPECTS_JSON_VARY, ACTION_HEADER, PAGE_HEADER]);
+  if (!wantsJson) return new RedirectResult().back('/').header('vary', vary.vary);
   const payload: TableActionResult = result === undefined ? counts : { ...counts, data: result };
   // About this user's rows: never cached, also when it is no action request (an API client, a test).
-  return json(payload, 200, { 'cache-control': 'no-store' }) satisfies JsonResult<TableActionResult>;
+  return json(payload, 200, { 'cache-control': 'no-store', ...vary }) satisfies JsonResult<TableActionResult>;
 }
 
 /** The raw path parameters of a request: its route's pattern laid over its path (`/teams/:team` + `/teams/7` → `{ team: '7' }`). */

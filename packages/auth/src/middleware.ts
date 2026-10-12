@@ -1,10 +1,13 @@
 import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
-import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
+import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { Session } from '@marmeon/session';
 import { Auth } from './auth.ts';
 import { authenticatedByToken, Gate } from './gate.ts';
 import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
 import { UserProvider, type Authenticated } from './user.ts';
+
+// These answers are chosen by `expectsJson`: a shared cache must not hand one variant to the other client.
+const VARY = addVary(undefined, EXPECTS_JSON_VARY);
 
 export interface AuthenticateOptions<N extends string = string> {
   /** Named route of the login page, where browsers are sent (default `auth.login`). */
@@ -39,14 +42,14 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
     async handle(ctx: HttpContext, next: Next<Authenticated>): Promise<Response> {
       const user = await this.#auth.user();
       if (user) return next({ user });
-      if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401 });
+      if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: VARY });
       // A prefetch (a hovered link) is not where the guest wanted to go — only a visit is remembered (an island's request,
       // read-only, is no visit either: it gets its `unauthorized` fallback).
       if (ctx.request.method === 'GET' && this.#session.started && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
       }
-      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, loginRoute) } });
+      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, loginRoute), ...VARY } });
     }
   };
   Object.defineProperty(Authenticate, 'name', { value: 'authenticate' });
@@ -100,12 +103,12 @@ export function confirmedPassword<const N extends RouteNameInput = never>(option
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
       if (this.#auth.passwordRecentlyConfirmed(options.seconds)) return next();
-      if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423 });
+      if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423, headers: VARY });
       if (ctx.request.method === 'GET' && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
       }
-      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, confirmRoute) } });
+      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, confirmRoute), ...VARY } });
     }
   };
   Object.defineProperty(RequirePassword, 'name', { value: 'confirmedPassword' });

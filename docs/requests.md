@@ -255,6 +255,8 @@ explains how to list your proxies.
 `ctx.expectsJson()` is true when JSON is the first type in the request's `Accept` header, or for an `XMLHttpRequest` that
 accepts anything. The framework asks it too: a guest who expects JSON gets a 401 from `authenticate()` instead of a redirect to
 the login page, and invalid input gets a 422 with the errors instead of a redirect back to the form.
+These answers, and the redirects they replace, carry `Vary: Accept, X-Requested-With`; your own middleware should do the same, see
+[middleware](middleware.md#middleware-objects).
 
 ## The CSP nonce
 

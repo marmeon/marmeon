@@ -107,6 +107,27 @@ export function clientIp(remote: string | undefined, forwardedFor: string | null
   return normalize(remote);
 }
 
+/**
+ * The request headers `expectsJson` reads. A response chosen by it names them in `Vary` (see `addVary`), so a shared cache
+ * never hands the page variant to a JSON client or the reverse; change both together.
+ */
+export const EXPECTS_JSON_VARY = ['Accept', 'X-Requested-With'] as const;
+
+/** Appends `names` to the `Vary` of `headers` (any spelling of the key), keeping what is there; `*` already covers all. */
+export function addVary(headers: Readonly<Record<string, string>> | undefined, names: readonly string[]): Record<string, string> & { vary: string } {
+  const rest: Record<string, string> = {};
+  const listed: string[] = [];
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (name.toLowerCase() === 'vary') listed.push(...value.split(/\s*,\s*/).filter(Boolean));
+    else rest[name] = value;
+  }
+  if (!listed.includes('*')) {
+    const known = new Set(listed.map((entry) => entry.toLowerCase()));
+    for (const name of names) if (!known.has(name.toLowerCase())) listed.push(name);
+  }
+  return { ...rest, vary: listed.join(', ') };
+}
+
 /** Whether the client expects JSON: JSON is the first accepted type, or an XHR that accepts anything. */
 export function expectsJson(request: Request): boolean {
   const accept = request.headers.get('accept') ?? '';

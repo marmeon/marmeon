@@ -552,6 +552,20 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(await response.json()).toEqual({ done: 1, skipped: 0, missing: 0 });
     });
 
+    it('names the headers that choose between the redirect and the JSON in Vary — on both, and not on a handler\'s own response', async () => {
+      const application = await app(driver);
+      const url = '/teams/1/_tables/members/actions/deactivate';
+      const names = (response: Response) => (response.headers.get('vary') ?? '').toLowerCase().split(/\s*,\s*/).sort();
+      const expected = ['accept', 'x-marmeon', 'x-marmeon-action', 'x-requested-with'];
+      const json = await application.request(url, { method: 'POST', user: ADA, json: { key: 4 }, action: true });
+      expect([json.status, names(json)]).toEqual([200, expected]);
+      expect(json.headers.get('cache-control')).toContain('no-store');
+      const back = await application.request(url, { method: 'POST', user: ADA, form: 'key=2', headers: { accept: 'text/html' } });
+      expect([back.status, names(back)]).toEqual([303, expected]);
+      const own = await application.request('/teams/1/_tables/by-email/actions/deactivate', { method: 'POST', user: ADA, json: { key: 'edsger@example.com' } });
+      expect([own.status, own.headers.get('vary')]).toEqual([418, null]);
+    });
+
     it('a form posted without JavaScript goes back to the page (303) — the same checks, keys as text', async () => {
       const application = await app(driver);
       const back = { accept: 'text/html', referer: 'http://localhost/teams/1/members?sort=-joined' };

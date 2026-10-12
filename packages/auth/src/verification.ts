@@ -1,6 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { UrlSigner, type Duration } from '@marmeon/http';
-import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
+import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
+
+// These answers are chosen by `expectsJson`: a shared cache must not hand one variant to the other client.
+const VARY = addVary(undefined, EXPECTS_JSON_VARY);
 
 /** What a verifiable user has: an id, an e-mail and when it was verified. */
 export interface VerifiableUser {
@@ -74,8 +77,8 @@ export function verified<const N extends RouteNameInput = never>(options: Verifi
     handle(ctx: HttpContext<{ readonly user: VerifiableUser }>, next: Next<{}>): Promise<Response> | Response {
       // Fail closed: a user whose provider did not load the column (undefined) is not verified either.
       if (ctx.user.email_verified_at != null) return next();
-      if (ctx.expectsJson()) return Response.json({ message: 'Your e-mail address is not verified.' }, { status: 403 });
-      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, noticeRoute) } });
+      if (ctx.expectsJson()) return Response.json({ message: 'Your e-mail address is not verified.' }, { status: 403, headers: VARY });
+      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, noticeRoute), ...VARY } });
     }
   };
   Object.defineProperty(EnsureEmailIsVerified, 'name', { value: 'verified' });

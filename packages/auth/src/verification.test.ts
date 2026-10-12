@@ -49,6 +49,11 @@ describe('verified()', () => {
     expect((await run({ email_verified_at: null }, 'application/json')).status).toBe(403);
   });
 
+  it('names the headers that choose between the redirect and the 403 in Vary — on both', async () => {
+    expect((await run({ email_verified_at: null })).headers.get('vary')).toBe('Accept, X-Requested-With');
+    expect((await run({ email_verified_at: null }, 'application/json')).headers.get('vary')).toBe('Accept, X-Requested-With');
+  });
+
   it('a user without the column (a provider that did not select it) is not verified — fail closed', async () => {
     expect((await run({ email_verified_at: undefined as never })).status).toBe(302);
     expect((await run({ email_verified_at: undefined as never }, 'application/json')).status).toBe(403);

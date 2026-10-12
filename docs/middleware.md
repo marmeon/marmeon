@@ -65,15 +65,23 @@ export class RequireBetaAccess {
 services, since nothing is injected into it:
 
 ```ts title="modules/notes/middleware/jsonOnly.ts"
-import { defineMiddleware } from '@marmeon/http';
+import { addVary, defineMiddleware, editableResponse, EXPECTS_JSON_VARY } from '@marmeon/http';
 
-export const jsonOnly = defineMiddleware('jsonOnly', (ctx, next) => {
-  if (!ctx.expectsJson()) return new Response('This endpoint answers JSON only.', { status: 406 });
-  return next();
+export const jsonOnly = defineMiddleware('jsonOnly', async (ctx, next) => {
+  if (!ctx.expectsJson()) {
+    return new Response('This endpoint answers JSON only.', { status: 406, headers: addVary(undefined, EXPECTS_JSON_VARY) });
+  }
+  const response = editableResponse(await next());
+  response.headers.set('vary', addVary({ vary: response.headers.get('vary') ?? '' }, EXPECTS_JSON_VARY).vary);
+  return response;
 });
 ```
 
 The name shows in `marmeon route:list` and on the development error page.
+
+An answer that depends on `ctx.expectsJson()` names the headers it reads in `Vary`, on every branch, as `jsonOnly` does:
+route responses get a `Cache-Control`, and a shared cache must not hand one variant to the other client. `addVary()` appends to
+a `Vary` that is already there, and leaves `*` as it is.
 
 ## Adding to the context
 

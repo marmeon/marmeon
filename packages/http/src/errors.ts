@@ -1,5 +1,5 @@
 import { Logger, Redactor, token, type Translator } from '@marmeon/core';
-import { expectsJson, HttpError, statusText, ValidationError } from '@marmeon/router';
+import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, statusText, ValidationError } from '@marmeon/router';
 import { ERROR_PAGE, PAGE_HEADER, type ErrorPageProps } from './page.ts';
 import { RedirectResult } from './redirect.ts';
 import { view } from './view.ts';
@@ -80,28 +80,10 @@ export class DefaultExceptionHandler implements ExceptionHandler {
  * the form shows them next to the fields.
  */
 function renderInvalid(error: ValidationError, request: Request): unknown {
-  if (expectsJson(request)) {
-    return Response.json({ message: error.message, errors: error.errors }, { status: 422, headers: { vary: INVALID_VARY } });
-  }
-  return new RedirectResult().back().withErrors(error.errors).withInput(error.input).header('vary', INVALID_VARY);
-}
-
-/** What `expectsJson` reads: the 422 and the redirect back are chosen by it, so both name it. */
-const INVALID_VARY = 'Accept, X-Requested-With';
-
-/** Appends `names` to the `Vary` of `headers` (any spelling of the key), keeping what is there; `*` already covers all. */
-function addVary(headers: Readonly<Record<string, string>> | undefined, names: readonly string[]): Record<string, string> {
-  const rest: Record<string, string> = {};
-  const listed: string[] = [];
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (name.toLowerCase() === 'vary') listed.push(...value.split(/\s*,\s*/).filter(Boolean));
-    else rest[name] = value;
-  }
-  if (!listed.includes('*')) {
-    const known = new Set(listed.map((entry) => entry.toLowerCase()));
-    for (const name of names) if (!known.has(name.toLowerCase())) listed.push(name);
-  }
-  return { ...rest, vary: listed.join(', ') };
+  // The 422 and the redirect back are chosen by `expectsJson`, so both name what it reads.
+  const headers = addVary(undefined, EXPECTS_JSON_VARY);
+  if (expectsJson(request)) return Response.json({ message: error.message, errors: error.errors }, { status: 422, headers });
+  return new RedirectResult().back().withErrors(error.errors).withInput(error.input).header('vary', headers.vary);
 }
 
 /** Page loads and client-side navigations get an error page; everything else JSON. */

@@ -88,6 +88,8 @@ export class DeactivateByEmail {
 
   handle(row: { readonly email: string }) {
     this.#recorder.deactivated.push(row.email);
+    // A handler's own response reaches the client as it is.
+    if (row.email === 'edsger@example.com') return new Response('teapot', { status: 418 });
   }
 }
 

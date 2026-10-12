@@ -427,6 +427,13 @@ describe('authenticate() and guest()', () => {
     const { browser } = await boot();
     const response = await browser().send('/me');
     expect([response.status, await response.json()]).toEqual([401, { message: 'Unauthenticated.' }]);
+    expect(response.headers.get('vary')).toBe('Accept, X-Requested-With');
+  });
+
+  it('names the headers that choose between the 401 and the redirect in Vary on the redirect too', async () => {
+    const { browser } = await boot();
+    const away = await browser().send('/me', { headers: { accept: 'text/html' } });
+    expect([away.status, away.headers.get('vary')]).toEqual([302, 'Accept, X-Requested-With']);
   });
 
   it('keeps signed-in users away from guest pages', async () => {
@@ -614,7 +621,9 @@ describe('password changes and confirmation', () => {
     const later = browser(new Map([['remember_web', remembered.jar.get('remember_web')!]]));
     const away = await later.send('/sensitive?tab=keys', { headers: html });
     expect([away.status, away.headers.get('location')]).toEqual([302, '/confirm-password']);
-    expect((await later.send('/sensitive')).status).toBe(423); // JSON clients
+    const json = await later.send('/sensitive');
+    expect([json.status, json.headers.get('vary')]).toEqual([423, 'Accept, X-Requested-With']); // JSON clients
+    expect(away.headers.get('vary')).toBe('Accept, X-Requested-With');
     expect((await later.send('/confirm-password', { method: 'POST', json: { password: 'wrong' } })).status).toBe(422);
     const back = await later.send('/confirm-password', { method: 'POST', json: { password: 'secret' } });
     expect(back.headers.get('location')).toBe('/sensitive?tab=keys');

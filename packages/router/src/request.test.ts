@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { HttpError } from './errors.ts';
 import { RequestNonce } from './nonce.ts';
-import { clientIp, createRequestState, expectsJson, type Input } from './request.ts';
+import { addVary, clientIp, createRequestState, EXPECTS_JSON_VARY, expectsJson, type Input } from './request.ts';
 
 const URL_BASE = 'http://app.test';
 
@@ -158,6 +158,26 @@ describe('ctx.query and ctx.expectsJson()', () => {
     expect(accept('text/html,application/xhtml+xml')).toBe(false);
     expect(accept('*/*')).toBe(false);
     expect(accept('*/*', { 'x-requested-with': 'XMLHttpRequest' })).toBe(true);
+  });
+});
+
+describe('addVary', () => {
+  it('sets Vary when there is none, and leaves other headers alone', () => {
+    expect(addVary(undefined, ['Accept'])).toEqual({ vary: 'Accept' });
+    expect(addVary({ 'x-a': '1' }, EXPECTS_JSON_VARY)).toEqual({ 'x-a': '1', vary: 'Accept, X-Requested-With' });
+  });
+
+  it('appends to an existing Vary under any spelling of the key, without duplicates', () => {
+    expect(addVary({ Vary: 'Origin' }, ['Accept'])).toEqual({ vary: 'Origin, Accept' });
+    expect(addVary({ vary: 'origin, ACCEPT' }, ['Accept', 'X-Requested-With'])).toEqual({ vary: 'origin, ACCEPT, X-Requested-With' });
+  });
+
+  it('leaves * untouched', () => {
+    expect(addVary({ vary: '*' }, ['Accept'])).toEqual({ vary: '*' });
+  });
+
+  it('always returns a vary, so it can go straight into Headers.set', () => {
+    expectTypeOf(addVary(undefined, ['Accept']).vary).toEqualTypeOf<string>();
   });
 });
 
