@@ -146,6 +146,7 @@ export function editDefinitionFile(file: string, edit: DefinitionEdit, display: 
   } catch {
     return manual(`${display} is not writable`);
   }
+  // Beside the file, so the rename is atomic; a directory that cannot take it (permissions, a full disk) leaves the file as it is.
   const temporary = `${real}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     writeFileSync(temporary, outcome.source);
@@ -153,7 +154,7 @@ export function editDefinitionFile(file: string, edit: DefinitionEdit, display: 
     renameSync(temporary, real);
   } catch (error) {
     rmSync(temporary, { force: true });
-    throw error;
+    return manual(`${display} could not be written: ${(error as NodeJS.ErrnoException).code ?? 'unknown error'}`);
   }
   return outcome;
 }
@@ -345,7 +346,9 @@ function resolveImports(
   if (lines.length > 0) {
     const last = imports[imports.length - 1];
     if (last) {
-      const tail = /^[ \t]*(?:\/\/[^\r\n]*|\/\*[^\r\n]*?\*\/)?/.exec(source.slice(last.end))![0];
+      const after = source.slice(last.end);
+      // A trailing comment stays on the import's line; one that runs on over lines is not split, the new import goes before it.
+      const tail = /^[ \t]*\/\*(?![^\r\n]*\*\/)/.test(after) ? '' : /^[ \t]*(?:\/\/[^\r\n]*|\/\*(?:(?!\*\/)[^\r\n])*\*\/)?/.exec(after)![0];
       const at = last.end + tail.length;
       splices.push([at, at, lines.map((line) => eol + line).join('')]);
     } else {
@@ -380,16 +383,19 @@ function appendSplices(source: string, items: Node[], container: Node, text: str
   const comma = /^[ \t]*(,)?/.exec(source.slice(last.end))!;
   const hasComma = comma[1] !== undefined;
   const multiline = source.slice(container.start, last.start).includes('\n');
+  const after = last.end + comma[0].length;
+  const fallback = (): Splice[] => (hasComma ? [[after, after, ` ${text}`]] : [[last.end, last.end, `, ${text}`]]);
   if (multiline) {
-    const rest = /^[ \t]*(,)?[ \t]*(?:\/\/[^\r\n]*)?(?=\r?\n|$)/.exec(source.slice(last.end));
+    const rest = /^[ \t]*(,)?[ \t]*(?:\/\/[^\r\n]*|\/\*(?:(?!\*\/)[^\r\n])*\*\/)?(?=\r?\n|$)/.exec(source.slice(last.end));
     if (rest) {
       const at = last.end + rest[0].length;
+      // Backstop: never insert at or behind the container's closing bracket.
+      if (at >= container.end - 1) return fallback();
       const entry = `${eol}${indentAt(last.start)}${text}`;
       return hasComma ? [[at, at, `${entry},`]] : [[last.end, last.end, ','], [at, at, entry]];
     }
   }
-  const after = last.end + comma[0].length;
-  return hasComma ? [[after, after, ` ${text}`]] : [[last.end, last.end, `, ${text}`]];
+  return fallback();
 }
 
 function apply(source: string, splices: readonly Splice[]): string {

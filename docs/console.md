@@ -172,7 +172,7 @@ export class PruneArchivedNotesCommand {
 ```
 
 `marmeon make:command PruneArchivedNotes --module=notes` writes the class with the name `notes:prune-archived-notes` and lists it in
-the module. A module lists its commands, and they appear in `marmeon list`:
+the module. The generator refuses, and writes nothing, when that name is already a built-in command's or another module's `static command`; it does not boot the app, so it cannot see the commands installed packages register. A module lists its commands, and they appear in `marmeon list`:
 
 ```ts title="modules/notes/index.ts"
 import { defineModule } from '@marmeon/core';

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -202,6 +202,22 @@ describe('make:migration registers the migrations folder once', () => {
     expect(lines.some((line) => line.startsWith('!') || line.includes('Registered'))).toBe(false);
   });
 
+  it('does not take the word in a comment or a name for the property', () => {
+    const source = MODULE.replace("  name: 'billing',", "  name: 'billing', // migrations are added later\n  migrationsFolder: 'm',");
+    const { root } = app(source);
+    const printed = migration(root, { 'no-register': true });
+    expect(printed.lines).toContain('Register the directory in the module (once):');
+  });
+
+  it('prints nothing for a definition built elsewhere that sets migrations', () => {
+    const source = "import { defineModule } from '@marmeon/core';\n\nexport default defineModule(build({ migrations: new URL('./migrations/', import.meta.url) }));\n";
+    const { root, index } = app(source);
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(readFileSync(index, 'utf8')).toBe(source);
+    expect(lines.some((line) => line.startsWith('!') || line.includes('Register'))).toBe(false);
+  });
+
   it('prints the hint with --no-register only while migrations is missing', () => {
     const { root, index } = app();
     const missing = migration(root, { 'no-register': true });
@@ -365,14 +381,27 @@ describe('make:command and make:seeder register themselves', () => {
     expect(lines.some((line) => line.includes('added last'))).toBe(false);
   });
 
-  it('warns when the generated name is a built-in command', () => {
+  it('refuses a name that is a built-in command and writes nothing', () => {
     const { root } = app();
     mkdirSync(join(root, 'modules', 'make'), { recursive: true });
     writeFileSync(join(root, 'modules', 'make', 'index.ts'), MODULE.replace('billing', 'make'));
     const { code, lines } = run(new MakeCommandCommand(), root, ['Seeder'], { module: 'make' });
-    expect(code).toBe(0);
-    expect(lines.some((line) => line.startsWith('! make:seeder is a built-in command'))).toBe(true);
-    expect(command(root, ['PruneInvoices']).lines.some((line) => line.startsWith('!'))).toBe(false);
+    expect(code).toBe(1);
+    expect(lines.some((line) => line.startsWith('✗ make:seeder is already a built-in command'))).toBe(true);
+    expect(existsSync(join(root, 'modules', 'make', 'commands'))).toBe(false);
+    expect(readFileSync(join(root, 'modules', 'make', 'index.ts'), 'utf8')).toBe(MODULE.replace('billing', 'make'));
+    expect(command(root, ['PruneInvoices']).lines.some((line) => line.startsWith('!') || line.startsWith('✗'))).toBe(false);
+  });
+
+  it('refuses a name another module of the app already uses and writes nothing', () => {
+    const { root, index } = app();
+    mkdirSync(join(root, 'modules', 'other', 'commands'), { recursive: true });
+    writeFileSync(join(root, 'modules', 'other', 'commands', 'Prune.ts'), "export class Prune {\n  static command = 'billing:prune-invoices';\n}\n");
+    const { code, lines } = command(root);
+    expect(code).toBe(1);
+    expect(lines.some((line) => line.includes('billing:prune-invoices') && line.includes('modules/other/commands/Prune.ts'))).toBe(true);
+    expect(existsSync(join(root, 'modules', 'billing', 'commands'))).toBe(false);
+    expect(readFileSync(index, 'utf8')).toBe(MODULE);
   });
 
   it('keeps the list of built-in names in step with the registered commands', () => {

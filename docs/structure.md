@@ -297,7 +297,8 @@ the route with every middleware it passes.
 pnpm marmeon make:migration create_notes_table --module=notes
 ```
 
-The first migration of a module also needs its folder in the module's definition, and the command prints the line:
-`migrations: new URL('./migrations/', import.meta.url)`. `pnpm marmeon migrate` then creates the table and, in development,
+The first migration of a module also needs its folder in the module's definition: the command adds
+`migrations: new URL('./migrations/', import.meta.url)` and prints the line only when the file has another shape or you pass
+`--no-register`. `pnpm marmeon migrate` then creates the table and, in development,
 writes its types into `bootstrap/database.d.ts`. The [migrations](migrations.md) and [repositories](queries.md) pages go on
 from there.

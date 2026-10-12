@@ -54,6 +54,25 @@ describe('appending to a list', () => {
     expect(added(source)).toContain('    B, // runs nightly\n    SendInvoiceReminderJob\n  ],');
   });
 
+  it('keeps a block comment on the last element and puts the comma before it', () => {
+    const source = `${head}export default defineModule({\n  jobs: [\n    A,\n    B /* keep */\n  ],\n});\n`;
+    expect(added(source)).toContain('    B, /* keep */\n    SendInvoiceReminderJob\n  ],');
+    const withComma = `${head}export default defineModule({\n  jobs: [\n    A,\n    B, /* keep */\n  ],\n});\n`;
+    expect(added(withComma)).toContain('    B, /* keep */\n    SendInvoiceReminderJob,\n  ],');
+  });
+
+  it('keeps the entry inside the list when comments follow the closing bracket', () => {
+    const source = `${head}export default defineModule({\n  jobs: [\n    A /* c */ ], /* d */\n});\n`;
+    expect(added(source)).toContain('    A, SendInvoiceReminderJob /* c */ ], /* d */\n});');
+  });
+
+  it('keeps a property inside the definition when comments surround its closing bracket', () => {
+    const source = `${head}export default defineModule({\n  name: 'x' /* a */ }) /* b */\n`;
+    const edit: DefinitionEdit = { define: { name: 'defineModule', from: '@marmeon/core' }, key: 'migrations', add: { value: 'new URL()' } };
+    const result = added(source, edit);
+    expect(result.indexOf('migrations:')).toBeLessThan(result.indexOf('})'));
+  });
+
   it('puts the entry first when asked', () => {
     const source = "import { defineApplication } from '@marmeon/core';\nexport default defineApplication({ modules: [system] });\n";
     const outcome = added(source, {
@@ -266,6 +285,15 @@ describe('entries already there', () => {
   });
 });
 
+describe('a block comment over several lines after the last import', () => {
+  it('is not split: the new import sits on its own line right after the import', () => {
+    const source = "import { defineModule } from '@marmeon/core'; /* kernel\n   notes */\nexport default defineModule({ jobs: [] });\n";
+    expect(added(source)).toBe(
+      "import { defineModule } from '@marmeon/core';\nimport { SendInvoiceReminderJob } from './jobs/SendInvoiceReminderJob.ts'; /* kernel\n   notes */\nexport default defineModule({ jobs: [SendInvoiceReminderJob] });\n",
+    );
+  });
+});
+
 describe('editDefinitionFile', () => {
   it('edits the target of a symlink and keeps the link', () => {
     const dir = tempDir('marmeon-definition-edit-');
@@ -290,6 +318,24 @@ describe('editDefinitionFile', () => {
     const outcome = editDefinitionFile(file, { ...job('Other') });
     if (process.getuid?.() !== 0) expect(outcome).toEqual({ status: 'manual', reason: expect.stringContaining('not writable') });
     expect(readFileSync(file, 'utf8')).not.toContain('Other');
+  });
+
+  it('reports a directory that cannot take the temporary file and leaves the file as it was', () => {
+    const dir = tempDir('marmeon-definition-edit-');
+    const file = join(dir, 'index.ts');
+    const source = `${head}export default defineModule({ jobs: [] });\n`;
+    writeFileSync(file, source);
+    chmodSync(dir, 0o555);
+    try {
+      const outcome = editDefinitionFile(file, job());
+      if (process.getuid?.() !== 0 && process.platform !== 'win32') {
+        expect(outcome).toEqual({ status: 'manual', reason: expect.stringContaining('index.ts could not be written: ') });
+        expect(readFileSync(file, 'utf8')).toBe(source);
+        expect(readdirSync(dir)).toEqual(['index.ts']);
+      }
+    } finally {
+      chmodSync(dir, 0o755);
+    }
   });
 
   it('reports a missing file', () => {

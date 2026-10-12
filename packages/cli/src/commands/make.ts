@@ -372,6 +372,23 @@ export class MakeNotificationCommand {
   }
 }
 
+/** The app-relative file of a module command that already has `command` as its `static command` (the file being generated excepted). */
+function commandOwner(root: string, command: string, except: string): string | undefined {
+  const modules = join(root, 'modules');
+  if (!existsSync(modules)) return undefined;
+  for (const module of readdirSync(modules)) {
+    const commands = join(modules, module, 'commands');
+    if (!existsSync(commands)) continue;
+    for (const entry of readdirSync(commands)) {
+      const file = join(commands, entry);
+      if (file === except || !entry.endsWith('.ts')) continue;
+      const declared = /static\s+command\s*=\s*(['"`])([^'"`]+)\1/.exec(readFileSync(file, 'utf8'))?.[2];
+      if (declared === command) return relative(root, file);
+    }
+  }
+  return undefined;
+}
+
 export class MakeCommandCommand {
   static command = 'make:command';
   static description = 'Create a console command (listed by marmeon list)';
@@ -386,10 +403,14 @@ export class MakeCommandCommand {
     const module = input.options.module as string;
     // The name typed on the command line — from the class name once; renaming the class later keeps it.
     const command = `${module}:${stableName(name, 'Command') || 'command'}`;
-    if (!write(input, join(dir, 'commands', `${name}.ts`), COMMAND(name, command))) return 1;
-    if (BUILT_IN_NAMES.includes(command)) {
-      input.output.warn(`${command} is a built-in command's name: marmeon refuses to start (or runs the built-in instead). Change static command.`);
+    const file = join(dir, 'commands', `${name}.ts`);
+    // A duplicate name fails the app's start, so the generator refuses before it writes anything.
+    const owner = BUILT_IN_NAMES.includes(command) ? 'a built-in command' : commandOwner(input.root, command, file);
+    if (owner) {
+      input.output.error(`${command} is already ${owner.startsWith('a ') ? owner : `the name of the command in ${owner}`}: two commands cannot share a name. Rename the class or choose another module.`);
+      return 1;
     }
+    if (!write(input, file, COMMAND(name, command))) return 1;
 
     registerInModule(
       input,
@@ -466,6 +487,9 @@ export class MakeMiddlewareCommand {
 
 // --- Templates ---------------------------------------------------------------
 
+/** Whether a module's source sets `migrations` (the test `marmeon publish:migration` uses too). */
+const MIGRATIONS_PROPERTY = /migrations\s*:/;
+
 const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /**
@@ -495,8 +519,9 @@ export class MakeMigrationCommand {
 
     const module = input.options.module as string;
     const index = join(dir, 'index.ts');
-    // Printing the hint again for a module that already has `migrations` would be noise.
-    if (input.options['no-register'] === true && existsSync(index) && readFileSync(index, 'utf8').includes('migrations')) return 0;
+    // A module that already says `migrations:` (also in a definition built elsewhere, which the editor cannot read) needs neither
+    // an edit nor the hint.
+    if (existsSync(index) && MIGRATIONS_PROPERTY.test(readFileSync(index, 'utf8'))) return 0;
     registerInModule(
       input,
       module,
