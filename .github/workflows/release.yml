@@ -6,10 +6,12 @@
 #                                    token anywhere; provenance from this workflow). Nothing is public until a maintainer approves
 #                                    the staged versions on npmjs.com with two-factor authentication (npm stage approve). The
 #                                    trusted-publisher configuration of every package allows staging only (scripts/npm-trust.sh).
+#                                    The run also tags the release (the per-package tags and v<version>) and drafts its GitHub Release —
+#                                    a draft, never public: the maintainer publishes it after approving on npm.
 #   otherwise                      → "none"
 #
 # scripts/check-changesets.ts (a part of `pnpm run ci`) checks this file: id-token only where the packages are staged, no npm
-# publish, no token, the checks before staging.
+# publish, no token, the checks before staging, a GitHub Release only as a draft.
 name: Release
 
 on:
@@ -73,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write # the release's git tags
+      contents: write # the release's git tags and its draft GitHub Release
       id-token: write # OIDC: trusted publishing and provenance
     steps:
       - uses: actions/checkout@v5
@@ -91,5 +93,21 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # The checkout has no tags: without them a rerun would tag again and its push would be rejected.
+          git fetch --tags --force origin
           pnpm changeset git-tag
+          version=$(node -p "require('./packages/core/package.json').version")
+          git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || git tag -a "v$version" -m "v$version"
           git push origin --tags
+      # A draft: it becomes public only when the maintainer publishes it, after approving the staged versions on npm.
+      - name: draft the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./packages/core/package.json').version")
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "The release v$version exists already."
+            exit 0
+          fi
+          node scripts/release-notes.ts "$version" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "v$version" --draft --verify-tag --title "v$version" --notes-file "$RUNNER_TEMP/release-notes.md"

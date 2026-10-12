@@ -2,7 +2,7 @@
  * `pnpm check-changesets` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule: one fixed group that
  * covers every published package and no private one, one version across them, valid changesets (no `major` below 1.0.0),
  * `.github/workflows/release.yml` (read-only by default, `id-token: write` only in the job that stages the packages, staged with
- * pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token), `scripts/npm-trust.sh` (staged
+ * pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token; a GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged
  * publishing only), the policies (LICENSE, DCO, SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages'
  * version ({@link UPGRADING_ANCHORS}, {@link targetVersion}). Besides: actionlint over the workflows when it is installed
  * (a note, never a failure).
@@ -27,6 +27,10 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * listed entry must stand under its release.
  */
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {};
+
+/** `gh release create` stays a draft: `--draft` or `--draft=true`. gh reads the last flag and any value but `true` may mean false. */
+const DRAFT = /\s--draft(?:=true)?(?=\s|$)/;
+const NOT_DRAFT = /\s--draft=(?!true(?=\s|$))/;
 
 /** A release's section: `## Upgrading to <version> from <version>`. Steps (`### …`) inside it keep the release as the section. */
 const RELEASE_SECTION = /^## Upgrading to (\d+\.\d+\.\d+) from (\d+\.\d+\.\d+)\s*$/;
@@ -229,6 +233,16 @@ export function checkWorkflow(repository: string): string[] {
   if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @marmeon/source condition; pnpm stages the packages`);
   if (/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|registry-url:/.test(code)) problems.push(`${where}: an npm token or registry-url — trusted publishing (OIDC) needs no token, and none may sit in the repository`);
   if (/\bpnpm\s+(?:-r\s+|--recursive\s+)?publish\b/.test(code)) problems.push(`${where}: a plain "pnpm publish" — every release is staged (pnpm stage publish) and waits for a maintainer's 2FA approval`);
+  // A command may continue on the next line (`\`): join them before looking for the flag.
+  const joined = (text: string) => text.replace(/\\\r?\n/g, ' ');
+  for (const line of joined(code).split('\n')) {
+    if (/\bgh\s+release\s+create\b/.test(line) && (!DRAFT.test(line) || NOT_DRAFT.test(line))) {
+      problems.push(`${where}: "${line.trim()}" creates a public GitHub Release — only a draft (--draft): the maintainer publishes it after approving on npm`);
+    }
+    if (/\bgh\s+release\s+edit\b/.test(line) && NOT_DRAFT.test(line)) problems.push(`${where}: "${line.trim()}" publishes a GitHub Release — only the maintainer does, by hand`);
+    if (/\bgh\s+api\b[^\n]*\/releases\b/.test(line)) problems.push(`${where}: "${line.trim()}" reaches the releases API — the release is drafted with "gh release create --draft"`);
+  }
+  if (/\buses:\s*\S*(?:create-release|action-gh-release)\b/.test(code)) problems.push(`${where}: a release action — the release is drafted with "gh release create --draft"`);
   if (!/changesets\/action\/version@v2/.test(code)) problems.push(`${where}: the version pull request comes from changesets/action/version@v2`);
 
   const jobs = jobsOf(code);
@@ -244,6 +258,11 @@ export function checkWorkflow(repository: string): string[] {
       const check = body.search(/pnpm run ci --only [\w:,-]*pack:check/);
       const stage = body.search(/release:stage|pnpm\s+stage\s+publish/);
       if (check < 0 || check > stage) problems.push(`${where}: the job "${name}" runs pack:check before it stages the packages`);
+      const text = joined(body);
+      const drafted = text.search(/\bgh\s+release\s+create\b[^\n]*\s--draft(?:=true)?(?=\s|$)/);
+      if (drafted < 0 || drafted < text.search(/release:stage|pnpm\s+stage\s+publish/)) {
+        problems.push(`${where}: the job "${name}" drafts the GitHub release (gh release create … --draft) after it stages the packages`);
+      }
     }
   }
   const manifest = readJson<{ scripts?: Record<string, string> }>(join(repository, 'package.json'));

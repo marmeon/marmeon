@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkUpgrading, pendingBump, targetVersion, UPGRADING_ANCHORS } from './check-changesets.ts';
+import { check, checkUpgrading, checkWorkflow, pendingBump, targetVersion, UPGRADING_ANCHORS } from './check-changesets.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const directories: string[] = [];
@@ -253,5 +253,62 @@ describe('pendingBump and targetVersion', () => {
     expect(targetVersion('0.1.4', 'patch')).toBe('0.1.5');
     expect(targetVersion('1.2.3', 'major')).toBe('2.0.0');
     expect(targetVersion('0.1.4', undefined)).toBe('0.1.4');
+  });
+});
+
+describe('checkWorkflow — the GitHub release', () => {
+  const real = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
+  const draft = /gh release create .*--draft.*/.exec(real)![0];
+
+  /** A repository with the real package.json and this release.yml. */
+  function repositoryWithWorkflow(workflow: string): string {
+    const directory = repositoryWith(unreleased);
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true });
+    writeFileSync(join(directory, '.github/workflows/release.yml'), workflow);
+    writeFileSync(join(directory, 'package.json'), readFileSync(join(root, 'package.json')));
+    return directory;
+  }
+
+  it('passes the repository’s workflow', () => {
+    expectProblems(checkWorkflow(repositoryWithWorkflow(real)), []);
+  });
+
+  it('refuses a release that is not a draft', () => {
+    const line = draft.replace(' --draft', '');
+    expectProblems(checkWorkflow(repositoryWithWorkflow(real.replace(draft, line))), [
+      `release.yml: "${line.trim()}" creates a public GitHub Release — only a draft (--draft): the maintainer publishes it after approving on npm`,
+      'release.yml: the job "publish" drafts the GitHub release (gh release create … --draft) after it stages the packages',
+    ]);
+  });
+
+  it('refuses a release whose command continues on the next line without the flag', () => {
+    const split = real.replace(draft, 'gh release create "v$version" \\\n            --verify-tag');
+    expect(checkWorkflow(repositoryWithWorkflow(split)).join('\n')).toContain('creates a public GitHub Release');
+  });
+
+  it('refuses --draft=false', () => {
+    const line = draft.replace(' --draft', ' --draft=false');
+    expect(checkWorkflow(repositoryWithWorkflow(real.replace(draft, line))).join('\n')).toContain('creates a public GitHub Release');
+  });
+
+  it('refuses a second --draft whose value is not true', () => {
+    const line = draft.replace(' --draft', ' --draft --draft=false');
+    expect(checkWorkflow(repositoryWithWorkflow(real.replace(draft, line))).join('\n')).toContain('creates a public GitHub Release');
+  });
+
+  it('refuses gh release edit --draft=false, the releases API and a release action', () => {
+    const extra = (step: string) => checkWorkflow(repositoryWithWorkflow(`${real}${step}`)).join('\n');
+    expect(extra('          gh release edit "v$version" --draft=false\n')).toContain('publishes a GitHub Release');
+    expect(extra('          gh api repos/x/y/releases -f draft=false\n')).toContain('reaches the releases API');
+    expect(extra('      - uses: softprops/action-gh-release@v2\n')).toContain('a release action');
+  });
+
+  it('asks for the draft step inside the staging job, after the staging', () => {
+    const wanted = 'release.yml: the job "publish" drafts the GitHub release (gh release create … --draft) after it stages the packages';
+    const step = real.slice(real.indexOf('      # A draft:'));
+    const moved = real.replace(step, '').replace('  publish:\n', `  other:\n    runs-on: ubuntu-latest\n    steps:\n${step}\n  publish:\n`);
+    expect(checkWorkflow(repositoryWithWorkflow(moved))).toContain(wanted);
+    const before = real.replace(step, '').replace('      - run: pnpm run release:stage\n', `${step}      - run: pnpm run release:stage\n`);
+    expect(checkWorkflow(repositoryWithWorkflow(before))).toContain(wanted);
   });
 });

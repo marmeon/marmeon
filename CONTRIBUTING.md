@@ -284,7 +284,10 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
   the *Version packages* pull request (`changeset version`: the versions, the changelogs). Merging it runs the checks again and
   **stages** every package version npm does not have yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
   repository) and provenance. Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
-  authentication; then `changeset git-tag` tags the release. The trusted-publisher configuration on npm allows staging only.
+  authentication. The run tags the release — `changeset git-tag` (one tag per package) and an annotated `v<version>` — and drafts
+  one GitHub Release on `v<version>`, its notes the version's changelog sections merged (`scripts/release-notes.ts`). The release
+  is only ever a draft: the maintainer publishes it by hand after approving on npm, and `check-changesets` refuses a
+  `gh release create` without `--draft`. The trusted-publisher configuration on npm allows staging only.
   A package's very first version has to be published by hand, before trusted publishing can be set up for it; the workflow covers
   every version after that. The workflow is read-only by default, `id-token: write` belongs to the staging job alone, and no npm
   token is stored. The policies stay in place: the `LICENSE` holder, private reporting in `SECURITY.md` and the deprecation
