@@ -66,6 +66,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   (`modules/docs/negotiate.ts`; naming only `text/*` or `*/*` is not enough, so a browser always gets HTML; a Visit with `x-marmeon` always gets
   the page object): the page's `.md` body, and for `/docs` the index of `/llms.txt`. Both variants carry `Vary: Accept` and have
   their own ETag, so a shared cache never serves one for the other.
+  Every docs page shows a "View as Markdown" link to its `.md` above the heading — a plain `<a>` (no `<Link>`, no JavaScript).
 - **Sitemap and robots.txt** (`modules/site/seo.ts`): `/sitemap.xml` lists the landing, `/docs`, every written page of the docs and the legal
   pages as absolute URLs from `APP_URL` — drafts left out, no `lastmod` (the image has no history; a wrong date does more harm than
   none). `/robots.txt` is the same in every environment: everything may be crawled but `/docs/search` (an endless URL space behind

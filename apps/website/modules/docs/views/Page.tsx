@@ -12,7 +12,13 @@ export default function Page({ title, section, body, toc, markdown, previous, ne
         <link rel="alternate" type="text/markdown" href={markdown} />
       </Head>
       <article className="doc">
-        <p className="eyebrow">{section}</p>
+        <div className="doc-kicker">
+          <p className="eyebrow">{section}</p>
+          {/* A plain link, not `<Link>`: the answer is no page, the browser opens it. */}
+          <a className="doc-source" href={markdown} type="text/markdown">
+            View as Markdown
+          </a>
+        </div>
         <h1>{title}</h1>
         <TocMobile entries={toc} />
         <Markdown nodes={body} />

@@ -101,3 +101,20 @@ describe('/docs/<slug>.md', () => {
     expect((error as DocsError).problems.join('\n')).toMatch(/docs\/one\.md: .*write links inline/);
   });
 });
+
+describe('the "View as Markdown" link (server-rendered)', () => {
+  const link = (body: string) => [...body.matchAll(/<a [^>]*class="doc-source"[^>]*>[^<]*<\/a>/g)].map((match) => match[0]);
+
+  it('names the page\'s Markdown on a docs page, as a plain link that opens the Markdown', async () => {
+    const ssr = await createTestApp(application, { ssr: true });
+    const links = link((await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered()).body);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatch(/href="\/docs\/routing\.md"/);
+    expect(links[0]).toMatch(/type="text\/markdown"/);
+    expect(links[0]).toMatch(/>View as Markdown<\/a>$/);
+    expect(links[0]).not.toMatch(/data-internal|download|target=/);
+    expect((await ssr.get('/docs/routing.md').assertOk()).headers.get('content-type')).toBe('text/markdown; charset=utf-8');
+    expect(link((await ssr.get('/docs/upgrading', { headers: { accept: 'text/html' } }).assertOk()).body)[0]).toContain('href="/docs/upgrading.md"');
+    for (const path of ['/docs', '/docs/search']) expect(link((await ssr.get(path, { headers: { accept: 'text/html' } }).assertOk()).body)).toEqual([]);
+  }, SSR_TEST_TIMEOUT);
+});

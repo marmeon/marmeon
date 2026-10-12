@@ -62,7 +62,8 @@ function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>): 
       internal++;
       const [target = '', anchor] = href.split('#') as [string, string | undefined];
       const page = target === '' ? path : target.split('?')[0]!;
-      const found = pages.get(page);
+      // The Markdown of a page — its own route, not a scanned page.
+      const found = pages.get(page.replace(/^(\/docs\/[a-z0-9-]+)\.md$/, (md, html: string) => (pages.has(html) ? html : md)));
       if (!found) {
         if (page !== '/docs/search') broken.push(`${path}: ${href} — no such page`);
         continue;
@@ -135,12 +136,12 @@ describe('every page', () => {
 describe('the link check', () => {
   it('finds a link to an anchor or a page that does not exist, and passes one that does', () => {
     const pages = new Map([
-      ['/', { hrefs: ['/docs/queries#table-types', '/docs/queries#table-typo', '/docs/nowhere', 'https://example.org/x'], ids: new Set<string>() }],
+      ['/', { hrefs: ['/docs/queries#table-types', '/docs/queries#table-typo', '/docs/nowhere', '/docs/queries.md', '/docs/no-such-page.md', 'https://example.org/x'], ids: new Set<string>() }],
       ['/docs/queries', { hrefs: [], ids: new Set(['table-types']) }],
     ]);
     const { broken, internal } = checkLinks(pages);
-    expect(internal).toBe(3);
-    expect(broken).toEqual(['/: /docs/queries#table-typo — no #table-typo on /docs/queries', '/: /docs/nowhere — no such page']);
+    expect(internal).toBe(5);
+    expect(broken).toEqual(['/: /docs/queries#table-typo — no #table-typo on /docs/queries', '/: /docs/nowhere — no such page', '/: /docs/no-such-page.md — no such page']);
   });
 });
 

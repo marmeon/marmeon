@@ -97,6 +97,30 @@
   text-transform: uppercase;
 }
 
+.doc-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 0 0 10px;
+}
+
+.doc-kicker .eyebrow {
+  margin: 0;
+}
+
+.doc-source {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  text-decoration: underline;
+}
+
+.doc-source:hover {
+  color: var(--fg);
+}
+
 .doc :not(pre) > code,
 .doc .file {
   padding: 0.08em 0.34em;
