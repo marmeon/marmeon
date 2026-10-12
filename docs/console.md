@@ -34,8 +34,8 @@ Set these variables in the environment or in .env (see .env.example).
 ```
 
 The generators, `build`, `discover`, `key:generate`, `make:lint-config` and `make:docker` work without booting, so they run
-before the app has a valid `.env`. `route:types` registers the app's providers without booting it, as the build does, and needs
-no secret either.
+before the app has a valid `.env`. `route:types` and `make:command` register the app's providers without booting them, as the
+build does, and need no secret either.
 
 A command's options are checked before it runs. An unknown option is an error that prints the command's usage line.
 `marmeon <command> --help` (or `-h`) prints the command's description, its usage line and its options, and runs nothing; after a
@@ -99,7 +99,7 @@ rotation on a server.
 The `make:*` commands write a file into a module from a template. `make:module` adds the module to `bootstrap/app.ts`. `make:listener`, `make:job`, `make:notification`, `make:command`, `make:seeder` and `make:migration`
 also add the class (or the migrations folder) to the module's `index.ts`, where the module lists such things. When `index.ts` has another shape (a list kept in a variable, say),
 they leave it as it is and print the lines to add; `--no-register` always prints them. The commands run without booting the
-app, and never overwrite a file unless you pass `--force`:
+app (`make:command` registers it the way `marmeon build` does, no `.env` needed, to see every command name), and never overwrite a file unless you pass `--force`:
 
 | Command | Writes |
 | --- | --- |
@@ -172,7 +172,7 @@ export class PruneArchivedNotesCommand {
 ```
 
 `marmeon make:command PruneArchivedNotes --module=notes` writes the class with the name `notes:prune-archived-notes` and lists it in
-the module. The generator refuses, and writes nothing, when that name is already a built-in command's or another module's `static command`; it does not boot the app, so it cannot see the commands installed packages register. A module lists its commands, and they appear in `marmeon list`:
+the module. The generator refuses, and writes nothing, when the name is taken — by a built-in, an installed package or a module. It loads the app the way `marmeon build` does, every provider registered and none booted, so an app that cannot be loaded stops it with that error. A module lists its commands, and they appear in `marmeon list`:
 
 ```ts title="modules/notes/index.ts"
 import { defineModule } from '@marmeon/core';

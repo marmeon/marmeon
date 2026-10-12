@@ -76,7 +76,10 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // request or a job: scoped services (a Translator, in APP_LOCALE) resolve, and start fresh for each command.
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
-    const execute = () => runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnMarmeon(root, args) });
+    const scope = app?.container.createScope() ?? new Container();
+    // An app without the CLI provider (or none at all) has no registry bound: a command that asks for it (`make:command`) gets this one, not an empty one.
+    if (!scope.has(CommandRegistry)) scope.instance(CommandRegistry, registry);
+    const execute = () => runCommand(scope, Command, rest, { output, root, spawn: (...args) => spawnMarmeon(root, args) });
     // On the `command.run` channel while something listens: the devtools keep what a command did as one batch.
     if (!app || !commands.hasSubscribers) return await execute();
     const message: CommandRunMessage = { ...messageBase(app), command: Command.command, args: rest };

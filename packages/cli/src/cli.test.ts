@@ -301,6 +301,67 @@ describe('marmeon: two commands with one name', () => {
   }, ciTimeout);
 });
 
+describe('marmeon make:command (checks every registered command)', () => {
+  const blank = join(repo, 'apps/blank-app');
+
+  function appWithFiles(files: Record<string, string>): string {
+    const app = realpathSync(tempDir('marmeon-make-command-'));
+    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
+    symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
+    mkdirSync(join(app, 'storage'));
+    for (const [file, source] of Object.entries(files)) {
+      mkdirSync(dirname(join(app, file)), { recursive: true });
+      writeFileSync(join(app, file), source);
+    }
+    return app;
+  }
+
+  const authModule = { 'modules/auth/index.ts': "import { defineModule } from '@marmeon/core';\nexport default defineModule({ name: 'auth' });\n" };
+
+  it('refuses the name of an installed package command and writes nothing', () => {
+    const app = appWithFiles(authModule);
+    const { code, stderr } = marmeon(app, ['make:command', 'PruneTokens', '--module=auth']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('auth:prune-tokens is already the name of PruneTokensCommand (AuthServiceProvider)');
+    expect(existsSync(join(app, 'modules/auth/commands'))).toBe(false);
+  }, ciTimeout);
+
+  it('writes a free name without a .env and lists it', () => {
+    const app = appWithFiles(authModule);
+    const { code } = marmeon(app, ['make:command', 'RotateKeys', '--module=auth']);
+    expect(code).toBe(0);
+    expect(existsSync(join(app, 'modules/auth/commands/RotateKeysCommand.ts'))).toBe(true);
+    expect(readFileSync(join(app, 'modules/auth/index.ts'), 'utf8')).toContain('commands: [RotateKeysCommand]');
+  }, ciTimeout);
+
+  it('stops with the load error instead of falling back, and writes nothing', () => {
+    const app = appWithFiles({ 'modules/system/index.ts': "export default (() => {\n  throw new Error('broken');\n})();\n" });
+    const { code, stderr } = marmeon(app, ['make:command', 'X', '--module=system']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('Could not start the application: broken');
+    expect(existsSync(join(app, 'modules/system/commands'))).toBe(false);
+  }, ciTimeout);
+
+  it('stops on a name that is already used twice', () => {
+    const app = appWithFiles({
+      'modules/system/Ours.ts': "export class OursCommand {\n  static command = 'db:seed';\n  static description = 'Ours';\n  handle() {}\n}\n",
+      'modules/system/index.ts':
+        "import { defineModule } from '@marmeon/core';\nimport { OursCommand } from './Ours.ts';\nexport default defineModule({ name: 'system', commands: [OursCommand], migrations: new URL('./migrations/', import.meta.url) });\n",
+    });
+    const { code, stderr } = marmeon(app, ['make:command', 'X', '--module=system']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('Two commands are named "db:seed"');
+    expect(existsSync(join(app, 'modules/system/commands'))).toBe(false);
+  }, ciTimeout);
+
+  it('prints its help without loading the app', () => {
+    const app = appWithFiles({ 'modules/system/index.ts': "export default (() => {\n  throw new Error('broken');\n})();\n" });
+    const { code, stdout } = marmeon(app, ['make:command', '--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('make:command');
+  }, ciTimeout);
+});
+
 describe('marmeon modules:check (unlisted jobs and notifications)', () => {
   const blank = join(repo, 'apps/blank-app');
 
@@ -383,9 +444,20 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(marmeon(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain(
       '✓ Registered InvoiceOverdueNotification in modules/billing/index.ts (notifications)',
     );
+    // make:command registers the app to see every command name, so it needs an entry (the other generators work without one).
+    mkdirSync(join(app, 'bootstrap'));
+    writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\nexport default defineApplication({ root: import.meta.dirname + '/..' });\n");
     expect(marmeon(app, ['make:command', 'PruneInvoices', '--module=billing']).stdout).toContain(
       '✓ Registered PruneInvoicesCommand in modules/billing/index.ts (commands)',
     );
+    // An app that does not register the CLI's provider still knows the built-ins.
+    mkdirSync(join(app, 'modules/make'));
+    writeFileSync(join(app, 'modules/make/index.ts'), "import { defineModule } from '@marmeon/core';\nexport default defineModule({ name: 'make' });\n");
+    const clash = marmeon(app, ['make:command', 'Seeder', '--module=make']);
+    expect([clash.code, clash.stderr]).toEqual([1, expect.stringContaining('make:seeder is already the name of MakeSeederCommand (marmeon)')]);
+    expect(existsSync(join(app, 'modules/make/commands'))).toBe(false);
+    rmSync(join(app, 'modules/make'), { recursive: true });
+    rmSync(join(app, 'bootstrap'), { recursive: true });
     expect(marmeon(app, ['make:seeder', 'Invoice', '--module=billing']).stdout).toContain(
       '✓ Registered InvoiceSeeder in modules/billing/index.ts (seeders)',
     );

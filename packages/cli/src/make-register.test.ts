@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
-import { BUILT_IN_NAMES } from './built-in-names.ts';
+import { CommandRegistry, type CommandClass } from './command.ts';
 import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand, MakeCommandCommand, MakeSeederCommand } from './commands/make.ts';
 
 const MODULE = `import { defineModule } from '@marmeon/core';
@@ -322,7 +322,11 @@ describe('make:module registers the module in bootstrap/app.ts', () => {
 });
 
 describe('make:command and make:seeder register themselves', () => {
-  const command = (root: string, args = ['PruneInvoices'], options: Record<string, unknown> = {}) => run(new MakeCommandCommand(), root, args, options);
+  const registry = () => new CommandRegistry().add(BUILT_IN, 'marmeon');
+  const command = (root: string, args = ['PruneInvoices'], options: Record<string, unknown> = {}, commands = registry()) =>
+    run(new MakeCommandCommand(commands), root, args, options);
+  const named = (name: string, className: string): CommandClass =>
+    ({ [className]: class { static command = name; static description = ''; handle() {} } })[className] as unknown as CommandClass;
   const seeder = (root: string, args = ['Invoice'], options: Record<string, unknown> = {}) => run(new MakeSeederCommand(), root, args, options);
 
   it('writes a command named after its module and class, and lists it', () => {
@@ -385,27 +389,59 @@ describe('make:command and make:seeder register themselves', () => {
     const { root } = app();
     mkdirSync(join(root, 'modules', 'make'), { recursive: true });
     writeFileSync(join(root, 'modules', 'make', 'index.ts'), MODULE.replace('billing', 'make'));
-    const { code, lines } = run(new MakeCommandCommand(), root, ['Seeder'], { module: 'make' });
+    const { code, lines } = command(root, ['Seeder'], { module: 'make' });
     expect(code).toBe(1);
-    expect(lines.some((line) => line.startsWith('✗ make:seeder is already a built-in command'))).toBe(true);
+    expect(lines.some((line) => line.startsWith('✗ make:seeder is already the name of MakeSeederCommand (marmeon)'))).toBe(true);
     expect(existsSync(join(root, 'modules', 'make', 'commands'))).toBe(false);
     expect(readFileSync(join(root, 'modules', 'make', 'index.ts'), 'utf8')).toBe(MODULE.replace('billing', 'make'));
     expect(command(root, ['PruneInvoices']).lines.some((line) => line.startsWith('!') || line.startsWith('✗'))).toBe(false);
   });
 
+  it('refuses the name of an installed package command and writes nothing', () => {
+    const { root } = app();
+    const auth = join(root, 'modules', 'auth');
+    mkdirSync(auth, { recursive: true });
+    writeFileSync(join(auth, 'index.ts'), MODULE.replace('billing', 'auth'));
+    const commands = registry().add([named('auth:prune-tokens', 'PruneTokensCommand')], 'AuthServiceProvider');
+    const { code, lines } = command(root, ['PruneTokens'], { module: 'auth' }, commands);
+    expect(code).toBe(1);
+    expect(lines.some((line) => line.startsWith('✗ auth:prune-tokens is already the name of PruneTokensCommand (AuthServiceProvider)'))).toBe(true);
+    expect(existsSync(join(auth, 'commands'))).toBe(false);
+    expect(readFileSync(join(auth, 'index.ts'), 'utf8')).toBe(MODULE.replace('billing', 'auth'));
+  });
+
   it('refuses a name another module of the app already uses and writes nothing', () => {
     const { root, index } = app();
-    mkdirSync(join(root, 'modules', 'other', 'commands'), { recursive: true });
-    writeFileSync(join(root, 'modules', 'other', 'commands', 'Prune.ts'), "export class Prune {\n  static command = 'billing:prune-invoices';\n}\n");
-    const { code, lines } = command(root);
+    const commands = registry().add([named('billing:prune-invoices', 'Prune')], 'module other');
+    const { code, lines } = command(root, ['PruneInvoices'], {}, commands);
     expect(code).toBe(1);
-    expect(lines.some((line) => line.includes('billing:prune-invoices') && line.includes('modules/other/commands/Prune.ts'))).toBe(true);
+    expect(lines.some((line) => line.includes('billing:prune-invoices') && line.includes('Prune (module other)'))).toBe(true);
     expect(existsSync(join(root, 'modules', 'billing', 'commands'))).toBe(false);
     expect(readFileSync(index, 'utf8')).toBe(MODULE);
   });
 
-  it('keeps the list of built-in names in step with the registered commands', () => {
-    expect([...BUILT_IN_NAMES].filter((name) => name !== 'list' && name !== 'help').sort()).toEqual(BUILT_IN.map((c) => c.command).sort());
+  it('does not take the same class name in another module or a package for a regeneration', () => {
+    const { root } = app();
+    const elsewhere = registry().add([named('billing:prune-invoices', 'PruneInvoicesCommand')], 'module other');
+    expect(command(root, ['PruneInvoices'], {}, elsewhere).code).toBe(1);
+    const packaged = registry().add([named('billing:prune-invoices', 'PruneInvoicesCommand')], 'BillingServiceProvider');
+    expect(command(root, ['PruneInvoices'], {}, packaged).code).toBe(1);
+    expect(existsSync(join(root, 'modules', 'billing', 'commands'))).toBe(false);
+  });
+
+  it('regenerates its own listed command with --force', () => {
+    const { root } = app();
+    const own = registry().add([named('billing:prune-invoices', 'PruneInvoicesCommand')], 'module billing');
+    expect(command(root, ['PruneInvoices'], {}, own).code).toBe(1);
+    expect(command(root, ['PruneInvoices'], {}, registry()).code).toBe(0);
+    expect(command(root, ['PruneInvoices'], { force: true }, own).code).toBe(0);
+  });
+
+  it('refuses a listed class of that name that is not the file it would write', () => {
+    const { root } = app();
+    const listed = registry().add([named('billing:prune-invoices', 'PruneInvoicesCommand')], 'module billing');
+    expect(command(root, ['PruneInvoices'], {}, listed).code).toBe(1);
+    expect(existsSync(join(root, 'modules', 'billing', 'commands'))).toBe(false);
   });
 
   it('refuses a name that is not PascalCase and writes nothing', () => {

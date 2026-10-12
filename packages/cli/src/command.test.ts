@@ -39,6 +39,15 @@ describe('CommandRegistry.add', () => {
   });
 });
 
+describe('CommandRegistry.owner', () => {
+  it('returns the class and where it comes from, undefined for an unknown name', () => {
+    const Seed = named('db:seed', 'seed');
+    const registry = new CommandRegistry().add([Seed], 'DatabaseServiceProvider');
+    expect(registry.owner('db:seed')).toEqual({ command: Seed, source: 'DatabaseServiceProvider' });
+    expect(registry.owner('db:fresh')).toBeUndefined();
+  });
+});
+
 describe('CommandRegistry reserved names', () => {
   it.each(['list', 'help'])('refuses %s, which marmeon answers itself', (name) => {
     expect(() => new CommandRegistry().add([named(name, 'ours')], 'module x')).toThrow(`"${name}" is marmeon's own command`);

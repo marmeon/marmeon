@@ -81,6 +81,11 @@ export class CommandRegistry {
     return this.#commands.get(name)?.command;
   }
 
+  /** Which command has `name`, and where it comes from — what `make:command` checks a new name against. */
+  owner(name: string): { readonly command: CommandClass; readonly source: string } | undefined {
+    return this.#commands.get(name);
+  }
+
   all(): CommandClass[] {
     return [...this.#commands.values()].map((entry) => entry.command).sort((a, b) => a.command.localeCompare(b.command));
   }

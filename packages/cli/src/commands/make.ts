@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { bindingNameOf, editDefinitionFile, editDefinition, importedBindings, type DefinitionEdit } from '@marmeon/core';
-import { BUILT_IN_NAMES } from '../built-in-names.ts';
-import type { CommandInput } from '../command.ts';
+import { CommandRegistry, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
 const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
@@ -372,29 +371,20 @@ export class MakeNotificationCommand {
   }
 }
 
-/** The app-relative file of a module command that already has `command` as its `static command` (the file being generated excepted). */
-function commandOwner(root: string, command: string, except: string): string | undefined {
-  const modules = join(root, 'modules');
-  if (!existsSync(modules)) return undefined;
-  for (const module of readdirSync(modules)) {
-    const commands = join(modules, module, 'commands');
-    if (!existsSync(commands)) continue;
-    for (const entry of readdirSync(commands)) {
-      const file = join(commands, entry);
-      if (file === except || !entry.endsWith('.ts')) continue;
-      const declared = /static\s+command\s*=\s*(['"`])([^'"`]+)\1/.exec(readFileSync(file, 'utf8'))?.[2];
-      if (declared === command) return relative(root, file);
-    }
-  }
-  return undefined;
-}
-
 export class MakeCommandCommand {
   static command = 'make:command';
   static description = 'Create a console command (listed by marmeon list)';
   static usage = '<Name> --module=<module> [--no-register]';
   static options = registeringOption;
-  static boots = false;
+  // The app as `marmeon build` has it — every provider registered, none booted — so the name is checked against the
+  // packages' commands too, and no `.env` is needed.
+  static boots = 'build' as const;
+
+  readonly #commands: CommandRegistry;
+
+  constructor(commands: CommandRegistry) {
+    this.#commands = commands;
+  }
 
   handle(input: CommandInput): number {
     const dir = moduleDir(input);
@@ -404,10 +394,12 @@ export class MakeCommandCommand {
     // The name typed on the command line — from the class name once; renaming the class later keeps it.
     const command = `${module}:${stableName(name, 'Command') || 'command'}`;
     const file = join(dir, 'commands', `${name}.ts`);
-    // A duplicate name fails the app's start, so the generator refuses before it writes anything.
-    const owner = BUILT_IN_NAMES.includes(command) ? 'a built-in command' : commandOwner(input.root, command, file);
-    if (owner) {
-      input.output.error(`${command} is already ${owner.startsWith('a ') ? owner : `the name of the command in ${owner}`}: two commands cannot share a name. Rename the class or choose another module.`);
+    // The registry is what the start checks: a file no module lists is not a command yet. The same class in this module
+    // is a regeneration (`--force` over the file this writes), not a clash.
+    const taken = this.#commands.owner(command);
+    const regeneration = existsSync(file) && taken?.source === `module ${module}` && taken.command.name === name;
+    if (taken && !regeneration) {
+      input.output.error(`${command} is already the name of ${taken.command.name} (${taken.source}): two commands cannot share a name. Rename the class or choose another module.`);
       return 1;
     }
     if (!write(input, file, COMMAND(name, command))) return 1;
