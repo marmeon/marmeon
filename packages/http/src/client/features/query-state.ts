@@ -4,13 +4,19 @@
  * page on screen is the navigator's.
  */
 import { defineFeature } from '../feature.ts';
-import { QueryState, type QueryStateOptions } from '../query-state.ts';
+import { QueryState, type QueryStateOptions, type QueryStateTarget } from '../query-state.ts';
 
 /** What adapters use of query state: one per component that shows it. */
 export interface QueryStateFeature {
-  /** The query state of the page on screen — `dispose()` it when the component goes. */
-  create<Q extends Record<string, unknown> = Record<string, unknown>>(options?: QueryStateOptions): QueryState<Q>;
+  /**
+   * The query state of the page on screen — `dispose()` it when the component goes. `target` is the layer whose query the
+   * state is, inside one: typing then visits the layer, not the page beneath.
+   */
+  create<Q extends Record<string, unknown> = Record<string, unknown>>(
+    options?: QueryStateOptions,
+    target?: QueryStateTarget,
+  ): QueryState<Q>;
 }
 
 /** Typed URL state: `navigator.use(queryState).create({ only: ['people'], debounce: 300 })`. */
-export const queryState = defineFeature('queryState', (host): QueryStateFeature => ({ create: (options) => new QueryState(host.navigator, options) }));
+export const queryState = defineFeature('queryState', (host): QueryStateFeature => ({ create: (options, target) => new QueryState(target ?? host.navigator, options, target !== undefined) }));

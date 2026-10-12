@@ -55,7 +55,7 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
     const navigator = router.navigator();
     if (!navigator) return undefined;
     // The feature attaches on first use — an app without query state carries none of it.
-    const current = navigator.use(queryState).create(latest.current as QueryStateOptions);
+    const current = navigator.use(queryState).create(latest.current as QueryStateOptions, router.layer ?? undefined);
     state.current = current;
     const stop = current.subscribe(() => setDraft(current.draft));
     for (const update of early.current.splice(0)) current.set(update);

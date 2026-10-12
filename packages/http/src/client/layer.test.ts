@@ -206,6 +206,28 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       expect(edit!.closed).toBe(false);
     });
 
+    it('a layer closed while its visit is out gets no answer — it does not open again, no entry is added', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      win.handler = (url) => (url.includes('q=') ? gate.then(() => pageResponse(layer('/users/1/edit?q=a'))) : pageResponse(layer('/users/1/edit')));
+      const app = profile(win);
+      await app.navigator.visit('/users/1/edit', { layer: true });
+      const [open] = app.layers();
+      const pending = open!.visit('/users/1/edit?q=a', { replace: true, preserveState: true });
+      await settle();
+      await open!.close();
+      expect(app.layers()).toEqual([]);
+      const entries = win.entries.length;
+
+      release();
+      await pending;
+      await tick();
+      expect(app.layers()).toEqual([]);
+      expect(win.entries.length).toBe(entries);
+      expect(win.current.url).toBe(`${ORIGIN}/users/1`);
+    });
+
     it(`the depth limit holds — an answer that would open layer ${MAX_LAYER_DEPTH + 1} is shown as a page`, async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       let n = 0;

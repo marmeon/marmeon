@@ -85,7 +85,7 @@ export { queryState } from './features/query-state.ts';
 export { Selection, SELECTIONS, selection } from './features/selection.ts';
 export type { SelectionFeature, SelectionKey } from './features/selection.ts';
 export type { QueryStateFeature } from './features/query-state.ts';
-export type { QueryStateOptions, QueryUpdate } from './query-state.ts';
+export type { QueryStateOptions, QueryStateTarget, QueryUpdate } from './query-state.ts';
 export type { ActionException, ActionHost, ActionMethod, ActionOptions, ActionOutcome, Submission } from './action.ts';
 export { PatchQueue, Revalidations } from './optimistic.ts';
 export { applyPatches, rollBack } from './patches.ts';

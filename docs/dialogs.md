@@ -107,8 +107,8 @@ export default function Edit({ note }: PageProps<EditNoteController>) {
 | `close({ reload })` | Closes it, and the layers over it. `reload` then reloads what is beneath: some props, or `true` for all. |
 | `onClose(listener)` | Runs once the layer has left the screen. Returns the function that stops listening. |
 
-`useLayer({ onClose })` takes the listener as an option. Visits, forms and actions inside a layer belong to it: `usePage()` returns
-the layer's page, and `useRouter()` reloads and patches the layer's props.
+`useLayer({ onClose })` takes the listener as an option. Visits, forms, actions and `useQueryState()` inside a layer belong to it:
+`usePage()` returns the layer's page, and `useRouter()` reloads and patches the layer's props.
 
 ## Forms that close their layer
 

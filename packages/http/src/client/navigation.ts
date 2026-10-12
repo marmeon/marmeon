@@ -748,7 +748,8 @@ export class Navigator {
         // The server answered with a layer (it may, to any visit) and nothing loaded the layers yet: their code
         // first — never shown as a page, never dropped.
         if (page.layer && !(await this.#needLayers(signal, page.url))) return undefined;
-        if (background && (core.left || core.key !== fromKey || core.transitioning || from?.layer.closed)) return undefined;
+        // A layer that closed while its visit was out (Escape mid-request) gets no answer: it would open the layer again.
+        if ((background && (core.left || core.key !== fromKey || core.transitioning)) || from?.layer.closed) return undefined;
         // The answer replaces what the parts and the patches showed — in the same render (the server's props then, or its errors).
         for (const part of parts) part.landed?.();
         for (const [target, ids] of patched) target.settle(ids, false, { quiet: true });

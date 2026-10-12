@@ -182,8 +182,11 @@ have is a compile error.
 | `only`, `except` | every prop | The props the visit reloads. |
 | `reset` | the props of `only` | Props to replace instead of merging. Another query is another list. |
 | `debounce` | `0` | Milliseconds to wait after the last change before asking the server. |
-| `history` | `'push'` | `'push'` adds a history entry per change, so Back undoes a sort. `'replace'` replaces the current entry, for typing, so Back leaves the list. |
+| `history` | `'push'` (always `'replace'` in a layer) | `'push'` adds a history entry per change, so Back undoes a sort. `'replace'` replaces the current entry, for typing, so Back leaves the list. |
 | `preserveScroll` | `true` | Keeps the scroll position. |
+
+Inside a layer, the state is the layer's query: typing visits the layer in place and the page beneath stays as it is. The layer
+always replaces its history entry, whatever `history` says.
 
 The hook works on the page of its route only, and a route without a query schema is a compile error. Without JavaScript, put the
 field in a plain `<form method="get">`: it sends the same URL. The [navigation](navigation.md#links-to-routes) page covers

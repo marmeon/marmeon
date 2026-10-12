@@ -16,7 +16,7 @@ const HISTORY = [await loadHistoryFallback()];
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const DEFAULTS = { q: '', sort: 'name' };
-const routes: RouteManifest = { people: { method: 'get', path: '/people' }, show: { method: 'get', path: '/users/:user' } };
+const routes: RouteManifest = { people: { method: 'get', path: '/people' }, find: { method: 'get', path: '/people/find' }, show: { method: 'get', path: '/users/:user' } };
 
 function People({ people }: { people: string[] }) {
   const [query, setQuery] = useQueryState('people', { only: ['people'], debounce: 30, history: 'replace' });
@@ -49,12 +49,48 @@ function Early({ people }: { people: string[] }) {
   );
 }
 
+/** The page with a link that opens `Find` as a layer over it. */
+function Directory({ people }: { people: string[] }) {
+  return (
+    <main>
+      <Link route="find" layer data-testid="open">
+        Find
+      </Link>
+      <ul data-testid="list">{people.join(',')}</ul>
+    </main>
+  );
+}
+
+/** A layer with a search field: its query state belongs to the layer. */
+function Find({ people }: { people: string[] }) {
+  const [query, setQuery] = useQueryState('find', { only: ['people'], history: 'replace' });
+  return (
+    <section>
+      <h2>Find</h2>
+      <input data-testid="lq" value={query.q as string} onChange={(event) => setQuery({ q: event.target.value })} />
+      <ul data-testid="found">{people.join(',')}</ul>
+    </section>
+  );
+}
+
+/** The same layer without `only`: every prop comes again, and the input must not remount. */
+function FindAll({ people }: { people: string[] }) {
+  const [query, setQuery] = useQueryState('find');
+  return (
+    <section>
+      <h2>Find</h2>
+      <input data-testid="lq" value={query.q as string} onChange={(event) => setQuery({ q: event.target.value })} />
+      <ul data-testid="found">{people.join(',')}</ul>
+    </section>
+  );
+}
+
 function Misplaced() {
   useQueryState('people');
   return null;
 }
 
-const pages: Record<string, PageComponent> = { People, Early, Misplaced };
+const pages: Record<string, PageComponent> = { People, Early, Misplaced, Directory, Find, FindAll };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const NAMES = ['Ada', 'Alan', 'Grace'];
 const peoplePage = (url: string): PageObject => {
@@ -66,6 +102,9 @@ const peoplePage = (url: string): PageObject => {
   return { component: 'app/People', url, props: { people }, version: null, query: { ...(q ? { q } : {}), ...(sort !== 'name' ? { sort } : {}) }, queryDefaults: DEFAULTS };
 };
 
+let layerView = 'app/Find';
+const component = () => layerView;
+let gate: Promise<void> | undefined;
 let requests: { url: string; headers: Record<string, string> }[];
 let root: Root;
 let container: HTMLElement;
@@ -75,8 +114,15 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.replaceChildren(container);
   requests = [];
+  gate = undefined;
+  layerView = 'app/Find';
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
     requests.push({ url: String(input), headers: { ...(init.headers as Record<string, string>) } });
+    if (new URL(String(input), location.href).pathname === '/people/find') {
+      if (String(input).includes('q=')) await gate;
+      const found = peoplePage(String(input).replace('/people/find', '/people'));
+      return new Response(JSON.stringify({ ...found, component: component(), url: String(input), layer: { key: 'app/Find', base: '/people' } }), { headers: { [PAGE_HEADER]: 'true' } });
+    }
     return new Response(JSON.stringify(peoplePage(String(input))), { headers: { [PAGE_HEADER]: 'true' } });
   });
 });
@@ -156,5 +202,65 @@ describe('useQueryState', () => {
     vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args));
     await mount({ component: 'app/Misplaced', url: '/users/1', props: {}, version: null });
     expect(JSON.stringify(errors.map(String))).toContain('is used on /users/1, a page of another route');
+  });
+
+  it('inside a layer it is the layer’s query: typing visits the layer in place, the page beneath stays, one Back closes it', async () => {
+    await mount({ ...peoplePage('/people'), component: 'app/Directory' });
+    await act(async () => $('open').click());
+    await until(() => expect($('lq')).not.toBeNull(), 5000);
+    const opened = requests.length;
+    const entries = history.length;
+
+    typeNow('lq', 'al');
+    await until(() => expect($('found').textContent).toBe('Alan'));
+    const sent = requests.slice(opened);
+    expect(sent.map((r) => r.url)).toEqual(['/people/find?q=al']);
+    expect(sent[0]!.headers).toMatchObject({ 'x-marmeon-region': 'layer', [PARTIAL_DATA_HEADER]: 'people' });
+    expect(history.length).toBe(entries);
+    expect(location.pathname + location.search).toBe('/people/find?q=al');
+    // The page beneath: never asked for, its props as they were.
+    expect(requests.some((r) => r.url.startsWith('/people?'))).toBe(false);
+    expect($('list').textContent).toBe('Ada,Alan,Grace');
+    expect(container.ownerDocument.querySelector('dialog[data-marmeon-layer]')).not.toBeNull();
+
+    await act(async () => history.back());
+    await until(() => expect(container.ownerDocument.querySelector('dialog[data-marmeon-layer]')).toBeNull());
+    expect(location.pathname + location.search).toBe('/people');
+  });
+
+  it('a layer closed while its search is out stays closed — the answer neither opens it again nor adds an entry', async () => {
+    await mount({ ...peoplePage('/people'), component: 'app/Directory' });
+    await act(async () => $('open').click());
+    await until(() => expect($('lq')).not.toBeNull(), 5000);
+    let release!: () => void;
+    gate = new Promise<void>((resolve) => (release = resolve));
+
+    typeNow('lq', 'al');
+    await until(() => expect(requests.some((r) => r.url === '/people/find?q=al')).toBe(true));
+    await act(async () => void container.ownerDocument.querySelector('dialog[data-marmeon-layer]')!.dispatchEvent(new Event('cancel', { cancelable: true })));
+    await until(() => expect(container.ownerDocument.querySelector('dialog[data-marmeon-layer]')).toBeNull());
+    const entries = history.length;
+    release();
+    await wait(50);
+    expect(container.ownerDocument.querySelector('dialog[data-marmeon-layer]')).toBeNull();
+    expect(history.length).toBe(entries);
+    expect(location.pathname).toBe('/people');
+  });
+
+  it('without only, the layer stays the same object: the input keeps its element and focus, and the entry is replaced', async () => {
+    layerView = 'app/FindAll';
+    await mount({ ...peoplePage('/people'), component: 'app/Directory' });
+    await act(async () => $('open').click());
+    await until(() => expect($('lq')).not.toBeNull(), 5000);
+    const input = $('lq');
+    input.focus();
+    const entries = history.length;
+
+    typeNow('lq', 'al');
+    await until(() => expect($('found').textContent).toBe('Alan'));
+    expect($('lq')).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(history.length).toBe(entries);
+    expect(location.search).toBe('?q=al');
   });
 });

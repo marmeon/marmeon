@@ -10,6 +10,9 @@
 import { matchesPath, toSearchParams, type PageObject, type Query } from '../page.ts';
 import type { Navigator, VisitOptions } from './navigation.ts';
 
+/** What query state follows and visits: the navigator (the page on screen), or a layer. */
+export type QueryStateTarget = Pick<Navigator, 'page' | 'visit'> & { subscribe(listener: () => void): () => void };
+
 export interface QueryStateOptions {
   /** A partial reload of these props (the rest of the page stays as it is). Without: every prop comes again. */
   only?: readonly string[];
@@ -100,7 +103,8 @@ function keyOf(values: Readonly<Record<string, unknown>>, defaults: PageObject['
  * any other reason — Back/Forward, a link — so what the state shows is always this page's query.
  */
 export class QueryState<Q extends Record<string, unknown> = Record<string, unknown>> {
-  readonly #navigator: Pick<Navigator, 'page' | 'subscribe' | 'visit'>;
+  readonly #navigator: QueryStateTarget;
+  readonly #inLayer: boolean;
   /** The latest options (an adapter passes them again on every render). */
   options: QueryStateOptions;
   #draft: Q | undefined;
@@ -112,8 +116,10 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
   readonly #listeners = new Set<() => void>();
   readonly #stop: () => void;
 
-  constructor(navigator: Pick<Navigator, 'page' | 'subscribe' | 'visit'>, options: QueryStateOptions = {}) {
+  /** `inLayer`: the target is a layer — its state always replaces the entry (a push would replace the layer's object, and the input would remount). */
+  constructor(navigator: QueryStateTarget, options: QueryStateOptions = {}, inLayer = false) {
     this.#navigator = navigator;
+    this.#inLayer = inLayer;
     this.options = options;
     this.#stop = navigator.subscribe(() => this.#onPage());
   }
@@ -185,7 +191,7 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
     const page = this.#navigator.page;
     const { only, except, reset, history = 'push', preserveScroll = true } = this.options;
     const options: VisitOptions = {
-      replace: history === 'replace',
+      replace: this.#inLayer || history === 'replace',
       preserveState: true,
       preserveScroll,
       ...(only ? { only } : {}),
