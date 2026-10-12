@@ -10,7 +10,7 @@ import { GreetCommand } from '../commands.ts';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   discover: false,
-  env: { APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', APP_LOCALE: 'de', APP_LOCALES: 'de,en' },
+  env: { APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', APP_LOCALE: 'de', APP_LOCALES: 'de,en' },
   providers: [CliServiceProvider, EncryptionServiceProvider, HttpServiceProvider, I18nServiceProvider],
   modules: [{ name: 'fixture', commands: [GreetCommand] }],
 });

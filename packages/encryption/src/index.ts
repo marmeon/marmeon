@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createSecretKey, randomBytes, type KeyObject } from 'node:crypto';
-import { defineConfig, defineSolutions, env, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { defineConfig, defineSolutions, env, environment, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 
 /**
  * Symmetric, authenticated encryption with the application key. Payloads cannot be read or changed without the key.
@@ -24,12 +24,28 @@ export class DecryptError extends Error {
 /** `base64:` + 32 random bytes, as written by `marmeon key:generate`. */
 const KEY = env.string().check((value) => decodeKey(value) !== undefined, 'Expected "base64:" followed by 32 base64-encoded bytes — run "marmeon key:generate"');
 
+/** Listed because it is public: the key of `.env.test` and the tests of this repository. Outside development and tests it is refused. */
+const PUBLIC_TEST_KEY = decodeKey('base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=')!;
+
+/** Compares the decoded bytes: padding, trailing bits and whitespace make other spellings of the same key. */
+const isPublicTestKey = (value: string): boolean => Buffer.from(decodeKey(value) ?? []).equals(PUBLIC_TEST_KEY);
+
 export const EncryptionConfig = defineConfig('encryption', {
   env: env({
     APP_KEY: KEY.required('Missing — run "marmeon key:generate"'),
     /** Former keys, comma-separated: payloads encrypted with them still decrypt (key rotation). */
     APP_PREVIOUS_KEYS: env.list(KEY).default([]),
-  }),
+    NODE_ENV: env.string().optional(),
+  }).check(
+    // Fail closed: a missing or unknown NODE_ENV is protected, like production.
+    (e) => !isPublicTestKey(e.APP_KEY) || !environment.isProtected(e),
+    'APP_KEY is the public test key of the Marmeon repository — generate one with "marmeon key:generate"',
+    'APP_KEY',
+  ).check(
+    (e) => !e.APP_PREVIOUS_KEYS.some(isPublicTestKey) || !environment.isProtected(e),
+    'APP_PREVIOUS_KEYS lists the public test key of the Marmeon repository — remove it',
+    'APP_PREVIOUS_KEYS',
+  ),
   resolve: (e) => ({ key: decodeKey(e.APP_KEY)!, previousKeys: e.APP_PREVIOUS_KEYS.map((key) => decodeKey(key)!) }),
 });
 export type EncryptionConfig = ConfigOf<typeof EncryptionConfig>;

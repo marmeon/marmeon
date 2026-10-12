@@ -136,7 +136,7 @@ async function app(options: { env?: Record<string, string>; modules?: ModuleDefi
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, ...options.env },
+    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...options.env },
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
     modules: options.modules ?? [{ name: 'test', jobs: allJobs }],
     override: (container) => {

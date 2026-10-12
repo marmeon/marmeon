@@ -55,6 +55,8 @@ The app checks the key when it starts, with the rest of its configuration. A mis
 A broken entry in `APP_PREVIOUS_KEYS` stops it the same way. `marmeon build` needs no key: the
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
+The key in the repository's `.env.test` files is public: outside `NODE_ENV=development` and `test` (a missing `NODE_ENV` included) the start refuses it, in `APP_KEY` and in `APP_PREVIOUS_KEYS` alike.
+
 > [!WARNING]
 > Whoever has `APP_KEY` can read every encrypted cookie and job, and forge cookies and signed URLs. Generate a key per
 > environment, keep it in the server's secrets, and never commit it or bake it into an image. The `.dockerignore` that

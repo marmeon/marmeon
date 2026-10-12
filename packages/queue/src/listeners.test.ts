@@ -65,7 +65,7 @@ async function app(options: { listeners?: ModuleDefinition['listeners']; fake?: 
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY },
+    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test' },
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
     modules: [{ name: 'shop', listeners: options.listeners ?? [listen(OrderShipped, SendShippingMail), listen(OrderShipped, UpdateWarehouse)] }],
     override: (container) => {

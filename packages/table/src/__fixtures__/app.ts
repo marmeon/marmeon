@@ -378,7 +378,7 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { ...database.env, APP_KEY: KEY, LOG_LEVEL: 'silent' },
+    env: { ...database.env, APP_KEY: KEY, NODE_ENV: 'test', LOG_LEVEL: 'silent' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, TableServiceProvider],
     modules: [defineModule({ name: 'table-test', routes })],
     override: (container) => {

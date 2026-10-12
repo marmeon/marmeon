@@ -13,7 +13,8 @@ const TAG = '<script src="https://cdn.usefathom.com/script.js" data-auto="false"
 const DEFAULT_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'";
 
 async function visit(env: Record<string, string | undefined>, path: string) {
-  const app = await createTestApp(application, { ssr: true, env });
+  // A key of its own: .env.test's is public, and production refuses it.
+  const app = await createTestApp(application, { ssr: true, env: { APP_KEY: `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`, ...env } });
   try {
     const response = await app.get(path, document);
     return { body: response.body, policy: response.headers.get('content-security-policy') };

@@ -5,6 +5,7 @@ import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateKey } from '@marmeon/encryption';
 import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -90,7 +91,7 @@ describe('marmeon (in the web app)', () => {
   it('asks for --force wherever the app is protected — APP_ENV=local on production too — and writes table types in development only', () => {
     const memory = { DB_DATABASE: ':memory:' };
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
-    const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
+    const key = generateKey(); // not .env.test's: that key is public and production refuses it
     const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: key, DEVTOOLS_ENABLED: 'false' };
     // Development regenerates the table types (already committed, so unchanged).
     const development = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });

@@ -44,7 +44,7 @@ async function boot(): Promise<Application> {
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY },
+    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test' },
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
     modules: [{ name: 'test', jobs: [StatsJob, BrokenJob, FanOutJob] }],
     override: (container) => container.instance(Logger, silent),

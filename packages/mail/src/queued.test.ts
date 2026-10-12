@@ -56,7 +56,7 @@ async function app(env: Record<string, string> = {}, transport: MailTransport = 
   return createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { LOG_LEVEL: 'silent', APP_KEY: KEY, QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null', ...env },
+    env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null', ...env },
     providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider],
     override: (c) => {
       c.instance(Clock, new TestClock());

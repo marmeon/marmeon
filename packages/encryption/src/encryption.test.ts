@@ -112,4 +112,39 @@ describe('EncryptionConfig & provider', () => {
     await expect(boot({ APP_KEY: 'base64:c2hvcnQ=' })).rejects.toThrow('32 base64-encoded bytes');
     await expect(boot({ APP_KEY: generateKey(), APP_PREVIOUS_KEYS: 'nope' })).rejects.toThrow('APP_PREVIOUS_KEYS');
   });
+
+  describe('the public test key', () => {
+    const publicKey = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
+
+    it.each<Record<string, string>>([{ NODE_ENV: 'production' }, {}, { NODE_ENV: '' }])('is refused outside development and tests (%j)', async (node) => {
+      await expect(boot({ APP_KEY: publicKey, ...node })).rejects.toThrow(/encryption: APP_KEY — APP_KEY is the public test key.*marmeon key:generate/);
+    });
+
+    it('does not get past an unknown NODE_ENV', async () => {
+      await expect(boot({ APP_KEY: publicKey, NODE_ENV: 'staging' })).rejects.toThrow('NODE_ENV=staging');
+    });
+
+    // The same bytes in another spelling: no padding, other trailing bits, whitespace inside.
+    const spellings = ['base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY', 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvZ=', 'base64:J1THMmM0weaSNoc1xHnSWExH WTxE/5A9NwgE4YJajvY='];
+
+    it.each(spellings)('is refused in every spelling: %s', async (spelling) => {
+      await expect(boot({ APP_KEY: spelling, NODE_ENV: 'production' })).rejects.toThrow('public test key');
+      await expect(boot({ APP_KEY: generateKey(), APP_PREVIOUS_KEYS: spelling, NODE_ENV: 'production' })).rejects.toThrow('public test key');
+    });
+
+    it('is refused among APP_PREVIOUS_KEYS outside development and tests, and accepted in test', async () => {
+      const previous = `${generateKey()},${publicKey}`;
+      await expect(boot({ APP_KEY: generateKey(), APP_PREVIOUS_KEYS: previous, NODE_ENV: 'production' })).rejects.toThrow(/encryption: APP_PREVIOUS_KEYS — APP_PREVIOUS_KEYS lists the public test key/);
+      await expect(boot({ APP_KEY: generateKey(), APP_PREVIOUS_KEYS: previous })).rejects.toThrow('public test key');
+      expect(await boot({ APP_KEY: generateKey(), APP_PREVIOUS_KEYS: previous, NODE_ENV: 'test' })).toBeDefined();
+    });
+
+    it.each(['test', 'development'])('is accepted with NODE_ENV=%s', async (NODE_ENV) => {
+      expect(await boot({ APP_KEY: publicKey, NODE_ENV })).toBeDefined();
+    });
+
+    it('does not stop another valid key in production', async () => {
+      expect(await boot({ APP_KEY: generateKey(), NODE_ENV: 'production' })).toBeDefined();
+    });
+  });
 });

@@ -37,7 +37,7 @@ async function app(options: { env?: Record<string, string>; providers?: 'all' | 
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', ...options.env },
+    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...options.env },
     providers,
     modules: [{ name: 'test', jobs: (options.jobs ?? [PingJob]) as never }],
     override: (container) => {

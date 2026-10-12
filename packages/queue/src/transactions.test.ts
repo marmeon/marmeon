@@ -76,7 +76,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     const application = await createApplication({
       root: '/tmp',
       discover: false,
-      env: { APP_KEY: KEY, ...database, ...env },
+      env: { APP_KEY: KEY, NODE_ENV: 'test', ...database, ...env },
       providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
       modules: [{ name: 'test', jobs: [LookJob, ContextJob] }],
       override: (container) => {
