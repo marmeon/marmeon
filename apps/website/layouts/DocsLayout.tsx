@@ -1,5 +1,5 @@
-import { Link, usePage, useRoute, useRouter, type LayoutProps } from '@marmeon/react';
-import { useEffect, useRef, type FormEvent } from 'react';
+import { Link, usePage, useRoute, type LayoutProps } from '@marmeon/react';
+import { useEffect } from 'react';
 import { DocsMenu, DocsSidebar } from '../modules/docs/components/DocsNav.tsx';
 import { SiteFooter } from '../modules/site/components/SiteFooter.tsx';
 import { VersionBadge } from '../modules/site/components/VersionBadge.tsx';
@@ -17,32 +17,28 @@ export function DocsLayout({ children }: LayoutProps) {
   const { props, url, component } = usePage();
   // The start page and the search are wide and centred, without the section navigation.
   const nav = component === 'docs/Home' || component === 'docs/Search' ? undefined : props.nav;
-  const router = useRouter();
   const route = useRoute();
   const searchUrl = route('docs.search');
   const onSearchPage = url.split(/[?#]/)[0] === searchUrl;
-  const field = useRef<HTMLInputElement>(null);
 
-  // `/` jumps to the search field, unless the key is meant for a field already or carries a modifier.
+  // `/` opens the search through the trigger that is showing, unless the key is meant for a field already, carries a modifier or
+  // a dialog is open (no second layer behind an open one).
   useEffect(() => {
     const listen = (event: KeyboardEvent) => {
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return; // no Shift check: `/` needs it on some layouts
       if (event.target instanceof Element && event.target.closest(TYPING)) return;
-      // Hidden on a phone (the search link takes its place): nothing to focus, so the key stays a key.
-      if (!field.current || field.current.offsetParent === null) return;
+      if (document.querySelector('dialog[open]')) return;
+      // The box is hidden on a phone (the magnifier takes its place): the visible trigger is the one to use. Clicking it opens the
+      // layer and lets the layer hand the focus back to the link.
+      const trigger = Array.from(document.querySelectorAll<HTMLElement>('[data-search-trigger]')).find((element) => element.offsetParent !== null);
+      if (!trigger) return;
       event.preventDefault();
-      field.current.focus();
+      trigger.focus();
+      trigger.click();
     };
     document.addEventListener('keydown', listen);
     return () => document.removeEventListener('keydown', listen);
   }, []);
-
-  // With JavaScript a visit (the search page's own field takes over); without, the form is an ordinary GET.
-  const search = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const q = new FormData(event.currentTarget).get('q');
-    void router.visit(`${searchUrl}?q=${encodeURIComponent(typeof q === 'string' ? q : '')}`);
-  };
 
   return (
     <div className="shell">
@@ -59,16 +55,11 @@ export function DocsLayout({ children }: LayoutProps) {
           </Link>
         </div>
         {!onSearchPage && (
-          <form method="get" action={searchUrl} role="search" className="docs-search" onSubmit={search}>
-            <label htmlFor="docs-search-field" className="visually-hidden">
-              Search the documentation
-            </label>
-            <div className="docs-search-box">
-              <SearchIcon size={16} />
-              <input id="docs-search-field" ref={field} type="search" name="q" placeholder="Search the docs" maxLength={100} />
-              <kbd aria-hidden="true">/</kbd>
-            </div>
-          </form>
+          <Link route="docs.search" layer className="docs-search-box" data-search-trigger aria-keyshortcuts="/">
+            <SearchIcon size={16} />
+            <span className="docs-search-placeholder">Search the docs</span>
+            <kbd aria-hidden="true">/</kbd>
+          </Link>
         )}
         <div className="docs-top-end">
           <VersionBadge />
@@ -76,7 +67,7 @@ export function DocsLayout({ children }: LayoutProps) {
             GitHub
           </a>
           {!onSearchPage && (
-            <Link route="docs.search" className="docs-search-link" aria-label="Search the docs">
+            <Link route="docs.search" layer className="docs-search-link" data-search-trigger aria-keyshortcuts="/" aria-label="Search the docs">
               <SearchIcon size={18} />
             </Link>
           )}

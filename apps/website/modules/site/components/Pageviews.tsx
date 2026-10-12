@@ -69,6 +69,9 @@ const counter = createPageviewCounter(send);
 /**
  * Watches `usePage().url`, which every committed visit changes: a link, Back and Forward (from memory or fetched) and both history
  * paths alike. Partial reloads, deferred props and prefetches leave the path as it is. A no-op without Fathom's script.
+ *
+ * A layer (the search above a page) does not change the layout's `usePage().url`: opening it counts nothing, and while its address
+ * is in the bar `decide()` waits, so the search terms never reach Fathom.
  */
 function Pageviews() {
   const { url } = usePage();

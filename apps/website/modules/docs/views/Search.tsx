@@ -1,16 +1,20 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useQueryState, useRoute } from '@marmeon/react';
+import { Head, Link, useLayer, useQueryState, useRoute } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import type { SearchController } from '../controllers/SearchController.ts';
+import { SearchFrame } from '../components/SearchFrame.tsx';
 import { groupByPage } from '../search-groups.ts';
 
 /**
  * `/docs/search?q=…`: typing reloads only the results (one partial reload per pause, replacing the history entry). Without
- * JavaScript the form is an ordinary GET form to the same URL.
+ * JavaScript the form is an ordinary GET form to the same URL. The router asks for it as a layer over the current page (the
+ * results are live, so the layer has no submit button); a shared link or a reload shows the page.
  */
 export default function Search({ results }: PageProps<SearchController>) {
   const [query, setQuery] = useQueryState('docs.search', { only: ['results'], debounce: 200, history: 'replace' });
   const route = useRoute();
+  const { isLayer } = useLayer<SearchController>();
+  const Title = isLayer ? 'h2' : 'h1';
   const terms = query.q.toLowerCase().split(/\s+/).filter(Boolean);
   const groups = groupByPage(results);
   const searched = query.q.trim() !== '';
@@ -19,7 +23,7 @@ export default function Search({ results }: PageProps<SearchController>) {
     <div className="page search">
       <Head title={query.q ? `Search: ${query.q}` : 'Search'} />
       <div className="search-main">
-        <h1 className="visually-hidden">Search</h1>
+        <Title className="visually-hidden">Search</Title>
         <form className="search-form" method="get" action={route('docs.search')} role="search" onSubmit={(event) => event.preventDefault()}>
           <label htmlFor="search-q">Search the docs</label>
           <div className="search-row">
@@ -39,9 +43,11 @@ export default function Search({ results }: PageProps<SearchController>) {
                 autoFocus
               />
             </div>
-            <button type="submit" className="button search-submit">
-              Search
-            </button>
+            {isLayer ? null : (
+              <button type="submit" className="button search-submit">
+                Search
+              </button>
+            )}
           </div>
         </form>
         <p className="search-status" role="status">
@@ -82,6 +88,8 @@ export default function Search({ results }: PageProps<SearchController>) {
     </div>
   );
 }
+
+Search.layer = SearchFrame;
 
 /** The terms of the query marked in the excerpt. */
 function highlight(text: string, terms: readonly string[]): ReactNode[] {

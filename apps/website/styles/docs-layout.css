@@ -41,47 +41,37 @@
   padding-left: var(--space-3);
 }
 
-.docs-search {
-  flex: 1 1 20rem;
-  max-width: 32.5rem;
-  margin: 0 auto;
-}
-
+/* A link in the look of a field: it opens the search layer, and without JavaScript the search page. */
 .docs-search-box {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex: 1 1 20rem;
+  max-width: 32.5rem;
   height: 40px;
+  margin: 0 auto;
   padding: 0 var(--space-3);
   background: var(--bg-raised);
   border: 1px solid var(--control-line);
   border-radius: var(--radius-2);
   color: var(--muted);
+  cursor: text;
 }
 
-.docs-search-box:focus-within {
-  box-shadow: var(--focus-ring);
-}
-
-.docs-search-box input[type='search'] {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 1rem;
+.docs-search-box:hover {
+  text-decoration: none;
   color: var(--fg);
 }
 
-.docs-search-box input[type='search']:focus-visible {
+.docs-search-box:focus-visible {
   outline: none;
-  box-shadow: none;
+  box-shadow: var(--focus-ring);
 }
 
-.docs-search-box input::placeholder {
-  color: var(--muted);
+.docs-search-placeholder {
+  flex: 1;
+  min-width: 0;
+  font-size: 1rem;
 }
 
 .docs-top-end {
@@ -436,7 +426,7 @@ details[open] > summary .nav-sign::before {
     flex-wrap: wrap;
     gap: var(--space-3);
   }
-  .docs-search,
+  .docs-search-box,
   .docs-github {
     display: none;
   }

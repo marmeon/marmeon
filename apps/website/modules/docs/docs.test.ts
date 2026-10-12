@@ -164,7 +164,14 @@ describe('the layout of a docs page (server-rendered)', () => {
     expect(body).toContain('Previous · Architecture Concepts');
     expect(body).toContain('<span class="pager-title">Context</span>');
     expect(body).toContain('Next · The Basics');
-    expect(body).toMatch(/<form [^>]*action="\/docs\/search"/);
+    // Both triggers are links: the layer with JavaScript, the search page without.
+    for (const name of ['docs-search-box', 'docs-search-link']) {
+      expect(body, name).toMatch(new RegExp(`<a [^>]*href="/docs/search"[^>]*class="${name}"[^>]*aria-keyshortcuts="/"|<a [^>]*class="${name}"[^>]*href="/docs/search"[^>]*aria-keyshortcuts="/"`));
+    }
+    expect(body.match(/<a [^>]*data-search-trigger/g)).toHaveLength(2);
+    expect(body.slice(body.indexOf('class="docs-top"'), body.indexOf('</header>'))).not.toContain('<input');
+    expect(body).not.toMatch(/<form [^>]*action="\/docs\/search"/);
+    expect(body).not.toContain('style=');
     expect(body).toContain('<details class="toc-mobile">');
     expect(body).toContain('<details class="docs-menu">');
   }, SSR_TEST_TIMEOUT);
@@ -176,6 +183,7 @@ describe('the layout of a docs page (server-rendered)', () => {
       expect(body, path).not.toContain('class="sidebar"');
       expect(body, path).not.toContain('class="docs-menu"');
       expect(body, path).toContain('class="docs-top"');
+      if (path.startsWith('/docs/search')) expect(body, path).not.toContain('data-search-trigger');
     }
   }, SSR_TEST_TIMEOUT);
 });

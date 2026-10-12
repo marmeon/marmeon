@@ -168,3 +168,103 @@
   border-top: 1px solid var(--line);
   color: var(--muted);
 }
+
+/*
+ * The search as a layer (`SearchFrame`): a palette anchored near the top of the page it opens over, the whole screen on a
+ * phone. The content scrolls inside the dialog, the × stays where it is.
+ */
+.search-layer {
+  width: min(44rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  max-height: 80dvh;
+  margin: 10vh auto auto;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-3);
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.search-layer::backdrop {
+  background: color-mix(in srgb, var(--bg-sunken) 55%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.search-layer .marmeon-layer__content {
+  /* The dialog's 1px border sits inside its 80dvh: the content leaves the 2px or its bottom edge is clipped. */
+  max-height: calc(80dvh - 2px);
+  padding: 0 var(--space-5);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.search-layer .marmeon-layer__close {
+  top: var(--space-2);
+  inset-inline-end: var(--space-2);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--radius-2);
+  font-size: 1.5rem;
+  color: var(--fg);
+}
+
+.search-layer .marmeon-layer__close:hover {
+  background: var(--bg-raised);
+}
+
+.search-layer .marmeon-layer__close:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 0;
+}
+
+.search-layer .page.search {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-layer .search-main {
+  padding: var(--space-5) 0 var(--space-5);
+}
+
+/* Leave room for the × beside the field. */
+.search-layer .search-form {
+  padding-inline-end: var(--space-8);
+}
+
+@media (max-width: 760px) {
+  .search-layer {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .search-layer .marmeon-layer__content {
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 0 var(--space-4);
+  }
+
+  .search-layer .search-form {
+    padding-inline-end: 3.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .search-layer[open] {
+    animation: search-layer-in 140ms ease-out;
+  }
+
+  @keyframes search-layer-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.5rem);
+    }
+  }
+}

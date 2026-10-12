@@ -54,3 +54,40 @@ describe('the layout of the docs', () => {
     expect(sidebar.get('overflow-y')).toBe('auto');
   });
 });
+
+const searchCss = readFileSync(resolve(import.meta.dirname, '../../styles/search.css'), 'utf8');
+
+/** The text of the last `@media` block of `query`. */
+function media(text: string, query: string): string {
+  const start = text.lastIndexOf(`@media (${query})`);
+  if (start === -1) throw new Error(`no @media (${query})`);
+  const open = text.indexOf('{', start);
+  let depth = 0;
+  for (let index = open; index < text.length; index++) {
+    if (text[index] === '{') depth++;
+    if (text[index] === '}' && --depth === 0) return text.slice(open + 1, index);
+  }
+  throw new Error(`@media (${query}) is not closed`);
+}
+
+describe('the search as a layer', () => {
+  it('fills the screen on a phone', () => {
+    const layer = rule(media(searchCss, 'max-width: 760px'), '.search-layer');
+    expect(layer.get('height')).toBe('100dvh');
+    expect(layer.get('max-height')).toBe('100dvh');
+    expect(layer.get('margin')).toBe('0');
+  });
+
+  it('scrolls its content itself, below a bounded height', () => {
+    expect(rule(searchCss, '.search-layer').get('max-height')).toBe('80dvh');
+    const content = rule(searchCss, '.search-layer .marmeon-layer__content');
+    expect(content.get('overflow')).toBe('auto');
+    expect(content.get('max-height')).toBe('calc(80dvh - 2px)');
+  });
+
+  it('animates only for visitors who do not ask for reduced motion', () => {
+    const outside = searchCss.replace(media(searchCss, 'prefers-reduced-motion: no-preference'), '');
+    expect(outside).not.toMatch(/animation|transition/);
+    expect(media(searchCss, 'prefers-reduced-motion: no-preference')).toMatch(/animation:/);
+  });
+});
