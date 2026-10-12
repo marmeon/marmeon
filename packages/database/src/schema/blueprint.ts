@@ -74,10 +74,20 @@ export class TimestampColumn<T> extends Column<T> {
   }
 }
 
+/** The regular English plural: `category` → `categories`, `status` → `statuses`, `box` → `boxes`, `key` → `keys`. */
+function pluralTable(singular: string): string {
+  if (/[^aeiou]y$/i.test(singular)) return `${singular.slice(0, -1)}ies`;
+  if (/(?:s|x|z|ch|sh)$/i.test(singular)) return `${singular}es`;
+  return `${singular}s`;
+}
+
 /** A foreign key column (`foreignId`); `constrained()` adds the reference. */
 export class ForeignIdColumn<T> extends Column<T> {
-  /** References `table.column` — by default the table named after the column (`user_id` → `users`) and its `id`. */
-  constrained(table = `${this.spec.name.replace(/_id$/, '')}s`, column = 'id'): ConstrainedColumn<T> {
+  /**
+   * References `table.column` — by default the table named after the column, in the English plural (`user_id` → `users`,
+   * `category_id` → `categories`), and its `id`. Irregular words need the table named: `constrained('people')`.
+   */
+  constrained(table = pluralTable(this.spec.name.replace(/_id$/, '')), column = 'id'): ConstrainedColumn<T> {
     this.spec.references = { table, column };
     return new ConstrainedColumn<T>(this.spec);
   }

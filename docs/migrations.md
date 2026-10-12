@@ -209,8 +209,9 @@ export default defineMigration({
 });
 ```
 
-`constrained()` guesses the table from the column's name, `note_id` → `notes`, and references its `id`. Name both when the guess
-is wrong: `constrained('users', 'id')`. Then `cascadeOnDelete()` deletes the row along with the referenced one, `nullOnDelete()`
+`constrained()` guesses the table from the column's name in the English plural, `note_id` → `notes`, `category_id` →
+`categories`, `status_id` → `statuses`, and references its `id`. Name the table when the guess is wrong, as for an irregular word
+(`person_id` → `constrained('people')`), and the column when it is not `id`: `constrained('accounts', 'uuid')`. Then `cascadeOnDelete()` deletes the row along with the referenced one, `nullOnDelete()`
 sets the column to `NULL`, and `restrictOnDelete()` refuses to delete the referenced row while this one points at it. Without any
 of them, the database's default applies and refuses the delete as well. The compiler only offers the three after
 `constrained()`, and `.nullable()` goes last, as in `uploaded_by` above. Both SQLite and Postgres enforce the reference.
