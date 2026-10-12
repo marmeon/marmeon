@@ -23,10 +23,12 @@ export interface ServiceProvider {
  * A provider class. Packages declare the configuration they need as
  * `static config = [LogConfig]`; it is validated with the app's own config,
  * before any provider registers. `static solutions` lists the solutions for the package's errors that the development
- * error page shows (`defineSolutions`); `static health` the package's readiness checks for `/up/ready`.
+ * error page shows (`defineSolutions`); `static health` the package's readiness checks for `/up/ready`. Other packages add
+ * their own lists through declaration merging (`marmeon`: `static commands`).
  */
-export type ServiceProviderClass = (new (...args: any[]) => ServiceProvider) & {
+export interface ServiceProviderClass {
+  new (...args: any[]): ServiceProvider;
   readonly config?: readonly ConfigDefinition<any>[];
   readonly solutions?: readonly SolutionDefinition<any>[];
   readonly health?: readonly HealthCheckClass[];
-};
+}

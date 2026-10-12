@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createApplication, type Application } from './application.ts';
+import { Application, createApplication } from './application.ts';
+import type { Container } from './container.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
 import { Logger } from './logger.ts';
 import { defineSolutions } from './solutions.ts';
+import { defineModule } from './module.ts';
 import type { ServiceProvider } from './provider.ts';
 
 function recorder() {
@@ -179,4 +181,33 @@ describe('the environment', () => {
     expect(await read({ NODE_ENV: 'development' })).toEqual({ node: 'development', app: 'local' });
     expect(await read({ NODE_ENV: 'test' })).toEqual({ node: 'test', app: 'testing' });
   });
+});
+
+describe('Application.providers', () => {
+  class A implements ServiceProvider {
+    register(): void {}
+  }
+  class B implements ServiceProvider {
+    register(): void {}
+  }
+  const seen: (readonly unknown[])[] = [];
+  class Reader implements ServiceProvider {
+    register(container: Container): void {
+      seen.push(container.make(Application).providers);
+    }
+  }
+
+  for (const phase of ['run', 'build'] as const) {
+    it(`lists the app's and the modules' providers in register order (${phase})`, async () => {
+      const app = await createApplication({ root: import.meta.dirname, discover: false, env: {}, phase, providers: [A], modules: [defineModule({ name: 'm', providers: [B] })] });
+      expect(app.providers).toEqual([A, B]);
+      expect(Object.isFrozen(app.providers)).toBe(true);
+    });
+
+    it(`shows a provider the ones registered after it (${phase})`, async () => {
+      seen.length = 0;
+      await createApplication({ root: import.meta.dirname, discover: false, env: {}, phase, providers: [Reader], modules: [defineModule({ name: 'm', providers: [B] })] });
+      expect(seen).toEqual([[Reader, B]]);
+    });
+  }
 });

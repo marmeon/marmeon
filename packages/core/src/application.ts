@@ -87,6 +87,11 @@ export class Application {
   readonly modules: readonly ModuleDefinition[];
   /** Names of the installed packages whose providers were discovered. */
   readonly packages: readonly string[];
+  /**
+   * The provider classes in register order: the packages', the app's, the modules'. Set before any provider registers, so
+   * one may read the others' static lists in `register()`.
+   */
+  readonly providers: readonly ServiceProviderClass[];
   /** What the app was defined with — packages read their app-level settings from here (e.g. http's `middleware`). */
   readonly options: ApplicationOptions;
   /** `build`: registered, never booted — see {@link ApplicationPhase}. */
@@ -99,12 +104,14 @@ export class Application {
     container: Container;
     modules: readonly ModuleDefinition[];
     packages: readonly string[];
+    providers?: readonly ServiceProviderClass[];
     options?: ApplicationOptions;
   }) {
     this.root = options.root;
     this.container = options.container;
     this.modules = options.modules;
     this.packages = options.packages;
+    this.providers = options.providers ?? [];
     this.options = options.options ?? { root: options.root };
     this.phase = this.options.phase ?? 'run';
   }
@@ -220,7 +227,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     });
   }
 
-  const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], options });
+  const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], providers: Object.freeze([...providers]), options });
   container.instance(Application, app);
   container.instance(Container, container);
   // Fields every log entry carries besides the request's or job's (@marmeon/otel: the active span's ids).

@@ -73,6 +73,8 @@ The providers run in this order:
 2. The app's own, from `providers` in `bootstrap/app.ts`.
 3. Each module's, in the order of `modules`.
 
+`app.providers` lists the provider classes in this order, already while the first one registers, so a provider may read the others' static lists.
+
 `register()` runs for all of them in this order, then `boot()` in the same order. `shutdown()` runs in reverse order, so a
 provider stops before the providers it was booted after, and still has everything it depends on.
 
