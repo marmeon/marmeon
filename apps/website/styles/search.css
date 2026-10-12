@@ -236,18 +236,20 @@
 
 @media (max-width: 760px) {
   .search-layer {
+    /* The visible area: SearchFrame sets --vv-top and --vv-height while a phone's keyboard shifts the visual viewport. */
+    inset: var(--vv-top, 0) 0 auto 0;
     width: 100vw;
     max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: var(--vv-height, 100dvh);
+    max-height: var(--vv-height, 100dvh);
     margin: 0;
     border: 0;
     border-radius: 0;
   }
 
   .search-layer .marmeon-layer__content {
-    height: 100dvh;
-    max-height: 100dvh;
+    height: var(--vv-height, 100dvh);
+    max-height: var(--vv-height, 100dvh);
     padding: 0 var(--space-4);
   }
 

@@ -73,8 +73,9 @@ function media(text: string, query: string): string {
 describe('the search as a layer', () => {
   it('fills the screen on a phone', () => {
     const layer = rule(media(searchCss, 'max-width: 760px'), '.search-layer');
-    expect(layer.get('height')).toBe('100dvh');
-    expect(layer.get('max-height')).toBe('100dvh');
+    expect(layer.get('height')).toBe('var(--vv-height, 100dvh)');
+    expect(layer.get('max-height')).toBe('var(--vv-height, 100dvh)');
+    expect(layer.get('inset')).toBe('var(--vv-top, 0) 0 auto 0');
     expect(layer.get('margin')).toBe('0');
   });
 
