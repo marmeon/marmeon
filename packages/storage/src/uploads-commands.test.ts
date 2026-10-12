@@ -14,7 +14,7 @@ describe('make:uploads-table', () => {
   it('writes the migration of temporary_uploads into the system module, next to the cache and session tables', async () => {
     const root = tempDir('marmeon-uploads-table-');
     mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
-    writeFileSync(join(root, 'modules/system/index.ts'), "export default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });");
+    writeFileSync(join(root, 'modules/system/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });\n");
     writeFileSync(join(root, 'modules/system/migrations/2026_10_02_195920_create_cache_table.ts'), '');
 
     const first = run(root);

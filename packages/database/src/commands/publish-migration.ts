@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { bindingNameOf, editDefinitionFile } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
@@ -42,7 +42,8 @@ export function publishMigration(input: CommandInput, migration: { name: string;
       add: { value: "new URL('./migrations/', import.meta.url)" },
     }, `modules/${module}/index.ts`);
     if (edited.status === 'added') input.output.success(`Registered the migrations folder in modules/${module}/index.ts`);
-    else if (edited.status === 'manual') {
+    // A shape the editor cannot read may still register its migrations (a definition built elsewhere): warn only when the file never says so.
+    else if (edited.status === 'manual' && !(existsSync(join(directory, 'index.ts')) && /migrations\s*:/.test(readFileSync(join(directory, 'index.ts'), 'utf8')))) {
       input.output.warn(`Not registered — ${edited.reason}`);
       input.output.line("  add: migrations: new URL('./migrations/', import.meta.url)");
     }
