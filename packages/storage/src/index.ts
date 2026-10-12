@@ -121,6 +121,7 @@ export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing
  */
 export class StorageServiceProvider implements ServiceProvider {
   static config = [UploadsConfig];
+  static commands = [MakeUploadsTableCommand, PruneUploadsCommand];
 
   #temporaryUrls: TemporaryUrls = NO_TEMPORARY_URLS;
   #manager: StorageManager | undefined;
@@ -177,9 +178,6 @@ export class StorageServiceProvider implements ServiceProvider {
       throw new StorageSetupError(`The disk "${uploads.disk}" holds temporary uploads (UPLOADS_DISK) but is public — files nobody checked yet would be served. Make it private.`);
     }
     checkS3Sdk(options, uploads.disk);
-
-    const cli = await import('marmeon').catch(() => undefined);
-    if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([MakeUploadsTableCommand, PruneUploadsCommand], '@marmeon/storage');
 
     let http: typeof import('@marmeon/http') | undefined;
     try {

@@ -25,6 +25,7 @@ export { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleW
  */
 export class SchedulerServiceProvider implements ServiceProvider {
   static config = [ScheduleConfig];
+  static commands = [ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand];
 
   register(container: Container): void {
     container.singleton(Scheduler, (c) => new Scheduler(container, c.make(Application), c.make(ScheduleConfig), c.make(Clock), c.make(Logger)));
@@ -35,9 +36,6 @@ export class SchedulerServiceProvider implements ServiceProvider {
     const tasks = app.container.make(Scheduler).tasks;
 
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) {
-      app.container.make(cli.CommandRegistry).add([ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand], '@marmeon/scheduler');
-    }
     if (cli && app.container.has(cli.DevProcesses) && tasks.length > 0) {
       app.container.make(cli.DevProcesses).add({ name: 'schedule', args: ['schedule:work', '--stop-timeout=5'] });
     }

@@ -32,6 +32,7 @@ export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings
  */
 export class DevtoolsServiceProvider implements ServiceProvider {
   static config = [DevtoolsConfig];
+  static commands = [DevtoolsClearCommand, DevtoolsPruneCommand];
   /** On the error page and when `marmeon` cannot start the app. */
   static solutions = defineSolutions([
     {
@@ -57,9 +58,6 @@ export class DevtoolsServiceProvider implements ServiceProvider {
   #recorder: Recorder | undefined;
 
   async boot(app: Application): Promise<void> {
-    const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([DevtoolsClearCommand, DevtoolsPruneCommand], '@marmeon/devtools');
-
     const config = app.container.make(DevtoolsConfig);
     const test = app.container.has(DevtoolsTestOptIn) ? app.container.make(DevtoolsTestOptIn) : undefined;
     if (test && config.protected) {

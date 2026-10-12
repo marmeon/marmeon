@@ -70,6 +70,7 @@ export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
   /** The cache takes and frees a key, for `/up/ready`. */
   static health = [CacheHealthCheck];
+  static commands = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
 
   register(container: Container): void {
     const config = container.make(CacheConfig);
@@ -98,9 +99,6 @@ export class CacheServiceProvider implements ServiceProvider {
       }
       app.container.make(database.Connections).options(connection);
     }
-
-    const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeCacheTableCommand, CachePruneCommand, CacheClearCommand], '@marmeon/cache');
   }
 }
 

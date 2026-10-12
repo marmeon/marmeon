@@ -68,6 +68,17 @@ describe('the queue provider', () => {
     expect(sync.container.make(DevProcesses).all()).toEqual([]);
   });
 
+  it('lists the queue commands while the app only registers (marmeon build)', async () => {
+    const built = await createApplication({
+      root: '/tmp',
+      discover: false,
+      phase: 'build',
+      env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' },
+      providers: [CliServiceProvider, QueueServiceProvider],
+    });
+    expect(built.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['queue:work', 'queue:size', 'make:queue-table']));
+  });
+
   it('fails the start with what is missing: the database package for QUEUE_CONNECTION=database, the Encrypter for encrypted jobs', async () => {
     await expect(app({ providers: 'no-database' })).rejects.toThrow(
       'The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',

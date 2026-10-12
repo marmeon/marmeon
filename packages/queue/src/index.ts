@@ -69,6 +69,7 @@ export class QueueServiceProvider implements ServiceProvider {
   static config = [QueueConfig];
   /** The default connection's driver answers, for `/up/ready`. */
   static health = [QueueHealthCheck];
+  static commands = [QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand];
 
   register(container: Container): void {
     container.singleton(JobRegistry, (c) => {
@@ -143,11 +144,6 @@ export class QueueServiceProvider implements ServiceProvider {
     }
 
     const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) {
-      app.container
-        .make(cli.CommandRegistry)
-        .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand], '@marmeon/queue');
-    }
     // `marmeon dev` runs a worker next to the server — on every queue, like any worker without --queue, unless jobs run at dispatch anyway.
     if (cli && app.container.has(cli.DevProcesses) && config.default !== 'sync') {
       app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--stop-timeout=5'] });

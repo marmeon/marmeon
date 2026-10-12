@@ -32,6 +32,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
   static solutions = databaseSolutions;
   /** Every connection answers `select 1`, for `/up/ready`. */
   static health = [DatabaseHealthCheck];
+  static commands = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand];
 
   register(container: Container): void {
     container.singleton(Connections, (c) => {
@@ -49,14 +50,8 @@ export class DatabaseServiceProvider implements ServiceProvider {
     container.singleton(Seeding);
   }
 
-  async boot(app: Application): Promise<void> {
+  boot(app: Application): void {
     app.container.make(Connections).verify();
-    const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) {
-      app.container
-        .make(cli.CommandRegistry)
-        .add([DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand], '@marmeon/database');
-    }
   }
 
   async shutdown(app: Application): Promise<void> {

@@ -81,6 +81,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
+  static commands = [MakeAuthCommand, PruneTokensCommand];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
@@ -104,14 +105,12 @@ export class AuthServiceProvider implements ServiceProvider {
     });
   }
 
-  async boot(app: Application): Promise<void> {
+  boot(app: Application): void {
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     warnAboutCookieSessions(app.container);
     // Private registration turned off where it counts: said once, at boot — like the log mailer and the cookie driver.
     const config = app.container.make(AuthConfig);
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
-    const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand], '@marmeon/auth');
   }
 }

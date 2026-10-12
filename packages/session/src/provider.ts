@@ -33,6 +33,7 @@ declare module '@marmeon/core' {
  */
 export class SessionServiceProvider implements ServiceProvider {
   static config = [SessionConfig, CsrfConfig];
+  static commands = [MakeSessionTableCommand, PruneSessionsCommand];
 
   register(container: Container): void {
     container.singleton(CsrfProtection);
@@ -93,9 +94,6 @@ export class SessionServiceProvider implements ServiceProvider {
     if (scheduler && app.container.has(scheduler.Scheduler) && app.container.make(scheduler.Scheduler).schedules(PruneSessionsCommand.command)) {
       app.container.make(SessionLottery).chance = 0;
     }
-
-    const cli = await import('marmeon').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeSessionTableCommand, PruneSessionsCommand], '@marmeon/session');
   }
 }
 

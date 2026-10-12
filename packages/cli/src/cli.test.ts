@@ -253,9 +253,17 @@ describe('marmeon: two commands with one name', () => {
       const { code, stdout, stderr } = marmeon(app, args);
       expect(code).toBe(1);
       expect(stderr).toContain('Two commands are named "db:seed"');
-      expect(stderr).toContain('@marmeon/database');
+      expect(stderr).toContain('DbSeedCommand (DatabaseServiceProvider)');
       expect(stdout).not.toContain('OURS RAN');
     }
+  }, ciTimeout);
+
+  it('stops a command that only registers the app, before anything boots', () => {
+    const app = appWithCommand('db:seed');
+    const { code, stdout, stderr } = marmeon(app, ['route:types']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('Two commands are named "db:seed"');
+    expect(stdout).not.toContain('OURS RAN');
   }, ciTimeout);
 
   it('starts when the names differ', () => {

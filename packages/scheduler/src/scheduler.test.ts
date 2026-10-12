@@ -589,6 +589,17 @@ describe('the provider', () => {
     expect(none.app.container.make(DevProcesses).all()).toEqual([]);
     await none.app.shutdown();
   });
+
+  it('lists the schedule:* commands while the app only registers (marmeon build)', async () => {
+    const built = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      phase: 'build',
+      env: { NODE_ENV: 'test', CACHE_DRIVER: 'memory' },
+      providers: [CliServiceProvider, SchedulerServiceProvider],
+    });
+    expect(built.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['schedule:work', 'schedule:run', 'schedule:list', 'schedule:test']));
+  });
 });
 
 describe('a schedule set up wrongly', () => {
