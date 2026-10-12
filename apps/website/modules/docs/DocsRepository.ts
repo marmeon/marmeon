@@ -88,6 +88,7 @@ export class DocsRepository {
   #loaded: Loaded | undefined;
   #watchers: FSWatcher[] = [];
   #reload: ReturnType<typeof setTimeout> | undefined;
+  #absolute: { loaded: Loaded; key: string; pages: readonly { readonly page: DocPage; readonly markdown: string }[] } | undefined;
 
   constructor(options: DocsRepositoryOptions) {
     this.#options = options;
@@ -116,6 +117,24 @@ export class DocsRepository {
   /** Every page in the order of the navigation, section by section. */
   pages(): DocPage[] {
     return [...this.#state().docs.values()];
+  }
+
+  /**
+   * Every page's Markdown with its links written as absolute URLs (`url` turns a path into one) — pages joined into one file lose
+   * their base. Kept per loaded state and `key` (the origin `url` writes), so a reload or another origin computes it again.
+   */
+  markdownPages(url: (path: string) => string, key: string): readonly { readonly page: DocPage; readonly markdown: string }[] {
+    const loaded = this.#state();
+    if (this.#absolute?.loaded === loaded && this.#absolute.key === key) return this.#absolute.pages;
+    const pathOf = new Map([...loaded.docs.values()].map((page) => [page.file, page.path]));
+    const pageOf = (file: string) => pathOf.get(file);
+    const pages = [...loaded.docs.values()].map((page) => {
+      const { source, links } = loaded.sources.get(page.name)!;
+      const markdown = replaceLinks(source, links, (link) => servedHref(link, { file: page.file, pageOf, self: page.path, style: { kind: 'absolute', url } }));
+      return { page, markdown };
+    });
+    this.#absolute = { loaded, key, pages };
+    return pages;
   }
 
   navigation(): Navigation {

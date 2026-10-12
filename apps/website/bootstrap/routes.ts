@@ -7,17 +7,25 @@ import type { ShowDocSourceController } from '../modules/docs/controllers/ShowDo
 import type { ShowHomeController } from '../modules/docs/controllers/ShowHomeController.ts';
 import type { ShowImprintController } from '../modules/site/controllers/ShowImprintController.ts';
 import type { ShowLandingController } from '../modules/site/controllers/ShowLandingController.ts';
+import type { ShowLlmsController } from '../modules/docs/controllers/ShowLlmsController.ts';
+import type { ShowLlmsFullController } from '../modules/docs/controllers/ShowLlmsFullController.ts';
 import type { ShowPrivacyController } from '../modules/site/controllers/ShowPrivacyController.ts';
+import type { ShowRobotsController } from '../modules/site/controllers/ShowRobotsController.ts';
+import type { ShowSitemapController } from '../modules/site/controllers/ShowSitemapController.ts';
 
 declare module '@marmeon/router' {
   interface Routes {
     'docs.home': { method: 'get'; path: '/docs'; controller: typeof ShowHomeController };
+    'docs.llms': { method: 'get'; path: '/llms.txt'; controller: typeof ShowLlmsController };
+    'docs.llms-full': { method: 'get'; path: '/llms-full.txt'; controller: typeof ShowLlmsFullController };
     'docs.markdown': { method: 'get'; path: '/docs/:file{[a-z0-9-]+\\.md}'; controller: typeof ShowDocSourceController };
     'docs.page': { method: 'get'; path: '/docs/:page'; controller: typeof ShowDocController };
     'docs.search': { method: 'get'; path: '/docs/search'; controller: typeof SearchController };
     'site.home': { method: 'get'; path: '/'; controller: typeof ShowLandingController };
     'site.imprint': { method: 'get'; path: '/imprint'; controller: typeof ShowImprintController };
     'site.privacy': { method: 'get'; path: '/privacy'; controller: typeof ShowPrivacyController };
+    'site.robots': { method: 'get'; path: '/robots.txt'; controller: typeof ShowRobotsController };
+    'site.sitemap': { method: 'get'; path: '/sitemap.xml'; controller: typeof ShowSitemapController };
   }
 }
 

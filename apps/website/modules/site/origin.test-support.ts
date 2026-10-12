@@ -9,8 +9,8 @@ import application from '../../bootstrap/app.ts';
  */
 export async function expectOriginFromAppUrl(path: string, pick: (response: { headers: Headers; body: string }) => string | null, expected: string): Promise<void> {
   const other = await createTestApp(application, { env: { APP_URL: 'https://docs.example' } });
-  const response = await other.get(path, { headers: { host: 'evil.example', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http' } }).assertOk();
+  const response = await other.get(path, { headers: { host: 'forged-host.invalid', 'x-forwarded-host': 'forged-host.invalid', 'x-forwarded-proto': 'http' } }).assertOk();
   expect(pick(response)).toBe(expected);
   expect(JSON.stringify([...response.headers])).not.toContain('localhost');
-  expect(JSON.stringify([...response.headers]) + response.body).not.toContain('evil.example');
+  expect(JSON.stringify([...response.headers]) + response.body).not.toContain('forged-host.invalid');
 }

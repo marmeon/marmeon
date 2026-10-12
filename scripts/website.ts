@@ -129,6 +129,17 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   const noMarkdown = await get('/docs/search.md');
   expect(noMarkdown.response.status === 404, `/docs/search.md: status ${noMarkdown.response.status}, expected 404`);
 
+  const robots = await get('/robots.txt');
+  expect(robots.response.status === 200 && robots.response.headers.get('content-type')?.startsWith('text/plain') === true, `/robots.txt: ${robots.response.status} ${robots.response.headers.get('content-type')}`);
+  expect(robots.body.includes(`Sitemap: ${base}/sitemap.xml`), '/robots.txt: no Sitemap line from APP_URL');
+  const sitemap = await get('/sitemap.xml');
+  expect(sitemap.response.status === 200 && sitemap.response.headers.get('content-type')?.startsWith('application/xml') === true, `/sitemap.xml: ${sitemap.response.status} ${sitemap.response.headers.get('content-type')}`);
+  expect(sitemap.body.includes('/docs/routing</loc>'), '/sitemap.xml: no /docs/routing');
+  const llms = await get('/llms.txt');
+  expect(llms.response.status === 200 && llms.body.includes('/docs/routing.md)'), `/llms.txt: ${llms.response.status}, no link to /docs/routing.md`);
+  const llmsFull = await get('/llms-full.txt');
+  expect(llmsFull.response.status === 200 && llmsFull.body.includes('# Routing'), `/llms-full.txt: ${llmsFull.response.status}, no "# Routing"`);
+
   const search = async (q: string, page: string) => {
     const response = await publicPage(`/docs/search?q=${encodeURIComponent(q)}`, `href="${page}`);
     // The same URL as a visit: the page object (JSON), not the document — Vary keeps them apart in a cache.

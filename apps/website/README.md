@@ -62,6 +62,14 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   rewrite needs the exact place of each link, so a scanner finds them and the boot checks it against markdown-it: a link the two
   read differently (a reference link, an image inside a link) stops the start — write links inline. Absolute URLs come from
   `APP_URL` (`modules/site/public-url.ts`), never from the request's host: the answers are cached publicly.
+- **Sitemap and robots.txt** (`modules/site/seo.ts`): `/sitemap.xml` lists the landing, `/docs`, every written page of the docs and the legal
+  pages as absolute URLs from `APP_URL` — drafts left out, no `lastmod` (the image has no history; a wrong date does more harm than
+  none). `/robots.txt` is the same in every environment: everything may be crawled but `/docs/search` (an endless URL space behind
+  a rate limit; `$` and `?` close the rule, a plain prefix would also shut out a later slug starting with `search`), and it names the sitemap.
+- **llms.txt** (`modules/docs/llms.ts`): `/llms.txt` lists the sections and pages of `docs.config.ts` with a link to each page's `.md`
+  (link text: the page's title); `/llms-full.txt` joins every page, the Contribution Guide included, each after a
+  `<!-- Source: … -->` line, with the links written as absolute URLs (relative ones lose their base in one file). Drafts are left
+  out; the summary is a constant that keeps pace with the root README's first paragraph.
 - **Routes** live in the `public` middleware group (`modules/site`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart. The docs' routes add
   the navigation as route middleware (`ShareNavigation`); the landing does not carry it. `DocsLayout` renders it twice: a sidebar beside the page and, on a phone, a `<details>` menu above it; the section of the current page is open on the server, and both work without JavaScript. `/` focuses the search field.
