@@ -123,6 +123,9 @@ Declare shared props as optional. A path that matches no route passes no group's
 them, inside the same layout. The starter kit shares the signed-in user as `auth`, and the session shares the validation errors of
 the last form as `errors`.
 
+To pass the app's name or a public key from configuration to the browser, share it here. See [values for the
+browser](configuration.md#values-for-the-browser).
+
 ### Once props
 
 `once()` sends a prop with the first page that has it. The browser then keeps it for as long as the tab shows the app, and tells

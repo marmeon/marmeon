@@ -272,6 +272,15 @@ A definition counts once it is listed, and it is checked once, however often it 
 | `defineModule({ config: [NotesConfig] })` in a module's `index.ts` | A module's settings. See [modules](modules.md#defining-a-module). |
 | `static config = [LogConfig]` on a service provider | A package's settings. See [service providers](providers.md#what-a-provider-brings-besides-code). |
 
+A definition is listed, not found by scanning `config/`, for these reasons:
+
+- **The definition is already imported.** It is the type and the token the container resolves (`defineConfig()` makes a unique
+  key for it), so any code that reads the configuration imports it anyway. Listing it is one more entry in an array.
+- **Not every file in `config/` is a definition.** A file there may be loaded only in some environments, such as the
+  devtools' settings, which must never load in production. A scan would load it.
+- **A module brings its own.** Its definitions sit in the module's folder, and the module lists them, so removing the module
+  removes its settings too.
+
 ### Using configuration
 
 Ask for the definition in a constructor, like any other service:
@@ -296,6 +305,35 @@ export class ListNotesController extends Controller {
 
 Import the definition as a value, not with `import type`. Its name is both the type and the token the container resolves, and
 a type-only import does not exist when the app runs. The [service container](container.md#constructor-injection) page explains why.
+
+## Values for the browser
+
+A page reaches configuration through the server. Read the value from a definition in a controller and pass it as a page prop,
+or share it with every page through [`SharedData`](responses.md#shared-props):
+
+```ts title="middleware/ShareAppProps.ts"
+declare module '@marmeon/http/page' {
+  interface SharedProps {
+    app?: { name: string; mapsKey: string };
+  }
+}
+
+// In handle(), with a config definition injected next to SharedData:
+this.#shared.share('app', { name: this.#config.name, mapsKey: this.#config.mapsKey });
+```
+
+A component reads it with `usePage().props`, typed by `interface SharedProps`. Only a value that is safe to publish belongs
+there, such as the app's name or a public key. A secret stays out, because everything shared is sent to the browser.
+
+Values take this route for two reasons. The server reads the configuration when it starts, so one build runs
+unchanged in every environment, and `marmeon build` needs no `.env`. And nothing reaches the browser unless code hands it over,
+so a variable is never published by being in the environment. The [Vite page](vite.md#server-code-in-the-browser) explains
+the same rule for imports.
+
+Do not use Vite's own `VITE_*` variables for the app's values. Vite reads the `.env` files of the app's folder itself, in
+`marmeon dev` and in `marmeon build`, and puts each `VITE_*` variable that client code reads through `import.meta.env` into
+the bundle. The value is then fixed at build time, it can differ between the dev server and the build, and it bypasses the
+validation of a definition.
 
 ## When a value is wrong
 

@@ -34,6 +34,21 @@ export default defineModule({
 
 The app lists its modules in `bootstrap/app.ts`. A module that is not listed is not loaded, however complete its folder is.
 
+### Why the list is explicit
+
+The list is the one place that says what the app is made of, and it has three reasons to be a list:
+
+- **The order.** A scan of the folder could only give alphabetical order, and a module carries no dependency information to
+  sort by. The list gives [the order of modules](#the-order-of-modules) explicitly.
+- **Nothing runs by accident.** The list holds static imports. A file that sits in `modules/` runs no code until something
+  imports it, so a half-finished folder or a leftover from another branch cannot add routes or providers to the app.
+- **The list is a value.** A test composes its own application from it, such as `{ ...application, modules:
+  [...application.modules!, fixtures] }` to add a module of fixtures, or a shorter list to boot a part of the app.
+
+The installed packages are different: they are discovered (see [Discovery](#discovery)), because a package opts in with a
+`"marmeon"` field in its `package.json` and its dependencies give it a place in the order. `make:module` keeps the cost of
+the explicit list low: it adds the new module to `bootstrap/app.ts` for you (see [Creating a module](#creating-a-module)).
+
 ## The application
 
 `bootstrap/app.ts` exports the app's definition, made with `defineApplication()`. It describes the app and boots nothing: the
