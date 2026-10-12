@@ -63,7 +63,7 @@ await this.#notifications.send({ type: 'user', id: user.id }, NewSignInNotificat
 
 ## Defining notifications
 
-`make:notification` writes a notification class into a module:
+`make:notification` writes a notification class into a module and adds it to the module's `notifications` (`--no-register` prints the lines instead):
 
 ```sh
 pnpm marmeon make:notification NoteShared --module=notes

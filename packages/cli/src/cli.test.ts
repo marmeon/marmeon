@@ -251,8 +251,12 @@ describe('marmeon make:* (generated code compiles)', () => {
       'listeners: [listen(InvoicePaid, SendReceipt)]',
     );
     expect(marmeon(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
-    expect(marmeon(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain('jobs: [SendInvoiceReminderJob]');
-    expect(marmeon(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain('notifications: [InvoiceOverdueNotification]');
+    expect(marmeon(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain(
+      '✓ Registered SendInvoiceReminderJob in modules/billing/index.ts (jobs)',
+    );
+    expect(marmeon(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain(
+      '✓ Registered InvoiceOverdueNotification in modules/billing/index.ts (notifications)',
+    );
     expect(marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
     // A reading endpoint is a GET, and a GET has no body: its request validates the query.
     expect(marmeon(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
@@ -280,6 +284,11 @@ describe('marmeon make:* (generated code compiles)', () => {
     const notification = readFileSync(join(app, 'modules/billing/notifications/InvoiceOverdueNotification.ts'), 'utf8');
     expect(notification).toContain("static readonly notification = 'billing.invoice-overdue';"); // stable, like a job's
     expect(notification).toContain('toDatabase(data: NotificationData<typeof InvoiceOverdueNotification>): DatabaseInput<typeof InvoiceOverdueNotification> {');
+    const index = readFileSync(join(app, 'modules/billing/index.ts'), 'utf8');
+    expect(index).toContain("import { SendInvoiceReminderJob } from './jobs/SendInvoiceReminderJob.ts';");
+    expect(index).toContain("import { InvoiceOverdueNotification } from './notifications/InvoiceOverdueNotification.ts';");
+    expect(index).toMatch(/jobs: \[SendInvoiceReminderJob\]/);
+    expect(index).toMatch(/notifications: \[InvoiceOverdueNotification\]/);
     // The generated class passes the checks where a notification is sent (channels, toDatabase against static database).
     writeFileSync(
       join(app, 'modules/billing/send-overdue.ts'),

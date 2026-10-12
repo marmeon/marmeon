@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { editDefinitionFile, type DefinitionEdit } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
@@ -42,6 +43,29 @@ function className(input: CommandInput, suffix = ''): string | undefined {
 }
 
 const moduleOption = { module: { type: 'string', short: 'm' }, force: { type: 'boolean' } } as const;
+
+const registeringOption = { ...moduleOption, 'no-register': { type: 'boolean' } } as const;
+
+/** Adds what a generator wrote to its module's index.ts — or prints the lines to add (see docs/console.md#generators). */
+function registerInModule(input: CommandInput, module: string, dir: string, edit: DefinitionEdit, label: string, manual: readonly string[]): void {
+  const shown = `modules/${module}/index.ts`;
+  const printLines = () => {
+    for (const line of manual) input.output.line(style('dim', `  ${line}`));
+  };
+  input.output.line();
+  if (input.options['no-register'] === true) {
+    input.output.line(`Register it in ${shown}:`);
+    printLines();
+    return;
+  }
+  const outcome = editDefinitionFile(join(dir, 'index.ts'), edit);
+  if (outcome.status === 'added') input.output.success(`Registered ${label} in ${shown} (${edit.key})`);
+  else if (outcome.status === 'present') input.output.line(`${label} is already registered in ${shown}`);
+  else {
+    input.output.warn(`Not registered — ${shown}: ${outcome.reason}. Add it yourself:`);
+    printLines();
+  }
+}
 
 export class MakeModuleCommand {
   static command = 'make:module';
@@ -154,8 +178,8 @@ export class MakeListenerCommand {
 export class MakeJobCommand {
   static command = 'make:job';
   static description = 'Create a queued job (a class with handle(), a stable name and a payload schema)';
-  static usage = '<Name> --module=<module>';
-  static options = moduleOption;
+  static usage = '<Name> --module=<module> [--no-register]';
+  static options = registeringOption;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -166,9 +190,19 @@ export class MakeJobCommand {
     // The stable name the queue stores — from the class name once; renaming the class later keeps it.
     if (!write(input, join(dir, 'jobs', `${name}.ts`), JOB(name, `${module}.${stableName(name, 'Job') || 'job'}`))) return 1;
 
-    input.output.line();
-    input.output.line(`Register it in modules/${module}/index.ts:`);
-    input.output.line(style('dim', `  jobs: [${name}]`));
+    registerInModule(
+      input,
+      module,
+      dir,
+      {
+        define: { name: 'defineModule', from: '@marmeon/core' },
+        key: 'jobs',
+        add: { element: (names) => names[name]! },
+        imports: [{ name, from: `./jobs/${name}.ts` }],
+      },
+      name,
+      [`import { ${name} } from './jobs/${name}.ts';`, `jobs: [${name}]`],
+    );
     input.output.line(style('dim', `Dispatch it: await queue.dispatch(${name}, { id: 1 });   (constructor(queue: Queue), from @marmeon/queue)`));
     return 0;
   }
@@ -186,8 +220,8 @@ function stableName(name: string, suffix: string): string {
 export class MakeNotificationCommand {
   static command = 'make:notification';
   static description = 'Create a notification (a stable name, the schema of its data, via() and a to…() per channel)';
-  static usage = '<Name> --module=<module>';
-  static options = moduleOption;
+  static usage = '<Name> --module=<module> [--no-register]';
+  static options = registeringOption;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -198,9 +232,19 @@ export class MakeNotificationCommand {
     // The stable name the queue and the notifications table store — from the class name once, like a job's.
     if (!write(input, join(dir, 'notifications', `${name}.ts`), NOTIFICATION(name, `${module}.${stableName(name, 'Notification') || 'notification'}`))) return 1;
 
-    input.output.line();
-    input.output.line(`Register it in modules/${module}/index.ts:`);
-    input.output.line(style('dim', `  notifications: [${name}]`));
+    registerInModule(
+      input,
+      module,
+      dir,
+      {
+        define: { name: 'defineModule', from: '@marmeon/core' },
+        key: 'notifications',
+        add: { element: (names) => names[name]! },
+        imports: [{ name, from: `./notifications/${name}.ts` }],
+      },
+      name,
+      [`import { ${name} } from './notifications/${name}.ts';`, `notifications: [${name}]`],
+    );
     input.output.line(
       style('dim', `Send it: await notifications.send({ type: 'user', id: user.id }, ${name}, { id: 1 });   (constructor(notifications: Notifications), from @marmeon/notifications)`),
     );
