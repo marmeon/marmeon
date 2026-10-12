@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useId, useInsertionEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { LayerFrameProps } from './layer.tsx';
 
 export interface LayerDialogProps extends LayerFrameProps {
@@ -24,6 +24,13 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
   // What had the focus — the link that opened it — gets it back when the layer goes. Read while rendering: by the time the
   // effects run, an `autoFocus` field inside has taken it.
   const [opener] = useState(() => (typeof document === 'undefined' ? null : document.activeElement));
+  // Where the page was scrolled: an `autoFocus` field inside takes the focus while the dialog still sits in the flow of the
+  // document (before showModal()), and the browser scrolls it into view — to the end of the page. Put back below. Read in the
+  // commit itself (insertion effects run before the layout phase that autofocuses), not while rendering: a transition renders earlier.
+  const scroll = useRef<{ x: number; y: number } | null>(null);
+  useInsertionEffect(() => {
+    scroll.current = { x: window.scrollX, y: window.scrollY };
+  }, []);
   // The `style` prop only once mounted: React writes it through the CSSOM then — never as a server-rendered attribute.
   const [mounted, setMounted] = useState(false);
   useLayoutEffect(() => {
@@ -39,6 +46,9 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
       name(element, id);
       element.showModal();
       if (chosen instanceof HTMLElement && chosen !== element.ownerDocument.activeElement) chosen.focus();
+      // The page beneath stays where it was, whatever scrolled it while the dialog was not modal yet. Unconditionally: a smooth
+      // scroll has not moved yet, and an instant one cancels it.
+      if (scroll.current) window.scrollTo({ left: scroll.current.x, top: scroll.current.y, behavior: 'instant' });
     }
     // Modal now (not before: a server-rendered, not yet modal dialog must not hide the page from screen readers).
     element.setAttribute('aria-modal', 'true');

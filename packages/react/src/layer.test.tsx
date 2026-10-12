@@ -199,6 +199,58 @@ describe('Layers in React', () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it('an autoFocus field in the layer does not scroll the page beneath: the focus lands, the scroll position is put back', async () => {
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    let scrollY = 600;
+    const original = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(((options: ScrollToOptions) => {
+      scrollY = options.top ?? scrollY;
+    }) as typeof window.scrollTo);
+    // A browser scrolls to an element it focuses without `preventScroll` — the dialog is at the end of the document until it is modal.
+    const focus = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      if (!options?.preventScroll) scrollY = 20_000;
+      focus.call(this, options);
+    });
+    try {
+      await click('[data-testid="edit"]');
+      await wait();
+      expect(document.activeElement).toBe($('[data-testid="field"]'));
+      expect(scrollY).toBe(600);
+      expect(scrollTo).toHaveBeenCalled();
+      await click('[data-testid="close"]');
+      await wait(30);
+      expect(dialogs()).toEqual([]);
+    } finally {
+      spy.mockRestore();
+      scrollTo.mockRestore();
+      if (original) Object.defineProperty(window, 'scrollY', original);
+      else delete (window as { scrollY?: number }).scrollY;
+    }
+  });
+
+  it('a smooth scroll that autoFocus starts (scrollY has not moved yet) is cancelled when the layer becomes modal', async () => {
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    let pending: number | null = null;
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(((options: ScrollToOptions) => {
+      if (options.behavior === 'instant') pending = null;
+    }) as typeof window.scrollTo);
+    const focus = HTMLElement.prototype.focus;
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      if (!options?.preventScroll) pending = 20_000;
+      focus.call(this, options);
+    });
+    await click('[data-testid="edit"]');
+    await wait();
+    expect(scrollTo).toHaveBeenCalled();
+    expect(pending).toBeNull();
+    await click('[data-testid="close"]');
+    await wait(30);
+  });
+
   it('a click that does not focus the link (WebKit) still gives the focus back to it when the layer closes', async () => {
     await mount(page('Profile', '/users/1', { name: 'Ada' }));
     await wait();
