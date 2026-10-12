@@ -1,3 +1,4 @@
+import type { RelationName, WithRelations } from './chain.ts';
 import type {
   ColumnType,
   DeleteQueryBuilder,
@@ -47,6 +48,11 @@ export type JsonColumn = ColumnType<Json, string, string>;
 export type Row<T extends keyof Tables> = Selectable<Tables[T]>;
 export type NewRow<T extends keyof Tables> = Insertable<Tables[T]>;
 export type RowUpdate<T extends keyof Tables> = Updateable<Tables[T]>;
+/**
+ * A row of table `T` with the relations `N` loaded, as `findOrFail(id, { with })` gives it: `RowWith<'posts', 'author' | 'tags'>`,
+ * for example as the prop type of a page. See `docs/queries.md#reading`.
+ */
+export type RowWith<T extends keyof Tables, N extends RelationName<Tables, T>> = WithRelations<Tables, T, N>;
 
 // --- Module boundaries (opt-in via `Database<'module'>`) -------------------------------
 

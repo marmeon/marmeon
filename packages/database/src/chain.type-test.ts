@@ -43,6 +43,12 @@ export async function relationTypes() {
   // @ts-expect-error — withRelation's foreign key is a column of its table
   db.selectFrom('users').withRelation('mine', { table: 'comments', foreignKey: 'author' });
 
+  // Type '"nope"' is not assignable to type '"balance" | "born_on" | "created_at" | "deleted_at" | "email" | "id" | "is_admin" | "name" |
+  // "settings" | "updated_at" | undefined'.
+  // @ts-expect-error — localKey is a column of the query's tables
+  db.selectFrom('users').withRelation('mine', { table: 'comments', foreignKey: 'user_id', localKey: 'nope' });
+  db.selectFrom('users').withRelation('mine', { table: 'comments', foreignKey: 'user_id', localKey: 'id' });
+
   // A relation the module sees, to a table another module exposes.
   const [comment] = await blog.selectFrom('comments').select('body').with('user', (q) => q.select('name')).execute();
   expectTypeOf(comment!.user).toEqualTypeOf<{ name: string } | null>();

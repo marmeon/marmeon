@@ -19,6 +19,7 @@ export type {
   Relations,
   Row,
   RowUpdate,
+  RowWith,
   TableOwners,
   Tables,
   Timestamp,

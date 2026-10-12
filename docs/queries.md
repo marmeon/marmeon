@@ -148,7 +148,7 @@ condition without a value would match any row. Which row is "first" is up to the
 `query()` yourself when it matters.
 
 `findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
-row's type has them: `WithRelations<Tables, 'notes', 'author' | 'tags'>` names it. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed
+row's type has them: `RowWith<'notes', 'author' | 'tags'>` names it, for example as the prop type of a page. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed
 during the loop do not make it skip others. Rows added meanwhile come at the end or, when another transaction commits them later
 with a lower id, not at all. Its callback narrows what it reads:
 

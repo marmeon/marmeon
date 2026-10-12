@@ -1,4 +1,4 @@
-import { expressionBuilder, type AnyColumn, type Selectable, type SelectQueryBuilder, type Simplify } from 'kysely';
+import { expressionBuilder, type Selectable, type SelectQueryBuilder, type Simplify } from 'kysely';
 import { relationCondition, relationSelection } from './relations.ts';
 import { withTrashed as withTrashedFilter } from './schema-resolver.ts';
 import type { Relations } from './types.ts';
@@ -48,8 +48,8 @@ type RelationQuery<DB, T extends keyof DB> = SelectQueryBuilder<DB, T, {}>;
 export interface RelationDefinition<DB, TB extends keyof DB, T extends keyof DB, One extends boolean> {
   readonly table: T;
   readonly foreignKey: keyof DB[T] & string;
-  /** A column of the query's tables — of the first one that has it (default `id`). */
-  readonly localKey?: AnyColumn<DB, TB>;
+  /** A column of the query's tables — of the first one that has it (default `id`). Written out, so a wrong name's message lists the columns. */
+  readonly localKey?: { [K in TB]: keyof DB[K] & string }[TB];
   readonly one?: One;
 }
 
