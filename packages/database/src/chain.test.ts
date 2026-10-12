@@ -916,11 +916,19 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       );
       expect(sql).toHaveLength(1);
       expect(sql[0]).not.toContain('__marmeon');
+      expect(sql[0]).toContain('as bigint'); // a count past 2^31 must not overflow on Postgres
       expect(rows).toEqual([
         { id: ids.first, title: 'First', comments_count: 2, tags_count: 2, readers: 1 },
         { id: ids.second, title: 'Second', comments_count: 0, tags_count: 1, readers: 1 },
       ]);
       expectTypeOf(rows[0]!).toEqualTypeOf<{ id: number; title: string; comments_count: number; tags_count: number; readers: number }>();
+    });
+
+    it('loads the posts behind a pivot from the other side — tags to posts', async () => {
+      const tags = await db.selectFrom('tags').select(['id', 'slug']).with('posts', (q) => q.select('title')).orderBy('id').execute();
+      const linked = (await db.selectFrom('post_tag').select(['post_id', 'tag_id']).execute()).length;
+      expect(tags.reduce((total, tag) => total + tag.posts.length, 0)).toBe(linked);
+      expect(tags.flatMap((tag) => tag.posts.map((post) => post.title))).toContain('First');
     });
 
     it('counts what the callback narrows to — withTrashed() in it counts the soft-deleted rows, at that level only', async () => {

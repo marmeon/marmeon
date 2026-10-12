@@ -92,7 +92,8 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
   const { table, name } = context;
   const label = `relation('${name}')`;
 
-  const write = <R>(method: Method, work: (db: Kysely<any>, relation: Relation, key: unknown, metadata: SchemaMetadata) => Promise<R>): Promise<R> =>
+  /** `nothing`: what a write of an empty list answers — after the parent row was found, so a missing one is a 404 either way. */
+  const write = <R>(method: Method, work: (db: Kysely<any>, relation: Relation, key: unknown, metadata: SchemaMetadata) => Promise<R>, nothing?: { readonly value: R }): Promise<R> =>
     context.run(async (db, key, metadata) => {
       const relation = metadata.relations.get(table)?.get(name);
       if (!relation) {
@@ -105,6 +106,7 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
       }
       const row = await key(relation.localKey);
       if (!row) throw context.missing();
+      if (nothing) return nothing.value;
       return work(db, relation, row.value, metadata);
     });
 
@@ -172,27 +174,30 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
       if (given.length > 0 && ids === undefined) {
         return Promise.reject(new TypeError(`${label}.detach() was given undefined — that is no list of ids. Call detach() without an argument to unlink every one.`));
       }
-      return write('detach', async (db, relation, key) => {
-        let query = db.deleteFrom(relation.pivot!).where(relation.foreignKey, '=', key);
-        if (ids !== undefined) {
-          const only = distinct(list(ids));
-          // An empty list is no list: it unlinks nothing, never everything.
-          if (only.length === 0) return 0;
-          query = query.where(relation.relatedKey!, 'in', only);
-        }
-        return Number((await query.executeTakeFirst()).numDeletedRows);
-      });
+      // An empty list is no list: it unlinks nothing, never everything.
+      const only = ids === undefined ? undefined : distinct(list(ids));
+      return write(
+        'detach',
+        async (db, relation, key) => {
+          let query = db.deleteFrom(relation.pivot!).where(relation.foreignKey, '=', key);
+          if (only !== undefined) query = query.where(relation.relatedKey!, 'in', only);
+          return Number((await query.executeTakeFirst()).numDeletedRows);
+        },
+        only?.length === 0 ? { value: 0 } : undefined,
+      );
     },
     create: (values) => write('create', (db, relation, key) => insert(db, relation, key, 'create', values)),
-    createMany: async (values) => {
-      if (values.length === 0) return [];
-      return write('createMany', async (db, relation, key) => {
-        const rows: unknown[] = [];
-        // One insert per row: the rows come back in the order they were given (a multi-row RETURNING has no order on SQLite).
-        for (const item of values) rows.push(await insert(db, relation, key, 'createMany', item));
-        return rows;
-      });
-    },
+    createMany: (values) =>
+      write(
+        'createMany',
+        async (db, relation, key) => {
+          const rows: unknown[] = [];
+          // One insert per row: the rows come back in the order they were given (a multi-row RETURNING has no order on SQLite).
+          for (const item of values) rows.push(await insert(db, relation, key, 'createMany', item));
+          return rows;
+        },
+        values.length === 0 ? { value: [] } : undefined,
+      ),
   };
 }
 

@@ -156,7 +156,7 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
       ]);
       queries.length = 0;
       expect(await posts.relation(ids.second, 'comments').createMany([])).toEqual([]);
-      expect(queries).toEqual([]);
+      expect(queries.filter((query) => /^(insert|update\b|delete)/i.test(query.sql))).toEqual([]); // the parent row is looked up, nothing is written
 
       const stats = await posts.relation(ids.second, 'post_stats').create({ views: 3 });
       expect(stats).toEqual({ post_id: ids.second, views: 3 });
@@ -193,6 +193,12 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     await expect(users.relation(ids.gone, 'posts').attach(ids.first)).rejects.toBeInstanceOf(RecordNotFoundError);
     await expect(users.relation(ids.gone, 'comments').create({ post_id: ids.first, body: 'x' })).rejects.toBeInstanceOf(RecordNotFoundError);
     await expect(posts.relation(999_999, 'tags').detach()).rejects.toBeInstanceOf(RecordNotFoundError);
+    // An empty list is checked against the parent row like any other: no write skips the 404.
+    await expect(posts.relation(999_999, 'tags').detach([])).rejects.toBeInstanceOf(RecordNotFoundError);
+    await expect(posts.relation(999_999, 'tags').attach([])).rejects.toBeInstanceOf(RecordNotFoundError);
+    await expect(posts.relation(999_999, 'tags').sync([])).rejects.toBeInstanceOf(RecordNotFoundError);
+    await expect(posts.relation(999_999, 'comments').createMany([])).rejects.toBeInstanceOf(RecordNotFoundError);
+    await expect(users.relation(ids.gone, 'comments').createMany([])).rejects.toBeInstanceOf(RecordNotFoundError);
     expect(await readersOf(ids.first)).toEqual([]);
   });
 

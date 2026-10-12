@@ -176,8 +176,11 @@ function refuseShaping(query: SelectQueryNode, use: 'count' | 'exists' | 'missin
   }
 }
 
-/** `count(*)` as an integer — Postgres counts in `bigint`, which its driver returns as a string. */
-const COUNT = CastNode.create(AggregateFunctionNode.create('count', [SelectAllNode.create()]), DataTypeNode.create('integer'));
+/**
+ * `count(*)` as a `bigint`, so a count past 2^31 does not overflow on Postgres. The Postgres driver returns `bigint` as a number
+ * (exact, and throwing past 2^53); SQLite counts in 64 bits anyway.
+ */
+const COUNT = CastNode.create(AggregateFunctionNode.create('count', [SelectAllNode.create()]), DataTypeNode.create('bigint'));
 const ONE_VALUE = ValueNode.createImmediate(1);
 
 function lookUp(name: string, sources: readonly Source[], metadata: SchemaMetadata, label: string): { outer: Source; relation: Relation } {
