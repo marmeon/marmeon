@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, EventDispatcher, token } from '@marmeon/core';
+import { Clock, commitAnyway, err, EventDispatcher, ok, token, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
@@ -26,10 +26,14 @@ export interface PasswordResetTokenTable {
  * used once, valid for a while.
  */
 export interface PasswordResetTokenStore {
-  /** A new token for `email`, replacing an older one — `undefined` while the last one is younger than `throttleSeconds`. */
-  create(email: string, throttleSeconds: number): Promise<string | undefined>;
-  /** Whether `token` is the current token of `email` and younger than `maxAgeSeconds` — and if so, it is used up. */
-  consume(email: string, token: string, maxAgeSeconds: number): Promise<boolean>;
+  /** A new token for `email`, replacing an older one — an `err` of kind `throttled` while the last one is younger than `throttleSeconds`. */
+  create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>>;
+  /**
+   * Uses `token` up if it is the current token of `email` and younger than `maxAgeSeconds`; otherwise an `err` of kind `invalid-token`
+   * — one kind for a malformed, unknown, wrong and expired token on purpose. The deletion of an expired token must commit even inside a
+   * transaction that returns the err (`commitAnyway`).
+   */
+  consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { readonly kind: 'invalid-token' }>>;
   forget(email: string): Promise<void>;
   /** Deletes every token older than `maxAgeSeconds` — expired ones nobody used (`marmeon auth:prune-tokens`). How many. */
   prune(maxAgeSeconds: number): Promise<number>;
@@ -48,32 +52,32 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
     this.#clock = clock;
   }
 
-  async create(email: string, throttleSeconds: number): Promise<string | undefined> {
+  async create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>> {
     const db = this.#db();
     const existing = await db.selectFrom(PASSWORD_RESET_TABLE).select('created_at').where('email', '=', email).executeTakeFirst();
-    if (existing && this.#clock.now() - new Date(existing.created_at).getTime() < throttleSeconds * 1000) return undefined;
+    if (existing && this.#clock.now() - new Date(existing.created_at).getTime() < throttleSeconds * 1000) return err({ kind: 'throttled' });
     const value = randomBytes(32).toString('base64url');
     // The ambient transaction: `db` joins it — and inside a caller's transaction this becomes a savepoint.
     await this.#connections.transaction(async () => {
       await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
       await db.insertInto(PASSWORD_RESET_TABLE).values({ email, token_hash: sha256(value), created_at: new Date(this.#clock.now()) }).execute();
     });
-    return value;
+    return ok(value);
   }
 
-  async consume(email: string, value: string, maxAgeSeconds: number): Promise<boolean> {
-    if (!TOKEN.test(value)) return false; // malformed: no query
+  async consume(email: string, value: string, maxAgeSeconds: number): Promise<Result<void, { readonly kind: 'invalid-token' }>> {
+    if (!TOKEN.test(value)) return err({ kind: 'invalid-token' }); // malformed: no query
     const db = this.#db();
     const row = await db.selectFrom(PASSWORD_RESET_TABLE).select((eb) => [secret(eb, 'token_hash'), 'created_at']).where('email', '=', email).executeTakeFirst();
-    if (!row) return false;
+    if (!row) return err({ kind: 'invalid-token' });
     if (this.#clock.now() - new Date(row.created_at).getTime() >= maxAgeSeconds * 1000) {
       await this.forget(email);
-      return false;
+      return commitAnyway(err({ kind: 'invalid-token' })); // the deletion stays when an ambient transaction would roll back an err
     }
-    if (!equal(sha256(value), row.token_hash)) return false;
+    if (!equal(sha256(value), row.token_hash)) return err({ kind: 'invalid-token' });
     // Used up — conditionally, so two requests with the same token cannot both succeed.
     const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where(sql<boolean>`${sql.ref('token_hash')} = ${row.token_hash}`).executeTakeFirst();
-    return deleted.numDeletedRows > 0n;
+    return deleted.numDeletedRows > 0n ? ok() : err({ kind: 'invalid-token' });
   }
 
   async forget(email: string): Promise<void> {
@@ -126,26 +130,30 @@ export class PasswordBroker {
     this.#newPassword = newPassword;
   }
 
-  /** A token for `email` (normalized like the login) — `undefined` for an unknown e-mail, and within `AUTH_RESET_THROTTLE` of the last one. */
-  async createToken(email: string): Promise<{ user: AuthUser; token: string } | undefined> {
+  /**
+   * A token for `email` (normalized like the login), or an `err` of kind `unavailable`. There is one kind for an unknown e-mail and for
+   * one within `AUTH_RESET_THROTTLE` of the last token, so the answer never tells whether an account exists.
+   */
+  async createToken(email: string): Promise<Result<{ user: AuthUser; token: string }, { readonly kind: 'unavailable' }>> {
     const found = await this.#users.findForLogin(email);
-    if (!found) return undefined;
-    const value = await this.#tokens.create(email, this.#config.resetThrottle);
-    return value === undefined ? undefined : { user: found.user, token: value };
+    if (!found) return err({ kind: 'unavailable' });
+    const created = await this.#tokens.create(email, this.#config.resetThrottle);
+    return created.ok ? ok({ user: found.user, token: created.value }) : err({ kind: 'unavailable' });
   }
 
   /**
-   * Sets `password` if `token` belongs to `email` and is unused and fresh. One answer — `undefined` — for
-   * an unknown e-mail and a wrong, used or expired token. With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token
+   * Sets `password` if `token` belongs to `email` and is unused and fresh: `ok` with the user. One answer — an `err` of
+   * kind `invalid-token` — for an unknown e-mail and a wrong, used or expired token, so the answer never tells whether an account exists. With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token
    * of the user is revoked in the transaction of the new hash.
    */
-  async reset(email: string, value: string, password: string): Promise<AuthUser | undefined> {
-    if (!(await this.#tokens.consume(email, value, this.#config.resetExpire * 60))) return undefined;
+  async reset(email: string, value: string, password: string): Promise<Result<AuthUser, { readonly kind: 'invalid-token' }>> {
+    const consumed = await this.#tokens.consume(email, value, this.#config.resetExpire * 60);
+    if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
     const found = await this.#users.findForLogin(email);
-    if (!found) return undefined;
+    if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
     const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(found.user), await this.#hasher.make(password), 'reset');
     await this.#events.dispatch(new PasswordReset(found.user, revoked));
-    return found.user;
+    return ok(found.user);
   }
 }
 

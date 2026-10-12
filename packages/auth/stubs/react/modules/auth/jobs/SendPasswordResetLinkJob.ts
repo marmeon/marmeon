@@ -38,8 +38,9 @@ export class SendPasswordResetLinkJob {
   }
 
   async handle(payload: JobPayload<typeof SendPasswordResetLinkJob>): Promise<void> {
-    const reset = await this.#broker.createToken(payload.email);
-    if (!reset) return; // no account, or a link went out moments ago
+    const created = await this.#broker.createToken(payload.email);
+    if (!created.ok) return; // no account, or a link went out moments ago
+    const reset = created.value;
     // The token rides in the query (the request log shows paths only); the link page moves it into a cookie.
     const url = new URL(this.#router.url('auth.password.reset', {}, { token: reset.token, email: payload.email }), this.#app.url);
     // In the account's language (whoever asked for the link, and in whatever language): the recipient's — for an account

@@ -1,4 +1,4 @@
-import { ConsoleLogger, inTransaction, SystemClock } from '@marmeon/core';
+import { ConsoleLogger, err, inTransaction, SystemClock, type Result } from '@marmeon/core';
 import { secret, type Connections } from '@marmeon/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
@@ -8,6 +8,11 @@ import type { RememberTokenStore } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
 import { NewPassword } from './new-password.ts';
 import type { AuthUser, UserProvider } from './user.ts';
+
+function must<T>(result: Result<T, { readonly kind: string }>): T {
+  if (!result.ok) throw new Error('expected an ok result');
+  return result.value;
+}
 
 describe.each(drivers)('password reset on %s', (driver) => {
   let connections: Connections;
@@ -21,9 +26,10 @@ describe.each(drivers)('password reset on %s', (driver) => {
   const forgotten: unknown[] = [];
   const events: object[] = [];
   const written: boolean[] = [];
+  let accountGone = false;
   const users: UserProvider = {
     findById: async () => undefined,
-    findForLogin: async (email) => (email === ada.email ? { user: ada, passwordHash: hash } : undefined),
+    findForLogin: async (email) => (email === ada.email && !accountGone ? { user: ada, passwordHash: hash } : undefined),
     updatePasswordHash: async (_id, next) => void ((hash = next), written.push(inTransaction())),
   };
   const remember = { forgetUser: async (id: unknown) => void forgotten.push(id) } as unknown as RememberTokenStore;
@@ -49,6 +55,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   afterAll(() => close());
   beforeEach(async () => {
     await connections.get<any>().deleteFrom(PASSWORD_RESET_TABLE).execute();
+    accountGone = false;
     hash = await hasher.make('old password');
     await connections.get<any>().deleteFrom(ACCESS_TOKEN_TABLE).execute();
     forgotten.length = 0;
@@ -59,32 +66,33 @@ describe.each(drivers)('password reset on %s', (driver) => {
   afterEach(() => vi.useRealTimers());
 
   it('stores one token per e-mail, only as a hash', async () => {
-    const value = await tokens.create('ada@example.com', 0);
+    const created = await tokens.create('ada@example.com', 0);
+    const value = created.ok ? created.value : '';
     expect(value).toMatch(/^[\w-]{43}$/);
     await tokens.create('ada@example.com', 0); // replaces the first
     const stored = await rows();
     expect(stored).toHaveLength(1);
     expect(stored[0]!.token_hash).not.toBe(value);
-    expect(JSON.stringify(await connections.get<any>().selectFrom(PASSWORD_RESET_TABLE).selectAll().execute())).not.toContain(value!);
+    expect(JSON.stringify(await connections.get<any>().selectFrom(PASSWORD_RESET_TABLE).selectAll().execute())).not.toContain(value);
   });
 
   it('resets the password with a fresh token, once — then drops the remember-me tokens', async () => {
     const created = await broker().createToken('ada@example.com');
-    expect(created).toMatchObject({ user: ada, token: expect.stringMatching(/^[\w-]{43}$/) });
-    expect(await broker().reset('ada@example.com', created!.token, 'new password')).toEqual(ada);
+    expect(created.ok && created.value).toMatchObject({ user: ada, token: expect.stringMatching(/^[\w-]{43}$/) });
+    expect((await broker().reset('ada@example.com', created.ok ? created.value.token : '', 'new password')).ok).toBe(true);
     expect(await hasher.verify('new password', hash)).toBe(true);
     expect(forgotten).toEqual([1]);
     expect(events.map((event) => event.constructor.name)).toEqual(['PasswordReset']);
     // The same token a second time
-    expect(await broker().reset('ada@example.com', created!.token, 'another')).toBeUndefined();
+    expect(await broker().reset('ada@example.com', created.ok ? created.value.token : '', 'another')).toStrictEqual(err({ kind: 'invalid-token' }));
     expect(await hasher.verify('new password', hash)).toBe(true);
   });
 
   it('revokes every API token of the user with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true — in the transaction of the new hash, and says so', async () => {
     const adas = [await apiTokens.create(1, 'cli'), await apiTokens.create(1, 'ci')];
     const alans = await apiTokens.create(2, 'cli');
-    const created = (await broker(true).createToken('ada@example.com'))!;
-    expect(await broker(true).reset('ada@example.com', created.token, 'new password')).toEqual(ada);
+    const created = must(await broker(true).createToken('ada@example.com'));
+    expect(await broker(true).reset('ada@example.com', created.token, 'new password')).toMatchObject({ ok: true, value: ada });
     const valid = await Promise.all(adas.map(async ({ plainText }) => (await apiTokens.find(plainText)) !== undefined));
     expect(valid, `Ada's tokens still valid: ${JSON.stringify(valid)}`).toEqual([false, false]);
     expect(await apiTokens.find(alans.plainText), "another user's token").toBeDefined();
@@ -94,8 +102,8 @@ describe.each(drivers)('password reset on %s', (driver) => {
 
     // Without the option, the tokens stay valid.
     const kept = await apiTokens.create(1, 'kept');
-    const again = (await tokens.create('ada@example.com', 0))!;
-    expect(await broker().reset('ada@example.com', again, 'newer password')).toEqual(ada);
+    const again = must(await tokens.create('ada@example.com', 0));
+    expect(await broker().reset('ada@example.com', again, 'newer password')).toMatchObject({ ok: true, value: ada });
     expect(await apiTokens.find(kept.plainText), 'revoked without the option').toBeDefined();
   });
 
@@ -107,7 +115,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
         throw new Error('the revocation failed after its delete');
       },
     });
-    const created = (await broker(true).createToken('ada@example.com'))!;
+    const created = must(await broker(true).createToken('ada@example.com'));
     await expect(broker(true, failing).reset('ada@example.com', created.token, 'new password')).rejects.toThrow('the revocation failed');
     expect(await apiTokens.find(adas[0]!.plainText), 'the delete of the failed transaction was kept').toBeDefined();
     expect(events).toEqual([]);
@@ -115,28 +123,107 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(await hasher.verify('old password', hash), 'a new hash next to live tokens').toBe(true);
   });
 
-  it('an expired token, another e-mail’s token, a guessed token — all one answer', async () => {
-    const created = (await broker().createToken('ada@example.com'))!;
-    expect(await broker().reset('alan@example.com', created.token, 'x'.repeat(8))).toBeUndefined(); // another e-mail
-    expect(await broker().reset('ada@example.com', 'A'.repeat(43), 'x'.repeat(8))).toBeUndefined(); // guessed
-    expect(await broker().reset('ada@example.com', 'not a token', 'x'.repeat(8))).toBeUndefined(); // malformed
+  it('an expired token, another e-mail’s token, a guessed token, a malformed one — all one answer', async () => {
+    const created = must(await broker().createToken('ada@example.com'));
+    const invalid = err({ kind: 'invalid-token' });
+    const answers = [
+      await broker().reset('alan@example.com', created.token, 'x'.repeat(8)), // another e-mail
+      await broker().reset('ada@example.com', 'A'.repeat(43), 'x'.repeat(8)), // guessed
+      await broker().reset('ada@example.com', 'not a token', 'x'.repeat(8)), // malformed
+    ];
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
-    expect(await broker().reset('ada@example.com', created.token, 'x'.repeat(8))).toBeUndefined(); // expired …
+    answers.push(await broker().reset('ada@example.com', created.token, 'x'.repeat(8))); // expired …
     expect(await rows()).toEqual([]); // … and gone
+    for (const answer of answers) {
+      expect(answer).toStrictEqual(invalid);
+      expect(Object.keys((answer as { error: object }).error)).toEqual(['kind']); // no field says which case it was
+    }
     expect(await hasher.verify('old password', hash)).toBe(true);
   });
 
-  it('gives unknown e-mails nothing, and throttles new links per e-mail', async () => {
-    expect(await broker().createToken('nobody@example.com')).toBeUndefined();
-    expect(await broker().createToken('ada@example.com')).toBeDefined();
-    expect(await broker().createToken('ada@example.com')).toBeUndefined(); // within 60 s
+  it('keeps the deletion of an expired token inside a transaction that returns the err', async () => {
+    await tokens.create('ada@example.com', 0);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
+    const answer = await connections.transaction(() => tokens.consume('ada@example.com', 'A'.repeat(43), 3600));
+    expect(answer).toStrictEqual(err({ kind: 'invalid-token' }));
+    expect(await rows()).toEqual([]);
+  });
+
+  it('answers a wrong token without touching the row', async () => {
+    await tokens.create('ada@example.com', 0);
+    expect(await connections.transaction(() => tokens.consume('ada@example.com', 'A'.repeat(43), 3600))).toStrictEqual(err({ kind: 'invalid-token' }));
+    expect(await rows()).toHaveLength(1);
+  });
+
+  it('gives an unknown e-mail and a throttled one the same answer, and throttles new links per e-mail', async () => {
+    const unavailable = err({ kind: 'unavailable' });
+    expect(await broker().createToken('nobody@example.com')).toStrictEqual(unavailable);
+    expect((await broker().createToken('ada@example.com')).ok).toBe(true);
+    const throttled = await broker().createToken('ada@example.com'); // within 60 s
+    expect(throttled).toStrictEqual(unavailable);
+    expect(Object.keys((throttled as { error: object }).error)).toEqual(['kind']);
+    expect(await tokens.create('ada@example.com', 60)).toStrictEqual(err({ kind: 'throttled' }));
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
-    expect(await broker().createToken('ada@example.com')).toBeDefined();
+    expect((await broker().createToken('ada@example.com')).ok).toBe(true);
+  });
+
+  it('keeps the used-up token gone when the account vanished, inside a transaction that returns the err', async () => {
+    const created = must(await broker().createToken('ada@example.com'));
+    accountGone = true;
+    const answer = await connections.transaction(() => broker().reset('ada@example.com', created.token, 'x'.repeat(8)));
+    expect(answer).toStrictEqual(err({ kind: 'invalid-token' }));
+    expect(await rows()).toEqual([]);
+  });
+
+  it('names every error kind', async () => {
+    const consumed = await tokens.consume('ada@example.com', 'A'.repeat(43), 3600);
+    const reset = await broker().reset('ada@example.com', 'A'.repeat(43), 'x'.repeat(8));
+    const asked = await broker().createToken('nobody@example.com');
+    await tokens.create('ada@example.com', 0);
+    const created = await tokens.create('ada@example.com', 60);
+    const seen: string[] = [];
+    if (!consumed.ok) {
+      switch (consumed.error.kind) {
+        case 'invalid-token':
+          seen.push('consume');
+          break;
+        default:
+          consumed.error.kind satisfies never;
+      }
+    }
+    if (!reset.ok) {
+      switch (reset.error.kind) {
+        case 'invalid-token':
+          seen.push('reset');
+          break;
+        default:
+          reset.error.kind satisfies never;
+      }
+    }
+    if (!asked.ok) {
+      switch (asked.error.kind) {
+        case 'unavailable':
+          seen.push('createToken');
+          break;
+        default:
+          asked.error.kind satisfies never;
+      }
+    }
+    if (!created.ok) {
+      switch (created.error.kind) {
+        case 'throttled':
+          seen.push('create');
+          break;
+        default:
+          created.error.kind satisfies never;
+      }
+    }
+    expect(seen).toEqual(['consume', 'reset', 'createToken', 'create']);
   });
 
   it('uses a token only once even when two resets race', async () => {
-    const created = (await broker().createToken('ada@example.com'))!;
+    const created = must(await broker().createToken('ada@example.com'));
     const results = await Promise.all([tokens.consume('ada@example.com', created.token, 3600), tokens.consume('ada@example.com', created.token, 3600)]);
-    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
   });
 });

@@ -32,6 +32,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     clock.travel({ hours: 2 });
     // Valid now: a fresh reset token, a remember-me token for 30 days, API tokens with and without expiry.
     const fresh = await resets.create('fresh@example.com', 0);
+    const freshToken = fresh.ok ? fresh.value : '';
     const cookie = await remember.create(2, new Date(clock.now() + 30 * 86_400_000));
     const valid = await access.create(2, 'valid', { expiresIn: '1h' });
     const forever = await access.create(2, 'no expiry');
@@ -52,7 +53,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     expect((await db.selectFrom(REMEMBER_TABLE).select('user_id').execute()).map((row: { user_id: number }) => Number(row.user_id))).toEqual([2]);
     expect((await db.selectFrom(ACCESS_TOKEN_TABLE).select('name').orderBy('id').execute()).map((row: { name: string }) => row.name)).toEqual(['valid', 'no expiry']);
     // The survivors still work; the pruned ones are gone for good.
-    expect(await resets.consume('fresh@example.com', fresh!, 3600)).toBe(true);
+    expect((await resets.consume('fresh@example.com', freshToken, 3600)).ok).toBe(true);
     expect(await remember.consume(cookie)).toMatchObject({ ok: true, value: { userId: 2 } });
     expect(await remember.consume(oldCookie)).toMatchObject({ ok: false, error: { kind: 'invalid' } });
     expect(await access.find(valid.plainText)).toBeDefined();

@@ -75,8 +75,9 @@ export class SendPasswordResetLinkJob {
   }
 
   async handle(payload: JobPayload<typeof SendPasswordResetLinkJob>): Promise<void> {
-    const reset = await this.#broker.createToken(payload.email);
-    if (!reset) return;
+    const created = await this.#broker.createToken(payload.email);
+    if (!created.ok) return;
+    const reset = created.value;
     const url = new URL(this.#router.url('auth.password.reset', {}, { token: reset.token, email: payload.email }), this.#app.url);
     const t = this.#translators.for(reset.user.locale ?? payload.locale);
     await this.#mailer.queue(new ResetPasswordMail(reset.user, url.href, this.#auth.resetExpire, t), { queue: 'mail' });
@@ -84,9 +85,10 @@ export class SendPasswordResetLinkJob {
 }
 ```
 
-`createToken(email)` returns the user and a new token, or `undefined`: for an address without an account, and while the last token
-for that address is younger than `AUTH_RESET_THROTTLE` seconds, 60 by default. So one address gets at most one mail a minute,
-however often someone asks.
+`createToken(email)` returns a [`Result`](errors.md#results): `ok` with the user and a new token, or an `err` of kind `unavailable`
+for an address without an account and while the last token for that address is younger than `AUTH_RESET_THROTTLE` seconds, 60 by
+default. So one address gets at most one mail a minute, however often someone asks. It is one kind on purpose: a kind such as
+`unknown-email` would invite an answer that says "no account".
 
 - **The token** is 256 random bits. The `password_reset_tokens` table keeps only its SHA-256 hash, one row per address: a new
   token replaces the older one, and with it the older link.
@@ -165,7 +167,7 @@ export class ResetPasswordController extends Controller {
 
   async handle(ctx: ContextOf<typeof ResetPasswordRequest>) {
     const reset = resetFromCookie(ctx.cookies.get(RESET_COOKIE));
-    if (!reset || !(await this.#broker.reset(reset.email, reset.token, ctx.body.password))) {
+    if (!reset || !(await this.#broker.reset(reset.email, reset.token, ctx.body.password)).ok) {
       throw new ValidationError({ password: ['This reset link is invalid or has expired.'] });
     }
     ctx.cookies.delete(RESET_COOKIE, { path: this.#router.url('auth.password.reset') });
@@ -174,7 +176,7 @@ export class ResetPasswordController extends Controller {
 }
 ```
 
-`reset()` returns the user, or `undefined` for every failure alike: an unknown address, a wrong token, one used before, or one
+`reset()` returns a `Result`: `ok` with the user, or an `err` of the one kind `invalid-token` for every failure alike: an unknown address, a wrong token, one used before, or one
 older than `AUTH_RESET_EXPIRE` minutes, 60 by default. A token works once. Two requests with the same token cannot both succeed:
 the token is deleted with a condition on its hash, and only one delete finds it.
 
@@ -205,15 +207,17 @@ bind your own in a provider:
 
 ```ts
 interface PasswordResetTokenStore {
-  create(email: string, throttleSeconds: number): Promise<string | undefined>;
-  consume(email: string, token: string, maxAgeSeconds: number): Promise<boolean>;
+  create(email: string, throttleSeconds: number): Promise<Result<string, { kind: 'throttled' }>>;
+  consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { kind: 'invalid-token' }>>;
   forget(email: string): Promise<void>;
   prune(maxAgeSeconds: number): Promise<number>;
 }
 ```
 
-`create()` returns `undefined` while the last token of the address is younger than `throttleSeconds`. `consume()` returns `true`
-only for the current, fresh token of the address, and uses it up in the same step. Store a hash of the token, never the token.
+`create()` returns an `err` of kind `throttled` while the last token of the address is younger than `throttleSeconds`. `consume()`
+returns `ok` only for the current, fresh token of the address, and uses it up in the same step; every other case is one `err` of
+kind `invalid-token`. A store that deletes an expired token before it answers must return `commitAnyway(err(…))`, so the deletion
+survives a [transaction that returns the err](transactions.md#returning-an-err). Store a hash of the token, never the token.
 
 A `password_reset_tokens` table of your own needs what the starter kit's migration gives it: `email` as its primary key, so an
 address never has two rows, and `token_hash` as a 64-character `secret()` column.
