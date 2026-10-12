@@ -183,7 +183,8 @@ export class LoginController extends Controller {
       await this.#events.dispatch(new Lockout(email, ctx.ip));
       throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds: await this.#limiter.availableIn(key) })] }, { email });
     }
-    if (!(await this.#auth.attempt(email, password, { remember }))) {
+    const signedIn = await this.#auth.attempt(email, password, { remember });
+    if (!signedIn.ok) {
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
     await this.#limiter.clear(key);
@@ -192,7 +193,8 @@ export class LoginController extends Controller {
 }
 ```
 
-`attempt(identifier, password, { remember })` returns the user, or `undefined`. An unknown address and a wrong password give the
+`attempt(identifier, password, { remember })` returns a [`Result`](errors.md#results): `ok` with the user, or an `err` of kind
+`invalid-credentials`. There is only that one kind: an unknown address, a wrong password and an account without a password give the
 same answer in the same time: for an unknown address, the hasher spends as long on a check that always fails. Neither the answer
 nor its duration tells a stranger which addresses have an account. When the stored hash was made with other costs than the
 configured ones, `attempt()` hashes the password again and stores the new hash. It also notes the time, so the password counts as

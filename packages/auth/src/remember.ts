@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, token } from '@marmeon/core';
+import { Clock, commitAnyway, err, ok, token, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link RememberTokenTable}. */
@@ -22,12 +22,18 @@ export interface RememberTokenTable {
   updated_at: Generated<string | Date>;
 }
 
-/** What a remember-me cookie proved. */
-export type RememberResult =
-  /** Valid: the user, and the rotated cookie value — `undefined` when a concurrent request already rotated it. */
-  | { readonly kind: 'valid'; readonly userId: number | string; readonly cookie: string | undefined; readonly expiresAt: Date }
-  /** An old validator came back after rotation: the cookie was copied. Every token of the user is gone now. */
-  | { readonly kind: 'stolen'; readonly userId: number | string };
+/** What a valid remember-me cookie proved: the user, and the rotated cookie value — `undefined` when a concurrent request already rotated it. */
+export interface RememberedDevice {
+  readonly userId: number | string;
+  readonly cookie: string | undefined;
+  readonly expiresAt: Date;
+}
+
+/**
+ * Why a remember-me cookie did not sign anyone in. `invalid` covers unknown, malformed and expired tokens alike;
+ * `stolen` means an old validator came back after rotation: the cookie was copied, and every token of the user is gone now.
+ */
+export type RememberTokenError = { readonly kind: 'invalid' } | { readonly kind: 'stolen'; readonly userId: number | string };
 
 /**
  * Remember-me tokens, one per device: `<selector>.<validator>` in the cookie, the selector in
@@ -38,8 +44,8 @@ export type RememberResult =
 export interface RememberTokenStore {
   /** A new token for `userId`; returns the cookie value. */
   create(userId: number | string, expiresAt: Date): Promise<string>;
-  /** Checks a cookie value and rotates it — `undefined` for unknown, malformed or expired tokens. */
-  consume(cookie: string): Promise<RememberResult | undefined>;
+  /** Checks a cookie value and rotates it — an `err` for unknown, malformed or expired tokens (`invalid`) and for a copied cookie (`stolen`). The revocation of a `stolen` token and the deletion of an expired one must commit even inside a transaction that returns the err (`commitAnyway`). */
+  consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
   /** Drops the token of this cookie (sign-out on this device). */
   forget(cookie: string): Promise<void>;
   /** Drops every token of the user — except the one of `except` (the current device). */
@@ -75,20 +81,20 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     return `${selector}.${validator}`;
   }
 
-  async consume(cookie: string): Promise<RememberResult | undefined> {
+  async consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>> {
     const parts = parse(cookie);
-    if (!parts) return undefined; // malformed: no query
+    if (!parts) return err({ kind: 'invalid' }); // malformed: no query
     const db = this.#db();
     const row = await db
       .selectFrom(REMEMBER_TABLE)
       .select((eb) => ['id', 'user_id', secret(eb, 'validator_hash'), secret(eb, 'previous_validator_hash'), 'rotated_at', 'expires_at'])
       .where('selector', '=', parts.selector)
       .executeTakeFirst();
-    if (!row) return undefined;
+    if (!row) return err({ kind: 'invalid' });
     const expiresAt = new Date(row.expires_at);
     if (expiresAt.getTime() <= this.#clock.now()) {
       await db.deleteFrom(REMEMBER_TABLE).where('id', '=', row.id).execute();
-      return undefined;
+      return commitAnyway(err({ kind: 'invalid' })); // the delete stays when an ambient transaction would roll back an err
     }
 
     const presented = sha256(parts.validator);
@@ -103,15 +109,16 @@ export class DatabaseRememberTokens implements RememberTokenStore {
         .where(sql<boolean>`${sql.ref('validator_hash')} = ${row.validator_hash}`)
         .executeTakeFirst();
       const rotated = result.numUpdatedRows > 0n;
-      return { kind: 'valid', userId: row.user_id, cookie: rotated ? `${parts.selector}.${validator}` : undefined, expiresAt };
+      return ok({ userId: row.user_id, cookie: rotated ? `${parts.selector}.${validator}` : undefined, expiresAt });
     }
     const rotatedAt = row.rotated_at === null ? 0 : new Date(row.rotated_at).getTime();
     if (row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash) && this.#clock.now() - rotatedAt < GRACE_MS) {
-      return { kind: 'valid', userId: row.user_id, cookie: undefined, expiresAt }; // the other tab's response carries the new cookie
+      return ok({ userId: row.user_id, cookie: undefined, expiresAt }); // the other tab's response carries the new cookie
     }
     // A validator that is neither current nor just rotated: someone else used this cookie first.
     await this.forgetUser(row.user_id);
-    return { kind: 'stolen', userId: row.user_id };
+    // The revocation must survive an ambient transaction that would roll back on an err.
+    return commitAnyway(err({ kind: 'stolen', userId: row.user_id }));
   }
 
   async forget(cookie: string): Promise<void> {

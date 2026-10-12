@@ -1,4 +1,4 @@
-import { createApplication, defineModule, inTransaction, listen, type Container } from '@marmeon/core';
+import { createApplication, defineModule, err, inTransaction, listen, type Container } from '@marmeon/core';
 import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -72,8 +72,8 @@ class LoginController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { email, password, remember } = (await ctx.input()) as { email: string; password: string; remember?: boolean };
-    const user = await this.#auth.attempt(email, password, { remember: remember === true });
-    return user ? this.redirect().intended().route('home') : Response.json({ message: 'These credentials do not match our records.' }, { status: 422 });
+    const signedIn = await this.#auth.attempt(email, password, { remember: remember === true });
+    return signedIn.ok ? this.redirect().intended().route('home') : Response.json({ message: 'These credentials do not match our records.' }, { status: 422 });
   }
 }
 
@@ -293,7 +293,7 @@ describe('Auth (session guard)', () => {
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
-      expect(await auth.attempt(email, 'wrong')).toBeUndefined();
+      expect(await auth.attempt(email, 'wrong')).toStrictEqual(err({ kind: 'invalid-credentials' }));
       return performance.now() - started;
     };
     const known: number[] = [];
@@ -305,6 +305,36 @@ describe('Auth (session guard)', () => {
     const ratio = median(unknown) / median(known);
     expect(ratio).toBeGreaterThan(0.5); // wide bounds: parallel test workers add noise; skipping the hash would be ~0.02
     expect(ratio).toBeLessThan(2);
+  });
+
+  it('answers with one error for an unknown identifier, a wrong password and an account without a password', async () => {
+    const users = new MemoryUsers();
+    const hasher = new PasswordHasher();
+    users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
+    users.rows.set(2, { user: { id: 2, name: 'Link', email: 'link@example.com' }, hash: null });
+    const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
+    const dispatched: unknown[] = [];
+    const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never);
+    const answers = [
+      await auth.attempt('ada@example.com', 'wrong'),
+      await auth.attempt('nobody@example.com', 'secret'),
+      await auth.attempt('link@example.com', 'secret'),
+    ];
+    for (const answer of answers) {
+      expect(answer).toStrictEqual(err({ kind: 'invalid-credentials' }));
+      expect(Object.keys((answer as { error: object }).error)).toEqual(['kind']); // no field says which case it was
+    }
+    expect(dispatched.filter((event) => event instanceof Failed)).toHaveLength(3);
+    const outcome = answers[0]!;
+    if (!outcome.ok) {
+      switch (outcome.error.kind) {
+        case 'invalid-credentials':
+          break;
+        default:
+          outcome.error.kind satisfies never;
+      }
+    }
   });
 
   it('rehashes a password made with other costs when its owner signs in', async () => {

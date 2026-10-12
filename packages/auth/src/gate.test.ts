@@ -1,4 +1,4 @@
-import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { createApplication, defineModule, err, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import type { RouteBinder } from '@marmeon/router';
@@ -137,7 +137,7 @@ const provider: UserProvider = {
   findForLogin: async () => undefined,
   updatePasswordHash: async () => {},
 };
-const noRemember: RememberTokenStore = { create: async () => '', consume: async () => undefined, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
+const noRemember: RememberTokenStore = { create: async () => '', consume: async () => err({ kind: 'invalid' }), forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
 /** API tokens in memory: the plain text is `<user>/<abilities>` — what the token guard needs, nothing more. */
 const memoryTokens: AccessTokenStore = {

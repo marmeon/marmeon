@@ -1,5 +1,5 @@
 import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { EventDispatcher, Logger } from '@marmeon/core';
+import { err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
@@ -67,8 +67,8 @@ export interface LoginOptions {
  * the `web` group: sign in with `attempt`/`login`, out with `logout`, ask with `user`/`check`/`id`.
  *
  * ```ts
- * const user = await this.#auth.attempt(ctx.body.email, ctx.body.password, { remember: ctx.body.remember });
- * if (!user) throw new ValidationError({ email: ['These credentials do not match our records.'] });
+ * const signedIn = await this.#auth.attempt(ctx.body.email, ctx.body.password, { remember: ctx.body.remember });
+ * if (!signedIn.ok) throw new ValidationError({ email: ['These credentials do not match our records.'] });
  * ```
  */
 export class Auth {
@@ -115,17 +115,18 @@ export class Auth {
   }
 
   /**
-   * Checks the credentials and signs the user in. `undefined` for an unknown identifier and for a
-   * wrong password alike — in the same time (`dummyVerify`), so neither the answer nor its duration
+   * Checks the credentials and signs the user in: `ok` with the user, or an `err` of kind `invalid-credentials`.
+   * See `docs/errors.md#results`. There is one kind for an unknown identifier, a wrong password and an
+   * account without a password alike — in the same time (`dummyVerify`), so neither the answer nor its duration
    * tells which addresses have an account. Rehashes the password when the costs changed.
    */
-  async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<AuthUser | undefined> {
+  async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<Result<AuthUser, { readonly kind: 'invalid-credentials' }>> {
     const credentials = await this.#check(identifier, password);
-    if (!credentials) return undefined;
+    if (!credentials) return err({ kind: 'invalid-credentials' });
     // The fingerprint from the account as findById() sees it — what every later request compares with (the session key included).
     await this.#login(await this.#credentials(credentials.user), options, 'attempt');
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now()); // the password was just typed
-    return credentials.user;
+    return ok(credentials.user);
   }
 
   /** Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the current hash. */
@@ -301,20 +302,21 @@ export class Auth {
     // reach the browser (the next request would present the old one — "stolen"). The page's request signs in.
     if (!cookie || this.#session.readOnly) return undefined;
     const result = await this.#remember.consume(cookie);
-    if (result?.kind !== 'valid') {
+    if (!result.ok) {
       this.#cookies.delete(this.#config.rememberCookie);
-      if (result?.kind === 'stolen') {
-        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens of the user were revoked', { user: result.userId });
+      if (result.error.kind === 'stolen') {
+        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens of the user were revoked', { user: result.error.userId });
       }
       return undefined;
     }
-    const found = await this.#users.findById(result.userId as never);
+    const device = result.value;
+    const found = await this.#users.findById(device.userId as never);
     if (!found) {
-      await this.#remember.forget(result.cookie ?? cookie);
+      await this.#remember.forget(device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
-    if (result.cookie) this.#setCookie(result.cookie, result.expiresAt);
+    if (device.cookie) this.#setCookie(device.cookie, device.expiresAt);
     await this.#login(found, {}, 'remember');
     return found.user;
   }

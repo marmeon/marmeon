@@ -53,8 +53,8 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     expect((await db.selectFrom(ACCESS_TOKEN_TABLE).select('name').orderBy('id').execute()).map((row: { name: string }) => row.name)).toEqual(['valid', 'no expiry']);
     // The survivors still work; the pruned ones are gone for good.
     expect(await resets.consume('fresh@example.com', fresh!, 3600)).toBe(true);
-    expect(await remember.consume(cookie)).toMatchObject({ kind: 'valid', userId: 2 });
-    expect(await remember.consume(oldCookie)).toBeUndefined();
+    expect(await remember.consume(cookie)).toMatchObject({ ok: true, value: { userId: 2 } });
+    expect(await remember.consume(oldCookie)).toMatchObject({ ok: false, error: { kind: 'invalid' } });
     expect(await access.find(valid.plainText)).toBeDefined();
     expect(await access.find(forever.plainText)).toBeDefined();
     expect(await access.find(expired.plainText)).toBeUndefined();

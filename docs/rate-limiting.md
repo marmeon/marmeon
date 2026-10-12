@@ -175,7 +175,8 @@ export class LoginController extends Controller {
       const seconds = await this.#limiter.availableIn(key);
       throw new ValidationError({ email: [`Too many attempts. Try again in ${seconds} seconds.`] }, { email });
     }
-    if (!(await this.#auth.attempt(email, password))) {
+    const signedIn = await this.#auth.attempt(email, password);
+    if (!signedIn.ok) {
       throw new ValidationError({ email: ['These credentials do not match our records.'] }, { email });
     }
     await this.#limiter.clear(key);

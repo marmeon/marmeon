@@ -88,7 +88,8 @@ class LoginController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { email, password } = (await ctx.input()) as { email: string; password: string };
-    return { user: (await this.#auth.attempt(email, password))?.id ?? null };
+    const signedIn = await this.#auth.attempt(email, password);
+    return { user: signedIn.ok ? signedIn.value.id : null };
   }
 }
 
