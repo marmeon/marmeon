@@ -26,7 +26,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
         expect(isHistoryState(JSON.parse(state))).toBe(true);
       }
       // With the Navigation API, `history.state` stays null: the entry's state is the Navigation API's.
-      if (path === 'navigation') for (const entry of win.entries) expect(entry.history).toBe('null');
+      if (path !== 'history') for (const entry of win.entries) expect(entry.history).toBe('null');
       expect(JSON.parse(win.current.state)).toMatchObject({ component: 'auth/AccessTokens', url: '/settings/tokens', scroll: { x: 0, y: 0 } });
     });
 

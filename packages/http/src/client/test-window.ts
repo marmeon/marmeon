@@ -101,11 +101,14 @@ export class FakeChannels {
   }
 }
 
-/** Which way the navigator writes the history in a fake tab: the Navigation API, or the History fallback without it. */
-export type HistoryPath = 'navigation' | 'history';
+/**
+ * Which way the navigator writes the history in a fake tab: the Navigation API, the History fallback without it, or the
+ * Navigation API as WebKit has it — a traversal's destination does not carry its state (`getState()` is `undefined`).
+ */
+export type HistoryPath = 'navigation' | 'history' | 'webkit';
 
-/** Both ways — a suite that runs on each (`describe.each(PATHS)`). */
-export const PATHS: readonly HistoryPath[] = ['navigation', 'history'];
+/** All ways — a suite that runs on each (`describe.each(PATHS)`). */
+export const PATHS: readonly HistoryPath[] = ['navigation', 'history', 'webkit'];
 
 let nextKey = 0;
 
@@ -209,9 +212,13 @@ export class FakeNavigation extends EventTarget implements NavigationLike {
   /** Every `navigate` event fired, in order. */
   readonly events: FakeNavigateEvent[] = [];
 
-  constructor(win: FakeWindow) {
+  /** WebKit: the destination of a traversal has no state (the entry it goes to has). */
+  readonly #stateless: boolean;
+
+  constructor(win: FakeWindow, stateless = false) {
     super();
     this.#win = win;
+    this.#stateless = stateless;
   }
 
   #view(entry: FakeEntry): NavigationEntry & { readonly url: string; readonly sameDocument: boolean; readonly id: string } {
@@ -306,7 +313,7 @@ export class FakeNavigation extends EventTarget implements NavigationLike {
       userInitiated,
       info: undefined,
       hashChange: isHashChange(win.current.url, entry.url),
-      destination: this.#view(entry),
+      destination: this.#stateless ? { ...this.#view(entry), getState: () => undefined } : this.#view(entry),
     });
     if (event.defaultPrevented) {
       this.#refusing = true;
@@ -432,7 +439,7 @@ export class FakeWindow implements NavigatorWindow {
     this.entries.push(new FakeEntry(url));
     this.shownUrls.push(url);
     if (channels) this.BroadcastChannel = channels.constructorFor(this);
-    this.navigation = path === 'navigation' ? new FakeNavigation(this) : undefined;
+    this.navigation = path === 'history' ? undefined : new FakeNavigation(this, path === 'webkit');
     this.index = 0;
     const self = this;
     this.document = {

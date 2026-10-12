@@ -886,7 +886,8 @@ export class Navigator {
     const navigate = event as unknown as NavigateEvent;
     const core = this.#core;
     if (navigate.info === OWN) return navigate.intercept(MANUAL);
-    const state: unknown = navigate.destination.getState();
+    // WebKit leaves a traversal's destination without its state; the entry it goes to has it (same entry, same invariant).
+    const state: unknown = navigate.destination.getState() ?? (navigate.navigationType === 'traverse' ? core.history.entryState(navigate.destination.key) : undefined);
     if (navigate.navigationType !== 'traverse' || !navigate.canIntercept || core.left || !isHistoryState(state) || state.key === core.top()) return;
     // A traversal a feature caused itself (a layer closing by going back): the visit under way is not cancelled by it.
     const own = this.#first('own') === true;

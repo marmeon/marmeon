@@ -75,6 +75,23 @@ describe('the navigator on the Navigation API — only its own navigations', () 
     expect(win.loads).toEqual([`traverse ${ORIGIN}/a`]);
   });
 
+  it('follows Back/Forward in WebKit, whose traversal destination has no state — read from the entry it goes to', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`, undefined, 'webkit');
+    win.handler = (requested) => pageResponse(page(new URL(requested).pathname, { at: new URL(requested).pathname }));
+    const { navigator, visible } = boot(win, page('/a', { at: '/a' }));
+    await navigator.visit('/b');
+    win.back();
+    await settled();
+    const back = win.navigation!.events.at(-1)!;
+    expect([back.navigationType, back.destination.getState(), back.intercepted.length]).toEqual(['traverse', undefined, 1]);
+    expect(visible().url).toBe('/a');
+    expect(win.loads).toEqual([]);
+    win.forward();
+    await settled();
+    expect(visible().url).toBe('/b');
+    expect(win.loads).toEqual([]);
+  });
+
   it('follows Back/Forward to its own entries from memory — intercepted, its scroll restored, the browser’s loading indicator only while it runs', async () => {
     const { win, navigator, visible } = tab();
     win.scrollTo(0, 640);

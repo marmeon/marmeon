@@ -77,6 +77,7 @@ export interface NavigationLike {
   navigate(url: string, options: { state: unknown; history: 'push' | 'replace'; info: unknown }): unknown;
   updateCurrentEntry(options: { state: unknown }): void;
   traverseTo(key: string): unknown;
+  entries(): NavigationEntry[];
   /** The navigation under way (its handler runs): the entry it came from — a Back's direction. */
   readonly transition?: { readonly from: NavigationEntry } | null;
   addEventListener(type: 'navigate', listener: (event: Event) => void): void;
@@ -137,6 +138,11 @@ export class HistoryWriter {
     const { navigation, history } = this.#window;
     // Without the Navigation API the History fallback writes its entries with `pushState`, so `history.state` is the entry.
     return navigation ? navigation.currentEntry?.getState() : history.state;
+  }
+
+  /** The state of the Navigation API entry with `key` — undefined without the API or the entry. */
+  entryState(key: string): unknown {
+    return this.#window.navigation?.entries().find((entry) => entry.key === key)?.getState();
   }
 
   /**
