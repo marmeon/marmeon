@@ -28,11 +28,15 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
   // document (before showModal()), and the browser scrolls it into view — to the end of the page. Put back below. Read in the
   // commit itself (insertion effects run before the layout phase that autofocuses), not while rendering: a transition renders earlier.
   const scroll = useRef<{ x: number; y: number } | null>(null);
+  // The field React focuses for `autoFocus` is noted from the same moment: over an open modal dialog this one is inert, the
+  // focus is refused and nothing else shows which field the view chose.
   useInsertionEffect(() => {
     scroll.current = { x: window.scrollX, y: window.scrollY };
+    watchFocus();
   }, []);
   // The `style` prop only once mounted: React writes it through the CSSOM then — never as a server-rendered attribute.
   const [mounted, setMounted] = useState(false);
+  const chosen = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     setMounted(true);
     const element = dialog.current;
@@ -40,12 +44,25 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
     if (typeof element.showModal === 'function' && !isModal(element)) {
       // React focused an `autoFocus` field already (it never writes the attribute): showModal() would move the focus to
       // the first focusable element instead — the destructive button of a confirmation, say. It stays where the view put it.
-      const chosen = element.contains(element.ownerDocument.activeElement) ? element.ownerDocument.activeElement : null;
+      const active = element.ownerDocument.activeElement;
+      // Not refused (no modal layer beneath) the active element is the last one focused; refused, the record is all there is. Kept
+      // for a re-run of this effect (a Suspense boundary revealing again), which finds nothing newer.
+      const recorded = focused.get(element);
+      const remembered = chosen.current;
+      const chosenNow =
+        active && element.contains(active) && active !== element
+          ? active
+          : recorded?.isConnected && element.contains(recorded)
+            ? recorded
+            : remembered?.isConnected && element.contains(remembered)
+              ? remembered
+              : null;
+      chosen.current = chosenNow instanceof HTMLElement ? chosenNow : null;
       // Server-rendered (a deep link) it is open, but not modal yet.
       if (element.open) element.close();
       name(element, id);
       element.showModal();
-      if (chosen instanceof HTMLElement && chosen !== element.ownerDocument.activeElement) chosen.focus();
+      if (chosen.current && chosen.current !== element.ownerDocument.activeElement) chosen.current.focus();
       // The page beneath stays where it was, whatever scrolled it while the dialog was not modal yet. Unconditionally: a smooth
       // scroll has not moved yet, and an instant one cancels it.
       if (scroll.current) window.scrollTo({ left: scroll.current.x, top: scroll.current.y, behavior: 'instant' });
@@ -101,6 +118,32 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
       </button>
     </dialog>
   );
+}
+
+let wrapper: HTMLElement['focus'] | undefined;
+const focused = new WeakMap<Element, HTMLElement>();
+
+/**
+ * Notes, per dialog, the last element that gets a `focus()` call during this commit — React's `autoFocus` is such a call, and the
+ * browser refuses it on an inert element (a layer over an open modal one), leaving no other trace of the view's choice. Installed
+ * by the insertion effect, taken down in a microtask: the layout phase between is synchronous, so each dialog reads its record
+ * there. Insertion and layout effects do not always run in pairs (Suspense, Activity), hence no counting.
+ */
+function watchFocus(): void {
+  if (wrapper) return;
+  const native = HTMLElement.prototype.focus;
+  const own = (wrapper = function focus(this: HTMLElement, options?: FocusOptions) {
+    const owner = this.closest('dialog');
+    // Outside the install window (another wrapper sits on top of ours now) it only passes through.
+    if (owner && wrapper === own) focused.set(owner, this);
+    return native.call(this, options);
+  });
+  HTMLElement.prototype.focus = own;
+  queueMicrotask(() => {
+    // Only our own: something else may have wrapped it since.
+    if (HTMLElement.prototype.focus === own) HTMLElement.prototype.focus = native;
+    wrapper = undefined;
+  });
 }
 
 /**

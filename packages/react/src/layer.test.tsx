@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 import { LAYER_CLOSE_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject, type RouteManifest } from '@marmeon/http/page';
-import { act } from 'react';
+import { Suspense, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, loadLayerStack, usePage, useRouter } from './app.tsx';
 import { Head } from './head.tsx';
 import { Island } from './island.tsx';
-import { useLayer } from './layer.tsx';
+import { LayerDialog } from './layer-dialog.tsx';
+import { useLayer, type LayerState } from './layer.tsx';
 import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
@@ -56,6 +57,9 @@ function Edit({ name, errors = {} }: { name: string; errors?: Record<string, str
       <button type="button" data-testid="close" onClick={() => void layer.close()}>
         Cancel
       </button>
+      <Link route="rename" layer data-testid="rename">
+        Rename
+      </Link>
       <Link route="confirm" layer data-testid="confirm">
         Remove
       </Link>
@@ -80,6 +84,18 @@ function Confirm() {
 }
 Confirm.layer = 'slideover' as const;
 
+function Rename() {
+  return (
+    <section>
+      <h2>Rename</h2>
+      <button type="button" data-testid="delete">
+        Delete
+      </button>
+      <input data-testid="rename-field" autoFocus />
+    </section>
+  );
+}
+
 function Done() {
   return (
     <section>
@@ -97,11 +113,12 @@ function AsPage() {
   return <p data-testid="as-page">{String(layer.isLayer)}</p>;
 }
 
-const pages: Record<string, PageComponent> = { Profile, Edit, Confirm, SignIns, AsPage, Done };
+const pages: Record<string, PageComponent> = { Profile, Edit, Confirm, Rename, SignIns, AsPage, Done };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   edit: { method: 'get', path: '/users/1/edit' },
   confirm: { method: 'get', path: '/users/1/confirm' },
+  rename: { method: 'get', path: '/users/1/rename' },
   'sign-ins': { method: 'get', path: '/islands/sign-ins' },
 };
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
@@ -128,6 +145,7 @@ beforeEach(() => {
     const { pathname } = new URL(url, location.href);
     if (pathname === '/islands/sign-ins') return respond(page('SignIns', pathname), { [REGION_HEADER]: 'island' });
     if (pathname === '/users/1/edit') return respond(layer('Edit', pathname, { name: 'Ada' }));
+    if (pathname === '/users/1/rename') return respond(layer('Rename', pathname));
     if (pathname === '/users/1/confirm') return respond(layer('Confirm', pathname));
     if (pathname === '/users/1' && init.method === 'PUT') return respond(layer('Edit', '/users/1/edit', { name: 'Ada', errors: { name: 'Too short.' } }));
     return new Response('not found', { status: 404 });
@@ -422,6 +440,114 @@ describe('Layers in React', () => {
     await act(async () => history.back());
     await wait(30);
     expect(document.body.style.position).toBe('');
+  });
+
+  it('an autoFocus field of a layer stacked over a modal one keeps the focus although the browser refuses it before showModal()', async () => {
+    // A browser treats everything outside the open modal dialog as inert: React's autoFocus on the new, not yet modal
+    // dialog's field fails, and showModal() then focuses the first focusable element. happy-dom models neither.
+    const modal = new WeakSet<Element>();
+    const showModal = HTMLDialogElement.prototype.showModal;
+    const focus = HTMLElement.prototype.focus;
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) {
+      showModal.call(this);
+      modal.add(this);
+      this.querySelector<HTMLElement>('button, input')?.focus();
+    });
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      const dialog = this.closest('dialog');
+      const inert = dialog && !modal.has(dialog) && [...document.querySelectorAll('dialog')].some((other) => other !== dialog && modal.has(other));
+      if (!inert) focus.call(this, options);
+    });
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    await click('[data-testid="edit"]');
+    await wait();
+    await click('[data-testid="rename"]');
+    await wait();
+    expect(dialogs()).toHaveLength(2);
+    expect(document.activeElement).toBe($('[data-testid="rename-field"]'));
+    // The frame's temporary wrapper around focus() is gone again (restoreAllMocks would hide a leaked one).
+    expect(HTMLElement.prototype.focus).toBe(spy);
+    // Closing it gives the focus back to the link that opened it.
+    await act(async () => history.back());
+    await wait(30);
+    expect(dialogs()).toHaveLength(1);
+    expect(document.activeElement).toBe($('[data-testid="rename"]'));
+  });
+
+  it('without a modal layer beneath, the last element focused wins — as in the browser', async () => {
+    const Two = () => (
+      <>
+        <h2>Two</h2>
+        <input data-testid="first" autoFocus />
+        <input data-testid="second" autoFocus />
+      </>
+    );
+    const state = { key: 'two', depth: 1, isLayer: true, close: async () => {} } as unknown as LayerState;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <LayerDialog layer={state} variant="modal">
+          <Two />
+        </LayerDialog>,
+      );
+    });
+    await wait();
+    expect(document.activeElement).toBe($('[data-testid="second"]'));
+  });
+
+  it('a layer that suspends again keeps its field and leaves focus() as it was', async () => {
+    const before = HTMLElement.prototype.focus;
+    let release: (() => void) | undefined;
+    const Gate = ({ blocked }: { blocked: boolean }) => {
+      if (blocked) throw new Promise<void>((resolve) => (release = resolve));
+      return <input data-testid="gated" autoFocus />;
+    };
+    const state = { key: 'gate', depth: 1, isLayer: true, close: async () => {} } as unknown as LayerState;
+    const tree = (blocked: boolean) => (
+      <Suspense fallback={<p data-testid="fallback">…</p>}>
+        <LayerDialog layer={state} variant="modal">
+          <h2>Gate</h2>
+          <button type="button">Delete</button>
+          <Gate blocked={blocked} />
+        </LayerDialog>
+      </Suspense>
+    );
+    await act(async () => {
+      root = createRoot(container);
+      root.render(tree(false));
+    });
+    await wait();
+    expect(document.activeElement).toBe($('[data-testid="gated"]'));
+    await act(async () => root.render(tree(true)));
+    expect(release).toBeDefined();
+    expect($('[data-testid="fallback"]')).not.toBeNull();
+    // The browser drops the focus from a hidden field.
+    await act(async () => void (document.activeElement as HTMLElement | null)?.blur());
+    await act(async () => {
+      root.render(tree(false));
+      release!();
+    });
+    await wait();
+    expect($('[data-testid="fallback"]')).toBeNull();
+    expect(document.activeElement).toBe($('[data-testid="gated"]'));
+    expect(HTMLElement.prototype.focus).toBe(before);
+
+    // Two dialogs in one commit: the wrapper is installed once and taken down again.
+    await act(async () => {
+      root.render(
+        <>
+          <LayerDialog layer={{ ...state, key: 'a' }} variant="modal">
+            <h2>A</h2>
+          </LayerDialog>
+          <LayerDialog layer={{ ...state, key: 'b' }} variant="modal">
+            <h2>B</h2>
+          </LayerDialog>
+        </>,
+      );
+    });
+    await wait();
+    expect(HTMLElement.prototype.focus).toBe(before);
   });
 
   it('an answer with another view replaces the layer in place: the dialog stays (never hidden while the view loads), named anew', async () => {
