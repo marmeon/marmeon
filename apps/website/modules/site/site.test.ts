@@ -116,6 +116,10 @@ describe('the shared chrome', () => {
     const footer = body.slice(body.indexOf('<footer'));
     for (const href of ['/docs', '/docs/security-policy', '/docs/releases', 'https://github.com/marmeon/marmeon/blob/main/LICENSE']) expect(footer).toContain(`href="${href}"`);
     expect(footer).toContain('MIT licence');
+    const legal = footer.replaceAll('<!-- -->', '');
+    expect(legal).toContain('<a href="https://bespokecode.de" rel="noopener">BespokeCode</a>');
+    expect(legal).not.toContain('nofollow');
+    expect(legal).toContain('Made with <span role="img" aria-label="love">❤️</span> in Munich');
   }, SSR_TEST_TIMEOUT);
 
   it('renders no copy button on the server: it appears with JavaScript only', async () => {

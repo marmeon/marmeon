@@ -28,6 +28,8 @@ interface Allowance {
 export const ALLOWED: readonly Allowance[] = [
   // The company: the LICENSE holder and every place that names it.
   { pattern: new RegExp(`\\b${OLD_NAME}Code\\b`, 'g') },
+  // The company's website, as the footer, README.md, CONTRIBUTING.md and the docs link it.
+  { pattern: new RegExp(`https://${OLD_NAME.toLowerCase()}code\\.de(?![\\w.-])`, 'g') },
 ];
 
 export interface SourceFile {
@@ -403,7 +405,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled.`,
     );
   }
 }

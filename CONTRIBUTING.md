@@ -9,7 +9,7 @@ documentation is under `docs/` ([Writing documentation](#writing-documentation))
 
 Marmeon takes contributions under the [Developer Certificate of Origin 1.1](https://developercertificate.org/) (DCO), as the
 Linux kernel and Node.js do — no contributor licence agreement. With the sign-off you certify that you wrote the change or have
-the right to submit it under the project's licence (MIT, `LICENSE`; copyright BespokeCode). Every commit of a pull
+the right to submit it under the project's licence (MIT, `LICENSE`; copyright [BespokeCode](https://bespokecode.de)). Every commit of a pull
 request carries a `Signed-off-by` line with your real name and the e-mail of the commit:
 
 ```text
@@ -196,7 +196,7 @@ A part of `pnpm run ci` (`scripts/check-source.ts`, its tests in `scripts/ci.tes
 checked over every file of the repository — tracked, or new and not ignored. Exit 1 lists every hit as `path:line: text`.
 
 1. **The old name is gone**: no file and no path says the framework's name from before 0.1.0, in any letter case.
-   Allowed is the company name only (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`):
+   Allowed is the company name and its website's URL only (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`):
    nothing was released under the old name, so there is no rename hint. Code that must spell the old name — a test — builds it
    from parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
 2. **No app installs a validation engine**: apps, the starter's template, the `make:auth` stubs, scripts and what the `make:*`

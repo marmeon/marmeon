@@ -1,5 +1,5 @@
 import { Link } from '@marmeon/react';
-import { DOCS_URL, GITHUB_URL, LICENSE_URL, RELEASE_POLICY_URL, SECURITY_POLICY_URL } from '../links.ts';
+import { COMPANY_URL, DOCS_URL, GITHUB_URL, LICENSE_URL, RELEASE_POLICY_URL, SECURITY_POLICY_URL } from '../links.ts';
 import { Wordmark } from './Wordmark.tsx';
 
 export function SiteFooter() {
@@ -14,7 +14,15 @@ export function SiteFooter() {
             <a href={LICENSE_URL} rel="noopener">
               MIT licence
             </a>{' '}
-            · © BespokeCode
+            · ©{' '}
+            <a href={COMPANY_URL} rel="noopener">
+              BespokeCode
+            </a>{' '}
+            · Made with{' '}
+            <span role="img" aria-label="love">
+              ❤️
+            </span>{' '}
+            in Munich
           </span>
         </div>
         <nav aria-label="Footer" className="site-footer-nav">

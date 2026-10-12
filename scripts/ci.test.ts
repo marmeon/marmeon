@@ -61,7 +61,7 @@ describe('check:source — the old name is gone', () => {
     ]);
   });
 
-  it('allows the old name only as the company name — no rename hint, not even in README.md or UPGRADING.md', () => {
+  it('allows the old name only as the company name and its website — no rename hint, not even in README.md or UPGRADING.md', () => {
     const hint = `Marmeon was called ${old}Core up to 0.1.0.`;
     expect(oldNameHits([{ path: 'packages/core/LICENSE', text: `MIT License\n\nCopyright (c) 2026 ${old}Code\n` }])).toEqual([]);
     const hits = oldNameHits([
@@ -71,6 +71,9 @@ describe('check:source — the old name is gone', () => {
     ]);
     // The hits as the message too: Vitest shortens the list in its own.
     expect(hits, `found: ${hits.join(' | ') || 'nothing'}`).toEqual([`README.md:1: ${hint}`, `UPGRADING.md:1: **${hint}**`, `docs/versioning.md:1: ${hint}`]);
+    expect(oldNameHits([{ path: 'README.md', text: `[${old}Code](https://${lower}code.de)` }])).toEqual([]);
+    expect(oldNameHits([{ path: 'a.md', text: `@${lower}code.de/core` }])).toHaveLength(1);
+    expect(oldNameHits([{ path: 'a.md', text: `${lower}code.de-legacy` }])).toHaveLength(1);
     // The company name does not cover another mention on its line.
     expect(oldNameHits([{ path: 'LICENSE', text: `${old}Code and ${old}Core` }])).toHaveLength(1);
   });

@@ -37,6 +37,7 @@ export default defineDocs({
     {
       title: 'Prologue',
       pages: [
+        { slug: 'why-marmeon', label: 'Why Marmeon' },
         { slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true },
         { slug: 'releases', label: 'Release Policy' },
         { slug: 'contributing', label: 'Contribution Guide', file: 'CONTRIBUTING.md' },

@@ -27,7 +27,7 @@ export default function Show({ note }: PageProps<ShowNoteController>) {
 }
 ```
 
-Status: 0.1.0 — prepared, not published yet. MIT licence (`LICENSE`, copyright BespokeCode). Node 26.10 or newer, pnpm 12.
+Status: 0.1.0 — prepared, not published yet. MIT licence (`LICENSE`, copyright [BespokeCode](https://bespokecode.de)). Node 26.10 or newer, pnpm 12.
 
 ## Principles
 
