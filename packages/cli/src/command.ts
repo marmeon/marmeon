@@ -42,23 +42,29 @@ export interface CommandClass {
   readonly hidden?: boolean;
 }
 
-/** Two different commands share a name — the app cannot tell which one `marmeon <name>` means. */
+/** Names `main.ts` handles before it looks anything up. */
+const RESERVED = new Set(['list', 'help']);
+
+/** A command name is taken twice, or is one marmeon answers itself (`list`, `help`) — the app cannot tell which command `marmeon <name>` means. */
 export class CommandSetupError extends Error {
   override name = 'CommandSetupError';
 }
 
-/** All commands the app knows: built-ins, modules' `commands` and those packages add. */
+/** All commands the app knows: built-ins, providers' `static commands` and modules' `commands`. */
 export class CommandRegistry {
   readonly #commands = new Map<string, { readonly command: CommandClass; readonly source: string }>();
 
   /**
    * Registers `commands`; adding the same class again is a no-op, a different class under a taken name throws a
    * `CommandSetupError` naming both classes and their `source` (a package or module), so no package silently takes over
-   * an app's command. Built-ins that run before the app boots (`boots = false`) are checked once a booting command runs.
-   * See docs/package-development.md#commands.
+   * an app's command. Packages list their commands as `static commands` on their provider; commands added in `boot()` run,
+   * but `marmeon build` and `make:command` do not see them. See docs/package-development.md#commands.
    */
   add(commands: readonly CommandClass[], source = 'a package'): this {
     for (const command of commands) {
+      if (RESERVED.has(command.command)) {
+        throw new CommandSetupError(`"${command.command}" is marmeon's own command — ${command.name} (${source}) cannot use it. Rename it.`);
+      }
       const taken = this.#commands.get(command.command);
       if (!taken) {
         this.#commands.set(command.command, { command, source });

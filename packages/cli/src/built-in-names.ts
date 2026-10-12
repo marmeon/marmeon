@@ -1,6 +1,6 @@
 /**
  * The names of the commands the CLI itself provides. An app's command with one of these names makes marmeon refuse to start
- * (or, for a built-in that runs without booting, the built-in runs instead); a generator checks against this list. `main.ts` keeps it in step (a test compares both).
+ * (or, for a built-in that runs without booting, the built-in runs instead); a generator checks against this list. `built-in.ts` is the list of the commands themselves; a test compares both.
  */
 export const BUILT_IN_NAMES: readonly string[] = [
   'serve',

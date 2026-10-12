@@ -58,7 +58,6 @@ package:
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { Router } from '@marmeon/http';
 import { GLOBAL } from '@marmeon/router';
-import { CommandRegistry } from 'marmeon';
 import { AuditConfig } from './AuditConfig.ts';
 import { AuditLog } from './AuditLog.ts';
 import { PruneAuditCommand } from './PruneAuditCommand.ts';
@@ -66,6 +65,7 @@ import { RecordRequest } from './RecordRequest.ts';
 
 export class AuditServiceProvider implements ServiceProvider {
   static config = [AuditConfig];
+  static commands = [PruneAuditCommand];
 
   register(container: Container): void {
     container.singleton(AuditLog);
@@ -73,7 +73,6 @@ export class AuditServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     app.container.make(Router).middleware.append(GLOBAL, RecordRequest, 50);
-    app.container.make(CommandRegistry).add([PruneAuditCommand], '@acme/audit');
   }
 
   async shutdown(app: Application): Promise<void> {
@@ -125,8 +124,10 @@ glob gets no list, so no injection code reaches a client bundle.
 
 ## Commands
 
-A package adds its commands in `boot()`, through the `CommandRegistry` of `marmeon`. List `marmeon` as a peer dependency, so the
-package uses the app's copy. A command is a class like any [command of an app](console.md#writing-commands):
+A package lists its commands as `static commands` on its provider. The CLI collects them while the app registers, before anything
+boots, so `marmeon build` sees them and stops on a name that is taken twice; the message names both commands and the provider.
+`marmeon` stays an optional peer dependency — the command files import only its types. A command is a class like any
+[command of an app](console.md#writing-commands):
 
 ```ts title="src/PruneAuditCommand.ts"
 import type { CommandInput } from 'marmeon';
@@ -153,7 +154,7 @@ export class PruneAuditCommand {
 }
 ```
 
-Pass the package name as the second argument of `add()`: if an app's command has the same name, the start fails with a message naming both. Name a package's commands with a prefix of their own, such as `audit:`. A package's commands always run in a booted app.
+Name a package's commands with a prefix of their own, such as `audit:`. A package's commands always run in a booted app.
 `static boots` is read for the framework's built-in commands only.
 
 `DevProcesses` of `marmeon` adds a process that `marmeon dev` starts next to the server, as the queue does with its worker:
@@ -200,7 +201,6 @@ installs the package, also for paths without a route, so keep it cheap.
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { defineRoutes, Router } from '@marmeon/http';
 import { GLOBAL } from '@marmeon/router';
-import { CommandRegistry } from 'marmeon';
 import { AuditConfig } from './AuditConfig.ts';
 import { AuditLog } from './AuditLog.ts';
 import { PruneAuditCommand } from './PruneAuditCommand.ts';
@@ -209,6 +209,7 @@ import { ShowAuditController } from './ShowAuditController.ts';
 
 export class AuditServiceProvider implements ServiceProvider {
   static config = [AuditConfig];
+  static commands = [PruneAuditCommand];
 
   register(container: Container): void {
     container.singleton(AuditLog);
@@ -222,7 +223,6 @@ export class AuditServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     app.container.make(Router).middleware.append(GLOBAL, RecordRequest, 50);
-    app.container.make(CommandRegistry).add([PruneAuditCommand], '@acme/audit');
   }
 
   async shutdown(app: Application): Promise<void> {

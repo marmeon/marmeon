@@ -3,60 +3,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
 import { channels, messageBase, trace, type CommandRunMessage } from '@marmeon/core/diagnostics';
-import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp, type CommandClass } from './command.ts';
-import { BuildCommand } from './commands/build.ts';
-import { DiscoverCommand } from './commands/discover.ts';
-import { KeyGenerateCommand } from './commands/key-generate.ts';
+import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
+import { BUILT_IN } from './built-in.ts';
 import { printCommandHelp, printCommandList } from './commands/list.ts';
-import { MakeDockerCommand } from './commands/make-docker.ts';
-import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
-import {
-  MakeCommandCommand,
-  MakeControllerCommand,
-  MakeEventCommand,
-  MakeJobCommand,
-  MakeListenerCommand,
-  MakeMiddlewareCommand,
-  MakeMigrationCommand,
-  MakeModuleCommand,
-  MakeNotificationCommand,
-  MakeSeederCommand,
-} from './commands/make.ts';
-import { ModulesCheckCommand } from './commands/modules-check.ts';
-import { PackageBuildCommand } from './commands/package-build.ts';
-import { RouteListCommand } from './commands/route-list.ts';
-import { RouteTypesCommand } from './commands/route-types.ts';
-import { ServeCommand } from './commands/serve.ts';
-import { TinkerCommand } from './commands/tinker.ts';
 import { Output } from './output.ts';
 import { spawnMarmeon } from './spawn.ts';
 
 export { spawnMarmeon, startMarmeon } from './spawn.ts';
-
-/** The commands the CLI provides; `BUILT_IN_NAMES` lists their names for the generators. */
-export const BUILT_IN: readonly CommandClass[] = [
-  ServeCommand,
-  RouteListCommand,
-  RouteTypesCommand,
-  ModulesCheckCommand,
-  DiscoverCommand,
-  BuildCommand,
-  PackageBuildCommand,
-  KeyGenerateCommand,
-  TinkerCommand,
-  MakeModuleCommand,
-  MakeControllerCommand,
-  MakeEventCommand,
-  MakeListenerCommand,
-  MakeJobCommand,
-  MakeNotificationCommand,
-  MakeCommandCommand,
-  MakeSeederCommand,
-  MakeMiddlewareCommand,
-  MakeMigrationCommand,
-  MakeLintConfigCommand,
-  MakeDockerCommand,
-];
 
 const commands = channels.tracing('command.run');
 
@@ -78,6 +31,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `marmeon build` needs.
     const loaded = await loadApplication(root, !listing && builtIn?.boots === 'build' ? 'build' : 'run');
     if (loaded instanceof Error) {
+      // A name used twice is fatal even for `list`: the clash is found while the app registers.
       if (!listing || loaded instanceof CommandSetupError) {
         // Node's code (ERR_…) beside its message: what one searches for.
         const code = (loaded as { code?: unknown }).code;
@@ -91,15 +45,8 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     }
   }
 
-  const registry = app?.container.has(CommandRegistry) ? app.container.make(CommandRegistry) : new CommandRegistry();
-  try {
-    registry.add(BUILT_IN, 'marmeon');
-  } catch (error) {
-    if (!(error instanceof CommandSetupError)) throw error;
-    output.error(error.message);
-    await app?.shutdown();
-    return 1;
-  }
+  // The app's registry already holds the built-ins; without an app (a generator, a broken app) only they are known.
+  const registry = app?.container.has(CommandRegistry) ? app.container.make(CommandRegistry) : new CommandRegistry().add(BUILT_IN, 'marmeon');
 
   if (listing) {
     printCommandList({ output }, registry.all());

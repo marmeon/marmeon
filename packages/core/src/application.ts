@@ -118,12 +118,12 @@ export class Application {
 
   /** Register phase: build each provider through the container and let it bind services. */
   register(providers: readonly ServiceProviderClass[]): void {
-    // A provider may also only bring configuration (`static config`, validated earlier), health checks or solutions.
+    // A provider may also only bring configuration (`static config`, validated earlier), health checks, solutions or commands.
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
-      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length) {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health or static solutions.`);
+      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length && !declaredCommands(Provider)) {
+        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions or static commands.`);
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -167,6 +167,11 @@ export class Application {
 
 /** Set by the primary of `marmeon start --workers=N` for its workers: the boot's warnings were said once, by the primary. */
 export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
+
+/** Whether `Provider` lists commands — a static list the marmeon CLI declares on `ServiceProviderClass`. */
+function declaredCommands(Provider: ServiceProviderClass): boolean {
+  return ((Provider as { commands?: readonly unknown[] }).commands?.length ?? 0) > 0;
+}
 
 /**
  * The app's logger, without `warn` until `end()` — every child too, and every service that took it while booting logs its

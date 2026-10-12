@@ -59,10 +59,10 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without `static config`, `static health` or `static solutions` from the list below, stops the start:
+them, and without `static config`, `static health`, `static solutions` or `static commands` from the list below, stops the start:
 
 ```text
-NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health or static solutions.
+NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions or static commands.
 ```
 
 ## The order
@@ -109,13 +109,14 @@ An app in the build phase never booted, so no provider's `shutdown()` runs there
 
 ## What a provider brings besides code
 
-A provider class can carry three static lists. The app reads them before any provider registers:
+A provider class can carry four static lists. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers:
 
 | Static | What it is |
 | --- | --- |
 | `static config = [NotesConfig]` | The [config definitions](configuration.md#defining-configuration) the provider needs. They are checked with the app's own. |
 | `static health = [SearchIndexReady]` | Checks for `/up/ready`. See [health checks](health.md). |
 | `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md#solutions). |
+| `static commands = [PruneNotesCommand]` | Console commands for `marmeon`. Collected while the app registers, so `marmeon build` sees them. See [package development](package-development.md#commands). |
 
 A package uses these lists, because it has no module definition of its own. In an app, a module lists its configuration and its
 health checks in its definition instead.

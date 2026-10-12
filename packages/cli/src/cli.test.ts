@@ -242,7 +242,7 @@ describe('marmeon: two commands with one name', () => {
     for (const args of [['route:list'], ['list']]) {
       const { code, stdout, stderr } = marmeon(app, args);
       expect(code).toBe(1);
-      expect(stderr).toContain('Two commands are named "route:list": OursCommand (module system) and RouteListCommand (marmeon)');
+      expect(stderr).toContain('Two commands are named "route:list": RouteListCommand (marmeon) and OursCommand (module system)');
       expect(stdout).not.toContain('OURS RAN');
     }
   }, ciTimeout);

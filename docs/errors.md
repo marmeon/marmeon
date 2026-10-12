@@ -289,8 +289,6 @@ export class BillingServiceProvider implements ServiceProvider {
       }),
     },
   ]);
-
-  register(): void {}
 }
 ```
 
@@ -298,8 +296,7 @@ export class BillingServiceProvider implements ServiceProvider {
 after all. The error's causes are searched as well. Solutions are text only: nothing on the page runs a command or calls an
 endpoint, since a page that runs code would be a way into your machine.
 
-Solutions alone do not make a provider: without a `register()`, `boot()` or `shutdown()` method, a `static config` or a
-`static health`, the app refuses it at start-up. That is why the provider above has an empty `register()`. The
+A provider that brings only solutions is fine; one with no method and no static list at all is refused at start-up. The
 [service providers](providers.md#register-and-boot) page explains the rule.
 
 ## Errors in the browser

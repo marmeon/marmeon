@@ -38,3 +38,9 @@ describe('CommandRegistry.add', () => {
     expect(() => registry.add([named('a:b', 'two')])).toThrow('(a package)');
   });
 });
+
+describe('CommandRegistry reserved names', () => {
+  it.each(['list', 'help'])('refuses %s, which marmeon answers itself', (name) => {
+    expect(() => new CommandRegistry().add([named(name, 'ours')], 'module x')).toThrow(`"${name}" is marmeon's own command`);
+  });
+});
