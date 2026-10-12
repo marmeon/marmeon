@@ -1,11 +1,12 @@
 /**
- * The names of the commands the CLI itself provides. They are registered after the app's, so a command of an app with one of
- * these names is never reached; a generator checks against this list. `main.ts` keeps it in step (a test compares both).
+ * The names of the commands the CLI itself provides. An app's command with one of these names makes marmeon refuse to start
+ * (or, for a built-in that runs without booting, the built-in runs instead); a generator checks against this list. `main.ts` keeps it in step (a test compares both).
  */
 export const BUILT_IN_NAMES: readonly string[] = [
   'serve',
   'route:list',
   'route:types',
+  'modules:check',
   'discover',
   'build',
   'package:build',

@@ -9,6 +9,8 @@ export { token } from './token.ts';
 export type { Concrete, Constructor, InjectCheck, Key, Resolve, Token } from './token.ts';
 export { analyzeInjections, applyInsertions, injectConstructorDependencies, insertInjections, insertionsOf, InjectionError } from './injection/analyze.ts';
 export type { InjectionSite, Insertion } from './injection/analyze.ts';
+export { staticNames } from './static-names.ts';
+export type { StaticName } from './static-names.ts';
 export { computeInjectionArtifacts, INJECTIONS_FILE, PrecomputedInjections, writeInjectionArtifacts } from './injection/artifacts.ts';
 export type { InjectionsFile } from './injection/artifacts.ts';
 export { bindingNameOf, editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';

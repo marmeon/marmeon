@@ -22,6 +22,7 @@ import {
   MakeNotificationCommand,
   MakeSeederCommand,
 } from './commands/make.ts';
+import { ModulesCheckCommand } from './commands/modules-check.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
 import { RouteTypesCommand } from './commands/route-types.ts';
@@ -37,6 +38,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   ServeCommand,
   RouteListCommand,
   RouteTypesCommand,
+  ModulesCheckCommand,
   DiscoverCommand,
   BuildCommand,
   PackageBuildCommand,

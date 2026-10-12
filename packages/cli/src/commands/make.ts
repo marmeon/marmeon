@@ -388,7 +388,7 @@ export class MakeCommandCommand {
     const command = `${module}:${stableName(name, 'Command') || 'command'}`;
     if (!write(input, join(dir, 'commands', `${name}.ts`), COMMAND(name, command))) return 1;
     if (BUILT_IN_NAMES.includes(command)) {
-      input.output.warn(`${command} is a built-in command: the built-in runs and ${name} is never reached. Change static command.`);
+      input.output.warn(`${command} is a built-in command's name: marmeon refuses to start (or runs the built-in instead). Change static command.`);
     }
 
     registerInModule(

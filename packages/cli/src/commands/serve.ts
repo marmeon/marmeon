@@ -10,6 +10,7 @@ import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startMarmeon } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
+import { warnUnlisted } from '../unlisted.ts';
 import { writeRouteTypes } from './route-types.ts';
 
 /**
@@ -61,6 +62,14 @@ export class ServeCommand {
     // `marmeon dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
     // and when a view is added or removed (Node never loads views, so that restarts nothing).
     const views = development ? await this.#watchRouteTypes(output, root) : undefined;
+    // Parses the modules' files: development only, so `marmeon start` never loads the parser. A failure is a warning, never fatal.
+    if (development) {
+      try {
+        warnUnlisted(output, root, this.#app.modules);
+      } catch (error) {
+        output.warn(`Could not check for unlisted jobs and notifications: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     let server;
     try {
       server = await startServer({ app: this.#app, mode: development ? 'development' : 'production' });

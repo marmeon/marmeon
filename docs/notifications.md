@@ -108,6 +108,8 @@ notifications, and only a listed notification can be sent:
 export default defineModule({ name: 'notes', routes, notifications: [NoteSharedNotification] });
 ```
 
+`marmeon dev` and `marmeon build` warn about a notification class that no module lists (see the [development server](console.md#the-development-server)).
+
 `implements Notification<'user'>` checks `via()` and the channel methods where the class is written. Where a notification is
 sent, the compiler checks the rest: a kind of recipient the app does not have, an id of the wrong type, data the schema does not
 take, a channel the app does not have or a channel without its method, and a field of `toDatabase()` that `static database` does

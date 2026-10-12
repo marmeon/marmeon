@@ -156,7 +156,8 @@ export default defineModule({
 });
 ```
 
-A dispatch of a job no module lists throws and says where to add it. Two jobs with one name, or a name under `marmeon.`, which
+A dispatch of a job no module lists throws and says where to add it; `marmeon dev` and `marmeon build` warn about a job class
+no module lists (see the [development server](console.md#the-development-server)). Two jobs with one name, or a name under `marmeon.`, which
 belongs to the framework, stop the app at the start.
 
 ### The job class

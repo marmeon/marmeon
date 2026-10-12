@@ -58,6 +58,8 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 - **The scheduler** starts when a module schedules tasks.
 - **`bootstrap/routes.ts`** is written on every start, and again when a view is added or removed. Route names and views are then
   known to the type checker without running `route:types` yourself.
+- **A warning** names every class under `modules/` with a literal `static job` or `static notification` that no module lists. The
+  files are only read, never run, and the registration stays explicit. `marmeon build` prints the same warning.
 
 The worker and the scheduler stop and start with the server, so a code change reaches them too. One that ends on its own is
 started again a second later. One that ends right after its start, say with a configuration error, stays down until you save a
