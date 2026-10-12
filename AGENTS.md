@@ -32,7 +32,7 @@ the same time — they share their databases.
   messages. Details: CONTRIBUTING.md › "Rules over the source".
 - **Bundle-size limits only go down** (`packages/react/size-budget.json`).
 - **Public API, env default or command changed** → its page under `docs/` in the same commit; a change an app can notice
-  → a changeset.
+  → a changeset, from the first release (0.1.0) on — none before it.
 - English everywhere; commit subjects in the imperative, saying what the change does.
 
 ## Comments

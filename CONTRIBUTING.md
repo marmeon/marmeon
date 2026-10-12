@@ -75,10 +75,11 @@ package store, the registry and Docker — without them they are reported as ski
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
   removes them when the test, or the file, is done.
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
-- **A change an app can notice** gets a changeset ([Changesets and releases](#changesets-and-releases)) and, from the first
-  release on, an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — in the next version's section, in
-  its place by impact and area; `scripts/check-changesets.ts` lists its anchor under that version. Until the first release there
-  is nothing to upgrade from: the page says so and holds no entry.
+- **A change an app can notice** gets, from the first release (0.1.0) on, a changeset
+  ([Changesets and releases](#changesets-and-releases)) and an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after,
+  the way back — in the next version's section, in its place by impact and area; `scripts/check-changesets.ts` lists its anchor
+  under that version. Until the first release there is nothing to release against or upgrade from: a change needs neither, and
+  UPGRADING.md says so and holds no entry.
 - **A change to a public API, an environment default or a command** changes its page under `docs/` in the same commit
   ([Writing documentation](#writing-documentation)).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.
