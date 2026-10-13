@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/testing",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Feature tests for Marmeon apps: the real application and HTTP kernel without a server, with assertions, fakes and database helpers.",
   "keywords": [
     "marmeon",

@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The Marmeon application kernel: service container with constructor injection, providers, modules, configuration, events and diagnostics.",
   "keywords": [
     "marmeon",
