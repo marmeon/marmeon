@@ -23,10 +23,16 @@ export default function Dashboard({ name, verified }: Props) {
       )}
       <ul className="auth-shortcuts">
         <li className="card">
-          <Link route="auth.security">{t('settings.security')}</Link>
+          <h2>
+            <Link route="auth.security">{t('settings.security')}</Link>
+          </h2>
+          <p className="muted">{t('dashboard.security_text')}</p>
         </li>
         <li className="card">
-          <Link route="auth.tokens">{t('settings.tokens')}</Link>
+          <h2>
+            <Link route="auth.tokens">{t('settings.tokens')}</Link>
+          </h2>
+          <p className="muted">{t('dashboard.tokens_text')}</p>
         </li>
       </ul>
     </main>

@@ -49,11 +49,11 @@ export default function Home({ appName }: Props) {
             <h3>{t('docs_title')}</h3>
             <p className="muted">{t('docs_text')}</p>
             <p>
-              <a href="https://marmeon.com/docs/installation" rel="noreferrer">
+              <a href="https://marmeon.com/docs/installation#creating-an-app" rel="noreferrer">
                 {t('docs_installation')}
               </a>
               {' · '}
-              <a href="https://marmeon.com/docs/structure" rel="noreferrer">
+              <a href="https://marmeon.com/docs/structure#the-root-directory" rel="noreferrer">
                 {t('docs_structure')}
               </a>
             </p>
@@ -62,7 +62,7 @@ export default function Home({ appName }: Props) {
             <h3>{t('kit_title')}</h3>
             <p className="muted">{t('kit_text')}</p>
             <p>
-              <a href="https://marmeon.com/docs/starter-kit" rel="noreferrer">
+              <a href="https://marmeon.com/docs/starter-kit#the-look" rel="noreferrer">
                 {t('kit_link')}
               </a>
             </p>

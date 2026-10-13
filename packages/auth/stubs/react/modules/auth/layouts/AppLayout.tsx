@@ -8,13 +8,19 @@ import { useState } from 'react';
  */
 export function AppLayout({ children }: LayoutProps) {
   // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.
-  const user = usePage().props.auth?.user ?? null;
+  const { auth, appName } = usePage().props;
+  const user = auth?.user ?? null;
   const t = useTranslation('auth');
 
   return (
     <>
       <header className="auth-header">
-        {user ? (
+        {/* The app's name, linked to `/` (a blank app has no `home` route). Without it — a 404 has no shared props — the former link. */}
+        {appName ? (
+          <Link href="/" className="auth-brand">
+            {appName}
+          </Link>
+        ) : user ? (
           <Link route="dashboard" className="auth-brand">
             {t('layout.dashboard')}
           </Link>
@@ -25,14 +31,16 @@ export function AppLayout({ children }: LayoutProps) {
         )}
         {user ? (
           <nav aria-label={t('layout.account')} className="auth-nav">
-            <span>{user.name}</span>
+            <Link route="dashboard">{t('layout.dashboard')}</Link>
             <Link route="auth.security">{t('layout.settings')}</Link>
+            <span className="muted">{user.name}</span>
             <Link route="auth.logout" className="auth-link">
               {t('layout.sign_out')}
             </Link>
           </nav>
         ) : (
           <nav aria-label={t('layout.account')} className="auth-nav">
+            <Link route="auth.login">{t('layout.sign_in')}</Link>
             <Link route="auth.register" className="button">
               {t('layout.register')}
             </Link>

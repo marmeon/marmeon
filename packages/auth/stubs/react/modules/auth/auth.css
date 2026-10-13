@@ -205,7 +205,7 @@
   margin-block: 1em;
 }
 
-/* Dashboard: the quick links. */
+/* Dashboard: the quick links — a card each, the whole card is the link (the heading's link stretches over it). */
 .auth-shortcuts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
@@ -215,8 +215,53 @@
   list-style: none;
 }
 
+.auth-shortcuts li {
+  position: relative;
+}
+
+.auth-shortcuts h2 {
+  margin-bottom: var(--space-2, 0.5rem);
+  font-size: 1.125rem;
+}
+
 .auth-shortcuts a {
-  font-weight: 500;
+  color: inherit;
+  text-decoration: none;
+}
+
+.auth-shortcuts a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-2, 0.75rem);
+}
+
+.auth-shortcuts a:hover {
+  text-decoration: underline;
+}
+
+.auth-shortcuts li:has(a:focus-visible) {
+  outline: 2px solid var(--color-focus, Highlight);
+  outline-offset: 2px;
+}
+
+.auth-shortcuts a:focus-visible {
+  outline: 0;
+}
+
+/* AccessTokens: the table scrolls sideways on a narrow screen; a new token is shown in a box that wraps. */
+.auth-table {
+  overflow-x: auto;
+}
+
+.secret {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* One click selects the whole token. */
+.secret code {
+  user-select: all;
 }
 
 /* AccessTokens: one ability per line. */

@@ -59,6 +59,42 @@ module leaves it free.
 The routes are an ordinary route file, so you change a path, add a page or remove one in `modules/auth/routes.ts`. The
 [routing](routing.md#route-files) page explains route files.
 
+## The look
+
+A new starter kit app has two stylesheets, both yours to change. They are plain CSS, no preprocessor and no `style` attributes
+(see [No `style` attributes](styling.md#no-style-attributes)).
+
+| File | Holds |
+| --- | --- |
+| `styles/app.css` | The tokens, the base styles for plain HTML, the layout classes, the font. |
+| `modules/auth/auth.css` | The auth module's classes: header, toasts, guest cards, settings navigation, the dashboard cards, the token table and `.secret`, the box that shows a new token. |
+
+`bootstrap/client.tsx` imports `styles/app.css` right after the framework's stylesheet, and `make:auth` adds `auth.css` after it.
+The module's rules use the tokens with a fallback, so `auth.css` also works in an app that has a stylesheet of its own.
+
+The tokens are custom properties on `:root`:
+
+| Token | Use |
+| --- | --- |
+| `--color-page`, `--color-surface` | The page and the cards on it. |
+| `--color-text`, `--color-muted`, `--color-line` | Text, quieter text, borders. |
+| `--color-accent`, `--color-accent-text`, `--color-focus` | Buttons and links, the text on a button, the focus ring. |
+| `--color-danger`, `--color-success` (and `-surface`) | Errors, confirmations. |
+| `--font-text`, `--font-mono` | The two font stacks. |
+| `--space-1` to `--space-6`, `--radius-1`, `--radius-2`, `--shadow-1`, `--shadow-2` | Spacing, corners, shadows. |
+
+To change the colors, change the values of the tokens, and every page follows. The dark colors sit in the
+`@media (prefers-color-scheme: dark)` block of the same file, so edit both. The same file sets the framework's own variables
+(`--marmeon-progress-color` and the failure notice) from the tokens.
+
+A button is `.button`, a quieter one `.button-secondary`, and both work on a `<button>` and on a `<Link>`. Mark a destructive
+action with `data-destructive`. There is deliberately no rule for the bare `button` element: the framework's own buttons, such
+as the ones in dialogs, keep their look.
+
+The text font is IBM Plex Sans, served from your own app: `styles/app.css` imports it from `@fontsource-variable/ibm-plex-sans`,
+which Vite bundles into `/assets/`, so no request goes to another host and `font-src 'self'` is enough. To use another font,
+replace the `@import` and `--font-text`, and remove the dependency. The mono font is the system's.
+
 ## Private registration
 
 The registration never tells anyone whether an address already has an account. A new address and a known one get the same

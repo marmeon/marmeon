@@ -125,6 +125,8 @@ const en = {
     last_used: 'last used {at}',
     never_used: 'never used',
     expires: 'expires {at}',
+    usage_heading: 'Usage',
+    actions: 'Actions',
     revoke: 'Revoke',
     revoke_title: 'Revoke “{name}”?',
     revoke_confirm: 'Programs using this token can no longer sign in. This cannot be undone.',
@@ -156,6 +158,8 @@ const en = {
     welcome: 'Welcome, {name}.',
     verify: 'Please confirm your e-mail address — the link is in your inbox.',
     verify_again: 'Send it again',
+    security_text: 'Your e-mail address, your password and the devices you are signed in on.',
+    tokens_text: 'Let scripts and programs use your account without your password.',
   },
   validation: {
     name_required: 'Enter your name.',

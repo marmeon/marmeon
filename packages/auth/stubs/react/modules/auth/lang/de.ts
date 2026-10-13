@@ -118,6 +118,8 @@ export default {
     last_used: 'zuletzt benutzt {at}',
     never_used: 'nie benutzt',
     expires: 'läuft ab {at}',
+    usage_heading: 'Nutzung',
+    actions: 'Aktionen',
     revoke: 'Widerrufen',
     revoke_title: '„{name}“ widerrufen?',
     revoke_confirm: 'Programme, die dieses Token nutzen, kommen nicht mehr hinein. Das lässt sich nicht rückgängig machen.',
@@ -148,6 +150,8 @@ export default {
     title: 'Dashboard',
     welcome: 'Willkommen, {name}.',
     verify: 'Bitte bestätige deine E-Mail-Adresse — der Link liegt in deinem Postfach.',
+    security_text: 'Deine E-Mail-Adresse, dein Passwort und die Geräte, auf denen du angemeldet bist.',
+    tokens_text: 'Skripte und Programme nutzen dein Konto, ohne dein Passwort zu kennen.',
     verify_again: 'Noch einmal schicken',
   },
   validation: {
