@@ -203,23 +203,20 @@ describe('islands resolved in-process while the page streams', async () => {
 
   it('a slow island never holds the headers back — the shell is out, the island follows in the same response', async () => {
     slow.gate = later();
-    const started = performance.now();
+    // The gate is still shut: a server that held the headers for the island would send it timed out (504, islandTimeout), not ready.
     const response = await page(['/islands/slow', '/islands/echo']);
-    const headers = performance.now() - started;
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let html = '';
     while (!html.includes('<main>shell</main>')) html += decoder.decode((await reader.read()).value);
     expect(html).not.toContain('islands/Slow');
-    setTimeout(() => slow.gate.settle(), 60);
+    slow.gate.settle();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       html += decoder.decode(value);
     }
-    expect(headers).toBeLessThan(50);
-    expect(performance.now() - started).toBeGreaterThanOrEqual(55);
-    expect(islandsOf(html)['/islands/slow']).toMatchObject({ status: 'ready', region: { props: { done: true } } });
+    expect(islandsOf(html)['/islands/slow'], 'the island is ready only if the headers did not wait for it').toMatchObject({ status: 'ready', region: { props: { done: true } } });
   });
 
   it('leaves the islands of a prefetched document to the browser — islands never load ahead', async () => {

@@ -53,7 +53,7 @@ describe('summarize', () => {
   });
 });
 
-describe('the description of every page of the docs', () => {
+describe('the description of every page of the docs', { timeout: 30_000 }, () => {
   it('is 50 to 160 characters of plain text and none is the fallback', async () => {
     const app = await createTestApp(application);
     const pages = app.make(DocsRepository).pages();

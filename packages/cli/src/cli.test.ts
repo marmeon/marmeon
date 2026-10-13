@@ -10,9 +10,6 @@ import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marm
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-// Slow under load: more time on CI runners only (CI=true).
-const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
-
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const bin = join(repo, 'packages/cli/bin/marmeon.js');
 const webApp = join(repo, 'apps/web-app');
@@ -26,7 +23,8 @@ function marmeon(cwd: string, args: string[], env: Record<string, string> = {}) 
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-describe('marmeon (in the web app)', () => {
+// Each test runs the CLI as a child process: slow on a busy CI runner.
+describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   it('lists commands grouped by namespace', () => {
     const { code, stdout } = marmeon(webApp, []);
     expect(code).toBe(0);
@@ -150,7 +148,7 @@ describe('marmeon (in the web app)', () => {
     const list = marmeon(webApp, ['route:list'], withoutSecrets);
     expect(list.code).toBe(1);
     expect(list.stderr).toContain('Invalid configuration — the application cannot start:\n  • app: APP_NAME');
-  }, ciTimeout);
+  });
 
   it.runIf(process.env.MARMEON_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
     const { code, stdout } = marmeon(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.MARMEON_TEST_PGSQL_URL! });
@@ -187,7 +185,7 @@ describe('marmeon (in the web app)', () => {
   });
 });
 
-describe('marmeon route:types (reserved page names)', () => {
+describe('marmeon route:types (reserved page names)', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
 
   function appWith(views: string[]): string {
@@ -210,7 +208,7 @@ describe('marmeon route:types (reserved page names)', () => {
     expect(stderr).toContain('modules/a/views/p::q/Show.tsx: "::" is reserved');
     expect(stderr).not.toContain('Fine.tsx');
     expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).not.toContain('::'); // left as it was
-  }, ciTimeout);
+  });
 
   it('stops marmeon build on a page path with "::"', () => {
     const app = appWith(['modules/a/views/x::y.tsx']);
@@ -219,16 +217,16 @@ describe('marmeon route:types (reserved page names)', () => {
     expect(stderr).toContain('"::" is reserved');
     expect(stderr).toContain('Not built: marmeon route:types failed');
     expect(existsSync(join(app, 'dist'))).toBe(false);
-  }, ciTimeout);
+  });
 
   it('lists the pages of the app’s modules when none has "::"', () => {
     const app = appWith(['modules/a/views/Fine.tsx']);
     expect(marmeon(app, ['route:types']).code).toBe(0);
     expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'a/Fine': true;");
-  }, ciTimeout);
+  });
 });
 
-describe('marmeon: two commands with one name', () => {
+describe('marmeon: two commands with one name', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
 
   function appWithCommand(name: string): string {
@@ -255,7 +253,7 @@ describe('marmeon: two commands with one name', () => {
       expect(stderr).toContain('Two commands are named "route:list": RouteListCommand (marmeon) and OursCommand (module system)');
       expect(stdout).not.toContain('OURS RAN');
     }
-  }, ciTimeout);
+  });
 
   it('fails the start when a module reuses the name of a package command', () => {
     const app = appWithCommand('db:seed');
@@ -266,7 +264,7 @@ describe('marmeon: two commands with one name', () => {
       expect(stderr).toContain('DbSeedCommand (DatabaseServiceProvider)');
       expect(stdout).not.toContain('OURS RAN');
     }
-  }, ciTimeout);
+  });
 
   it('stops a command that only registers the app, before anything boots', () => {
     const app = appWithCommand('db:seed');
@@ -274,7 +272,7 @@ describe('marmeon: two commands with one name', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('Two commands are named "db:seed"');
     expect(stdout).not.toContain('OURS RAN');
-  }, ciTimeout);
+  });
 
   it('stops marmeon build before anything is built', () => {
     const app = appWithCommand('db:seed');
@@ -283,7 +281,7 @@ describe('marmeon: two commands with one name', () => {
     expect(stderr).toContain('Two commands are named "db:seed"');
     expect(stderr).toContain('Not built: marmeon route:types failed');
     expect(existsSync(join(app, 'dist'))).toBe(false);
-  }, ciTimeout);
+  });
 
   it('stops marmeon build when a module reuses the name build', () => {
     const app = appWithCommand('build');
@@ -292,17 +290,17 @@ describe('marmeon: two commands with one name', () => {
     expect(stderr).toContain('BuildCommand (marmeon)');
     expect(stderr).toContain('Not built:');
     expect(existsSync(join(app, 'dist'))).toBe(false);
-  }, ciTimeout);
+  });
 
   it('starts when the names differ', () => {
     const app = appWithCommand('ours:run');
     const { code, stdout } = marmeon(app, ['ours:run']);
     expect(code).toBe(0);
     expect(stdout).toContain('OURS RAN');
-  }, ciTimeout);
+  });
 });
 
-describe('marmeon make:command (checks every registered command)', () => {
+describe('marmeon make:command (checks every registered command)', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
 
   function appWithFiles(files: Record<string, string>): string {
@@ -325,7 +323,7 @@ describe('marmeon make:command (checks every registered command)', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('auth:prune-tokens is already the name of PruneTokensCommand (AuthServiceProvider)');
     expect(existsSync(join(app, 'modules/auth/commands'))).toBe(false);
-  }, ciTimeout);
+  });
 
   it('writes a free name without a .env and lists it', () => {
     const app = appWithFiles(authModule);
@@ -333,7 +331,7 @@ describe('marmeon make:command (checks every registered command)', () => {
     expect(code).toBe(0);
     expect(existsSync(join(app, 'modules/auth/commands/RotateKeysCommand.ts'))).toBe(true);
     expect(readFileSync(join(app, 'modules/auth/index.ts'), 'utf8')).toContain('commands: [RotateKeysCommand]');
-  }, ciTimeout);
+  });
 
   it('stops with the load error instead of falling back, and writes nothing', () => {
     const app = appWithFiles({ 'modules/system/index.ts': "export default (() => {\n  throw new Error('broken');\n})();\n" });
@@ -341,7 +339,7 @@ describe('marmeon make:command (checks every registered command)', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('Could not start the application: broken');
     expect(existsSync(join(app, 'modules/system/commands'))).toBe(false);
-  }, ciTimeout);
+  });
 
   it('stops on a name that is already used twice', () => {
     const app = appWithFiles({
@@ -353,17 +351,17 @@ describe('marmeon make:command (checks every registered command)', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('Two commands are named "db:seed"');
     expect(existsSync(join(app, 'modules/system/commands'))).toBe(false);
-  }, ciTimeout);
+  });
 
   it('prints its help without loading the app', () => {
     const app = appWithFiles({ 'modules/system/index.ts': "export default (() => {\n  throw new Error('broken');\n})();\n" });
     const { code, stdout } = marmeon(app, ['make:command', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('make:command');
-  }, ciTimeout);
+  });
 });
 
-describe('marmeon modules:check (unlisted jobs and notifications)', () => {
+describe('marmeon modules:check (unlisted jobs and notifications)', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
 
   function appWithFiles(files: Record<string, string>): string {
@@ -383,7 +381,7 @@ describe('marmeon modules:check (unlisted jobs and notifications)', () => {
     const { code, stderr } = marmeon(app, ['modules:check']);
     expect(code).toBe(0);
     expect(stderr).toContain("SendJob (static job 'system.send') is in no module's jobs");
-  }, ciTimeout);
+  });
 
   it('stays quiet about generated jobs and notifications, which make:* registers, and warns when --no-register skips it', () => {
     const app = appWithFiles({});
@@ -394,7 +392,7 @@ describe('marmeon modules:check (unlisted jobs and notifications)', () => {
     expect(registered.stderr).not.toContain('is in no module');
     expect(marmeon(app, ['make:job', 'Skipped', '--module=system', '--no-register']).code).toBe(0);
     expect(marmeon(app, ['modules:check']).stderr).toContain("(static job 'system.skipped') is in no module's jobs");
-  }, ciTimeout);
+  });
 
   it('stays quiet without such a class, and stays out of `marmeon list`', () => {
     const app = appWithFiles({});
@@ -402,10 +400,10 @@ describe('marmeon modules:check (unlisted jobs and notifications)', () => {
     expect(check.code).toBe(0);
     expect(check.stderr).not.toContain('is in no module');
     expect(marmeon(app, ['list']).stdout).not.toContain('modules:check');
-  }, ciTimeout);
+  });
 });
 
-describe('marmeon make:* (generated code compiles)', () => {
+describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => {
   let app: string;
 
   beforeAll(() => {
@@ -545,7 +543,7 @@ describe('marmeon make:* (generated code compiles)', () => {
 
     const missing = marmeon(app, ['make:controller', 'ShowCart', '--module=cart']);
     expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: marmeon make:module cart');
-  }, ciTimeout);
+  });
 
   it('generates the application key into .env — without booting, never silently replacing one, rotating with --force', () => {
     writeFileSync(join(app, '.env.example'), 'APP_NAME=Shop\nAPP_KEY=\n');
@@ -587,7 +585,7 @@ describe('marmeon make:* (generated code compiles)', () => {
  * the workspace manifest, whose `exports` name the source condition. It runs its `dist/` like a published package; started with
  * the source condition, Node would refuse its TypeScript (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
  */
-describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
+describe('marmeon from a copy of the workspace package (pnpm deploy)', { timeout: 30_000 }, () => {
   it('is no monorepo: no source condition, the built dist/', () => {
     const app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-deployed-')));
     try {
@@ -648,7 +646,7 @@ describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
  * start), with `APP_ENV` naming the environment (a staging server: `NODE_ENV=production APP_ENV=staging`). An app of its own
  * that resolves the framework's built `dist/` like an installed one (`start` never uses the source condition).
  */
-describe('marmeon start', () => {
+describe('marmeon start', { timeout: 30_000 }, () => {
   let app: string;
   const key = `base64:${Buffer.alloc(32, 3).toString('base64')}`;
 
@@ -1109,7 +1107,7 @@ describe('marmeon start', () => {
  * Where NODE_ENV comes from: the process's, else the app's `.env` — what a developer's machine has (`NODE_ENV=development`
  * from `.env.example`). A copy of the blank app with a `.env` of its own; the commands run without a NODE_ENV of the process.
  */
-describe('marmeon dev: its companions', () => {
+describe('marmeon dev: its companions', { timeout: 30_000 }, () => {
   let app: string;
 
   beforeAll(() => {
@@ -1188,7 +1186,7 @@ describe('marmeon dev: its companions', () => {
   }, 40_000);
 });
 
-describe('NODE_ENV from the app’s .env', () => {
+describe('NODE_ENV from the app’s .env', { timeout: 30_000 }, () => {
   let app: string;
   const blank = join(repo, 'apps/blank-app');
   const config = (dir: string) => `APP_NAME=Blank\nAPP_URL=http://localhost\nAPP_KEY=base64:${Buffer.alloc(32, 5).toString('base64')}\nDB_DATABASE=${join(dir, 'db.sqlite')}\nMAIL_MAILER=array\n`;

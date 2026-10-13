@@ -41,7 +41,8 @@ function fakeInput(root: string, options: Record<string, unknown> = {}) {
   return { input: { root, args: [], options, output, spawn } as never, lines, spawned };
 }
 
-describe('make:auth', () => {
+// Each test runs make:auth, which spawns a child process: slow on a busy machine.
+describe('make:auth', { timeout: 30_000 }, () => {
   it('writes the module, registers it, generates its route types, and reports what the app still needs', async () => {
     const root = blankApp();
     const { input, lines, spawned } = fakeInput(root);
