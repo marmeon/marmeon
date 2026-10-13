@@ -179,8 +179,12 @@ The title goes through the app's title template, which both entries take as `tit
 ```ts title="bootstrap/head.ts"
 import type { TitleTemplate } from '@marmeon/react';
 
-export const title: TitleTemplate = (page) => (page ? `${page} — Notes` : 'Notes');
+const APP = 'Notes';
+
+export const title: TitleTemplate = (page) => (page ? `${page} — ${APP}` : APP);
 ```
+
+`create-marmeon` writes the app's name into the `APP` line (and into `index.html`); change it there.
 
 A page without a `<Head title>` gets `title('')`. When that is empty, the `<title>` of `index.html` stays. An island cannot change
 the head: a `<Head>` inside one throws in development and renders nothing in production.
