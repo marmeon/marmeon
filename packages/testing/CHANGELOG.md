@@ -1,5 +1,25 @@
 # @marmeon/testing
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [40e296c]
+  - @marmeon/encryption@0.1.2
+  - @marmeon/auth@0.1.2
+  - @marmeon/devtools@0.1.2
+  - @marmeon/http@0.1.2
+  - @marmeon/live@0.1.2
+  - @marmeon/mail@0.1.2
+  - @marmeon/notifications@0.1.2
+  - @marmeon/queue@0.1.2
+  - @marmeon/scheduler@0.1.2
+  - @marmeon/server@0.1.2
+  - @marmeon/session@0.1.2
+  - @marmeon/storage@0.1.2
+  - @marmeon/database@0.1.2
+  - @marmeon/core@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @marmeon/cache
 
+## 0.1.2
+
+### Patch Changes
+
+- marmeon@0.1.2
+  - @marmeon/database@0.1.2
+  - @marmeon/core@0.1.2
+  - @marmeon/redis@0.1.2
+  - @marmeon/router@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

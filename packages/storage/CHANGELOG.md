@@ -1,5 +1,18 @@
 # @marmeon/storage
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [40e296c]
+  - @marmeon/encryption@0.1.2
+  - marmeon@0.1.2
+  - @marmeon/http@0.1.2
+  - @marmeon/database@0.1.2
+  - @marmeon/core@0.1.2
+  - @marmeon/router@0.1.2
+  - @marmeon/validation@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

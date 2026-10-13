@@ -1,5 +1,16 @@
 # @marmeon/notifications
 
+## 0.1.2
+
+### Patch Changes
+
+- marmeon@0.1.2
+  - @marmeon/i18n@0.1.2
+  - @marmeon/mail@0.1.2
+  - @marmeon/queue@0.1.2
+  - @marmeon/database@0.1.2
+  - @marmeon/core@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

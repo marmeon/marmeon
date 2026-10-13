@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/redis",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Redis connections for Marmeon apps — the driver behind Redis cache, sessions, queues and live hints.",
   "keywords": [
     "marmeon",

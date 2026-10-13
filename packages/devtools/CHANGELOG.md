@@ -1,5 +1,17 @@
 # @marmeon/devtools
 
+## 0.1.2
+
+### Patch Changes
+
+- marmeon@0.1.2
+  - @marmeon/http@0.1.2
+  - @marmeon/queue@0.1.2
+  - @marmeon/scheduler@0.1.2
+  - @marmeon/server@0.1.2
+  - @marmeon/core@0.1.2
+  - @marmeon/router@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes
