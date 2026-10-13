@@ -369,7 +369,7 @@ and the deprecation policy in the README.
   job with the `stage` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
   draft is created. **Never "Re-run all jobs"**, and never start a new run after one that staged: a staged version is invisible
   to `npm view`, so the guards cannot see it.
-- **If the re-run does not help,** approve on npmjs.com first, then tag and draft by hand (the release commit's SHA is in the
+- **If the re-run does not help,** or the workflow file itself was wrong (a re-run executes the same file again), approve on npmjs.com first, then tag and draft by hand (the release commit's SHA is in the
   run's log):
 
   ```sh

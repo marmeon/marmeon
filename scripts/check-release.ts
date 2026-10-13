@@ -204,6 +204,12 @@ export function checkWorkflow(repository: string): string[] {
   }
   if (/\bsecrets\b/.test(code)) problems.push(`${where}: a secret — the release needs none (the write token is github.token, the staging uses OIDC)`);
   if (/^\s*(?:- )?cache:|\bactions\/cache\b/m.test(code)) problems.push(`${where}: a cache — a store another workflow wrote could carry code into the job that holds the OIDC token`);
+  // setup-node restores a pnpm store by itself when package.json names pnpm (`package-manager-cache` defaults to true), without any `cache:` key.
+  for (const chunk of code.split(/^(?=\s*- )/m)) {
+    if (!/^\s*(?:- )?uses:\s*actions\/setup-node@/m.test(chunk)) continue;
+    const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(chunk)?.[2] ?? '';
+    if (!/^\s*package-manager-cache:\s*false\s*$/m.test(withBlock)) problems.push(`${where}: an actions/setup-node step without "package-manager-cache: false" under "with:" — the action restores a package-manager cache by default`);
+  }
   if (/^\s*defaults:/m.test(code) || /^\s*(?:- )?shell:/m.test(code)) problems.push(`${where}: "defaults:" or "shell:" — a step runs in the runner's own bash, with the flags every script here relies on`);
   if (/^\s*(?:if|continue-on-error):|^\s*- (?:if|continue-on-error):/m.test(code)) problems.push(`${where}: an "if:" or "continue-on-error:" — no step may be skipped or fail silently`);
   for (const [, action] of code.matchAll(/\buses:\s*(\S+)/g)) {

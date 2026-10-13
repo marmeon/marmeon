@@ -457,6 +457,20 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(installStep, `      - uses: actions/cache@v4\n${installStep}`))).toContain('a cache');
     });
 
+    it('refuses a setup-node step that does not turn its implicit cache off', () => {
+      const off = 'node-version-file: .nvmrc\n          package-manager-cache: false';
+      for (const part of ['stage', 'release'] as const) {
+        expect(problemsOf(mutated(off, 'node-version-file: .nvmrc', part))).toContain('without "package-manager-cache: false"');
+        expect(problemsOf(mutated(off, 'node-version-file: .nvmrc\n          package-manager-cache: true', part))).toContain('without "package-manager-cache: false"');
+      }
+      const setup = '      - uses: actions/setup-node@v5\n        with:\n          node-version-file: .nvmrc\n          package-manager-cache: false # the action\'s default restores a pnpm store by itself\n';
+      const named = '      - name: node\n        uses: actions/setup-node@v5\n        with:\n          node-version-file: .nvmrc\n';
+      expect(problemsOf(mutated(setup, named, 'stage'))).toContain('without "package-manager-cache: false"');
+      expect(problemsOf(mutated(setup, named.replace('with:', 'env:\n          package-manager-cache: false\n        with:'), 'release'))).toContain('without "package-manager-cache: false"');
+      expect(problemsOf(mutated(setup, named + '          package-manager-cache: false\n', 'release'))).not.toContain('package-manager-cache');
+      expect(problemsOf(real)).not.toContain('package-manager-cache');
+    });
+
     it('refuses defaults: and shell:', () => {
       expect(problemsOf(mutated('\njobs:\n', '\ndefaults:\n  run:\n    shell: sh\n\njobs:\n'))).toContain('"defaults:" or "shell:"');
       expect(problemsOf(mutated(installStep, '      - run: pnpm install --frozen-lockfile\n        shell: bash\n'))).toContain('"defaults:" or "shell:"');

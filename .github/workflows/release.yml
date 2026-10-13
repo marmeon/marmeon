@@ -62,6 +62,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false # the action's default restores a pnpm store by itself
       # Checks out the release commit (detached); every step below works on it. Imports node:* only: it runs before any install.
       - id: guard
         run: node scripts/release-guard.ts
@@ -95,6 +96,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false # the action's default restores a pnpm store by itself
       - name: tag the release commit
         env:
           GH_TOKEN: ${{ github.token }}
