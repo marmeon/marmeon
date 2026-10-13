@@ -21,7 +21,6 @@
 .landing h3 {
   margin: 0;
   color: var(--fg);
-  font-variation-settings: 'opsz' 60;
   font-weight: 560;
   text-wrap: balance;
 }

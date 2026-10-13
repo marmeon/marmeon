@@ -1,6 +1,6 @@
 /* Design tokens: light by default, dark under prefers-color-scheme. Fonts are bundled from the @fontsource packages (served from /assets/). */
-@import '@fontsource-variable/source-serif-4/opsz.css';
-@import '@fontsource-variable/source-serif-4/opsz-italic.css';
+@import '@fontsource-variable/ibm-plex-sans/wght.css';
+@import '@fontsource-variable/ibm-plex-sans/wght-italic.css';
 @import '@fontsource/ibm-plex-mono/latin-400.css';
 @import '@fontsource/ibm-plex-mono/latin-400-italic.css';
 @import '@fontsource/ibm-plex-mono/latin-500.css';
@@ -62,7 +62,7 @@
   --syn-tag: #6e2a5a;
   --syn-punctuation: #4a4f55;
 
-  --font-text: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-text: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   --text-display: clamp(2.625rem, 1.6rem + 4.4vw, 5.125rem);

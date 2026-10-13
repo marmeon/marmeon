@@ -12,7 +12,6 @@
   color: var(--fg);
   font-size: var(--text-h1);
   font-weight: 580;
-  font-variation-settings: 'opsz' 60;
   letter-spacing: -0.015em;
   line-height: 1.05;
 }

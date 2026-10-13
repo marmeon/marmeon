@@ -99,7 +99,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   policy there.
 - **Styles** (`styles/`): `app.css` is the only entry (`index.html`) and only `@import`s the parts. `tokens.css` holds every
   colour, size, space and radius as a custom property — light by default, dark under `prefers-color-scheme` — and the fonts:
-  Source Serif 4 (text, with its optical-size axis) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which
+  IBM Plex Sans (text, variable weight) and IBM Plex Mono (code, labels) from the `@fontsource` packages, which
   Vite bundles into `/assets/` (dev dependencies; the image needs none). `base.css` has the reset, links, buttons, focus ring and
   helpers. `favicon.svg` carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the tokens
   in both themes.

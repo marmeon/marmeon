@@ -7,9 +7,9 @@ export default defineConfig({
   plugins: [
     marmeon(),
     react(),
-    // What the first screen sets: serif headings and text, mono 400 and 500. Italics, 600 and other subsets load on use.
+    // What the first screen sets: sans headings and text, mono 400 and 500. Italics, 600 and other subsets load on use.
     preloadFonts([
-      '@fontsource-variable/source-serif-4/files/source-serif-4-latin-opsz-normal.woff2',
+      '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2',
       '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2',
       '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2',
     ]),
