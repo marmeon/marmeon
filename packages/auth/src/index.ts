@@ -18,7 +18,7 @@ import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 
 export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
-export type { LoginOptions } from './auth.ts';
+export type { AttemptError, LoginOptions } from './auth.ts';
 export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';

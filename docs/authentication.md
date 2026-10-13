@@ -194,8 +194,10 @@ export class LoginController extends Controller {
 ```
 
 `attempt(identifier, password, { remember })` returns a [`Result`](errors.md#results): `ok` with the user, or an `err` of kind
-`invalid-credentials`. There is only that one kind: an unknown address, a wrong password and an account without a password give the
-same answer in the same time: for an unknown address, the hasher spends as long on a check that always fails. Neither the answer
+`invalid-credentials` or `two-factor-required`. `two-factor-required` comes only after a correct password, for an account that has a
+second factor (see `TwoFactorState`): nobody is signed in then, and `auth.pendingSecondFactor()` names the factors the sign-in waits for.
+Without a bound factor source it never happens. An unknown address, a wrong password and an account without a password all give
+`invalid-credentials`, the same answer in the same time: for an unknown address, the hasher spends as long on a check that always fails. Neither the answer
 nor its duration tells a stranger which addresses have an account. When the stored hash was made with other costs than the
 configured ones, `attempt()` hashes the password again and stores the new hash. It also notes the time, so the password counts as
 just confirmed for [sudo mode](#sudo-mode).

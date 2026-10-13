@@ -1,4 +1,4 @@
-import { Hasher, PasswordHasher, type PasswordHash } from '@marmeon/auth';
+import { Hasher, PasswordHasher, TwoFactorState, type PasswordHash } from '@marmeon/auth';
 import { ConsoleLogger, Logger, type LogContext } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { Database, secret } from '@marmeon/database';
@@ -170,6 +170,24 @@ describe('auth module', () => {
     await app.post('/login', credentials(alan)).assertAuthenticated(alan);
     for (let attempt = 1; attempt <= 5; attempt++) await app.post('/login', credentials(alan, 'wrong'));
     await app.post('/login', credentials(alan, 'wrong')).assertInvalid<LoginController>({ email: /^Too many login attempts/ });
+  });
+
+  it('an account with a second factor is not signed in: a hint instead, and the throttle budget is not spent', async () => {
+    let withFactor: unknown;
+    await app.close(); // one database app per test
+    app = await createTestApp(application, {
+      database: 'refresh',
+      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []) }),
+    });
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    withFactor = ada.id;
+    for (let attempt = 1; attempt <= 4; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
+    await app
+      .post('/login', credentials(ada))
+      .assertInvalid<LoginController>({ email: 'This account uses two-factor authentication, which this page cannot complete yet.' })
+      .assertGuest();
+    // The budget was cleared (as after a sign-in): five wrong guesses more are answered as failures, none as throttled.
+    for (let attempt = 1; attempt <= 5; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
   });
 
   it('ignores forged session cookies', async () => {

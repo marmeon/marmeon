@@ -16,6 +16,7 @@ export default {
     register: 'Konto anlegen',
     demo: 'Demo: ada@example.com, alan@example.com oder grace@example.com — Passwort',
     failed: 'Diese Zugangsdaten passen zu keinem Konto.',
+    two_factor_pending: 'Dieses Konto nutzt die Zwei-Faktor-Anmeldung, die diese Seite noch nicht abschließen kann.',
     throttled: 'Zu viele Anmeldeversuche. Bitte in {seconds, plural, one {# Sekunde} other {# Sekunden}} noch einmal versuchen.',
   },
   register: {

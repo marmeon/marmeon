@@ -27,6 +27,8 @@ import {
   type PasswordHash,
   type UserOf,
 } from './index.ts';
+import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
+import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 
 interface TestUser {
   id: number;
@@ -42,18 +44,18 @@ declare module './user.ts' {
 
 /** Users in memory — what an app's repository does with its table. */
 class MemoryUsers implements UserProvider<TestUser> {
-  readonly rows = new Map<number, { user: TestUser; hash: PasswordHash | null }>();
+  readonly rows = new Map<number, { user: TestUser; hash: PasswordHash | null; key?: string }>();
   readonly rehashed: number[] = [];
   /** Whether each new hash was written inside a database transaction. */
   readonly inTransaction: boolean[] = [];
 
   async findById(id: number): Promise<Credentials<TestUser> | undefined> {
     const row = this.rows.get(id);
-    return row && { user: row.user, passwordHash: row.hash };
+    return row && { user: row.user, passwordHash: row.hash, sessionKey: row.key ?? null };
   }
 
   async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
-    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash };
+    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: row.key ?? null };
     return undefined;
   }
 
@@ -147,6 +149,59 @@ class TokenController extends Controller {
   }
 }
 
+/** Signs in, then does what an app that forgot `two-factor-required` would do: nothing with the answer. */
+class IgnoringLoginController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    const { email, password, remember } = (await ctx.input()) as { email: string; password: string; remember?: boolean };
+    const result = await this.#auth.attempt(email, password, { remember: remember === true });
+    return Response.json({ continued: true, error: result.ok ? null : result.error });
+  }
+}
+
+class LoginAsController extends Controller {
+  readonly #auth: Auth;
+  readonly #users: UserProvider;
+  constructor(auth: Auth, users: UserProvider) {
+    super();
+    this.#auth = auth;
+    this.#users = users;
+  }
+  async handle(ctx: HttpContext) {
+    const found = await this.#users.findById(Number((ctx.params as { id: string }).id) as never);
+    return { result: await this.#auth.login(found!.user as never, { remember: true }) };
+  }
+}
+
+class PendingController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    return { pending: this.#auth.pendingSecondFactor() ?? null, user: (await this.#auth.user())?.id ?? null };
+  }
+}
+
+class CompletePendingController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    // `as`: the account the (pretended) factor was checked for — by default the one the session waits for.
+    const { as } = (await ctx.input()) as { as?: number };
+    const done = await this.#auth[COMPLETE_PENDING](as ?? this.#auth[READ_PENDING]()?.userId ?? 0);
+    return done.ok ? { ok: true, id: (done.value as TestUser).id } : { ok: false, kind: done.error.kind };
+  }
+}
+
 const events: object[] = [];
 class RecordEvent {
   handle(event: object) {
@@ -158,6 +213,10 @@ const routes = defineRoutes((Route) => {
   Route.middleware(guest('/home')).get('/login', () => 'login page').name('auth.login');
   Route.post('/login', LoginController);
   Route.post('/logout', LogoutController);
+  Route.post('/login-ignoring', IgnoringLoginController);
+  Route.post('/login-as/:id', LoginAsController);
+  Route.get('/pending', PendingController);
+  Route.post('/complete-pending', CompletePendingController);
   Route.get('/token', TokenController);
   Route.get('/home', () => 'home').name('home');
   Route.middleware(authenticate()).get('/me', (ctx) => ({ id: ctx.user.id, name: ctx.user.name }));
@@ -173,7 +232,7 @@ const routes = defineRoutes((Route) => {
 
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(options: { env?: Record<string, string>; users?: MemoryUsers } = {}) {
+async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; factors?: Map<number, SecondFactor[]> } = {}) {
   const users = options.users ?? new MemoryUsers();
   const application = await createApplication({
     root: import.meta.dirname,
@@ -191,6 +250,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
+      if (options.factors) container.instance(TwoFactorState, { factors: async (id) => options.factors!.get(Number(id)) ?? [] });
     },
   });
   await application.container.make(Migrator).migrate();
@@ -289,7 +349,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never);
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState());
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -315,7 +375,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never);
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState());
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),
@@ -328,11 +388,13 @@ describe('Auth (session guard)', () => {
     expect(dispatched.filter((event) => event instanceof Failed)).toHaveLength(3);
     const outcome = answers[0]!;
     if (!outcome.ok) {
-      switch (outcome.error.kind) {
+      const kind = outcome.error.kind;
+      switch (kind) {
         case 'invalid-credentials':
+        case 'two-factor-required':
           break;
         default:
-          outcome.error.kind satisfies never;
+          kind satisfies never;
       }
     }
   });
@@ -673,3 +735,176 @@ export function authTypes() {
   // A user type without an id is refused too.
   expectTypeOf<UserOf<{ user: { name: string } }>>().toEqualTypeOf<AuthTypesNotDeclared>();
 }
+
+describe('Auth with a second factor (pending state)', () => {
+  type Send = ReturnType<Awaited<ReturnType<typeof boot>>['browser']>['send'];
+  const withFactor = () => new Map<number, SecondFactor[]>([[1, ['totp']]]);
+  const post = (send: Send, path: string, json: unknown = {}) => send(path, { method: 'POST', json });
+  const rememberLogin = (send: Send) => post(send, '/login', { email: ada.email, password: 'secret', remember: true });
+  const sessionData = async (booted: Awaited<ReturnType<typeof boot>>, cookie: string) => {
+    const id = await booted.application.container.make(Encrypter).decrypt(decodeURIComponent(cookie.split('=')[1]!), 'cookie:marmeon_session');
+    return JSON.parse((await booted.store.read(sessionKey(id)))!.data) as Record<string, unknown>;
+  };
+
+  it('holds a correct password back: nobody is signed in, no Login event, no remember cookie, a new session id', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send, cookie, jar } = booted.browser();
+    await send('/token');
+    const planted = cookie();
+    events.length = 0;
+    const answer = await rememberLogin(send);
+    expect(answer.status).toBe(422); // the test controller shows anything but ok as a failed sign-in
+    expect(events.filter((event) => event instanceof Login)).toEqual([]);
+    expect(jar.has('remember_web')).toBe(false);
+    expect(cookie()).not.toBe(planted);
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect((await send('/me')).status).toBe(401);
+    const stored = await sessionData(booted, cookie());
+    expect(stored).toMatchObject({ _auth_pending: { id: 1, remember: true, failures: 0, factors: ['totp'] } });
+    expect(Object.keys(stored)).not.toContain(AUTH_SESSION_KEYS.id);
+    expect(await (await send('/pending')).json()).toEqual({ pending: { factors: ['totp'] }, user: null });
+  });
+
+  it('answers a wrong password as before and starts no pending state', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    expect(await (await login(send, 'wrong')).json()).toEqual({ message: 'These credentials do not match our records.' });
+    expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
+  });
+
+  it('attempt() reports two-factor-required with the factors, and an account without a factor signs in as before', async () => {
+    const booted = await boot({ factors: withFactor() });
+    const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
+    await booted.add(ada);
+    await booted.add(bob);
+    const { send } = booted.browser();
+    expect((await login(send, 'secret', bob.email)).headers.get('location')).toBe('/home');
+    expect(await (await send('/who')).json()).toEqual({ id: 2, viaRemember: false });
+  });
+
+  it('login() holds the account back too and answers two-factor-required', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    await booted.add({ id: 2, name: 'Bob', email: 'bob@example.com' });
+    const { send, jar } = booted.browser();
+    events.length = 0;
+    expect(await (await post(send, '/login-as/1')).json()).toEqual({ result: 'two-factor-required' });
+    expect(events.filter((event) => event instanceof Login)).toEqual([]);
+    expect(jar.has('remember_web')).toBe(false);
+    expect(await (await send('/pending')).json()).toEqual({ pending: { factors: ['totp'] }, user: null });
+    expect(await (await post(booted.browser().send, '/login-as/2')).json()).toEqual({ result: 'signed-in' });
+  });
+
+  it('invariant: a caller that ignores two-factor-required still has nobody signed in', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    expect(await (await post(send, '/login-ignoring', { email: ada.email, password: 'secret' })).json()).toEqual({ continued: true, error: { kind: 'two-factor-required', factors: ['totp'] } });
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect((await send('/me')).status).toBe(401);
+  });
+
+  it('replaces a signed-in session of another account with the pending state', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    await booted.add({ id: 2, name: 'Bob', email: 'bob@example.com' });
+    const { send } = booted.browser();
+    await login(send, 'secret', 'bob@example.com');
+    await login(send);
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+  });
+
+  it('COMPLETE_PENDING signs in: new session id, one Login event, the remember cookie, the factor and password times', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send, cookie, jar } = booted.browser();
+    await rememberLogin(send);
+    const held = cookie();
+    events.length = 0;
+    expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: true, id: 1 });
+    expect(cookie()).not.toBe(held);
+    expect(events.filter((event) => event instanceof Login)).toEqual([expect.objectContaining({ via: 'attempt', remember: true })]);
+    expect(jar.has('remember_web')).toBe(true);
+    expect(await (await send('/who')).json()).toEqual({ id: 1, viaRemember: false });
+    const stored = await sessionData(booted, cookie());
+    expect(stored).toMatchObject({ _auth_id: 1, _auth_two_factor_at: expect.any(Number), _auth_confirmed_at: expect.any(Number) });
+    expect(Object.keys(stored)).not.toContain(AUTH_SESSION_KEYS.pending);
+    expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('COMPLETE_PENDING refuses without a pending state', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    expect(await (await post(booted.browser().send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('invariant: a password changed between password and factor ends the pending state', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    await login(send);
+    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('new password');
+    expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'expired' });
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
+  });
+
+  it('COMPLETE_PENDING refuses once the pending state ran out', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    await login(send);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 301_000 });
+    try {
+      expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
+      expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'expired' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('logging out drops the pending state', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    await login(send);
+    await post(send, '/logout');
+    expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
+  });
+
+  it('an account\'s pending sign-in cannot be finished with the factor of another account', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    await booted.add({ id: 2, name: 'Bob', email: 'bob@example.com' });
+    const { send } = booted.browser();
+    await login(send);
+    expect(await (await post(send, '/complete-pending', { as: 2 })).json()).toEqual({ ok: false, kind: 'expired' });
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null }); // and it is gone: the factor has to be proven again
+  });
+
+  it('invariant: a new session key between password and factor ends the pending state', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    await login(send);
+    booted.users.rows.get(1)!.key = 'rotated-key';
+    expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'expired' });
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+  });
+
+  it('the remember-me cookie made after the factor counts as having proven it', async () => {
+    const factors = withFactor();
+    const booted = await boot({ factors });
+    await booted.add(ada);
+    const first = booted.browser();
+    await rememberLogin(first.send);
+    expect(first.jar.has('remember_web')).toBe(false); // nothing is remembered before the factor
+    await post(first.send, '/complete-pending');
+    const reopened = booted.browser(new Map([['remember_web', first.jar.get('remember_web')!]]));
+    expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true });
+    expect(await sessionData(booted, reopened.cookie())).toMatchObject({ _auth_id: 1, _auth_two_factor_at: expect.any(Number) });
+  });
+});

@@ -5,7 +5,8 @@ import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /**
  * Session data that signs `user` in, exactly as a login would leave it — what `actingAs(user)` of
- * @marmeon/testing starts a request with.
+ * @marmeon/testing starts a request with. It skips two-factor authentication on purpose: a test that acts as a user
+ * gets a signed-in session whether or not the account has a second factor (test the challenge by signing in for real).
  */
 export async function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>> {
   const id = idOf(user);

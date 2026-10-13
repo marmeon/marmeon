@@ -91,6 +91,7 @@ export class RegisterController extends Controller {
     });
     // Taken — the unique index decides (the schema never asks; two sign-ups at once included): a field error.
     if (!created.ok) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
+    // A new account has no second factor, so this signs in; the result matters only to an app that binds a factor source.
     await this.#auth.login(created.value);
     return this.redirect().route('user-profile.me');
   }

@@ -165,7 +165,7 @@ a transaction, an `err` rolls the transaction back, as the [transactions](transa
 | --- | --- | --- |
 | `repository.tryInsert()` | `duplicate` | [Queries](queries.md#writing) |
 | `repository.tryUpdate()` | `duplicate`, `missing` | [Queries](queries.md#writing) |
-| `auth.attempt()` | `invalid-credentials` | [Authentication](authentication.md#signing-in) |
+| `auth.attempt()` | `invalid-credentials`, `two-factor-required` (after a correct password, for an account with a second factor) | [Authentication](authentication.md#signing-in) |
 | `RememberTokenStore.consume()` | `invalid`, `stolen` | [Authentication](authentication.md#remember-me) |
 | `PasswordBroker.createToken()` | `unavailable` | [Password reset](passwords.md#asking-for-a-link) |
 | `PasswordBroker.reset()` | `invalid-token` | [Password reset](passwords.md#resetting-the-password) |

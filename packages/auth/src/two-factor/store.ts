@@ -91,6 +91,9 @@ export class TwoFactorStore implements TwoFactorState {
    * Confirms a started setup: the code's `step` counts as used, the secret is stored re-encrypted, and — when this is the
    * account's first factor — its recovery code hashes are stored, all in one transaction. `false` when there is nothing
    * to confirm (never started, or already confirmed); then nothing changed.
+   *
+   * The caller must afterwards drop the user's remember-me tokens except this device's (`remember.forgetUser(id, ownCookie)`): they
+   * were made without a second factor, and the remember-me sign-in treats every surviving token of such an account as having proven one.
    */
   async confirm(userId: number | string, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean> {
     return this.#connections.transaction(async () => {

@@ -16,6 +16,7 @@ const en = {
     register: 'Create an account',
     demo: 'Demo: ada@example.com, alan@example.com or grace@example.com — password',
     failed: 'These credentials do not match our records.',
+    two_factor_pending: 'This account uses two-factor authentication, which this page cannot complete yet.',
     throttled: 'Too many login attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
   },
   register: {
