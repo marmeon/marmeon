@@ -94,9 +94,10 @@ The classes the pages use are small and yours to reuse:
 
 | Class | For |
 | --- | --- |
-| `.button`, `.button-secondary` | A button, filled or quiet, on a `<button>` or a `<Link>`. Add `data-destructive` to an action that cannot be undone. |
+| `.button`, `.button-secondary` | A button, filled or quiet, on a `<button>` or a `<Link>`. Add `data-destructive` to an action that cannot be undone, and `data-size="small"` for a smaller one beside content, such as the actions of a card or a row. |
 | `.choice` | A checkbox or radio with its label, in a row. |
 | `.card` | A box with a border. `data-kind="success"` colors it green. |
+| `.badge` | A small pill that marks something, such as "Pinned", next to a heading. |
 | `.notice` | A short message, with `data-kind="success"` or `"error"`. |
 | `.stack`, `.stack-loose`, `.cluster` | Vertical and horizontal spacing between children. |
 | `.hint`, `.muted` | Quieter text. |

@@ -1,0 +1,4 @@
+{
+  "beforeCopy": ["marmeon make:module notes"],
+  "afterCopy": ["marmeon migrate", "marmeon db:types", "marmeon route:types"]
+}

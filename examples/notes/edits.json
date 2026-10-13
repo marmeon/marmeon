@@ -1,0 +1,12 @@
+[
+  {
+    "file": "modules/auth/layouts/AppLayout.tsx",
+    "find": "  const user = auth?.user ?? null;",
+    "replace": "  const user = auth?.user ?? null;\n  const notes = useTranslation('notes');"
+  },
+  {
+    "file": "modules/auth/layouts/AppLayout.tsx",
+    "find": "            <Link route=\"dashboard\">{t('layout.dashboard')}</Link>",
+    "replace": "            <Link route=\"dashboard\">{t('layout.dashboard')}</Link>\n            <Link route=\"notes.index\" activeMatch=\"notes.*\">\n              {notes('nav')}\n            </Link>"
+  }
+]

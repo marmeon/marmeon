@@ -15,6 +15,7 @@ import { UserSeeder } from './seeders/UserSeeder.ts';
 // Other modules import from here, never from internals.
 export { AccountDeleted, AccountDeletion } from './AccountDeletion.ts';
 export { UserFactory } from './factories/UserFactory.ts';
+export { ConfirmedAddress } from './middleware/ConfirmedAddress.ts';
 export { UserRepository } from './UserRepository.ts';
 export type { User } from './users.ts';
 

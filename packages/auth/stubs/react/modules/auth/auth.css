@@ -397,7 +397,8 @@
   white-space: nowrap;
 }
 
-.auth-table :is(.button, .button-secondary) {
+/* The kit's smaller button (styles/app.css), repeated so an app without that file keeps the compact button. */
+:is(.button, .button-secondary)[data-size='small'] {
   min-height: 2rem;
   padding-inline: var(--space-3, 0.75rem);
   font-size: var(--text-sm, 0.875rem);
