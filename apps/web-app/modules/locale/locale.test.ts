@@ -77,8 +77,8 @@ describe('a German browser', () => {
 describe('the language switcher (POST /locale)', () => {
   it('keeps the choice in the session — it wins over the browser’s languages', async () => {
     const switched = await app.post('/locale', { form: { locale: 'de' }, headers: referer('/login') }).assertRedirect('/login').assertSessionHas('locale', 'de');
-    // A full page load from here on, with the browser's HTTP cache cleared: no page in the old language comes back.
-    expect(switched.headers.get('clear-site-data')).toBe('"cache"');
+    // A full page load from here on, without Clear-Site-Data: the browser's cache is left alone.
+    expect(switched.headers.has('clear-site-data')).toBe(false);
     const session = app.withCookie('marmeon_session', switched.cookie('marmeon_session')!);
     const login = await session.navigating().get('/login', { headers: { 'accept-language': 'en' } });
     expect(login.page()!.locale).toBe('de');
@@ -88,6 +88,7 @@ describe('the language switcher (POST /locale)', () => {
   it('answers a client-side visit with a full page load (409): the pages kept in memory are in the old language', async () => {
     const visit = await app.navigating().post('/locale', { form: { locale: 'de' }, headers: referer('/register') }).assertStatus(409);
     expect(visit.headers.get(LOCATION_HEADER)).toBe('/register');
+    expect(visit.headers.has('clear-site-data')).toBe(false);
   });
 
   it('takes only a supported locale — in its spelling; anything else is a validation error', async () => {

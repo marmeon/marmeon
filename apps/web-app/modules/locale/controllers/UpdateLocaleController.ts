@@ -42,10 +42,10 @@ export class UpdateLocaleController extends Controller {
     this.#session.put('locale', locale);
     const user = await this.#auth.user();
     if (user) await this.#users.updateLocale(user.id, locale);
-    // Every page the browser keeps — in memory, in its HTTP cache — is in the old language: a full load, and the
-    // cache cleared (as after signing out — but not the site's storage: nobody signed out). The other tabs reload through
-    // the tabSync feature: the session's epoch includes the locale.
-    this.#history.clear({ siteData: ['cache'] });
+    // A full load drops the pages the client keeps in memory (old language). No cache clearing: guest pages carry no
+    // freshness, so the browser asks again on a normal visit (Back/Forward may show a page in the old language until the
+    // next visit), and "cache" makes Chrome scan its whole disk cache. The other tabs reload through the tabSync feature: the session's epoch includes the locale.
+    this.#history.clear({ siteData: false });
     return this.back('/').flash('toast', { kind: 'success', message: this.#translator.forLocale(locale).get('app.locale.changed') });
   }
 }
