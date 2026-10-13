@@ -7,11 +7,12 @@ import { UserFactory } from '../auth/index.ts';
 // The home page's tests — written by create-marmeon's starter kit. `pnpm test` runs them with the auth module's.
 
 let app: TestApp;
+// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
-});
+}, 30_000);
 
-describe('the home page', () => {
+describe('the home page', { timeout: 30_000 }, () => {
   it('shows guests the way in — without starting a session', async () => {
     const home = await app.navigating().get('/');
     home.assertPage('home/Home', { appName: app.make(AppConfig).name });

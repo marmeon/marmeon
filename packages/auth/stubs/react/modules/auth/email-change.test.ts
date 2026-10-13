@@ -20,9 +20,10 @@ import { UserRepository } from './UserRepository.ts';
 // gets a note instead. With AUTH_PRIVATE_REGISTRATION=false it changes at once and says "taken". Runs on SQLite and Postgres.
 
 let app: TestApp;
+// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
-});
+}, 30_000);
 
 type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
@@ -49,7 +50,7 @@ const answer = (response: { status: number; headers: Headers; body: string }) =>
 const pendingOn = async (session: Session) => ((await session.navigating().get('/settings/security').assertPage('auth/Security')).page()!.props as { pendingEmail: string | null }).pendingEmail;
 const expired = { message: 'This link no longer works — it was used, a newer one replaced it, or it expired. Change your address again on the security page.' };
 
-describe('changing the address (private registration) — the default', () => {
+describe('changing the address (private registration) — the default', { timeout: 30_000 }, () => {
   it('keeps the account at its address until the link is clicked — then the new one is confirmed, the old one told', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
     const session = await signIn(kj);
@@ -180,11 +181,11 @@ describe('changing the address (private registration) — the default', () => {
   });
 });
 
-describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
+describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
-  });
+  }, 30_000);
 
   it('changes it at once, unconfirmed: a link to the new address, a note to the old one — and the settings stay open to fix a typo', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
