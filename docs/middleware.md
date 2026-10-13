@@ -318,6 +318,7 @@ These middleware come with the framework's packages. Add them to routes with `Ro
 | `guest(home)` | `@marmeon/auth` | Only guests. A signed-in user is sent to `home`, by default `/`. |
 | `verified()` | `@marmeon/auth` | Only users with a confirmed address. Needs `authenticate()` before it. |
 | `confirmedPassword()` | `@marmeon/auth` | Asks for the password again unless the user confirmed it within the last 15 minutes. |
+| `twoFactor({ setup, verify, maxAge? })` | `@marmeon/auth/two-factor` | Only sessions that proved a second factor. Needs `authenticate()` before it; the framework never installs it. A browser goes to `setup` or `verify`, a JSON client gets 403. See [two-factor authentication](two-factor-authentication.md#requiring-it). |
 | `abilities(...names)` | `@marmeon/auth` | The API token must grant every ability. Needs `authenticate('api')` before it. |
 | `throttle(name)` | `@marmeon/cache` | A rate limit of a named limiter. Answers 429 once it is used up. |
 | `signed()` | `@marmeon/http` | Only URLs with a valid signature. Answers 403 otherwise. |

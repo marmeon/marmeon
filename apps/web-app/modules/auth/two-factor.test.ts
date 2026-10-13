@@ -1,4 +1,5 @@
-import { twoFactorCode } from '@marmeon/auth';
+import { twoFactorCode, TwoFactorStore } from '@marmeon/auth';
+import { Encrypter } from '@marmeon/encryption';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -189,5 +190,59 @@ describe('two-factor authentication', () => {
     await app.get('/settings/two-factor').assertRedirect('/login');
     const ada = await app.factory(UserFactory).create();
     await app.actingAs(ada).get('/settings/two-factor').assertRedirect('/confirm-password');
+  });
+
+  describe('a page behind the twoFactor() middleware', () => {
+    const KEY = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+    const asJson = { accept: 'application/json' };
+
+    /** A factor added behind the back of the open sessions: they hold it without having proven it. */
+    async function addFactorQuietly(user: User) {
+      const encrypted = await app.make(Encrypter).encrypt(KEY, `marmeon-auth:two-factor:${user.id}`);
+      const store = app.make(TwoFactorStore);
+      await store.startSetup(user.id, encrypted);
+      expect(await store.confirm(user.id, 0, encrypted, null)).toBe(true);
+    }
+
+    it('sends a user without a factor to the setup page', async () => {
+      const ada = await app.factory(UserFactory).create();
+      await app.actingAs(ada).get('/settings/sensitive').assertRedirect('/settings/two-factor');
+      await app.actingAs(ada).withHeaders(asJson).get('/settings/sensitive').assertForbidden().assertJson({ error: 'two_factor_required' });
+    });
+
+    it('opens for the session that turned the factor on, and for acting as a user that has one', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const { cookie } = await enable(ada);
+      await app.withCookie(SESSION, cookie).navigating().get('/settings/sensitive').assertPage('auth/Sensitive');
+      await app.actingAs(ada).navigating().get('/settings/sensitive').assertPage('auth/Sensitive');
+    });
+
+    it('sends a session that did not prove the factor to the verify page, which opens it with a code and comes back', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const cookie = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
+      await addFactorQuietly(ada);
+      const as = () => app.withCookie(SESSION, cookie);
+      await as().withHeaders(asJson).get('/settings/sensitive').assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await as().get('/settings/sensitive').assertRedirect('/settings/two-factor/verify');
+      await as().navigating().get('/settings/two-factor/verify').assertPage('auth/TwoFactorVerify');
+      await as().post('/settings/two-factor/verify', { form: { code: '000000' }, headers: { referer: 'http://localhost/settings/two-factor/verify' } }).assertInvalid({ code: 'That code did not work.' });
+      await as().get('/settings/sensitive').assertRedirect('/settings/two-factor/verify'); // a wrong code proves nothing
+      const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(KEY) } }).assertRedirect('/settings/sensitive');
+      await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).navigating().get('/settings/sensitive').assertPage('auth/Sensitive');
+    });
+
+    it('is not opened by a password typed again, nor by a sign-in that waits for the code', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const cookie = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
+      await addFactorQuietly(ada);
+      await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
+      await app.withCookie(SESSION, cookie).get('/settings/sensitive').assertRedirect('/settings/two-factor/verify');
+      await app.withCookie(SESSION, await waiting(ada)).get('/settings/sensitive').assertRedirect('/login');
+    });
+
+    it('needs a signed-in user for the verify page', async () => {
+      await app.get('/settings/two-factor/verify').assertRedirect('/login');
+      await app.post('/settings/two-factor/verify', { form: { code: '123456' } }).assertRedirect('/login');
+    });
   });
 });

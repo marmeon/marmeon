@@ -112,6 +112,7 @@ The package brings four middleware for the routes of the `web` group:
 | `guest(home)` | Guests. For the login and registration pages. | A redirect to `home`, `/` by default. |
 | `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
 | `confirmedPassword()` | A user who typed the password within the last 15 minutes. After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
+| `twoFactor({ setup, verify, maxAge? })` | A user whose session proved a second factor. After `authenticate()`; never installed by the framework. | A browser goes to `setup` or `verify`, a JSON client gets 403. See [requiring it](two-factor-authentication.md#requiring-it). |
 
 `authenticate('api')` checks an API token instead of the session. The [API tokens](api-tokens.md) page covers it, and the
 [middleware](middleware.md#middleware-of-the-framework) page lists the middleware of every package.

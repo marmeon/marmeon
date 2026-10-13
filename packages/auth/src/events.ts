@@ -200,7 +200,7 @@ export class RecoveryCodesGenerated {
   }
 }
 
-/** A recovery code was spent to sign in; `remaining` are left. Queueable: `{ userId, remaining }`. */
+/** A recovery code was spent to sign in or to step up; `remaining` are left. Queueable: `{ userId, remaining }`. */
 export class RecoveryCodeUsed {
   static readonly event = 'auth.recovery-code-used';
   static readonly schema = v.object({ userId, remaining: v.number() });
@@ -219,8 +219,8 @@ export class RecoveryCodeUsed {
 }
 
 /**
- * Someone with the right password gave a wrong second factor — for "was this you?" mails and audit logs. Queueable:
- * `{ userId, at, ip, userAgent }` (`at` as an ISO-8601 string).
+ * A wrong second factor, after the right password (`during: 'sign-in'`) or from a session that is already signed in (`during: 'step-up'`) —
+ * for "was this you?" mails and audit logs. Queueable: `{ userId, at, ip, userAgent, during }` (`at` as an ISO-8601 string).
  */
 export class TwoFactorChallengeFailed {
   static readonly event = 'auth.two-factor-challenge-failed';
@@ -229,16 +229,19 @@ export class TwoFactorChallengeFailed {
     at: instant,
     ip: v.nullable(v.string()),
     userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+    during: v.picklist(['sign-in', 'step-up']),
   });
   readonly #event = true;
   readonly user: AuthUser;
   readonly at: Date;
+  readonly during: 'sign-in' | 'step-up';
   readonly ip: string | null;
   readonly userAgent: string | null;
 
-  constructor(user: AuthUser, at = new Date(), details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+  constructor(user: AuthUser, at = new Date(), details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly during?: 'sign-in' | 'step-up' } = {}) {
     this.user = user;
     this.at = at;
+    this.during = details.during ?? 'sign-in';
     this.ip = details.ip ?? null;
     this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
   }

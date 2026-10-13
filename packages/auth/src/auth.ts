@@ -533,8 +533,9 @@ export class Auth {
     if (device.cookie) this.#setCookie(device.cookie, device.expiresAt);
     await (await this.#login(found, {}, 'remember')).announce();
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
-    // when it is turned on), so this device has proven it too.
-    if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
+    // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
+    // does not turn into a fresh proof for the middleware's `maxAge`.
+    if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(device.createdAt.getTime() / 1000));
     return found.user;
   }
 

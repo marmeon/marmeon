@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { RateLimiter } from '@marmeon/cache';
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
 import { CacheServiceProvider } from '@marmeon/cache';
@@ -5,10 +7,11 @@ import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon
 import { AesGcmEncrypter, Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
+import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
+import { authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
+import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
 
 interface TestUser {
@@ -98,6 +101,8 @@ class TwoFactorController extends Controller {
           return await this.#twoFactor.begin();
         case 'setup':
           return (await this.#twoFactor.setup()) ?? null;
+        case 'step-up':
+          return await this.#twoFactor.stepUp(body as never).then((done) => (done.ok ? { ok: true } : { ok: false, ...done.error }));
         case 'status':
           return await this.#twoFactor.status();
         case 'regenerate':
@@ -117,8 +122,37 @@ class TwoFactorController extends Controller {
   }
 }
 
+/** Writes whatever the request says into the session's proof of the second factor — to see how the middleware reads bad data. */
+class SetProof extends Controller {
+  readonly #session: Session;
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+  async handle(ctx: HttpContext) {
+    this.#session.put('_auth_two_factor_at', ((await ctx.input()) as { value: unknown }).value as never);
+    return { set: true };
+  }
+}
+
+class Page extends Controller {
+  handle() {
+    return { page: true };
+  }
+}
+
 const routes = defineRoutes((Route) => {
-  Route.post('/login', LoginController);
+  Route.post('/login', LoginController).name('auth.login');
+  // Pages for the middleware: the one it sends people to, and areas behind it (the second one asks again after a minute).
+  Route.post('/set-proof', SetProof);
+  Route.get('/account/two-factor', Page).name('test.setup');
+  Route.get('/account/verify', Page).name('test.verify');
+  const signedIn = Route.middleware(authenticate());
+  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).get('/area', Page);
+  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
+  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 60 })).get('/area-fresh', Page);
+  // Without authenticate() before it, which the types ask for: whoever is not signed in must still be refused.
+  Route.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' }) as never).get('/area-bare', Page);
   Route.post('/login-as', LoginAsController);
   Route.post('/tf/:method', TwoFactorController);
 });
@@ -171,9 +205,21 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
       }
       return (await response.json()) as Record<string, any>;
     };
+    /** A GET that is not followed: the status, where it points, and the JSON answer when the client asked for it. */
+    const visit = async (path: string, { json = false, headers = {} }: { json?: boolean; headers?: Record<string, string> } = {}) => {
+      const response = await kernel.request(path, { headers: { cookie: [...jar].map(([name, value]) => `${name}=${value}`).join('; '), ...(json ? { accept: 'application/json' } : {}), ...headers } });
+      for (const header of response.headers.getSetCookie()) {
+        const [pair, ...attributes] = header.split(';');
+        const [name, value] = pair!.split('=') as [string, string];
+        if (value === '' || attributes.some((attribute) => /max-age=0\b/i.test(attribute.trim()))) jar.delete(name);
+        else jar.set(name, value);
+      }
+      const body = json || response.status === 200 ? ((await response.json().catch(() => undefined)) as Record<string, any> | undefined) : undefined;
+      return { status: response.status, location: response.headers.get('location'), body };
+    };
     const tf = (method: string, json: unknown = {}) => send(`/tf/${method}`, json);
     const login = (email = ada.email, password = 'secret', remember = false) => send('/login', { email, password, remember });
-    return { send, tf, login, jar };
+    return { send, tf, login, visit, jar };
   };
 
   const connections = application.container.make(Connections);
@@ -812,5 +858,170 @@ describe('TwoFactor: rows', () => {
     const rows = await booted.connections.get<{ [RECOVERY_CODES_TABLE]: RecoveryCodeTable }>().selectFrom(RECOVERY_CODES_TABLE).select((eb) => [secret(eb, 'code_hash')]).execute();
     expect(rows).toHaveLength(10);
     for (const code of recoveryCodes) expect(JSON.stringify(rows)).not.toContain(code.replaceAll('-', ''));
+  });
+});
+
+describe('twoFactor() middleware', () => {
+  const KEY = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+
+  /** Gives the account a confirmed authenticator behind the back of its open sessions, so that they hold a factor they never proved. */
+  async function addFactorQuietly(booted: Booted, id = 1) {
+    const encrypted = await booted.application.container.make(Encrypter).encrypt(KEY, `marmeon-auth:two-factor:${id}`);
+    await booted.store.startSetup(id, encrypted);
+    expect(await booted.store.confirm(id, 0, encrypted, null)).toBe(true);
+  }
+
+  it('sends a user without a factor to set one up; JSON gets 403 two_factor_required', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    expect(await b.visit('/area')).toMatchObject({ status: 302, location: '/account/two-factor' });
+    expect(await b.visit('/area', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_required' } });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_required' }); // a POST is refused the same way
+  });
+
+  it('sends a session that has not proven the factor to verify; JSON gets 403 two_factor_unverified', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    await addFactorQuietly(booted);
+    expect(await b.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
+    expect(await b.visit('/area', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+    // Typing the password again (sudo mode) proves nothing about the second factor.
+    expect(await b.tf('confirm-password', { password: 'secret' })).toEqual({ confirmed: true });
+    expect(await b.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
+  });
+
+  it('lets a session through once stepUp() accepts a code — in a new session id — and refuses a wrong one meanwhile', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const again = booted.browser();
+    await again.login();
+    await addFactorQuietly(booted);
+    const before = b.jar.get('marmeon_session');
+    expect(await b.tf('step-up', { code: '000000' })).toEqual({ ok: false, kind: 'invalid-code', attemptsLeft: 4 });
+    expect(events.find((event) => event instanceof TwoFactorChallengeFailed)).toMatchObject({ during: 'step-up' });
+    expect(await b.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' }); // a wrong code proves nothing, and the session survives it
+    expect(await b.tf('step-up', { code: twoFactorCode(KEY) })).toEqual({ ok: true });
+    expect(b.jar.get('marmeon_session')).not.toBe(before);
+    expect(await b.visit('/area')).toMatchObject({ status: 200, body: { page: true } });
+    // The code was used up: it proves nothing again, in another session either.
+    expect(await again.tf('step-up', { code: twoFactorCode(KEY) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    expect(await again.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
+  });
+
+  it('stepUp() takes a recovery code, throttles like a challenge, and has nothing to prove without a factor', async () => {
+    const booted = await boot();
+    const { b, recoveryCodes } = await enable(booted);
+    const fresh = booted.browser();
+    await fresh.login(); // only a waiting sign-in: nobody is signed in, so there is no one to step up
+    expect(await fresh.tf('step-up', { code: '123456' })).toMatchObject({ thrown: expect.stringContaining('signed-in user') });
+    for (let i = 0; i < 5; i++) await b.tf('step-up', { code: '000000' });
+    expect(await b.tf('step-up', { code: '000000' })).toMatchObject({ ok: false, kind: 'throttled' });
+    expect(await b.tf('step-up', { recoveryCode: recoveryCodes[0] })).toEqual({ ok: true });
+    expect(await b.tf('step-up', { recoveryCode: recoveryCodes[0] })).toMatchObject({ ok: false, kind: 'invalid-code' }); // spent
+
+    const plain = booted.browser();
+    await plain.login(bob.email);
+    expect(await plain.tf('step-up', { code: '123456' })).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('asks again after maxAge', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const booted = await boot();
+    const { b, secret: key } = await enable(booted);
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 }); // enabling counts as a proof
+    vi.setSystemTime(inSeconds(59));
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
+    vi.setSystemTime(inSeconds(61));
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
+    expect(await b.visit('/area')).toMatchObject({ status: 200 }); // an area without maxAge keeps the proof for the session
+    expect(await b.tf('step-up', { code: twoFactorCode(key, new Date(Date.now() + 30_000)) })).toEqual({ ok: true });
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
+  });
+
+  it('lets a sign-in with the factor through, also one made with a remember-me cookie', async () => {
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    const login = booted.browser();
+    expect(await login.login(ada.email, 'secret', true)).toMatchObject({ signedIn: false });
+    expect(await login.visit('/area', { json: true })).toMatchObject({ status: 401 }); // waiting for the factor is no sign-in
+    expect(await login.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toMatchObject({ ok: true });
+    expect(await login.visit('/area')).toMatchObject({ status: 200 });
+    const returning = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
+    expect(await returning.visit('/area')).toMatchObject({ status: 200 });
+  });
+
+  it('a remember-me sign-in does not satisfy maxAge: the proof is as old as the token', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    vi.setSystemTime(inSeconds(1)); // the clock is frozen: a token made in the very instant the factor was confirmed is refused
+    const login = booted.browser();
+    await login.login(ada.email, 'secret', true);
+    await login.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) });
+    vi.setSystemTime(inSeconds(61));
+    const stolen = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
+    expect(await stolen.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
+    expect(await stolen.visit('/area')).toMatchObject({ status: 200 }); // without maxAge a remember-me sign-in goes through
+    // Rotation of the cookie keeps the age of the proof.
+    const again = booted.browser(new Map([['remember_web', stolen.jar.get('remember_web') ?? login.jar.get('remember_web')!]]));
+    expect(await again.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
+  });
+
+  it.each([
+    ['a string', '1700000000'],
+    ['null', null],
+    ['a time in the future', Math.floor(Date.now() / 1000) + 60],
+  ])('refuses a proof that is %s', async (_name, value) => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    await addFactorQuietly(booted);
+    await b.send('/set-proof', { value });
+    expect(await b.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
+    expect(await b.visit('/area', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
+  });
+
+  it('answers a request without a user with 401 or the login page, never a pass — a bearer token included', async () => {
+    const booted = await boot();
+    const guest = booted.browser();
+    expect(await guest.visit('/area-bare', { json: true })).toMatchObject({ status: 401 });
+    expect(await guest.visit('/area-bare')).toMatchObject({ status: 302, location: '/login' });
+    expect(await guest.visit('/area-bare', { json: true, headers: { authorization: 'Bearer not-a-session' } })).toMatchObject({ status: 401 });
+    const b = booted.browser();
+    await b.login();
+    await addFactorQuietly(booted);
+    expect(await b.visit('/area-bare', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
+  });
+
+  it('actingAs() sessions carry the proof only for an account that has a factor', async () => {
+    const booted = await boot();
+    expect(await authenticatedSession(booted.application.container, ada)).not.toHaveProperty('_auth_two_factor_at');
+    await addFactorQuietly(booted);
+    expect(await authenticatedSession(booted.application.container, ada)).toHaveProperty('_auth_two_factor_at');
+    expect(await authenticatedSession(booted.application.container, bob)).not.toHaveProperty('_auth_two_factor_at');
+  });
+
+  it('takes only a positive maxAge', () => {
+    for (const maxAge of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => twoFactor({ setup: 'a', verify: 'b', maxAge })).toThrow('seconds above zero');
+  });
+
+  it('is installed nowhere by the framework: neither the package nor its starter kit mention it outside docs and tests', () => {
+    const root = new URL('../../', import.meta.url).pathname;
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.(ts|tsx)$/.test(name) && !/\.test\.|\.type-test\./.test(name)) files.push(path);
+      }
+    };
+    walk(join(root, 'src'));
+    walk(join(root, 'stubs'));
+    const users = files.filter((file) => /\btwoFactor\(\s*\{/.test(readFileSync(file, 'utf8')));
+    expect(users.map((file) => file.slice(root.length))).toEqual(['src/two-factor/middleware.ts']);
   });
 });
