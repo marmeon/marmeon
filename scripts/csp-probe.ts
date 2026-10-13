@@ -43,11 +43,12 @@ const PROFILES: Record<string, Profile> = {
   },
   kit: {
     email: 'test@example.com',
-    guest: ['/login', '/register', '/forgot-password', '/nowhere'],
+    guest: ['/', '/login', '/register', '/forgot-password', '/nowhere'],
     user: ['/dashboard', '/settings/security', '/settings/tokens'],
     failing: { page: '/dashboard', link: 'a[href="/settings/security"]' },
     // The auth module's layouts: modules/auth/auth.css (make:auth imports it in bootstrap/client.tsx), no inline style.
     looks: [
+      { url: '/dashboard', selector: 'body', property: 'font-family', expected: '"IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif' },
       { url: '/dashboard', selector: 'header.auth-header', property: 'display', expected: 'flex' },
       { url: '/settings/tokens', selector: '.auth-settings', property: 'display', expected: 'flex' },
       { url: '/settings/tokens', selector: 'label.auth-choice', property: 'display', expected: 'block' },
@@ -56,7 +57,7 @@ const PROFILES: Record<string, Profile> = {
 };
 
 /** The policy added to every document: what a strict app sets. */
-const STRICT = "style-src 'self'";
+const STRICT = "style-src 'self'; font-src 'self'";
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36';
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 

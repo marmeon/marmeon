@@ -457,7 +457,7 @@ while the two differ (`node scripts/sync-template.ts --check` names every file).
 `package.json` as `_gitignore` and `_package.json` (npm turns a `.gitignore` into `.npmignore` when it packs, and a nested `package.json` in a
 tarball confuses publint and bundlers; the scaffolder renames them back), makes `tsconfig.json` standalone, empties every `APP_KEY=` and leaves
 `README.md` out — the scaffolder writes each app its own README and keys. `template/kit` holds what the starter kit adds: the
-home module and the app's dialog.
+home module, the app's dialog, the look (`styles/app.css`) and, through `KIT_DEV_DEPENDENCIES` in `src/template.ts`, the font it imports as a dev dependency (kept equal to the website's).
 
 `MARMEON_CREATE_TARBALLS=<dir>` makes `create-marmeon` take the framework from the tarballs of `pnpm pack` in that directory
 instead of the registry. They are copied into the app's `vendor/marmeon/`, and every `@marmeon/*` dependency and `marmeon` point

@@ -6,7 +6,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
-import { appManifest, filesUnder, nameTitles, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_APP_CONSTANT, TEMPLATE_TITLE, writeTitle } from './template.ts';
+import { appManifest, filesUnder, KIT_DEV_DEPENDENCIES, nameTitles, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_APP_CONSTANT, TEMPLATE_TITLE, writeTitle } from './template.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -305,10 +305,57 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
 });
 
 describe('the starter kit’s own files', () => {
+  it('a kit app has the look — styles/app.css, imported once, and the font as a dependency the blank app does not have', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
+    expect((await create(cwd, ['blank', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
+    expect(existsSync(join(cwd, 'kit/styles/app.css'))).toBe(true);
+    expect(readFileSync(join(cwd, 'kit/bootstrap/client.tsx'), 'utf8').match(/import '\.\.\/styles\/app\.css'/g)).toHaveLength(1);
+    const font = '@fontsource-variable/ibm-plex-sans';
+    const kit = JSON.parse(readFileSync(join(cwd, 'kit/package.json'), 'utf8')) as { devDependencies: Record<string, string> };
+    const minimal = JSON.parse(readFileSync(join(cwd, 'blank/package.json'), 'utf8')) as { devDependencies: Record<string, string>; dependencies: Record<string, string> };
+    expect(kit.devDependencies[font]).toBe(KIT_DEV_DEPENDENCIES[font]);
+    expect(Object.keys(kit.devDependencies)).toEqual([...Object.keys(kit.devDependencies)].sort());
+    expect(font in minimal.devDependencies || font in minimal.dependencies).toBe(false);
+    expect(existsSync(join(cwd, 'blank/styles'))).toBe(false);
+  });
+
+  it('pins the font to the version the website uses, and the stylesheet imports exactly that package', () => {
+    const website = JSON.parse(readFileSync(join(repo, 'apps/website/package.json'), 'utf8')) as { devDependencies: Record<string, string> };
+    expect(KIT_DEV_DEPENDENCIES['@fontsource-variable/ibm-plex-sans']).toBe(website.devDependencies['@fontsource-variable/ibm-plex-sans']);
+    expect(readFileSync(join(TEMPLATE, 'kit/styles/app.css'), 'utf8')).toContain("@import '@fontsource-variable/ibm-plex-sans/wght.css';");
+  });
+
+  it('the stylesheet defines every token it uses, keeps the mono font a system stack, and respects dark mode and reduced motion', () => {
+    const css = readFileSync(join(TEMPLATE, 'kit/styles/app.css'), 'utf8');
+    const defined = new Set([...css.matchAll(/^\s*(--[\w-]+):/gm)].map((match) => match[1]));
+    const used = [...css.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]!);
+    expect(used.filter((name) => !defined.has(name))).toEqual([]);
+    expect(css).toMatch(/--font-mono: ui-monospace/);
+    expect(css).toContain('prefers-color-scheme: dark');
+    expect(css).toContain('prefers-reduced-motion: reduce');
+    // No bare `button` rule with a background or border: the framework's components are buttons too and keep their look.
+    for (const [, selector, body] of css.matchAll(/^([^\n{}@/][^{}]*)\{([^{}]*)\}/gm)) {
+      const bare = selector!.split(',').some((part) => /^\s*button(:[\w-]+)?\s*$/.test(part));
+      if (bare) expect(body, `\`${selector!.trim()}\``).not.toMatch(/background|border|color|padding/);
+    }
+    expect(css).not.toMatch(/url\(\s*['"]?https?:/);
+  });
+
+  it('the kit’s views and the auth stubs carry no style attribute — the look is a stylesheet (a strict style-src blocks inline styles)', () => {
+    const stubs = join(repo, 'packages/auth/stubs/react');
+    const files = [
+      ...filesUnder(join(TEMPLATE, 'kit')).filter((file) => file.endsWith('.tsx')).map((file) => join(TEMPLATE, 'kit', file)),
+      ...filesUnder(stubs).filter((file) => file.endsWith('.tsx')).map((file) => join(stubs, file)),
+    ];
+    expect(files.length).toBeGreaterThan(5);
+    for (const file of files) expect(readFileSync(file, 'utf8'), file).not.toMatch(/\bstyle=/);
+  });
+
   it('its client is the blank app’s — with its dialog (`confirm: Confirm`) and nothing else', () => {
     const base = readFileSync(join(TEMPLATE, 'base/bootstrap/client.tsx'), 'utf8');
     const kit = readFileSync(join(TEMPLATE, 'kit/bootstrap/client.tsx'), 'utf8');
-    const dialog = /^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
+    const dialog = /^import '\.\.\/styles\/app\.css';.*\n|^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
     expect(kit).not.toBe(base);
     expect(kit.replace(dialog, '')).toBe(base);
   });
@@ -338,6 +385,11 @@ it(
     const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], {}, sqliteEnv);
     expect(marmeon('make:auth')).toMatchObject({ code: 0, out: expect.stringContaining('Wrote bootstrap/routes.ts') });
     expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'home': { method: 'get'; path: '/'; controller: typeof ShowHomeController };");
+    // The order counts: at equal specificity the module's class rules must come after the kit's base rules.
+    const client = readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8');
+    expect(client.match(/styles\/app\.css/g)).toHaveLength(1);
+    expect(client.indexOf('../styles/app.css')).toBeGreaterThan(client.indexOf('@marmeon/react/styles.css'));
+    expect(client.indexOf('../styles/app.css')).toBeLessThan(client.indexOf('modules/auth/auth.css'));
     expect(marmeon('migrate')).toMatchObject({ code: 0, out: expect.stringContaining('Environment: development (APP_ENV=local, NODE_ENV from .env)') });
     const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
     expect(typecheck.out).toBe('');

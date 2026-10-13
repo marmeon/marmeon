@@ -11,6 +11,16 @@ const en = {
   register: 'Create an account',
   signed_in: 'Signed in as {name}.',
   dashboard: 'Go to your dashboard',
+  next_steps: 'Next steps',
+  edit_title: 'Change this page',
+  edit_text: 'It lives in modules/home/views/Home.tsx. The look lives in styles/app.css.',
+  docs_title: 'Read the docs',
+  docs_text: 'How an app is laid out, and how to build on it.',
+  docs_installation: 'Installation',
+  docs_structure: 'Structure',
+  kit_title: 'About the starter kit',
+  kit_text: 'What sign-in, registration and the settings pages include, and how to change them.',
+  kit_link: 'The starter kit',
 } as const;
 
 export default en;

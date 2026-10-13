@@ -10,19 +10,65 @@ export default function Home({ appName }: Props) {
   const t = useTranslation('home');
   const user = usePage().props.auth?.user ?? null;
   return (
-    <main>
+    <main className="app-main">
       <Head title={t('title')} />
-      <h1>{t('heading', { app: appName })}</h1>
-      <p>{t('intro')}</p>
-      {user ? (
-        <p>
-          {t('signed_in', { name: user.name })} <Link route="dashboard">{t('dashboard')}</Link>
-        </p>
-      ) : (
-        <p>
-          {t('guest')} <Link route="auth.login">{t('sign_in')}</Link> · <Link route="auth.register">{t('register')}</Link>
-        </p>
-      )}
+      <header className="hero">
+        <h1>{t('heading', { app: appName })}</h1>
+        <p>{t('intro')}</p>
+        {user ? (
+          <>
+            <p>{t('signed_in', { name: user.name })}</p>
+            <div className="cluster">
+              <Link route="dashboard" className="button">
+                {t('dashboard')}
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>{t('guest')}</p>
+            <div className="cluster">
+              <Link route="auth.register" className="button">
+                {t('register')}
+              </Link>
+              <Link route="auth.login" className="button-secondary">
+                {t('sign_in')}
+              </Link>
+            </div>
+          </>
+        )}
+      </header>
+      <section aria-labelledby="next-steps">
+        <h2 id="next-steps">{t('next_steps')}</h2>
+        <ul className="cards">
+          <li className="card">
+            <h3>{t('edit_title')}</h3>
+            <p className="muted">{t('edit_text')}</p>
+          </li>
+          <li className="card">
+            <h3>{t('docs_title')}</h3>
+            <p className="muted">{t('docs_text')}</p>
+            <p>
+              <a href="https://marmeon.com/docs/installation" rel="noreferrer">
+                {t('docs_installation')}
+              </a>
+              {' · '}
+              <a href="https://marmeon.com/docs/structure" rel="noreferrer">
+                {t('docs_structure')}
+              </a>
+            </p>
+          </li>
+          <li className="card">
+            <h3>{t('kit_title')}</h3>
+            <p className="muted">{t('kit_text')}</p>
+            <p>
+              <a href="https://marmeon.com/docs/starter-kit" rel="noreferrer">
+                {t('kit_link')}
+              </a>
+            </p>
+          </li>
+        </ul>
+      </section>
     </main>
   );
 }

@@ -96,6 +96,20 @@ export interface ManifestOptions {
 }
 
 /**
+ * What the starter kit needs besides the blank app's dependencies, with the exact version (build time only, hence
+ * `devDependencies`): the font its stylesheet imports. A test keeps the version equal to the website's.
+ */
+export const KIT_DEV_DEPENDENCIES: Readonly<Record<string, string>> = { '@fontsource-variable/ibm-plex-sans': '5.3.0' };
+
+/** The blank app's `package.json` with the starter kit's own dependencies added (sorted into `devDependencies`). */
+export function withKitDependencies(template: string): string {
+  const manifest = JSON.parse(template) as { devDependencies?: Record<string, string> };
+  const merged = { ...manifest.devDependencies, ...KIT_DEV_DEPENDENCIES };
+  manifest.devDependencies = Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return JSON.stringify(manifest);
+}
+
+/**
  * The app's `package.json` from the template's (the blank app's): its name, every `@marmeon/*` and `marmeon` at exactly the version of
  * this package (or its tarball), `packageManager` for pnpm — nothing pnpm's for npm.
  */
