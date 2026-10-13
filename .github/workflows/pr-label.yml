@@ -1,0 +1,35 @@
+# Every pull request carries exactly one release label. A maintainer sets it at review: it sorts the pull request into the release
+# notes (`.github/release.yml`), and `internal` keeps it out of them. This check reminds; it does not protect — a pull request runs
+# its own copy of this file. Hence the shape, which `scripts/check-changesets.ts` keeps: the `pull_request` event (never
+# `pull_request_target`: a fork's code must not get a token), no permissions at all, no checkout, no third-party action, and the
+# labels reach the script through env, never through an expression inside it. The labels are in the event, so nothing is fetched.
+#
+# Mark the check "release label" as required in the ruleset of `main`.
+name: PR label
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: pr-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: release label
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: require exactly one release label
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          CATEGORIES: breaking feature fix docs internal
+        run: |
+          count=$(jq --arg categories "$CATEGORIES" '[.[] | select(IN($categories | split(" ")[]))] | length' <<< "$LABELS")
+          if [ "$count" -ne 1 ]; then
+            echo "::error title=Release label::A pull request needs exactly one of these labels, and it has $count: breaking (a breaking change), feature (something new), fix (a bug fixed), docs (documentation only), internal (nothing a user notices, no line in the release notes)."
+            exit 1
+          fi

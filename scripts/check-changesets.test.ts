@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkUpgrading, checkWorkflow, pendingBump, targetVersion, UPGRADING_ANCHORS } from './check-changesets.ts';
+import { check, checkLabelWorkflow, checkReleaseConfig, checkUpgrading, checkWorkflow, pendingBump, runScripts, targetVersion, UPGRADING_ANCHORS } from './check-changesets.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const directories: string[] = [];
@@ -563,5 +564,132 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated('    timeout-minutes: 30\n', `    timeout-minutes: 30\n    env:\n      ${token}\n`))).toContain('github.token outside');
       expect(problemsOf(mutated('\npermissions:\n  contents: read\n', `\nenv:\n  ${token}\n\npermissions:\n  contents: read\n`))).toContain('github.token outside');
     });
+  });
+});
+
+describe('checkLabelWorkflow — the release label check', () => {
+  const real = readFileSync(join(root, '.github/workflows/pr-label.yml'), 'utf8');
+
+  function repositoryWithLabelWorkflow(workflow: string): string {
+    const directory = repositoryWith(unreleased);
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true });
+    writeFileSync(join(directory, '.github/workflows/pr-label.yml'), workflow);
+    return directory;
+  }
+  /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
+  function mutated(from: string, to: string): string {
+    const result = real.replace(from, to);
+    expect(result, `the mutation of ${from} changed nothing`).not.toBe(real);
+    return result;
+  }
+  const problemsOf = (workflow: string) => checkLabelWorkflow(repositoryWithLabelWorkflow(workflow)).join('\n');
+
+  it('passes the repository’s workflow', () => {
+    expectProblems(checkLabelWorkflow(root), []);
+  });
+
+  it('refuses a missing file', () => {
+    expect(checkLabelWorkflow(repositoryWith(unreleased)).join()).toContain('is missing');
+  });
+
+  it('refuses pull_request_target and any further event', () => {
+    expect(problemsOf(mutated('  pull_request:\n', '  pull_request_target:\n'))).toContain('exactly the pull_request event');
+    expect(problemsOf(mutated('on:\n', 'on:\n  push:\n'))).toContain('exactly the pull_request event');
+  });
+
+  it('wants every type, and no other', () => {
+    expect(problemsOf(mutated('reopened, ', ''))).toContain('the pull_request types must be');
+    expect(problemsOf(mutated('synchronize, ', ''))).toContain('the pull_request types must be');
+    expect(problemsOf(mutated('unlabeled]', 'unlabeled, edited]'))).toContain('the pull_request types must be');
+  });
+
+  it('wants permissions: {} and none in a job', () => {
+    expect(problemsOf(mutated('permissions: {}', 'permissions: write-all'))).toContain('must be "{}"');
+    expect(problemsOf(mutated('permissions: {}', 'permissions:\n  contents: read'))).toContain('must be "{}"');
+    expect(problemsOf(mutated('    timeout-minutes: 2\n', '    timeout-minutes: 2\n    permissions:\n      contents: read\n'))).toContain('a job asks for permissions');
+  });
+
+  it('refuses a checkout, any action, a secret and the token', () => {
+    const checkout = '    steps:\n      - uses: actions/checkout@v5\n';
+    expect(problemsOf(mutated('    steps:\n', checkout))).toContain('a "uses:" step');
+    expect(problemsOf(mutated('    steps:\n', '    steps:\n      - uses: someone/else@v1\n'))).toContain('a "uses:" step');
+    expect(problemsOf(mutated('          CATEGORIES:', '          TOKEN: ${{ secrets.TOKEN }}\n          CATEGORIES:'))).toContain('a secret or the token');
+    expect(problemsOf(mutated('          CATEGORIES:', '          TOKEN: ${{ github.token }}\n          CATEGORIES:'))).toContain('a secret or the token');
+    expect(problemsOf(mutated('          CATEGORIES:', "          TOKEN: ${{ secrets['NPM'] }}\n          CATEGORIES:"))).toContain('a secret or the token');
+    expect(problemsOf(mutated('          CATEGORIES:', '          ALL: ${{ toJSON(secrets) }}\n          CATEGORIES:'))).toContain('a secret or the token');
+    expect(problemsOf(mutated('          CATEGORIES:', "          TOKEN: ${{ github['token'] }}\n          CATEGORIES:"))).toContain('a secret or the token');
+  });
+
+  it('refuses an expression inside the script', () => {
+    expect(problemsOf(mutated('          count=$(', '          echo "${{ github.event.pull_request.title }}"\n          count=$('))).toContain('an expression inside a run script');
+    expect(problemsOf(mutated('        run: |\n', '        run: echo ${{ github.head_ref }}\n        # |\n'))).toContain('an expression inside a run script');
+  });
+
+  it('wants the labels in env from the event and the job named after the required check', () => {
+    expect(problemsOf(mutated('toJSON(github.event.pull_request.labels.*.name)', 'toJSON(github.event.pull_request.title)'))).toContain('LABELS must be');
+    expect(problemsOf(mutated('name: release label', 'name: label'))).toContain('named "release label"');
+  });
+
+  it('keeps CATEGORIES the list of the release rules: a sixth, a missing, a reordered one', () => {
+    const list = 'CATEGORIES: breaking feature fix docs internal';
+    expect(problemsOf(mutated(list, `${list} chore`))).toContain('CATEGORIES is "breaking feature fix docs internal chore"');
+    expect(problemsOf(mutated(list, 'CATEGORIES: breaking feature fix docs'))).toContain('CATEGORIES is "breaking feature fix docs"');
+    expect(problemsOf(mutated(list, 'CATEGORIES: feature breaking fix docs internal'))).toContain('one list, in the same order');
+  });
+
+  it('wants the error message to explain every label', () => {
+    expect(problemsOf(mutated('internal (nothing', 'internal: (nothing'))).toContain('does not explain the label "internal"');
+    expect(problemsOf(mutated('docs (documentation', 'documents (documentation'))).toContain('does not explain the label "docs"');
+  });
+
+  describe('the shipped script', () => {
+    const script = runScripts(real.replace(/(^|\s)#.*$/gm, '$1'))[0]!;
+    const hasJq = spawnSync('jq', ['--version']).status === 0;
+    const env = (labels: string) => ({ ...process.env, LABELS: labels, CATEGORIES: 'breaking feature fix docs internal' });
+    const run = (labels: string) => spawnSync('bash', ['-e', '-c', script], { env: env(labels), encoding: 'utf8' });
+
+    it.skipIf(!hasJq)('passes exactly one category label, whatever else is on the pull request', () => {
+      expect(run('["fix"]').status).toBe(0);
+      expect(run('["fix","dependencies"]').status).toBe(0);
+      expect(run('["internal"]').status).toBe(0);
+    });
+
+    it.skipIf(!hasJq)('fails none, two and a label that is no category — naming the labels', () => {
+      for (const labels of ['[]', '["fix","docs"]', '["bug"]', '["dependencies"]']) {
+        const result = run(labels);
+        expect(result.status, labels).toBe(1);
+        expect(result.stdout, labels).toContain('::error');
+        for (const name of ['breaking', 'feature', 'fix', 'docs', 'internal']) expect(result.stdout, labels).toContain(name);
+      }
+    });
+
+    it.skipIf(!hasJq)('treats hostile label names as data: nothing runs, nothing is injected, case counts', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'label-script-'));
+      directories.push(directory);
+      const hostile = ['fix', '$(touch pwned)', '`touch pwned2`', 'a"b', 'x\n::error::injected', 'Fix'];
+      const result = spawnSync('bash', ['-e', '-c', script], { cwd: directory, env: env(JSON.stringify(hostile)), encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      expect(result.stdout).not.toContain('::error');
+      expect(readdirSync(directory)).toEqual([]);
+      expect(run('["Fix"]').status).toBe(1);
+    });
+
+    it.skipIf(hasJq)('needs jq to run the shipped script', () => {
+      expect.fail('jq is not installed: the label script was not run');
+    });
+  });
+});
+
+describe('checkReleaseConfig', () => {
+  it('passes the repository’s .github/release.yml', () => {
+    expectProblems(checkReleaseConfig(root), []);
+  });
+
+  it('refuses a hand-edited file and a missing one', () => {
+    const edited = repositoryWith(unreleased);
+    mkdirSync(join(edited, '.github'), { recursive: true });
+    writeFileSync(join(edited, '.github/release.yml'), `${readFileSync(join(root, '.github/release.yml'), 'utf8')}# my own category\n`);
+    expectProblems(checkReleaseConfig(edited), ['.github/release.yml: missing or out of date — run node scripts/release-rules.ts']);
+    expect(checkReleaseConfig(repositoryWith(unreleased))).toHaveLength(1);
   });
 });

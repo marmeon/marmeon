@@ -4,7 +4,8 @@
  * `.github/workflows/release.yml` (read-only by default, `id-token: write` only in the job that stages the packages, staged with
  * pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token; a GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged
  * publishing only), the policies (LICENSE, DCO, SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages'
- * version ({@link UPGRADING_ANCHORS}, {@link targetVersion}). Besides: actionlint over the workflows when it is installed
+ * version ({@link UPGRADING_ANCHORS}, {@link targetVersion}), `.github/workflows/pr-label.yml` (the release label check, token-free) and
+ * `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed
  * (a note, never a failure).
  *
  * Each rule in full: CONTRIBUTING.md, "Changesets and releases".
@@ -15,6 +16,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages, type FrameworkPackage } from './packages.ts';
 import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
+import { CATEGORIES, RELEASE_CONFIG, releaseConfigCurrent } from './release-rules.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -300,7 +302,7 @@ export function checkWorkflow(repository: string): string[] {
   if (events?.join() !== 'workflow_dispatch') {
     problems.push(`${where}: "on:" holds ${events === undefined ? 'no block of events' : events.join(', ') || 'nothing'} — only workflow_dispatch: a release is started by hand, by someone with write access`);
   }
-  if (/\bsecrets\./.test(code)) problems.push(`${where}: a secret — the release needs none (the write token is github.token, the staging uses OIDC)`);
+  if (/\bsecrets\b/.test(code)) problems.push(`${where}: a secret — the release needs none (the write token is github.token, the staging uses OIDC)`);
   if (/^\s*(?:- )?cache:|\bactions\/cache\b/m.test(code)) problems.push(`${where}: a cache — a store another workflow wrote could carry code into the job that holds the OIDC token`);
   if (/^\s*defaults:/m.test(code) || /^\s*(?:- )?shell:/m.test(code)) problems.push(`${where}: "defaults:" or "shell:" — a step runs in the runner's own bash, with the flags every script here relies on`);
   if (/^\s*(?:if|continue-on-error):|^\s*- (?:if|continue-on-error):/m.test(code)) problems.push(`${where}: an "if:" or "continue-on-error:" — no step may be skipped or fail silently`);
@@ -542,6 +544,51 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
   return problems;
 }
 
+/** The label check's events: only the one that gives a fork's code no token, on every change of the commits or the labels. */
+const LABEL_EVENT_TYPES = ['opened', 'reopened', 'synchronize', 'labeled', 'unlabeled'];
+
+/** The pull request label check: its shape (it runs untrusted code, so it holds no token) and the label list. */
+export function checkLabelWorkflow(repository: string): string[] {
+  const where = 'pr-label.yml';
+  const file = join(repository, '.github/workflows/pr-label.yml');
+  if (!existsSync(file)) return [`${where}: .github/workflows/pr-label.yml is missing`];
+  const problems: string[] = [];
+  const code = readFileSync(file, 'utf8').replace(/(^|\s)#.*$/gm, '$1');
+
+  const events = eventsOf(code);
+  if (events?.join() !== 'pull_request') {
+    problems.push(`${where}: "on:" must be exactly the pull_request event (found ${events?.join(', ') || 'no event block'}) — pull_request_target and every other event would hand a fork's code a token`);
+  }
+  const types = /^ {4}types:\s*\[([^\]]*)\]\s*$/m.exec(code)?.[1]?.split(',').map((type) => type.trim());
+  if (!types || types.slice().sort().join() !== LABEL_EVENT_TYPES.slice().sort().join()) {
+    problems.push(`${where}: the pull_request types must be [${LABEL_EVENT_TYPES.join(', ')}] — the check has to follow every push and every label change`);
+  }
+  if (!/^permissions:\s*\{\}\s*$/m.test(code)) problems.push(`${where}: the workflow's "permissions:" must be "{}" — the labels are in the event, the job needs no token`);
+  if (/^[ \t]+permissions:/m.test(code)) problems.push(`${where}: a job asks for permissions — it needs none`);
+  if (/\buses:/.test(code)) problems.push(`${where}: a "uses:" step (a checkout or an action) — the check runs on untrusted pull requests and needs neither`);
+  if (/\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token)|GITHUB_TOKEN/.test(code)) problems.push(`${where}: a secret or the token — the check must hold none`);
+  for (const script of runScripts(code)) {
+    if (script.includes('${{')) problems.push(`${where}: an expression inside a run script ("${script.trim().split('\n')[0]}") — pass it through env:, a label name could inject commands`);
+  }
+  if (!/^\s+name:\s*release label\s*$/m.test(code)) problems.push(`${where}: the job must be named "release label" — that name is the required status check of the ruleset`);
+  if (!/^\s+LABELS:\s*\$\{\{\s*toJSON\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}\s*$/m.test(code)) {
+    problems.push(`${where}: LABELS must be "\${{ toJSON(github.event.pull_request.labels.*.name) }}" in env`);
+  }
+  const errorLine = runScripts(code).flatMap((script) => script.split('\n')).find((line) => line.includes('::error')) ?? '';
+  for (const { label } of CATEGORIES) {
+    if (!new RegExp(`\\b${label} \\(`).test(errorLine)) problems.push(`${where}: the ::error message does not explain the label "${label}" (as "${label} (…)")`);
+  }
+  const wanted = CATEGORIES.map((category) => category.label).join(' ');
+  const listed = /^\s+CATEGORIES:\s*(.*?)\s*$/m.exec(code)?.[1];
+  if (listed !== wanted) problems.push(`${where}: CATEGORIES is "${listed ?? ''}", release-rules.ts has "${wanted}" — one list, in the same order`);
+  return problems;
+}
+
+/** `.github/release.yml` is what the release rules generate. */
+export function checkReleaseConfig(repository: string): string[] {
+  return releaseConfigCurrent(repository) ? [] : [`${RELEASE_CONFIG}: missing or out of date — run node scripts/release-rules.ts`];
+}
+
 /** 7 · licence and policies. */
 export function checkPolicies(repository: string): string[] {
   const problems: string[] = [];
@@ -573,6 +620,8 @@ export function check(repository: string = root): string[] {
     ...checkGroup(repository, packages),
     ...checkChangesets(repository, packages),
     ...checkWorkflow(repository),
+    ...checkLabelWorkflow(repository),
+    ...checkReleaseConfig(repository),
     ...checkTrust(repository),
     ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version, pendingBump(repository)),
     ...checkPolicies(repository),
@@ -592,7 +641,7 @@ if (import.meta.main) {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
-      `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, release.yml, ` +
+      `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, release.yml, pr-label.yml, .github/release.yml, ` +
         `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }
