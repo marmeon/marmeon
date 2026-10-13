@@ -1,5 +1,23 @@
 # @marmeon/mail
 
+## 0.1.3
+
+### Fixes
+
+- Ship the starter kit in German as well as English by @maxeckel in https://github.com/marmeon/marmeon/pull/4
+- Sign out without making Chrome clear its whole disk cache by @maxeckel in https://github.com/marmeon/marmeon/pull/5
+- Switch the language without clearing the browser's cache by @maxeckel in https://github.com/marmeon/marmeon/pull/6
+
+### Documentation
+
+- Link every package to its docs on marmeon.com and ship its changelog by @maxeckel in https://github.com/marmeon/marmeon/pull/3
+
+### New contributors
+
+- @maxeckel made their first contribution in https://github.com/marmeon/marmeon/pull/3
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v0.1.2...v0.1.3
+
 ## 0.1.2
 
 ### Patch Changes

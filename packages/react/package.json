@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/react",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The React adapter of Marmeon: components, hooks, layouts, error boundaries and <Head> on the UI-free client core.",
   "keywords": [
     "marmeon",

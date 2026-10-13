@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/mail",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Mails as classes for Marmeon apps: envelopes, MJML or HTML content, transports behind a neutral message, queued sending.",
   "keywords": [
     "marmeon",
