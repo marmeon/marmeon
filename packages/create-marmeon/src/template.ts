@@ -234,6 +234,18 @@ export function writeTitle(app: string, title: string): void {
   writeFileSync(file, html.replace(TEMPLATE_TITLE, () => `<title>${escaped}</title>`));
 }
 
+/** The line of the blank app's `bootstrap/head.ts` that holds the app's name — what a new app replaces with its own. */
+export const TEMPLATE_APP_CONSTANT = "const APP = 'App';";
+
+/** The app's name into the title template of `bootstrap/head.ts`: `my-shop` → `const APP = "My Shop";` (a string literal, so any name stays valid code). */
+export function nameTitles(app: string, title: string): void {
+  const file = join(app, 'bootstrap', 'head.ts');
+  const source = readFileSync(file, 'utf8');
+  const line = /^const APP = 'App';$/gm;
+  if (source.match(line)?.length !== 1) throw new Error(`${TEMPLATE_APP_CONSTANT} must be in bootstrap/head.ts exactly once — the template changed?`);
+  writeFileSync(file, source.replace(line, () => `const APP = ${JSON.stringify(title)};`));
+}
+
 /** Adds a module to `modules: [...]` of `bootstrap/app.ts`, imported next to `system` (the blank app has exactly that). */
 export function registerModule(app: string, name: string): void {
   const file = join(app, 'bootstrap', 'app.ts');

@@ -20,6 +20,7 @@ import {
   ownVersion,
   packageName,
   installedClosure,
+  nameTitles,
   pnpmWorkspace,
   readme,
   registerModule,
@@ -186,6 +187,7 @@ export async function main(io: Io = processIo()): Promise<number> {
   writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   writeEnv(target, title);
   writeTitle(target, title);
+  nameTitles(target, title);
   writeFileSync(join(target, 'README.md'), readme({ name, title, packageManager: pm, kit: choices.kit, docker: choices.docker }));
   step(`the files${choices.kit ? ' (with the home module)' : ''}, package.json${'version' in source ? ` (@marmeon/* and marmeon ${source.version})` : ' (the framework from MARMEON_CREATE_TARBALLS)'}, .env with a new APP_KEY`);
 
