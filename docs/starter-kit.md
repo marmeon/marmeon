@@ -34,7 +34,9 @@ framework bring them.
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and three more | The module's own tests. |
 
-`apps/web-app` in the framework's repository shows such a module grown further, with a welcome mail and German texts.
+To add a language, put a file next to every `en.ts` of the app — a locale with any language file is supported (see [Localization](localization.md), `APP_LOCALES`).
+
+`apps/web-app` in the framework's repository shows such a module grown further, with a welcome mail.
 
 ## The pages
 

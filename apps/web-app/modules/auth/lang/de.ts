@@ -165,7 +165,7 @@ export default {
       preview: 'Ein Link, um ein neues Passwort zu wählen',
       intro: 'jemand — hoffentlich du — möchte das Passwort deines Kontos zurücksetzen.',
       button: 'Neues Passwort wählen',
-      outro: 'Der Link funktioniert einmal, {minutes} Minuten lang. Wenn du ihn nicht angefordert hast, ignoriere diese Mail: dein Passwort bleibt, wie es ist.',
+      outro: 'Der Link funktioniert einmal, {minutes} Minuten lang. Wenn du ihn nicht angefordert hast, ignoriere diese Mail: Dein Passwort bleibt, wie es ist.',
     },
     verify: {
       subject: 'Bestätige deine E-Mail-Adresse',

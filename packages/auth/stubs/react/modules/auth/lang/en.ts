@@ -1,10 +1,11 @@
 /**
- * The texts of the auth module — the source language. Another language is a file next to this one, checked against it:
+ * The texts of the auth module — the source language. Another language is a file next to this one, checked against it
+ * (`lang/de.ts` ships with the module, checked the same way):
  *
- *   // lang/de.ts
+ *   // lang/fr.ts
  *   import type { Messages } from '@marmeon/i18n/messages';
  *   import type en from './en.ts';
- *   export default { login: { title: 'Anmelden', … }, … } satisfies Messages<typeof en>;
+ *   export default { login: { title: 'Connexion', … }, … } satisfies Messages<typeof en>;
  *
  * Views read them with `useTranslation('auth')`, the server with `translator.get('auth.…')`, request schemas with `trans('auth.…')`.
  */

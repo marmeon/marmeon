@@ -1,9 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { stripVTControlCharacters } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
 import { appManifest, filesUnder, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_TITLE, writeTitle } from './template.ts';
@@ -187,6 +187,30 @@ describe('create-marmeon — the app', () => {
     expect(app).toContain('modules: [home, system]');
     expect(run.out).toContain('pnpm install\n  pnpm exec marmeon make:auth\n  pnpm exec marmeon migrate\n  pnpm exec marmeon make:docker');
     expect(readFileSync(join(cwd, 'kit/README.md'), 'utf8')).toContain('private: one answer for new and known addresses');
+  });
+
+  it('the starter kit ships every language it supports in every module — a locale with a lang file is supported, and a missing one falls back to English in the middle of a page', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
+    // What the app has once `make:auth` ran: its own modules and the auth stubs, one directory of language files each.
+    const stubs = join(repo, 'packages/auth/stubs/react/modules');
+    const langDirs = [...filesUnder(join(cwd, 'kit')).map((file) => join(cwd, 'kit', file)), ...filesUnder(stubs).map((file) => join(stubs, file))]
+      .filter((file) => /(^|[/\\])lang[/\\][^/\\]+\.ts$/.test(file) && !file.includes('node_modules'))
+      .map((file) => dirname(file));
+    const dirs = [...new Set(langDirs)];
+    expect(dirs.length).toBeGreaterThanOrEqual(3);
+    const locales = new Set(dirs.flatMap((dir) => readdirSync(dir).filter((file) => file.endsWith('.ts')).map((file) => file.replace(/\.ts$/, ''))));
+    expect([...locales].sort()).toEqual(['de', 'en']);
+    const paths = (value: unknown, prefix = ''): string[] =>
+      typeof value === 'object' && value !== null ? Object.entries(value).flatMap(([key, child]) => paths(child, `${prefix}${key}.`)) : [prefix];
+    for (const dir of dirs) {
+      const source = paths(((await import(pathToFileURL(join(dir, 'en.ts')).href)) as { default: unknown }).default).sort();
+      for (const locale of locales) {
+        expect(existsSync(join(dir, `${locale}.ts`)), `${dir} has no ${locale}.ts`).toBe(true);
+        const other = paths(((await import(pathToFileURL(join(dir, `${locale}.ts`)).href)) as { default: unknown }).default).sort();
+        expect(other, `${dir}/${locale}.ts`).toEqual(source);
+      }
+    }
   });
 
   it('titles the document with the app\'s name — escaped; the blank app stays neutral', () => {
