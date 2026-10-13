@@ -1,19 +1,17 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkLabelWorkflow, checkReleaseConfig, checkUpgrading, checkWorkflow, pendingBump, runScripts, targetVersion, UPGRADING_ANCHORS } from './check-changesets.ts';
+import { check, checkChangelogs, checkLabelWorkflow, checkReleaseConfig, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const directories: string[] = [];
 
 /** A repository with nothing but this UPGRADING.md. */
 function repositoryWith(upgrading: string): string {
-  const directory = mkdtempSync(join(tmpdir(), 'upgrading-'));
-  directories.push(directory);
+  const directory = tempDir('marmeon-check-release-');
   writeFileSync(join(directory, 'UPGRADING.md'), upgrading);
   return directory;
 }
@@ -47,13 +45,9 @@ function expectProblems(problems: readonly string[], wanted: readonly string[]):
   expect(problems, `found: ${list(problems)} — wanted: ${list(wanted)}`).toEqual(wanted);
 }
 
-afterEach(() => {
-  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
-
 describe('checkUpgrading — before the first release', () => {
   it('passes the repository’s UPGRADING.md', () => {
-    const problems = checkUpgrading(root, UPGRADING_ANCHORS, frameworkPackages(root)[0]?.manifest.version, pendingBump(root));
+    const problems = checkUpgrading(root, UPGRADING_ANCHORS, frameworkPackages(root)[0]?.manifest.version);
     expect(problems, problems.join('\n')).toEqual([]);
   });
 
@@ -81,7 +75,7 @@ describe('checkUpgrading — from the first release on', () => {
 
   it('switches on with the first release section: one the list does not know is named', () => {
     expectProblems(checkUpgrading(repositoryWith(released()), { '0.2.0': anchors['0.2.0'] }), [
-      'UPGRADING.md has the section of 0.3.0, and scripts/check-changesets.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["0.3.0"]',
+      'UPGRADING.md has the section of 0.3.0, and scripts/check-release.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["0.3.0"]',
     ]);
   });
 
@@ -98,7 +92,7 @@ describe('checkUpgrading — from the first release on', () => {
 
   it('names a listed release whose section is gone', () => {
     expectProblems(checkUpgrading(repositoryWith(unreleased), { '0.2.0': ['medium-a-change-of-020'] }), [
-      'UPGRADING.md has no section "## Upgrading to 0.2.0 from …", which scripts/check-changesets.ts lists',
+      'UPGRADING.md has no section "## Upgrading to 0.2.0 from …", which scripts/check-release.ts lists',
       'UPGRADING.md lacks an entry of 0.2.0: #medium-a-change-of-020',
     ]);
   });
@@ -111,14 +105,6 @@ describe('checkUpgrading — from the first release on', () => {
     ]);
   });
 });
-
-/** A repository with this UPGRADING.md and one changeset per given bump. */
-function repositoryWithChangesets(upgrading: string, bumps: readonly string[]): string {
-  const directory = repositoryWith(upgrading);
-  mkdirSync(join(directory, '.changeset'));
-  bumps.forEach((bump, index) => writeFileSync(join(directory, '.changeset', `change-${index}.md`), `---\n'@marmeon/core': ${bump}\n---\n\nA change.\n`));
-  return directory;
-}
 
 const section = (heading: string, body = entry('Low: a change of 0.2.0')) => `${unreleased}\n${heading}\n\n${body}`;
 
@@ -158,18 +144,13 @@ describe('checkUpgrading — the headings', () => {
 });
 
 describe('checkUpgrading — bound to the version', () => {
-  const page = section('## Upgrading to 0.2.0 from 0.1.0');
+  const page = section('## Upgrading to 0.2.0 from 0.1.2');
   const listed = { '0.2.0': ['low-a-change-of-020'] };
 
-  it('refuses a section above the version the changesets make', () => {
-    expectProblems(checkUpgrading(repositoryWith(section('## Upgrading to 0.3.0 from 0.2.0')), { '0.3.0': listed['0.2.0'] }, '0.1.0', 'minor'), [
-      'UPGRADING.md has a section for 0.3.0, but the packages are at 0.1.0 and the changesets make 0.2.0',
-      'the changesets make 0.2.0, a breaking release — UPGRADING.md needs its section "## Upgrading to 0.2.0 from 0.1.0"',
+  it('refuses a section above the version', () => {
+    expectProblems(checkUpgrading(repositoryWith(page), listed, '0.1.2'), [
+      'UPGRADING.md has a section for 0.2.0, but the packages are at 0.1.2',
     ]);
-  });
-
-  it('refuses a section above the version without a changeset', () => {
-    expectProblems(checkUpgrading(repositoryWith(page), listed, '0.1.0'), ['UPGRADING.md has a section for 0.2.0, but the packages are at 0.1.0']);
   });
 
   it('refuses a section that does not go up', () => {
@@ -177,83 +158,172 @@ describe('checkUpgrading — bound to the version', () => {
     expectProblems(problems, ['UPGRADING.md: "## Upgrading to 0.1.0 from 0.1.0" — a release upgrades from a lower version to a higher one']);
   });
 
-  it('needs the section of a pending minor', () => {
-    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.1.0', 'minor'), [
-      'the changesets make 0.2.0, a breaking release — UPGRADING.md needs its section "## Upgrading to 0.2.0 from 0.1.0"',
+  it('needs nothing for a version that is no breaking release', () => {
+    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.1.3'), []);
+    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.2.1'), []);
+    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '1.1.0'), []);
+  });
+
+  it('needs the section of a breaking release', () => {
+    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.2.0'), [
+      '0.2.0 is a breaking release — UPGRADING.md needs its section "## Upgrading to 0.2.0 from <a 0.1.x version>"',
     ]);
   });
 
-  it('needs the section of a pending minor to start from the current version', () => {
-    expectProblems(checkUpgrading(repositoryWith(section('## Upgrading to 0.2.0 from 0.0.9')), listed, '0.1.0', 'minor'), [
-      'UPGRADING.md: the section of 0.2.0 upgrades from 0.0.9, but the packages are at 0.1.0 — "## Upgrading to 0.2.0 from 0.1.0"',
+  it('needs the section of a breaking release to start from the line below', () => {
+    expectProblems(checkUpgrading(repositoryWith(section('## Upgrading to 0.2.0 from 0.0.9')), listed, '0.2.0'), [
+      'UPGRADING.md: the section of 0.2.0 upgrades from 0.0.9, but it starts from 0.1.x — "## Upgrading to 0.2.0 from <a 0.1.x version>"',
     ]);
   });
 
-  it('needs entries listed for the section of a pending minor', () => {
-    expectProblems(checkUpgrading(repositoryWith(page), { '0.2.0': [] }, '0.1.0', 'minor'), [
-      'the changesets make 0.2.0, a breaking release — scripts/check-changesets.ts lists none of its entries: UPGRADING_ANCHORS["0.2.0"]',
+  it('needs entries listed for the section of a breaking release', () => {
+    expectProblems(checkUpgrading(repositoryWith(page), { '0.2.0': [] }, '0.2.0'), [
+      '0.2.0 is a breaking release — scripts/check-release.ts lists none of its entries: UPGRADING_ANCHORS["0.2.0"]',
     ]);
   });
 
-  it('passes a pending minor with its section and entries', () => {
-    expectProblems(checkUpgrading(repositoryWith(page), listed, '0.1.0', 'minor'), []);
+  it('passes a breaking release with its section and entries', () => {
+    expectProblems(checkUpgrading(repositoryWith(page), listed, '0.2.0'), []);
   });
 
-  it('asks nothing of a pending patch', () => {
-    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '0.1.0', 'patch'), []);
+  it('starts 1.0.0 from any 0.y.z and 2.0.0 from 1.x only', () => {
+    const at = (version: string, from: string) =>
+      checkUpgrading(repositoryWith(section(`## Upgrading to ${version} from ${from}`)), { [version]: listed['0.2.0'] }, version);
+    expectProblems(at('1.0.0', '0.7.2'), []);
+    expectProblems(at('2.0.0', '1.8.4'), []);
+    expectProblems(at('2.0.0', '0.9.0'), ['UPGRADING.md: the section of 2.0.0 upgrades from 0.9.0, but it starts from 1.x — "## Upgrading to 2.0.0 from <a 1.x version>"']);
+    expect(at('1.0.0', '1.0.0')).toContain('UPGRADING.md: "## Upgrading to 1.0.0 from 1.0.0" — a release upgrades from a lower version to a higher one');
   });
 
-  it('asks nothing of a pending minor from 1.0 on', () => {
-    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '1.0.0', 'minor'), []);
+  it('refuses the placeholder the release preparation writes', () => {
+    const placeholder = '<!-- One entry per breaking pull request: #12, #14 — then list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts. -->';
+    expect(checkUpgrading(repositoryWith(section('## Upgrading to 0.2.0 from 0.1.2', placeholder)), listed, '0.2.0')).toContain(
+      'UPGRADING.md still has a placeholder or a comment',
+    );
   });
 
-  it('needs the section of a pending major from 1.0 on', () => {
-    expectProblems(checkUpgrading(repositoryWith(unreleased), {}, '1.2.0', 'major'), [
-      'the changesets make 2.0.0, a breaking release — UPGRADING.md needs its section "## Upgrading to 2.0.0 from 1.2.0"',
-    ]);
+  it('refuses a section whose versions are no plain x.y.z', () => {
+    expect(checkUpgrading(repositoryWith(section('## Upgrading to 0.02.0 from 0.1.0')), {}).join('\n')).toContain('plain versions');
   });
 });
 
 describe('prereleases', () => {
   it('refuses a prerelease version', () => {
-    const problems = checkUpgrading(repositoryWith(unreleased), {}, '0.2.0-beta.0', 'minor');
+    const problems = checkUpgrading(repositoryWith(unreleased), {}, '0.2.0-beta.0');
     expectProblems(problems, ['the packages are at 0.2.0-beta.0 — prerelease versions are not supported by this check: the sections of UPGRADING.md cannot be bound to them']);
   });
+});
 
-  it('refuses Changesets pre mode', () => {
-    const repository = repositoryWithChangesets(unreleased, []);
-    writeFileSync(join(repository, '.changeset', 'pre.json'), '{}');
-    expectProblems(checkUpgrading(repository, {}, '0.1.0'), [
-      'the packages are at 0.1.0 in Changesets pre mode — prerelease versions are not supported by this check: the sections of UPGRADING.md cannot be bound to them',
+/** Writes `files` (path → text; an object is written as JSON) below `directory`. */
+function write(directory: string, files: Record<string, unknown>): string {
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(join(directory, path, '..'), { recursive: true });
+    writeFileSync(join(directory, path), typeof content === 'string' ? content : JSON.stringify(content));
+  }
+  return directory;
+}
+
+const manifest = (name: string, version: string, extra: object = {}) => ({ name, version, ...extra });
+const changelog = (name: string, ...sections: [version: string, body: string][]) => `# ${name}\n\n${sections.map(([version, body]) => `## ${version}\n\n${body}\n`).join('\n')}`;
+
+/** A repository of two published packages (and a private one) at `version`. */
+function repositoryOfPackages(version = '0.1.2', extra: Record<string, unknown> = {}): string {
+  return write(repositoryWith(unreleased), {
+    'packages/core/package.json': manifest('@marmeon/core', version),
+    'packages/http/package.json': manifest('@marmeon/http', version, { dependencies: { '@marmeon/core': 'workspace:*', valibot: '^1.0.0' } }),
+    'packages/private/package.json': manifest('@marmeon/private', '9.9.9', { private: true }),
+    ...extra,
+  });
+}
+
+describe('checkVersion', () => {
+  const problemsOf = (directory: string) => checkVersion(directory, frameworkPackages(directory));
+
+  it('passes the repository', () => {
+    expectProblems(checkVersion(root, frameworkPackages(root)), []);
+  });
+
+  it('passes one version, and ignores a private package', () => {
+    expectProblems(problemsOf(repositoryOfPackages()), []);
+  });
+
+  it('refuses two versions', () => {
+    const directory = repositoryOfPackages('0.1.2', { 'packages/http/package.json': manifest('@marmeon/http', '0.1.3') });
+    expectProblems(problemsOf(directory), ['the packages have 2 versions (0.1.2: @marmeon/core; 0.1.3: @marmeon/http) — one version for all (pnpm release:prepare)']);
+  });
+
+  it('wants every internal range workspace:*, in dependencies, peers and optional dependencies', () => {
+    for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+      const directory = repositoryOfPackages('0.1.2', { 'packages/http/package.json': manifest('@marmeon/http', '0.1.2', { [field]: { '@marmeon/core': '^0.1.2' } }) });
+      expect(problemsOf(directory).join('\n')).toContain(`@marmeon/http: ${field}["@marmeon/core"] is "^0.1.2"`);
+    }
+  });
+
+  it('lets a range on a package that is not a framework package be anything', () => {
+    const directory = repositoryOfPackages('0.1.2', { 'packages/http/package.json': manifest('@marmeon/http', '0.1.2', { dependencies: { '@marmeon/private': '^1.0.0' } }) });
+    expectProblems(problemsOf(directory), []);
+  });
+});
+
+describe('checkChangelogs', () => {
+  const problemsOf = (directory: string) => checkChangelogs(directory, frameworkPackages(directory));
+  const same = (version: string, body = '- A change by @max in https://example.test/pull/1') => ({
+    'packages/core/CHANGELOG.md': changelog('@marmeon/core', [version, body]),
+    'packages/http/CHANGELOG.md': changelog('@marmeon/http', [version, body]),
+  });
+
+  it('passes the repository (its older sections differ between packages)', () => {
+    expectProblems(checkChangelogs(root, frameworkPackages(root)), []);
+  });
+
+  it('passes the same section in every package after the per-package sections', () => {
+    expectProblems(problemsOf(repositoryOfPackages('0.1.3', same('0.1.3'))), []);
+  });
+
+  it('lets sections differ up to the last per-package version', () => {
+    expect(CHANGESETS_UNTIL).toBe('0.1.2');
+    const files = { ...same('0.1.2'), 'packages/http/CHANGELOG.md': changelog('@marmeon/http', ['0.1.2', '- Something else']) };
+    expectProblems(problemsOf(repositoryOfPackages('0.1.2', files)), []);
+  });
+
+  it('refuses a section that differs in one package after the per-package sections', () => {
+    const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': changelog('@marmeon/http', ['0.1.3', '- Something else']) };
+    expectProblems(problemsOf(repositoryOfPackages('0.1.3', files)), ["The \"## 0.1.3\" section of @marmeon/http differs from @marmeon/core's."]);
+  });
+
+  it('refuses a package whose first section is an older version', () => {
+    const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': changelog('@marmeon/http', ['0.1.2', '- Old']) };
+    expectProblems(problemsOf(repositoryOfPackages('0.1.3', files)), [
+      '@marmeon/http: packages/http/CHANGELOG.md: its first section is "## 0.1.2", but the package is at 0.1.3 — pnpm release:prepare writes it',
+    ]);
+  });
+
+  it('refuses an Unreleased heading', () => {
+    const files = { ...same('0.1.3'), 'packages/http/CHANGELOG.md': '# @marmeon/http\n\n## Unreleased\n\n- A change\n' };
+    expect(problemsOf(repositoryOfPackages('0.1.3', files)).join('\n')).toContain('is not "## x.y.z"');
+  });
+
+  it('refuses a missing changelog and an empty one', () => {
+    const files = { 'packages/core/CHANGELOG.md': changelog('@marmeon/core', ['0.1.2', 'x']), 'packages/http/CHANGELOG.md': '# @marmeon/http\n' };
+    expectProblems(problemsOf(repositoryOfPackages('0.1.2', files)), ['@marmeon/http: packages/http/CHANGELOG.md: its first section is missing, but the package is at 0.1.2 — pnpm release:prepare writes it']);
+    expectProblems(problemsOf(repositoryOfPackages('0.1.2', { 'packages/core/CHANGELOG.md': changelog('@marmeon/core', ['0.1.2', 'x']) })), [
+      '@marmeon/http: packages/http/CHANGELOG.md is missing',
     ]);
   });
 });
 
 describe('check', () => {
-  it('hands the version and the pending bump to the upgrade guide check', () => {
-    const repository = repositoryWithChangesets(unreleased, ['minor']);
-    mkdirSync(join(repository, 'packages/core'), { recursive: true });
-    writeFileSync(join(repository, 'packages/core/package.json'), JSON.stringify({ name: '@marmeon/core', version: '0.1.0' }));
-    expect(check(repository)).toContain('the changesets make 0.2.0, a breaking release — UPGRADING.md needs its section "## Upgrading to 0.2.0 from 0.1.0"');
-  });
-});
-
-describe('pendingBump and targetVersion', () => {
-  it('finds the highest bump of the changesets', () => {
-    expect(pendingBump(repositoryWithChangesets(unreleased, ['patch', 'minor', 'patch']))).toBe('minor');
-    expect(pendingBump(repositoryWithChangesets(unreleased, ['patch']))).toBe('patch');
+  it('passes the repository', () => {
+    const problems = check(root);
+    expect(problems, problems.join('\n')).toEqual([]);
   });
 
-  it('finds none without changesets', () => {
-    expect(pendingBump(repositoryWith(unreleased))).toBeUndefined();
-    expect(pendingBump(repositoryWithChangesets(unreleased, []))).toBeUndefined();
-  });
-
-  it('makes the version of a bump', () => {
-    expect(targetVersion('0.1.4', 'minor')).toBe('0.2.0');
-    expect(targetVersion('0.1.4', 'patch')).toBe('0.1.5');
-    expect(targetVersion('1.2.3', 'major')).toBe('2.0.0');
-    expect(targetVersion('0.1.4', undefined)).toBe('0.1.4');
+  it('hands the packages’ version to the upgrade guide check', () => {
+    const directory = repositoryOfPackages('0.2.0', {
+      'packages/core/CHANGELOG.md': changelog('@marmeon/core', ['0.2.0', 'x']),
+      'packages/http/CHANGELOG.md': changelog('@marmeon/http', ['0.2.0', 'x']),
+    });
+    expect(check(directory)).toContain('0.2.0 is a breaking release — UPGRADING.md needs its section "## Upgrading to 0.2.0 from <a 0.1.x version>"');
   });
 });
 
@@ -412,7 +482,8 @@ describe('checkWorkflow — the release run', () => {
     it('wants exactly one staging job, on a GitHub-hosted runner, after pack:check, with the script of pnpm stage publish', () => {
       expect(problemsOf(`${real}\n  again:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm run release:stage\n`)).toContain('2 jobs stage the packages');
       expect(problemsOf(mutated('    runs-on: ubuntu-latest\n', '    runs-on: self-hosted\n', 'stage'))).toContain('must run on a GitHub-hosted runner');
-      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-changesets', 'pnpm run ci --only build'))).toContain('runs pack:check before it stages');
+      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-release', 'pnpm run ci --only build'))).toContain('runs pack:check before it stages');
+      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-release', 'pnpm run ci --only build,pack:check'))).toContain('runs check-release before it stages');
       const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
       manifest.scripts['release:stage'] = 'pnpm publish -r';
       expect(checkWorkflow(repositoryWithWorkflow(real, JSON.stringify(manifest))).join('\n')).toContain('"release:stage" is');
@@ -664,8 +735,7 @@ describe('checkLabelWorkflow — the release label check', () => {
     });
 
     it.skipIf(!hasJq)('treats hostile label names as data: nothing runs, nothing is injected, case counts', () => {
-      const directory = mkdtempSync(join(tmpdir(), 'label-script-'));
-      directories.push(directory);
+      const directory = tempDir('marmeon-check-release-');
       const hostile = ['fix', '$(touch pwned)', '`touch pwned2`', 'a"b', 'x\n::error::injected', 'Fix'];
       const result = spawnSync('bash', ['-e', '-c', script], { cwd: directory, env: env(JSON.stringify(hostile)), encoding: 'utf8' });
       expect(result.status).toBe(0);

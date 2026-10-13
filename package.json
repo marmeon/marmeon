@@ -31,8 +31,7 @@
     "bench": "node scripts/bench/index.ts",
     "csp:probe": "node scripts/csp-probe.ts",
     "release:prepare": "node scripts/release-prepare.ts",
-    "check-changesets": "node scripts/check-changesets.ts",
-    "release:version": "changeset version",
+    "check-release": "node scripts/check-release.ts",
     "release:stage": "pnpm stage publish -r --provenance --access public",
     "ci": "node scripts/ci.ts"
   },
@@ -41,7 +40,6 @@
     "marmeon": "workspace:*",
     "@marmeon/core": "workspace:*",
     "@marmeon/vite": "workspace:*",
-    "@changesets/cli": "^3.0.3",
     "@types/node": "^26.6.3",
     "oxlint": "^1.86.0",
     "publint": "^0.3.25",

@@ -1,22 +1,22 @@
 /**
- * `pnpm check-changesets` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule: one fixed group that
- * covers every published package and no private one, one version across them, valid changesets (no `major` below 1.0.0),
- * `.github/workflows/release.yml` (read-only by default, `id-token: write` only in the job that stages the packages, staged with
- * pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token; a GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged
- * publishing only), the policies (LICENSE, DCO, SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages'
- * version ({@link UPGRADING_ANCHORS}, {@link targetVersion}), `.github/workflows/pr-label.yml` (the release label check, token-free) and
- * `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed
- * (a note, never a failure).
+ * `pnpm check-release` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule: one version across the
+ * published packages (and `workspace:*` between them), their changelogs (the top section is the version, the same in every package
+ * after 0.1.2), `.github/workflows/release.yml` (read-only by default, `id-token: write` only in the
+ * job that stages the packages, staged with pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token; a
+ * GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
+ * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
+ * `.github/workflows/pr-label.yml` (the release label check, token-free) and `.github/release.yml` (what the release rules
+ * generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
  *
- * Each rule in full: CONTRIBUTING.md, "Changesets and releases".
+ * Each rule in full: CONTRIBUTING.md, "Pull requests and releases".
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages, type FrameworkPackage } from './packages.ts';
 import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
-import { CATEGORIES, RELEASE_CONFIG, releaseConfigCurrent } from './release-rules.ts';
+import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseVersion, RELEASE_CONFIG, releaseConfigCurrent, releaseSection, upgradesFrom } from './release-rules.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -37,20 +37,6 @@ const NOT_DRAFT = /\s--draft=(?!true(?=\s|$))/;
 /** A release's section: `## Upgrading to <version> from <version>`. Steps (`### …`) inside it keep the release as the section. */
 const RELEASE_SECTION = /^## Upgrading to (\d+\.\d+\.\d+) from (\d+\.\d+\.\d+)\s*$/;
 
-type Bump = 'major' | 'minor' | 'patch';
-
-/** `x.y.z` as numbers (a suffix such as `-beta.1` is ignored). */
-const parts = (version: string): [number, number, number] => {
-  const [major = 0, minor = 0, patch = 0] = version.split('.').map((part) => Number.parseInt(part, 10) || 0);
-  return [major, minor, patch];
-};
-
-/** Negative, zero or positive as `a` is below, equal to or above `b`. */
-function compareVersions(a: string, b: string): number {
-  const [left, right] = [parts(a), parts(b)];
-  return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
-}
-
 /** GitHub's anchor for a heading: lower case, punctuation dropped (not `-` and `_`), every space a hyphen. */
 export function slug(heading: string): string {
   return heading
@@ -61,144 +47,58 @@ export function slug(heading: string): string {
 
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
 
-/** A glob of the Changesets config (`@marmeon/*`) as a test — `*` is any run of characters but `/`. */
-function globTest(glob: string): (name: string) => boolean {
-  const pattern = new RegExp(`^${glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`);
-  return (name) => pattern.test(name);
-}
+/** Up to this version the changelog sections were written per package and differ; from the next version on every package has the same one. */
+export const CHANGESETS_UNTIL = '0.1.2';
 
-/** Every workspace package (published or not): name → private. */
-function workspacePackages(repository: string): Map<string, boolean> {
-  const result = new Map<string, boolean>();
-  for (const dir of ['packages', 'apps']) {
-    const base = join(repository, dir);
-    if (!existsSync(base)) continue;
-    for (const entry of readdirSync(base, { withFileTypes: true })) {
-      const file = join(base, entry.name, 'package.json');
-      if (!entry.isDirectory() || !existsSync(file)) continue;
-      const manifest = readJson<{ name: string; private?: boolean }>(file);
-      result.set(manifest.name, manifest.private === true);
-    }
-  }
-  return result;
-}
+/** The dependency fields in which a published package names another one only as `workspace:*`. */
+const DEPENDENCY_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
 
-interface ChangesetConfig {
-  fixed?: string[][];
-  linked?: string[][];
-  ignore?: string[];
-  access?: string;
-  baseBranch?: string;
-  privatePackages?: boolean | { version?: boolean; tag?: boolean };
-}
-
-/** 1 · the fixed group, 2 · one version. */
-export function checkGroup(repository: string, packages: readonly FrameworkPackage[]): string[] {
+/** 1 · one version, and the internal ranges that carry it. */
+export function checkVersion(_repository: string, packages: readonly FrameworkPackage[]): string[] {
   const problems: string[] = [];
-  const file = join(repository, '.changeset/config.json');
-  if (!existsSync(file)) return ['.changeset/config.json is missing — the release needs Changesets'];
-  const config = readJson<ChangesetConfig>(file);
-  const published = packages.map((pkg) => pkg.name);
-  const workspace = workspacePackages(repository);
-
-  if (config.access !== 'public') problems.push(`.changeset/config.json: "access" is ${JSON.stringify(config.access)}, not "public"`);
-  if (config.baseBranch !== 'main') problems.push(`.changeset/config.json: "baseBranch" is ${JSON.stringify(config.baseBranch)}, not "main"`);
-  const privateVersioned = typeof config.privatePackages === 'boolean' ? config.privatePackages : config.privatePackages?.version === true;
-  if (privateVersioned) problems.push('.changeset/config.json: private packages (the apps, the monorepo) must not be versioned — "privatePackages": { "version": false }');
-  if ((config.linked ?? []).length > 0) problems.push('.changeset/config.json: "linked" groups — the framework is one fixed group, nothing is linked');
-  const ignored = published.filter((name) => (config.ignore ?? []).some((glob) => globTest(glob)(name)));
-  if (ignored.length > 0) problems.push(`.changeset/config.json: "ignore" leaves out ${ignored.join(', ')} — every package is released`);
-
-  const groups = config.fixed ?? [];
-  if (groups.length !== 1) {
-    problems.push(`.changeset/config.json: ${groups.length} "fixed" groups — exactly one holds every package (lockstep)`);
-  } else {
-    const tests = groups[0]!.map(globTest);
-    const inGroup = (name: string) => tests.some((test) => test(name));
-    const outside = published.filter((name) => !inGroup(name));
-    if (outside.length > 0) {
-      problems.push(`${outside.join(', ')} ${outside.length === 1 ? 'is' : 'are'} outside the fixed group of .changeset/config.json — every published package shares one version`);
-    }
-    for (const glob of groups[0]!) {
-      if (![...workspace.keys()].some(globTest(glob))) problems.push(`.changeset/config.json: the fixed group's "${glob}" matches no package`);
-    }
-  }
-
   const versions = new Map<string, string[]>();
   for (const pkg of packages) versions.set(pkg.manifest.version, [...(versions.get(pkg.manifest.version) ?? []), pkg.name]);
   if (versions.size > 1) {
     const listed = [...versions].map(([version, names]) => `${version}: ${names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')}`);
-    problems.push(`the packages have ${versions.size} versions (${listed.join('; ')}) — one version for all (pnpm changeset version)`);
+    problems.push(`the packages have ${versions.size} versions (${listed.join('; ')}) — one version for all (pnpm release:prepare)`);
+  }
+  const published = new Set(packages.map((pkg) => pkg.name));
+  for (const pkg of packages) {
+    for (const field of DEPENDENCY_FIELDS) {
+      const dependencies = (pkg.manifest[field] ?? {}) as Record<string, string>;
+      for (const [name, range] of Object.entries(dependencies)) {
+        if (published.has(name) && range !== 'workspace:*') {
+          problems.push(`${pkg.name}: ${field}["${name}"] is "${range}" — a framework package depends on another with "workspace:*", so the release version reaches it`);
+        }
+      }
+    }
   }
   return problems;
 }
 
-/** The changeset files with the lines of their front matter (`name` and `bump` unset for a line that is no `"package": bump`); `lines` is `undefined` without front matter. */
-function readChangesets(repository: string): { file: string; lines: { line: string; name?: string; bump?: string }[] | undefined }[] {
-  const dir = join(repository, '.changeset');
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.md') && name !== 'README.md')
-    .sort()
-    .map((file) => {
-      const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(dir, file), 'utf8'));
-      if (!front) return { file, lines: undefined };
-      const lines = front[1]!
-        .split(/\r?\n/)
-        .filter((entry) => entry.trim() !== '')
-        .map((line) => {
-          const entry = /^\s*["']?([^"':]+)["']?\s*:\s*(\w+)\s*$/.exec(line);
-          return entry ? { line, name: entry[1]!, bump: entry[2]! } : { line };
-        });
-      return { file, lines };
-    });
-}
-
-/** The highest bump of the pending changesets, `undefined` without one. The fixed group carries every package along. */
-export function pendingBump(repository: string): Bump | undefined {
-  const order: Bump[] = ['patch', 'minor', 'major'];
-  let highest = -1;
-  for (const { lines } of readChangesets(repository)) {
-    for (const { bump } of lines ?? []) highest = Math.max(highest, order.indexOf(bump as Bump));
-  }
-  return order[highest];
-}
-
-/** The version the pending changesets make of `current`; `current` itself without a bump. */
-export function targetVersion(current: string, bump: Bump | undefined): string {
-  const [major, minor, patch] = parts(current);
-  if (bump === 'major') return `${major + 1}.0.0`;
-  if (bump === 'minor') return `${major}.${minor + 1}.0`;
-  if (bump === 'patch') return `${major}.${minor}.${patch + 1}`;
-  return current;
-}
-
-/** 3 · the changeset files. */
-export function checkChangesets(repository: string, packages: readonly FrameworkPackage[]): string[] {
+/** 2 · the changelogs: every published package has one, its top section is the version, and from the release after {@link CHANGESETS_UNTIL} on the section is the same everywhere. */
+export function checkChangelogs(repository: string, packages: readonly FrameworkPackage[]): string[] {
   const problems: string[] = [];
-  const versions = new Map(packages.map((pkg) => [pkg.name, pkg.manifest.version]));
-  const workspace = workspacePackages(repository);
-  for (const { file, lines } of readChangesets(repository)) {
-    if (!lines) {
-      problems.push(`.changeset/${file} has no front matter (---) naming packages and bumps`);
+  const version = packages[0]?.manifest.version;
+  for (const pkg of packages) {
+    const file = join(pkg.dir, 'CHANGELOG.md');
+    const where = `${pkg.name}: packages/${pkg.short}/CHANGELOG.md`;
+    if (!existsSync(file)) {
+      problems.push(`${where} is missing`);
       continue;
     }
-    for (const { line, name, bump } of lines) {
-      if (name === undefined || bump === undefined) {
-        problems.push(`.changeset/${file}: "${line.trim()}" is no "package": bump line`);
-        continue;
-      }
-      const version = versions.get(name);
-      if (version === undefined) {
-        problems.push(`.changeset/${file}: ${name} is ${workspace.has(name) ? 'private — it is never released' : 'no package of the repository'}`);
-        continue;
-      }
-      if (!['patch', 'minor', 'major'].includes(bump)) problems.push(`.changeset/${file}: ${name} has the bump "${bump}" — patch, minor or major`);
-      if (bump === 'major' && Number(version.split('.')[0]) < 1) {
-        problems.push(
-          `.changeset/${file}: "${name}": major below 1.0.0 (now ${version}) — Changesets would jump to 1.0.0. In 0.x a breaking change is a minor, with its entry in UPGRADING.md.`,
-        );
-      }
+    try {
+      const top = parseChangelog(readFileSync(file, 'utf8')).sections[0]?.version;
+      if (top !== pkg.manifest.version) problems.push(`${where}: its first section is ${top === undefined ? 'missing' : `"## ${top}"`}, but the package is at ${pkg.manifest.version} — pnpm release:prepare writes it`);
+    } catch (error) {
+      problems.push(`${where}: ${(error as Error).message}`);
+    }
+  }
+  if (problems.length === 0 && version !== undefined && parseVersion(version) && compareVersions(version, CHANGESETS_UNTIL) > 0) {
+    try {
+      releaseSection(repository, version);
+    } catch (error) {
+      problems.push((error as Error).message);
     }
   }
   return problems;
@@ -397,6 +297,7 @@ export function checkWorkflow(repository: string): string[] {
         }
       }
       if (!/pnpm run ci --only [\w:,-]*pack:check/.test(joined(body))) problems.push(`${where}: the job "${name}" runs pack:check before it stages the packages`);
+      if (!/pnpm run ci --only [\w:,-]*\bcheck-release\b/.test(joined(body))) problems.push(`${where}: the job "${name}" runs check-release before it stages the packages — the checks of the workflow and the version run on the release commit`);
     }
     if (releases) {
       if (!/^\s+contents:\s*write\s*$/m.test(body)) problems.push(`${where}: the job "${name}" needs "contents: write" for the tag and the draft`);
@@ -466,15 +367,15 @@ export function checkTrust(repository: string): string[] {
 
 /**
  * 6 · `UPGRADING.md`: nothing before the first release; from then on every listed entry under its release. With the packages'
- * `version` and the pending `bump`, the sections are bound to them: none above the version the changesets make, and the section
- * of a pending breaking release (`minor` in 0.x, `major`) with its entries listed.
+ * `version` the sections are bound to it: none above it, and a breaking release ({@link isBreakingRelease}) needs its section,
+ * from a version of the line below, with its entries listed.
  */
-export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS, version?: string, bump?: Bump): string[] {
+export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS, version?: string): string[] {
   const file = join(repository, 'UPGRADING.md');
   if (!existsSync(file)) return ['UPGRADING.md is missing'];
   const problems: string[] = [];
-  if (version !== undefined && (version.includes('-') || existsSync(join(repository, '.changeset/pre.json')))) {
-    problems.push(`the packages are at ${version}${version.includes('-') ? '' : ' in Changesets pre mode'} — prerelease versions are not supported by this check: the sections of UPGRADING.md cannot be bound to them`);
+  if (version !== undefined && !parseVersion(version)) {
+    problems.push(`the packages are at ${version} — prerelease versions are not supported by this check: the sections of UPGRADING.md cannot be bound to them`);
     version = undefined;
   }
   const text = readFileSync(file, 'utf8');
@@ -498,10 +399,10 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
       if (section) {
         const [, to, from] = section as unknown as [string, string, string];
         releases.set(to, from);
-        if (compareVersions(to, from) <= 0) problems.push(`UPGRADING.md: "${line}" — a release upgrades from a lower version to a higher one`);
-        if (version !== undefined && compareVersions(to, targetVersion(version, bump)) > 0) {
-          const makes = bump === undefined ? '' : ` and the changesets make ${targetVersion(version, bump)}`;
-          problems.push(`UPGRADING.md has a section for ${to}, but the packages are at ${version}${makes}`);
+        if (!parseVersion(to) || !parseVersion(from)) problems.push(`UPGRADING.md: "${line}" — "## Upgrading to <x.y.z> from <x.y.z>", plain versions`);
+        else {
+          if (compareVersions(to, from) <= 0) problems.push(`UPGRADING.md: "${line}" — a release upgrades from a lower version to a higher one`);
+          if (version !== undefined && compareVersions(to, version) > 0) problems.push(`UPGRADING.md has a section for ${to}, but the packages are at ${version}`);
         }
       }
     }
@@ -516,21 +417,20 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
   }
   for (const released of releases.keys()) {
     if (!(released in anchors)) {
-      problems.push(`UPGRADING.md has the section of ${released}, and scripts/check-changesets.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["${released}"]`);
+      problems.push(`UPGRADING.md has the section of ${released}, and scripts/check-release.ts lists none of its entries — add their anchors to UPGRADING_ANCHORS["${released}"]`);
     }
   }
-  if (version !== undefined && (bump === 'major' || (bump === 'minor' && parts(version)[0] < 1))) {
-    const target = targetVersion(version, bump);
-    const heading = `## Upgrading to ${target} from ${version}`;
-    const from = releases.get(target);
-    if (from === undefined) problems.push(`the changesets make ${target}, a breaking release — UPGRADING.md needs its section "${heading}"`);
-    else if (from !== version) problems.push(`UPGRADING.md: the section of ${target} upgrades from ${from}, but the packages are at ${version} — "${heading}"`);
-    else if (target in anchors && anchors[target]!.length === 0) {
-      problems.push(`the changesets make ${target}, a breaking release — scripts/check-changesets.ts lists none of its entries: UPGRADING_ANCHORS["${target}"]`);
+  if (version !== undefined && isBreakingRelease(version)) {
+    const from = releases.get(version);
+    const heading = `## Upgrading to ${version} from <a ${fromLine(version)} version>`;
+    if (from === undefined) problems.push(`${version} is a breaking release — UPGRADING.md needs its section "${heading}"`);
+    else if (!upgradesFrom(version, from)) problems.push(`UPGRADING.md: the section of ${version} upgrades from ${from}, but it starts from ${fromLine(version)} — "${heading}"`);
+    else if (version in anchors && anchors[version]!.length === 0) {
+      problems.push(`${version} is a breaking release — scripts/check-release.ts lists none of its entries: UPGRADING_ANCHORS["${version}"]`);
     }
   }
   for (const [version, list] of Object.entries(anchors)) {
-    if (!releases.has(version)) problems.push(`UPGRADING.md has no section "## Upgrading to ${version} from …", which scripts/check-changesets.ts lists`);
+    if (!releases.has(version)) problems.push(`UPGRADING.md has no section "## Upgrading to ${version} from …", which scripts/check-release.ts lists`);
     for (const anchor of list) {
       const entry = entries.get(anchor);
       if (!entry) problems.push(`UPGRADING.md lacks an entry of ${version}: #${anchor}`);
@@ -617,13 +517,13 @@ function actionlint(repository: string): string | undefined {
 export function check(repository: string = root): string[] {
   const packages = frameworkPackages(repository);
   return [
-    ...checkGroup(repository, packages),
-    ...checkChangesets(repository, packages),
+    ...checkVersion(repository, packages),
+    ...checkChangelogs(repository, packages),
     ...checkWorkflow(repository),
     ...checkLabelWorkflow(repository),
     ...checkReleaseConfig(repository),
     ...checkTrust(repository),
-    ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version, pendingBump(repository)),
+    ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version),
     ...checkPolicies(repository),
   ];
 }
@@ -635,13 +535,13 @@ if (import.meta.main) {
   const packages = frameworkPackages(root);
   if (problems.length > 0) {
     for (const problem of problems) console.error(`✗ ${problem}`);
-    console.error(`\ncheck-changesets: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
+    console.error(`\ncheck-release: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
-      `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, release.yml, pr-label.yml, .github/release.yml, ` +
+      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, .github/release.yml, ` +
         `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }

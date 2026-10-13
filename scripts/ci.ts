@@ -53,9 +53,9 @@ export const parts: readonly Part[] = [
   // --workers, a worker's exit 70, the image's size; then the docs' image (apps/website/Dockerfile) — its contents, read-only, behind
   // Caddy over HTTP/2 (deploy/website). Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
-  // The release rules: one fixed group and one version, no `major` changeset below 1.0.0,
+  // The release rules: one version and the changelogs that go with it,
   // release.yml (staged publishing with OIDC), npm-trust.sh, UPGRADING.md (its entries from the first release on), LICENSE and policies.
-  { name: 'check-changesets', command: pnpm('check-changesets') },
+  { name: 'check-release', command: pnpm('check-release') },
 ];
 
 /** The exit code of a part that could not run here (no network, no store): skipped, not green (`scripts/pack-smoke.ts`). */

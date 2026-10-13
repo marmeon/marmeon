@@ -24,7 +24,7 @@
 # Never start it again after a run that staged: the tag guard only helps once the tag exists, and a staged version is invisible to
 # `npm view`. What to do with a failed or rejected run: CONTRIBUTING.md › "Pull requests and releases" › "When a run fails".
 #
-# scripts/check-changesets.ts (a part of `pnpm run ci`) checks this file as a review aid, not as a barrier: dispatch only, the
+# scripts/check-release.ts (a part of `pnpm run ci`) checks this file as a review aid, not as a barrier: dispatch only, the
 # guard first and nothing switching away from the release commit after it, id-token only where the packages are staged, the write
 # token only in the release job's last two steps, no npm publish, no token, no cache, a GitHub Release only as a draft, no
 # expression inside a script.
@@ -67,7 +67,7 @@ jobs:
         run: node scripts/release-guard.ts
       - run: pnpm install --frozen-lockfile
       # The tarballs as they will be staged: a clean build, the content rules, publint, attw — and the release rules.
-      - run: pnpm run ci --only build,pack:check,check-changesets
+      - run: pnpm run ci --only build,pack:check,check-release
       # Staged, not published: every package waits for a maintainer's approval with 2FA on npmjs.com. pnpm's git checks want a
       # branch; the guard has checked the release commit instead, and the tree must still be exactly that commit.
       - name: stage the packages

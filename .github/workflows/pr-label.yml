@@ -1,6 +1,6 @@
 # Every pull request carries exactly one release label. A maintainer sets it at review: it sorts the pull request into the release
 # notes (`.github/release.yml`), and `internal` keeps it out of them. This check reminds; it does not protect — a pull request runs
-# its own copy of this file. Hence the shape, which `scripts/check-changesets.ts` keeps: the `pull_request` event (never
+# its own copy of this file. Hence the shape, which `scripts/check-release.ts` keeps: the `pull_request` event (never
 # `pull_request_target`: a fork's code must not get a token), no permissions at all, no checkout, no third-party action, and the
 # labels reach the script through env, never through an expression inside it. The labels are in the event, so nothing is fetched.
 #

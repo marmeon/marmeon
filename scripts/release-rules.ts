@@ -197,7 +197,7 @@ export const RELEASE_PATHSPECS = [':(glob)packages/*/CHANGELOG.md', RELEASE_BASE
 
 /**
  * Whether a release pull request may change `path`: the versions, changelogs, upgrade guide and release base the preparation writes,
- * and the file that lists the guide's anchors (`check-changesets.ts` until it is renamed to `check-release.ts`). Code belongs in
+ * and the file that lists the guide's anchors (`check-release.ts`). Code belongs in
  * its own pull request, merged before the preparation, so the release commit holds nothing the notes do not cover.
  */
 export function isReleaseFile(path: string): boolean {
@@ -205,8 +205,7 @@ export function isReleaseFile(path: string): boolean {
     /^packages\/[^/]+\/(?:package\.json|CHANGELOG\.md)$/.test(path) ||
     path === 'UPGRADING.md' ||
     path === RELEASE_BASE ||
-    path === 'scripts/check-release.ts' ||
-    path === 'scripts/check-changesets.ts'
+    path === 'scripts/check-release.ts'
   );
 }
 

@@ -10,6 +10,7 @@ import {
   fromLine,
   formatChangelog,
   isBreakingRelease,
+  isReleaseFile,
   lineOf,
   maintenanceLine,
   parseChangelog,
@@ -257,5 +258,19 @@ describe('releaseSection', () => {
 
   it('names a package whose body differs', () => {
     expect(() => releaseSection(changelogs({ core: '\n- A\n', http: '\n- B\n' }), '0.1.3')).toThrow(/@marmeon\/http differs from @marmeon\/core/);
+  });
+});
+
+describe('isReleaseFile', () => {
+  it('allows what the release preparation writes and the file that lists the guide’s anchors', () => {
+    for (const path of ['scripts/check-release.ts', 'UPGRADING.md', '.github/release-base', 'packages/core/package.json', 'packages/core/CHANGELOG.md']) {
+      expect(isReleaseFile(path), path).toBe(true);
+    }
+  });
+
+  it('refuses code, workflows, the old check and nested changelogs', () => {
+    for (const path of ['scripts/check-changesets.ts', 'scripts/release-guard.ts', '.github/workflows/release.yml', 'packages/core/src/index.ts', 'packages/core/sub/CHANGELOG.md']) {
+      expect(isReleaseFile(path), path).toBe(false);
+    }
   });
 });
