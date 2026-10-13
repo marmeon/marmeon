@@ -34,13 +34,19 @@ export class ShowUserProfileController extends Controller {
     // The avatar as its public URL (the public disk serves it: raster images only, `nosniff`) — never the storage key.
     const { email, activity: login, links, avatar_path, ...user } = ctx.params.user;
     const avatar = avatar_path ? this.#storage.disk('public').url(avatar_path) : null;
+    const { id: _id, ...profile } = user;
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
       // Each link with what the viewer may do with it: `link.can.delete`, one ProfileLinkPolicy call per link.
       // Inside the prop on purpose: a reload of `profile` (a link added) brings the new link's abilities with it.
       // A function: a partial reload for other props (the activity poll) never asks the policy.
-      profile: async () => ({ ...user, avatar, links: await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete']) }),
+      // Without the integer `id` and the links' `user_id`: the page is addressed by `public_id`, the policies decide here.
+      profile: async () => ({
+        ...profile,
+        avatar,
+        links: (await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete'])).map(({ user_id: _owner, ...link }) => link),
+      }),
       // Only the owner may see their e-mail (ProfilePolicy) — the controller decides what leaves the server.
       email: (await this.#gate.allows(ProfilePolicy, 'viewEmail', user)) ? email : null,
       // Who this is, not what they may do: "this is your profile" (no policy behind it).
@@ -60,6 +66,6 @@ export class ShowUserProfileController extends Controller {
     })
       // Live: a link added or removed, the name or the picture changed — in another tab, by anyone allowed to: this page
       // reloads its profile (and the activity), no polling. Signed for this session: whoever may see the page may hear its hints.
-      .live(profileChannel(user.id), { only: ['profile', 'activity'] });
+      .live(profileChannel(user.public_id), { only: ['profile', 'activity'] });
   }
 }

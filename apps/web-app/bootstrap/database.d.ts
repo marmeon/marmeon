@@ -72,7 +72,7 @@ declare module '@marmeon/database' {
     };
     /** Owned by `user-profile`. */
     profile_links: {
-      id: Generated<number>;
+      id: Generated<string>;
       user_id: number;
       label: string;
       url: string;
@@ -120,6 +120,7 @@ declare module '@marmeon/database' {
     /** Owned by `auth`. */
     users: {
       id: Generated<number>;
+      public_id: Generated<string>;
       name: string;
       email: string;
       password: Secret<string>;

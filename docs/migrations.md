@@ -166,6 +166,8 @@ A deployment runs `marmeon migrate --force` once, before the new version takes r
 | `date(name)` | `date` | `date` | `'YYYY-MM-DD'` |
 | `timestamp(name)` | `timestamptz(3)` | `datetime` | an ISO-8601 string in UTC, to the millisecond |
 | `foreignId(name)` | `bigint` | `integer` | `number` |
+| `uuidId(name = 'id')` | `uuid`, primary key, [UUIDv7](#uuid-keys) default | `uuid`, primary key, UUIDv7 default | `string` |
+| `foreignUuid(name)` | `uuid` | `uuid` | `string` |
 
 Two shortcuts add common columns and mark the table. `timestamps()` adds `created_at` and `updated_at`, both set to the current
 time on insert. `softDeletes()` adds a nullable `deleted_at`. What the marks change is under
@@ -180,13 +182,14 @@ A column is `NOT NULL` unless you say otherwise:
 | `.nullable()` | Allows `NULL`. The column's type gains `\| null`. |
 | `.default(value)` | A default for inserts. The value must fit the column's type, and a JSON default is a value: `.default({})`. |
 | `.useCurrent()` | On a timestamp: the time of the insert is the default. |
+| `.useUuidv7()` | On a `uuid` column: the database generates a [UUIDv7](#uuid-keys) when an insert gives none. |
 | `.unique()` | A unique index on this column, named `{table}_{column}_unique`. |
 | `.primary()` | The primary key. |
 | `.secret()` | A column that is never read by accident. See [secret columns](#secret-columns). |
 
 A column with a default, or a generated id, is optional on insert: its type is `Generated<…>`. The compiler holds the modifiers to
 their columns. A default that does not fit the column, `NULL` as the default of a column that is not nullable, and `useCurrent()`
-on anything but a timestamp are compile errors.
+on anything but a timestamp (and `useUuidv7()` on anything but a `uuid` column) are compile errors.
 
 ### Foreign keys
 
@@ -226,6 +229,78 @@ Every foreign key also describes two relations, one for each table. The
 
 The unique index is what keeps a value unique when two requests insert at the same moment. A validation rule only gives the
 friendly message before the insert. The [validation](validation.md#the-unique-index-is-the-truth) page shows both together.
+
+### UUID keys
+
+A UUIDv7 is a UUID that starts with the time in milliseconds, so new rows sort by creation, much like an integer key. The
+database makes it, as the column's default: it holds however a row is inserted, by a repository, by Kysely or by raw SQL, and an
+insert may give its own value instead. `uuidId()` and `useUuidv7()` are an option; `id()` stays the default and is a fine choice.
+Which key a table gets is a decision of the app, and two patterns are on offer:
+
+```ts title="modules/teams/migrations/2026_10_02_090000_create_team_tables.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: async (schema) => {
+    // Pattern 1: the UUID is the primary key, and foreign keys hold it.
+    await schema.create('teams', (table) => {
+      table.uuidId();
+      table.string('name');
+    });
+    await schema.create('members', (table) => {
+      table.uuidId();
+      table.foreignUuid('team_id').constrained().cascadeOnDelete();
+      table.string('name');
+    });
+    // Pattern 2: an integer primary key for relations and joins, a UUID for URLs, mails and APIs.
+    await schema.create('profiles', (table) => {
+      table.id();
+      table.uuid('public_id').unique().useUuidv7();
+      table.string('name');
+    });
+  },
+  down: async (schema) => {
+    await schema.drop('members');
+    await schema.drop('teams');
+    await schema.drop('profiles');
+  },
+});
+```
+
+`uuidId(name = 'id')` is short for `uuid(name).primary().useUuidv7()`, and `foreignUuid(name)` is `foreignId()` for a UUID: it takes
+`constrained()` and the on-delete rules. With the second pattern, a repository names the public key with
+`static routeKey = 'public_id'`. The database generates the key on both drivers: SQLite from plain SQL (no function to register, so the
+file stays usable with the `sqlite3` command line), Postgres from `gen_random_uuid()` and the clock, so Postgres 13 is enough.
+`marmeon db:types` types such a column as `Generated<string>`.
+
+What the two patterns trade:
+
+| | UUID as primary key | Integer key and a public UUID |
+| --- | --- | --- |
+| Index size | 16 bytes per key on Postgres (a `bigint` is 8), 36 bytes of text on SQLite. Every foreign key and every index that holds the key grows with it. | The primary key and the foreign keys stay narrow. The public key costs one more column and one more unique index. |
+| Writes | A version 7 key is ordered by time, so inserts land near each other, much like an integer. A random version 4 key scatters them. Rows made within the same millisecond have no order among themselves, so order a list by a timestamp when it matters. | Same for the public key's index. |
+| Enumeration | Keys cannot be counted through like `/notes/42`, `/notes/43`; an unguessable key is no substitute for checking who may see the row. | The same, as long as URLs and APIs only show the public key. |
+| What the key tells | The creation time, to the millisecond. | The same for the public key. Where that matters, generate a random one yourself: `crypto.randomUUID()` on insert. |
+| Changing your mind | Hard once other tables hold the key. | On Postgres, `schema.alter()` adds a public key at any time and gives every existing row its own value. On SQLite a UUIDv7 column exists only when the table is created, and `schema.alter()` with `useUuidv7()` is refused. |
+
+Pick what suits the table. Tables that other tables reference a lot favour the narrow key; tables whose rows are created in many
+places at once, or merged from several databases, favour the UUID as key.
+
+### Adding to an existing table
+
+On Postgres, `schema.alter()` adds a UUIDv7 column to a table that has rows, and every existing row gets its own value:
+
+```ts title="modules/profiles/migrations/2026_10_03_090000_add_public_id_to_profiles_table.ts"
+schema.alter('profiles', (table) => {
+  table.uuid('public_id').unique().useUuidv7();
+});
+```
+
+On SQLite, a UUIDv7 column exists only when the table is created. SQLite adds no column whose default is computed, so
+`schema.alter()` with `useUuidv7()` throws before it changes anything. To give such a table a public key on SQLite, create the
+table with the column in the first place, which is easiest before the first deploy, or create a new table with the column,
+copy the rows and drop the old one. Marmeon refuses `alter` on SQLite whether or not the table has rows, so a migration that
+works in development works on every deploy.
 
 ## Changing tables
 

@@ -18,7 +18,7 @@ beforeEach(async () => {
   ada = users[0]!;
 });
 
-const profile = (user: User) => `/users/${user.id}`;
+const profile = (user: User) => `/users/${user.public_id}`;
 
 /** Saves the profile without following the redirect: the message waits in the session — for the browser that has the cookie. */
 async function saved() {

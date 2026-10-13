@@ -61,10 +61,10 @@ describe.each(drivers)('signing out while a deferred prop is still loading (%s s
     const browser = new Browser(createHttpKernel(app.application));
     const form = { 'content-type': 'application/x-www-form-urlencoded' };
     expect((await browser.request('/login', { method: 'POST', headers: form, body: 'email=ada%40example.com&password=password' })).status).toBe(303);
-    expect((await browser.request(`/users/${ada.id}`, { headers: { 'x-marmeon': 'true' } })).status).toBe(200);
+    expect((await browser.request(`/users/${ada.public_id}`, { headers: { 'x-marmeon': 'true' } })).status).toBe(200);
 
     // The page asks for its deferred activity — and before the answer is there, the user signs out.
-    const deferred = browser.request(`/users/${ada.id}`, {
+    const deferred = browser.request(`/users/${ada.public_id}`, {
       headers: { 'x-marmeon': 'true', 'x-marmeon-partial-component': 'user-profile/Show', 'x-marmeon-partial-data': 'activity' },
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -72,7 +72,7 @@ describe.each(drivers)('signing out while a deferred prop is still loading (%s s
     await deferred;
 
     // Signed out — whatever the slower response did with its session.
-    const after = await browser.request(`/users/${ada.id}`, { headers: { accept: 'text/html' } });
+    const after = await browser.request(`/users/${ada.public_id}`, { headers: { accept: 'text/html' } });
     expect(after.status, 'the profile after signing out').toBe(302);
     expect(after.headers.get('location')).toMatch(/\/login$/);
   });

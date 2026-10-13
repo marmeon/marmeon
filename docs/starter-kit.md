@@ -158,6 +158,23 @@ export const schedule = defineSchedule((s) => {
 > Deleting an account cannot be undone. With private registration off, such accounts were signed in and may have used the app.
 > Leave the line off where unconfirmed accounts belong to your model, such as invited team members or imported users.
 
+## IDs
+
+The kit's tables use integer ids, which keep indexes and foreign keys small. UUIDs are an option, and the choice is yours. Two
+patterns work, and [UUID keys](migrations.md#uuid-keys) weighs them:
+
+- **A public key next to the integer id.** Add `table.uuid('public_id').unique().useUuidv7();` to the `users` migration of
+  `modules/auth/migrations/`, and set `static routeKey = 'public_id';` in `UserRepository`. Relations keep joining on `id`, and
+  the routes you bind to `UserRepository`, such as a profile at `/users/:user`, then take the UUID. A route that takes the integer id answers 404. SQLite adds
+  such a column only when the table is created, so make the change before the first migration or run `migrate:fresh`.
+- **A UUID as the primary key.** Replace `table.id()` with `table.uuidId()` in the `users` migration, before the first
+  migration, and make the tables that reference users use `foreignUuid()`: `remember_tokens` and `personal_access_tokens` use
+  `foreignId('user_id')`. Code that types a user id as a `number`, such as `UserRepository.findById(id: number)`, has to follow.
+  Sessions, notifications and `AuthUserId` already allow a string.
+
+`apps/web-app` in the framework's repository shows both: `users` has a `public_id`, and `profile_links` has a UUID as its
+primary key.
+
 ## Configuration
 
 | Variable | Default | Effect |

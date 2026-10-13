@@ -86,12 +86,12 @@ describe('<Form> without JavaScript', () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com', name: 'Ada' });
     const signedIn = await app.post('/login', { form: { email: 'ada@example.com', password: 'password' }, headers: { referer: 'http://localhost/login', 'sec-fetch-site': 'same-origin' } }).assertRedirect();
     const browser = app.withCookie('marmeon_session', signedIn.cookie('marmeon_session')!);
-    const page = (await browser.navigating().get(`/users/${ada.id}/edit`)).page() as PageObject;
+    const page = (await browser.navigating().get(`/users/${ada.public_id}/edit`)).page() as PageObject;
     expect(page.csrf).toBeTruthy(); // a session: its pages carry the token for forms without JavaScript
-    await browser.post(`/users/${ada.id}`, { form: { _method: 'PUT', name: 'Ada', bio: 'x' }, headers: { referer: `http://localhost/users/${ada.id}/edit` } }).assertStatus(419);
+    await browser.post(`/users/${ada.public_id}`, { form: { _method: 'PUT', name: 'Ada', bio: 'x' }, headers: { referer: `http://localhost/users/${ada.public_id}/edit` } }).assertStatus(419);
     await browser
-      .post(`/users/${ada.id}`, { form: { _method: 'PUT', _token: page.csrf!, name: 'Ada King', bio: 'Poet of science.' }, headers: { referer: `http://localhost/users/${ada.id}/edit` } })
-      .assertRedirect(`/users/${ada.id}`);
+      .post(`/users/${ada.public_id}`, { form: { _method: 'PUT', _token: page.csrf!, name: 'Ada King', bio: 'Poet of science.' }, headers: { referer: `http://localhost/users/${ada.public_id}/edit` } })
+      .assertRedirect(`/users/${ada.public_id}`);
     expect((await app.make(UserRepository).find(ada.id))?.name).toBe('Ada King');
   });
 });

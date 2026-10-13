@@ -56,7 +56,7 @@ export function Actions() {
     // Patches, typed against the page.
     await remove.submit({
       params: { user: 1, link: 2 },
-      optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== 2) } })),
+      optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== 'link-id') } })),
       reload: router.reloading({ only: ['profile'] }),
     });
     // … Types of property 'profle' are incompatible. Type 'null' is not assignable to type '"'profle' is not a prop of this page"'.

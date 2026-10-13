@@ -1,4 +1,5 @@
 import { can } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Broadcaster } from '@marmeon/live';
 import { Translator } from '@marmeon/i18n';
@@ -34,15 +35,15 @@ export class UpdateUserProfileController extends Controller {
     this.#broadcast = broadcast;
   }
 
-  async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
+  async handle(ctx: ContextOf<typeof UpdateUserProfileRequest> & { params: { user: Row<'users'> } }) {
     // ctx.body is { name: string; bio?: string } — validated and trimmed; bio '' clears it, no bio keeps it
     await this.#users.update(ctx.params.user.id, ctx.body);
     // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
-    await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
+    await this.#broadcast.refresh(profileChannel(ctx.params.user.public_id), { only: ['profile'] });
     // Saved from the edit layer: it closes, and what is beneath shows the new name (and the message). Without JavaScript
     // (or the form opened as a page): to the profile.
     return this.closeLayer({ reload: ['profile'] })
-      .route('user-profile.show', { user: ctx.params.user.id })
+      .route('user-profile.show', { user: ctx.params.user.public_id })
       .flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.saved') });
   }
 }

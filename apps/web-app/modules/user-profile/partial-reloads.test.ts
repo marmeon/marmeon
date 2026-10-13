@@ -14,7 +14,7 @@ beforeEach(async () => {
   [ada, alan] = users as [User, User];
 });
 
-const profile = (user: User) => `/users/${user.id}`;
+const profile = (user: User) => `/users/${user.public_id}`;
 /** The profile page reloading some of its props, as `router.reload({ only })` does. */
 const reload = (user: User, only: readonly ('activity' | 'stats' | 'email' | 'errors')[]) =>
   app.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only });
@@ -78,12 +78,12 @@ describe('profile page: deferred and optional props', () => {
     const user = users[0]!;
 
     let started = performance.now();
-    const first = (await slow.actingAs(user).navigating().get(`/users/${user.id}`).assertOk()).page()!;
+    const first = (await slow.actingAs(user).navigating().get(`/users/${user.public_id}`).assertOk()).page()!;
     expect(performance.now() - started).toBeLessThan(200);
     expect(first.deferredProps).toEqual({ default: ['activity'] });
 
     started = performance.now();
-    const deferred = (await slow.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(`/users/${user.id}`)).page()!;
+    const deferred = (await slow.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(`/users/${user.public_id}`)).page()!;
     expect(performance.now() - started).toBeGreaterThanOrEqual(395);
     expect(deferred.props.activity).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'joined' })]));
   });

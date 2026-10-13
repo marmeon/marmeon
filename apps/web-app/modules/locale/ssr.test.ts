@@ -32,7 +32,7 @@ describe('translated pages, rendered on the server', () => {
 
   it('formats for the locale: plurals, dates, relative times', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', created_at: '2026-01-15T10:00:00.000Z' });
-    const response = await app.actingAs(ada).get(`/users/${ada.id}`, html('de')).assertServerRendered().assertHydrates();
+    const response = await app.actingAs(ada).get(`/users/${ada.public_id}`, html('de')).assertServerRendered().assertHydrates();
     expect(response.body).toContain('Mitglied seit 15. Januar 2026');
     expect(response.body).toContain('Letzte Aktivität');
   });
@@ -42,7 +42,7 @@ describe('translated pages, rendered on the server', () => {
     const label = '"><img src=x onerror=alert(1)>';
     await app.factory(ProfileLinkFactory).create({ user_id: mallory.id, label });
     // "{label} entfernen" goes into an attribute (aria-label) through t(): React escapes the filled text there too.
-    const profile = await app.actingAs(mallory).get(`/users/${mallory.id}`, html('de')).assertServerRendered().assertHydrates();
+    const profile = await app.actingAs(mallory).get(`/users/${mallory.public_id}`, html('de')).assertServerRendered().assertHydrates();
     expect(profile.body).not.toContain('<img src=x');
     expect(profile.body).toContain('aria-label="&quot;&gt;&lt;img src=x onerror=alert(1)&gt; entfernen"');
   });

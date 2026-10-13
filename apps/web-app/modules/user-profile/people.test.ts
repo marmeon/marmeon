@@ -22,7 +22,7 @@ describe('the people list (/people): state in the URL, parsed by its query schem
 
   it('filters by name — the query trimmed by the schema, LIKE wildcards taken literally', async () => {
     await as(ada).get('/people?q=  TUR ').assertPage<ListPeopleController>('user-profile/People', {
-      people: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null, isMe: false }], meta: { page: 1, perPage: 10, total: 1, lastPage: 1, from: 1, to: 1 } },
+      people: { data: [{ publicId: alan.public_id, name: 'Alan Turing', lastLoginAt: null, isMe: false }], meta: { page: 1, perPage: 10, total: 1, lastPage: 1, from: 1, to: 1 } },
     });
     await as(ada).get('/people').assertPage<ListPeopleController>('user-profile/People', (props) => {
       expect(names(props)).toEqual(['Ada Lovelace', 'Alan Turing', 'Grace Hopper']);
@@ -43,7 +43,7 @@ describe('the people list (/people): state in the URL, parsed by its query schem
     expect(page.query).toEqual({ q: 'ada' });
     expect(page.queryDefaults).toEqual({ q: '', sort: 'name', page: 1, per_page: 10 });
     // A route without a query schema has none.
-    expect((await as(ada).get(`/users/${ada.id}`).assertOk()).page()).not.toHaveProperty('query');
+    expect((await as(ada).get(`/users/${ada.public_id}`).assertOk()).page()).not.toHaveProperty('query');
   });
 
   it('an invalid sort (?sort=DROP TABLE) falls back to the default — 200, no 422, the valid fields stay', async () => {

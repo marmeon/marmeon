@@ -14,26 +14,27 @@ export class ProfileDirectory implements RouteBinder<Profile> {
     this.#db = db;
   }
 
-  profile(id: number) {
+  /** By the key the URL shows: the user's `public_id`. */
+  profile(publicId: string) {
     return this.#db
       .selectFrom('users')
       // The row as the migrations define it — its columns reach the view (the controller holds back the e-mail;
       // the connection leaves out the secret password hash).
       .selectAll('users')
       .with('login_activity', { as: 'activity' }, (activity) => activity.select('last_login_at'))
-      .with('profile_links', { as: 'links' }, (links) => links.select(['id', 'user_id', 'label', 'url']).orderBy('id'))
-      .where('users.id', '=', id)
+      .with('profile_links', { as: 'links' }, (links) => links.select(['id', 'user_id', 'label', 'url']).orderBy('created_at').orderBy('id'))
+      .where('users.public_id', '=', publicId)
       .executeTakeFirst();
   }
 
-  /** `/users/:user` → the profile, or a 404. */
+  /** `/users/:user` → the profile, or a 404 (a value that is no UUID is not looked up). */
   resolveRouteBinding(value: string) {
-    return /^\d{1,15}$/.test(value) ? this.profile(Number(value)) : undefined;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? this.profile(value.toLowerCase()) : undefined;
   }
 
   /** A profile's links, oldest first — what the edit layer lists (and removes). */
   links(id: number) {
-    return this.#db.selectFrom('profile_links').select(['id', 'user_id', 'label', 'url']).where('user_id', '=', id).orderBy('id').execute();
+    return this.#db.selectFrom('profile_links').select(['id', 'user_id', 'label', 'url']).where('user_id', '=', id).orderBy('created_at').orderBy('id').execute();
   }
 
   /**
@@ -62,7 +63,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
     let query = this.#db
       .selectFrom('login_activity')
       .innerJoin('users', 'users.id', 'login_activity.user_id')
-      .select(['users.id', 'users.name', 'login_activity.last_login_at'])
+      .select(['users.id', 'users.public_id', 'users.name', 'login_activity.last_login_at'])
       .orderBy('login_activity.last_login_at', 'desc')
       .orderBy('users.id', 'desc')
       .limit(limit);
@@ -71,7 +72,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   }
 
   /** How many members there are, how many confirmed their address, and who joined last — the dashboard's "Members" island. */
-  async memberStats(): Promise<{ members: number; verified: number; newest: { id: number; name: string; created_at: string } | undefined }> {
+  async memberStats(): Promise<{ members: number; verified: number; newest: { public_id: string; name: string; created_at: string } | undefined }> {
     const [counts, newest] = await Promise.all([
       this.#db
         .selectFrom('users')
@@ -80,7 +81,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
           eb.fn.count<number>('users.email_verified_at').as('verified'),
         ])
         .executeTakeFirstOrThrow(),
-      this.#db.selectFrom('users').select(['users.id', 'users.name', 'users.created_at']).orderBy('users.id', 'desc').limit(1).executeTakeFirst(),
+      this.#db.selectFrom('users').select(['users.public_id', 'users.name', 'users.created_at']).orderBy('users.id', 'desc').limit(1).executeTakeFirst(),
     ]);
     return { members: Number(counts.members), verified: Number(counts.verified), newest };
   }
@@ -93,7 +94,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   people({ q, sort, page = 1, per_page = 10 }: PeopleQuery) {
     let query = this.#db
       .selectFrom('users')
-      .select(['users.id', 'users.name', 'users.avatar_path'])
+      .select(['users.id', 'users.public_id', 'users.name', 'users.avatar_path'])
       .with('login_activity', { as: 'activity' }, (activity) => activity.select('last_login_at'));
     if (q) {
       const pattern = `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

@@ -27,7 +27,7 @@ export class ExportMyDataController extends Controller {
 
   async handle(ctx: HttpContext<Authenticated>) {
     const { user } = ctx;
-    const links = await this.#links.query().select(['label', 'url', 'created_at']).where('user_id', '=', user.id).orderBy('id').execute();
+    const links = await this.#links.query().select(['label', 'url', 'created_at']).where('user_id', '=', user.id).orderBy('created_at').orderBy('id').execute();
     const data = {
       exported_at: new Date(this.#clock.now()).toISOString(),
       account: { id: user.id, name: user.name, email: user.email, locale: user.locale, email_verified_at: user.email_verified_at, first_verified_at: user.first_verified_at, pending_email: user.pending_email, created_at: user.created_at },

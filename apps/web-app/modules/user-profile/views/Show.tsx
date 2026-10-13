@@ -37,9 +37,9 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
   const remove = useAction('user-profile.links.destroy');
   // Links being added, from any form: ghost rows until the real ones are there (nothing to roll back).
   const adding = usePendingSubmissions('user-profile.links.store');
-  const removeLink = (id: number, label: string) =>
+  const removeLink = (id: string, label: string) =>
     void remove.submit({
-      params: { user: profile.id, link: id },
+      params: { user: profile.public_id, link: id },
       // Asked first — a no sends nothing, and nothing disappears.
       confirm: { message: t('show.remove_confirm', { label }), confirmLabel: t('show.remove'), destructive: true },
       optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== id) } })),
@@ -53,7 +53,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
       </Head>
       {/* The avatar the list showed small: it moves here and grows — and back to the list with Back. */}
       {profile.avatar && (
-        <ViewTransition name={`avatar-${profile.id}`} share="avatar">
+        <ViewTransition name={`avatar-${profile.public_id}`} share="avatar">
           <img src={profile.avatar} alt={t('show.avatar', { name: profile.name })} width={96} height={96} className="avatar" />
         </ViewTransition>
       )}
@@ -90,7 +90,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
           layer: the profile stays under it, with its activity and statistics as loaded. */}
       {abilities.update && (
         <p>
-          <Link route="user-profile.edit" params={{ user: profile.id }} layer prefetch>
+          <Link route="user-profile.edit" params={{ user: profile.public_id }} layer prefetch>
             {t('show.edit')}
           </Link>
         </p>
@@ -154,7 +154,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
           </ul>
         )}
         <ActionFailure exception={remove.exception} />
-        {abilities.update && <AddLink userId={profile.id} />}
+        {abilities.update && <AddLink userId={profile.public_id} />}
       </section>
 
       <nav>
@@ -199,7 +199,7 @@ Show.placeholder = ShowPlaceholder satisfies Placeholder<ShowUserProfileControll
  * Adding a link — an action: the input moves into the list as a ghost row while it is sent (`usePendingSubmissions`);
  * invalid input comes back into the fields, with the errors by field.
  */
-function AddLink({ userId }: { userId: number }) {
+function AddLink({ userId }: { userId: string }) {
   const t = useTranslation('user-profile');
   const router = useRouter<ShowUserProfileController>();
   const add = useAction('user-profile.links.store', { user: userId });

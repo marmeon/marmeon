@@ -114,7 +114,7 @@ static table = '…' as const;`. Other statics change its behaviour:
 | `table` | required | The table, as a runtime value. |
 | `connection` | `default` | Another connection. See [another connection](#another-connection). |
 | `routeKey` | `id` | The column a route parameter is looked up in. |
-| `routeKeyPattern` | digits for `id` | What a route parameter must look like before it is looked up. |
+| `routeKeyPattern` | digits for `id`, a UUID for a `uuid` column | What a route parameter must look like before it is looked up. |
 
 Timestamps and soft deletes follow the table's migration. When it calls `timestamps()`, `update()` sets
 `updated_at`. When it calls `softDeletes()`, `delete()` sets `deleted_at`, and every read leaves deleted rows out. The
@@ -131,6 +131,7 @@ transaction. Give other dependencies to the service that uses the repository.
 | --- | --- |
 | `query()` | A Kysely select on the table, to go on with `select()`, `where()` and the rest. Soft-deleted rows are left out. |
 | `find(id)` | The row, or `undefined`. |
+| `findByRouteKey(value)` | The row whose `routeKey` column holds the value, as a route binding finds it, for lookups outside of routes. `undefined` when there is none, or when the value cannot be a key. |
 | `findOrFail(id, { with })` | The row and the relations `with` lists, or a 404 (`RecordNotFoundError`) that does not say what was looked up. |
 | `findBy(column, value)` | The first row whose column holds the value, or `undefined`. |
 | `firstWhere(values)` | The first row that holds every value, `{ author_id: 1, featured: true }`, or `undefined`. |
@@ -146,6 +147,16 @@ column of the table, or is a secret one, is refused before the query, also when 
 `firstWhere()` find a NULL with `null`. A value that is `undefined`, such as a field a request did not send, is refused, because a
 condition without a value would match any row. Which row is "first" is up to the database unless the column is unique; order a
 `query()` yourself when it matters.
+
+On a table with a [UUID key](migrations.md#uuid-keys), `find()`, `findOrFail()`, `exists()`, `update()`, `tryUpdate()`, `delete()`,
+`forceDelete()`, `restore()`, `relation()` and the route binding check the format of the key first. A value that is no UUID
+finds nothing, without a query to the database: Postgres would answer a malformed UUID with an error, and a typo in a URL
+would become a 500. A UUID in capitals finds the row all the same, because it is compared in lower case, as it is stored: on SQLite, which compares
+text as it is, store UUIDs in lower case (an import of upper-case ones would not be found). The
+same holds for a `routeKey` that names a `uuid` column, `static routeKey = 'public_id'`.
+
+`findBy()` and `firstWhere()` do not check the format: on a `uuid` column they throw on Postgres (`22P02`) when given a value that is
+no UUID. For input that was not checked, a request's parameter say, use `findByRouteKey()`.
 
 `findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
 row's type has them: `RowWith<'notes', 'author' | 'tags'>` names it, for example as the prop type of a page. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed

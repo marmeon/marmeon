@@ -16,7 +16,7 @@ interface ColumnSpec {
   identity: boolean;
   unique: boolean;
   secret: boolean;
-  default?: { value: unknown } | { now: true };
+  default?: { value: unknown } | { now: true } | { uuidv7: true };
   references?: { table: string; column: string; onDelete?: OnDelete; inverse?: string };
 }
 
@@ -70,6 +70,32 @@ export class Column<T> {
 export class TimestampColumn<T> extends Column<T> {
   useCurrent(): this {
     this.spec.default = { now: true };
+    return this;
+  }
+}
+
+/**
+ * The SQLite default of a UUIDv7 column, a plain SQL expression (no function the app has to register): the first 48 bits are
+ * the time in milliseconds, then version `7`, variant `8`..`b` and random bits, in the lower-case form `8-4-4-4-12`.
+ * See `docs/migrations.md#uuid-keys`.
+ */
+export const UUIDV7_SQLITE =
+  "(substr(printf('%012x', cast(unixepoch('subsec') * 1000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast(unixepoch('subsec') * 1000 as integer)), 9, 4)" +
+  " || '-7' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + (random() & 3), 1) || substr(lower(hex(randomblob(2))), 2)" +
+  " || '-' || lower(hex(randomblob(6))))";
+
+/**
+ * The Postgres default of a UUIDv7 column: a random UUID whose first 6 bytes are replaced by the time in milliseconds and whose
+ * version bits are set to `7`. It needs Postgres 13 (`gen_random_uuid()`), not 18. See `docs/migrations.md#uuid-keys`.
+ */
+export const UUIDV7_PGSQL =
+  "(encode(set_bit(set_bit(overlay(uuid_send(gen_random_uuid()) placing substring(int8send(floor(extract(epoch from clock_timestamp()) * 1000)::bigint) from 3) from 1 for 6), 52, 1), 53, 1), 'hex')::uuid)";
+
+/** A `uuid` column; `useUuidv7()` has the database generate a time-ordered UUID when an insert gives none. */
+export class UuidColumn<T> extends Column<T> {
+  /** Default: a version 7 UUID made by the database itself, so it holds for every way of inserting. See `docs/migrations.md#uuid-keys`. */
+  useUuidv7(): this {
+    this.spec.default = { uuidv7: true };
     return this;
   }
 }
@@ -182,8 +208,14 @@ export class Blueprint {
     return this.#add(name, { sqlite: 'json', pgsql: 'jsonb' });
   }
 
-  uuid(name: string): Column<string> {
-    return this.#add(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression });
+  /** Values are 36-character strings; `useUuidv7()` lets the database generate them. */
+  uuid(name: string): UuidColumn<string> {
+    return new UuidColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
+  }
+
+  /** A UUIDv7 primary key made by the database: shorthand for `uuid(name).primary().useUuidv7()`. */
+  uuidId(name = 'id'): Column<string> {
+    return this.uuid(name).primary().useUuidv7();
   }
 
   binary(name: string): Column<Uint8Array> {
@@ -222,6 +254,11 @@ export class Blueprint {
   /** A big integer that references another table: `table.foreignId('user_id').constrained().cascadeOnDelete()`. */
   foreignId(name: string): ForeignIdColumn<number> {
     return new ForeignIdColumn<number>(this.#spec(name, { sqlite: 'integer', pgsql: 'bigint' }));
+  }
+
+  /** A UUID that references another table: `table.foreignUuid('user_id').constrained().cascadeOnDelete()`. */
+  foreignUuid(name: string): ForeignIdColumn<string> {
+    return new ForeignIdColumn<string>(this.#spec(name, { sqlite: 'uuid' as DataTypeExpression, pgsql: 'uuid' as DataTypeExpression }));
   }
 
   index(columns: string | readonly string[], name?: string): void {
@@ -285,7 +322,7 @@ export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpres
       if (spec.primary) c = c.primaryKey();
       if (spec.identity) c = driver === 'sqlite' ? c.autoIncrement() : c.generatedByDefaultAsIdentity();
       if (!spec.nullable && !spec.primary) c = c.notNull();
-      if (spec.default) c = c.defaultTo('now' in spec.default ? now(driver) : literal(spec.default.value));
+      if (spec.default) c = c.defaultTo(defaultOf(spec.default, driver));
       if (spec.references) {
         c = c.references(`${spec.references.table}.${spec.references.column}`);
         if (spec.references.onDelete) c = c.onDelete(spec.references.onDelete);
@@ -293,6 +330,12 @@ export function compileColumn(spec: ColumnSpec, driver: Driver): [DataTypeExpres
       return c;
     },
   ];
+}
+
+function defaultOf(value: NonNullable<ColumnSpec['default']>, driver: Driver): unknown {
+  if ('now' in value) return now(driver);
+  if ('uuidv7' in value) return sql.raw(driver === 'sqlite' ? UUIDV7_SQLITE : UUIDV7_PGSQL);
+  return literal(value.value);
 }
 
 export function now(driver: Driver): Expression<string> {

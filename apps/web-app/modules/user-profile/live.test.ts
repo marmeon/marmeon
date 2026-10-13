@@ -14,7 +14,7 @@ beforeEach(async () => {
   [ada, alan] = users as [User, User];
 });
 
-const profile = (user: User) => `/users/${user.id}`;
+const profile = (user: User) => `/users/${user.public_id}`;
 /** A tab of `user` — its requests name its document (x-marmeon-connection), as the client core's do. */
 const tab = (user: User, connection: string) => app.actingAs(user).withHeaders({ 'x-marmeon-connection': connection });
 
@@ -23,7 +23,7 @@ describe('live props in the web app', () => {
     const page = (await app.actingAs(ada).navigating().get(profile(ada)).assertOk()).page()!;
     expect(page.live).toEqual([
       { channel: notificationsChannel({ type: 'user', id: ada.id }), only: ['bell'], token: expect.any(String) },
-      { channel: `users.${ada.id}`, only: ['profile', 'activity'], token: expect.any(String) },
+      { channel: `users.${ada.public_id}`, only: ['profile', 'activity'], token: expect.any(String) },
     ]);
     // A guest's page (the login) follows nothing: the shared channel is the signed-in user's.
     expect((await app.navigating().get('/login').assertOk()).page()!.live).toBeUndefined();
@@ -35,9 +35,9 @@ describe('live props in the web app', () => {
     await Promise.all([tabA.hello(), tabB.hello()]);
     await tab(ada, 'tab-a-ada-0001').post(`${profile(ada)}/links`, { json: { label: 'Blog', url: 'https://ada.example' } }).assertRedirect(profile(ada));
     await Promise.all([tabA.waitFor(1), tabB.waitFor(1)]);
-    expect(tabB.hints).toEqual([{ channel: `users.${ada.id}`, only: ['profile'], seq: 1 }]);
-    expect(tabA.hints).toEqual([{ channel: `users.${ada.id}`, only: [], seq: 1 }]);
-    app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'], times: 1 });
+    expect(tabB.hints).toEqual([{ channel: `users.${ada.public_id}`, only: ['profile'], seq: 1 }]);
+    expect(tabA.hints).toEqual([{ channel: `users.${ada.public_id}`, only: [], seq: 1 }]);
+    app.broadcast.assertRefreshed(`users.${ada.public_id}`, { only: ['profile'], times: 1 });
     // What tab B then asks for — the partial reload the hint leads to — has the new link.
     await app
       .actingAs(ada)
@@ -54,7 +54,7 @@ describe('live props in the web app', () => {
     await app.actingAs(alan).delete(`${profile(alan)}/links/${link.id}`).assertRedirect(profile(alan));
     await app.actingAs(alan).put(profile(alan), { json: { name: 'Alan M. Turing', bio: '' } }).assertRedirect(profile(alan));
     await alans.waitFor(2);
-    expect(alans.hints.map((hint) => hint.channel)).toEqual([`users.${alan.id}`, `users.${alan.id}`]);
+    expect(alans.hints.map((hint) => hint.channel)).toEqual([`users.${alan.public_id}`, `users.${alan.public_id}`]);
     expect(adas.hints).toEqual([]);
   });
 
@@ -87,7 +87,7 @@ describe('live props in the web app', () => {
   it('a token rewritten from Ada’s profile to Alan’s opens no stream (403) — the channel is signed, not just named', async () => {
     const ada$ = app.actingAs(ada); // one browser, one session
     const live = (await ada$.navigating().get(profile(ada))).page()!.live!;
-    const forged = live.map((subscription) => (subscription.channel === `users.${ada.id}` ? { ...subscription, channel: `users.${alan.id}` } : subscription));
+    const forged = live.map((subscription) => (subscription.channel === `users.${ada.public_id}` ? { ...subscription, channel: `users.${alan.public_id}` } : subscription));
     expect((await ada$.live(forged)).status).toBe(403);
     // Alan's session cannot use Ada's tokens either — nor can Ada's other browser (another session).
     expect((await app.actingAs(alan).live(live)).status).toBe(403);

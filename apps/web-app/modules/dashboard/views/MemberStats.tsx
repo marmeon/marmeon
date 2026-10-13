@@ -11,7 +11,7 @@ export default function MemberStats({ stats }: IslandProps<ShowMemberStatsContro
       {stats.newest && (
         <p>
           {t('members.newest')}{' '}
-          <Link route="user-profile.show" params={{ user: stats.newest.id }}>
+          <Link route="user-profile.show" params={{ user: stats.newest.public_id }}>
             {stats.newest.name}
           </Link>
         </p>

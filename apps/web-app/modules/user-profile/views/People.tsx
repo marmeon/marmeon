@@ -61,18 +61,18 @@ export default function People({ people, now }: Props) {
       ) : (
         <ul>
           {people.data.map((person) => (
-            <li key={person.id}>
+            <li key={person.publicId}>
               {/* The avatar, from the public disk — decorative next to the name, so no alt text of its own. The profile shows
                   the same one: a view transition moves it there and back. */}
               {person.avatar && (
-                <ViewTransition name={`avatar-${person.id}`} share="avatar">
+                <ViewTransition name={`avatar-${person.publicId}`} share="avatar">
                   <img src={person.avatar} alt="" width={24} height={24} loading="lazy" className="avatar avatar-small" />
                 </ViewTransition>
               )}{' '}
               {/* Fetched ahead while the pointer rests on it: the click shows the profile at once, the avatar moving into it.
                   No instant placeholder here: it would take the list's place at once, before the transition — and the avatar
                   with it (the main navigation's links have one). */}
-              <Link route="user-profile.show" params={{ user: person.id }} prefetch>
+              <Link route="user-profile.show" params={{ user: person.publicId }} prefetch>
                 {person.name}
               </Link>
               {person.isMe && ` ${t('people.you')}`}{' '}

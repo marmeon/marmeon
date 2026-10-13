@@ -4,6 +4,8 @@ export default defineMigration({
   up: (schema) =>
     schema.create('users', (table) => {
       table.id();
+      // The key URLs and APIs show (`/users/:user`): the integer id stays the key for relations and joins.
+      table.uuid('public_id').unique().useUuidv7();
       table.string('name');
       table.string('email').unique();
       // A PHC string (argon2id); never in `Row<'users'>`, never in a select-all result.

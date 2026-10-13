@@ -71,9 +71,9 @@ describe('live validation of the registration', () => {
 describe('live validation changes nothing (read-only)', () => {
   it('never writes the session nor sets a cookie — a waiting flash message stays for the page', async () => {
     const ada = await app.factory(UserFactory).create();
-    const saved = await app.actingAs(ada).put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect(`/users/${ada.id}`);
+    const saved = await app.actingAs(ada).put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect(`/users/${ada.public_id}`);
     const browser = app.withCookie('marmeon_session', saved.cookie('marmeon_session')!);
-    const live = await browser.validating('name').put(`/users/${ada.id}`, { json: { name: 'Ada Byron', bio: '' } }).assertLiveValid('name').assertNoFlash();
+    const live = await browser.validating('name').put(`/users/${ada.public_id}`, { json: { name: 'Ada Byron', bio: '' } }).assertLiveValid('name').assertNoFlash();
     expect(live.headers.get('set-cookie')).toBeNull();
     expect(live.headers.get('cache-control')).toBe('no-store');
     // Nothing saved by the check, and the message still waits — the next page shows it.
@@ -99,14 +99,14 @@ describe('live validation is held to the route’s rules', () => {
   it('authorization first: checking another person’s profile is a 403 — no field errors', async () => {
     const ada = await app.factory(UserFactory).create();
     const alan = await app.factory(UserFactory).create();
-    const response = await app.actingAs(ada).validating('name').put(`/users/${alan.id}`, { json: { name: 'A', bio: '' } }).assertForbidden();
+    const response = await app.actingAs(ada).validating('name').put(`/users/${alan.public_id}`, { json: { name: 'A', bio: '' } }).assertForbidden();
     expect(response.json<object>()).not.toHaveProperty('errors');
-    await app.actingAs(ada).validating('name').put(`/users/${ada.id}`, { json: { name: 'A', bio: '' } }).assertInvalid(['name']);
+    await app.actingAs(ada).validating('name').put(`/users/${ada.public_id}`, { json: { name: 'A', bio: '' } }).assertInvalid(['name']);
   });
 
   it('a guest checking the profile form is sent away (authentication runs first)', async () => {
     const ada = await app.factory(UserFactory).create();
-    await app.validating('name').put(`/users/${ada.id}`, { json: { name: 'A', bio: '' } }).assertStatus(401);
+    await app.validating('name').put(`/users/${ada.public_id}`, { json: { name: 'A', bio: '' } }).assertStatus(401);
   });
 
   it('30 checks a minute per address and form, then 429 — the form itself can still be sent', async () => {

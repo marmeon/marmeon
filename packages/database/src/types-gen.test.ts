@@ -157,6 +157,28 @@ describe.each(drivers)('Relations from db:types on %s', (driver) => {
   });
 });
 
+describe.each(drivers)('UUIDv7 columns in db:types on %s', (driver) => {
+  it('are Generated<string>: a row is inserted without them', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      const generator = new TypeGenerator({ root: '/', modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, connections, silent);
+      const { source } = await generator.render();
+      expect(source).toContain(`    members: {
+      id: Generated<string>;
+      team_id: string;
+      name: string;
+    };`);
+      expect(source).toContain(`    profiles: {
+      id: Generated<number>;
+      public_id: Generated<string>;
+      name: string;
+    };`);
+    } finally {
+      await close();
+    }
+  });
+});
+
 describe('renderTypes', () => {
   const table = (name: string, columns: Partial<TableMetadata['columns'][number]>[]): TableMetadata => ({
     name,

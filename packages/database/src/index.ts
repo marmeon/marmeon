@@ -55,7 +55,7 @@ export { isSecretSelection } from './secret-guard.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
 export type { SchemaMarker } from './introspection.ts';
-export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
+export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
 export { RelationsPlugin } from './relations.ts';
 // Puts `with()`, `withCount()`, `whereHas()`, `withRelation()` and `withTrashed()` on Kysely's select builder — at runtime (this import) and in the types.
