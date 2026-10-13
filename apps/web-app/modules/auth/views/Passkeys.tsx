@@ -201,6 +201,8 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
           <p>{t('passkeys.unsupported')}</p>
         ) : (
           <form
+            method="post"
+            action={route('auth.passkeys.store')}
             noValidate
             onSubmit={(event) => {
               event.preventDefault();

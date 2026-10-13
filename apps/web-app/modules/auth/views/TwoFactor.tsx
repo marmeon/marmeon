@@ -1,5 +1,5 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useForm, useTranslation } from '@marmeon/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../../../layouts/AppLayout.tsx';
 import type { ShowTwoFactorController } from '../controllers/ShowTwoFactorController.ts';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
@@ -7,6 +7,7 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 type Props = PageProps<ShowTwoFactorController>;
 
 export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) {
+  const route = useRoute();
   const t = useTranslation('auth');
   const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
   const disableForm = useForm('auth.two-factor.disable', { password: '' });
@@ -34,6 +35,8 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
             {t('two_factor.key')} <code>{setup.secret}</code>
           </p>
           <form
+            method="post"
+            action={route('auth.two-factor.confirm')}
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -98,6 +101,8 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
           <section aria-labelledby="disable-heading">
             <h2 id="disable-heading">{t('two_factor.disable_heading')}</h2>
             <form
+              method="post"
+              action={route('auth.two-factor.disable')}
               noValidate
               onSubmit={(event) => {
                 event.preventDefault();
