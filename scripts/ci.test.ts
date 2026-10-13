@@ -153,6 +153,17 @@ describe('check:source — NODE_ENV is checked positively', () => {
     ])).toEqual([]);
   });
 
+  it('covers the examples too — what a demo adds to a new app, but not its tests', () => {
+    expect(negativeEnvHits([
+      { path: 'examples/x.ts', text: "if (process.env.NODE_ENV !== 'production') x();" },
+      { path: 'examples/notes/files/modules/notes/routes.ts', text: "if (process.env.NODE_ENV === 'production') x();" },
+      { path: 'examples/notes/files/modules/notes/notes.test.ts', text: "if (process.env.NODE_ENV !== 'production') x();" },
+    ])).toEqual([
+      "examples/x.ts:1: if (process.env.NODE_ENV !== 'production') x();",
+      "examples/notes/files/modules/notes/routes.ts:1: if (process.env.NODE_ENV === 'production') x();",
+    ]);
+  });
+
   it('covers the apps and the starter\'s template too — what people copy — and Vite\'s DEV / !PROD (true in a build without NODE_ENV=production)', () => {
     expect(negativeEnvHits([
       { path: 'apps/web-app/modules/lab/views/Lab.tsx', text: "if (process.env.NODE_ENV !== 'production') x();" },
@@ -240,6 +251,15 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
       'SECURITY.md:1: as Symfony does',
       "UPGRADING.md:1: in Laravel's manner",
     ]);
+  });
+
+  it('reads the examples — their code and their README — for comparisons with other frameworks', () => {
+    expect(textRuleHits([
+      { path: 'examples/notes/README.md', text: 'Like Laravel, but typed.' },
+      { path: 'examples/notes/files/modules/notes/lang/en.ts', text: "// as in Rails" },
+      { path: 'examples/notes/files/modules/notes/NoteRepository.ts', text: '// a plain repository' },
+    ], frameworks)).toEqual(['examples/notes/README.md:1: Like Laravel, but typed.', 'examples/notes/files/modules/notes/lang/en.ts:1: // as in Rails']);
+    expect(textRuleWhere('examples/notes/README.md:1: x')).toBe('in the examples');
   });
 
   it("reads the website's own pages, not the docs module's code", () => {

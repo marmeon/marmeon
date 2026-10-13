@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, `install --prod`, Redis and S3 steps.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), `install --prod`, Redis and S3 steps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { checkDemo, sampleNotes } from './notes-demo.ts';
 import { packAll, type PackedPackage } from './packages.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -590,6 +591,7 @@ async function main(): Promise<number> {
   };
   const pnpmFlags = [offline ? '--offline' : '--prefer-offline', ...(values['store-dir'] ? ['--store-dir', values['store-dir']] : [])];
   let keep = values.keep === true;
+  let sampleUser = false;
   try {
     assertIsolated(pnpmApp.app);
     const tarballDir = join(work, 'tarballs');
@@ -651,6 +653,15 @@ async function main(): Promise<number> {
       pnpmApp.serve('/login', checkRegistration(false), { AUTH_PRIVATE_REGISTRATION: 'false' }),
     );
     const discovered = await pnpmApp.step('marmeon discover (pnpm, nothing hoisted)', () => discoveredPackages(pnpmApp.marmeon('discover')));
+    // The notes demo (examples/notes) on this same app — before the production install takes the dev dependencies away.
+    await pnpmApp.step('notes demo (examples/notes): overlay, test, typecheck, lint, build, start → GET /notes sends a guest to /login', async () => {
+      await checkDemo(pnpmApp, 'pnpm');
+      // A kept app is for looking at: the confirmed test user and a few notes.
+      if (keep) {
+        sampleNotes(app, (args) => void pnpmApp.run('pnpm', ['exec', 'marmeon', ...args]));
+        sampleUser = true;
+      }
+    });
     // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
     await pnpmApp.step('pnpm install --prod → node_modules/.bin/marmeon', () => {
       pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);
@@ -765,7 +776,7 @@ async function main(): Promise<number> {
 
     const total = ((performance.now() - started) / 1000).toFixed(1);
     console.log(
-      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, lint, build, start, production install, the drivers: SMTP, Redis, S3 without its SDK) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
+      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, lint, build, start, the notes demo, production install, the drivers: SMTP, Redis, S3 without its SDK) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
     );
     return 0;
   } catch (error) {
@@ -779,9 +790,18 @@ async function main(): Promise<number> {
   } finally {
     pnpmApp.stopAll();
     npmApp.stopAll();
-    if (keep) console.log(`pack:smoke: kept ${work}`);
-    else rmSync(work, { recursive: true, force: true });
+    leave(work, keep, sampleUser);
   }
+}
+
+/** The end of a run: a kept directory is named (and, with the demo's sample user, how to sign in); any other is removed. */
+export function leave(work: string, keep: boolean, sampleUser: boolean, log: (line: string) => void = console.log): void {
+  if (!keep) {
+    rmSync(work, { recursive: true, force: true });
+    return;
+  }
+  log(`pack:smoke: kept ${work}`);
+  if (sampleUser) log("pack:smoke: sign in to the kept app as test@example.com — the password is the seeder's (modules/auth/seeders/UserSeeder.ts)");
 }
 
 /** What `marmeon discover` found: the package names (one per line, indented), sorted, and its summary (packages, providers, classes). */

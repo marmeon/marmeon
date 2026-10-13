@@ -23,21 +23,28 @@ export default function Index({ notes }: Props) {
       <div className="stack">
         {notes.data.map((note) => (
           <article key={note.id} className="card">
-            <h2>{note.title}</h2>
-            {note.pinned && <p className="muted">{t('index.pinned')}</p>}
+            <h2>
+              {note.title}
+              {note.pinned && (
+                <>
+                  {' '}
+                  <span className="badge">{t('index.pinned')}</span>
+                </>
+              )}
+            </h2>
             {paragraphs(note.body).map((paragraph, index) => (
               <p key={index}>{paragraph}</p>
             ))}
             <div className="cluster">
-              <Link route="notes.edit" params={{ note: note.id }} className="button-secondary">
+              <Link route="notes.edit" params={{ note: note.id }} className="button-secondary" data-size="small">
                 {t('index.edit')}
               </Link>
               {note.pinned ? (
-                <Link route="notes.unpin" params={{ note: note.id }} className="button-secondary">
+                <Link route="notes.unpin" params={{ note: note.id }} className="button-secondary" data-size="small">
                   {t('index.unpin')}
                 </Link>
               ) : (
-                <Link route="notes.pin" params={{ note: note.id }} className="button-secondary">
+                <Link route="notes.pin" params={{ note: note.id }} className="button-secondary" data-size="small">
                   {t('index.pin')}
                 </Link>
               )}
@@ -45,6 +52,7 @@ export default function Index({ notes }: Props) {
                 route="notes.destroy"
                 params={{ note: note.id }}
                 className="button-secondary"
+                data-size="small"
                 data-destructive=""
                 confirm={{ title: t('index.delete_title', { name: note.title }), message: t('index.delete_confirm'), confirmLabel: t('index.delete'), destructive: true }}
               >

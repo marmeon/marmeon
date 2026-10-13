@@ -127,10 +127,10 @@ const NEGATIVE_ENV = new RegExp(
   ].join('|'),
 );
 /**
- * Code people run or copy — a package's sources and the stubs it writes into apps, the starter's template, the apps — not tests
+ * Code people run or copy — a package's sources and the stubs it writes into apps, the starter's template, the apps, the examples — not tests
  * and fixtures.
  */
-const PACKAGE_CODE = /^(?:packages\/[^/]+\/(?:src|stubs)\/|packages\/create-marmeon\/template\/|apps\/[^/]+\/)(?!.*(?:\.test\.|\.type-test\.|__fixtures__\/))/;
+const PACKAGE_CODE = /^(?:packages\/[^/]+\/(?:src|stubs)\/|packages\/create-marmeon\/template\/|apps\/[^/]+\/|examples\/)(?!.*(?:\.test\.|\.type-test\.|__fixtures__\/))/;
 
 /** Rule 3: every negative or `=== 'production'` check of the environment in code people run or copy (packages, template, apps). */
 export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
@@ -165,6 +165,8 @@ const ROOT_TEXTS = /^(?:README|CONTRIBUTING|SECURITY|UPGRADING)\.md$/;
 const APP_COPIES = /^packages\/(?:create-marmeon\/template|[^/]+\/stubs)\//;
 /** What a reader of one of the apps sees first and copies: its README and its `.env` files. */
 const APP_TEXTS = /^apps\/[^/]+\/(?:README\.md|\.env\.[^/]+)$/;
+/** The examples: what the demos add to a new app — read and copied like the apps' code, and run by `pnpm pack:smoke`. */
+const EXAMPLES = /^examples\//;
 /** The website's own pages (landing, marketing text): they speak to readers like the docs do. */
 const SITE_TEXTS = /^apps\/website\/modules\/site\/.+\.tsx?$/;
 /** Every file. */
@@ -183,7 +185,7 @@ export const DOC_TEXT_RULES: readonly TextRule[] = [
   {
     what: 'a comparison with another framework',
     pattern: /\b(?:Laravel|Breeze|Inertia|Rails|Django|Symfony|AdonisJS|NestJS|Next\.js|Nuxt)\b/,
-    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS, SITE_TEXTS],
+    files: [DOCS_PAGES, PACKAGE_CARDS, ROOT_TEXTS, APP_COPIES, APP_TEXTS, SITE_TEXTS, EXAMPLES],
     why: 'describe Marmeon as it is — a reader may know no other framework',
   },
 ];
@@ -193,6 +195,7 @@ export function textRuleWhere(hit: string): string {
   const path = hit.replace(/:\d+: [\s\S]*$/, '');
   if (APP_COPIES.test(path)) return 'in what every new app copies';
   if (SITE_TEXTS.test(path)) return 'on the website';
+  if (EXAMPLES.test(path)) return 'in the examples';
   return APP_TEXTS.test(path) ? "in an app's README or .env files" : 'in the docs';
 }
 

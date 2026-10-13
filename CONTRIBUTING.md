@@ -89,6 +89,7 @@ package store, the registry and Docker — without them they are reported as ski
 packages/*        the framework's packages, each with a short README for npm
 apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: what create-marmeon --minimal writes (pnpm template:sync), and what make:auth is tested against
+examples/*        demos on the starter kit, each an overlay (files, edits, commands) that pack:smoke applies to its kit app and runs
 apps/website      the documentation as a Marmeon app: docs/*.md and the policies at the root (pnpm website:dev; apps/website/Dockerfile, deploy/website)
 docs              the documentation's pages, in the order apps/website/docs.config.ts lists them
 scripts/ci.ts     pnpm run ci — its 15 parts, from the build to the release rules (below)
@@ -415,7 +416,9 @@ releases below `latest`, and a version equal to `latest` is refused. An app on a
 - `pnpm pack:smoke` makes a starter-kit app (pnpm) and a minimal one (npm) from the tarballs outside the repository and runs
   install, tests, lint, build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
   pino-pretty; the Redis step needs the Redis of `compose.yaml`. The apps live under `$TMPDIR`, with no `node_modules/@marmeon`
-  or `pnpm-workspace.yaml` above them.
+  or `pnpm-workspace.yaml` above them. On the starter kit it then applies the notes demo (`examples/notes`: `commands.json`,
+  `files/`, `edits.json` — each `find` of an edit occurs exactly once, and only `marmeon <command>` lines run) and runs that app's
+  tests, type check, lint, build and start; `--keep` leaves the app with a confirmed test user and a few notes to look at.
 - A broken version is never unpublished; it is deprecated (`npm deprecate 'marmeon@0.2.1' 'Broken: use 0.2.2'`, for every
   package of the release) and fixed by the next patch.
 - `scripts/npm-trust.sh` is generated (`node scripts/npm-trust.ts`) — the `npm trust github` call for every package, run once by

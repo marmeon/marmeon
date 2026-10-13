@@ -62,6 +62,7 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
                         params={{ token: token.id }}
                         className="button-secondary"
                         data-destructive=""
+                        data-size="small"
                         confirm={{ title: t('tokens.revoke_title', { name: token.name }), message: t('tokens.revoke_confirm'), confirmLabel: t('tokens.revoke'), destructive: true }}
                       >
                         {t('tokens.revoke')}

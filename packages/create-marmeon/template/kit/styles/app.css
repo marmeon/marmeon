@@ -319,6 +319,13 @@ button {
   background: var(--color-danger-surface);
 }
 
+/* A smaller button, for actions beside content: a row of them on a card, a link in a table. */
+:is(.button, .button-secondary)[data-size='small'] {
+  min-height: 2rem;
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+}
+
 :is(.button, .button-secondary):disabled {
   border-color: var(--color-line);
   background: var(--color-sunken);
@@ -443,6 +450,18 @@ pre code {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.0625rem var(--space-3);
+  border-radius: 999px;
+  background: var(--color-accent-surface);
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.5;
+  vertical-align: middle;
 }
 
 .muted {
