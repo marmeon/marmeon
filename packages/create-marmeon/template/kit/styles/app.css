@@ -411,6 +411,10 @@ pre code {
   padding: var(--space-5) var(--space-4) var(--space-7);
 }
 
+.card :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
 .card {
   padding: var(--card-padding);
   border: 1px solid var(--color-line);
@@ -511,11 +515,18 @@ pre code {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-4);
   padding: 0;
   margin: 0;
   list-style: none;
+}
+
+/* One column, two from a tablet. */
+@media (min-width: 36rem) {
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .cards .card {

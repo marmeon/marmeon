@@ -76,6 +76,15 @@ export default function Home({ appName }: Props) {
               </a>
             </p>
           </li>
+          <li className="card">
+            <h3>{t('guide_title')}</h3>
+            <p className="muted">{t('guide_text')}</p>
+            <p>
+              <a href="https://marmeon.com/docs/first-app#a-look-around" rel="noreferrer">
+                {t('guide_link')}
+              </a>
+            </p>
+          </li>
         </ul>
       </section>
     </main>

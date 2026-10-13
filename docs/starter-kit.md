@@ -5,7 +5,7 @@
 The starter kit is what `pnpm create marmeon` gives you by default: a blank app plus two modules. The `auth` module handles
 accounts: sign-in, registration, password reset, the confirmation of an address, a security page and API tokens. The `home`
 module is the page at `/`. Both are ordinary modules in your app, written as source code, so you read them, change them and
-delete what you do not need.
+delete what you do not need. [Your First App](first-app.md) adds a notes module of your own on top of the kit.
 
 ```sh
 pnpm create marmeon my-app          # the starter kit
@@ -95,6 +95,7 @@ The classes the pages use are small and yours to reuse:
 | Class | For |
 | --- | --- |
 | `.button`, `.button-secondary` | A button, filled or quiet, on a `<button>` or a `<Link>`. Add `data-destructive` to an action that cannot be undone, and `data-size="small"` for a smaller one beside content, such as the actions of a card or a row. |
+| `.field` | A label, a form control and its error, stacked. |
 | `.choice` | A checkbox or radio with its label, in a row. |
 | `.card` | A box with a border. `data-kind="success"` colors it green. |
 | `.badge` | A small pill that marks something, such as "Pinned", next to a heading. |

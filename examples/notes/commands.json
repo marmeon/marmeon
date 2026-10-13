@@ -1,4 +1,18 @@
 {
-  "beforeCopy": ["marmeon make:module notes"],
-  "afterCopy": ["marmeon migrate", "marmeon db:types", "marmeon route:types"]
+  "beforeCopy": [
+    "marmeon make:module notes",
+    "marmeon make:controller ListNotes --module=notes --request --view",
+    "marmeon make:controller CreateNote --module=notes",
+    "marmeon make:controller StoreNote --module=notes --request",
+    "marmeon make:controller EditNote --module=notes",
+    "marmeon make:controller UpdateNote --module=notes --request",
+    "marmeon make:controller PinNote --module=notes",
+    "marmeon make:controller UnpinNote --module=notes",
+    "marmeon make:controller DeleteNote --module=notes"
+  ],
+  "afterCopy": [
+    "marmeon migrate",
+    "marmeon db:types",
+    "marmeon route:types"
+  ]
 }
