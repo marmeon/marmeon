@@ -201,7 +201,8 @@ container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await
 A value from a session, a header or a form becomes a locale only when it names a supported one, and then in the app's spelling.
 So what reaches `<html lang>`, the page and the browser's language files is always one of your locales, never a path or markup.
 Every response of the `web` group carries `Content-Language`. With more than one supported locale it also carries
-`Vary: accept-language`, so a cache keeps the languages apart. Routes of the `api` group pass no `SetLocale`: their `Translator`
+`Vary: accept-language`, so a cache keeps the languages apart — but the chosen locale lives in the session, so a shared cache
+must not store pages per URL (or the locale belongs in the URL). Routes of the `api` group pass no `SetLocale`: their `Translator`
 speaks `APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads
 those itself.
 
@@ -240,7 +241,7 @@ export class UpdateLocaleController extends Controller {
     const locale = this.#locales.find(ctx.body.locale);
     if (!locale) throw new ValidationError({ locale: ['Choose one of the offered languages.'] }, { locale: ctx.body.locale });
     this.#session.put('locale', locale);
-    this.#history.clear({ siteData: ['cache'] });
+    this.#history.clear({ siteData: false });
     return this.back('/');
   }
 }
@@ -252,7 +253,9 @@ it, also write it into the `locale` column of the signed-in user's row, which th
 of your `UserRepository` that updates the column, called when `Auth` has a user. The starter kit's `LocalePreference` then reads
 it on every device.
 
-`this.#history.clear()` makes the browser load the next page in full and drops the pages its cache keeps in the old language.
+`this.#history.clear({ siteData: false })` makes the browser load the next page in full and drops the pages the client keeps in
+memory in the old language. It does not clear the browser's HTTP cache: pages without a `Cache-Control` that grants freshness are
+asked for again on a normal visit (Back and Forward may still show a page in the old language until the next visit), and clearing it is slow in Chrome ([the cost](client-features.md#the-browsers-storage-on-sign-out)).
 The locale is part of what the browser's other tabs watch, so they load again in the new language, as
 [tab sync](client-features.md#tab-sync) explains.
 
