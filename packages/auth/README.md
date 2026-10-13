@@ -13,6 +13,9 @@ pnpm marmeon make:auth
 pnpm marmeon migrate
 ```
 
+Passkeys are the one extra: `@simplewebauthn/server` is a dependency of this package, loaded only by `@marmeon/auth/passkeys` —
+an app that never imports that subpath never loads it.
+
 ## Protecting a route
 
 ```ts title="modules/notes/routes.ts"

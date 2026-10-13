@@ -251,6 +251,8 @@ command, and the [package development](docs/package-development.md#dependencies-
 3. A library whose instance or types the app must **share** stays a **peer** — the OpenTelemetry API, React, Vite. A dependency would
    install a second copy, and the app's SDK would register on an API the framework never reads.
 4. Decided exception: **`nodemailer` is a dependency of `@marmeon/mail`** — no dependencies of its own, the production path.
+5. Decided exception: **`@simplewebauthn/server` is a dependency of `@marmeon/auth`** — passkeys are a required standard and their
+   verification is security-critical, so a proven implementation; loaded only by `@marmeon/auth/passkeys`.
 
 A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
 peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different

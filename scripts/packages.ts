@@ -68,7 +68,7 @@ export type DriverKind = 'dependency' | 'optional peer' | 'peer';
 /**
  * The driver rule, per package — `pack:check` holds the packed manifests to it, a test in `scripts/ci.test.ts` the sources:
  *   1. a package that wraps exactly one third-party driver and is useless without it lists it in `dependencies`, at a caret range
- *      of the tested major (`@marmeon/redis` → `redis`); decided exception: `nodemailer` in `@marmeon/mail`;
+ *      of the tested major (`@marmeon/redis` → `redis`); decided exceptions: `nodemailer` in `@marmeon/mail`, `@simplewebauthn/server` in `@marmeon/auth` (loaded only by `@marmeon/auth/passkeys`);
  *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
  *      exact install command with the major (`pnpm add pg@^8`);
  *   3. a library whose instance or types the app must share (the OpenTelemetry API, React, Vite) is a peer — and no framework package
@@ -78,6 +78,8 @@ export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, Driver
   redis: { redis: 'dependency' },
   // The engine under `rules`: internal, never re-exported — the app installs nothing for its validation.
   validation: { valibot: 'dependency' },
+  // Passkey verification is security-critical and passkeys are a required standard: a proven implementation, imported by the `passkeys` subpath only.
+  auth: { '@simplewebauthn/server': 'dependency' },
   mail: { nodemailer: 'dependency', mjml: 'optional peer' },
   storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
   database: { pg: 'optional peer' },
