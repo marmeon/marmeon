@@ -11,7 +11,7 @@ import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
-import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, type PasskeyAssertion, type SecondFactor } from './state.ts';
+import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type SecondFactor } from './state.ts';
 import { TwoFactorStore } from './store.ts';
 import { generateSecret, otpauthUri, verifyTotp } from './totp.ts';
 
@@ -289,7 +289,7 @@ export class TwoFactor {
 
   /** Whether `input` is a valid second factor of the account right now — checked against the store, not against what the sign-in saw. */
   async #verify(userId: string | number, input: SecondFactorInput): Promise<boolean> {
-    if ('passkey' in input) return this.#passkeys.verify(userId, input.passkey);
+    if ('passkey' in input) return this.#passkeys[VERIFY_SECOND_FACTOR](userId, input.passkey);
     if ('recoveryCode' in input) {
       // Recovery codes need no secret that decrypts; they work while the account has any factor.
       if ((await this.#state.factors(userId)).length === 0) return false;

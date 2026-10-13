@@ -195,6 +195,18 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
     });
   });
 
+  it('hides a suspended passkey from the lookup until it is released, and still lists it', async () => {
+    const { id } = await created();
+    expect(await store.suspend(id)).toBe(true);
+    expect(await store.suspend(id)).toBe(false);
+    expect(await store.findByCredentialId('cred-1')).toBeUndefined();
+    expect((await store.forUser(1))[0]!.suspendedAt).toBeInstanceOf(Date);
+    expect(await store.release(2, id)).toBe(false);
+    expect(await store.release(1, id)).toBe(true);
+    expect(await store.release(1, id)).toBe(false);
+    expect((await store.findByCredentialId('cred-1'))!.suspendedAt).toBeNull();
+  });
+
   it('lists the account\'s passkeys oldest first and removes them all for a reset', async () => {
     await created();
     await created({ credentialId: 'cred-2', name: 'Phone' });

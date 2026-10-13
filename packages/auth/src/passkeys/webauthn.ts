@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { cbor } from '../cbor.ts';
 import { err, ok, type Logger, type Result } from '@marmeon/core';
 import {
   generateAuthenticationOptions,
@@ -27,6 +28,9 @@ const TRANSPORTS: readonly string[] = ['ble', 'hybrid', 'internal', 'nfc', 'usb'
 const FLAG_UP = 0x01;
 const FLAG_UV = 0x04;
 const FLAG_BE = 0x08;
+/** RSA keys: the usual exponent, and at most 4096 bits (larger moduli only cost every later verification time). */
+const RSA_EXPONENT = Buffer.from([0x01, 0x00, 0x01]);
+const MAX_RSA_BITS = 4096;
 
 /**
  * Where a ceremony may happen. Both come from configuration (`APP_URL`), never from the request: a `Host` header is
@@ -103,6 +107,23 @@ function sameHandle(received: unknown, stored: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** The bit length of a big-endian number. */
+function bitLength(bytes: Uint8Array): number {
+  const first = bytes.findIndex((byte) => byte !== 0);
+  return first === -1 ? 0 : (bytes.length - first) * 8 - Math.clz32(bytes[first]!) + 24;
+}
+
+/**
+ * The same response with its attestation reduced to `none`: format `none`, an empty statement, the authenticator data as it was.
+ * The statement is never trusted, so it is never read — the library then cannot reach its X.509 and ASN.1 parsing, or fetch
+ * revocation lists, for bytes the client chose. The key, the RP ID hash and the flags are in the authenticator data and still checked.
+ */
+function withoutAttestation(response: RegistrationResponseJSON): RegistrationResponseJSON {
+  const decoded = decodeAttestationObject(Buffer.from(response.response.attestationObject, 'base64url'));
+  const attestationObject = cbor(new Map<unknown, unknown>([['fmt', 'none'], ['attStmt', new Map()], ['authData', decoded.get('authData')]])).toString('base64url');
+  return { ...response, response: { ...response.response, attestationObject } };
+}
+
 const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
@@ -118,7 +139,7 @@ export async function verifyRegistration(
   try {
     if (isCrossOrigin(response?.response?.clientDataJSON)) throw new Error('cross-origin response');
     const verified = await verifyRegistrationResponse({
-      response,
+      response: withoutAttestation(response),
       expectedChallenge: sameChallenge(expected.challenge),
       expectedOrigin: [...expected.origins],
       expectedRPID: expected.rpId,
@@ -137,6 +158,14 @@ export async function verifyRegistration(
     if (Buffer.from(credential.id, 'base64url').length > MAX_CREDENTIAL_ID_BYTES) throw new Error('credential id too long');
     const algorithm = decodeCredentialPublicKey(credential.publicKey).get(cose.COSEKEYS.alg);
     if (typeof algorithm !== 'number' || !PASSKEY_ALGORITHMS.includes(algorithm)) throw new Error('algorithm not offered');
+    if (algorithm === -257) {
+      // COSE labels of an RSA key (RFC 8230): -1 the modulus n, -2 the exponent e.
+      const key = decodeCredentialPublicKey(credential.publicKey) as unknown as Map<number, unknown>;
+      const modulus = key.get(-1) as Uint8Array | undefined;
+      const exponent = key.get(-2) as Uint8Array | undefined;
+      if (!modulus || !exponent || bitLength(modulus) > MAX_RSA_BITS) throw new Error('RSA key too large');
+      if (exponent.length !== RSA_EXPONENT.length || !timingSafeEqual(Buffer.from(exponent), RSA_EXPONENT)) throw new Error('RSA exponent is not 65537');
+    }
     return ok({
       credentialId: credential.id,
       publicKey: Buffer.from(credential.publicKey).toString('base64url'),

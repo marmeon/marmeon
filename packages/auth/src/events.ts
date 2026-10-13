@@ -269,6 +269,33 @@ export class PasskeyRegistered {
   }
 }
 
+/**
+ * Someone presented a passkey of this account for a passwordless sign-in and failed — a wrong signature, or a user handle that is not the
+ * account's. For "was this you?" mails and audit logs; the client learns nothing of it. Queueable: `{ userId, ip, userAgent }`.
+ */
+export class PasskeySignInFailed {
+  static readonly event = 'auth.passkey-sign-in-failed';
+  static readonly schema = v.object({
+    userId,
+    ip: v.nullable(v.string()),
+    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+  });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly ip: string | null;
+  readonly userAgent: string | null;
+
+  constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+    this.user = user;
+    this.ip = details.ip ?? null;
+    this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
 /** A passkey was removed from the account. Queueable: `{ userId }`. */
 export class PasskeyRemoved {
   static readonly event = 'auth.passkey-removed';

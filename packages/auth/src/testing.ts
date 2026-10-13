@@ -1,4 +1,5 @@
 import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
+import { cbor } from './cbor.ts';
 import type { Container } from '@marmeon/core';
 import { AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 import { AccessTokenStore } from './tokens.ts';
@@ -81,6 +82,8 @@ export interface SoftOverrides {
   transports?: unknown[];
   /** Signs something else, so the signature does not verify. */
   badSignature?: boolean;
+  /** Registration only: `'packed'` sends a self-attestation statement (not valid for anything) instead of `none`. */
+  attestation?: 'none' | 'packed';
 }
 
 export interface SoftAuthenticatorConfig {
@@ -88,8 +91,10 @@ export interface SoftAuthenticatorConfig {
   origin: string;
   /** The relying party ID the authenticator scopes its credentials to. */
   rpId: string;
-  /** `'ES256'` (default) or `'EdDSA'`. */
-  algorithm?: 'ES256' | 'EdDSA';
+  /** `'ES256'` (default), `'EdDSA'` or `'RS256'`. */
+  algorithm?: 'ES256' | 'EdDSA' | 'RS256';
+  /** `'RS256'` only: the key's size and public exponent (default 2048 bits, 65537) — to test the limits on RSA keys. */
+  rsa?: { modulusLength?: number; publicExponent?: number };
   /** Whether the user is verified (PIN, biometrics) in every response; default `true`. */
   userVerified?: boolean;
   /** Reports a sign count of 0 every time, as synchronised passkeys do. */
@@ -105,7 +110,7 @@ interface SoftCredential {
 
 /**
  * An authenticator in software, for tests: it registers credentials and signs in with them, producing the real
- * WebAuthn JSON a browser would send (attestation `none`, ES256 or EdDSA keys made with Node's `crypto`). Hand the
+ * WebAuthn JSON a browser would send (attestation `none`, ES256 or EdDSA or RS256 keys made with Node's `crypto`). Hand the
  * options the server returned to `register()` or `authenticate()` and post the result back.
  * `overrides` bends one response — another origin, no user verification, a stale counter — to test the refusals.
  */
@@ -135,7 +140,12 @@ export function softAuthenticator(config: SoftAuthenticatorConfig) {
     },
 
     register(options: SoftOptions, overrides: SoftOverrides = {}): SoftRegistration {
-      const { publicKey, privateKey } = algorithm === 'EdDSA' ? generateKeyPairSync('ed25519') : generateKeyPairSync('ec', { namedCurve: 'P-256' });
+      const { publicKey, privateKey } =
+        algorithm === 'EdDSA'
+          ? generateKeyPairSync('ed25519')
+          : algorithm === 'RS256'
+            ? generateKeyPairSync('rsa', { modulusLength: config.rsa?.modulusLength ?? 2048, publicExponent: config.rsa?.publicExponent ?? 65_537 })
+            : generateKeyPairSync('ec', { namedCurve: 'P-256' });
       const credentialId = randomBytes(overrides.credentialIdLength ?? 32);
       const idLength = Buffer.alloc(2);
       idLength.writeUInt16BE(credentialId.length);
@@ -151,8 +161,9 @@ export function softAuthenticator(config: SoftAuthenticatorConfig) {
           clientDataJSON: clientData('webauthn.create', overrides.challenge ?? options.challenge, overrides).toString('base64url'),
           attestationObject: cbor(
             new Map<unknown, unknown>([
-              ['fmt', 'none'],
-              ['attStmt', new Map()],
+              ['fmt', overrides.attestation ?? 'none'],
+              // A `packed` statement that proves nothing: the server must not depend on it.
+              ['attStmt', overrides.attestation === 'packed' ? new Map<unknown, unknown>([['alg', -7], ['sig', Buffer.from('not a signature')]]) : new Map()],
               ['authData', authData],
             ]),
           ).toString('base64url'),
@@ -170,7 +181,7 @@ export function softAuthenticator(config: SoftAuthenticatorConfig) {
       const authData = header(overrides, 0, counter);
       const data = clientData('webauthn.get', overrides.challenge ?? options.challenge, overrides);
       const message = Buffer.concat([overrides.badSignature ? Buffer.from('another message') : authData, createHash('sha256').update(data).digest()]);
-      const signature = algorithm === 'EdDSA' ? sign(null, message, credential.key) : sign('sha256', message, { key: credential.key, dsaEncoding: 'der' });
+      const signature = algorithm === 'EdDSA' ? sign(null, message, credential.key) : algorithm === 'RS256' ? sign('sha256', message, credential.key) : sign('sha256', message, { key: credential.key, dsaEncoding: 'der' });
       return {
         id: credential.id,
         rawId: credential.id,
@@ -188,27 +199,11 @@ export function softAuthenticator(config: SoftAuthenticatorConfig) {
 }
 
 /** The COSE_Key (RFC 9052) of a public key, CBOR-encoded: ES256 as EC2 on P-256, EdDSA as OKP on Ed25519. */
-function coseKey(publicKey: KeyObject, algorithm: 'ES256' | 'EdDSA'): Buffer {
+function coseKey(publicKey: KeyObject, algorithm: 'ES256' | 'EdDSA' | 'RS256'): Buffer {
   const jwk = publicKey.export({ format: 'jwk' });
-  const part = (name: 'x' | 'y') => Buffer.from(jwk[name] as string, 'base64url');
+  const part = (name: 'x' | 'y' | 'n' | 'e') => Buffer.from(jwk[name] as string, 'base64url');
+  if (algorithm === 'RS256') return cbor(new Map<unknown, unknown>([[1, 3], [3, -257], [-1, part('n')], [-2, part('e')]]));
   return algorithm === 'EdDSA'
     ? cbor(new Map<unknown, unknown>([[1, 1], [3, -8], [-1, 6], [-2, part('x')]]))
     : cbor(new Map<unknown, unknown>([[1, 2], [3, -7], [-1, 1], [-2, part('x')], [-3, part('y')]]));
-}
-
-/** Just enough CBOR (RFC 8949) for an attestation object and a COSE key: integers, byte and text strings, maps. */
-function cbor(value: unknown): Buffer {
-  const head = (major: number, length: number): Buffer => {
-    if (length < 24) return Buffer.from([(major << 5) | length]);
-    if (length < 256) return Buffer.from([(major << 5) | 24, length]);
-    const two = Buffer.alloc(3);
-    two[0] = (major << 5) | 25;
-    two.writeUInt16BE(length, 1);
-    return two;
-  };
-  if (typeof value === 'number') return value >= 0 ? head(0, value) : head(1, -1 - value);
-  if (typeof value === 'string') return Buffer.concat([head(3, Buffer.byteLength(value)), Buffer.from(value)]);
-  if (Buffer.isBuffer(value)) return Buffer.concat([head(2, value.length), value]);
-  if (value instanceof Map) return Buffer.concat([head(5, value.size), ...[...value].flatMap(([k, v]) => [cbor(k), cbor(v)])]);
-  throw new Error('softAuthenticator: cannot encode this value.');
 }

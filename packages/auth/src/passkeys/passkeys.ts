@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { RateLimiter } from '@marmeon/cache';
 import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
@@ -6,13 +7,13 @@ import { CookieJar } from '@marmeon/router';
 import { Session } from '@marmeon/session';
 import { Auth, AUTH_SESSION_KEYS, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
 import { AuthConfig } from '../config.ts';
-import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, RecoveryCodesGenerated, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
+import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
-import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, type PasskeyAssertion } from '../two-factor/state.ts';
+import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion } from '../two-factor/state.ts';
 import { TwoFactorStore } from '../two-factor/store.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
-import { issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
+import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
 import { PasskeyConfig } from './config.ts';
 import { PasskeyStore, type PasskeyRecord } from './store.ts';
 import {
@@ -32,9 +33,14 @@ const PASSWORD_WINDOWS = [
   { name: 'hour', attempts: 20, seconds: 3600 },
 ] as const;
 
-/** Passwordless attempts per address and minute. A bad response cannot be guessed, so this limits load, not guessing. */
-const SIGN_IN_WINDOW = { attempts: 10, seconds: 60 } as const;
+/**
+ * Failed passwordless attempts per address and minute. Only failures count (behind one shared address many people sign in, and an
+ * attacker must not be able to lock the owner out by sending garbage). A bad response cannot be guessed, so this limits load, not guessing.
+ */
+const SIGN_IN_WINDOW = { attempts: 60, seconds: 60 } as const;
 const MAX_NAME_LENGTH = 100;
+/** Passkeys per account: more is no use, and every one adds to what `excludeCredentials` and the list carry. */
+const MAX_PASSKEYS = 20;
 
 /** Why a passkey ceremony did not count. `clone-suspected`: the passkey's counter did not move forward, it may have been copied. */
 export type PasskeyError =
@@ -51,6 +57,7 @@ export type RegisterError =
   | { readonly kind: 'invalid' }
   | { readonly kind: 'invalid-password' }
   | { readonly kind: 'throttled'; readonly retryAfter: number }
+  | { readonly kind: 'limit' }
   | { readonly kind: 'duplicate' };
 
 /** What a settings page lists of a passkey. */
@@ -59,13 +66,15 @@ export interface PasskeySummary {
   readonly name: string;
   readonly createdAt: Date;
   readonly lastUsedAt: Date | null;
+  /** A possible clone: it signs nobody in until the password releases it. */
+  readonly suspended: boolean;
   /** Synchronised to the user's other devices (the backup flag the authenticator reported). */
   readonly synced: boolean;
 }
 
 /**
  * Passkeys for the current request: register them, sign in without a password, and prove one as the second factor of a sign-in. See
- * `docs/passkeys.md`.
+ * `docs/passkeys.md#managing-passkeys`.
  *
  * Invariants: a challenge works once and only for its purpose (it leaves the session before anything is checked); user verification is
  * required everywhere; RP ID and origins come from configuration; a passkey signs in only its own account; a sign count that does not
@@ -170,8 +179,10 @@ export class Passkeys implements SecondFactorPasskeys {
     // First of all, so that this challenge is spent whatever happens next.
     const taken = takeChallenge(this.#session, 'register', this.#now(), id);
     if (!taken.ok) return err(taken.error);
+    if (!(await this.#spend(taken.value.challenge))) return err({ kind: 'no-challenge' });
     const handle = taken.value.userHandle;
     if (handle === undefined) return err({ kind: 'invalid' });
+    if ((await this.#store.forUser(id)).length >= MAX_PASSKEYS) return err({ kind: 'limit' });
 
     const first = (await this.#state.factors(id)).length === 0;
     // Turning the first factor on signs the other devices out, which hashes the password anew.
@@ -232,38 +243,32 @@ export class Passkeys implements SecondFactorPasskeys {
    * The `Login` event says `via: 'passkey'`.
    */
   async signIn(response: AuthenticationResponseJSON, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, PasskeyError>> {
+    const wait = await this.#waitForSignIn();
+    if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
     const checked = await this.#check(response, 'sign-in');
-    if (!checked.ok) return checked;
-    const signedIn = await this.#auth[SIGN_IN_VERIFIED](checked.value.userId, options);
-    if (!signedIn.ok) return err({ kind: 'invalid' });
-    // A success clears the address's count: behind one shared address (a NAT) many people sign in, and only failures are to add up.
-    await this.#limiter.clear(this.#signInKey());
-    return ok(signedIn.value);
+    const signedIn = checked.ok ? await this.#auth[SIGN_IN_VERIFIED](checked.value.userId, options) : undefined;
+    if (checked.ok && signedIn?.ok) return ok(signedIn.value);
+    // Counted: a failure of any kind (not a success — many people sign in from behind one address).
+    await this.#limiter.hit(this.#signInKey(), SIGN_IN_WINDOW.seconds);
+    return checked.ok ? err({ kind: 'invalid' }) : checked;
   }
 
   /**
-   * The options for proving a passkey as a second factor: only the account's own passkeys are allowed. For `'second-factor'` (the default)
-   * the account is the waiting sign-in's — `no-challenge` or `expired` without a good one; for `'step-up'` it is the signed-in user's.
+   * The options for proving a passkey as the second factor of the waiting sign-in: only the account's own passkeys are allowed.
+   * `no-challenge` or `expired` without a good pending sign-in.
    */
-  async challengeOptions(purpose: 'second-factor' | 'step-up' = 'second-factor'): Promise<Result<PublicKeyCredentialRequestOptionsJSON, { readonly kind: 'no-challenge' } | { readonly kind: 'expired' }>> {
-    let userId: number | string;
-    if (purpose === 'step-up') {
-      userId = idOf(await this.#requireUser('challengeOptions'));
-    } else {
-      const pending = await this.#auth[READ_PENDING]();
-      if (pending === undefined) return err({ kind: 'no-challenge' });
-      if (pending === 'expired') return err({ kind: 'expired' });
-      userId = pending.userId;
-    }
-    const { bytes } = issueChallenge(this.#session, purpose, this.#now(), userId);
-    const allow = (await this.#store.forUser(userId)).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
+  async challengeOptions(): Promise<Result<PublicKeyCredentialRequestOptionsJSON, { readonly kind: 'no-challenge' } | { readonly kind: 'expired' }>> {
+    const pending = await this.#auth[READ_PENDING]();
+    if (pending === undefined) return err({ kind: 'no-challenge' });
+    if (pending === 'expired') return err({ kind: 'expired' });
+    const { bytes } = issueChallenge(this.#session, 'second-factor', this.#now(), pending.userId);
+    const allow = (await this.#store.forUser(pending.userId)).filter((passkey) => passkey.suspendedAt === null).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
     return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
   }
 
-  /** @internal What `TwoFactor` calls for `{ passkey }`, after it has read the pending sign-in (or the signed-in user) and counted the attempt. */
-  async verify(userId: number | string, assertion: PasskeyAssertion, purpose: 'second-factor' | 'step-up' = 'second-factor'): Promise<boolean> {
-    const checked = await this.#check(assertion as AuthenticationResponseJSON, purpose, userId);
-    return checked.ok;
+  /** @internal What `TwoFactor.challenge({ passkey })` calls, after it has read the pending sign-in and counted the attempt. */
+  async [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion): Promise<boolean> {
+    return (await this.#check(assertion as AuthenticationResponseJSON, 'second-factor', userId)).ok;
   }
 
   // -- Managing --------------------------------------------------------------------------------------------------------------
@@ -271,13 +276,13 @@ export class Passkeys implements SecondFactorPasskeys {
   /** The signed-in user's passkeys, oldest first. */
   async list(): Promise<readonly PasskeySummary[]> {
     const user = await this.#requireUser('list');
-    return (await this.#store.forUser(idOf(user))).map((passkey) => ({ id: passkey.id, name: passkey.name, createdAt: passkey.createdAt, lastUsedAt: passkey.lastUsedAt, synced: passkey.backedUp }));
+    return (await this.#store.forUser(idOf(user))).map((passkey) => ({ id: passkey.id, name: passkey.name, createdAt: passkey.createdAt, lastUsedAt: passkey.lastUsedAt, suspended: passkey.suspendedAt !== null, synced: passkey.backedUp }));
   }
 
   /** Renames a passkey of the signed-in user (a recently typed password); `false` for an empty or too long name, or one that is not theirs. */
   async rename(id: number, name: string): Promise<boolean> {
     const user = await this.#requireRecentPassword('rename');
-    const clean = name.replace(/\p{Cc}/gu, '').trim();
+    const clean = name.replace(/[\p{Cc}\p{Cf}]/gu, '').trim();
     if (clean === '' || [...clean].length > MAX_NAME_LENGTH) return false;
     return this.#store.rename(idOf(user), id, clean);
   }
@@ -297,11 +302,27 @@ export class Passkeys implements SecondFactorPasskeys {
       if (checked.ok) lastFactorAllowed = true;
       else if (checked.error.kind === 'throttled') return err(checked.error);
     }
+    // A suspended passkey (a possible clone) goes only with the password: whoever holds the session must not tidy the evidence away.
+    const target = (await this.#store.forUser(userId)).find((passkey) => passkey.id === id);
+    if (target?.suspendedAt != null && !lastFactorAllowed) return err({ kind: 'invalid-password' });
     const removed = await this.#store.remove(userId, id, { lastFactorAllowed });
     if (!removed.ok) return err(removed.error.kind === 'last-factor' ? { kind: 'invalid-password' } : { kind: 'not-found' });
     await this.#events.dispatch(new PasskeyRemoved(user));
     if (removed.value.lastFactor) await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
     return ok();
+  }
+
+  /**
+   * Lets a suspended passkey sign in again — the password typed now, under the throttle of `register()`. `not-found` when the account has
+   * no suspended passkey with this id. Suspending is the answer to a sign count that went backwards (a possible clone): the owner decides.
+   */
+  async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
+    const user = await this.#requireRecentPassword('release');
+    const userId = idOf(user);
+    if (!(await this.#store.forUser(userId)).some((passkey) => passkey.id === id && passkey.suspendedAt !== null)) return err({ kind: 'not-found' });
+    const checked = await this.#checkPassword(userId, password);
+    if (!checked.ok) return err(checked.error);
+    return (await this.#store.release(userId, id)) ? ok() : err({ kind: 'not-found' });
   }
 
   /** The password of the signed-in user, typed now: counted per account before it is checked, the minute cleared by a success. */
@@ -327,10 +348,9 @@ export class Passkeys implements SecondFactorPasskeys {
   async #check(response: AuthenticationResponseJSON, purpose: ChallengePurpose, expectedUser?: number | string): Promise<Result<PasskeyRecord, PasskeyError>> {
     const taken = takeChallenge(this.#session, purpose, this.#now(), expectedUser);
     if (!taken.ok) return err(taken.error);
-    if (purpose === 'sign-in') {
-      const wait = await this.#throttleSignIn();
-      if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
-    }
+    // Spent for every process at once: requests that carry the same session cookie at the same moment all read the challenge before any
+    // of them removed it, and a synchronised passkey (counter 0) could be replayed without limit.
+    if (!(await this.#spend(taken.value.challenge))) return err({ kind: 'no-challenge' });
     const credentialId = typeof (response as { id?: unknown } | null)?.id === 'string' ? response.id : '';
     const record = credentialId === '' ? undefined : await this.#store.findByCredentialId(credentialId);
     if (record === undefined) return err({ kind: 'invalid' });
@@ -344,11 +364,16 @@ export class Passkeys implements SecondFactorPasskeys {
       this.#logger,
     );
     if (!verified.ok) {
+      const found = await this.#users.findById(record.userId as never);
       if (verified.error.kind === 'clone-suspected') {
-        // The counter is not written: the stored one stays the last that was honest.
-        const found = await this.#users.findById(record.userId as never);
+        // The counter is not written: the stored one stays the last that was honest. The passkey is suspended — it signs nobody in until
+        // its owner releases it with the password — and the owner is told.
+        await this.#store.suspend(record.id);
         if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
-        this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied', { user: record.userId, passkey: record.id });
+        this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
+      } else if (purpose === 'sign-in' && found) {
+        // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
+        await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }));
       }
       return err(verified.error);
     }
@@ -356,9 +381,15 @@ export class Passkeys implements SecondFactorPasskeys {
     return ok(record);
   }
 
-  async #throttleSignIn(): Promise<number | undefined> {
+  /** The seconds to wait when this address failed too often a minute ago, else `undefined`. */
+  async #waitForSignIn(): Promise<number | undefined> {
     const key = this.#signInKey();
-    return (await this.#limiter.attempt(key, SIGN_IN_WINDOW.attempts, SIGN_IN_WINDOW.seconds)) ? undefined : Math.max(1, await this.#limiter.availableIn(key));
+    return (await this.#limiter.tooManyAttempts(key, SIGN_IN_WINDOW.attempts)) ? Math.max(1, await this.#limiter.availableIn(key)) : undefined;
+  }
+
+  /** Uses a challenge up, atomically: `false` when another request already did. */
+  async #spend(challenge: string): Promise<boolean> {
+    return this.#limiter.attempt(`passkey-challenge:${createHash('sha256').update(challenge).digest('base64url')}`, 1, CHALLENGE_SECONDS);
   }
 
   #signInKey(): string {
@@ -382,8 +413,8 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 }
 
-/** A name for the list: trimmed, control characters out, at most 100 characters; `Passkey` when nothing is left. */
+/** A name for the list: trimmed, control and invisible format characters (bidi overrides, zero-width marks) out, at most 100 characters; `Passkey` when nothing is left. */
 function cleanedName(name: string): string {
-  const clean = [...name.replace(/\p{Cc}/gu, '').trim()].slice(0, MAX_NAME_LENGTH).join('');
+  const clean = [...name.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()].slice(0, MAX_NAME_LENGTH).join('');
   return clean === '' ? 'Passkey' : clean;
 }

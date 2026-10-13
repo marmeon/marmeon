@@ -76,6 +76,25 @@ describe.each(['ES256', 'EdDSA'] as const)('registration and sign-in with %s', (
   });
 });
 
+describe('the attestation', () => {
+  it('is never read: a packed statement that proves nothing is accepted, and the key, RP ID hash and flags are still checked', async () => {
+    const options = await creation();
+    const register = (overrides: Parameters<ReturnType<typeof authenticatorFor>['register']>[1]) =>
+      verifyRegistration(authenticatorFor().register(options, { attestation: 'packed', ...overrides }), { ...relyingParty, challenge: options.challenge });
+    expect(await register({})).toMatchObject({ ok: true, value: { algorithm: -7 } });
+    expect(await register({ rpId: 'example.com' })).toEqual({ ok: false, error: { kind: 'invalid' } });
+    expect(await register({ userVerified: false })).toEqual({ ok: false, error: { kind: 'invalid' } });
+    expect(await register({ userPresent: false })).toEqual({ ok: false, error: { kind: 'invalid' } });
+  });
+
+  it('is refused when the object is not an attestation object', async () => {
+    const options = await creation();
+    const response = authenticatorFor().register(options);
+    response.response.attestationObject = Buffer.from('not cbor').toString('base64url');
+    expect(await verifyRegistration(response, { ...relyingParty, challenge: options.challenge })).toEqual({ ok: false, error: { kind: 'invalid' } });
+  });
+});
+
 describe('a registration is refused when', () => {
   const refuse = async (overrides: Parameters<ReturnType<typeof authenticatorFor>['register']>[1], expected: Partial<RelyingParty> & { challenge?: string } = {}) => {
     const options = await creation();

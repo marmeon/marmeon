@@ -4,7 +4,7 @@
 
 A password alone is one thing an attacker has to learn. Two-factor authentication adds a second: a six-digit code from an
 authenticator app on the user's phone, which changes every 30 seconds. `@marmeon/auth` brings the check, the setup, one-time
-recovery codes and the sign-in step in between. The example app in `apps/web-app` shows the pages: the code step of the sign-in and a settings page.
+recovery codes and the sign-in step in between. A [passkey](passkeys.md) can be the second factor too. The example app in `apps/web-app` shows the pages: the code step of the sign-in and a settings page.
 
 Two-factor authentication is optional per user, and the framework never forces it. An account that set up an authenticator app
 needs the code after its password. An account that did not signs in as before. Nothing here switches itself on for the whole
@@ -73,8 +73,9 @@ export class AuthServiceProvider implements ServiceProvider {
 
 `TwoFactorState` answers which factors an account has (`factors()`) and since when (`enabledSince()`, the earliest confirmation). Without a binding it says "none" and asks nothing, so an app that does
 not bind it behaves exactly as before. Removing the binding later switches two-factor authentication off for every account: users
-who set it up sign in with the password alone. `combineFactors()` joins several sources into one; today the authenticator app is
-the only one.
+who set it up sign in with the password alone. `combineFactors()` joins several sources into one: the authenticator app is `TwoFactorStore`,
+and [passkeys](passkeys.md) add `PasskeyStore` (`combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore))`). Recovery codes belong to the
+account, whichever factor made them.
 
 The authenticator app shows the app's name next to the code. It comes from `APP_NAME`, which every app already sets; `begin()`
 throws a clear error when it is missing.
@@ -144,7 +145,8 @@ then ends that sign-in, its remember-me token included.
 
 ## The sign-in
 
-After the password, `GET /two-factor-challenge` asks for the code, and `POST` sends it to `TwoFactor.challenge()`:
+After the password, `GET /two-factor-challenge` asks for the code, and `POST` sends it to `TwoFactor.challenge()`. The same method takes a passkey's
+response, `challenge({ passkey })`, which is explained on the [passkeys](passkeys.md#as-a-second-factor) page:
 
 ```ts title="modules/auth/controllers/TwoFactorChallengeController.ts"
 const done = await this.#twoFactor.challenge(recoveryCode !== '' ? { recoveryCode } : { code });
@@ -268,7 +270,7 @@ an API token never counts as a proven second factor, and `twoFactor()` there ans
 | `TwoFactorDisabled` | `disable()` or the operator's reset | `user`, `via` (`user` or `operator`) |
 | `RecoveryCodesGenerated` | The first factor, or `regenerateRecoveryCodes()` | `user` |
 | `RecoveryCodeUsed` | A recovery code signed in or stepped up | `user`, `remaining` |
-| `TwoFactorChallengeFailed` | A wrong code after a right password (`during: 'sign-in'`), or from a signed-in session at `stepUp()` (`during: 'step-up'`) | `user`, `at`, `ip`, `userAgent`, `during` |
+| `TwoFactorChallengeFailed` | A wrong factor (code, recovery code or passkey) after a right password (`during: 'sign-in'`), or a wrong code from a signed-in session at `stepUp()` (`during: 'step-up'`) | `user`, `at`, `ip`, `userAgent`, `during` |
 
 All of them can be [queued](events.md#queued-listeners); a queued listener gets `userId` and the other fields as JSON. Send the
 owner a mail on `TwoFactorChallengeFailed` ("someone knew your password" for `during: 'sign-in'`, "a code was guessed in your session" for `'step-up'`), on `TwoFactorDisabled` and on `RecoveryCodeUsed`.

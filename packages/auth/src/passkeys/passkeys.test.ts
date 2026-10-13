@@ -15,6 +15,7 @@ import {
   PasskeyCloneSuspected,
   PasskeyRegistered,
   PasskeyRemoved,
+  PasskeySignInFailed,
   RecoveryCodesGenerated,
   TwoFactorChallengeFailed,
   TwoFactorDisabled,
@@ -101,6 +102,8 @@ class PasskeyController extends Controller {
           return await this.#passkeys.registrationOptions();
         case 'register':
           return result(await this.#passkeys.register(body.response, body.name, body.password));
+        case 'release':
+          return result(await this.#passkeys.release(body.id, body.password));
         case 'sign-in-options':
           return await this.#passkeys.signInOptions();
         case 'sign-in':
@@ -167,7 +170,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
         name: 'passkeys-test',
         routes,
         migrations: new URL('../__fixtures__/migrations/', import.meta.url),
-        listeners: [Login, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, TwoFactorChallengeFailed, PasskeyRegistered, PasskeyRemoved, PasskeyCloneSuspected].map((event) => listen(event as never, RecordEvent)),
+        listeners: [Login, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, TwoFactorChallengeFailed, PasskeyRegistered, PasskeyRemoved, PasskeyCloneSuspected, PasskeySignInFailed].map((event) => listen(event as never, RecordEvent)),
       }),
     ],
     override: (container: Container) => {
@@ -495,19 +498,27 @@ describe('Passkeys: signing in without a password', () => {
     expect(results.filter((result) => result.ok)).toHaveLength(1);
   });
 
-  it('is throttled per address, 10 a minute', async () => {
+  it('counts failures per address, 60 a minute, then waits — and garbage cannot lock the owner out', async () => {
     const booted = await boot();
+    const authenticator = device();
+    await enrolled(booted, authenticator);
     const b = booted.browser();
-    const answers = [];
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 10; i++) {
       const options = await b.pk('sign-in-options');
-      answers.push(await b.pk('sign-in', { response: { id: 'nope', challenge: options.challenge } }));
+      expect(await b.pk('sign-in', { response: { id: 'nope', challenge: options.challenge } })).toEqual({ ok: false, kind: 'invalid' });
     }
-    expect(answers.slice(0, 10).every((answer) => answer.kind === 'invalid')).toBe(true);
-    expect(answers[10]).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
+    const owner = booted.browser();
+    expect(await owner.pk('sign-in', { response: authenticator.authenticate(await owner.pk('sign-in-options')) })).toMatchObject({ ok: true });
+    for (let i = 10; i < 60; i++) {
+      const options = await b.pk('sign-in-options');
+      await b.pk('sign-in', { response: { id: 'nope', challenge: options.challenge } });
+    }
+    const options = await b.pk('sign-in-options');
+    expect(await b.pk('sign-in', { response: { id: 'nope' } })).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
+    expect(options.challenge).toBeTypeOf('string');
   });
 
-  it('a success clears the address\'s count: behind one shared address, many may sign in', async () => {
+  it('many may sign in from behind one address: successes are not counted', async () => {
     const booted = await boot();
     const authenticator = device();
     await enrolled(booted, authenticator);
@@ -521,6 +532,118 @@ describe('Passkeys: signing in without a password', () => {
     const booted = await boot({}, { passkeys: false });
     expect(booted.application.container.has(Passkeys)).toBe(false);
   });
+});
+
+describe('Passkeys: replay, clones and audit signals', () => {
+  it('lets exactly one of parallel requests with one cookie spend a challenge, also for a synchronised passkey', async () => {
+    const booted = await boot();
+    const synced = device('ES256', true);
+    await enrolled(booted, synced);
+    const b = booted.browser();
+    const response = synced.authenticate(await b.pk('sign-in-options'));
+    const answers = await Promise.all([1, 2, 3].map(() => b.pk('sign-in', { response })));
+    expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
+  });
+
+  it('suspends a passkey whose counter went backwards: it signs nobody in until the password releases it', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    for (let i = 0; i < 2; i++) {
+      const b = booted.browser();
+      await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
+    }
+    const b = booted.browser();
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options'), { signCount: 1 }) })).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(await owner.pk('list')).toMatchObject([{ suspended: true }]);
+    // The honest key, with a counter that would pass, finds no usable passkey meanwhile.
+    const again = booted.browser();
+    expect(await again.pk('sign-in', { response: authenticator.authenticate(await again.pk('sign-in-options')) })).toEqual({ ok: false, kind: 'invalid' });
+    // Releasing and removing need the password; the sudo window alone is not enough.
+    expect(await owner.pk('release', { id: 1 })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await owner.pk('release', { id: 1, password: 'wrong' })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await owner.pk('release', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
+    expect(await owner.pk('list')).toMatchObject([{ suspended: false }]);
+    const last = booted.browser();
+    expect(await last.pk('sign-in', { response: authenticator.authenticate(await last.pk('sign-in-options')) })).toMatchObject({ ok: true });
+  });
+
+  it('removes a suspended passkey only with the password, though another factor remains', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    await addPasskey(owner, device('EdDSA'), 'Phone');
+    const b = booted.browser();
+    await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
+    const c = booted.browser();
+    await c.pk('sign-in', { response: authenticator.authenticate(await c.pk('sign-in-options'), { signCount: 1 }) });
+    expect(await owner.pk('remove', { id: 1 })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await owner.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
+  });
+
+  it('keeps a suspended passkey out of the second factor\'s allow list', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    await addPasskey(owner, device('EdDSA'), 'Phone');
+    const b = booted.browser();
+    await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
+    const c = booted.browser();
+    await c.pk('sign-in', { response: authenticator.authenticate(await c.pk('sign-in-options'), { signCount: 1 }) });
+    const waitingBrowser = await waiting(booted);
+    const options = await waitingBrowser.pk('challenge-options');
+    expect(options.value.allowCredentials).toHaveLength(1);
+  });
+
+  it('tells the owner when a passkey that exists answers wrongly, and says nothing for an unknown one', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    await enrolled(booted, authenticator);
+    events.length = 0;
+    const b = booted.browser();
+    await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options'), { badSignature: true }) });
+    const foreign = authenticator.authenticate(await b.pk('sign-in-options'));
+    foreign.response.userHandle = Buffer.alloc(32, 9).toString('base64url');
+    await b.pk('sign-in', { response: foreign });
+    expect(events.filter((event) => event instanceof PasskeySignInFailed)).toHaveLength(2);
+    events.length = 0;
+    const stranger = device();
+    stranger.register({ challenge: 'AAAA' });
+    await b.pk('sign-in', { response: stranger.authenticate(await b.pk('sign-in-options')) });
+    expect(events.filter((event) => event instanceof PasskeySignInFailed)).toHaveLength(0);
+  });
+
+  it('refuses a 21st passkey', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    const store = booted.application.container.make(PasskeyStore);
+    for (let i = 0; i < 19; i++) {
+      await store.create({ userId: 1, userHandle: 'h', credentialId: `bulk-${i}`, publicKey: 'k', algorithm: -7, signCount: 0, transports: [], aaguid: '', backupEligible: false, backedUp: false, name: `Bulk ${i}` });
+    }
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(20);
+    expect(await addPasskey(b, device(), 'One too many')).toEqual({ ok: false, kind: 'limit' });
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(20);
+  });
+
+  it('strips invisible format characters from names', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    expect(await b.pk('rename', { id: 1, name: '\u202Eevil\u200B name' })).toEqual({ renamed: true });
+    expect((await b.pk('list'))[0].name).toBe('evil name');
+  });
+
+  it('accepts RSA keys with the usual exponent, and refuses an odd exponent or an oversized key', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const register = async (rsa: { modulusLength?: number; publicExponent?: number }) => {
+      const authenticator = softAuthenticator({ origin: ORIGIN, rpId: 'localhost', algorithm: 'RS256', rsa });
+      return addPasskey(b, authenticator, 'RSA');
+    };
+    expect(await register({ publicExponent: 3 })).toEqual({ ok: false, kind: 'invalid' });
+    expect(await register({ modulusLength: 4160 })).toEqual({ ok: false, kind: 'invalid' });
+    expect(await register({})).toMatchObject({ ok: true });
+  }, 60_000);
 });
 
 describe('Passkeys: as the second factor', () => {
@@ -713,5 +836,7 @@ describe('Passkeys: the events', () => {
     expect(await validate(PasskeyRemoved, { userId: {} })).toBeUndefined();
     expect(await validate(PasskeyCloneSuspected, new PasskeyCloneSuspected(ada, 7))).toEqual({ userId: 1, passkeyId: 7 });
     expect(await validate(PasskeyCloneSuspected, { userId: 1, passkeyId: 'seven' })).toBeUndefined();
+    expect(await validate(PasskeySignInFailed, new PasskeySignInFailed(ada, { ip: '203.0.113.9', userAgent: 'x'.repeat(600) }))).toEqual({ userId: 1, ip: '203.0.113.9', userAgent: 'x'.repeat(600).slice(0, 512) });
+    expect(await validate(PasskeySignInFailed, { userId: 1, ip: 7, userAgent: null })).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ import { Connections, Repository, type Generated, type Selectable } from '@marme
 import type { SecondFactor, TwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
 
-/** The table the app's migration creates (`make:auth` writes it) — see {@link PasskeyTable}. */
+/** The table the app's migration creates — see {@link PasskeyTable}. */
 export const PASSKEYS_TABLE = 'passkeys';
 
 /**
@@ -25,6 +25,8 @@ export interface PasskeyTable {
   backed_up: boolean | number;
   name: string;
   last_used_at: string | Date | null;
+  /** Set when a sign count went backwards: the passkey no longer signs in until its owner releases it with the password. */
+  suspended_at: string | Date | null;
   created_at: Generated<string | Date>;
   updated_at: Generated<string | Date>;
 }
@@ -47,6 +49,8 @@ export interface PasskeyRecord {
   readonly backedUp: boolean;
   readonly name: string;
   readonly lastUsedAt: Date | null;
+  /** Since when the passkey is suspended (a possible clone), or `null`. */
+  readonly suspendedAt: Date | null;
   readonly createdAt: Date;
 }
 
@@ -87,6 +91,7 @@ function recordOf(row: Selectable<PasskeyTable>): PasskeyRecord {
     backedUp: flag(row.backed_up),
     name: row.name,
     lastUsedAt: row.last_used_at === null ? null : new Date(row.last_used_at),
+    suspendedAt: row.suspended_at === null ? null : new Date(row.suspended_at),
     createdAt: new Date(row.created_at),
   };
 }
@@ -146,15 +151,17 @@ export class PasskeyStore implements TwoFactorState {
       backed_up: passkey.backedUp,
       name: passkey.name,
       last_used_at: null,
+      suspended_at: null,
       created_at: now,
       updated_at: now,
     });
     return result.ok ? ok(recordOf(result.value)) : result;
   }
 
-  /** @internal The passkey with this credential id, of any account — the caller checks that it belongs to the one expected. */
+  /** @internal The usable (not suspended) passkey with this credential id, of any account — the caller checks that it belongs to the one expected. */
   async findByCredentialId(credentialId: string): Promise<PasskeyRecord | undefined> {
-    const row = await this.#db().selectFrom(PASSKEYS_TABLE).selectAll().where('credential_id', '=', credentialId).executeTakeFirst();
+    // A suspended passkey is not found: it signs nobody in until it is released.
+    const row = await this.#db().selectFrom(PASSKEYS_TABLE).selectAll().where('credential_id', '=', credentialId).where('suspended_at', 'is', null).executeTakeFirst();
     return row === undefined ? undefined : recordOf(row);
   }
 
@@ -176,6 +183,19 @@ export class PasskeyStore implements TwoFactorState {
       .where('id', '=', id)
       .where('sign_count', '=', previous)
       .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
+  }
+
+  /** Suspends a passkey (a possible clone); `false` if it was already suspended or is gone. */
+  async suspend(id: number): Promise<boolean> {
+    const now = this.#now();
+    const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: now, updated_at: now }).where('id', '=', id).where('suspended_at', 'is', null).executeTakeFirst();
+    return result.numUpdatedRows > 0n;
+  }
+
+  /** Lets the account's suspended passkey sign in again; `false` when it has none that is suspended. The caller has checked the password. */
+  async release(userId: number | string, id: number): Promise<boolean> {
+    const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: null, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).where('suspended_at', 'is not', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 

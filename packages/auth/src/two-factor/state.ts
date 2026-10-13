@@ -55,15 +55,18 @@ export type PasskeyAssertion = object;
 export interface SecondFactorPasskeys {
   /**
    * Whether `assertion` proves a passkey of exactly `userId` right now: against the stored passkey (not what the sign-in saw), with the
-   * open challenge for this account used up either way. Never throws for a bad response — `false`.
+   * open challenge for this account used up either way. Never throws for a bad response — `false`. Package-internal (a symbol key):
+   * `TwoFactor` calls it after it has read the waiting sign-in and counted the attempt, so an app cannot call it without those.
    */
-  verify(userId: number | string, assertion: PasskeyAssertion, purpose?: 'second-factor' | 'step-up'): Promise<boolean>;
+  [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion): Promise<boolean>;
 }
+/** The key of {@link SecondFactorPasskeys.verify}'s method. */
+export const VERIFY_SECOND_FACTOR = Symbol('marmeon.auth.verifySecondFactor');
 export const SecondFactorPasskeys = token<SecondFactorPasskeys>('SecondFactorPasskeys');
 
 /** The default {@link SecondFactorPasskeys}: no passkeys, every response refused. */
 export class NoSecondFactorPasskeys implements SecondFactorPasskeys {
-  async verify(): Promise<boolean> {
+  async [VERIFY_SECOND_FACTOR](): Promise<boolean> {
     return false;
   }
 }

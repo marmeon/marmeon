@@ -17,6 +17,7 @@ export default defineMigration({
       table.boolean('backed_up');
       table.string('name', 100);
       table.timestamp('last_used_at').nullable();
+      table.timestamp('suspended_at').nullable(); // a sign count went backwards: no sign-in until the owner releases it
       table.timestamps();
       table.index('user_id');
     }),
