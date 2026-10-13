@@ -29,9 +29,9 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
       ) : (
         <ul>
           {entries.map((entry) => (
-            <li key={entry.id}>
+            <li key={entry.publicId}>
               {/* Links inside an island navigate the page. */}
-              <Link route="user-profile.show" params={{ user: entry.id }}>
+              <Link route="user-profile.show" params={{ user: entry.publicId }}>
                 {entry.name}
               </Link>{' '}
               <small>
@@ -41,7 +41,7 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
               {entry.can.update && (
                 <>
                   {' '}
-                  <Link route="user-profile.edit" params={{ user: entry.id }} layer>
+                  <Link route="user-profile.edit" params={{ user: entry.publicId }} layer>
                     {t('sign_ins.edit')}
                   </Link>
                 </>

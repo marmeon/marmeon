@@ -38,10 +38,9 @@ export class ShowRecentSignInsController extends Controller {
     const rows = await this.#directory.recentSignIns({ since, limit });
     return this.island('dashboard/RecentSignIns', {
       // The island's own projection: each entry with `can.update` — "Edit profile" next to your own name only.
-      entries: this.#gate.withAbilities(
-        rows.map((row) => ({ id: row.id, name: row.name, at: row.last_login_at })),
-        ProfilePolicy,
-        ['update'],
+      // The integer id decides the ability here and goes no further: the page is addressed by `publicId`.
+      entries: (await this.#gate.withAbilities(rows.map((row) => ({ id: row.id, publicId: row.public_id, name: row.name, at: row.last_login_at })), ProfilePolicy, ['update'])).map(
+        ({ id: _id, ...entry }) => entry,
       ),
       // The server's clock for "5 minutes ago".
       now: new Date(),

@@ -4,7 +4,8 @@ import { defineMigration } from '@marmeon/database';
 export default defineMigration({
   up: (schema) =>
     schema.create('profile_links', (table) => {
-      table.id();
+      // A UUIDv7 as the primary key: the link's id is in URLs (`/users/:user/links/:link`).
+      table.uuidId();
       table.foreignId('user_id').constrained('users').cascadeOnDelete();
       table.string('label', 60);
       table.string('url', 2048);

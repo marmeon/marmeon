@@ -37,7 +37,7 @@ export function TheDashboard() {
 
 export function TheIsland(props: IslandProps<ShowRecentSignInsController>) {
   // The controller's own props, as they arrive (a Date is a string) — without the shared ones (the page has them).
-  expectTypeOf(props).toEqualTypeOf<{ readonly entries: { id: number; name: string; at: string; can: { update: boolean } }[]; readonly now: string }>();
+  expectTypeOf(props).toEqualTypeOf<{ readonly entries: { publicId: string; name: string; at: string; can: { update: boolean } }[]; readonly now: string }>();
   const island = useIsland<ShowRecentSignInsController>();
   // Its query, defaults filled in — what the controller's ctx.query is.
   expectTypeOf(island.query).toEqualTypeOf<{ range: '7d' | '30d' | 'all'; limit: number }>();

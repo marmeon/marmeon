@@ -10,6 +10,8 @@ import type { User } from './users.ts';
  */
 export class UserRepository extends Repository<'users'> implements UserProvider<User> {
   static table = 'users' as const;
+  /** `/users/:user` shows the UUID, not the integer id (which stays the key of the relations). */
+  static routeKey = 'public_id';
 
   findById(id: number): Promise<Credentials<User> | undefined> {
     return this.#credentials(this.query().where('id', '=', id));

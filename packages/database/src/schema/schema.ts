@@ -58,11 +58,21 @@ export class Schema {
 
   /**
    * Changes a table. Every change runs as its own statement, because
-   * SQLite's ALTER TABLE takes one change at a time. On SQLite a new NOT NULL column needs a default.
+   * SQLite's ALTER TABLE takes one change at a time. On SQLite a new NOT NULL column needs a default and cannot get a generated UUID
+   * (`useUuidv7()`): `alter` refuses it before changing anything. See `docs/migrations.md#uuid-keys`.
    */
   async alter(table: string, build: (table: Blueprint) => void): Promise<void> {
     const blueprint = new Blueprint(table);
     build(blueprint);
+    if (this.driver === 'sqlite') {
+      const generated = blueprint.columns.find((spec) => spec.default && 'uuidv7' in spec.default);
+      if (generated) {
+        throw new Error(
+          `schema.alter('${table}') cannot add the UUIDv7 column "${generated.name}" on SQLite: SQLite adds no column whose default is computed. ` +
+            'Create the table with the column instead (on Postgres, alter works). See docs/migrations.md#uuid-keys.',
+        );
+      }
+    }
     for (const name of blueprint.dropIndexes) await this.db.schema.dropIndex(name).execute();
     for (const { from, to } of blueprint.renames) {
       await this.db.schema.alterTable(table).renameColumn(from, to).execute();

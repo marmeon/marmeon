@@ -14,17 +14,17 @@ beforeEach(async () => {
   [ada, alan] = users as [User, User];
 });
 
-const profile = (user: User) => `/users/${user.id}`;
+const profile = (user: User) => `/users/${user.public_id}`;
 
 describe('editing a profile is a layer', () => {
   it('opens as a layer: its page object says so — the base for deep links is the profile', async () => {
-    const response = await app.actingAs(ada).layer('user-profile.edit', { user: ada.id }).assertOk();
+    const response = await app.actingAs(ada).layer('user-profile.edit', { user: ada.public_id }).assertOk();
     response.assertLayer<EditUserProfileController>('user-profile/Edit', { profile: { name: 'Ada Lovelace' } });
     expect(response.page()!.layer).toEqual({ key: 'user-profile/Edit', base: profile(ada) });
   });
 
   it('the layer’s own authorization holds — someone else’s edit layer is a 403, wherever it opens', async () => {
-    await app.actingAs(alan).layer('user-profile.edit', { user: ada.id }).assertForbidden();
+    await app.actingAs(alan).layer('user-profile.edit', { user: ada.public_id }).assertForbidden();
     await app.actingAs(alan).get(`${profile(ada)}/edit`, { headers: { accept: 'text/html' } }).assertForbidden();
   });
 
@@ -39,7 +39,7 @@ describe('editing a profile is a layer', () => {
     const response = await app.actingAs(ada).get(`${profile(ada)}/links/${link.id}/remove`, { headers: { accept: 'text/html' } }).assertOk();
     response.assertPage('user-profile/Show');
     expect(response.layers().map((layer) => layer.component)).toEqual(['user-profile/Edit', 'user-profile/RemoveLink']);
-    await app.actingAs(ada).layer('user-profile.links.remove', { user: ada.id, link: link.id }).assertLayer<ConfirmRemoveLinkController>('user-profile/RemoveLink', { link: { label: 'Blog' } });
+    await app.actingAs(ada).layer('user-profile.links.remove', { user: ada.public_id, link: link.id }).assertLayer<ConfirmRemoveLinkController>('user-profile/RemoveLink', { link: { label: 'Blog' } });
   });
 
   it('saving closes the layer and reloads the profile and the message beneath — no layer, no JavaScript: to the profile', async () => {
@@ -72,7 +72,7 @@ describe('editing a profile is a layer', () => {
     const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
     await app.actingAs(ada).layering().delete(`${profile(ada)}/links/${link.id}`).assertLayerClosed({ reload: ['profile'] });
     await app.assertDatabaseMissing('profile_links', { id: link.id });
-    await app.actingAs(alan).layer('user-profile.links.remove', { user: ada.id, link: link.id }).assertNotFound();
+    await app.actingAs(alan).layer('user-profile.links.remove', { user: ada.public_id, link: link.id }).assertNotFound();
   });
 });
 

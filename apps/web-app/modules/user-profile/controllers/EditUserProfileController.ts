@@ -33,15 +33,15 @@ export class EditUserProfileController extends Controller {
     return this.view('user-profile/Edit', {
       // The layer's own projection: each link with `can.delete` — a region asks its own policies.
       profile: {
-        id: user.id,
+        public_id: user.public_id,
         name: user.name,
         bio: user.bio,
         // The picture as it is now — the upload's own preview (blob:) shows over it while a new one is chosen.
         avatar: user.avatar_path ? this.#storage.disk('public').url(user.avatar_path) : null,
-        links: await this.#gate.withAbilities(await this.#directory.links(user.id), ProfileLinkPolicy, ['delete']),
+        links: (await this.#gate.withAbilities(await this.#directory.links(user.id), ProfileLinkPolicy, ['delete'])).map(({ user_id: _owner, ...link }) => link),
       },
       // A failed submit without JavaScript comes back here: refill the fields from old().
       old: this.#session.old() as { name?: string; bio?: string },
-    }).layer({ base: 'user-profile.show', params: { user: user.id } });
+    }).layer({ base: 'user-profile.show', params: { user: user.public_id } });
   }
 }

@@ -15,11 +15,11 @@ export const ConfirmRemoveLinkRequest = defineRequest({
 export class ConfirmRemoveLinkController extends Controller {
   static request = ConfirmRemoveLinkRequest;
 
-  handle(ctx: ContextOf<typeof ConfirmRemoveLinkRequest> & { params: { user: { id: number }; link: Row<'profile_links'> } }) {
+  handle(ctx: ContextOf<typeof ConfirmRemoveLinkRequest> & { params: { user: Row<'users'>; link: Row<'profile_links'> } }) {
     const { link, user } = ctx.params;
-    return this.view('user-profile/RemoveLink', { link: { id: link.id, label: link.label, url: link.url }, userId: user.id }).layer({
+    return this.view('user-profile/RemoveLink', { link: { id: link.id, label: link.label, url: link.url }, userId: user.public_id }).layer({
       base: 'user-profile.edit',
-      params: { user: user.id },
+      params: { user: user.public_id },
     });
   }
 }

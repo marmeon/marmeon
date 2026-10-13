@@ -22,7 +22,16 @@ beforeEach(async () => {
 
 /** Signed in as `user`, navigating client-side (answers with the page object). */
 const as = (user: User) => app.actingAs(user).navigating();
-const profile = (user: User) => `/users/${user.id}`;
+const profile = (user: User) => `/users/${user.public_id}`;
+
+/** The paths of every `id` / `user_id` holding an integer in `value` (the shared `auth` props are not looked at). */
+function integerKeys(value: unknown, path = ''): string[] {
+  if (Array.isArray(value)) return value.flatMap((item, index) => integerKeys(item, `${path}[${index}]`));
+  if (value === null || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, item]) =>
+    path === '' && key === 'auth' ? [] : (key === 'id' || key === 'user_id') && typeof item === 'number' ? [`${path}.${key}`] : integerKeys(item, `${path}.${key}`),
+  );
+}
 
 describe('user-profile module', () => {
   it('returns 401 to non-browser clients without a session', async () => {
@@ -45,6 +54,15 @@ describe('user-profile module', () => {
       expect(response.body).not.toContain('$argon2id$');
       expect(response.body).not.toContain('"password"');
     }
+  });
+
+  it('keeps the integer id off the pages: the profile, the edit layer and the people list are addressed by the public id', async () => {
+    const pages = [
+      await as(ada).get(profile(ada)).assertOk(),
+      await as(ada).get(`${profile(ada)}/edit`).assertOk(),
+      await as(ada).get('/people').assertOk(),
+    ];
+    for (const response of pages) expect(integerKeys(response.page()!.props)).toEqual([]);
   });
 
   it('renders the profile with controller-owned props', async () => {
@@ -169,11 +187,11 @@ describe('user-profile module', () => {
       await app.close(); // one database app per test
       const counted = await createTestApp(application, { database: 'refresh', override: (c) => c.singleton(UserRepository, CountingUsers) });
       const user = await counted.factory(UserFactory).create();
-      await counted.actingAs(user).get('/users/me').assertRedirect(`/users/${user.id}`);
+      await counted.actingAs(user).get('/users/me').assertRedirect(`/users/${user.public_id}`);
       expect(lookups).toBe(2); // actingAs() fingerprints the user, then authenticate() — the shared `auth` prop was not evaluated
 
       lookups = 0;
-      await counted.actingAs(user).navigating().get(`/users/${user.id}`).assertOk();
+      await counted.actingAs(user).navigating().get(`/users/${user.public_id}`).assertOk();
       // actingAs(), then authenticate() — and the shared `auth` prop asks the same per-request Auth: no second lookup.
       expect(lookups).toBe(2);
     });
@@ -223,10 +241,10 @@ describe('user-profile module', () => {
       .actingAs(user)
       .navigating()
       .withHeaders({ 'x-marmeon-version': 'build-1' })
-      .get(`/users/${user.id}`)
+      .get(`/users/${user.public_id}`)
       .assertStatus(409)
-      .assertHeader('x-marmeon-location', `http://localhost/users/${user.id}`);
-    await deployed.actingAs(user).navigating().get(`/users/${user.id}`).assertOk();
+      .assertHeader('x-marmeon-location', `http://localhost/users/${user.public_id}`);
+    await deployed.actingAs(user).navigating().get(`/users/${user.public_id}`).assertOk();
   });
 
   it('redirects /users/me to the current user', async () => {
@@ -240,8 +258,17 @@ describe('user-profile module', () => {
     await app.actingAs(ada).expectingJson().get('/users/999999/edit').assertNotFound();
   });
 
+  it('binds /users/:user by the public UUID — the integer id finds nobody, a UUID in capitals does', async () => {
+    await as(ada).get(`/users/${ada.id}`).assertNotFound();
+    await app.actingAs(ada).expectingJson().get(`/users/${ada.id}/edit`).assertNotFound();
+    await as(ada).get(`/users/${ada.public_id}`).assertOk();
+    await as(ada).get(`/users/${ada.public_id.toUpperCase()}`).assertOk();
+    await as(ada).get(`/users/${crypto.randomUUID()}`).assertNotFound();
+    await app.actingAs(ada).expectingJson().get(`/users/${ada.public_id}/edit`).assertOk();
+  });
+
   it('lets tests replace services before the app boots — singletons included', async () => {
-    const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', first_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null, pending_email: null, pending_email_expires_at: null };
+    const stub: User = { id: 7, public_id: '0190a000-0000-7000-8000-000000000007', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', first_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null, pending_email: null, pending_email_expires_at: null };
     class StubUserRepository extends UserRepository {
       override async findById(id: number) {
         return id === stub.id ? { user: stub, passwordHash: null } : undefined;
@@ -256,7 +283,7 @@ describe('user-profile module', () => {
       override: (c) => c.singleton(UserRepository, (r) => new StubUserRepository(r.make(Connections))),
     });
     // Authentication asks the repository (it is the UserProvider): the stub's user is signed in, although no row exists.
-    await stubbed.actingAs(stub).get('/users/me').assertRedirect('/users/7');
+    await stubbed.actingAs(stub).get('/users/me').assertRedirect(`/users/${stub.public_id}`);
     await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { auth: { user: { name: 'Grace (stub)' } } });
   });
 
@@ -315,6 +342,16 @@ describe('profile links (a route bound within its user)', () => {
       .assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
         expect(props.profile.links.map((link) => link.label)).toEqual(['Notes on the Analytical Engine', 'Ada (language)']);
       });
+  });
+
+  it('keys links by UUIDv7 — a link id that is no UUID is a 404', async () => {
+    await as(alan)
+      .get(profile(ada))
+      .assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+        for (const link of props.profile.links) expect(link.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      });
+    await as(ada).get(`${profile(ada)}/links/1/remove`).assertNotFound();
+    await as(ada).get(`${profile(ada)}/links/not-a-uuid/remove`).assertNotFound();
   });
 
   it('adds a link to your own profile — http(s) only', async () => {

@@ -26,13 +26,13 @@ export class DeleteProfileLinkController extends Controller {
     this.#broadcast = broadcast;
   }
 
-  async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number }; link: Row<'profile_links'> } }) {
+  async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: Row<'users'>; link: Row<'profile_links'> } }) {
     await this.#links.delete(ctx.params.link.id);
     // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
-    await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
+    await this.#broadcast.refresh(profileChannel(ctx.params.user.public_id), { only: ['profile'] });
     // Confirmed in its layer: it closes, and what is beneath (the profile, or the edit layer) loses the link.
     return this.closeLayer({ reload: ['profile'] })
-      .route('user-profile.show', { user: ctx.params.user.id })
+      .route('user-profile.show', { user: ctx.params.user.public_id })
       .flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.link_removed') });
   }
 }

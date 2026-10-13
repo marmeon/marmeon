@@ -23,7 +23,7 @@ describe('sessions in the database (SESSION_DRIVER=database)', () => {
     // session — none of them leaves anything in a session, so none keeps one.
     const responses = await Promise.all(
       Array.from({ length: 100 }, (_, i) =>
-        i % 3 === 0 ? app.prefetching().get(`/users/${ada.id}`) : i % 3 === 1 ? app.post('/login', { form: { email: 'bot@example.com', password: 'x' } }) : app.post('/logout'),
+        i % 3 === 0 ? app.prefetching().get(`/users/${ada.public_id}`) : i % 3 === 1 ? app.post('/login', { form: { email: 'bot@example.com', password: 'x' } }) : app.post('/logout'),
       ),
     );
     expect(new Set(responses.map((response) => response.status))).toEqual(new Set([302, 419]));
@@ -80,7 +80,7 @@ describe('a leaked sessions table', () => {
     expect(row!.id).not.toBe(id);
     // Someone with the table — and the app's key, to encrypt a cookie — replays the key: a guest.
     await app.withCookie('marmeon_session', row!.id).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('marmeon_session', id).get('/users/me').assertRedirect(`/users/${ada.id}`);
+    await app.withCookie('marmeon_session', id).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
   });
 
   it('holds no readable payload with SESSION_ENCRYPT — no flash text, no user id, no token', async () => {
@@ -111,7 +111,7 @@ describe.runIf(REDIS_URL)('sessions in Redis (SESSION_DRIVER=redis)', () => {
     const redis = app.make(RedisConnections).get();
     const sessions = () => redis.command<string[]>(['KEYS', `${redis.prefix}session:*`]);
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    await Promise.all(Array.from({ length: 20 }, () => app!.prefetching().get(`/users/${ada.id}`).then((response) => response.assertRedirect('/login'))));
+    await Promise.all(Array.from({ length: 20 }, () => app!.prefetching().get(`/users/${ada.public_id}`).then((response) => response.assertRedirect('/login'))));
     // Guests on the login page leave none either.
     await Promise.all(Array.from({ length: 20 }, () => app!.get('/login').then((response) => expect(response.headers.getSetCookie()).toEqual([]))));
     expect(await sessions()).toEqual([]);

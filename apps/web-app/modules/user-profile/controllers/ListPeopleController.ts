@@ -42,7 +42,7 @@ export class ListPeopleController extends Controller {
         const page = await this.#directory.people(ctx.query);
         return {
           data: page.data.map((person) => ({
-            id: person.id,
+            publicId: person.public_id,
             name: person.name,
             avatar: person.avatar_path ? this.#storage.disk('public').url(person.avatar_path) : null,
             lastLoginAt: person.activity?.last_login_at ?? null,

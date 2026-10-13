@@ -278,13 +278,29 @@ What the two patterns trade:
 | | UUID as primary key | Integer key and a public UUID |
 | --- | --- | --- |
 | Index size | 16 bytes per key on Postgres (a `bigint` is 8), 36 bytes of text on SQLite. Every foreign key and every index that holds the key grows with it. | The primary key and the foreign keys stay narrow. The public key costs one more column and one more unique index. |
-| Writes | A version 7 key is ordered by time, so inserts land near each other, much like an integer. A random version 4 key scatters them. | Same for the public key's index. |
+| Writes | A version 7 key is ordered by time, so inserts land near each other, much like an integer. A random version 4 key scatters them. Rows made within the same millisecond have no order among themselves, so order a list by a timestamp when it matters. | Same for the public key's index. |
 | Enumeration | Keys cannot be counted through like `/notes/42`, `/notes/43`; an unguessable key is no substitute for checking who may see the row. | The same, as long as URLs and APIs only show the public key. |
 | What the key tells | The creation time, to the millisecond. | The same for the public key. Where that matters, generate a random one yourself: `crypto.randomUUID()` on insert. |
 | Changing your mind | Hard once other tables hold the key. | On Postgres, `schema.alter()` adds a public key at any time and gives every existing row its own value. On SQLite a UUIDv7 column exists only when the table is created, and `schema.alter()` with `useUuidv7()` is refused. |
 
 Pick what suits the table. Tables that other tables reference a lot favour the narrow key; tables whose rows are created in many
 places at once, or merged from several databases, favour the UUID as key.
+
+### Adding to an existing table
+
+On Postgres, `schema.alter()` adds a UUIDv7 column to a table that has rows, and every existing row gets its own value:
+
+```ts title="modules/profiles/migrations/2026_10_03_090000_add_public_id_to_profiles_table.ts"
+schema.alter('profiles', (table) => {
+  table.uuid('public_id').unique().useUuidv7();
+});
+```
+
+On SQLite, a UUIDv7 column exists only when the table is created. SQLite adds no column whose default is computed, so
+`schema.alter()` with `useUuidv7()` throws before it changes anything. To give such a table a public key on SQLite, create the
+table with the column in the first place, which is easiest before the first deploy, or create a new table with the column,
+copy the rows and drop the old one. Marmeon refuses `alter` on SQLite whether or not the table has rows, so a migration that
+works in development works on every deploy.
 
 ## Changing tables
 

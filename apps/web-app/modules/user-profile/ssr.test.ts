@@ -20,7 +20,7 @@ describe('the profile page, rendered on the server', { timeout: 30_000 }, () => 
     // A sign-in leaves a timestamp with milliseconds: rendered from a Date, the server would say "29 seconds ago" where the
     // browser says "28" (and write a `dateTime` the browser never sees).
     await app.post('/login', { form: { email: alan.email, password: 'password' } }).assertRedirect('/users/me');
-    const response = await app.actingAs(ada).get(`/users/${alan.id}`, page).assertOk().assertServerRendered().assertHydrates();
+    const response = await app.actingAs(ada).get(`/users/${alan.public_id}`, page).assertOk().assertServerRendered().assertHydrates();
     const { lastLoginAt } = response.page()!.props as { lastLoginAt: string };
     expect(response.body).toContain(`<time dateTime="${lastLoginAt}"`);
   });
@@ -28,7 +28,7 @@ describe('the profile page, rendered on the server', { timeout: 30_000 }, () => 
   it('puts the page’s <Head> into the document head — title through the template, meta tags', async () => {
     await app
       .actingAs(ada)
-      .get(`/users/${alan.id}`, page)
+      .get(`/users/${alan.public_id}`, page)
       .assertServerRendered()
       .assertSee('<title data-marmeon-head="ssr">Alan Turing — Marmeon</title><meta name="description" content="Computability pioneer." data-marmeon-head="ssr"/>')
       .assertSee('<h1>Alan Turing</h1>');
@@ -38,11 +38,11 @@ describe('the profile page, rendered on the server', { timeout: 30_000 }, () => 
     const grace = await app.factory(UserFactory).state('unverified').create();
     const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
     await app.actingAs(grace).get('/email/verify', page).assertOk().assertHydrates(); // "resend the mail"
-    await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertHydrates(); // the layer's "Remove"
+    await app.actingAs(ada).get(`/users/${ada.public_id}/links/${link.id}/remove`, page).assertOk().assertHydrates(); // the layer's "Remove"
   });
 
   it('renders with the deferred part still loading (and it hydrates)', async () => {
-    const response = await app.actingAs(ada).get(`/users/${ada.id}`, page).assertServerRendered().assertHydrates();
+    const response = await app.actingAs(ada).get(`/users/${ada.public_id}`, page).assertServerRendered().assertHydrates();
     expect(response.body).toContain('<a href="/people">All people</a>');
     expect(response.body).toContain('Loading activity…'); // deferred: the browser loads it next
   });
@@ -51,7 +51,7 @@ describe('the profile page, rendered on the server', { timeout: 30_000 }, () => 
 describe('view transitions: the avatars the list and the profile share, rendered on the server', { timeout: 30_000 }, () => {
   it('without inline styles — view-transition-name only through the CSSOM (React, during a transition): a strict style-src blocks none', async () => {
     await app.make(UserRepository).update(ada.id, { avatar_path: 'avatars/ada.png' });
-    for (const url of ['/people', `/users/${ada.id}`]) {
+    for (const url of ['/people', `/users/${ada.public_id}`]) {
       const { body } = await app.actingAs(ada).get(url, page).assertOk().assertServerRendered();
       const avatars = body.match(/<img[^>]*avatars\/ada\.png[^>]*>/g) ?? [];
       expect(avatars.length, `${url}: no avatar rendered`).toBeGreaterThan(0);
@@ -67,7 +67,7 @@ describe('the app’s pages, rendered on the server', { timeout: 30_000 }, () =>
     // Signed in for real: a fresh sign-in counts as a confirmed password (the settings pages are in sudo mode).
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me');
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
-    for (const url of ['/dashboard', '/people', `/users/${ada.id}`, `/users/${ada.id}/edit`, '/members', '/notifications', '/settings/security', '/settings/tokens']) {
+    for (const url of ['/dashboard', '/people', `/users/${ada.public_id}`, `/users/${ada.public_id}/edit`, '/members', '/notifications', '/settings/security', '/settings/tokens']) {
       const { body } = await session.get(url, page).assertOk().assertServerRendered();
       // The framework's LayerDialog too: its look is classes of @marmeon/react/styles.css.
       const styled = body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
@@ -81,7 +81,7 @@ describe('the people list, rendered on the server — its query state included',
     const response = await app.actingAs(ada).get('/people?q=a&sort=-name', page).assertServerRendered().assertHydrates();
     expect(response.body).toContain('value="a"'); // the search field holds the query
     expect(response.body.indexOf('>Grace Hopper</a>')).toBeLessThan(response.body.indexOf('>Ada Lovelace</a>'));
-    expect(response.body).toContain(`<a href="/users/${alan.id}">Alan Turing</a>`);
+    expect(response.body).toContain(`<a href="/users/${alan.public_id}">Alan Turing</a>`);
     // The sort links: defaults left out of their URLs (`q` stays — it is no default), the current one marked.
     expect(response.body).toContain('<a href="/people?q=a">Name A–Z</a>');
     expect(response.body).toContain('href="/people?q=a&amp;sort=-name" aria-current="true"');
@@ -96,14 +96,14 @@ describe('the people list, rendered on the server — its query state included',
 
 describe('a deep link of a layer, rendered on the server', { timeout: 30_000 }, () => {
   it('renders the edit layer over the profile in one document — and it hydrates', async () => {
-    const response = await app.actingAs(ada).get(`/users/${ada.id}/edit`, page).assertOk().assertServerRendered().assertHydrates();
+    const response = await app.actingAs(ada).get(`/users/${ada.public_id}/edit`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<dialog open="" data-marmeon-layer="user-profile/Edit"');
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
   });
 
   it('stacks the profile, the edit layer and the confirmation in one document — and it hydrates', async () => {
     const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Blog' });
-    const response = await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
+    const response = await app.actingAs(ada).get(`/users/${ada.public_id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
     expect(response.body.match(/<dialog open="" data-marmeon-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
     // Their frames carry no style attribute: classes of @marmeon/react/styles.css, linked by the built index.html.

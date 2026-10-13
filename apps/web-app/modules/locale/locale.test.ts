@@ -105,7 +105,7 @@ describe('the language switcher (POST /locale)', () => {
     const switched = await app.actingAs(ada).post('/locale', { form: { locale: 'de' }, headers: referer('/users/me') });
     await app.assertDatabaseHas('users', { id: ada.id, locale: 'de' });
     // Another device: no session choice, an English browser — the account's language.
-    expect((await app.actingAs(ada).navigating().get(`/users/${ada.id}`, { headers: { 'accept-language': 'en' } })).page()!.locale).toBe('de');
+    expect((await app.actingAs(ada).navigating().get(`/users/${ada.public_id}`, { headers: { 'accept-language': 'en' } })).page()!.locale).toBe('de');
 
     const session = app.withCookie('marmeon_session', switched.cookie('marmeon_session')!);
     const out = await session.post('/logout').assertRedirect('/login').assertGuest().assertSessionHas('locale', 'de');

@@ -44,8 +44,8 @@ describe('the session’s epoch', () => {
     expect(first).toMatch(/^[\w-]{22}$/);
     expect(await epochFor(browser)).toBe(first);
     // A write that flashes (the profile saved), its redirect followed with the message, a partial reload: the same epoch.
-    await browser.put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect();
-    const shown = await browser.navigating().get(`/users/${ada.id}`).assertOk().assertFlash('toast');
+    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect();
+    const shown = await browser.navigating().get(`/users/${ada.public_id}`).assertOk().assertFlash('toast');
     expect(shown.page()!.epoch).toBe(first);
     expect((await browser.navigating().get('/people').assertOk()).page()!.epoch).toBe(first);
   });
@@ -82,11 +82,11 @@ describe('the session’s epoch', () => {
     expect(guest.headers.getSetCookie()).toEqual([]);
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
-    await browser.put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect();
+    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect();
     const asked = await browser.get(SESSION_PATH).assertOk();
     expect(asked.headers.getSetCookie()).toEqual([]);
     // The message the save flashed still waits for the page the user is shown.
-    await browser.navigating().get(`/users/${ada.id}`).assertFlash('toast', { message: 'Profile saved.' });
+    await browser.navigating().get(`/users/${ada.public_id}`).assertFlash('toast', { message: 'Profile saved.' });
   });
 });
 
@@ -98,7 +98,7 @@ describe('/_marmeon/session is read-only', () => {
     const asked = await remembered.get(SESSION_PATH).assertOk();
     expect(asked.headers.getSetCookie()).toEqual([]);
     expect(asked.json()).toEqual({ epoch: await epochFor(app) }); // a guest's, until a page signs in
-    await remembered.get('/users/me').assertRedirect(`/users/${ada.id}`).assertAuthenticated(ada);
+    await remembered.get('/users/me').assertRedirect(`/users/${ada.public_id}`).assertAuthenticated(ada);
   });
 });
 
@@ -106,18 +106,18 @@ describe('flash messages stay with the document that flashed them', () => {
   it('another tab’s poll does not take a message this tab’s save flashed — this tab’s next answer does', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
-    await browser.put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' }, headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
+    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' }, headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
     // Tab B polls the people list (a partial reload, its own document).
     await browser.navigating().get('/people', { headers: { [DOCUMENT_HEADER]: 'tab-b' } }).assertOk().assertNoFlash();
     // Tab A follows its redirect.
-    await browser.navigating().get(`/users/${ada.id}`, { headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertFlash('toast', { message: 'Profile saved.' });
+    await browser.navigating().get(`/users/${ada.public_id}`, { headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertFlash('toast', { message: 'Profile saved.' });
   });
 
   it('a full page load (no document named — the one after a 409) takes it', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
-    await browser.put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' }, headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
-    await browser.get(`/users/${ada.id}`, { headers: { accept: 'text/html' } }).assertOk().assertFlash('toast');
+    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' }, headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
+    await browser.get(`/users/${ada.public_id}`, { headers: { accept: 'text/html' } }).assertOk().assertFlash('toast');
   });
 });
 
@@ -346,7 +346,7 @@ describe('two tabs of one browser', () => {
     await a.open('/dashboard');
     const b = browser.tab();
     await b.open('/dashboard');
-    await b.visit(`/users/${ada.id}`);
+    await b.visit(`/users/${ada.public_id}`);
     expect(JSON.stringify(b.visible)).toContain('ada@example.com');
     return { ada, browser, a, b };
   }

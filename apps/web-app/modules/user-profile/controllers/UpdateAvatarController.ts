@@ -1,4 +1,5 @@
 import { can } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Broadcaster } from '@marmeon/live';
 import { Translator } from '@marmeon/i18n';
@@ -35,7 +36,7 @@ export class UpdateAvatarController extends Controller {
     this.#broadcast = broadcast;
   }
 
-  async handle(ctx: ContextOf<typeof UpdateAvatarRequest>) {
+  async handle(ctx: ContextOf<typeof UpdateAvatarRequest> & { params: { user: Row<'users'> } }) {
     const { user } = ctx.params;
     const disk = this.#storage.disk('public');
     const previous = (await this.#users.find(user.id))?.avatar_path;
@@ -43,11 +44,11 @@ export class UpdateAvatarController extends Controller {
     const path = await ctx.body.avatar.store(disk, 'avatars');
     await this.#users.update(user.id, { avatar_path: path });
     // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
-    await this.#broadcast.refresh(profileChannel(user.id), { only: ['profile'] });
+    await this.#broadcast.refresh(profileChannel(user.public_id), { only: ['profile'] });
     // The picture it replaces goes (a failure here leaves a file nobody links to — nothing worse).
     if (previous) await disk.delete(previous).catch(() => false);
     return this.closeLayer({ reload: ['profile'] })
-      .route('user-profile.show', { user: user.id })
+      .route('user-profile.show', { user: user.public_id })
       .flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.avatar_saved') });
   }
 }

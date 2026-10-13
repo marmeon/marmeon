@@ -47,8 +47,8 @@ beforeEach(async () => {
   [ada, alan] = users as [User, User];
 });
 
-const profile = (user: User) => `/users/${user.id}`;
-type Link = { id: number; label: string; can: { delete: boolean } };
+const profile = (user: User) => `/users/${user.public_id}`;
+type Link = { id: string; label: string; can: { delete: boolean } };
 const linksOf = (props: object) => (props as { profile: { links: Link[] } }).profile.links;
 
 describe('abilities in the frontend — an explicit, typed projection', () => {
@@ -122,8 +122,8 @@ describe('abilities in the frontend — an explicit, typed projection', () => {
         .actingAs(user)
         .island('dashboard.sign-ins', {}, { range: 'all' })
         .assertIsland<ShowRecentSignInsController>('dashboard/RecentSignIns', (props) => {
-          const can = Object.fromEntries(props.entries.map((entry) => [entry.id, entry.can.update]));
-          expect(can).toEqual({ [user.id]: true, [other.id]: false });
+          const can = Object.fromEntries(props.entries.map((entry) => [entry.publicId, entry.can.update]));
+          expect(can).toEqual({ [user.public_id]: true, [other.public_id]: false });
         });
     }
   });

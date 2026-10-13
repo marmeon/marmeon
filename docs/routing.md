@@ -394,7 +394,9 @@ export class NoteRepository extends Repository<'notes'> {
 ```
 
 An `id` is a number, so the repository accepts digits only, up to 15 of them. `/notes/abc` is a 404 without a query to the
-database. To look records up by another column, set `routeKey`, and `routeKeyPattern` for the values it accepts:
+database. A table with a [UUID primary key](migrations.md#uuid-keys) takes UUIDs instead: anything else is a 404 without a
+query, and a UUID in capitals finds its row. To look records up by another column, set `routeKey`, and `routeKeyPattern` for
+the values it accepts. A `routeKey` that names a `uuid` column, such as `public_id`, needs no pattern:
 
 ```ts title="modules/notes/NoteRepository.ts"
 import { Repository } from '@marmeon/database';

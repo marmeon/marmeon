@@ -73,9 +73,27 @@ beforeEach(async () => {
   [ada, alan] = users as [User, User];
 });
 
+/** The paths of every `id` / `user_id` holding an integer in `value` (the shared `auth` props are not looked at). */
+function integerKeys(value: unknown, path = ''): string[] {
+  if (Array.isArray(value)) return value.flatMap((item, index) => integerKeys(item, `${path}[${index}]`));
+  if (value === null || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, item]) =>
+    path === '' && key === 'auth' ? [] : (key === 'id' || key === 'user_id') && typeof item === 'number' ? [`${path}.${key}`] : integerKeys(item, `${path}.${key}`),
+  );
+}
+
 describe('the dashboard: a page of islands', () => {
   it('is a page that loads nothing itself — each panel is an island route', async () => {
     await app.actingAs(ada).navigating().get('/dashboard').assertOk().assertPage('dashboard/Show', {});
+  });
+
+  it('keeps the integer id out of the islands: they link by the public id', async () => {
+    await app.make(LoginActivityRepository).record(alan.id, new Date());
+    for (const name of ['dashboard.sign-ins', 'dashboard.members'] as const) {
+      const response = await app.actingAs(ada).island(name, {}, {}).assertOk();
+      expect(response.island()!.props).not.toEqual({});
+      expect(integerKeys(response.island()!.props)).toEqual([]);
+    }
   });
 
   it('answers an island with its region object: its own props (no shared ones), its query — no-store, no cookie', async () => {
@@ -86,7 +104,7 @@ describe('the dashboard: a page of islands', () => {
       .actingAs(ada)
       .island('dashboard.sign-ins', {}, { range: '7d' })
       .assertOk()
-      .assertIsland<ShowRecentSignInsController>('dashboard/RecentSignIns', { entries: [{ id: alan.id, name: 'Alan Turing' }] });
+      .assertIsland<ShowRecentSignInsController>('dashboard/RecentSignIns', { entries: [{ publicId: alan.public_id, name: 'Alan Turing' }] });
     const region = response.island()!;
     expect(Object.keys(region.props).sort()).toEqual(['entries', 'now']);
     expect(region).not.toHaveProperty('locale');

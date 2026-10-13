@@ -22,7 +22,7 @@ beforeAll(async () => {
   [ada] = users as [User];
   // Warm up Vite's SSR modules: the first render of a page loads them.
   await (await app.actingAs(ada).stream('/dashboard')).text();
-  await (await app.actingAs(ada).stream(`/users/${ada.id}`)).text();
+  await (await app.actingAs(ada).stream(`/users/${ada.public_id}`)).text();
 });
 afterAll(() => app.close());
 
@@ -108,7 +108,7 @@ describe('the dashboard as it streams', () => {
 describe('deferred props in the first response', () => {
   it('streams the profile’s activity with the page — the page object says so, the browser does not ask again', async () => {
     const started = performance.now();
-    const response = await app.actingAs(ada).stream(`/users/${ada.id}`);
+    const response = await app.actingAs(ada).stream(`/users/${ada.public_id}`);
     const { at, html } = await follow(started, response, { shell: /<h1>Ada Lovelace<\/h1>/, activity: /id="marmeon-deferred-[^"]*">\{"props":\{"activity"/ });
     const page = JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as { streamedProps?: string[]; deferredProps?: Record<string, string[]> };
     expect(page).toMatchObject({ streamedProps: ['default'], deferredProps: { default: ['activity'] } });
@@ -127,7 +127,7 @@ describe('deferred props in the first response', () => {
       }),
     );
     try {
-      const response = await app.actingAs(ada).get(`/users/${ada.id}`, { headers: { accept: 'text/html' } }).assertOk();
+      const response = await app.actingAs(ada).get(`/users/${ada.public_id}`, { headers: { accept: 'text/html' } }).assertOk();
       expect(response.body).toMatch(/id="marmeon-deferred-[^"]*">null<\/script>/);
       response.assertSessionMissing('deferred_wrote');
     } finally {
@@ -139,7 +139,7 @@ describe('deferred props in the first response', () => {
 describe('a deep link of a layer, streamed', () => {
   it('the layer renders in the shell over its base — with the page, not a boundary streamed later', async () => {
     const started = performance.now();
-    const streamed = await app.actingAs(ada).stream(`/users/${ada.id}/edit`);
+    const streamed = await app.actingAs(ada).stream(`/users/${ada.public_id}/edit`);
     const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-marmeon-layer="user-profile\/Edit"/ });
     // In the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first: no later than the profile's
     // deferred activity (150 ms) would take, counted from the shell — not from the request, whose shell a loaded machine
@@ -156,7 +156,7 @@ describe('a deep link of a layer, streamed', () => {
 describe('hydration, streamed (assertHydrates with ssr: "stream")', () => {
   it('the dashboard, the profile with its streamed activity and a layer’s deep link hydrate — compared as the browser has them once everything streamed in', async () => {
     await app.actingAs(ada).get('/dashboard', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
-    await app.actingAs(ada).get(`/users/${ada.id}`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
-    await app.actingAs(ada).get(`/users/${ada.id}/edit`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
+    await app.actingAs(ada).get(`/users/${ada.public_id}`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
+    await app.actingAs(ada).get(`/users/${ada.public_id}/edit`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
   });
 });

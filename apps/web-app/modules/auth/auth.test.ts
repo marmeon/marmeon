@@ -48,7 +48,7 @@ describe('auth module', () => {
     // … does not survive it: the planted cookie is a guest's, the new one is signed in.
     expect(response.cookie('marmeon_session')).not.toBe(planted.cookie('marmeon_session'));
     await app.withCookie('marmeon_session', planted.cookie('marmeon_session')!).get('/users/me').assertRedirect('/login');
-    await app.withCookie('marmeon_session', response.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${grace.id}`);
+    await app.withCookie('marmeon_session', response.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${grace.public_id}`);
   });
 
   it('normalizes the e-mail in the request — never the password', async () => {
@@ -110,18 +110,18 @@ describe('auth module', () => {
     await app.actingAs(ada).get('/login').assertRedirect('/users/me');
     await app.actingAs(ada).post('/login', credentials(ada)).assertRedirect('/users/me');
 
-    const away = await app.get(`/users/${ada.id}/edit`, { headers: { accept: 'text/html' } }).assertRedirect('/login');
+    const away = await app.get(`/users/${ada.public_id}/edit`, { headers: { accept: 'text/html' } }).assertRedirect('/login');
     await app
       .withCookie('marmeon_session', away.cookie('marmeon_session')!)
       .post('/login', credentials(ada))
-      .assertRedirect(`/users/${ada.id}/edit`);
+      .assertRedirect(`/users/${ada.public_id}/edit`);
   });
 
   it('a password changed elsewhere ends the other sessions', async () => {
     const ada = await app.factory(UserFactory).create();
     const signedIn = await app.post('/login', credentials(ada)).assertAuthenticated(ada);
     const laptop = app.withCookie('marmeon_session', signedIn.cookie('marmeon_session')!).expectingJson();
-    await laptop.get('/users/me').assertRedirect(`/users/${ada.id}`);
+    await laptop.get('/users/me').assertRedirect(`/users/${ada.public_id}`);
     await app.make(UserRepository).updatePasswordHash(ada.id, await app.make(Hasher).make('changed on the phone'));
     await laptop.get('/users/me').assertUnauthorized();
   });
@@ -336,7 +336,7 @@ describe('remember me', () => {
     expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
     await app.assertDatabaseCount('remember_tokens', 1);
 
-    const later = await app.withCookie('remember_web', cookie).get('/users/me').assertRedirect(`/users/${ada.id}`).assertAuthenticated(ada);
+    const later = await app.withCookie('remember_web', cookie).get('/users/me').assertRedirect(`/users/${ada.public_id}`).assertAuthenticated(ada);
     expect(later.cookie('remember_web')).not.toBe(cookie);
     expect(later.cookie('remember_web')!.split('.')[0]).toBe(cookie.split('.')[0]);
   });
@@ -405,7 +405,7 @@ describe('security settings', () => {
 
     await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/users/me').assertUnauthorized();
     await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('marmeon_session', changed.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${ada.id}`);
+    await app.withCookie('marmeon_session', changed.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
     await app.post('/login', credentialsOf(ada)).assertGuest();
     await app.post('/login', { form: { email: ada.email, password: 'a new password' } }).assertAuthenticated(ada);
   });
@@ -419,7 +419,7 @@ describe('security settings', () => {
     // Without the lock both would check the old password and both would write — the session then keeps whichever fingerprint saved
     // last, the database whichever hash it got last: a mismatch signs the session out.
     expect(responses.map((response) => response.status).toSorted()).toEqual([303, 422]);
-    await here.get('/users/me').assertRedirect(`/users/${ada.id}`); // still signed in: hash and fingerprint are a pair
+    await here.get('/users/me').assertRedirect(`/users/${ada.public_id}`); // still signed in: hash and fingerprint are a pair
     const winner = responses[0]!.status === 303 ? 'the first new one' : 'the second new one';
     await app.post('/login', { form: { email: ada.email, password: winner } }).assertAuthenticated(ada);
   });
@@ -430,7 +430,7 @@ describe('security settings', () => {
     const laptop = await app.post('/login', credentialsOf(ada));
     const done = await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).post('/settings/devices/logout', { form: { password: 'password' } });
     done.assertFlashed('toast', { message: 'Signed out on all other devices.' });
-    await app.withCookie('marmeon_session', done.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${ada.id}`);
+    await app.withCookie('marmeon_session', done.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
     await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/users/me').assertUnauthorized();
     await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
   });
@@ -611,19 +611,19 @@ describe('e-mail verification', () => {
     const login = await app.post('/login', { form: { email: 'kj@example.com', password: 'orbital mechanics' } }).assertRedirect('/users/me');
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 
-    await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect('/email/verify');
-    await session.expectingJson().post(`/users/${kj.id}/links`, { json: { label: 'Blog', url: 'https://kj.example' } }).assertForbidden();
+    await session.post(`/users/${kj.public_id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect('/email/verify');
+    await session.expectingJson().post(`/users/${kj.public_id}/links`, { json: { label: 'Blog', url: 'https://kj.example' } }).assertForbidden();
     const verifiedResponse = await session.get(verificationLink()).assertRedirect('/users/me').assertFlashed('toast', { message: 'Your e-mail address is verified.' });
     // The message waits through the hop via /users/me (a redirect takes none) and shows on the profile.
-    const hop = await app.withCookie('marmeon_session', verifiedResponse.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${kj.id}`).assertNoFlash();
+    const hop = await app.withCookie('marmeon_session', verifiedResponse.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${kj.public_id}`).assertNoFlash();
     await app
       .withCookie('marmeon_session', hop.cookie('marmeon_session')!)
       .navigating()
-      .get(`/users/${kj.id}`)
+      .get(`/users/${kj.public_id}`)
       .assertPage('user-profile/Show')
       .assertFlash('toast', { message: 'Your e-mail address is verified.' });
     expect((await userBy('kj@example.com')).email_verified_at).toMatch(/Z$/);
-    await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect(`/users/${kj.id}`);
+    await session.post(`/users/${kj.public_id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect(`/users/${kj.public_id}`);
   });
 
   it('a changed parameter, a changed expiry, another user’s link, an expired link — 403', async () => {
