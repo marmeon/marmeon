@@ -30,6 +30,12 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(JSON.stringify(await connections.get<any>().selectFrom(REMEMBER_TABLE).selectAll().execute())).not.toContain(validator);
   });
 
+  it('consume keeps createdAt over a rotation', async () => {
+    const first = await tokens.consume(await tokens.create(1, inAMonth()));
+    const second = await tokens.consume(issued(first)!);
+    expect(first.ok && second.ok && second.value.createdAt).toEqual(first.ok && first.value.createdAt);
+  });
+
   it('accepts a valid cookie and rotates the validator — the selector stays', async () => {
     const cookie = await tokens.create(1, inAMonth());
     const result = await tokens.consume(cookie);

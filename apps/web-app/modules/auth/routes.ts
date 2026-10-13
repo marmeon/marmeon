@@ -1,4 +1,5 @@
 import { authenticate, confirmedPassword, guest } from '@marmeon/auth';
+import { twoFactor } from '@marmeon/auth/two-factor';
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, signed } from '@marmeon/http';
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
@@ -26,8 +27,11 @@ import { ShowRegisterController } from './controllers/ShowRegisterController.ts'
 import { ShowRegistrationSentController } from './controllers/ShowRegistrationSentController.ts';
 import { ShowSecurityController } from './controllers/ShowSecurityController.ts';
 import { ShowTwoFactorChallengeController } from './controllers/ShowTwoFactorChallengeController.ts';
+import { ShowSensitiveController } from './controllers/ShowSensitiveController.ts';
 import { ShowTwoFactorController } from './controllers/ShowTwoFactorController.ts';
+import { ShowTwoFactorVerifyController } from './controllers/ShowTwoFactorVerifyController.ts';
 import { TwoFactorChallengeController } from './controllers/TwoFactorChallengeController.ts';
+import { TwoFactorVerifyController } from './controllers/TwoFactorVerifyController.ts';
 import { ShowVerifyEmailNoticeController } from './controllers/ShowVerifyEmailNoticeController.ts';
 import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
 import { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
@@ -86,6 +90,13 @@ export default defineRoutes((Route) => {
   confirmed.get('/settings/two-factor/confirm', RedirectToTwoFactorController);
   confirmed.get('/settings/two-factor/recovery-codes', RedirectToTwoFactorController);
   sudo.post('/settings/two-factor/disable', DisableTwoFactorController).name('auth.two-factor.disable');
+  // Proving the factor again in this session (where `twoFactor()` sends a session that has not): a wrong code ends nothing. One request
+  // per session at a time (block()), as at the sign-in.
+  confirmed.get('/settings/two-factor/verify', ShowTwoFactorVerifyController).name('auth.two-factor.verify');
+  confirmed.post('/settings/two-factor/verify', TwoFactorVerifyController).name('auth.two-factor.verify.store').block();
+  // Only for sessions that proved a second factor within 15 minutes — an example of `twoFactor()`. An app chooses where to put it; nothing else
+  // here requires a factor, and the framework never installs it by itself.
+  confirmed.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 })).get('/settings/sensitive', ShowSensitiveController).name('auth.sensitive');
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');

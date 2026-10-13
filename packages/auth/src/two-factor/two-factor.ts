@@ -126,7 +126,7 @@ export class TwoFactor {
     if (!(await this.#verify(userId, input))) {
       const failures = this.#auth[RECORD_PENDING_FAILURE]() ?? PENDING_MAX_FAILURES;
       const found = await this.#users.findById(userId as never);
-      if (found) await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent }));
+      if (found) await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }));
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, PENDING_MAX_FAILURES - failures) });
     }
     // Only the minute counter: hour and day keep the attempts that guessing used up.
@@ -134,6 +134,34 @@ export class TwoFactor {
     // Signs in only the account the factor was proven for: a pending sign-in of another account is refused there.
     const done = await this.#auth[COMPLETE_PENDING](userId);
     return done.ok ? ok(done.value) : err(done.error);
+  }
+
+  /**
+   * Proves the second factor again for the signed-in user, in the session they already have — what the `twoFactor()` middleware sends
+   * people to when this session has not proven it (or too long ago). `ok` once the code counts: the session is then marked as having
+   * proven it, under a new session id. Same throttle, same events and same errors as `challenge()`, except that wrong codes do not
+   * end the session (`attemptsLeft` counts down the minute's budget); `no-challenge` when the account has no factor to prove.
+   * Needs a signed-in user.
+   */
+  async stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>> {
+    const user = await this.#requireUser('stepUp');
+    const userId = idOf(user);
+    if ((await this.#state.factors(userId)).length === 0) return err({ kind: 'no-challenge' });
+    const recovery = 'recoveryCode' in input;
+    const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
+    if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
+
+    const minute = recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId);
+    if (!(await this.#verify(userId, input))) {
+      await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }));
+      const budget = recovery ? RECOVERY_WINDOW.attempts : TOTP_WINDOWS[0].attempts;
+      return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, budget - (await this.#limiter.attempts(minute))) });
+    }
+    await this.#limiter.clear(minute);
+    // The session gains a privilege it did not have: a new id, as at sign-in, so that an id known from before is worth nothing now.
+    this.#session.regenerate();
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(Date.now() / 1000)); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
+    return ok(undefined);
   }
 
   /** What the settings page shows: the factors, whether an authenticator is being set up, and how many recovery codes are left. Needs a signed-in user. */
@@ -218,7 +246,7 @@ export class TwoFactor {
       await this.#store.removeTotp(id, { lastFactor: first });
       throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
     }
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(this.#clock.now() / 1000));
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(Date.now() / 1000));
     await this.#limiter.clear(this.#codeKey('minute', id));
     await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
     if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));

@@ -211,9 +211,54 @@ It protects against a stolen or guessed password, and a password from another si
 types the code into a copy of your login page that forwards it at once, against someone who already holds a signed-in session or
 controls the user's device, or against whoever has the server's `APP_KEY`. Codes by e-mail or SMS are not offered on purpose.
 
-Someone who knows the password can use up the code attempts for a day; recovery codes stay open, so the owner is not locked out. A
+Someone who knows the password or holds a signed-in session can use up the code attempts for a day; recovery codes stay open, so the owner is not locked out. A
 password reset does not clear the counters.
 Turning the factor on signs out every other device, so a session that was open before is gone (see [Setting up](#setting-up)).
+
+## Requiring it
+
+Two-factor authentication is a choice of each user. When an area of your app should open only for people who have it, put
+`twoFactor()` from `@marmeon/auth/two-factor` behind `authenticate()`:
+
+```ts title="modules/auth/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { twoFactor } from '@marmeon/auth/two-factor';
+
+const protectedArea = Route.middleware(authenticate()).middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 }));
+protectedArea.get('/settings/sensitive', ShowSensitiveController);
+```
+
+The framework provides this middleware and never installs it: not for a group, not in the starter kit, not through a setting. Where
+it runs is your decision, route by route. It refuses by default; each of these is a different answer:
+
+| Who | Browser | JSON client |
+| --- | --- | --- |
+| Nobody is signed in (also a sign-in that waits for its code, or an API token) | Redirect to the login page | `401` |
+| Signed in, the account has no factor | Redirect to `setup`: the page where a factor is turned on | `403` `{ "error": "two_factor_required" }` |
+| Signed in, the account has a factor, this session has not proven it, or not within `maxAge` | Redirect to `verify` | `403` `{ "error": "two_factor_unverified" }` |
+| The session proved its factor | The request goes on | The request goes on |
+
+A browser that is sent away comes back to the page it asked for (`redirect().intended()`). A session proves its factor by passing
+the code step of the sign-in, by turning the factor on, or by `stepUp()` below; a remember-me sign-in of an account with a factor
+counts as proven at the time its cookie was made (after a code, and kept when the cookie rotates), so with a `maxAge` an old cookie sends the session to `verify` too. A session that was open before the factor was added has not proven it, so
+it is sent to `verify`. The proof stays for as long as the session lasts, or for `maxAge` seconds when you give one; then the
+user is asked again. Typing the password again ([sudo mode](authentication.md)) is a different thing and proves nothing about the second factor.
+
+The `verify` page asks for a code and calls `TwoFactor.stepUp()`, which takes the same input and uses the same throttle, events and
+errors as `challenge()`:
+
+```ts title="modules/auth/controllers/TwoFactorVerifyController.ts"
+const done = await this.#twoFactor.stepUp(recoveryCode !== '' ? { recoveryCode } : { code });
+if (done.ok) return this.redirect().intended().route('auth.sensitive');
+```
+
+`stepUp()` changes nothing about the sign-in: a wrong code does not end the session (`attemptsLeft` counts down the minute's tries),
+`no-challenge` means the account has no factor to prove, and a right code marks the session as proven under a new session id. It
+needs a signed-in user. Route the `POST` with `.block()`, as for the challenge.
+
+The middleware reads the session, so it belongs in the `web` group. The stateless `api` group has no session: behind `authenticate('api')`
+an API token never counts as a proven second factor, and `twoFactor()` there answers `401`. Tokens are their own credentials; see
+[What it protects against](#what-it-protects-against-and-what-not).
 
 ## Events
 
@@ -222,16 +267,17 @@ Turning the factor on signs out every other device, so a session that was open b
 | `TwoFactorEnabled` | `confirm()` turned a factor on | `user`, `factor` |
 | `TwoFactorDisabled` | `disable()` or the operator's reset | `user`, `via` (`user` or `operator`) |
 | `RecoveryCodesGenerated` | The first factor, or `regenerateRecoveryCodes()` | `user` |
-| `RecoveryCodeUsed` | A recovery code signed in | `user`, `remaining` |
-| `TwoFactorChallengeFailed` | A wrong code after a right password | `user`, `at`, `ip`, `userAgent` |
+| `RecoveryCodeUsed` | A recovery code signed in or stepped up | `user`, `remaining` |
+| `TwoFactorChallengeFailed` | A wrong code after a right password (`during: 'sign-in'`), or from a signed-in session at `stepUp()` (`during: 'step-up'`) | `user`, `at`, `ip`, `userAgent`, `during` |
 
 All of them can be [queued](events.md#queued-listeners); a queued listener gets `userId` and the other fields as JSON. Send the
-owner a mail on `TwoFactorChallengeFailed` ("someone knew your password"), on `TwoFactorDisabled` and on `RecoveryCodeUsed`.
+owner a mail on `TwoFactorChallengeFailed` ("someone knew your password" for `during: 'sign-in'`, "a code was guessed in your session" for `'step-up'`), on `TwoFactorDisabled` and on `RecoveryCodeUsed`.
 
 ## Testing
 
-A test that acts as a user with `actingAs()` skips two-factor authentication on purpose. To test the code step, sign in for real and
-compute the code the authenticator would show with `twoFactorCode()`:
+A test that acts as a user with `actingAs()` skips two-factor authentication on purpose: the session counts as having proven the
+factor when the account has one, so a page behind `twoFactor()` opens for it, and an account without a factor is still sent to set
+one up. To test the code step, sign in for real and compute the code the authenticator would show with `twoFactorCode()`:
 
 ```ts title="modules/auth/two-factor.test.ts"
 import { twoFactorCode } from '@marmeon/auth';
