@@ -1,12 +1,17 @@
 import { authenticate, confirmedPassword, guest } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, signed } from '@marmeon/http';
+import { BeginTwoFactorController } from './controllers/BeginTwoFactorController.ts';
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
+import { ConfirmTwoFactorController } from './controllers/ConfirmTwoFactorController.ts';
 import { CreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
+import { DisableTwoFactorController } from './controllers/DisableTwoFactorController.ts';
 import { LoginController } from './controllers/LoginController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
 import { LogoutOtherDevicesController } from './controllers/LogoutOtherDevicesController.ts';
+import { RedirectToTwoFactorController } from './controllers/RedirectToTwoFactorController.ts';
+import { RegenerateRecoveryCodesController } from './controllers/RegenerateRecoveryCodesController.ts';
 import { RegisterController } from './controllers/RegisterController.ts';
 import { ResendVerificationController } from './controllers/ResendVerificationController.ts';
 import { ResetPasswordController } from './controllers/ResetPasswordController.ts';
@@ -21,7 +26,12 @@ import { ShowLoginController } from './controllers/ShowLoginController.ts';
 import { ShowRegisterController } from './controllers/ShowRegisterController.ts';
 import { ShowRegistrationSentController } from './controllers/ShowRegistrationSentController.ts';
 import { ShowSecurityController } from './controllers/ShowSecurityController.ts';
+import { ShowTwoFactorChallengeController } from './controllers/ShowTwoFactorChallengeController.ts';
+import { ShowTwoFactorController } from './controllers/ShowTwoFactorController.ts';
 import { ShowVerifyEmailNoticeController } from './controllers/ShowVerifyEmailNoticeController.ts';
+import { TwoFactorChallengeController } from './controllers/TwoFactorChallengeController.ts';
+import { ShowTwoFactorVerifyController } from './controllers/ShowTwoFactorVerifyController.ts';
+import { TwoFactorVerifyController } from './controllers/TwoFactorVerifyController.ts';
 import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
 import { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import { VerifyEmailController } from './controllers/VerifyEmailController.ts';
@@ -33,6 +43,10 @@ export default defineRoutes((Route) => {
   const guests = Route.middleware(guest('/dashboard'));
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.post('/login', LoginController).name('auth.login.store');
+  // The second step of signing in: a correct password waits here for the code (a guest still — nobody is signed in yet). One
+  // request per session at a time (block()): two codes at once could not both be counted.
+  guests.get('/two-factor-challenge', ShowTwoFactorChallengeController).name('auth.two-factor.challenge');
+  guests.post('/two-factor-challenge', TwoFactorChallengeController).name('auth.two-factor.challenge.store').block();
   guests.get('/register', ShowRegisterController).name('auth.register');
   // A few sign-ups per minute and address — live validation of the form does not count.
   guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
@@ -62,8 +76,22 @@ export default defineRoutes((Route) => {
   // A new address is pending until the link sent to it is clicked — the same answer for every address; a few requests a minute
   // per user (each one sends a mail somewhere). With AUTH_PRIVATE_REGISTRATION=false it changes at once, unverified.
   confirmedAddress.middleware(confirmedPassword()).middleware(throttle('email-change')).put('/settings/email', UpdateEmailController).name('auth.email.update');
-  // API tokens: as good as a session — sudo mode for all of it.
+  // API tokens and the second factor: as good as a session — sudo mode for all of it.
   const sudo = confirmedAddress.middleware(confirmedPassword());
+  // The second factor: sudo mode for all of it; turning it off asks for the password again.
+  sudo.get('/settings/two-factor', ShowTwoFactorController).name('auth.two-factor');
+  sudo.post('/settings/two-factor/setup', BeginTwoFactorController).name('auth.two-factor.begin');
+  // Confirming needs a signed-in user and the password in the form, not sudo mode: the code of a setup that took a while to scan must not be lost.
+  confirmedAddress.post('/settings/two-factor/confirm', ConfirmTwoFactorController).name('auth.two-factor.confirm');
+  sudo.post('/settings/two-factor/recovery-codes', RegenerateRecoveryCodesController).name('auth.two-factor.codes');
+  // The recovery codes are layers that answer these POSTs, shown once; Forward asks their URLs with a GET (the settings page).
+  confirmedAddress.get('/settings/two-factor/confirm', RedirectToTwoFactorController);
+  confirmedAddress.get('/settings/two-factor/recovery-codes', RedirectToTwoFactorController);
+  sudo.post('/settings/two-factor/disable', DisableTwoFactorController).name('auth.two-factor.disable');
+  // Proving the factor again in this session — where the `twoFactor()` middleware (docs/two-factor-authentication.md#in-the-starter-kit) sends
+  // a session that has not. A wrong code ends nothing; one request per session at a time (block()), as at the sign-in.
+  confirmedAddress.get('/settings/two-factor/verify', ShowTwoFactorVerifyController).name('auth.two-factor.verify');
+  confirmedAddress.post('/settings/two-factor/verify', TwoFactorVerifyController).name('auth.two-factor.verify.store').block();
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   sudo.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');

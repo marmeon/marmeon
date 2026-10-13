@@ -430,3 +430,32 @@
   align-items: flex-start;
   gap: var(--space-2, 0.5rem);
 }
+
+/* TwoFactor: the QR code is drawn on white in the dark mode too (some authenticator apps do not scan light-on-dark), with a quiet edge. */
+.auth-qr {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: var(--space-3, 0.75rem);
+  border: 1px solid var(--color-line, GrayText);
+  border-radius: var(--radius-1, 0.25rem);
+  background: #fff;
+}
+
+/* RecoveryCodes: the codes in a grid of columns, easy to copy by eye or by selecting one. */
+.auth-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-2, 0.5rem) var(--space-4, 1rem);
+  margin: 0;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 1px solid var(--color-line, GrayText);
+  border-radius: var(--radius-1, 0.25rem);
+  background: var(--color-sunken, color-mix(in srgb, CanvasText 6%, Canvas));
+  list-style: none;
+}
+
+.auth-codes code {
+  font-size: 0.9375rem;
+  user-select: all;
+}

@@ -35,7 +35,7 @@ export function AppLayout({ children }: LayoutProps) {
         {user ? (
           <nav aria-label={t('layout.account')} className="auth-nav">
             <Link route="dashboard">{t('layout.dashboard')}</Link>
-            <Link route="auth.security" activeMatch={['auth.security', 'auth.tokens']}>
+            <Link route="auth.security" activeMatch={['auth.security', 'auth.two-factor', 'auth.two-factor.*', 'auth.tokens']}>
               {t('layout.settings')}
             </Link>
             <span className="auth-account">

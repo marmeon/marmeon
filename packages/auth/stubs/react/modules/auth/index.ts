@@ -1,11 +1,16 @@
-import { Registered } from '@marmeon/auth';
+import { RecoveryCodeUsed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
 import { defineModule, listen } from '@marmeon/core';
+import { NotifyAboutFailedTwoFactor } from './listeners/NotifyAboutFailedTwoFactor.ts';
+import { NotifyAboutRecoveryCodeUsed } from './listeners/NotifyAboutRecoveryCodeUsed.ts';
+import { NotifyAboutTwoFactorDisabled } from './listeners/NotifyAboutTwoFactorDisabled.ts';
+import { NotifyAboutTwoFactorEnabled } from './listeners/NotifyAboutTwoFactorEnabled.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
 import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
 import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
+import { ResetTwoFactorCommand } from './commands/ResetTwoFactorCommand.ts';
 import apiRoutes from './api-routes.ts';
 import routes from './routes.ts';
 import { schedule } from './schedule.ts';
@@ -21,8 +26,15 @@ export type { User } from './users.ts';
 export default defineModule({
   name: 'auth',
   providers: [AuthServiceProvider],
-  // A queued listener (static queue): a worker sends the verification mail once the registration committed.
-  listeners: [listen(Registered, SendEmailVerification)],
+  // Queued listeners (static queue): a worker sends the verification mail once the registration committed, and the owner's mails
+  // about the second factor: turned on or off, a recovery code used, and (at most once an hour) a wrong code after the right password.
+  listeners: [
+    listen(Registered, SendEmailVerification),
+    listen(TwoFactorEnabled, NotifyAboutTwoFactorEnabled),
+    listen(TwoFactorDisabled, NotifyAboutTwoFactorDisabled),
+    listen(RecoveryCodeUsed, NotifyAboutRecoveryCodeUsed),
+    listen(TwoFactorChallengeFailed, NotifyAboutFailedTwoFactor),
+  ],
   // Queued work — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   // Private registration: the note to an account's owner that someone signed up with its address; the link to a new
   // address, or the note to the owner of a taken one.
@@ -37,5 +49,6 @@ export default defineModule({
   // line on in schedule.ts (marmeon schedule:work).
   schedule,
   // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (by hand, or by the schedule once turned on).
-  commands: [PruneUnverifiedCommand],
+  // marmeon auth:reset-two-factor <email> --force — lets in an owner who lost the phone and the recovery codes.
+  commands: [PruneUnverifiedCommand, ResetTwoFactorCommand],
 });

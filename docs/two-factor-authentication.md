@@ -4,7 +4,7 @@
 
 A password alone is one thing an attacker has to learn. Two-factor authentication adds a second: a six-digit code from an
 authenticator app on the user's phone, which changes every 30 seconds. `@marmeon/auth` brings the check, the setup, one-time
-recovery codes and the sign-in step in between. A [passkey](passkeys.md) can be the second factor too. The example app in `apps/web-app` shows the pages: the code step of the sign-in and a settings page.
+recovery codes and the sign-in step in between. A [passkey](passkeys.md) can be the second factor too. The [starter kit](#in-the-starter-kit) brings the pages: the code step of the sign-in and a settings page. The example app in `apps/web-app` shows them grown further.
 
 Two-factor authentication is optional per user, and the framework never forces it. An account that set up an authenticator app
 needs the code after its password. An account that did not signs in as before. Nothing here switches itself on for the whole
@@ -267,6 +267,36 @@ The middleware reads the session, so it belongs in the `web` group. The stateles
 an API token never counts as a proven second factor, and `twoFactor()` there answers `401`. Tokens are their own credentials; see
 [What it protects against](#what-it-protects-against-and-what-not).
 
+## In the starter kit
+
+The [starter kit](starter-kit.md) brings the pages, so a new app has two-factor authentication without writing any. `make:auth`
+adds a migration for both tables (`foreignId('user_id').constrained().cascadeOnDelete()`, as the kit's other tables), the
+binding `combineFactors(TwoFactorStore)` in `AuthServiceProvider.ts`, the controllers and routes, and these pages, in both
+languages:
+
+| Page | What it does |
+| --- | --- |
+| `auth/TwoFactorChallenge` | The code step of the sign-in. The recovery code is a second form on the same page, so it also works without JavaScript. |
+| `auth/TwoFactor` | In the settings: the status, the QR code and the key, the form that confirms with a code and the password, new recovery codes, turning it off. |
+| `auth/RecoveryCodes` | A layer over the settings page, the answer of confirming and of making new codes. The codes are in no page after that. |
+| `auth/TwoFactorVerify` | Asks a signed-in session for a code again, for `twoFactor()`. A wrong code ends nothing. |
+
+The QR code is drawn on white, also in the dark mode, because some apps do not scan it otherwise.
+
+The kit does not install `twoFactor()`, but it has the routes it needs. To require the factor on a route, add the middleware
+to it in `modules/auth/routes.ts`:
+
+```ts
+confirmedAddress.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify' })).get('/reports', ShowReportsController);
+```
+
+with `import { twoFactor } from '@marmeon/auth/two-factor';`. After a proven code the verify page sends the user back to the page
+that asked, or to the dashboard.
+
+The kit's listeners send the owner a mail on `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodeUsed` and, for
+`during: 'sign-in'`, on `TwoFactorChallengeFailed`, the last at most once an hour for each account. `marmeon auth:reset-two-factor <email> --force` is the
+[operator reset](#operator-reset) as a command: it calls `removeAll()` and dispatches `TwoFactorDisabled` with `via: 'operator'`.
+
 ## Events
 
 | Event | When | Fields |
@@ -299,7 +329,7 @@ the next step: `twoFactorCode(secret, new Date(Date.now() + 30_000))`.
 ## Operator reset
 
 A user who lost both the phone and the recovery codes has to be let in by an operator, who must be sure it is the owner. There is
-no built-in command for it; `TwoFactorStore.removeAll(userId)` removes the authenticator and every recovery code of an account,
+no built-in command for it (the starter kit has one); `TwoFactorStore.removeAll(userId)` removes the authenticator and every recovery code of an account,
 for example from a command of your own. `removeAll()` dispatches nothing: the command dispatches `TwoFactorDisabled` with
 `via: 'operator'` itself, so that listeners (the mail to the owner, an audit log) hear of it.
 
