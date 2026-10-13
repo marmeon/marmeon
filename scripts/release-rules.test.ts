@@ -113,13 +113,13 @@ describe('releaseTarget', () => {
     ['main', '2.4.0', '2.3.0', 'latest', true],
     ['2.x', '2.3.1', '2.3.0', 'latest', true],
     ['main', '0.1.0', undefined, 'latest', true],
-    ['1.x', '1.0.1', undefined, 'latest', true],
   ];
   it.each(allowed)('%s releases %s over latest %s as %s (marked latest: %s)', (branch, version, latest, distTag, markLatest) => {
     expect(releaseTarget({ branch, version, latest })).toEqual({ ok: true, distTag, markLatest });
   });
 
-  const refused: [string, string, string, string[]][] = [
+  const refused: [string, string, string | undefined, string[]][] = [
+    ['1.x', '1.0.1', undefined, ['1.x', 'no latest', 'main']],
     ['2.x', '1.8.4', '2.3.0', ['2.x', '1.8.4', '1.x']],
     ['main', '1.8.4', '2.3.0', ['main', '1.8.4', 'latest 2.3.0']],
     ['0.1.x', '0.2.1', '0.2.0', ['0.1.x', '0.2.1', '0.2.x']],

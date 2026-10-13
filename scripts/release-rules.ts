@@ -146,7 +146,12 @@ export function releaseTarget({ branch, version, latest }: { branch: string; ver
   if (branchLine !== undefined && branchLine !== line) {
     return refuse(`${branch} releases ${branchLine} versions only; ${version} belongs to ${line}.x.`);
   }
-  if (latest === undefined) return { ok: true, distTag: 'latest', markLatest: true };
+  if (latest === undefined) {
+    // npm's not-found also answers "no permission", so a wrong registry or login must not turn a backport into `latest`; a
+    // maintenance line only exists after a newer release.
+    if (branch !== MAIN) return refuse(`npm has no latest for ${branch} to sit below: a maintenance release needs a newer release on main first; check the registry and login.`);
+    return { ok: true, distTag: 'latest', markLatest: true };
+  }
   if (!parseVersion(latest)) return refuse(`npm's latest "${latest}" is not a plain x.y.z version (branch ${branch}, version ${version}).`);
   const order = compareVersions(version, latest);
   if (order === 0) return refuse(`${version} is already published as latest (branch ${branch}).`);
