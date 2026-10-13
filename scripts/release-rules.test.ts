@@ -269,7 +269,7 @@ describe('isReleaseFile', () => {
   });
 
   it('refuses code, workflows, the old check and nested changelogs', () => {
-    for (const path of ['scripts/check-changesets.ts', 'scripts/release-guard.ts', '.github/workflows/release.yml', 'packages/core/src/index.ts', 'packages/core/sub/CHANGELOG.md']) {
+    for (const path of ['scripts/ci.ts', 'scripts/release-guard.ts', '.github/workflows/release.yml', 'packages/core/src/index.ts', 'packages/core/sub/CHANGELOG.md']) {
       expect(isReleaseFile(path), path).toBe(false);
     }
   });

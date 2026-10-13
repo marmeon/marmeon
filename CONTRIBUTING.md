@@ -1,6 +1,6 @@
 # Contributing to Marmeon
 
-Thank you for helping. This page covers the rules for a contribution: the sign-off, the checks and changesets. It says how a
+Thank you for helping. This page covers the rules for a contribution: the sign-off, the checks, pull requests and their labels. It says how a
 release is made, and what the repository holds that the documentation does not: its layout, its own test suites and
 benchmarks, and the inside of the framework's client. The principles the framework is built on are in the [README](README.md#principles); the
 documentation is under `docs/` ([Writing documentation](#writing-documentation)).
@@ -75,10 +75,10 @@ package store, the registry and Docker — without them they are reported as ski
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
   removes them when the test, or the file, is done.
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
-- **A change an app can notice** gets a changeset
-  ([Changesets and releases](#changesets-and-releases)) and an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after,
-  the way back — in the next version's section, in its place by impact and area; `scripts/check-changesets.ts` lists its anchor
-  under that version. Until the first such entry, UPGRADING.md says so and holds none.
+- **A pull request** is one change; its title is its line in the release notes, and a maintainer gives it one release label
+  ([Pull requests and releases](#pull-requests-and-releases)). You write no changelog entry. A breaking change gets its entry in
+  [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — when the release is prepared; say in the description what
+  an app has to do.
 - **A change to a public API, an environment default or a command** changes its page under `docs/` in the same commit
   ([Writing documentation](#writing-documentation)).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.
@@ -97,8 +97,8 @@ scripts/test      the test suite's temporary directory per run and tempDir() —
                   (pnpm test fails when a test leaves an entry behind)
 deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next
-.changeset        Changesets: the pending changes, one fixed group (pnpm changeset; scripts/check-changesets.ts checks the release rules)
-.github/workflows ci.yml (pnpm run ci in six jobs) and release.yml (the version pull request, then staged publishing)
+.github           workflows/ (ci.yml: pnpm run ci in six jobs; release.yml: started by hand, staged publishing; pr-label.yml: the release label
+                  check), release.yml (the notes' categories, generated) and release-base (the commit a release was prepared from)
 ```
 
 ```sh
@@ -109,7 +109,7 @@ pnpm website:image     # the docs' image (apps/website/Dockerfile): built, run r
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
 pnpm pack:smoke        # create-marmeon from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-marmeon (a test fails while they differ)
-pnpm changeset         # a changeset for your change (below); pnpm check-changesets checks the release rules
+pnpm release:prepare   # the next version, changelogs and upgrade-guide heading from the merged pull requests (below); pnpm check-release checks the release rules
 pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome under style-src 'self': 0 CSP violations (never a gate)
 ```
 
@@ -121,7 +121,7 @@ Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <pat
 `typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
 and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle limits —
 [The size budget](#the-size-budget)), `types:check` (the apps' generated route and table types are current), `website:check`,
-`pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-changesets`.
+`pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-release`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `ci.yml` splits the parts
 into six jobs that run side by side (the checks, the tarballs, the image, Postgres, Redis, S3).
@@ -195,7 +195,7 @@ A part of `pnpm run ci` (`scripts/check-source.ts`, its tests in `scripts/ci.tes
 checked over every file of the repository — tracked, or new and not ignored. Exit 1 lists every hit as `path:line: text`.
 
 1. **The old name is gone**: no file and no path says the framework's name from before 0.1.0, in any letter case.
-   Allowed is the company name and its website's URL only (the `LICENSE` holder — every copy, the policies, the licence rule of `check-changesets`):
+   Allowed is the company name and its website's URL only (the `LICENSE` holder — every copy, the policies, the licence rule of `check-release`):
    nothing was released under the old name, so there is no rename hint. Code that must spell the old name — a test — builds it
    from parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
 2. **No app installs a validation engine**: apps, the starter's template, the `make:auth` stubs, scripts and what the `make:*`
@@ -259,41 +259,145 @@ thing: the coupling between the framework's packages. `pnpm pack:check` holds ev
 `redis` in its `package.json`, sends a mail over SMTP from the production install, and starts it with an S3 default disk and no AWS
 SDK (the exact command, exit 1).
 
-## Changesets and releases
+## Pull requests and releases
 
-The framework is released in lockstep: every `@marmeon/*` package, the CLI `marmeon` and
-`create-marmeon` always have the same version — one `fixed` group in `.changeset/config.json`.
+The framework is released in lockstep: every `@marmeon/*` package, the CLI `marmeon` and `create-marmeon` always have the same
+version. Nobody writes a changelog entry: the release notes are made from the pull requests merged since the last release.
+
+### Pull requests
+
+- **One change per pull request.** Its **title is its line in the release notes**: in the imperative, saying what the change
+  does, like a commit subject (`Add a dry-run flag to make:migration`, not `dry-run` or `Fixes #12`).
+- **Exactly one label**, set by a maintainer at review, sorts it into the notes: `breaking` (an app has to change something),
+  `feature` (something new), `fix` (a bug fixed), `docs` (documentation only) or `internal` (tests, tooling, refactoring — no
+  line in the notes). The `release label` check fails a pull request with none or with two; contributors need not label.
+  A `breaking` pull request says in its description what an app has to do — the release preparation turns that into the
+  upgrade guide's entry.
+- **Pull requests are squash-merged:** the title and `(#N)` become the commit's subject, and the pull request keeps its
+  individual commits on GitHub. Merge commits and rebase merges are switched off.
+- **Only release preparation writes the `CHANGELOG.md` files and the package versions;** a pull request that edits them is sent
+  back at review. A breaking change's entry in the upgrade guide is written there too ([The upgrade guide](#the-upgrade-guide)).
+
+### The upgrade guide
+
+`UPGRADING.md` has a section `## Upgrading to <version> from <version>` for every breaking release. `pnpm check-release` (a part
+of `pnpm run ci`) refuses a section that is not headed exactly so — level 2, the version as x.y.z, steps as `###` inside it; any
+other heading that starts with "Upgrading to" or "Upgrading from" is refused. A section's `from` is the line directly below it
+(for 1.0.0 any 0.y.z), its entries are listed in `UPGRADING_ANCHORS` (`scripts/check-release.ts`) and every listed entry must
+stand under its release with its impact and its likelihood. A breaking release is a version `0.y.0` (y of 2 or more) or `x.0.0`
+(x of 1 or more), and `check-release` asks for its section; a patch or a feature release asks for nothing. Prerelease versions
+are refused. An entry is a `####` heading that starts with its impact (`#### High: …`, `Medium:` or `Low:`) under the section, and
+a line `*Likelihood of impact: high|medium|low…` in its body.
+
+### Preparing a release
+
+Preparation is one command, again as often as needed. It needs a clean working tree, `HEAD` equal to `origin/<branch>` (`main`
+or the maintenance branch) and an authenticated `gh` with write access to the repository (it asks GitHub to generate the notes):
 
 ```sh
-pnpm changeset         # pick any package and the bump; the fixed group carries the others along
+git describe --tags --abbrev=0 --match 'v*'   # the last release
+pnpm release:prepare --dry-run                # the version and the notes it would write; nothing written
+pnpm release:prepare                          # write them and print the next steps
 ```
 
-- **0.x:** `minor` for a breaking change, `patch` for everything else. A `major` changeset would jump to 1.0.0 — `pnpm run ci`
-  (`scripts/check-changesets.ts`) refuses it below 1.0.0. 1.0 comes after the reference app.
-- **The upgrade guide** starts with its first entry. Until then `UPGRADING.md` is a short page without entries, and
-  `check-changesets` refuses an entry that stands under no release. The first `## Upgrading to <version> from <version>` section
-  switches the requirement on: `check-changesets` refuses it until `UPGRADING_ANCHORS` lists its entries under that version, and
-  from then on every listed entry must stand under its release, with its impact and its likelihood. Head a release's section
-  exactly so — level 2, the version as x.y.z, steps as `###` inside it: any other heading that starts with "Upgrading to" or
-  "Upgrading from" is refused. The sections follow the packages' version: `to` is above `from` and no higher than the version
-  the pending changesets make, and a pending `minor` in 0.x (or a `major`) needs its section `## Upgrading to <next> from
-  <current>` with its entries listed in `UPGRADING_ANCHORS` — in the pull request of the changeset. A patch asks for
-  nothing, and prerelease versions and Changesets' pre mode are refused.
-- **How a release happens** (`.github/workflows/release.yml`): on every push to `main`, the Changesets action opens or updates
-  the *Version packages* pull request (`changeset version`: the versions, the changelogs). Merging it runs the checks again and
-  **stages** every package version npm does not have yet — `pnpm stage publish -r` with trusted publishing (OIDC, no token in the
-  repository) and provenance. Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
-  authentication. The run tags the release — `changeset git-tag` (one tag per package) and an annotated `v<version>` — and drafts
-  one GitHub Release on `v<version>`, its notes the version's changelog sections merged (`scripts/release-notes.ts`). The release
-  is only ever a draft: the maintainer publishes it by hand after approving on npm, and `check-changesets` refuses a
-  `gh release create` without `--draft`. The trusted-publisher configuration on npm allows staging only.
-  A package's very first version has to be published by hand, before trusted publishing can be set up for it; the workflow covers
-  every version after that. The workflow is read-only by default, `id-token: write` belongs to the staging job alone, and no npm
-  token is stored. The policies stay in place: the `LICENSE` holder, private reporting in `SECURITY.md` and the deprecation
-  policy in the README.
-  `check-changesets` also holds the configuration to it: the version pull request comes from `changesets/action`, the release job
-  runs on a GitHub-hosted runner (trusted publishing needs one), `.changeset/config.json` has `baseBranch` `main`, public
-  access and unversioned private packages, and `scripts/npm-trust.sh` names every package.
+- **The version** comes from the last tag and the labels of the pull requests merged since: below 1.0 a `breaking` pull request
+  makes a minor, anything else a patch; from 1.0 on `breaking` makes a major, `feature` a minor, anything else a patch. On a
+  maintenance branch `breaking` is refused (it would leave the line). It stops while a merged pull request has no label and names
+  it. Every published package gets the version and the same `## <version>` section on top of its `CHANGELOG.md` —
+  `### Breaking changes`, `### Features`, `### Fixes`, `### Documentation`, new contributors, the full-changelog link. Sections of
+  maintenance releases that `main` does not hold yet are carried over from their tags.
+- **A breaking release** gets the heading of its `UPGRADING.md` section and a placeholder comment naming the pull requests.
+  Replace it with one entry per breaking pull request (impact, before → after, the way back) and list the anchors in
+  `UPGRADING_ANCHORS` **before** the printed `git add -A` and commit; `check-release` refuses the comment.
+- **`.github/release-base`** holds the version and the commit the preparation started from (`<version> <sha>`). The release
+  commit has to sit directly on that commit; if another pull request merged in between, the release workflow refuses with
+  "main moved after the release was prepared" — merge nothing else first, or run `pnpm release:prepare` again, which rewrites the
+  section and the base.
+- Then follow the printed next steps: a branch `release-<version>`, `git add -A`, the commit `Release <version>`,
+  **`pnpm run ci`**, and a pull request titled `Release <version>` with the label `internal` (it is no line of the notes
+  itself). To update an open release pull request instead, recreate its branch from `main` (`git switch -C release-<version>`),
+  commit, and push with `--force-with-lease`; if the version changed (0.1.3 became 0.2.0 because a `breaking` pull request
+  arrived), close the old one and open a new one.
+- **A release pull request changes the release files only:** the package versions and changelogs, `UPGRADING.md`,
+  `.github/release-base` and `scripts/check-release.ts` (the anchor list). The release guard refuses a release commit that
+  changes anything else. A failure that `pnpm run ci` finds elsewhere is fixed in its own pull request, merged first; then run
+  `pnpm release:prepare` again.
+
+### Releasing
+
+These are the maintainer's gates:
+
+1. Merge the release pull request.
+2. Start the *Release* workflow ("Run workflow") on `main`, or on the maintenance branch for a late fix of an older line.
+3. Approve the staged versions on npmjs.com with two-factor authentication.
+4. Publish the draft GitHub Release.
+
+The run releases the **release commit** — the last commit of the branch that changed a package's `CHANGELOG.md` or
+`.github/release-base` — not the branch head, so whatever merged after it goes into the next release. The first job (`stage`,
+`id-token: write`, no write access to the repository) runs `scripts/release-guard.ts` before anything is installed: the
+branch, the release commit (checked out, detached), one plain `x.y.z` version, the same changelog section in every package,
+`v<version>` not yet tagged, the version on no package of npm, the release base, the release commit changing release files only
+and the dist-tag. Then `pnpm run ci --only
+build,pack:check,check-release` and `pnpm stage publish -r` with trusted publishing (OIDC, no token in the repository) and
+provenance. The second job (`release`, `contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
+release, none per package) and drafts the GitHub Release with the version's changelog section as its notes.
+
+Anyone with write access can start the workflow; the guards are conveniences and `check-release`'s check of the workflow files
+is a review aid, not a barrier. The gate is the maintainer's two-factor approval on npm — nothing is public without it, and the
+trusted-publisher configuration allows staging only. A package's very first version has to be published by hand, before
+trusted publishing can be set up for it. The policies stay in place: the `LICENSE` holder, private reporting in `SECURITY.md`
+and the deprecation policy in the README.
+
+### A fix that comes late
+
+- **The release pull request is still open:** merge the fix, run `pnpm release:prepare` again on `main` and update the release
+  pull request's branch.
+- **The release pull request is merged, the workflow not started:** run `pnpm release:prepare` again — for the same version it
+  rebuilds the section from the previous tag to `HEAD` — and merge that small release pull request; its merge is the new release
+  commit.
+- **Staged, not yet approved:** reject the staged versions on npmjs.com and release the next patch.
+- **Released:** the next patch. A broken version is never unpublished; it is deprecated (`npm deprecate 'marmeon@0.2.1' 'Broken:
+  use 0.2.2'`, for every package of the release).
+
+### When a run fails
+
+- **The guard or a check before staging is red:** nothing was staged. Merge the fix through a pull request, run
+  `pnpm release:prepare` again (any merge moves the release base), merge that release pull request and start the workflow again.
+- **The "stage the packages" step is red:** treat it as possibly partly staged. Never re-run it: reject whatever was staged on
+  npmjs.com and release the next patch.
+- **The tag step or the draft step failed after staging:** use **"Re-run failed jobs"** on the run. It repeats only the `release`
+  job with the `stage` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
+  draft is created. **Never "Re-run all jobs"**, and never start a new run after one that staged: a staged version is invisible
+  to `npm view`, so the guards cannot see it.
+- **If the re-run does not help,** approve on npmjs.com first, then tag and draft by hand (the release commit's SHA is in the
+  run's log):
+
+  ```sh
+  git switch --detach <commit>
+  notes=$(mktemp)
+  git ls-remote --tags origin refs/tags/v<version>   # prints a line: the tag stands, skip the next two lines
+  git tag -a v<version> <commit> -m v<version>
+  git push origin refs/tags/v<version>
+  node scripts/release-notes.ts <version> > "$notes"
+  gh release create v<version> --draft --verify-tag --title v<version> --notes-file "$notes"   # plus --latest=false for a maintenance release
+  ```
+
+### Maintenance releases
+
+A **line** is `0.<minor>` before 1.0 and `<major>` from 1.0 on. Its branch is the line plus `.x` (`0.1.x`, `1.x`), cut from the
+line's last tag; it releases versions of its line only. Each fix is cherry-picked from `main` as its own pull request into that
+branch, with the same title and its own label so the notes find it. Then `pnpm release:prepare`, the release pull request and
+the workflow run on that branch exactly as on `main`. The branch needs the same ruleset as `main`: the `release label` check,
+squash merges only. Delete the branch when the line is done.
+
+The dist-tag follows from the version: above npm's `latest` (or none yet) it is `latest`, and the draft is marked latest; below
+it, `latest-<line>` (`latest-0.1`, `latest-1`) and the draft is not marked latest, so `latest` never moves back. `main` never
+releases below `latest`, and a version equal to `latest` is refused. An app on an old line installs the exact version, or
+`pnpm add @marmeon/core@latest-0.1`. The section of a maintenance release reaches `main`'s changelogs with `main`'s next
+`pnpm release:prepare`.
+
+### The tarballs
+
 - Packages are packed and published with **pnpm** only — `npm pack` and `npm publish` ignore `publishConfig.exports` and would
   ship the `@marmeon/source` condition, TypeScript sources Node does not strip under `node_modules` (`pnpm pack:check` proves the
   tarballs).

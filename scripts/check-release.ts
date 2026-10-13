@@ -210,6 +210,9 @@ export function checkWorkflow(repository: string): string[] {
     if (!action!.startsWith('actions/') && !/@[0-9a-f]{40}$/.test(action!)) problems.push(`${where}: "${action}" is not pinned to a commit — an action outside actions/* is pinned by its full SHA`);
   }
   for (const script of runScripts(code)) {
+    if (/(?<!\|)\|(?!\|)/.test(script.replace(/^\s*#.*$/gm, '')) && !/^\s*set -o pipefail\s*$/.test(script.trim().split('\n')[0] ?? '')) {
+      problems.push(`${where}: a run script with a pipe ("${script.trim().split('\n')[0]}") must start with "set -o pipefail" — else a failing git ls-remote | cut reads as success and the step goes on to tag`);
+    }
     if (script.includes('${{')) problems.push(`${where}: an expression inside a run script ("${script.trim().split('\n')[0]}") — pass it through env:, a branch name could inject commands`);
   }
   for (const line of joined(code).split('\n')) {
@@ -330,6 +333,9 @@ export function checkWorkflow(repository: string): string[] {
         if (!/^\s*test "\$\(git rev-parse HEAD\)" = "\$COMMIT"\s*$/m.test(tagLines)) problems.push(`${where}: the job "${name}" asserts that HEAD is "$COMMIT" before it tags`);
         if (!/\btag\b[^\n]*"\$COMMIT"/.test(tagLines) || !env(tagStep, 'COMMIT', needs('commit')) || !env(tagStep, 'VERSION', needs('version'))) {
           problems.push(`${where}: the job "${name}" tags "$COMMIT" from the staging job's output (${needs('commit')}) — the release commit, not whatever the branch head is`);
+        }
+        if (!/^\s*existing=\$\(git ls-remote origin "refs\/tags\/v\$VERSION\^\{\}" \| cut -f1\)\s*$/m.test(tagLines) || !/^\s*elif \[ "\$existing" = "\$COMMIT" \]; then\s*$/m.test(tagLines) || !/^\s*exit 1\s*$/m.test(tagLines)) {
+          problems.push(`${where}: the job "${name}" looks for a tag that exists (git ls-remote origin "refs/tags/v$VERSION^{}") and skips tagging only when it is "$COMMIT" — a re-run after a failed draft must not push again, and another commit's tag must fail`);
         }
         if (!/::add-mask::\$encoded/.test(tagLines)) problems.push(`${where}: the job "${name}" masks the encoded token (echo "::add-mask::$encoded") before it uses it in a push`);
       }

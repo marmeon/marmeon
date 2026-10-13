@@ -441,6 +441,16 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(push, `${push}\n          echo x | git push origin main`))).toContain('a push is only the');
     });
 
+    it('refuses a tag step that skips without comparing the commit, or that never looks for an existing tag', () => {
+      expect(problemsOf(mutated('elif [ "$existing" = "$COMMIT" ]; then', 'elif [ -n "$existing" ]; then', 'release'))).toContain('looks for a tag that exists');
+      expect(problemsOf(mutated('            exit 1\n', '            echo x\n', 'release'))).toContain('looks for a tag that exists');
+      expect(problemsOf(mutated('"refs/tags/v$VERSION^{}" | cut -f1', '"refs/tags/v$VERSION" | cut -f1', 'release'))).toContain('looks for a tag that exists');
+    });
+
+    it('refuses a run script with a pipe that does not start with pipefail', () => {
+      expect(problemsOf(mutated('set -o pipefail\n          test "$(git rev-parse HEAD)" = "$COMMIT"', 'test "$(git rev-parse HEAD)" = "$COMMIT"', 'release'))).toContain('must start with "set -o pipefail"');
+    });
+
     it('refuses a cache in either job', () => {
       expect(problemsOf(mutated('node-version-file: .nvmrc', 'node-version-file: .nvmrc\n          cache: pnpm', 'stage'))).toContain('a cache');
       expect(problemsOf(mutated('node-version-file: .nvmrc', 'node-version-file: .nvmrc\n          cache: pnpm', 'release'))).toContain('a cache');

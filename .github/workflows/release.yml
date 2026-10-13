@@ -101,11 +101,22 @@ jobs:
           VERSION: ${{ needs.stage.outputs.version }}
           COMMIT: ${{ needs.stage.outputs.commit }}
         run: |
+          set -o pipefail
           test "$(git rev-parse HEAD)" = "$COMMIT"
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' tag -a "v$VERSION" -m "v$VERSION" "$COMMIT"
-          encoded=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
-          echo "::add-mask::$encoded"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $encoded" push origin "refs/tags/v$VERSION"
+          # A re-run of this job (after a failed draft) finds its own tag: the same commit is fine, another one is not.
+          existing=$(git ls-remote origin "refs/tags/v$VERSION^{}" | cut -f1)
+          if [ -z "$existing" ]; then existing=$(git ls-remote origin "refs/tags/v$VERSION" | cut -f1); fi
+          if [ -z "$existing" ]; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' tag -a "v$VERSION" -m "v$VERSION" "$COMMIT"
+            encoded=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+            echo "::add-mask::$encoded"
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $encoded" push origin "refs/tags/v$VERSION"
+          elif [ "$existing" = "$COMMIT" ]; then
+            echo "::notice::v$VERSION is already tagged on $COMMIT"
+          else
+            echo "::error::v$VERSION already points to $existing, not to the release commit $COMMIT"
+            exit 1
+          fi
       # A draft: it becomes public only when the maintainer publishes it, after approving the staged versions on npm. The tag binds
       # it to the release commit; it is the latest release only when the version is above npm's latest.
       - name: draft the GitHub release

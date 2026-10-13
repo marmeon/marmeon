@@ -10,7 +10,7 @@ pnpm up --latest "@marmeon/*" marmeon
 ```
 
 That command moves every framework package of an app to the newest version at once. The changes of each version are in the
-[upgrade guide](../UPGRADING.md), and each release adds them to the packages' `CHANGELOG.md` files.
+[upgrade guide](../UPGRADING.md), and each release adds the merged pull requests that change something for users to the packages' `CHANGELOG.md` files and to the GitHub Release.
 
 ## One version for the whole framework
 
@@ -31,6 +31,10 @@ Marmeon is at 0.x. Anything may change while the major version is 0, but never s
 
 Pin the exact version, as `create-marmeon` does, or use `~0.1.0`. A caret range such as `^0.1.0` already stops before 0.2.0.
 
+A fix for an older line is published under the npm dist-tag `latest-<line>` (`latest-0.1`) and never moves `latest`. An app that
+stays on that line gets it through `pnpm up "@marmeon/*" marmeon` when its range allows the version (`^0.1.0`, `~0.1.0`), or
+installs it by name (`pnpm add @marmeon/core@latest-0.1`, then the same for the other packages); an exact pin changes by hand.
+
 ### From 1.0 on
 
 Breaking changes come only in a major version. A feature to be removed is deprecated first, in a minor version: documented,
@@ -49,7 +53,7 @@ A release is never taken back from npm. A broken one is deprecated there, with t
 fixes it. What the release workflow publishes is staged first and goes public only after a maintainer approves it with two-factor
 authentication, and it carries npm provenance, so you can check where it was built. A package's very first version has to be
 published by hand, before trusted publishing can be set up for it. The
-[contribution guide](../CONTRIBUTING.md#changesets-and-releases) describes the process.
+[contribution guide](../CONTRIBUTING.md#pull-requests-and-releases) describes the process.
 
 ## The first day after a release
 

@@ -1,5 +1,5 @@
 /**
- * `pnpm pack:check` — are the tarballs fit to publish? A part of `pnpm run ci`. The rules in full: CONTRIBUTING.md, "Changesets
+ * `pnpm pack:check` — are the tarballs fit to publish? A part of `pnpm run ci`. The rules in full: CONTRIBUTING.md, "Pull requests
  * and releases". Tarballs are made with `pnpm pack`: only pnpm applies `publishConfig.exports`.
  *
  *   pnpm pack:check                          # clean build → pnpm pack of every package → the rules → publint → attw
