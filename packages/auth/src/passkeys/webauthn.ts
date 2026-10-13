@@ -14,6 +14,8 @@ import { cose, decodeAttestationObject, decodeCredentialPublicKey } from '@simpl
 
 // The only file that imports @simplewebauthn/server: the library is loaded by `@marmeon/auth/passkeys` and by nothing else.
 
+export type { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON };
+
 /** The COSE algorithms a passkey may use: EdDSA, ES256, RS256. */
 export const PASSKEY_ALGORITHMS: readonly number[] = [-8, -7, -257];
 /** How long the browser lets the user take for one ceremony, in milliseconds. */

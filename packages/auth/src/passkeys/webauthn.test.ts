@@ -204,7 +204,7 @@ describe('the challenge in the session', () => {
   it('works once, for its purpose: taking it removes it even when the check after fails', async () => {
     const session = await startSession();
     const { challenge } = issueChallenge(session, 'sign-in', now);
-    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: true, value: challenge });
+    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: true, value: { challenge } });
     expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: false, error: { kind: 'no-challenge' } });
   });
 
@@ -242,7 +242,7 @@ describe('the challenge in the session', () => {
     const first = issueChallenge(session, 'sign-in', now);
     const second = issueChallenge(session, 'sign-in', now);
     expect(second.challenge).not.toBe(first.challenge);
-    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: true, value: second.challenge });
+    expect(takeChallenge(session, 'sign-in', now + 1)).toEqual({ ok: true, value: { challenge: second.challenge } });
   });
 
   it('is not there in a session that never started', () => {

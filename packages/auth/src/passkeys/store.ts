@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Clock, ok, type Result } from '@marmeon/core';
+import { Clock, err, ok, type Result } from '@marmeon/core';
 import { Connections, Repository, type Generated, type Selectable } from '@marmeon/database';
 import type { SecondFactor, TwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
@@ -186,22 +186,24 @@ export class PasskeyStore implements TwoFactorState {
   }
 
   /**
-   * Removes the account's passkey. `removed: false` when it has none with this id. `lastFactor` says that no factor is left —
-   * no other passkey and no confirmed authenticator — and then the recovery codes went in the same transaction (they belong to
-   * the account's factors, not to this one). The account's passkey rows are locked first (Postgres), so two removals at once
-   * cannot both see the other passkey still there and leave codes behind with no factor.
+   * Removes the account's passkey, or refuses: `not-found` when it has none with this id, `last-factor` when it is the account's last
+   * factor — no other passkey, no confirmed authenticator — and `lastFactorAllowed` is false (the caller has not seen a fresh password).
+   * The decision is made here, inside the transaction, after the account's passkey rows are locked (Postgres): two removals at once
+   * cannot both see another factor still there. The recovery codes go with the last factor in the same transaction (they belong to
+   * the account's factors, not to this one); a refusal changes nothing.
    */
-  async remove(userId: number | string, id: number): Promise<{ removed: boolean; lastFactor: boolean }> {
+  async remove(userId: number | string, id: number, { lastFactorAllowed }: { lastFactorAllowed: boolean }): Promise<Result<{ lastFactor: boolean }, { kind: 'not-found' } | { kind: 'last-factor' }>> {
     return this.#connections.transaction(async () => {
       const db = this.#db();
       if (this.#connections.options().driver === 'pgsql') await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
       const result = await db.deleteFrom(PASSKEYS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
-      if (result.numDeletedRows === 0n) return { removed: false, lastFactor: false };
+      if (result.numDeletedRows === 0n) return err({ kind: 'not-found' as const });
       const otherPasskey = await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).executeTakeFirst();
       const totp = await db.selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
       const lastFactor = otherPasskey === undefined && totp === undefined;
+      if (lastFactor && !lastFactorAllowed) return err({ kind: 'last-factor' as const }); // an err rolls the delete back
       if (lastFactor) await db.deleteFrom(RECOVERY_CODES_TABLE).where('user_id', '=', userId).execute();
-      return { removed: true, lastFactor };
+      return ok({ lastFactor });
     });
   }
 

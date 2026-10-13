@@ -11,7 +11,7 @@ import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
-import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './state.ts';
+import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, type PasskeyAssertion, type SecondFactor } from './state.ts';
 import { TwoFactorStore } from './store.ts';
 import { generateSecret, otpauthUri, verifyTotp } from './totp.ts';
 
@@ -49,8 +49,8 @@ export interface TotpSetup {
   readonly qr: QrPath;
 }
 
-/** A code from the authenticator app, or a recovery code. */
-export type SecondFactorInput = { readonly code: string } | { readonly recoveryCode: string };
+/** A code from the authenticator app, a recovery code, or a passkey's sign-in response. */
+export type SecondFactorInput = { readonly code: string } | { readonly recoveryCode: string } | { readonly passkey: PasskeyAssertion };
 
 /**
  * The second factor of an account, for this request: finish a sign-in that waits for it, set an authenticator app up, take recovery codes,
@@ -64,6 +64,7 @@ export class TwoFactor {
   readonly #auth: Auth;
   readonly #session: Session;
   readonly #state: TwoFactorState;
+  readonly #passkeys: SecondFactorPasskeys;
   readonly #store: TwoFactorStore;
   readonly #encrypter: Encrypter;
   readonly #limiter: RateLimiter;
@@ -91,6 +92,7 @@ export class TwoFactor {
     config: AuthConfig,
     clock: Clock,
     logger: Logger,
+    passkeys: SecondFactorPasskeys,
   ) {
     this.#auth = auth;
     this.#session = session;
@@ -106,6 +108,7 @@ export class TwoFactor {
     this.#config = config;
     this.#clock = clock;
     this.#logger = logger;
+    this.#passkeys = passkeys;
   }
 
   /**
@@ -119,7 +122,8 @@ export class TwoFactor {
     if (pending === undefined) return err({ kind: 'no-challenge' });
     if (pending === 'expired') return err({ kind: 'expired' });
     const userId = pending.userId;
-    const recovery = 'recoveryCode' in input;
+    // Recovery codes and passkeys cannot be guessed (80 bits; a signature): they share the generous counter, not the code budget.
+    const recovery = 'recoveryCode' in input || 'passkey' in input;
     const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
 
@@ -285,6 +289,7 @@ export class TwoFactor {
 
   /** Whether `input` is a valid second factor of the account right now — checked against the store, not against what the sign-in saw. */
   async #verify(userId: string | number, input: SecondFactorInput): Promise<boolean> {
+    if ('passkey' in input) return this.#passkeys.verify(userId, input.passkey);
     if ('recoveryCode' in input) {
       // Recovery codes need no secret that decrypts; they work while the account has any factor.
       if ((await this.#state.factors(userId)).length === 0) return false;

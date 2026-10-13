@@ -97,7 +97,7 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
     now = Date.parse('2026-04-01T00:00:00Z');
     await timed.create({ ...passkey(), credentialId: 'c-new' });
     expect((await timed.enabledSince(1))!.toISOString()).toBe('2026-03-01T00:00:00.000Z');
-    await timed.remove(1, first.ok ? first.value.id : 0);
+    await timed.remove(1, first.ok ? first.value.id : 0, { lastFactorAllowed: true });
     expect((await timed.enabledSince(1))!.toISOString()).toBe('2026-04-01T00:00:00.000Z');
   });
 
@@ -133,8 +133,8 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
     expect(await store.rename(2, id, 'Stolen')).toBe(false);
     expect(await store.rename(1, id, 'Phone')).toBe(true);
     expect((await store.forUser(1))[0]!.name).toBe('Phone');
-    expect(await store.remove(2, id)).toEqual({ removed: false, lastFactor: false });
-    expect(await store.remove(1, id)).toEqual({ removed: true, lastFactor: true });
+    expect(await store.remove(2, id, { lastFactorAllowed: true })).toMatchObject({ ok: false, error: { kind: 'not-found' } });
+    expect(await store.remove(1, id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: true } });
     expect(await store.factors(1)).toEqual([]);
   });
 
@@ -149,9 +149,9 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
       const first = await created();
       const second = await created({ credentialId: 'cred-2' });
       await seedCodes();
-      expect(await store.remove(1, first.id)).toEqual({ removed: true, lastFactor: false });
+      expect(await store.remove(1, first.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: false } });
       expect(await codes()).toHaveLength(1);
-      expect(await store.remove(1, second.id)).toEqual({ removed: true, lastFactor: true });
+      expect(await store.remove(1, second.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: true } });
       expect(await codes()).toHaveLength(0);
     });
 
@@ -161,9 +161,27 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
       await totp.startSetup(1, 'enc');
       await totp.confirm(1, 5, 'enc', null);
       await seedCodes();
-      expect(await store.remove(1, only.id)).toEqual({ removed: true, lastFactor: false });
+      expect(await store.remove(1, only.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: false } });
       expect(await codes()).toHaveLength(1);
       await connections.get<any>().deleteFrom(TWO_FACTOR_TABLE).execute();
+    });
+
+    it('refuse the last factor unless it is allowed, and then change nothing', async () => {
+      const only = await created();
+      await seedCodes();
+      expect(await store.remove(1, only.id, { lastFactorAllowed: false })).toMatchObject({ ok: false, error: { kind: 'last-factor' } });
+      expect(await store.factors(1)).toEqual(['passkey']);
+      expect(await codes()).toHaveLength(1);
+    });
+
+    it('leave a factor when the last two are removed in parallel without permission', async () => {
+      const first = await created();
+      const second = await created({ credentialId: 'cred-2' });
+      await seedCodes();
+      const results = await Promise.all([store.remove(1, first.id, { lastFactorAllowed: false }), store.remove(1, second.id, { lastFactorAllowed: false })]);
+      expect(results.filter((result) => result.ok)).toHaveLength(1);
+      expect(await store.factors(1)).toEqual(['passkey']);
+      expect(await codes()).toHaveLength(1);
     });
 
     it('go when only an unconfirmed authenticator setup remains: that is no factor', async () => {
@@ -171,7 +189,7 @@ describe.each(drivers)('PasskeyStore on %s', (driver) => {
       const totp = new TwoFactorStore(connections, new SystemClock());
       await totp.startSetup(1, 'enc');
       await seedCodes();
-      expect(await store.remove(1, only.id)).toEqual({ removed: true, lastFactor: true });
+      expect(await store.remove(1, only.id, { lastFactorAllowed: true })).toMatchObject({ ok: true, value: { lastFactor: true } });
       expect(await codes()).toHaveLength(0);
       await connections.get<any>().deleteFrom(TWO_FACTOR_TABLE).execute();
     });

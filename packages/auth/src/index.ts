@@ -13,7 +13,7 @@ import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { warnAboutCookieSessions } from './session-driver.ts';
-import { NoTwoFactorState, TwoFactorState } from './two-factor/state.ts';
+import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 
@@ -21,7 +21,7 @@ export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
 export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
-export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
+export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
 export type { LoginVia } from './events.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export type { PasswordResetTokenTable } from './password-reset.ts';
@@ -100,6 +100,8 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     // Nobody has a second factor until the app binds a source: container.bind(TwoFactorState, TwoFactorStore). Removing that binding turns two-factor off for every account.
     container.singleton(TwoFactorState, NoTwoFactorState);
+    // Nor does anybody have a passkey as a second factor, until the app registers PasskeyServiceProvider (the passkeys subpath).
+    container.singleton(SecondFactorPasskeys, NoSecondFactorPasskeys);
     container.singleton(TwoFactorStore);
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
