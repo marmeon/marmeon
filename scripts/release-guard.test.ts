@@ -1,16 +1,17 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { guard, outputLines } from './release-guard.ts';
-import { spawnRunner, type Runner } from './release-rules.ts';
+import { formatReleaseBase, RELEASE_BASE, spawnRunner, type Runner } from './release-rules.ts';
 import { tempDir } from './test/temp-dir.js';
 
 type Answer = { status: number | null; stdout?: string; stderr?: string };
 
 const NOT_FOUND = JSON.stringify({ error: { code: `E${404}`, summary: 'not found' } });
 const COMMIT = 'a'.repeat(40);
+const BASE = 'b'.repeat(40);
 
 function writePackage(root: string, short: string, name: string, version: string, section = `## ${version}\n\n### Fixes\n\n- Fix a thing by @max in https://example.com/pull/1\n`) {
   mkdirSync(join(root, 'packages', short), { recursive: true });
@@ -18,11 +19,17 @@ function writePackage(root: string, short: string, name: string, version: string
   writeFileSync(join(root, 'packages', short, 'CHANGELOG.md'), `# ${name}\n\n${section}`);
 }
 
+function writeBase(root: string, version: string, commit: string) {
+  mkdirSync(join(root, '.github'), { recursive: true });
+  writeFileSync(join(root, RELEASE_BASE), formatReleaseBase(version, commit));
+}
+
 /** Two published packages at `version`. */
 function fixture(version: string) {
   const root = tempDir('marmeon-release-guard-');
   writePackage(root, 'core', '@marmeon/core', version);
   writePackage(root, 'mail', '@marmeon/mail', version);
+  writeBase(root, version, BASE);
   return root;
 }
 
@@ -42,7 +49,13 @@ function fakeRun({ answers }: Fake, latest: string | 'not-found' | 'network' = '
         ? { status: 0, stdout: 'false\n' }
         : line.startsWith('git log -1 --first-parent')
           ? { status: 0, stdout: `${COMMIT}\n` }
-          : line.startsWith('git checkout')
+          : line === `git rev-parse ${COMMIT}^1`
+            ? { status: 0, stdout: `${BASE}\n` }
+            : line === `git diff --name-only ${BASE} ${COMMIT}`
+              ? { status: 0, stdout: 'packages/core/package.json\npackages/core/CHANGELOG.md\nUPGRADING.md\n.github/release-base\n' }
+              : line.startsWith('git rev-list --count')
+              ? { status: 0, stdout: '3\n' }
+              : line.startsWith('git checkout')
             ? { status: 0 }
             : line.startsWith('git ls-remote')
               ? { status: 2 }
@@ -117,7 +130,7 @@ describe('guard on a fake runner', () => {
     expect(shallow.problems.join('\n')).toContain('shallow');
     expect(calls).toEqual(['git rev-parse --is-shallow-repository']);
 
-    const noCommit = guard({ root: fixture('0.1.3'), ...onMain, run: fakeRun({ answers: { 'git log -1 --first-parent --format=%H -- :(glob)packages/*/CHANGELOG.md': { status: 0, stdout: '' } } }) });
+    const noCommit = guard({ root: fixture('0.1.3'), ...onMain, run: fakeRun({ answers: { 'git log -1 --first-parent --format=%H -- :(glob)packages/*/CHANGELOG.md .github/release-base': { status: 0, stdout: '' } } }) });
     expect(noCommit.problems.join('\n')).toContain('No release commit');
 
     const checkoutCalls: string[] = [];
@@ -128,7 +141,7 @@ describe('guard on a fake runner', () => {
 
   it('refuses a release commit that is not a commit id, before the checkout', () => {
     const calls: string[] = [];
-    const run = fakeRun({ answers: { 'git log -1 --first-parent --format=%H -- :(glob)packages/*/CHANGELOG.md': { status: 0, stdout: '--upload-pack=x\n' } } }, '0.1.2', calls);
+    const run = fakeRun({ answers: { 'git log -1 --first-parent --format=%H -- :(glob)packages/*/CHANGELOG.md .github/release-base': { status: 0, stdout: '--upload-pack=x\n' } } }, '0.1.2', calls);
     expect(guard({ root: fixture('0.1.3'), ...onMain, run }).problems.join('\n')).toContain('is not a commit id');
     expect(calls.some((line) => line.startsWith('git checkout'))).toBe(false);
   });
@@ -153,6 +166,31 @@ describe('guard on a fake runner', () => {
     const empty = guard({ root: fixture('0.1.3'), ...onMain, run: fakeRun(view({ status: 0, stdout: '' })) });
     expect(empty.problems).toHaveLength(1);
     for (const result of [otherError, garbage, empty]) expect(outputLines(result)).toEqual([]);
+  });
+
+  it('refuses a release whose first parent is not the commit it was prepared from', () => {
+    const moved = guard({ root: fixture('0.1.3'), ...onMain, run: fakeRun({ answers: { [`git rev-parse ${COMMIT}^1`]: { status: 0, stdout: `${'c'.repeat(40)}\n` } } }) });
+    expect(moved.problems.join('\n')).toContain('main moved after the release was prepared (3 commits) — run pnpm release:prepare again');
+    expect(outputLines(moved)).toEqual([]);
+  });
+
+  it('refuses a release commit that changes anything but release files, naming it', () => {
+    const diff = `git diff --name-only ${BASE} ${COMMIT}`;
+    const result = guard({ root: fixture('0.1.3'), ...onMain, run: fakeRun({ answers: { [diff]: { status: 0, stdout: 'packages/core/package.json\npackages/core/src/index.ts\n' } } }) });
+    expect(result.problems.join('\n')).toContain('also changes packages/core/src/index.ts — code belongs in its own pull request');
+    expect(outputLines(result)).toEqual([]);
+  });
+
+  it('refuses a missing, malformed or stale release base', () => {
+    const missing = fixture('0.1.3');
+    rmSync(join(missing, RELEASE_BASE));
+    expect(guard({ root: missing, ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('missing or malformed');
+    const malformed = fixture('0.1.3');
+    writeFileSync(join(malformed, RELEASE_BASE), '0.1.3 abc\n');
+    expect(guard({ root: malformed, ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('missing or malformed');
+    const stale = fixture('0.1.3');
+    writeBase(stale, '0.1.2', BASE);
+    expect(guard({ root: stale, ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('records 0.1.2, the packages are at 0.1.3');
   });
 
   it('refuses a missing or differing changelog section', () => {
@@ -183,7 +221,7 @@ describe('the script', () => {
 });
 
 describe('guard in a real repository', () => {
-  it('checks out the release commit and reads its version, not the one a later commit set', () => {
+  function repository() {
     const dir = tempDir('marmeon-release-guard-');
     const git = (...args: string[]) => {
       const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
@@ -194,25 +232,94 @@ describe('guard in a real repository', () => {
     writePackage(dir, 'core', '@marmeon/core', '0.1.2');
     git('add', '.');
     git('commit', '-q', '-m', 'start');
+    const start = git('rev-parse', 'HEAD');
+    /** The release pull request's branch: the preparation of 0.1.3 from `start`. */
     git('switch', '-q', '-c', 'release');
     writePackage(dir, 'core', '@marmeon/core', '0.1.3');
+    writeBase(dir, '0.1.3', start);
     git('add', '.');
     git('commit', '-q', '-m', 'Prepare 0.1.3');
     git('switch', '-q', 'main');
+    return { dir, git, start };
+  }
+
+  function run(dir: string): Runner {
+    const real = spawnRunner(dir);
+    const npm = fakeRun(none);
+    return (command, args) => (command === 'git' && args[0] !== 'ls-remote' ? real(command, args) : npm(command, args));
+  }
+
+  it('checks out the release commit and reads its version, not the one a later commit set', () => {
+    const { dir, git } = repository();
     git('merge', '-q', '--no-ff', '-m', 'Merge release', 'release');
     const release = git('rev-parse', 'HEAD');
-    mkdirSync(dirname(join(dir, 'packages/core/package.json')), { recursive: true });
     writeFileSync(join(dir, 'packages/core/package.json'), JSON.stringify({ name: '@marmeon/core', version: '9.9.9' }));
     git('commit', '-q', '-am', 'Later change');
 
-    const real = spawnRunner(dir);
-    const npm = fakeRun(none);
-    const run: Runner = (command, args) => (command === 'git' && args[0] !== 'ls-remote' ? real(command, args) : npm(command, args));
-    const result = guard({ root: dir, ...onMain, run });
+    const result = guard({ root: dir, ...onMain, run: run(dir) });
 
     expect(result).toMatchObject({ problems: [], commit: release, version: '0.1.3' });
     expect(git('rev-parse', 'HEAD')).toBe(release);
     expect(git('branch', '--show-current')).toBe('');
     expect(JSON.parse(readFileSync(join(dir, 'packages/core/package.json'), 'utf8')).version).toBe('0.1.3');
+  });
+
+  it('passes a release squashed onto the commit it was prepared from', () => {
+    const { dir, git } = repository();
+    git('merge', '-q', '--squash', 'release');
+    git('commit', '-q', '-m', 'Release 0.1.3 (#2)');
+    expect(guard({ root: dir, ...onMain, run: run(dir) })).toMatchObject({ problems: [], version: '0.1.3' });
+  });
+
+  it('refuses a release merged after another pull request landed, however it was merged', () => {
+    const merged = repository();
+    writeFileSync(join(merged.dir, 'other.txt'), 'x');
+    merged.git('add', '.');
+    merged.git('commit', '-q', '-m', 'Another pull request');
+    merged.git('merge', '-q', '--no-ff', '-m', 'Merge release', 'release');
+    const result = guard({ root: merged.dir, ...onMain, run: run(merged.dir) });
+    expect(result.problems.join('\n')).toContain('main moved after the release was prepared (1 commit)');
+
+    const squashed = repository();
+    writeFileSync(join(squashed.dir, 'other.txt'), 'x');
+    squashed.git('add', '.');
+    squashed.git('commit', '-q', '-m', 'Another pull request');
+    squashed.git('merge', '-q', '--squash', 'release');
+    squashed.git('commit', '-q', '-m', 'Release 0.1.3 (#2)');
+    expect(guard({ root: squashed.dir, ...onMain, run: run(squashed.dir) }).problems.join('\n')).toContain('main moved after the release was prepared');
+  });
+
+  it('refuses a release pull request that also changes code, and passes one that changes release files only', () => {
+    const { dir, git } = repository();
+    git('switch', '-q', 'release');
+    mkdirSync(join(dir, 'packages/core/src'), { recursive: true });
+    writeFileSync(join(dir, 'packages/core/src/index.ts'), 'export {};\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'Sneak in code');
+    git('switch', '-q', 'main');
+    git('merge', '-q', '--no-ff', '-m', 'Merge release', 'release');
+    expect(guard({ root: dir, ...onMain, run: run(dir) }).problems.join('\n')).toContain('also changes packages/core/src/index.ts');
+
+    const clean = repository();
+    clean.git('merge', '-q', '--no-ff', '-m', 'Merge release', 'release');
+    expect(guard({ root: clean.dir, ...onMain, run: run(clean.dir) }).problems).toEqual([]);
+  });
+
+  it('releases the merge of a re-run that changed only the base, after an internal pull request moved main', () => {
+    const { dir, git } = repository();
+    writeFileSync(join(dir, 'internal.txt'), 'x');
+    git('add', '.');
+    git('commit', '-q', '-m', 'An internal pull request');
+    git('merge', '-q', '--no-ff', '-m', 'Merge release', 'release');
+    expect(guard({ root: dir, ...onMain, run: run(dir) }).problems.join('\n')).toContain('moved after the release was prepared');
+
+    git('switch', '-q', '-c', 'prepare-again');
+    writeBase(dir, '0.1.3', git('rev-parse', 'main'));
+    git('add', '.');
+    git('commit', '-q', '-m', 'Release 0.1.3 again');
+    git('switch', '-q', 'main');
+    git('merge', '-q', '--no-ff', '-m', 'Merge release again', 'prepare-again');
+    const again = git('rev-parse', 'HEAD');
+    expect(guard({ root: dir, ...onMain, run: run(dir) })).toMatchObject({ problems: [], commit: again, version: '0.1.3' });
   });
 });

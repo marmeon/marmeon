@@ -199,6 +199,16 @@ describe('releaseCommit', () => {
     expect(releaseCommit(spawnRunner(repo.dir))).toBe(release);
   });
 
+  it('moves to a merge that changed only the release base, and not to a later unrelated commit', () => {
+    const repo = repository();
+    merge(repo, 'release', 'packages/core/CHANGELOG.md', '# core\n\n## 0.1.3\n');
+    merge(repo, 'internal', 'other.txt', 'x\n');
+    const again = merge(repo, 'prepare-again', '.github/release-base', `0.1.3 ${'a'.repeat(40)}\n`);
+    expect(releaseCommit(spawnRunner(repo.dir))).toBe(again);
+    merge(repo, 'later', 'packages/core/src/index.ts', 'export {};\n');
+    expect(releaseCommit(spawnRunner(repo.dir))).toBe(again);
+  });
+
   it('throws when no commit changed a changelog', () => {
     const repo = repository();
     expect(() => releaseCommit(spawnRunner(repo.dir))).toThrow('No release commit');

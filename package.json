@@ -30,6 +30,7 @@
     "website:image": "node scripts/website-image.ts",
     "bench": "node scripts/bench/index.ts",
     "csp:probe": "node scripts/csp-probe.ts",
+    "release:prepare": "node scripts/release-prepare.ts",
     "check-changesets": "node scripts/check-changesets.ts",
     "release:version": "changeset version",
     "release:stage": "pnpm stage publish -r --provenance --access public",

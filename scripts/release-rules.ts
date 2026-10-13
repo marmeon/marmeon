@@ -172,18 +172,53 @@ export function spawnRunner(cwd: string): Runner {
   };
 }
 
-/** `:(glob)`: in a plain pathspec `*` also matches `/`, so a nested `CHANGELOG.md` (a template's) would count as a release. */
-export const RELEASE_PATHSPEC = ':(glob)packages/*/CHANGELOG.md';
+/**
+ * Where the release preparation records what it prepared from: one line, `<version> <commit>` — the head of the branch whose merged
+ * pull requests the notes cover. The release commit's first parent must be that commit, or a pull request merged since is in the
+ * release but in no notes.
+ */
+export const RELEASE_BASE = '.github/release-base';
+
+export function formatReleaseBase(version: string, commit: string): string {
+  return `${version} ${commit}\n`;
+}
+
+/** `undefined` when the text is not what `formatReleaseBase` makes. */
+export function parseReleaseBase(text: string): { version: string; commit: string } | undefined {
+  const match = /^(\S+) ([0-9a-f]{40}(?:[0-9a-f]{24})?)\n$/.exec(text);
+  return match && parseVersion(match[1]!) ? { version: match[1]!, commit: match[2]! } : undefined;
+}
 
 /**
- * The commit a release ships: the last first-parent commit that changed the changelogs. Only the release preparation writes them,
+ * What only the release preparation writes: the changelogs (`:(glob)`: in a plain pathspec `*` also matches `/`, so a nested
+ * `CHANGELOG.md`, a template's, would count as a release) and the release base.
+ */
+export const RELEASE_PATHSPECS = [':(glob)packages/*/CHANGELOG.md', RELEASE_BASE] as const;
+
+/**
+ * Whether a release pull request may change `path`: the versions, changelogs, upgrade guide and release base the preparation writes,
+ * and the file that lists the guide's anchors (`check-changesets.ts` until it is renamed to `check-release.ts`). Code belongs in
+ * its own pull request, merged before the preparation, so the release commit holds nothing the notes do not cover.
+ */
+export function isReleaseFile(path: string): boolean {
+  return (
+    /^packages\/[^/]+\/(?:package\.json|CHANGELOG\.md)$/.test(path) ||
+    path === 'UPGRADING.md' ||
+    path === RELEASE_BASE ||
+    path === 'scripts/check-release.ts' ||
+    path === 'scripts/check-changesets.ts'
+  );
+}
+
+/**
+ * The commit a release ships: the last first-parent commit that changed a changelog or the release base. Only the release preparation writes them,
  * so a pull request merged after the release belongs to the next release, however soon the workflow is started.
  */
 export function releaseCommit(run: Runner): string {
-  const result = run('git', ['log', '-1', '--first-parent', '--format=%H', '--', RELEASE_PATHSPEC]);
+  const result = run('git', ['log', '-1', '--first-parent', '--format=%H', '--', ...RELEASE_PATHSPECS]);
   const commit = result.stdout.trim();
   if (result.status !== 0 || commit === '') {
-    throw new Error(`No release commit: no commit on this branch changed ${RELEASE_PATHSPEC}.${result.stderr ? ` ${result.stderr.trim()}` : ''}`);
+    throw new Error(`No release commit: no commit on this branch changed ${RELEASE_PATHSPECS.join(' or ')}.${result.stderr ? ` ${result.stderr.trim()}` : ''}`);
   }
   return commit;
 }

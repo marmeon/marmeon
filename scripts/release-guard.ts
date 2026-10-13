@@ -10,10 +10,11 @@
  *
  *   node scripts/release-guard.ts            # GITHUB_REF_TYPE, GITHUB_REF_NAME and GITHUB_OUTPUT come from the workflow
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages } from './packages.ts';
-import { MAIN, maintenanceLine, parseVersion, releaseCommit, releaseSection, releaseTarget, spawnRunner, type Runner } from './release-rules.ts';
+import { MAIN, maintenanceLine, isReleaseFile, parseReleaseBase, parseVersion, RELEASE_BASE, releaseCommit, releaseSection, releaseTarget, spawnRunner, type Runner } from './release-rules.ts';
 
 /** npm's error code for a package or version that does not exist (spelled so `check:source` does not read it as a decision number). */
 const NOT_FOUND = `E${404}`;
@@ -106,6 +107,29 @@ export function guard({ root, refType, branch, run }: GuardContext): GuardResult
     releaseSection(root, version);
   } catch (error) {
     problems.push((error as Error).message);
+  }
+
+  const baseFile = join(root, RELEASE_BASE);
+  const base = existsSync(baseFile) ? parseReleaseBase(readFileSync(baseFile, 'utf8')) : undefined;
+  if (!base) problems.push(`${RELEASE_BASE} is missing or malformed: the release was not prepared with pnpm release:prepare.`);
+  else if (base.version !== version) problems.push(`${RELEASE_BASE} records ${base.version}, the packages are at ${version} — run pnpm release:prepare again.`);
+  else {
+    const parent = run('git', ['rev-parse', `${commit}^1`]);
+    if (parent.status !== 0 || parent.stdout.trim() !== base.commit) {
+      const count = run('git', ['rev-list', '--count', `${base.commit}..${commit}^1`]);
+      const n = count.status === 0 && /^\d+$/.test(count.stdout.trim()) ? Number(count.stdout.trim()) : undefined;
+      const moved = n === undefined ? '' : ` (${n} commit${n === 1 ? '' : 's'})`;
+      problems.push(`${branch} moved after the release was prepared${moved} — run pnpm release:prepare again.`);
+    } else {
+      const changed = run('git', ['diff', '--name-only', base.commit, commit]);
+      if (changed.status !== 0) problems.push(`Could not list what the release commit changed: ${changed.stderr.trim() || `exit ${changed.status}`}`);
+      else {
+        const foreign = changed.stdout.split('\n').filter((path) => path !== '' && !isReleaseFile(path));
+        if (foreign.length > 0) {
+          problems.push(`The release commit also changes ${foreign.slice(0, 10).join(', ')}${foreign.length > 10 ? ', …' : ''} — code belongs in its own pull request, merged before pnpm release:prepare.`);
+        }
+      }
+    }
   }
 
   const tag = run('git', ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/v${version}`]);
