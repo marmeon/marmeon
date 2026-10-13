@@ -61,7 +61,7 @@ describe('two-factor authentication', () => {
     const done = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
     expect(done.page()!.props.tokens).toEqual([expect.objectContaining({ name: 'CI' })]);
     await app.withCookie(SESSION, other).get('/users/me').assertRedirect('/login'); // the other device is signed out
-    await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).get('/users/me').assertRedirect(`/users/${ada.id}`); // this one is not
+    await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).get('/users/me').assertRedirect(`/users/${ada.public_id}`); // this one is not
     await app.assertDatabaseCount('personal_access_tokens', 1);
   });
 
