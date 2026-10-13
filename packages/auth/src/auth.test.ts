@@ -196,8 +196,11 @@ class CompletePendingController extends Controller {
   }
   async handle(ctx: HttpContext) {
     // `as`: the account the (pretended) factor was checked for — by default the one the session waits for.
-    const { as } = (await ctx.input()) as { as?: number };
-    const done = await this.#auth[COMPLETE_PENDING](as ?? this.#auth[READ_PENDING]()?.userId ?? 0);
+    const { as, direct } = (await ctx.input()) as { as?: number; direct?: boolean };
+    // `direct`: finish without reading the pending state first, to reach the check `COMPLETE_PENDING` repeats.
+    const pending = direct ? undefined : await this.#auth[READ_PENDING]();
+    if (pending === 'expired') return { ok: false, kind: 'expired' };
+    const done = await this.#auth[COMPLETE_PENDING](as ?? pending?.userId ?? 1);
     return done.ok ? { ok: true, id: (done.value as TestUser).id } : { ok: false, kind: done.error.kind };
   }
 }
@@ -746,7 +749,7 @@ describe('Auth with a second factor (pending state)', () => {
     return JSON.parse((await booted.store.read(sessionKey(id)))!.data) as Record<string, unknown>;
   };
 
-  it('holds a correct password back: nobody is signed in, no Login event, no remember cookie, a new session id', async () => {
+  it('holds a correct password back: user(), authenticate() and the shared props see a guest, nobody is signed in, no Login event, no remember cookie, a new session id', async () => {
     const booted = await boot({ factors: withFactor() });
     await booted.add(ada);
     const { send, cookie, jar } = booted.browser();
@@ -849,6 +852,16 @@ describe('Auth with a second factor (pending state)', () => {
     expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'expired' });
     expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
     expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
+  });
+
+  it('COMPLETE_PENDING checks the account again by itself', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    await login(send);
+    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('new password');
+    expect(await (await post(send, '/complete-pending', { direct: true })).json()).toEqual({ ok: false, kind: 'expired' });
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
   });
 
   it('COMPLETE_PENDING refuses once the pending state ran out', async () => {

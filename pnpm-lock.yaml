@@ -508,6 +508,9 @@ importers:
       '@marmeon/database':
         specifier: workspace:*
         version: link:../database
+      '@marmeon/encryption':
+        specifier: workspace:*
+        version: link:../encryption
       '@marmeon/http':
         specifier: workspace:*
         version: link:../http
@@ -530,9 +533,6 @@ importers:
       '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
-      '@marmeon/encryption':
-        specifier: workspace:*
-        version: link:../encryption
       '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis

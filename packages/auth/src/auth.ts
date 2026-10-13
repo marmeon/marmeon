@@ -51,6 +51,14 @@ export interface PendingSecondFactor {
 /** Reads the pending state (package-internal, for `TwoFactor`): the account it names, and how often a factor failed. `undefined` when none waits or it ran out. */
 export const READ_PENDING = Symbol('marmeon.auth.readPending');
 
+/** Counts a wrong second factor against the pending sign-in (package-internal): the failures so far, or `undefined` without one. The fifth drops it. */
+export const RECORD_PENDING_FAILURE = Symbol('marmeon.auth.recordPendingFailure');
+
+const DROP_EXPIRED = Symbol('marmeon.auth.dropExpired');
+
+/** Wrong second factors a pending sign-in survives: the fifth ends it, and the password has to be typed again. */
+export const PENDING_MAX_FAILURES = 5;
+
 /** What {@link READ_PENDING} hands out. */
 export interface PendingView {
   readonly userId: string | number;
@@ -205,9 +213,30 @@ export class Auth {
     return pending === undefined ? undefined : { factors: pending.factors };
   }
 
-  [READ_PENDING](): PendingView | undefined {
+  /**
+   * The waiting sign-in, if it is still good: `undefined` without one, `'expired'` when it ran out or its account is gone or changed its
+   * password or session key since the password step (it is dropped then). Checked here, before any factor is looked at.
+   */
+  async [READ_PENDING](): Promise<PendingView | 'expired' | undefined> {
     const pending = this.#pending();
-    return pending === undefined ? undefined : { userId: pending.id, factors: pending.factors, failures: pending.failures, remember: pending.remember };
+    if (pending === undefined) return this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending) ? this[DROP_EXPIRED]() : undefined;
+    const found = await this.#users.findById(pending.id as never);
+    if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return this[DROP_EXPIRED]();
+    return { userId: pending.id, factors: pending.factors, failures: pending.failures, remember: pending.remember };
+  }
+
+  [DROP_EXPIRED](): 'expired' {
+    this.#session.forget(AUTH_SESSION_KEYS.pending);
+    return 'expired';
+  }
+
+  [RECORD_PENDING_FAILURE](): number | undefined {
+    const pending = this.#pending();
+    if (pending === undefined) return undefined;
+    const failures = pending.failures + 1;
+    if (failures >= PENDING_MAX_FAILURES) this.#session.forget(AUTH_SESSION_KEYS.pending);
+    else this.#session.put(AUTH_SESSION_KEYS.pending, { ...pending, failures });
+    return failures;
   }
 
   /**

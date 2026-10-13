@@ -182,10 +182,14 @@ describe('auth module', () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;
     for (let attempt = 1; attempt <= 4; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
-    await app
+    const held = await app
       .post('/login', credentials(ada))
       .assertInvalid<LoginController>({ email: 'This account uses two-factor authentication, which this page cannot complete yet.' })
       .assertGuest();
+    // The waiting sign-in is a guest for the pages too: the shared props, and a route behind authenticate().
+    const session = held.cookie('marmeon_session')!;
+    await app.withCookie('marmeon_session', session).navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { auth: { user: null } });
+    await app.withCookie('marmeon_session', session).get('/users/me').assertRedirect('/login');
     // The budget was cleared (as after a sign-in): five wrong guesses more are answered as failures, none as throttled.
     for (let attempt = 1; attempt <= 5; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
   });
@@ -501,6 +505,21 @@ describe('password reset', () => {
     await app.post('/login', credentialsOf(ada)).assertGuest();
     await app.post('/login', { form: { email: ada.email, password: 'brand new password' } }).assertAuthenticated(ada);
     await resetWith(cookie, 'yet another password').assertInvalid<ResetPasswordController>({ password: INVALID });
+  });
+
+  it('resetting the password of an account with a second factor signs nobody in', async () => {
+    let withFactor: unknown;
+    await app.close(); // one database app per test
+    app = await createTestApp(application, {
+      database: 'refresh',
+      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []) }),
+    });
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    withFactor = ada.id;
+    await ask('ada@example.com').assertRedirect('/forgot-password');
+    const cookie = await open();
+    await resetWith(cookie).assertRedirect('/login').assertGuest();
+    await app.post('/login', { form: { email: ada.email, password: 'brand new password' } }).assertGuest(); // the new password only gets as far as the waiting state
   });
 
   it('enumeration: an unknown address gets the same answer — and no mail', async () => {

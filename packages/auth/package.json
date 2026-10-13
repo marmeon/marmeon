@@ -30,6 +30,11 @@
       "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./two-factor": {
+      "@marmeon/source": "./src/two-factor/index.ts",
+      "types": "./dist/two-factor/index.d.ts",
+      "default": "./dist/two-factor/index.js"
     }
   },
   "publishConfig": {
@@ -39,6 +44,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./two-factor": {
+        "types": "./dist/two-factor/index.d.ts",
+        "default": "./dist/two-factor/index.js"
       }
     }
   },
@@ -66,6 +75,7 @@
   "dependencies": {
     "@marmeon/core": "workspace:*",
     "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/router": "workspace:*",
     "@marmeon/session": "workspace:*",
@@ -77,7 +87,6 @@
     "jsqr": "1.4.0",
     "marmeon": "workspace:*",
     "@marmeon/cache": "workspace:*",
-    "@marmeon/encryption": "workspace:*",
     "@marmeon/redis": "workspace:*",
     "@marmeon/server": "workspace:*"
   },

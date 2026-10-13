@@ -1,6 +1,7 @@
 import type { Container } from '@marmeon/core';
 import { AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 import { AccessTokenStore } from './tokens.ts';
+import { hotp, base32Decode, totpStep } from './two-factor/totp.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /**
@@ -19,4 +20,11 @@ export async function authenticatedSession(container: Container, user: AuthUser)
 export async function authenticatedToken(container: Container, user: AuthUser, abilities: readonly string[] = ['*']): Promise<string> {
   const { plainText } = await container.createScope().make(AccessTokenStore).create(idOf(user), 'test', { abilities });
   return plainText;
+}
+
+/** The code an authenticator app shows for `secret` (the key `TwoFactor.begin()` hands out) at `at` — for tests that sign in with a second factor. */
+export function twoFactorCode(secret: string, at: Date = new Date()): string {
+  const key = base32Decode(secret);
+  if (key === undefined || key.length === 0) throw new Error('twoFactorCode() needs the Base32 key TwoFactor.begin() returned (the "secret" field).');
+  return hotp(key, totpStep(at));
 }
