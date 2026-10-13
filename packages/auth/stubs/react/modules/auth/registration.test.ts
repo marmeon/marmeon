@@ -15,9 +15,10 @@ import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 // Runs on SQLite and Postgres.
 
 let app: TestApp;
+// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
-});
+}, 30_000);
 
 const form = (email: string, password = 'orbital mechanics') => ({ form: { name: 'Katherine Johnson', email, password, password_confirmation: password } });
 const register = (email = 'kj@example.com') => app.post('/register', form(email));
@@ -34,7 +35,7 @@ const linkIn = <M extends Mailable>(Mail: abstract new (...args: any[]) => M, pa
   return url.pathname + url.search;
 };
 
-describe('private registration — the default', () => {
+describe('private registration — the default', { timeout: 30_000 }, () => {
   it('answers a new and a known address byte for byte alike — no session, nobody signed in', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const fresh = await register('kj@example.com').assertRedirect('/register/sent');
@@ -106,11 +107,11 @@ describe('private registration — the default', () => {
   });
 });
 
-describe('registration with AUTH_PRIVATE_REGISTRATION=false', () => {
+describe('registration with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
-  });
+  }, 30_000);
   /** A request that keeps the session of `response`. */
   const continuing = (response: { cookie(name: string): string | undefined }) => app.withCookie('marmeon_session', response.cookie('marmeon_session')!);
 

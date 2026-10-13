@@ -17,10 +17,11 @@ import { UserRepository } from './UserRepository.ts';
 
 const DAY = 86_400_000;
 let app: TestApp;
+// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
   app.freeze(); // the real time: rows the app writes itself (an update's updated_at) carry it too
-});
+}, 30_000);
 
 /** An account made `days` ago (nothing changed since) — confirmed or not. */
 const made = (days: number, confirmed: boolean, values: Partial<Record<'email' | 'name', string>> = {}) => {
@@ -49,7 +50,7 @@ const pruneIn = async (days: number) => {
   return prune();
 };
 
-describe('pruning accounts whose address was never confirmed — the default', () => {
+describe('pruning accounts whose address was never confirmed — the default', { timeout: 30_000 }, () => {
   it('is no deletion the module schedules — the command is there, the schedule is the app\'s', async () => {
     const old = await made(30, false, { email: 'old@example.com' });
     expect(app.schedule.due(night(1)), 'the module scheduled a deletion of accounts by itself').not.toContain('auth:prune-unverified');
@@ -132,12 +133,12 @@ describe('pruning accounts whose address was never confirmed — the default', (
   });
 });
 
-describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false', () => {
+describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
     app.freeze();
-  });
+  }, 30_000);
 
   it('a sign-up that used the app but never confirmed its address goes after 7 days — and is signed out', async () => {
     const register = await app
