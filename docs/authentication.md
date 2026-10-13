@@ -541,7 +541,7 @@ running during a sign-out brings the signed-in cookie back with its answer, and 
 
 | Event | When | Fields |
 | --- | --- | --- |
-| `Login` | `attempt()`, `login()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `login` or `remember`), `ip`, `userAgent` |
+| `Login` | `attempt()`, `login()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `login`, `remember` or `passkey`), `ip`, `userAgent` |
 | `Logout` | `logout()` | `user` |
 | `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
 | `Lockout` | The starter kit's login throttle turns an attempt away | `identifier`, `ip` |
@@ -592,6 +592,8 @@ listeners.
 | `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |
 | `APP_NAME` | none | The app's name shown by authenticator apps next to the code. Two-factor setup needs it. See [two-factor authentication](two-factor-authentication.md#setting-up). |
+| `AUTH_PASSKEY_RP_ID` | host of `APP_URL` | The RP ID of [passkeys](passkeys.md#requirements): a parent domain of every allowed origin. Checked when passkeys are first used. |
+| `AUTH_PASSKEY_ORIGINS` | origin of `APP_URL` | The origins [passkeys](passkeys.md#requirements) are accepted from, comma-separated and exact: `https:`, or `http://localhost`. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password, set by the user or by a reset, revokes every API token of the user. Only `true` and `false` start. See [API tokens](api-tokens.md#revoking-every-token-with-a-new-password). |
 
 The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its

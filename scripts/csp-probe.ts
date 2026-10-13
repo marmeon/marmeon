@@ -36,7 +36,7 @@ const PROFILES: Record<string, Profile> = {
   'web-app': {
     email: 'ada@example.com',
     guest: ['/login', '/register', '/forgot-password', '/nowhere'],
-    user: ['/dashboard', '/people', '/users/1', '/members', '/notifications', '/settings/security', '/settings/tokens'],
+    user: ['/dashboard', '/people', '/users/1', '/members', '/notifications', '/settings/security', '/settings/passkeys', '/settings/tokens'],
     deepLayer: { url: '/users/1/edit', depthVariable: true },
     clickLayer: { page: '/users/1', link: 'a[href="/users/1/edit"]' },
     failing: { page: '/people', link: 'main a[href="/users/1"]' },

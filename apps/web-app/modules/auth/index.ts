@@ -1,4 +1,5 @@
 import { Login, Registered } from '@marmeon/auth';
+import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
@@ -24,7 +25,9 @@ export type { User } from './users.ts';
 
 export default defineModule({
   name: 'auth',
-  providers: [AuthServiceProvider],
+  // PasskeyServiceProvider switches passkeys on. To switch them off, remove it, `PasskeyStore` from `combineFactors` in AuthServiceProvider, and
+  // both imports of '@marmeon/auth/passkeys': the WebAuthn library is loaded only by code that imports that subpath.
+  providers: [AuthServiceProvider, PasskeyServiceProvider],
   // SendEmailVerification is a queued listener (static queue): a worker runs it after the registration committed.
   // NotifyAboutNewSignIn is queued too: a sign-in with a password becomes a notification (bell + mail) in a worker.
   listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn)],

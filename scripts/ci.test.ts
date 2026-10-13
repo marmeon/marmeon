@@ -573,6 +573,8 @@ describe('the driver rule', () => {
     expect(checkDriverRule('redis', { peerDependencies: { redis: '^6.0.0' }, peerDependenciesMeta: { redis: { optional: true } } })).toEqual([
       'redis must be a dependency (the one driver this package wraps — the app installs nothing else)',
     ]);
+    expect(checkDriverRule('auth', { dependencies: {} })).toEqual(['@simplewebauthn/server must be a dependency (the one driver this package wraps — the app installs nothing else)']);
+    expect(checkDriverRule('auth', { dependencies: { '@simplewebauthn/server': '^14.0.3' } })).toEqual([]);
     expect(checkDriverRule('redis', { dependencies: { redis: '6.2.1' } })).toEqual(['dependencies.redis is "6.2.1" — a caret range of the tested major (^6.2.1)']);
     expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0' } })).toEqual([
       'pg must stay an optional peer, not a dependency — one of several drivers; every app would install it',

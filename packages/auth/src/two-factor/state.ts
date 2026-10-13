@@ -44,3 +44,29 @@ export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactor
     },
   };
 }
+
+/** A passkey's sign-in response as the browser sent it (`AuthenticationResponseJSON`) — opaque here; the passkeys service checks it. */
+export type PasskeyAssertion = object;
+
+/**
+ * Checks a passkey as the second factor of an account. The passkeys service binds itself here (`PasskeyServiceProvider`); the default
+ * knows no passkeys and refuses every response, so an app without them never loads the WebAuthn library.
+ */
+export interface SecondFactorPasskeys {
+  /**
+   * Whether `assertion` proves a passkey of exactly `userId` right now: against the stored passkey (not what the sign-in saw), with the
+   * open challenge for this account used up either way. Never throws for a bad response — `false`. Package-internal (a symbol key):
+   * `TwoFactor` calls it after it has read the waiting sign-in and counted the attempt, so an app cannot call it without those.
+   */
+  [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion): Promise<boolean>;
+}
+/** The key of {@link SecondFactorPasskeys.verify}'s method. */
+export const VERIFY_SECOND_FACTOR = Symbol('marmeon.auth.verifySecondFactor');
+export const SecondFactorPasskeys = token<SecondFactorPasskeys>('SecondFactorPasskeys');
+
+/** The default {@link SecondFactorPasskeys}: no passkeys, every response refused. */
+export class NoSecondFactorPasskeys implements SecondFactorPasskeys {
+  async [VERIFY_SECOND_FACTOR](): Promise<boolean> {
+    return false;
+  }
+}

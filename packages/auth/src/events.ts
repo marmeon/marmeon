@@ -1,8 +1,8 @@
 import * as v from 'valibot';
 import { idOf, type AuthUser, type AuthUserId } from './user.ts';
 
-/** How a user signed in: with a password (`auth.attempt`), by the app (`auth.login`, e.g. after registering), by the remember-me cookie. */
-export type LoginVia = 'attempt' | 'login' | 'remember';
+/** How a user signed in: with a password (`auth.attempt`), by the app (`auth.login`, e.g. after registering), by the remember-me cookie, with a passkey alone (passwordless). */
+export type LoginVia = 'attempt' | 'login' | 'remember' | 'passkey';
 
 /** A point in time: the event's `Date`, queued as an ISO-8601 string (and read back as one). */
 const instant = v.pipe(
@@ -27,7 +27,7 @@ export class Login {
   static readonly schema = v.object({
     userId,
     remember: v.boolean(),
-    via: v.picklist(['attempt', 'login', 'remember']),
+    via: v.picklist(['attempt', 'login', 'remember', 'passkey']),
     at: instant,
     ip: v.nullable(v.string()),
     userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
@@ -244,6 +244,85 @@ export class TwoFactorChallengeFailed {
     this.during = details.during ?? 'sign-in';
     this.ip = details.ip ?? null;
     this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/** A passkey was registered for the account. Queueable: `{ userId, name }`. */
+export class PasskeyRegistered {
+  static readonly event = 'auth.passkey-registered';
+  static readonly schema = v.object({ userId, name: v.string() });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly name: string;
+
+  constructor(user: AuthUser, name: string) {
+    this.user = user;
+    this.name = name;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/**
+ * Someone presented a passkey of this account for a passwordless sign-in and failed — a wrong signature, or a user handle that is not the
+ * account's. For "was this you?" mails and audit logs; the client learns nothing of it. Queueable: `{ userId, ip, userAgent }`.
+ */
+export class PasskeySignInFailed {
+  static readonly event = 'auth.passkey-sign-in-failed';
+  static readonly schema = v.object({
+    userId,
+    ip: v.nullable(v.string()),
+    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+  });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly ip: string | null;
+  readonly userAgent: string | null;
+
+  constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+    this.user = user;
+    this.ip = details.ip ?? null;
+    this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/** A passkey was removed from the account. Queueable: `{ userId }`. */
+export class PasskeyRemoved {
+  static readonly event = 'auth.passkey-removed';
+  static readonly schema = v.object({ userId });
+  readonly #event = true;
+  readonly user: AuthUser;
+
+  constructor(user: AuthUser) {
+    this.user = user;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/** A passkey answered with a sign count that did not move forward: it may have been copied. The sign-in was refused. Queueable: `{ userId, passkeyId }`. */
+export class PasskeyCloneSuspected {
+  static readonly event = 'auth.passkey-clone-suspected';
+  static readonly schema = v.object({ userId, passkeyId: v.number() });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly passkeyId: number;
+
+  constructor(user: AuthUser, passkeyId: number) {
+    this.user = user;
+    this.passkeyId = passkeyId;
   }
 
   get userId(): AuthUserId {

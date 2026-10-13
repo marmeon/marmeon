@@ -119,6 +119,7 @@ export default defineDocs({
         { slug: 'security', label: 'Security Overview' },
         { slug: 'authentication', label: 'Authentication' },
         { slug: 'two-factor-authentication', label: 'Two-Factor Authentication' },
+        { slug: 'passkeys', label: 'Passkeys' },
         { slug: 'authorization', label: 'Authorization' },
         { slug: 'verification', label: 'Email Verification' },
         { slug: 'passwords', label: 'Password Reset' },

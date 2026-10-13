@@ -53,6 +53,25 @@ declare module '@marmeon/database' {
       created_at: Timestamp;
     };
     /** Owned by `auth`. */
+    passkeys: {
+      id: Generated<number>;
+      user_id: number;
+      user_handle: string;
+      credential_id: string;
+      public_key: string;
+      algorithm: number;
+      sign_count: number;
+      transports: JsonColumn;
+      aaguid: string;
+      backup_eligible: boolean;
+      backed_up: boolean;
+      name: string;
+      last_used_at: Timestamp | null;
+      suspended_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `auth`. */
     password_reset_tokens: {
       email: string;
       token_hash: Secret<string>;
@@ -159,6 +178,9 @@ declare module '@marmeon/database' {
     login_activity: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    passkeys: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     personal_access_tokens: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -176,6 +198,7 @@ declare module '@marmeon/database' {
     };
     users: {
       login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
+      passkeys: { kind: 'hasMany'; table: 'passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       remember_tokens: { kind: 'hasMany'; table: 'remember_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
@@ -190,6 +213,7 @@ declare module '@marmeon/database' {
     jobs: 'system';
     login_activity: 'user-profile';
     notifications: 'system';
+    passkeys: 'auth';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
     profile_links: 'user-profile';

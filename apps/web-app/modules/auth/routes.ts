@@ -9,9 +9,19 @@ import { BeginTwoFactorController } from './controllers/BeginTwoFactorController
 import { ConfirmTwoFactorController } from './controllers/ConfirmTwoFactorController.ts';
 import { DisableTwoFactorController } from './controllers/DisableTwoFactorController.ts';
 import { LoginController } from './controllers/LoginController.ts';
+import { PasskeyChallengeController } from './controllers/PasskeyChallengeController.ts';
+import { PasskeyChallengeOptionsController } from './controllers/PasskeyChallengeOptionsController.ts';
+import { PasskeyRegistrationOptionsController } from './controllers/PasskeyRegistrationOptionsController.ts';
+import { PasskeySignInController } from './controllers/PasskeySignInController.ts';
+import { PasskeySignInOptionsController } from './controllers/PasskeySignInOptionsController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
 import { LogoutOtherDevicesController } from './controllers/LogoutOtherDevicesController.ts';
 import { RedirectToTwoFactorController } from './controllers/RedirectToTwoFactorController.ts';
+import { ReleasePasskeyController } from './controllers/ReleasePasskeyController.ts';
+import { RegisterPasskeyController } from './controllers/RegisterPasskeyController.ts';
+import { RemovePasskeyController } from './controllers/RemovePasskeyController.ts';
+import { RenamePasskeyController } from './controllers/RenamePasskeyController.ts';
+import { ShowPasskeysController } from './controllers/ShowPasskeysController.ts';
 import { RegenerateRecoveryCodesController } from './controllers/RegenerateRecoveryCodesController.ts';
 import { RegisterController } from './controllers/RegisterController.ts';
 import { ResendVerificationController } from './controllers/ResendVerificationController.ts';
@@ -49,6 +59,13 @@ export default defineRoutes((Route) => {
   // request per session at a time (block()): two codes at once could not both be counted.
   guests.get('/two-factor-challenge', ShowTwoFactorChallengeController).name('auth.two-factor.challenge');
   guests.post('/two-factor-challenge', TwoFactorChallengeController).name('auth.two-factor.challenge.store').block();
+  // Passkeys, the browser's way in: sign in with one alone, or prove one after the password. JSON in and out; the session's one challenge
+  // is opened by the options and spent by the answer, one request per session at a time (block()). Failures are throttled per address
+  // and account inside `Passkeys`; the options only get a loose limit against load.
+  guests.middleware(throttle('passkey-options')).post('/passkeys/sign-in/options', PasskeySignInOptionsController).name('auth.passkeys.sign-in.options');
+  guests.post('/passkeys/sign-in', PasskeySignInController).name('auth.passkeys.sign-in').block();
+  guests.middleware(throttle('passkey-challenge-options')).post('/two-factor-challenge/passkey/options', PasskeyChallengeOptionsController).name('auth.passkeys.challenge.options');
+  guests.post('/two-factor-challenge/passkey', PasskeyChallengeController).name('auth.passkeys.challenge').block();
   guests.get('/register', ShowRegisterController).name('auth.register');
   // A few sign-ups per minute and address — live validation of the form does not count.
   guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
@@ -97,6 +114,13 @@ export default defineRoutes((Route) => {
   // Only for sessions that proved a second factor within 15 minutes — an example of `twoFactor()`. An app chooses where to put it; nothing else
   // here requires a factor, and the framework never installs it by itself.
   confirmed.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 })).get('/settings/sensitive', ShowSensitiveController).name('auth.sensitive');
+  // Passkeys: sudo mode for all of it; adding one asks for the password again, removing the last factor too.
+  sudo.get('/settings/passkeys', ShowPasskeysController).name('auth.passkeys');
+  sudo.post('/settings/passkeys/options', PasskeyRegistrationOptionsController).name('auth.passkeys.options');
+  sudo.post('/settings/passkeys', RegisterPasskeyController).name('auth.passkeys.store').block();
+  sudo.put('/settings/passkeys/:passkey', RenamePasskeyController).name('auth.passkeys.update');
+  sudo.post('/settings/passkeys/:passkey/release', ReleasePasskeyController).name('auth.passkeys.release').block();
+  sudo.post('/settings/passkeys/:passkey/remove', RemovePasskeyController).name('auth.passkeys.destroy').block();
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');

@@ -190,9 +190,9 @@ describe('the layout of a docs page (server-rendered)', () => {
 });
 
 describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
-  it('lists the 75 pages in ten sections, in this order', () => {
+  it('lists the 76 pages in ten sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
-    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 5, 5, 11, 9, 13, 10, 7, 6, 3]);
+    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 5, 5, 11, 9, 13, 11, 7, 6, 3]);
     expect(ENTRIES[0]).toEqual({ slug: 'why-marmeon', label: 'Why Marmeon' });
     expect(ENTRIES[1]).toEqual({ slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true });
     expect(ENTRIES.filter((entry) => entry.file).map((entry) => [entry.slug, entry.file])).toEqual([
@@ -519,7 +519,7 @@ describe('the repository and docs.config.ts', () => {
 
   it('highlights every code block of every page with the stylesheet’s token classes (no inline colours left)', async () => {
     const docs = await new DocsRepository({ source: repo }).load();
-    expect(docs.pages().length).toBe(75);
+    expect(docs.pages().length).toBe(76);
     // Every colour of every page's code is one of TOKEN_CLASSES (styles/code.css has both themes for them).
     expect(JSON.stringify(docs.pages().map((page) => page.body))).not.toContain('style=');
   });

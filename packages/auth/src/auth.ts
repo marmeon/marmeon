@@ -57,6 +57,12 @@ export const SIGN_OUT_OTHER_DEVICES = Symbol('marmeon.auth.signOutOtherDevices')
 /** Counts a wrong second factor against the pending sign-in (package-internal): the failures so far, or `undefined` without one. The fifth drops it. */
 export const RECORD_PENDING_FAILURE = Symbol('marmeon.auth.recordPendingFailure');
 
+/**
+ * Signs in an account whose passkey was just verified, without a password (package-internal, for the passkeys service): the passkey
+ * with user verification is possession and inherence at once, so the session counts as having passed a second factor.
+ */
+export const SIGN_IN_VERIFIED = Symbol('marmeon.auth.signInVerified');
+
 const DROP_EXPIRED = Symbol('marmeon.auth.dropExpired');
 
 /** Wrong second factors a pending sign-in survives: the fifth ends it, and the password has to be typed again. */
@@ -251,6 +257,21 @@ export class Auth {
     if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return err({ kind: 'expired' });
     await (await this.#login(found, { remember: pending.remember }, pending.via)).announce();
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
+    return ok(found.user);
+  }
+
+  /**
+   * Signs in `verifiedUserId`, whose passkey was just checked for a passwordless sign-in. New session id and CSRF token as at any sign-in; a
+   * password sign-in that waits for a factor is dropped. `expired` when the account is gone. The password was not typed, so the session
+   * is not in the recent-password window (`confirmedPassword()` routes still ask for it).
+   * Invariant: the caller has proven a passkey of exactly this account, with user verification, a challenge used once.
+   */
+  async [SIGN_IN_VERIFIED](verifiedUserId: AuthUserId | string | number, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, { readonly kind: 'expired' }>> {
+    const found = await this.#users.findById(verifiedUserId as never);
+    if (!found) return err({ kind: 'expired' });
+    this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
+    await (await this.#login(found, { remember: options.remember === true }, 'passkey')).announce();
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
     return ok(found.user);
   }

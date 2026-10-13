@@ -308,6 +308,10 @@ rule, and a package of yours should too:
 3. A library whose instance or types the app must **share** stays a **peer dependency**: React, Vite, the OpenTelemetry API. A
    dependency would install a second copy, and the two would not see each other.
 
+Two decided exceptions keep a library as a dependency that rule 1 would not: `nodemailer` in `@marmeon/mail`, and
+`@simplewebauthn/server` in `@marmeon/auth`, whose passkey verification is security-critical and which only the `@marmeon/auth/passkeys`
+subpath loads.
+
 The framework packages you build on are a different case. List them as `dependencies` with a caret range of the version the app
 uses, as the framework's own packages list each other, so the package manager resolves them to the app's one copy. A range the
 app's version does not satisfy installs a second copy, whose `Router` and container tokens the app never sees.
