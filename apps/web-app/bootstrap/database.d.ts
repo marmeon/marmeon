@@ -118,6 +118,25 @@ declare module '@marmeon/database' {
       consumed_at: number | null;
     };
     /** Owned by `auth`. */
+    two_factor_authentications: {
+      id: Generated<number>;
+      user_id: number;
+      secret: Secret<string>;
+      confirmed_at: Timestamp | null;
+      last_used_step: number | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `auth`. */
+    two_factor_recovery_codes: {
+      id: Generated<number>;
+      user_id: number;
+      code_hash: Secret<string>;
+      used_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `auth`. */
     users: {
       id: Generated<number>;
       public_id: Generated<string>;
@@ -149,11 +168,19 @@ declare module '@marmeon/database' {
     remember_tokens: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    two_factor_authentications: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    two_factor_recovery_codes: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     users: {
       login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       remember_tokens: { kind: 'hasMany'; table: 'remember_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      two_factor_authentications: { kind: 'hasOne'; table: 'two_factor_authentications'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
+      two_factor_recovery_codes: { kind: 'hasMany'; table: 'two_factor_recovery_codes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
     };
   }
   interface TableOwners {
@@ -169,6 +196,8 @@ declare module '@marmeon/database' {
     remember_tokens: 'auth';
     sessions: 'system';
     temporary_uploads: 'system';
+    two_factor_authentications: 'auth';
+    two_factor_recovery_codes: 'auth';
     users: 'auth';
   }
   interface ExposedTables {

@@ -1,4 +1,4 @@
-import { Auth, UserProvider } from '@marmeon/auth';
+import { Auth, combineFactors, TwoFactorState, TwoFactorStore, UserProvider } from '@marmeon/auth';
 import { Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { LocalePreference } from '@marmeon/i18n';
@@ -9,6 +9,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(UserRepository);
     // Authentication finds users through the repository.
     container.bind(UserProvider, (c) => c.make(UserRepository));
+    // Accounts may set up a second factor: the authenticator app (its tables are in this module's migrations). Removing this
+    // binding switches two-factor authentication off for every account.
+    container.bind(TwoFactorState, (c) => combineFactors(c.make(TwoFactorStore)));
     // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @marmeon/i18n).
     container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await c.make(Auth).user())?.locale }));
   }

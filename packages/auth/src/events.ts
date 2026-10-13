@@ -147,3 +147,103 @@ export class PasswordReset {
     this.revokedTokens = revokedTokens;
   }
 }
+
+/** A second factor was turned on for the account (`TwoFactor.confirm()`). Queueable: `{ userId, factor }`. */
+export class TwoFactorEnabled {
+  static readonly event = 'auth.two-factor-enabled';
+  static readonly schema = v.object({ userId, factor: v.picklist(['totp', 'passkey']) });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly factor: 'totp' | 'passkey';
+
+  constructor(user: AuthUser, factor: 'totp' | 'passkey') {
+    this.user = user;
+    this.factor = factor;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/** A second factor was turned off: by the user (`TwoFactor.disable()`) or by the operator's reset command. Queueable: `{ userId, via }`. */
+export class TwoFactorDisabled {
+  static readonly event = 'auth.two-factor-disabled';
+  static readonly schema = v.object({ userId, via: v.picklist(['user', 'operator']) });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly via: 'user' | 'operator';
+
+  constructor(user: AuthUser, via: 'user' | 'operator' = 'user') {
+    this.user = user;
+    this.via = via;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/** New recovery codes were made (the first factor was turned on, or the user asked for new ones). Queueable: `{ userId }`. */
+export class RecoveryCodesGenerated {
+  static readonly event = 'auth.recovery-codes-generated';
+  static readonly schema = v.object({ userId });
+  readonly #event = true;
+  readonly user: AuthUser;
+
+  constructor(user: AuthUser) {
+    this.user = user;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/** A recovery code was spent to sign in; `remaining` are left. Queueable: `{ userId, remaining }`. */
+export class RecoveryCodeUsed {
+  static readonly event = 'auth.recovery-code-used';
+  static readonly schema = v.object({ userId, remaining: v.number() });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly remaining: number;
+
+  constructor(user: AuthUser, remaining: number) {
+    this.user = user;
+    this.remaining = remaining;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/**
+ * Someone with the right password gave a wrong second factor — for "was this you?" mails and audit logs. Queueable:
+ * `{ userId, at, ip, userAgent }` (`at` as an ISO-8601 string).
+ */
+export class TwoFactorChallengeFailed {
+  static readonly event = 'auth.two-factor-challenge-failed';
+  static readonly schema = v.object({
+    userId,
+    at: instant,
+    ip: v.nullable(v.string()),
+    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+  });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly at: Date;
+  readonly ip: string | null;
+  readonly userAgent: string | null;
+
+  constructor(user: AuthUser, at = new Date(), details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+    this.user = user;
+    this.at = at;
+    this.ip = details.ip ?? null;
+    this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}

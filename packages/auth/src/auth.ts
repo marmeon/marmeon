@@ -8,6 +8,7 @@ import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { RememberTokenStore } from './remember.ts';
+import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 // An optional peer: it only types a rate limiter's `ctx.user` (below) where the app has the cache — nothing of it is loaded.
 import type {} from '@marmeon/cache';
@@ -22,7 +23,58 @@ export const AUTH_SESSION_KEYS = {
   confirmedAt: '_auth_confirmed_at',
   /** Signed in by the remember-me cookie, not by a password. */
   viaRemember: '_auth_via_remember',
+  /** A correct password whose account still owes a second factor — not a sign-in (see {@link PendingSecondFactor}). */
+  pending: '_auth_pending',
+  /** When this session proved a second factor, in Unix seconds — for the middleware that asks for one. */
+  twoFactorAt: '_auth_two_factor_at',
 } as const;
+
+/** How long a correct password waits for the second factor, in seconds. */
+export const PENDING_SECONDS = 300;
+
+/**
+ * What the session keeps between the password and the second factor. It names the account, but nothing in the session
+ * signs anybody in until {@link COMPLETE_PENDING} has checked it again.
+ */
+export interface PendingSecondFactor {
+  readonly id: string | number;
+  /** The account's fingerprint at the password step: a new password or session key in between ends the wait. */
+  readonly fingerprint: string;
+  readonly remember: boolean;
+  readonly via: LoginVia;
+  /** Unix seconds. */
+  readonly until: number;
+  readonly failures: number;
+  readonly factors: readonly SecondFactor[];
+}
+
+/** Reads the pending state (package-internal, for `TwoFactor`): the account it names, and how often a factor failed. `undefined` when none waits or it ran out. */
+export const READ_PENDING = Symbol('marmeon.auth.readPending');
+
+/** Signs out every other device without a second password check (package-internal): `TwoFactor.confirm()` has checked the password itself. */
+export const SIGN_OUT_OTHER_DEVICES = Symbol('marmeon.auth.signOutOtherDevices');
+
+/** Counts a wrong second factor against the pending sign-in (package-internal): the failures so far, or `undefined` without one. The fifth drops it. */
+export const RECORD_PENDING_FAILURE = Symbol('marmeon.auth.recordPendingFailure');
+
+const DROP_EXPIRED = Symbol('marmeon.auth.dropExpired');
+
+/** Wrong second factors a pending sign-in survives: the fifth ends it, and the password has to be typed again. */
+export const PENDING_MAX_FAILURES = 5;
+
+/** What {@link READ_PENDING} hands out. */
+export interface PendingView {
+  readonly userId: string | number;
+  readonly factors: readonly SecondFactor[];
+  readonly failures: number;
+  readonly remember: boolean;
+}
+
+/** The way into the sign-in after the second factor — a package-internal key, so only `TwoFactor` can finish a pending sign-in. */
+export const COMPLETE_PENDING = Symbol('marmeon.auth.completePending');
+
+/** Why `attempt()` did not sign anybody in. `two-factor-required` is no failure: the password was right, and the sign-in waits for a factor (`auth.pendingSecondFactor()`). */
+export type AttemptError = { readonly kind: 'invalid-credentials' } | { readonly kind: 'two-factor-required'; readonly factors: readonly SecondFactor[] };
 
 declare module '@marmeon/session' {
   interface SessionData {
@@ -30,6 +82,8 @@ declare module '@marmeon/session' {
     _auth_password: string;
     _auth_confirmed_at: number;
     _auth_via_remember: boolean;
+    _auth_pending: PendingSecondFactor;
+    _auth_two_factor_at: number;
   }
 }
 
@@ -84,6 +138,7 @@ export class Auth {
   readonly #history: ClientHistory;
   readonly #request: RequestInfo;
   readonly #newPassword: NewPassword;
+  readonly #twoFactor: TwoFactorState;
   #user: Promise<AuthUser | undefined> | undefined;
 
   constructor(
@@ -99,6 +154,7 @@ export class Auth {
     history: ClientHistory,
     request: RequestInfo,
     newPassword: NewPassword,
+    twoFactor: TwoFactorState,
   ) {
     this.#session = session;
     this.#users = users;
@@ -112,26 +168,91 @@ export class Auth {
     this.#history = history;
     this.#request = request;
     this.#newPassword = newPassword;
+    this.#twoFactor = twoFactor;
   }
 
   /**
-   * Checks the credentials and signs the user in: `ok` with the user, or an `err` of kind `invalid-credentials`.
+   * Checks the credentials and signs the user in: `ok` with the user, or an `err` — `invalid-credentials`, or `two-factor-required`
+   * when the password was right but the account has a second factor (see {@link TwoFactorState}). Then nobody is signed in: the
+   * session waits for the factor (`pendingSecondFactor()`), and an app that does not handle that case shows a failed sign-in at worst.
    * See `docs/errors.md#results`. There is one kind for an unknown identifier, a wrong password and an
    * account without a password alike — in the same time (`dummyVerify`), so neither the answer nor its duration
    * tells which addresses have an account. Rehashes the password when the costs changed.
    */
-  async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<Result<AuthUser, { readonly kind: 'invalid-credentials' }>> {
+  async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<Result<AuthUser, AttemptError>> {
     const credentials = await this.#check(identifier, password);
     if (!credentials) return err({ kind: 'invalid-credentials' });
     // The fingerprint from the account as findById() sees it — what every later request compares with (the session key included).
-    await this.#login(await this.#credentials(credentials.user), options, 'attempt');
+    const current = await this.#credentials(credentials.user);
+    // The one fork for every password sign-in: an account with a factor is never signed in here, whatever the caller does with the err.
+    const factors = await this.#passwordSignIn(current, options, 'attempt');
+    if (factors.length > 0) return err({ kind: 'two-factor-required', factors });
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now()); // the password was just typed
     return ok(credentials.user);
   }
 
-  /** Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the current hash. */
-  async login(user: AuthUser, options: LoginOptions = {}): Promise<void> {
-    await this.#login(await this.#credentials(user), options, 'login');
+  /**
+   * Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the current hash. `'signed-in'`, or
+   * `'two-factor-required'` for an account with a second factor — then nobody is signed in, exactly as with `attempt()`.
+   */
+  async login(user: AuthUser, options: LoginOptions = {}): Promise<'signed-in' | 'two-factor-required'> {
+    const factors = await this.#passwordSignIn(await this.#credentials(user), options, 'login');
+    return factors.length > 0 ? 'two-factor-required' : 'signed-in';
+  }
+
+  /** The factors a sign-in waits for, or `undefined` when none waits (or it ran out). The waiting account is not signed in: `user()` is `undefined`. */
+  pendingSecondFactor(): { readonly factors: readonly SecondFactor[] } | undefined {
+    const pending = this.#pending();
+    return pending === undefined ? undefined : { factors: pending.factors };
+  }
+
+  /**
+   * The waiting sign-in, if it is still good: `undefined` without one, `'expired'` when it ran out or its account is gone or changed its
+   * password or session key since the password step (it is dropped then). Checked here, before any factor is looked at.
+   */
+  async [READ_PENDING](): Promise<PendingView | 'expired' | undefined> {
+    const pending = this.#pending();
+    if (pending === undefined) return this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending) ? this[DROP_EXPIRED]() : undefined;
+    const found = await this.#users.findById(pending.id as never);
+    if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return this[DROP_EXPIRED]();
+    return { userId: pending.id, factors: pending.factors, failures: pending.failures, remember: pending.remember };
+  }
+
+  [DROP_EXPIRED](): 'expired' {
+    this.#session.forget(AUTH_SESSION_KEYS.pending);
+    return 'expired';
+  }
+
+  [RECORD_PENDING_FAILURE](): number | undefined {
+    const pending = this.#pending();
+    if (pending === undefined) return undefined;
+    const failures = pending.failures + 1;
+    if (failures >= PENDING_MAX_FAILURES) this.#session.forget(AUTH_SESSION_KEYS.pending);
+    else this.#session.put(AUTH_SESSION_KEYS.pending, { ...pending, failures });
+    return failures;
+  }
+
+  /**
+   * Finishes a pending sign-in after the second factor of `verifiedUserId` was proven — package-internal (`TwoFactor` calls it). Checks it
+   * again: `no-challenge` without a pending sign-in, `expired` when it ran out, belongs to another account than the one that proved a
+   * factor, or the account is gone or changed its password or session key since the password step (the pending state is dropped then).
+   * Invariant: a factor proves the account it was checked for, never the one the session happens to wait for.
+   */
+  async [COMPLETE_PENDING](verifiedUserId: AuthUserId | string | number): Promise<Result<AuthUser, { readonly kind: 'no-challenge' } | { readonly kind: 'expired' }>> {
+    const pending = this.#pending();
+    if (pending === undefined) {
+      const stale = this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending);
+      if (stale) this.#session.forget(AUTH_SESSION_KEYS.pending);
+      return err({ kind: stale ? 'expired' : 'no-challenge' });
+    }
+    this.#session.forget(AUTH_SESSION_KEYS.pending);
+    if (String(pending.id) !== String(verifiedUserId)) return err({ kind: 'expired' });
+    const found = await this.#users.findById(pending.id as never);
+    if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return err({ kind: 'expired' });
+    await (await this.#login(found, { remember: pending.remember }, pending.via)).announce();
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
+    return ok(found.user);
   }
 
   /**
@@ -207,13 +328,22 @@ export class Auth {
    * other devices' remember-me tokens. `false` for a wrong password.
    */
   async logoutOtherDevices(password: string): Promise<boolean> {
-    const user = await this.#requireUser('logoutOtherDevices');
+    await this.#requireUser('logoutOtherDevices');
     if (!(await this.confirmPassword(password))) return false;
+    await this[SIGN_OUT_OTHER_DEVICES](password);
+    return true;
+  }
+
+  /**
+   * The signing out of `logoutOtherDevices()` for a caller that has just checked `password` itself: a new hash (the other sessions'
+   * fingerprints stop matching), the other devices' remember-me tokens gone, a new fingerprint for this session.
+   */
+  async [SIGN_OUT_OTHER_DEVICES](password: string): Promise<void> {
+    const user = await this.#requireUser('logoutOtherDevices');
     const hash = await this.#hasher.make(password);
     await this.#users.updatePasswordHash(idOf(user) as never, hash);
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
     this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(await this.#credentials(user)));
-    return true;
   }
 
   /**
@@ -260,25 +390,102 @@ export class Auth {
     return { ...found, passwordHash };
   }
 
-  async #login(credentials: Credentials, { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions, via: LoginVia): Promise<void> {
+  /**
+   * The fork of every password sign-in: the factors are read, an account with one is held back (`#hold`); else it is signed in. The
+   * factors are read once more when the session and the remember-me token exist: a factor switched on in between (the commit of
+   * `TwoFactor.confirm()` landing meanwhile) takes the sign-in back, token and cookie included. The factors that hold it, else none.
+   */
+  async #passwordSignIn(credentials: Credentials, options: LoginOptions, via: LoginVia): Promise<readonly SecondFactor[]> {
+    const id = idOf(credentials.user);
+    const factors = await this.#twoFactor.factors(id);
+    if (factors.length > 0) {
+      this.#hold(credentials, factors, options, via);
+      return factors;
+    }
+    const signedIn = await this.#login(credentials, options, via);
+    try {
+      const after = await this.#twoFactor.factors(id);
+      if (after.length === 0) {
+        await signedIn.announce(); // only a sign-in that stays is announced: no listener sees one that is taken back
+        return [];
+      }
+      // Taken back first, synchronously, then the token is forgotten: whatever fails later, nobody stays signed in.
+      this.#hold(credentials, after, options, via);
+      this.#cookies.delete(this.#config.rememberCookie);
+      if (signedIn.token !== undefined) await this.#remember.forget(signedIn.token);
+      return after;
+    } catch (error) {
+      // Fail closed: an error here (the second read of the factors, the removal of the token) must not leave the sign-in standing.
+      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt);
+      this.#user = Promise.resolve(undefined);
+      this.#cookies.delete(this.#config.rememberCookie);
+      // A token that cannot be removed now is refused later by its date, once the factor is committed (`enabledSince`).
+      if (signedIn.token !== undefined) await this.#remember.forget(signedIn.token).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Signs in. The remember-me token it made, if any (the cookie value), and `announce()`, which dispatches the `Login` event — the caller's to call once the sign-in stands. */
+  async #login(
+    credentials: Credentials,
+    { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions,
+    via: LoginVia,
+  ): Promise<{ readonly token: string | undefined; announce(): Promise<void> }> {
     const { user } = credentials;
     const viaRemember = via === 'remember';
     // A session id (and CSRF token) handed out before login must not survive it: session fixation.
     this.#session.regenerate();
+    this.#session.forget(AUTH_SESSION_KEYS.pending);
+    this.#session.forget(AUTH_SESSION_KEYS.twoFactorAt);
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
     this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(credentials));
     if (viaRemember) this.#session.put(AUTH_SESSION_KEYS.viaRemember, true);
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
+    let token: string | undefined;
     if (remember && !viaRemember) {
       const expiresAt = new Date(Date.now() + this.#config.rememberDays * 86_400_000);
       await this.#forgetDevice(); // one token per device
-      this.#setCookie(await this.#remember.create(idOf(user), expiresAt), expiresAt);
+      token = await this.#remember.create(idOf(user), expiresAt);
+      this.#setCookie(token, expiresAt);
     }
     this.#user = Promise.resolve(user);
     // Another person may sit at this browser now: pages kept from before the sign-in must not come back.
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
-    await this.#events.dispatch(new Login(user, remember || viaRemember, new Date(), { via, ip, userAgent }));
+    const at = new Date();
+    return { token, announce: () => this.#events.dispatch(new Login(user, remember || viaRemember, at, { via, ip, userAgent })) };
+  }
+
+  /**
+   * Parks a correct password: a new session id (as at sign-in), every sign-in key gone, only {@link PendingSecondFactor} left.
+   * Invariant: no `Login` event, no remember-me token or cookie, no `_auth_id` — the account is not signed in until a factor is proven.
+   */
+  #hold(credentials: Credentials, factors: readonly SecondFactor[], { remember = false }: LoginOptions, via: LoginVia): void {
+    this.#session.regenerate();
+    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt] as const) {
+      this.#session.forget(key);
+    }
+    this.#session.put(AUTH_SESSION_KEYS.pending, {
+      id: idOf(credentials.user),
+      fingerprint: sessionFingerprint(credentials),
+      remember,
+      via,
+      until: now() + PENDING_SECONDS,
+      failures: 0,
+      factors,
+    });
+    this.#user = Promise.resolve(undefined);
+    // Pages of the person before may still be in the browser; the next person is at the keyboard (as at sign-in).
+    this.#history.clear();
+  }
+
+  /** The pending sign-in if it is well-formed and has not run out; anything else counts as none. */
+  #pending(): PendingSecondFactor | undefined {
+    if (!this.#session.started) return undefined;
+    const pending = this.#session.get(AUTH_SESSION_KEYS.pending);
+    if (typeof pending !== 'object' || pending === null || typeof pending.until !== 'number' || pending.until <= now()) return undefined;
+    if (!Array.isArray(pending.factors) || typeof pending.fingerprint !== 'string') return undefined;
+    return pending;
   }
 
   async #resolve(): Promise<AuthUser | undefined> {
@@ -316,8 +523,18 @@ export class Auth {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
+    // A token made before the account's second factor existed proved none (a sign-in racing the activation can make one): refused.
+    const since = await this.#twoFactor.enabledSince(device.userId);
+    if (since !== undefined && device.createdAt.getTime() <= since.getTime()) {
+      await this.#remember.forget(device.cookie ?? cookie);
+      this.#cookies.delete(this.#config.rememberCookie);
+      return undefined;
+    }
     if (device.cookie) this.#setCookie(device.cookie, device.expiresAt);
-    await this.#login(found, {}, 'remember');
+    await (await this.#login(found, {}, 'remember')).announce();
+    // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
+    // when it is turned on), so this device has proven it too.
+    if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
     return found.user;
   }
 

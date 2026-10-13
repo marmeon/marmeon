@@ -1,11 +1,13 @@
 import type { Container } from '@marmeon/core';
 import { AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 import { AccessTokenStore } from './tokens.ts';
+import { hotp, base32Decode, totpStep } from './two-factor/totp.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /**
  * Session data that signs `user` in, exactly as a login would leave it — what `actingAs(user)` of
- * @marmeon/testing starts a request with.
+ * @marmeon/testing starts a request with. It skips two-factor authentication on purpose: a test that acts as a user
+ * gets a signed-in session whether or not the account has a second factor (test the challenge by signing in for real).
  */
 export async function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>> {
   const id = idOf(user);
@@ -18,4 +20,11 @@ export async function authenticatedSession(container: Container, user: AuthUser)
 export async function authenticatedToken(container: Container, user: AuthUser, abilities: readonly string[] = ['*']): Promise<string> {
   const { plainText } = await container.createScope().make(AccessTokenStore).create(idOf(user), 'test', { abilities });
   return plainText;
+}
+
+/** The code an authenticator app shows for `secret` (the key `TwoFactor.begin()` hands out) at `at` — for tests that sign in with a second factor. */
+export function twoFactorCode(secret: string, at: Date = new Date()): string {
+  const key = base32Decode(secret);
+  if (key === undefined || key.length === 0) throw new Error('twoFactorCode() needs the Base32 key TwoFactor.begin() returned (the "secret" field).');
+  return hotp(key, totpStep(at));
 }

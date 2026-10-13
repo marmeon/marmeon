@@ -185,6 +185,11 @@ export class LoginController extends Controller {
     }
     const signedIn = await this.#auth.attempt(email, password, { remember });
     if (!signedIn.ok) {
+      // The password was right, but the account has a second factor: nobody is signed in yet, the code comes next.
+      if (signedIn.error.kind === 'two-factor-required') {
+        await this.#limiter.clear(key);
+        return this.redirect().route('auth.two-factor.challenge');
+      }
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
     await this.#limiter.clear(key);
@@ -194,9 +199,15 @@ export class LoginController extends Controller {
 ```
 
 `attempt(identifier, password, { remember })` returns a [`Result`](errors.md#results): `ok` with the user, or an `err` of kind
-`invalid-credentials`. There is only that one kind: an unknown address, a wrong password and an account without a password give the
-same answer in the same time: for an unknown address, the hasher spends as long on a check that always fails. Neither the answer
-nor its duration tells a stranger which addresses have an account. When the stored hash was made with other costs than the
+`invalid-credentials` or `two-factor-required`. An unknown address, a wrong password and an account without a password all give
+`invalid-credentials`, the same answer in the same time: for an unknown address, the hasher spends as long on a check that always
+fails. Neither the answer nor its duration tells a stranger which addresses have an account.
+
+`two-factor-required` comes only after a correct password, for an account that set up a [second
+factor](two-factor-authentication.md). Nobody is signed in then: no `Login` event, no remember-me cookie, `auth.user()` is
+`undefined`. The session keeps the right password for five minutes, `auth.pendingSecondFactor()` names the factors it waits for,
+and the error carries them as `factors`. Redirect to the page that asks for the code. An app that ignores the case still signs
+nobody in. Without a source of factors bound (see [Setting up](two-factor-authentication.md#setting-up)) the case never happens. When the stored hash was made with other costs than the
 configured ones, `attempt()` hashes the password again and stores the new hash. It also notes the time, so the password counts as
 just confirmed for [sudo mode](#sudo-mode).
 
@@ -204,8 +215,10 @@ The limit is counted before the password is checked, in one atomic step: guesses
 it. Five failed attempts a minute for one address from one client lock it for the rest of the minute. The
 [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
-`login(user)` signs a user in without a password, for example right after a registration. Both methods do the same to the
-session:
+`login(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or
+`'two-factor-required'` for an account with a second factor: that account is not signed in, exactly as with `attempt()`. A
+registration signs in a new account, which has no second factor, so its result needs no handling there. Both methods do the same
+to the session:
 
 - **A new session.** The session gets a new id and a new CSRF token, and keeps its data. An id handed out before the sign-in signs
   nobody in: this stops session fixation.
@@ -268,7 +281,7 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
-To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`.
+To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it.
 
 ## Sudo mode
 
@@ -534,6 +547,7 @@ running during a sign-out brings the signed-in cookie back with its answer, and 
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
+| `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |
 
 `Failed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
 it tells whether the address has an account. The `ip` and `userAgent` of `Login` are the request's, the address resolved through
@@ -576,6 +590,7 @@ listeners.
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |
 | `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |
+| `APP_NAME` | none | The app's name shown by authenticator apps next to the code. Two-factor setup needs it. See [two-factor authentication](two-factor-authentication.md#setting-up). |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password, set by the user or by a reset, revokes every API token of the user. Only `true` and `false` start. See [API tokens](api-tokens.md#revoking-every-token-with-a-new-password). |
 
 The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its

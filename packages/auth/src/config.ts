@@ -37,11 +37,14 @@ export const AuthConfig = defineConfig('auth', {
      * it expires or is revoked. Only `true` and `false` start; empty counts as unset.
      */
     AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: env.in(['true', 'false']).default('false'),
+    /** The app's name — the issuer authenticator apps show for the second factor (`TwoFactor.begin()`). */
+    APP_NAME: env.string().optional(),
     NODE_ENV: env.string().optional(),
   }),
   resolve: (e) => ({
     rememberDays: e.AUTH_REMEMBER_DAYS,
     rememberCookie: e.AUTH_REMEMBER_COOKIE,
+    appName: e.APP_NAME,
     passwordTimeout: e.AUTH_PASSWORD_TIMEOUT,
     resetExpire: e.AUTH_RESET_EXPIRE,
     resetThrottle: e.AUTH_RESET_THROTTLE,
