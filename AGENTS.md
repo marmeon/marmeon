@@ -32,7 +32,11 @@ the same time — they share their databases.
   messages. Details: CONTRIBUTING.md › "Rules over the source".
 - **Bundle-size limits only go down** (`packages/react/size-budget.json`).
 - **Public API, env default or command changed** → its page under `docs/` in the same commit; a change an app can notice
-  → a changeset, from the first release (0.1.0) on — none before it.
+  a breaking change → its entry in `UPGRADING.md`, written when the release is prepared (`pnpm release:prepare`); say in the PR
+  description what an app has to do.
+- **Pull requests**: one change, the title in commit-subject style (it becomes the release note), exactly one release label
+  (`breaking`/`feature`/`fix`/`docs`/`internal`, set by a maintainer). No changelog entries, no CHANGELOG edits.
+  Details: CONTRIBUTING.md › "Pull requests and releases".
 - English everywhere; commit subjects in the imperative, saying what the change does.
 
 ## Comments

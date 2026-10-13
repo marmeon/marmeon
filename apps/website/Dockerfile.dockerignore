@@ -21,7 +21,6 @@ apps/blank-app/**
 .github
 .claude
 .idea
-.changeset
 deploy
 coverage
 **/*.log

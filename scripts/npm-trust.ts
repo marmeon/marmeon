@@ -4,7 +4,7 @@
  * runs it from CI.
  *
  *   node scripts/npm-trust.ts            # write scripts/npm-trust.sh
- *   node scripts/npm-trust.ts --check    # exit 1 when the file is not what the package list makes (check-changesets runs this)
+ *   node scripts/npm-trust.ts --check    # exit 1 when the file is not what the package list makes (check-release runs this)
  *
  * Each package trusts `.github/workflows/release.yml` of `marmeon/marmeon` for **staged** publishing only
  * (`--allow-stage-publish`, never `--allow-publish`): the workflow can stage a version, a maintainer approves it with 2FA.

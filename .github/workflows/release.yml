@@ -1,22 +1,36 @@
-# Releases: Changesets with one fixed group, published by pnpm with trusted publishing — and never live without a maintainer.
+# Releases: started by hand, staged by pnpm with trusted publishing — and never live without a maintainer.
 #
-#   push to main with changesets   → "version": the Version packages pull request (changeset version — the versions and changelogs)
-#   push to main without changesets, with versions npm does not have yet (the merged pull request)
-#                                  → "publish": the checks, then `pnpm stage publish -r` — every package is STAGED on npm (OIDC, no
-#                                    token anywhere; provenance from this workflow). Nothing is public until a maintainer approves
-#                                    the staged versions on npmjs.com with two-factor authentication (npm stage approve). The
-#                                    trusted-publisher configuration of every package allows staging only (scripts/npm-trust.sh).
-#                                    The run also tags the release (the per-package tags and v<version>) and drafts its GitHub Release —
-#                                    a draft, never public: the maintainer publishes it after approving on npm.
-#   otherwise                      → "none"
+# Start it with "Run workflow" from `main` (any version above npm's latest) or from a maintenance branch (`0.<minor>.x` below 1.0,
+# `<major>.x` from 1.0 on) for a late fix of an older line. Anyone with write access can start it; the gate is the maintainer's
+# two-factor approval on npmjs.com, not who clicks. The file runs from the branch head, but what it builds, stages, tags and drafts
+# is the release commit: the branch's last change to the changelogs or to .github/release-base (the merged release pull request of
+# `pnpm release:prepare`). Later merges go into the next release.
 #
-# scripts/check-changesets.ts (a part of `pnpm run ci`) checks this file: id-token only where the packages are staged, no npm
-# publish, no token, the checks before staging, a GitHub Release only as a draft.
+# Two jobs, so that no step ever holds the OIDC token and the write token together:
+#
+#   stage    (id-token: write, contents: read) — runs the repository's scripts
+#     1. scripts/release-guard.ts, before anything is installed: the branch, the release commit (checked out, detached — every later
+#        step works on it and none may switch away), one version, v<version> not tagged, the version on no package of npm, the
+#        release base, and the dist-tag (`latest`, or `latest-<line>` for a late fix of an older line).
+#     2. The checks: a clean build, the content rules, publint, attw, the release rules. No cache is restored: a store written by
+#        another workflow could carry code into this job.
+#     3. `pnpm stage publish -r` with that dist-tag — every package is STAGED on npm (OIDC, no token anywhere; provenance from this
+#        workflow). Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor authentication
+#        (npm stage approve). The trusted-publisher configuration of every package allows staging only (scripts/npm-trust.sh).
+#   release  (contents: write, no id-token) — installs nothing and runs no repository code but the notes script
+#     4. The tag v<version> on the release commit, and a draft GitHub Release with the notes of the changelog — a draft, never
+#        public: the maintainer publishes it after approving on npm.
+#
+# Never start it again after a run that staged: the tag guard only helps once the tag exists, and a staged version is invisible to
+# `npm view`. What to do with a failed or rejected run: CONTRIBUTING.md › "Pull requests and releases" › "When a run fails".
+#
+# scripts/check-release.ts (a part of `pnpm run ci`) checks this file as a review aid, not as a barrier: dispatch only, the
+# guard first and nothing switching away from the release commit after it, id-token only where the packages are staged, the write
+# token only in the release job's last two steps, no npm publish, no token, no cache, a GitHub Release only as a draft, no
+# expression inside a script.
 name: Release
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -27,87 +41,89 @@ permissions:
   contents: read
 
 jobs:
-  mode:
-    name: select the mode
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      mode: ${{ steps.select.outputs.mode }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6.1.0
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - id: select
-        uses: changesets/action/select-mode@v2
-
-  version:
-    name: Version packages pull request
-    needs: mode
-    if: needs.mode.outputs.mode == 'version'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write # the version commit on the pull request's branch
-      pull-requests: write # the pull request
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6.1.0
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: changesets/action/version@v2
-        with:
-          script: pnpm run release:version
-          commit-message: Version packages
-          pr-title: Version packages
-
-  publish:
+  stage:
     name: stage the packages on npm
-    needs: mode
-    if: needs.mode.outputs.mode == 'publish'
     # Trusted publishing needs a GitHub-hosted runner.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write # the release's git tags and its draft GitHub Release
+      contents: read
       id-token: write # OIDC: trusted publishing and provenance
+    outputs:
+      commit: ${{ steps.guard.outputs.commit }}
+      version: ${{ steps.guard.outputs.version }}
+      latest: ${{ steps.guard.outputs.latest }}
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6.1.0
+        with:
+          fetch-depth: 0 # the guard finds the release commit and the previous tag in the history
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+      # Checks out the release commit (detached); every step below works on it. Imports node:* only: it runs before any install.
+      - id: guard
+        run: node scripts/release-guard.ts
       - run: pnpm install --frozen-lockfile
       # The tarballs as they will be staged: a clean build, the content rules, publint, attw — and the release rules.
-      - run: pnpm run ci --only build,pack:check,check-changesets
-      # Staged, not published: every package waits for a maintainer's approval with 2FA on npmjs.com.
-      - run: pnpm run release:stage
-      - name: tag the release
+      - run: pnpm run ci --only build,pack:check,check-release
+      # Staged, not published: every package waits for a maintainer's approval with 2FA on npmjs.com. pnpm's git checks want a
+      # branch; the guard has checked the release commit instead, and the tree must still be exactly that commit.
+      - name: stage the packages
+        env:
+          COMMIT: ${{ steps.guard.outputs.commit }}
+          DIST_TAG: ${{ steps.guard.outputs.dist-tag }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          # The checkout has no tags: without them a rerun would tag again and its push would be rejected.
-          git fetch --tags --force origin
-          pnpm changeset git-tag
-          version=$(node -p "require('./packages/core/package.json').version")
-          git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || git tag -a "v$version" -m "v$version"
-          git push origin --tags
-      # A draft: it becomes public only when the maintainer publishes it, after approving the staged versions on npm.
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          status=$(git status --porcelain)
+          test -z "$status"
+          pnpm run release:stage --no-git-checks --tag "$DIST_TAG"
+
+  release:
+    name: tag and draft the release
+    needs: stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the tag and the draft GitHub Release
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.stage.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - name: tag the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.stage.outputs.version }}
+          COMMIT: ${{ needs.stage.outputs.commit }}
+        run: |
+          set -o pipefail
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          # A re-run of this job (after a failed draft) finds its own tag: the same commit is fine, another one is not.
+          existing=$(git ls-remote origin "refs/tags/v$VERSION^{}" | cut -f1)
+          if [ -z "$existing" ]; then existing=$(git ls-remote origin "refs/tags/v$VERSION" | cut -f1); fi
+          if [ -z "$existing" ]; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' tag -a "v$VERSION" -m "v$VERSION" "$COMMIT"
+            encoded=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+            echo "::add-mask::$encoded"
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $encoded" push origin "refs/tags/v$VERSION"
+          elif [ "$existing" = "$COMMIT" ]; then
+            echo "::notice::v$VERSION is already tagged on $COMMIT"
+          else
+            echo "::error::v$VERSION already points to $existing, not to the release commit $COMMIT"
+            exit 1
+          fi
+      # A draft: it becomes public only when the maintainer publishes it, after approving the staged versions on npm. The tag binds
+      # it to the release commit; it is the latest release only when the version is above npm's latest.
       - name: draft the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.stage.outputs.version }}
+          LATEST: ${{ needs.stage.outputs.latest }}
         run: |
-          version=$(node -p "require('./packages/core/package.json').version")
-          if gh release view "v$version" > /dev/null 2>&1; then
-            echo "The release v$version exists already."
-            exit 0
-          fi
-          node scripts/release-notes.ts "$version" > "$RUNNER_TEMP/release-notes.md"
-          gh release create "v$version" --draft --verify-tag --title "v$version" --notes-file "$RUNNER_TEMP/release-notes.md"
+          node scripts/release-notes.ts "$VERSION" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --latest="$LATEST"

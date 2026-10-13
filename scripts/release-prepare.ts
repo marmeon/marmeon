@@ -1,0 +1,323 @@
+/**
+ * `pnpm release:prepare` — turns the pull requests merged since the last tag into the next version: every published
+ * `package.json`'s `version`, the same `## <version>` section on top of every `CHANGELOG.md` and, for a breaking release, the
+ * heading of its `UPGRADING.md` section. It changes files only; the maintainer commits them as the release pull request.
+ *
+ *   pnpm release:prepare             # write the files and print the next steps
+ *   pnpm release:prepare --dry-run   # print the version and the section, write nothing
+ *
+ * It can run again for the same version as long as `v<version>` is not tagged: the section is made anew from the last tag to
+ * `HEAD`, so a fix merged after the release pull request goes into a second, small one. See CONTRIBUTING.md, "Pull requests and
+ * releases". Imports nothing but `node:*` and the neighbouring scripts.
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { REPOSITORY } from './npm-trust.ts';
+import { frameworkPackages } from './packages.ts';
+import {
+  type Bump,
+  bumpFor,
+  bumpVersion,
+  CATEGORIES,
+  compareVersions,
+  formatReleaseBase,
+  formatChangelog,
+  isBreakingRelease,
+  type Label,
+  lineOf,
+  maintenanceLine,
+  MAIN,
+  parseChangelog,
+  parseReleaseBase,
+  parseVersion,
+  RELEASE_BASE,
+  releaseCommit,
+  type Runner,
+  spawnRunner,
+  UNLABELLED,
+} from './release-rules.ts';
+
+export interface Notes {
+  /** The bullet lines (without their marker) per titled category. */
+  readonly entries: Map<Label, string[]>;
+  /** Pull requests GitHub could not sort into a category. */
+  readonly unlabelled: string[];
+  readonly contributors: string[];
+  /** The whole `**Full Changelog**: …` line. */
+  readonly fullChangelog?: string;
+}
+
+const NEW_CONTRIBUTORS = 'New Contributors';
+
+/**
+ * Reads the Markdown GitHub's `generate-notes` returns for the categories of `.github/release.yml`; anything else throws. Only the
+ * comment line GitHub puts first is dropped: a pull request title may contain `<!--` or `-->` and must not delete lines around it.
+ */
+export function parseNotes(body: string): Notes {
+  const entries = new Map<Label, string[]>();
+  const unlabelled: string[] = [];
+  const contributors: string[] = [];
+  let fullChangelog: string | undefined;
+  let target: string[] | undefined;
+  let heading: string | undefined;
+  for (const raw of body.replace(/^\s*<!--[^\n]*-->\s*\n/, '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === '') continue;
+    const bullet = /^[*-] (.+)$/.exec(line);
+    const section = /^(#{2,3}) (.+)$/.exec(line);
+    if (section) {
+      const [, hashes, title] = section as unknown as [string, string, string];
+      heading = line;
+      target = undefined;
+      if (hashes === '##') {
+        if (title === NEW_CONTRIBUTORS) target = contributors;
+        else if (title !== "What's Changed") throw new Error(`Unexpected heading in the generated notes: "${line}".`);
+      } else if (title === UNLABELLED) target = unlabelled;
+      else {
+        const category = CATEGORIES.find((candidate) => candidate.title === title);
+        if (!category) throw new Error(`Unknown category in the generated notes: "${line}" — does .github/release.yml on the branch match scripts/release-rules.ts?`);
+        const list: string[] = [];
+        entries.set(category.label, list);
+        target = list;
+      }
+    } else if (bullet) {
+      if (!target) {
+        throw new Error(`A pull request outside any category in the generated notes: "${line}"${heading ? ` (under "${heading}")` : ''} — is .github/release.yml pushed to the branch?`);
+      }
+      target.push(bullet[1]!);
+    } else if (line.startsWith('**Full Changelog**:')) fullChangelog = line;
+    else throw new Error(`Unexpected line in the generated notes: "${line}".`);
+  }
+  return { entries, unlabelled, contributors, fullChangelog };
+}
+
+/**
+ * A pull request title is text: `<!--` in it would hide the rest of the changelog, so no raw `<` reaches the section. Inside a code
+ * span (`<Form>`) it stays readable, unless the span holds a comment opener: a stray backtick may make the span a literal one.
+ */
+function escapeHtml(line: string): string {
+  return line
+    .split(/(`[^`]*`)/)
+    .map((part, index) => (index % 2 === 1 && !part.includes('<!--') ? part : part.replace(/</g, '&lt;')))
+    .join('');
+}
+
+/** The Markdown under `## <version>`: the categories in `CATEGORIES` order, then the new contributors and the compare link. */
+export function sectionBody(notes: Notes): string {
+  const blocks: string[] = [];
+  for (const category of CATEGORIES) {
+    const lines = notes.entries.get(category.label);
+    if (category.title !== undefined && lines && lines.length > 0) blocks.push(`### ${category.title}\n\n${lines.map((line) => `- ${escapeHtml(line)}`).join('\n')}`);
+  }
+  if (notes.contributors.length > 0) blocks.push(`### New contributors\n\n${notes.contributors.map((line) => `- ${escapeHtml(line)}`).join('\n')}`);
+  if (notes.fullChangelog) blocks.push(notes.fullChangelog);
+  return blocks.join('\n\n');
+}
+
+export interface PrepareOptions {
+  readonly root: string;
+  readonly run: Runner;
+  readonly dryRun: boolean;
+  readonly log: (line: string) => void;
+}
+
+export interface Prepared {
+  readonly version: string;
+  readonly previous: string;
+  readonly bump: Bump;
+  readonly section: string;
+}
+
+const UPGRADING_HEADING = /^## Upgrading to (\d+\.\d+\.\d+) from (\d+\.\d+\.\d+)[ \t]*$/gm;
+
+/** `Title by @user in https://…/pull/12` → `#12 Title`; a line of another shape stays as it is. */
+function pullRequest(line: string): string {
+  const match = /^(.*) by @\S+ in \S*\/pull\/(\d+)$/.exec(line);
+  // `--`, `<` and `>` in a title would end or open an HTML comment early.
+  return (match ? `#${match[2]} ${match[1]}` : line).replace(/-{2,}/g, '-').replace(/</g, '&lt;').replace(/>/g, '');
+}
+
+/** Prepares the release of the pull requests merged since the last tag; throws an `Error` saying what to do when it must not. */
+export function prepare({ root, run, dryRun, log }: PrepareOptions): Prepared {
+  const git = (...args: string[]) => run('git', args);
+  const fail = (message: string): never => {
+    throw new Error(message);
+  };
+
+  if (git('status', '--porcelain').stdout.trim() !== '') fail('The working tree is not clean: commit or stash your changes first.');
+  const branch = git('branch', '--show-current').stdout.trim();
+  const branchLine = maintenanceLine(branch);
+  if (branch !== MAIN && branchLine === undefined) fail(`Releases are prepared on main or on a maintenance branch such as 0.1.x, not on "${branch}".`);
+  const fetched = git('fetch', 'origin', '--tags');
+  if (fetched.status !== 0) fail(`git fetch origin --tags failed: ${fetched.stderr.trim()}`);
+  const head = git('rev-parse', 'HEAD').stdout.trim();
+  const remote = git('rev-parse', `origin/${branch}`);
+  if (remote.status !== 0 || remote.stdout.trim() !== head) {
+    fail(`HEAD is not origin/${branch}: pull or push first — the release notes are generated from the pushed branch.`);
+  }
+
+  const described = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*');
+  const previous = described.status === 0 ? described.stdout.trim().slice(1) : '';
+  if (!parseVersion(previous)) fail(`No release tag v<x.y.z> is reachable from ${branch}${described.stderr ? `: ${described.stderr.trim()}` : ''}.`);
+
+  const packages = frameworkPackages(root);
+  const versions = new Set(packages.map((pkg) => pkg.manifest.version));
+  if (versions.size !== 1) fail(`The packages do not share one version: ${[...versions].join(', ')}.`);
+  const current = [...versions][0]!;
+  if (!parseVersion(current)) fail(`The packages' version "${current}" is not a plain x.y.z version.`);
+  const order = compareVersions(current, previous);
+  if (order < 0) fail(`The packages are at ${current}, below the last tag v${previous}.`);
+  if (order > 0) {
+    const tagged = git('ls-remote', '--tags', 'origin', `refs/tags/v${current}`);
+    if (tagged.status !== 0) fail(`Could not ask origin for the tag v${current}: ${tagged.stderr.trim()}`);
+    if (tagged.stdout.trim() !== '') fail(`v${current} is tagged on origin, but ${branch} does not reach it: git fetch origin --tags, or merge the branch that released it.`);
+  }
+
+  const generate = (tag: string): Notes => {
+    const result = run('gh', [
+      'api', '--method', 'POST', `repos/${REPOSITORY}/releases/generate-notes`,
+      '-f', `tag_name=v${tag}`, '-f', `target_commitish=${branch}`, '-f', `previous_tag_name=v${previous}`, '--jq', '.body',
+    ]);
+    if (result.status !== 0) fail(`gh api generate-notes failed: ${result.stderr.trim()}`);
+    return parseNotes(result.stdout);
+  };
+  /** Refuses what the notes cannot ship; returns the bump they ask for. */
+  const judge = (candidate: Notes) => {
+    if (candidate.unlabelled.length > 0) {
+      fail(`Label these pull requests (breaking, feature, fix, docs or internal) and run this again:\n${candidate.unlabelled.map((line) => `  - ${line}`).join('\n')}`);
+    }
+    const found = candidate.entries.get('breaking') ?? [];
+    if (![...candidate.entries.values()].some((lines) => lines.length > 0)) fail(`Nothing to release since v${previous}: no merged pull request carries a release label.`);
+    if (branchLine !== undefined && found.length > 0) {
+      fail(`${branch} releases ${branchLine} fixes only, but these pull requests are breaking:\n${found.map((line) => `  - ${line}`).join('\n')}`);
+    }
+    return bumpFor(previous, { breaking: found.length > 0, feature: (candidate.entries.get('feature') ?? []).length > 0 });
+  };
+  let notes = generate(bumpVersion(previous, 'patch'));
+  const bump = judge(notes);
+  const version = bumpVersion(previous, bump);
+  if (branchLine !== undefined && lineOf(version) !== branchLine) fail(`${version} is not a ${branchLine} version: ${branch} releases its own line only.`);
+  // The compare link in the notes names the tag the release will get; a pull request labelled in between must not change the answer.
+  if (version !== bumpVersion(previous, 'patch')) {
+    notes = generate(version);
+    if (judge(notes) !== bump) fail('The labels changed while the notes were generated: run this again.');
+  }
+  const breaking = notes.entries.get('breaking') ?? [];
+  const features = notes.entries.get('feature') ?? [];
+  if (git('tag', '--list', `v${version}`).stdout.trim() !== '') {
+    fail(`v${version} is already tagged (a maintenance release of that line?): git fetch origin --tags, merge or rebase the branch that released it, then run this again.`);
+  }
+  const body = sectionBody(notes);
+
+  const breakingRelease = isBreakingRelease(version);
+  const upgradingFile = join(root, 'UPGRADING.md');
+  const upgrading = existsSync(upgradingFile) ? readFileSync(upgradingFile, 'utf8') : undefined;
+  let hasUpgradingSection = false;
+  for (const match of upgrading?.matchAll(UPGRADING_HEADING) ?? []) {
+    if (match[1] === version) hasUpgradingSection = true;
+    else if (compareVersions(match[1]!, previous) > 0) {
+      fail(`UPGRADING.md has "${match[0]}", but this preparation makes ${version}: move its entries into the section of ${version} by hand, then delete it.`);
+    }
+  }
+
+  const changelogs = packages.map((pkg) => {
+    const file = join(pkg.dir, 'CHANGELOG.md');
+    return { pkg, file, changelog: parseChangelog(existsSync(file) ? readFileSync(file, 'utf8') : `# ${pkg.name}\n\n`) };
+  });
+  const existing = changelogs.map(({ changelog }) => changelog.sections.find((section) => section.version === version)?.body.trim());
+  const baseFile = join(root, RELEASE_BASE);
+  const baseText = formatReleaseBase(version, head);
+  if (existing.every((text) => text === body)) {
+    // The same notes: only a base that no merged release commit has used yet is worth a new release pull request.
+    const recorded = existsSync(baseFile) ? parseReleaseBase(readFileSync(baseFile, 'utf8')) : undefined;
+    let ready = false;
+    try {
+      ready = recorded?.version === version && git('rev-parse', `${releaseCommit(run)}^1`).stdout.trim() === recorded.commit;
+    } catch {
+      // No release commit yet: nothing is ready.
+    }
+    if (ready) fail(`Nothing new since the last preparation of ${version} — the release commit on ${branch} is ready: start the Release workflow.`);
+  }
+
+  const unreachable =
+    branch === MAIN
+      ? git('tag', '--list', 'v[0-9]*', '--no-merged', 'HEAD').stdout.split('\n').map((tag) => tag.trim()).filter((tag) => parseVersion(tag.slice(1)))
+      : [];
+
+  const results = changelogs.map(({ pkg, file, changelog }) => {
+    const sections = changelog.sections.filter((section) => compareVersions(section.version, previous) <= 0);
+    const ending = changelog.sections[0]?.ending ?? '\n';
+    for (const tag of unreachable) {
+      if (sections.some((section) => section.version === tag.slice(1))) continue;
+      const shown = git('show', `${tag}:packages/${pkg.short}/CHANGELOG.md`);
+      const found = shown.status === 0 ? parseChangelog(shown.stdout).sections.find((section) => section.version === tag.slice(1)) : undefined;
+      if (found) sections.push(found);
+    }
+    sections.push({ version, ending, body: `${ending}${body}${ending}` });
+    sections.sort((a, b) => compareVersions(b.version, a.version));
+    const normalised = sections.map((section, index) =>
+      index < sections.length - 1 && !/\n\r?\n$/.test(section.body) ? { ...section, body: `${section.body.replace(/\s*$/, '')}${ending}${ending}` } : section,
+    );
+    return { pkg, file, text: formatChangelog({ title: changelog.title, sections: normalised }) };
+  });
+
+  let upgradingText: string | undefined;
+  if (breakingRelease && !hasUpgradingSection) {
+    const placeholder = `<!-- One entry per breaking pull request: ${breaking.map(pullRequest).join(', ')} — then list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts. -->`;
+    const section = `## Upgrading to ${version} from ${previous}\n\n${placeholder}\n\n`;
+    const text = upgrading ?? '# Upgrading\n\n';
+    const first = text.search(/^## Upgrading to /m);
+    upgradingText = first === -1 ? `${text.replace(/\s*$/, '\n')}\n${section.trimEnd()}\n` : `${text.slice(0, first)}${section}${text.slice(first)}`;
+  }
+
+  const why = breaking.length > 0 ? `breaking: ${breaking.map(pullRequest).join(', ')}` : features.length > 0 ? 'no breaking pull request' : 'fixes and documentation only';
+  log(`Version ${version} (${bump}; ${why}), from v${previous}.`);
+  log(`\n## ${version}\n\n${body}\n`);
+  if (dryRun) {
+    log('Dry run: nothing written.');
+    return { version, previous, bump, section: body };
+  }
+
+  if (version !== current) {
+    for (const { pkg } of changelogs) {
+      const file = join(pkg.dir, 'package.json');
+      const text = readFileSync(file, 'utf8');
+      writeFileSync(file, text.replace(/^(\s*"version":\s*")[^"]*(")/m, `$1${version}$2`));
+    }
+  }
+  for (const { file, text } of results) writeFileSync(file, text);
+  mkdirSync(dirname(baseFile), { recursive: true });
+  writeFileSync(baseFile, baseText);
+  if (upgradingText !== undefined) writeFileSync(upgradingFile, upgradingText);
+  log(`Wrote ${version} to ${packages.length} package.json files and CHANGELOGs${upgradingText !== undefined ? ' and the heading in UPGRADING.md' : ''}.`);
+  if (upgradingText !== undefined) {
+    log('Replace the placeholder under it with one entry per breaking pull request and list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts.');
+  }
+  log(
+    [
+      `Recorded ${head} in ${RELEASE_BASE}: the release pull request must be merged before anything else lands on ${branch}, or run this again.`,
+      `Next (a new release pull request; it carries the label internal, so it is no line of the notes itself):`,
+      `  git switch -c release-${version}`,
+      '  git add -A',
+      `  git commit -m "Release ${version}"`,
+      '  pnpm run ci',
+      `  git push -u origin release-${version}`,
+      `  gh pr create --base ${branch} --title "Release ${version}" --label internal --body "Release ${version}"`,
+      `Updating an open release pull request instead: git switch -C release-${version}, git add -A, git commit, pnpm run ci, then`,
+      `  git push --force-with-lease -u origin release-${version}   # no gh pr create`,
+      'When the version changed since the open pull request (for example 0.1.3 to 0.2.0), close the old release pull request and open a new one.',
+    ].join('\n'),
+  );
+  return { version, previous, bump, section: body };
+}
+
+if (import.meta.main) {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  try {
+    prepare({ root, run: spawnRunner(root), dryRun: process.argv.includes('--dry-run'), log: (line) => console.log(line) });
+  } catch (error) {
+    console.error(`release-prepare: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
+}
