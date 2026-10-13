@@ -384,6 +384,17 @@ describe('Auth (session guard)', () => {
     expect(events.map((event) => event.constructor.name)).toEqual(['Logout']);
   });
 
+  it('signs out with Clear-Site-Data for the storage only: the HTTP cache scan would hold the sign-out for seconds', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const { send } = browser();
+    await login(send);
+    const visit = await send('/logout', { method: 'POST', headers: { 'x-marmeon': 'true' } });
+    expect([visit.status, visit.headers.get('x-marmeon-location'), visit.headers.get('clear-site-data')]).toEqual([409, '/login', '"storage"']);
+    await login(send);
+    expect((await send('/logout', { method: 'POST' })).headers.get('clear-site-data')).toBe('"storage"');
+  });
+
   it('dispatches Login with the user', async () => {
     const { add, browser } = await boot();
     await add(ada);

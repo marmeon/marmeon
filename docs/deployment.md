@@ -199,7 +199,7 @@ The settings a server needs, beyond those of each feature:
 | `APP_ENV` | `production` | The environment's name: `staging`, `production` or one of your own. Shown in the start line, the logs and the traces, and it selects the scheduled tasks (`.environments('staging')`). It never weakens a protection or enables a development tool. |
 | `APP_KEY` | none | The key from `marmeon key:generate --show`. The same on every instance, and a secret. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys while you rotate, comma-separated. |
-| `APP_URL` | none | `https://…`. Cookies get `Secure` from it unless `SESSION_SECURE_COOKIE` says otherwise, and a protected app on `http://` warns at every start. Over plain HTTP, browsers also ignore the `Clear-Site-Data` of a sign-out, so a server without TLS leaves its pages in the browser's cache after a sign-out. |
+| `APP_URL` | none | `https://…`. Cookies get `Secure` from it unless `SESSION_SECURE_COOKIE` says otherwise, and a protected app on `http://` warns at every start. Browsers ignore the `Clear-Site-Data` of a sign-out outside secure contexts (HTTPS, `http://localhost`), so a server on plain HTTP leaves the browser's storage in place after a sign-out. |
 | `HOST` | every interface | `0.0.0.0` in a container, `127.0.0.1` behind a proxy on the same machine. |
 | `PORT` | `3000` | `0` takes a free port, and the start line names it. |
 | `TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |

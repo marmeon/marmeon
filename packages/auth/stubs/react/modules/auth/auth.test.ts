@@ -61,7 +61,7 @@ describe('signing in and out', () => {
     await app.actingAs(ada).get('/dashboard').assertOk().assertHeader('cache-control', 'no-store, private');
     // A client-side visit gets 409 + x-marmeon-location: the browser loads the login page fully, the pages it kept in memory are gone.
     const visit = await app.actingAs(ada).navigating().post('/logout').assertStatus(409).assertHeader('x-marmeon-location', '/login').assertGuest();
-    expect(visit.headers.get('clear-site-data')).toBe('"cache", "storage"');
+    expect(visit.headers.get('clear-site-data')).toBe('"storage"'); // not "cache": Chrome would scan its whole disk cache first
   });
 
   it('keeps signing in by the "keep me signed in" cookie', async () => {

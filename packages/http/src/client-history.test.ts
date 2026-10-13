@@ -40,6 +40,16 @@ describe('ClientHistory / ClearClientHistory', () => {
     expect([response.status, response.headers.get('location'), response.headers.get('clear-site-data')]).toEqual([303, '/login', '"cache", "storage"']);
   });
 
+  it('Clear-Site-Data of a sign-out can be the storage alone, for the plain POST and the client-side visit', async () => {
+    const history = new ClientHistory();
+    history.clear({ siteData: ['storage'] });
+    const redirect = () => new Response(null, { status: 303, headers: { location: '/login' } });
+    const plain = await run(history, ctx('POST', '/logout'), redirect());
+    expect([plain.status, plain.headers.get('clear-site-data')]).toEqual([303, '"storage"']);
+    const visit = await run(history, ctx('POST', '/logout', { [PAGE_HEADER]: 'true' }), redirect());
+    expect([visit.status, visit.headers.get('clear-site-data')]).toEqual([409, '"storage"']);
+  });
+
   it('Clear-Site-Data names what was asked for — the cache alone, or nothing when a later call takes it back (the last call wins)', async () => {
     const cacheOnly = new ClientHistory();
     cacheOnly.clear({ siteData: ['cache'] });

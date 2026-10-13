@@ -130,11 +130,15 @@ server now.
 
 ### The browser's storage on sign-out
 
-Signing out with `Auth.logout()` also answers with `Clear-Site-Data: "cache", "storage"`. In every tab, the browser drops the
-site's HTTP cache, `localStorage`, `sessionStorage`, IndexedDB and service workers. Cookies stay, so the new session survives.
-Browsers honour the header only over HTTPS, so a server without TLS keeps the cache after a sign-out.
+Signing out with `Auth.logout()` also answers with `Clear-Site-Data: "storage"`. In every tab, the browser drops the
+site's `localStorage`, `sessionStorage`, IndexedDB and service workers. Cookies stay, so the new session survives.
+Browsers honour the header in secure contexts only: over HTTPS and on `http://localhost`.
 
-An app that keeps something in the browser's storage on purpose, across a sign-out, takes the storage part back after `logout()`:
+The HTTP cache is left alone: signed-in answers are `no-store`, so it holds none of them, and `"cache"` would make Chrome scan its
+whole disk cache, all sites, before it goes on, which holds the sign-out for seconds on a busy profile. An app whose routes
+set their own `private, max-age` header asks for the cache as well with `this.#history.clear({ siteData: ['cache', 'storage'] })` after `logout()`.
+
+An app that keeps something in the browser's storage on purpose, across a sign-out, takes the storage part back after `logout()`, with `siteData: false`, which sends no header at all:
 
 ```ts title="modules/auth/controllers/LogoutController.ts"
 import { Auth } from '@marmeon/auth';
@@ -152,13 +156,13 @@ export class LogoutController extends Controller {
 
   async handle() {
     await this.#auth.logout();
-    this.#history.clear({ siteData: ['cache'] });
+    this.#history.clear({ siteData: false });
     return this.redirect().route('auth.login');
   }
 }
 ```
 
-`siteData: false` sends no header at all. Data that must survive a sign-out in every tab is safer on the server.
+Data that must survive a sign-out in every tab is safer on the server.
 
 ### Turning it off
 

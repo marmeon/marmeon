@@ -245,8 +245,9 @@ export class LogoutController extends Controller {
 
 The language the visitor chose outlives the session it was stored in, because the controller puts it into the new one.
 
-The response also tells the browser to forget the site's HTTP cache and storage with `Clear-Site-Data: "cache", "storage"`, and
-the next page loads in full. The other tabs of the same browser follow by themselves. The
+The response also tells the browser to forget the site's storage with `Clear-Site-Data: "storage"`, and
+the next page loads in full. A sign-out from the client side answers `409` with `x-marmeon-location` and `x-marmeon-reload: history`:
+that is the full reload, not an error. The other tabs of the same browser follow by themselves. The
 [client features](client-features.md#the-browsers-storage-on-sign-out) page explains both, and how to keep the storage.
 
 ## Remember me
@@ -514,7 +515,7 @@ would show them again without asking the server. The middleware, `NoStoreWhenSig
 Every app with `@marmeon/auth` has it.
 
 A route that sets its own `Cache-Control` keeps it, such as one with `cacheControl('private, max-age=60')`. Then its answer may
-stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user.
+stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user. An app that does keep such answers signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `logout()`, which asks the browser to drop its cache too; the [client features](client-features.md#the-browsers-storage-on-sign-out) page has the cost.
 
 An app with sign-in needs a session driver that keeps the sessions on the server. With `SESSION_DRIVER=cookie`, a request still
 running during a sign-out brings the signed-in cookie back with its answer, and the app warns about it at start-up. The

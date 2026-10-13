@@ -30,7 +30,7 @@ What the starter kit has, and a little more — each part tested here:
   notifications; the CSRF token is drawn on demand; validation never answers "taken" live; the lab
   (`/lab/validation`) shows the rules, `when`, an async check, `exists` and `failOnDuplicate()` after a race.
 - **Tab sync**: sign in, out or switch the language in one tab and the others follow; a tab with unsaved changes asks
-  first, in the app's own `Confirm` (`layouts/Confirm.tsx`). Signing out clears the site's cache and storage, the language
+  first, in the app's own `Confirm` (`layouts/Confirm.tsx`). Signing out clears the site's storage, the language
   switch the cache only (`clear({ siteData: ['cache'] })`). `modules/auth/tab-sync.test.ts` drives two tabs against the app.
 
 `pnpm bench login` and `pnpm bench people` (from the repository's root) measure this app's request path in-process — the
