@@ -36,9 +36,9 @@ OTEL_SERVICE_NAME=notes OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 NODE_O
 
 ## Documentation
 
-- [Observability: OpenTelemetry](https://github.com/marmeon/marmeon/blob/main/docs/observability.md#opentelemetry)
-- [Observability: what it records](https://github.com/marmeon/marmeon/blob/main/docs/observability.md#what-it-records)
-- [Observability: a caller's traceparent](https://github.com/marmeon/marmeon/blob/main/docs/observability.md#a-callers-traceparent)
-- [Deployment: traces](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#traces)
+- [Observability: OpenTelemetry](https://marmeon.com/docs/observability#opentelemetry)
+- [Observability: what it records](https://marmeon.com/docs/observability#what-it-records)
+- [Observability: a caller's traceparent](https://marmeon.com/docs/observability#a-callers-traceparent)
+- [Deployment: traces](https://marmeon.com/docs/deployment#traces)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

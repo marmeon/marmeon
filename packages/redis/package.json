@@ -6,7 +6,7 @@
     "marmeon",
     "redis"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/redis#readme",
+  "homepage": "https://marmeon.com/docs/redis",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -43,6 +43,7 @@
     "src",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

@@ -39,10 +39,10 @@ the policy lacks is a compile error. The browser gets only the columns its user 
 
 ## Documentation
 
-- [Data Tables](https://github.com/marmeon/marmeon/blob/main/docs/tables.md)
-- [Data Tables: actions](https://github.com/marmeon/marmeon/blob/main/docs/tables.md#actions)
-- [Data Tables: exports](https://github.com/marmeon/marmeon/blob/main/docs/tables.md#exports)
-- [Data Tables: the security model](https://github.com/marmeon/marmeon/blob/main/docs/tables.md#the-security-model)
-- [Data Tables: in the browser](https://github.com/marmeon/marmeon/blob/main/docs/tables.md#in-the-browser)
+- [Data Tables](https://marmeon.com/docs/tables)
+- [Data Tables: actions](https://marmeon.com/docs/tables#actions)
+- [Data Tables: exports](https://marmeon.com/docs/tables#exports)
+- [Data Tables: the security model](https://marmeon.com/docs/tables#the-security-model)
+- [Data Tables: in the browser](https://marmeon.com/docs/tables#in-the-browser)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

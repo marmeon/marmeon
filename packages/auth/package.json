@@ -10,7 +10,7 @@
     "policies",
     "api-tokens"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/auth#readme",
+  "homepage": "https://marmeon.com/docs/authentication",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -48,6 +48,7 @@
     "stubs",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

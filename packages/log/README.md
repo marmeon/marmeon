@@ -29,8 +29,8 @@ Keep the message fixed and put the values into the context, so a log shipper can
 
 ## Documentation
 
-- [Logging](https://github.com/marmeon/marmeon/blob/main/docs/logging.md)
-- [Logging: keeping secrets out of the log](https://github.com/marmeon/marmeon/blob/main/docs/logging.md#keeping-secrets-out-of-the-log)
-- [Observability: the log channel](https://github.com/marmeon/marmeon/blob/main/docs/observability.md#the-log-channel)
+- [Logging](https://marmeon.com/docs/logging)
+- [Logging: keeping secrets out of the log](https://marmeon.com/docs/logging#keeping-secrets-out-of-the-log)
+- [Observability: the log channel](https://marmeon.com/docs/observability#the-log-channel)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

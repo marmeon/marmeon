@@ -34,8 +34,8 @@ The English file is the source: the compiler checks every key and every placehol
 
 ## Documentation
 
-- [Localization](https://github.com/marmeon/marmeon/blob/main/docs/localization.md)
-- [Localization: the request's locale](https://github.com/marmeon/marmeon/blob/main/docs/localization.md#the-requests-locale)
-- [Validation: messages](https://github.com/marmeon/marmeon/blob/main/docs/validation.md#messages)
+- [Localization](https://marmeon.com/docs/localization)
+- [Localization: the request's locale](https://marmeon.com/docs/localization#the-requests-locale)
+- [Validation: messages](https://marmeon.com/docs/validation#messages)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

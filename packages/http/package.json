@@ -10,7 +10,7 @@
     "ssr",
     "client"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/http#readme",
+  "homepage": "https://marmeon.com/docs",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -65,6 +65,7 @@
     "src",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

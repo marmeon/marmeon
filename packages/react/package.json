@@ -9,7 +9,7 @@
     "spa",
     "adapter"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/react#readme",
+  "homepage": "https://marmeon.com/docs",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -78,6 +78,7 @@
     "styles.css",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

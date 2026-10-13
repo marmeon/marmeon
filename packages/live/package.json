@@ -8,7 +8,7 @@
     "sse",
     "realtime"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/live#readme",
+  "homepage": "https://marmeon.com/docs/realtime",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -45,6 +45,7 @@
     "src",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

@@ -37,10 +37,10 @@ A hint says *that* something changed, never *what*: the data always comes from t
 
 ## Documentation
 
-- [Real-time Updates](https://github.com/marmeon/marmeon/blob/main/docs/realtime.md)
-- [Real-time Updates: sending hints](https://github.com/marmeon/marmeon/blob/main/docs/realtime.md#sending-hints)
-- [Real-time Updates: more than one process](https://github.com/marmeon/marmeon/blob/main/docs/realtime.md#more-than-one-process)
-- [Notifications: the live channel](https://github.com/marmeon/marmeon/blob/main/docs/notifications.md#the-live-channel)
-- [Fakes: live updates](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md#live-updates)
+- [Real-time Updates](https://marmeon.com/docs/realtime)
+- [Real-time Updates: sending hints](https://marmeon.com/docs/realtime#sending-hints)
+- [Real-time Updates: more than one process](https://marmeon.com/docs/realtime#more-than-one-process)
+- [Notifications: the live channel](https://marmeon.com/docs/notifications#the-live-channel)
+- [Fakes: live updates](https://marmeon.com/docs/fakes#live-updates)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

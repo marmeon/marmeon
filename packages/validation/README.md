@@ -26,10 +26,10 @@ that fails gets its errors back, in the visitor's language.
 
 ## Documentation
 
-- [Validation](https://github.com/marmeon/marmeon/blob/main/docs/validation.md)
-- [Validation: available rules](https://github.com/marmeon/marmeon/blob/main/docs/validation.md#available-rules)
-- [Validation: live validation](https://github.com/marmeon/marmeon/blob/main/docs/validation.md#live-validation)
-- [Validation: database rules](https://github.com/marmeon/marmeon/blob/main/docs/validation.md#database-rules-and-why-they-never-run-live)
-- [Validation: other libraries](https://github.com/marmeon/marmeon/blob/main/docs/validation.md#other-libraries)
+- [Validation](https://marmeon.com/docs/validation)
+- [Validation: available rules](https://marmeon.com/docs/validation#available-rules)
+- [Validation: live validation](https://marmeon.com/docs/validation#live-validation)
+- [Validation: database rules](https://marmeon.com/docs/validation#database-rules-and-why-they-never-run-live)
+- [Validation: other libraries](https://marmeon.com/docs/validation#other-libraries)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

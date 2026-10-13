@@ -25,9 +25,9 @@ The module lists it as `schedule` in its definition. `marmeon dev` runs the sche
 
 ## Documentation
 
-- [Task Scheduling](https://github.com/marmeon/marmeon/blob/main/docs/scheduling.md)
-- [Task Scheduling: running the scheduler](https://github.com/marmeon/marmeon/blob/main/docs/scheduling.md#running-the-scheduler)
-- [Task Scheduling: the cache they need](https://github.com/marmeon/marmeon/blob/main/docs/scheduling.md#the-cache-they-need)
-- [Fakes: the schedule](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md#the-schedule)
+- [Task Scheduling](https://marmeon.com/docs/scheduling)
+- [Task Scheduling: running the scheduler](https://marmeon.com/docs/scheduling#running-the-scheduler)
+- [Task Scheduling: the cache they need](https://marmeon.com/docs/scheduling#the-cache-they-need)
+- [Fakes: the schedule](https://marmeon.com/docs/fakes#the-schedule)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

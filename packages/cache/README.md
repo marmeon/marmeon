@@ -37,10 +37,10 @@ export class ShowNoteStatsController extends Controller {
 
 ## Documentation
 
-- [Cache](https://github.com/marmeon/marmeon/blob/main/docs/cache.md)
-- [Cache: locks](https://github.com/marmeon/marmeon/blob/main/docs/cache.md#locks)
-- [Rate Limiting](https://github.com/marmeon/marmeon/blob/main/docs/rate-limiting.md)
-- [Redis](https://github.com/marmeon/marmeon/blob/main/docs/redis.md)
-- [Cache: testing](https://github.com/marmeon/marmeon/blob/main/docs/cache.md#testing)
+- [Cache](https://marmeon.com/docs/cache)
+- [Cache: locks](https://marmeon.com/docs/cache#locks)
+- [Rate Limiting](https://marmeon.com/docs/rate-limiting)
+- [Redis](https://marmeon.com/docs/redis)
+- [Cache: testing](https://marmeon.com/docs/cache#testing)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

@@ -9,7 +9,7 @@
     "localization",
     "icu"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/i18n#readme",
+  "homepage": "https://marmeon.com/docs/localization",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -55,6 +55,7 @@
     "src",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

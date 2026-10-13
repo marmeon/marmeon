@@ -30,9 +30,9 @@ export default defineDevtools({
 
 ## Documentation
 
-- [Devtools](https://github.com/marmeon/marmeon/blob/main/docs/devtools.md)
-- [Devtools: only in development](https://github.com/marmeon/marmeon/blob/main/docs/devtools.md#only-in-development)
-- [Devtools: settings](https://github.com/marmeon/marmeon/blob/main/docs/devtools.md#settings)
-- [Observability](https://github.com/marmeon/marmeon/blob/main/docs/observability.md)
+- [Devtools](https://marmeon.com/docs/devtools)
+- [Devtools: only in development](https://marmeon.com/docs/devtools#only-in-development)
+- [Devtools: settings](https://marmeon.com/docs/devtools#settings)
+- [Observability](https://marmeon.com/docs/observability)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

@@ -17,7 +17,7 @@ needs `@marmeon/live`.
 ## Sending a notification
 
 A notification is a class with a stable name, the schema of its data, the channels it takes (`via()`) and what it says on each;
-the [notifications page](https://github.com/marmeon/marmeon/blob/main/docs/notifications.md#defining-notifications) shows
+the [notifications page](https://marmeon.com/docs/notifications#defining-notifications) shows
 `NewSignInNotification` in full. Inject `Notifications` and send it to a recipient as data, a kind and an id:
 
 ```ts
@@ -29,9 +29,9 @@ delivers it.
 
 ## Documentation
 
-- [Notifications](https://github.com/marmeon/marmeon/blob/main/docs/notifications.md)
-- [Notifications: defining notifications](https://github.com/marmeon/marmeon/blob/main/docs/notifications.md#defining-notifications)
-- [Notifications: the inbox](https://github.com/marmeon/marmeon/blob/main/docs/notifications.md#the-inbox)
-- [Fakes: notifications](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md#notifications)
+- [Notifications](https://marmeon.com/docs/notifications)
+- [Notifications: defining notifications](https://marmeon.com/docs/notifications#defining-notifications)
+- [Notifications: the inbox](https://marmeon.com/docs/notifications#the-inbox)
+- [Fakes: notifications](https://marmeon.com/docs/fakes#notifications)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

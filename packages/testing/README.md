@@ -26,11 +26,11 @@ it('shows the notes to a signed-in user', async () => {
 
 ## Documentation
 
-- [Testing: Getting Started](https://github.com/marmeon/marmeon/blob/main/docs/testing.md)
-- [HTTP Tests](https://github.com/marmeon/marmeon/blob/main/docs/http-tests.md)
-- [Testing Pages](https://github.com/marmeon/marmeon/blob/main/docs/testing-pages.md)
-- [Database Testing](https://github.com/marmeon/marmeon/blob/main/docs/database-testing.md)
-- [Fakes](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md)
-- [Time](https://github.com/marmeon/marmeon/blob/main/docs/time.md)
+- [Testing: Getting Started](https://marmeon.com/docs/testing)
+- [HTTP Tests](https://marmeon.com/docs/http-tests)
+- [Testing Pages](https://marmeon.com/docs/testing-pages)
+- [Database Testing](https://marmeon.com/docs/database-testing)
+- [Fakes](https://marmeon.com/docs/fakes)
+- [Time](https://marmeon.com/docs/time)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

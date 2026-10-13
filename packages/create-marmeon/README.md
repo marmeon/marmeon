@@ -40,10 +40,10 @@ Without a terminal nothing is asked: the flags and the defaults decide, and a mi
 
 ## Documentation
 
-- [Installation](https://github.com/marmeon/marmeon/blob/main/docs/installation.md)
-- [Installation: options](https://github.com/marmeon/marmeon/blob/main/docs/installation.md#options)
-- [Installation: the first day after a release](https://github.com/marmeon/marmeon/blob/main/docs/installation.md#the-first-day-after-a-release)
-- [Starter Kit](https://github.com/marmeon/marmeon/blob/main/docs/starter-kit.md)
-- [Deployment](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md)
+- [Installation](https://marmeon.com/docs/installation)
+- [Installation: options](https://marmeon.com/docs/installation#options)
+- [Installation: the first day after a release](https://marmeon.com/docs/installation#the-first-day-after-a-release)
+- [Starter Kit](https://marmeon.com/docs/starter-kit)
+- [Deployment](https://marmeon.com/docs/deployment)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

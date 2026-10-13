@@ -34,8 +34,8 @@ The context, `'exports:download'`, binds a payload to its purpose: what was seal
 
 ## Documentation
 
-- [Encryption](https://github.com/marmeon/marmeon/blob/main/docs/encryption.md)
-- [Encryption: rotating the key](https://github.com/marmeon/marmeon/blob/main/docs/encryption.md#rotating-the-key)
-- [Security: keys](https://github.com/marmeon/marmeon/blob/main/docs/security.md#keys)
+- [Encryption](https://marmeon.com/docs/encryption)
+- [Encryption: rotating the key](https://marmeon.com/docs/encryption#rotating-the-key)
+- [Security: keys](https://marmeon.com/docs/security#keys)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

@@ -8,7 +8,7 @@
     "mail",
     "queue"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/notifications#readme",
+  "homepage": "https://marmeon.com/docs/notifications",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -46,6 +46,7 @@
     "stubs",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

@@ -8,7 +8,7 @@
     "aes-gcm",
     "app-key"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/encryption#readme",
+  "homepage": "https://marmeon.com/docs/encryption",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -45,6 +45,7 @@
     "src",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

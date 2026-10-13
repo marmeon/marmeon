@@ -30,13 +30,13 @@ accounts whose address is confirmed.
 
 ## Documentation
 
-- [Authentication](https://github.com/marmeon/marmeon/blob/main/docs/authentication.md)
-- [Authorization](https://github.com/marmeon/marmeon/blob/main/docs/authorization.md)
-- [Email Verification](https://github.com/marmeon/marmeon/blob/main/docs/verification.md)
-- [Password Reset](https://github.com/marmeon/marmeon/blob/main/docs/passwords.md)
-- [API Tokens](https://github.com/marmeon/marmeon/blob/main/docs/api-tokens.md)
-- [Hashing](https://github.com/marmeon/marmeon/blob/main/docs/hashing.md)
-- [Starter Kit](https://github.com/marmeon/marmeon/blob/main/docs/starter-kit.md)
-- [HTTP Tests: sessions and signing in](https://github.com/marmeon/marmeon/blob/main/docs/http-tests.md#sessions-and-signing-in)
+- [Authentication](https://marmeon.com/docs/authentication)
+- [Authorization](https://marmeon.com/docs/authorization)
+- [Email Verification](https://marmeon.com/docs/verification)
+- [Password Reset](https://marmeon.com/docs/passwords)
+- [API Tokens](https://marmeon.com/docs/api-tokens)
+- [Hashing](https://marmeon.com/docs/hashing)
+- [Starter Kit](https://marmeon.com/docs/starter-kit)
+- [HTTP Tests: sessions and signing in](https://marmeon.com/docs/http-tests#sessions-and-signing-in)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

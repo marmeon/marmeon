@@ -34,14 +34,14 @@ the browser.
 
 ## Documentation
 
-- [Pages & Layouts](https://github.com/marmeon/marmeon/blob/main/docs/pages.md)
-- [Navigation & View Transitions](https://github.com/marmeon/marmeon/blob/main/docs/navigation.md)
-- [Forms](https://github.com/marmeon/marmeon/blob/main/docs/forms.md)
-- [Actions](https://github.com/marmeon/marmeon/blob/main/docs/actions.md)
-- [Dialogs & Layers](https://github.com/marmeon/marmeon/blob/main/docs/dialogs.md)
-- [Deferred Props & Islands](https://github.com/marmeon/marmeon/blob/main/docs/deferred-props.md)
-- [Client Features & Tab Sync](https://github.com/marmeon/marmeon/blob/main/docs/client-features.md)
-- [Styling](https://github.com/marmeon/marmeon/blob/main/docs/styling.md)
-- [Testing Pages](https://github.com/marmeon/marmeon/blob/main/docs/testing-pages.md)
+- [Pages & Layouts](https://marmeon.com/docs/pages)
+- [Navigation & View Transitions](https://marmeon.com/docs/navigation)
+- [Forms](https://marmeon.com/docs/forms)
+- [Actions](https://marmeon.com/docs/actions)
+- [Dialogs & Layers](https://marmeon.com/docs/dialogs)
+- [Deferred Props & Islands](https://marmeon.com/docs/deferred-props)
+- [Client Features & Tab Sync](https://marmeon.com/docs/client-features)
+- [Styling](https://marmeon.com/docs/styling)
+- [Testing Pages](https://marmeon.com/docs/testing-pages)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)
