@@ -45,7 +45,7 @@ describe('the dashboard, rendered on the server with its islands', () => {
       const admin = index % 2 === 0;
       expect(response.body).toMatch(admin ? /data-island="dashboard\.members" data-status="ready"/ : /data-island="dashboard\.members" data-status="forbidden"/);
       expect(response.body.includes('"stats"')).toBe(admin);
-      expect(response.page()!.props).toMatchObject({ auth: { user: { id: admin ? ada.id : alan.id } } });
+      expect(response.page()!.props).toMatchObject({ auth: { user: { name: admin ? ada.name : alan.name } } });
     });
   }, ciTimeout);
 

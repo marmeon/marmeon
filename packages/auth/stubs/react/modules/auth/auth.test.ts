@@ -1,4 +1,5 @@
 import { AccessTokenStore } from '@marmeon/auth';
+import type { SharedProps } from '@marmeon/http/page';
 import type { Mailable } from '@marmeon/mail';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -163,6 +164,14 @@ describe('the pages, rendered on the server', { timeout: 30_000 }, () => {
   });
 });
 
+describe('shared props', { timeout: 30_000 }, () => {
+  it('give every page the signed-in user without an id — shared props are part of every page\'s HTML and JSON', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const page = await app.actingAs(ada).navigating().get('/dashboard');
+    expect(page.page()!.props.auth).toStrictEqual({ user: { name: ada.name, verified: true } });
+  });
+});
+
 describe('the user type', { timeout: 30_000 }, () => {
   it('carries no password hash', async () => {
     const ada = await app.factory(UserFactory).create();
@@ -173,8 +182,12 @@ describe('the user type', { timeout: 30_000 }, () => {
 // --- Type guarantees (never called) -----------------------------------------------------------
 
 declare const user: User;
+type SharedUser = NonNullable<NonNullable<SharedProps['auth']>['user']>;
 
 export function userTypes() {
   // @ts-expect-error — the hash is not part of a user: it travels separately
   void user.password;
+  void (undefined as unknown as SharedUser).name;
+  // @ts-expect-error — the shared user is what pages show: no id
+  void (undefined as unknown as SharedUser).id;
 }

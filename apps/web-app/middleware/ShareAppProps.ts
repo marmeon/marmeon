@@ -10,8 +10,11 @@ declare module '@marmeon/http/page' {
    * page has none of them, and the layout around it renders without them (no session is started for a bot's scan either).
    */
   interface SharedProps {
-    /** The signed-in user, on every page of the `web` group — or null. */
-    auth?: { user: { id: number; name: string; verified: boolean } | null };
+    /**
+     * The signed-in user, on every page of the `web` group — or null. Shared props reach every page, in its HTML and its
+     * JSON: share only what pages show, so no id.
+     */
+    auth?: { user: { name: string; verified: boolean } | null };
     /** The languages of the switcher (the page's own is `usePage().locale`). */
     locales?: readonly string[];
     /** The bell in the header: how many of the signed-in user's notifications are unread — null for guests. */
@@ -49,7 +52,7 @@ export class ShareAppProps {
       .share('auth', async () => {
         // The same lookup authenticate() already made on this request (Auth is per request).
         const user = await this.#auth.user();
-        return { user: user ? { id: user.id, name: user.name, verified: user.email_verified_at !== null } : null };
+        return { user: user ? { name: user.name, verified: user.email_verified_at !== null } : null };
       })
       // One count per page, only when a page renders (and only this with `only: ['bell']`) — the list is its own page.
       .share('bell', async () => {
