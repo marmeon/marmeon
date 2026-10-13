@@ -258,6 +258,11 @@ if (done.ok) return this.redirect().intended().route('auth.sensitive');
 `no-challenge` means the account has no factor to prove, and a right code marks the session as proven under a new session id. It
 needs a signed-in user. Route the `POST` with `.block()`, as for the challenge.
 
+An account with a [passkey](passkeys.md#as-a-step-up) proves it the same way: `stepUp({ passkey })` takes the browser's response to the
+options of `passkeys.stepUpOptions()`. It uses the generous counter of the recovery codes (ten a minute), not the budget of the code
+attempts, and a wrong response fires `TwoFactorChallengeFailed` with `during: 'step-up'` and ends no session (a challenge that timed out or was sent twice is refused without the event, so a mail on it never cries wolf). Without it, an account whose only factor is a passkey
+would get through `twoFactor()` only with a recovery code. Give the route of the options a limit of its own.
+
 The middleware reads the session, so it belongs in the `web` group. The stateless `api` group has no session: behind `authenticate('api')`
 an API token never counts as a proven second factor, and `twoFactor()` there answers `401`. Tokens are their own credentials; see
 [What it protects against](#what-it-protects-against-and-what-not).
@@ -270,7 +275,7 @@ an API token never counts as a proven second factor, and `twoFactor()` there ans
 | `TwoFactorDisabled` | `disable()` or the operator's reset | `user`, `via` (`user` or `operator`) |
 | `RecoveryCodesGenerated` | The first factor, or `regenerateRecoveryCodes()` | `user` |
 | `RecoveryCodeUsed` | A recovery code signed in or stepped up | `user`, `remaining` |
-| `TwoFactorChallengeFailed` | A wrong factor (code, recovery code or passkey) after a right password (`during: 'sign-in'`), or a wrong code from a signed-in session at `stepUp()` (`during: 'step-up'`) | `user`, `at`, `ip`, `userAgent`, `during` |
+| `TwoFactorChallengeFailed` | A wrong factor (code, recovery code or passkey) after a right password (`during: 'sign-in'`), or a wrong code or passkey from a signed-in session at `stepUp()` (`during: 'step-up'`) | `user`, `at`, `ip`, `userAgent`, `during` |
 
 All of them can be [queued](events.md#queued-listeners); a queued listener gets `userId` and the other fields as JSON. Send the
 owner a mail on `TwoFactorChallengeFailed` ("someone knew your password" for `during: 'sign-in'`, "a code was guessed in your session" for `'step-up'`), on `TwoFactorDisabled` and on `RecoveryCodeUsed`.

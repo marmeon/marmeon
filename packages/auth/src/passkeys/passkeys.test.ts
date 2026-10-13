@@ -4,10 +4,12 @@ import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/databas
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
-import { afterEach, describe, expect, it } from 'vitest';
+import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CHALLENGE_SECONDS } from './challenge.ts';
 import {
   Auth,
+  authenticate,
   AuthServiceProvider,
   combineFactors,
   Hasher,
@@ -27,6 +29,7 @@ import {
   type Credentials,
   type PasswordHash,
 } from '../index.ts';
+import { twoFactor } from '../two-factor/middleware.ts';
 import { NoTwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE } from '../two-factor/store.ts';
 import { TwoFactor } from '../two-factor/two-factor.ts';
@@ -86,8 +89,10 @@ class PasskeyController extends Controller {
   readonly #passkeys: Passkeys;
   readonly #twoFactor: TwoFactor;
   readonly #auth: Auth;
-  constructor(passkeys: Passkeys, twoFactor: TwoFactor, auth: Auth) {
+  readonly #session: Session;
+  constructor(passkeys: Passkeys, twoFactor: TwoFactor, auth: Auth, session: Session) {
     super();
+    this.#session = session;
     this.#passkeys = passkeys;
     this.#twoFactor = twoFactor;
     this.#auth = auth;
@@ -114,6 +119,15 @@ class PasskeyController extends Controller {
           const done = await this.#twoFactor.challenge(body as never);
           return done.ok ? { ok: true, id: done.value.id } : { ok: false, ...done.error };
         }
+        case 'step-up-options':
+          return result(await this.#passkeys.stepUpOptions());
+        case 'step-up': {
+          const done = await this.#twoFactor.stepUp(body as never);
+          return done.ok ? { ok: true } : { ok: false, ...done.error };
+        }
+        case 'forget-proof':
+          this.#session.forget('_auth_two_factor_at');
+          return { forgotten: true };
         case 'list':
           return await this.#passkeys.list();
         case 'rename':
@@ -133,6 +147,12 @@ class PasskeyController extends Controller {
   }
 }
 
+class Page extends Controller {
+  handle() {
+    return { page: true };
+  }
+}
+
 /** `TwoFactor.challenge()` alone — for the app that has not registered the passkeys provider. */
 class ChallengeController extends Controller {
   readonly #twoFactor: TwoFactor;
@@ -147,8 +167,11 @@ class ChallengeController extends Controller {
 }
 
 const routes = defineRoutes((Route) => {
-  Route.post('/login', LoginController);
+  Route.post('/login', LoginController).name('auth.login');
   Route.post('/pk/:method', PasskeyController);
+  Route.get('/account/two-factor', Page).name('test.setup');
+  Route.get('/account/verify', Page).name('test.verify');
+  Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
   Route.post('/tf/challenge', ChallengeController);
 });
 
@@ -748,6 +771,199 @@ describe('Passkeys: as the second factor', () => {
     await booted.application.container.make(TwoFactorStore).confirm(1, 5, 'enc', null);
     expect(await b.login()).toMatchObject({ error: { kind: 'two-factor-required', factors: ['totp'] } });
     expect(await b.send('/tf/challenge', { passkey: { id: 'x' } })).toMatchObject({ ok: false, kind: 'invalid-code' });
+  });
+});
+
+describe('Passkeys: as a step-up', () => {
+  /** A signed-in browser of an account with only this passkey, whose session has not proven the factor (a session older than `maxAge`, say). */
+  async function unproven(booted: Booted, authenticator: Device = device()) {
+    const { b } = await enrolled(booted, authenticator);
+    expect(await b.pk('forget-proof')).toEqual({ forgotten: true });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+    return b;
+  }
+
+  it('lets an account with only a passkey through twoFactor(): a new session id, and asking again once the proof is gone', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    const before = b.jar.get('marmeon_session');
+    events.length = 0;
+    const options = await b.pk('step-up-options');
+    expect(options).toMatchObject({ ok: true, value: { userVerification: 'required' } });
+    expect(options.value.allowCredentials).toHaveLength(1);
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(options.value) })).toEqual({ ok: true });
+    expect(b.jar.get('marmeon_session')).not.toBe(before);
+    expect(await b.send('/area')).toEqual({ page: true });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toEqual([]);
+    expect(await b.pk('forget-proof')).toEqual({ forgotten: true });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+    const again = await b.pk('step-up-options');
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(again.value) })).toEqual({ ok: true });
+    expect(await b.send('/area')).toEqual({ page: true });
+  });
+
+  it('answers no-challenge for the options when the account has no passkey', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login(bob.email);
+    expect(await b.pk('step-up-options')).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('needs a signed-in user for the options and for the step-up', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    expect(await b.pk('step-up-options')).toMatchObject({ thrown: expect.stringContaining('signed-in user') });
+    expect(await b.pk('step-up', { passkey: { id: 'x' } })).toMatchObject({ thrown: expect.stringContaining('signed-in user') });
+  });
+
+  it('keeps the purposes apart, in both directions within one session', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    // A passwordless sign-in's challenge does not serve a step-up.
+    const signInOptions = (await b.pk('sign-in-options'));
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(signInOptions) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    // A step-up's challenge does not serve a passwordless sign-in.
+    const stepOptions = (await b.pk('step-up-options')).value;
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(stepOptions) })).toMatchObject({ ok: false });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+    // The challenge of a waiting sign-in does not finish the step-up either, and the reverse.
+    // Step-up and second factor are both bound to the account; what tells them apart is covered in challenge.test.ts.
+    const second = (await (await waiting(booted)).pk('challenge-options')).value;
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(second) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    const again = (await b.pk('step-up-options')).value;
+    const other = await waiting(booted);
+    await other.pk('challenge-options');
+    expect(await other.pk('challenge', { passkey: authenticator.authenticate(again) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(again) })).toMatchObject({ ok: true });
+  });
+
+  it('refuses a challenge that ran out, and the page stays closed', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const booted = await boot();
+      const authenticator = device();
+      const b = await unproven(booted, authenticator);
+      const options = (await b.pk('step-up-options')).value;
+      vi.setSystemTime(Date.now() + (CHALLENGE_SECONDS + 1) * 1000);
+      expect(await b.pk('step-up', { passkey: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+      expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells the owner of a wrong answer only, not of a missing, used or expired challenge', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const booted = await boot();
+      const authenticator = device();
+      const b = await unproven(booted, authenticator);
+      const failed = () => events.filter((event) => event instanceof TwoFactorChallengeFailed);
+      events.length = 0;
+      expect(await b.pk('step-up', { passkey: { id: 'x' } })).toMatchObject({ kind: 'invalid-code' }); // no challenge
+      const options = (await b.pk('step-up-options')).value;
+      const response = authenticator.authenticate(options);
+      expect(await b.pk('step-up', { passkey: response })).toEqual({ ok: true });
+      expect(await b.pk('step-up', { passkey: response })).toMatchObject({ kind: 'invalid-code' }); // sent twice
+      const late = (await b.pk('step-up-options')).value;
+      vi.setSystemTime(Date.now() + (CHALLENGE_SECONDS + 1) * 1000);
+      expect(await b.pk('step-up', { passkey: authenticator.authenticate(late) })).toMatchObject({ kind: 'invalid-code' }); // expired
+      expect(failed()).toEqual([]);
+      const fresh = (await b.pk('step-up-options')).value;
+      expect(await b.pk('step-up', { passkey: authenticator.authenticate(fresh, { userVerified: false }) })).toMatchObject({ kind: 'invalid-code' });
+      expect(failed()).toMatchObject([{ during: 'step-up' }]);
+
+      // The same at the sign-in's second step.
+      events.length = 0;
+      const w = await waiting(booted);
+      expect(await w.pk('challenge', { passkey: { id: 'x' } })).toMatchObject({ kind: 'invalid-code' }); // no challenge
+      expect(failed()).toEqual([]);
+      const options2 = (await w.pk('challenge-options')).value;
+      expect(await w.pk('challenge', { passkey: authenticator.authenticate(options2, { userVerified: false }) })).toMatchObject({ kind: 'invalid-code' });
+      expect(failed()).toMatchObject([{ during: 'sign-in' }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses the passkey of another account, counts the failure, and ends no session', async () => {
+    const booted = await boot();
+    const b = await unproven(booted);
+    const bobs = device();
+    await enrolled(booted, bobs, bob.email);
+    events.length = 0;
+    const options = (await b.pk('step-up-options')).value;
+    expect(await b.pk('step-up', { passkey: bobs.authenticate({ challenge: options.challenge }) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toMatchObject([{ during: 'step-up' }]);
+    expect(await b.pk('who')).toEqual({ id: 1 });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+  });
+
+  it('spends the challenge: the same assertion a second time is refused', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    const response = authenticator.authenticate((await b.pk('step-up-options')).value);
+    expect(await b.pk('step-up', { passkey: response })).toEqual({ ok: true });
+    expect(await b.pk('step-up', { passkey: response })).toMatchObject({ ok: false, kind: 'invalid-code' });
+  });
+
+  it('refuses a missing user verification and a passkey deleted meanwhile', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    expect(await b.pk('forget-proof')).toEqual({ forgotten: true });
+    const options = (await b.pk('step-up-options')).value;
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(options, { userVerified: false }) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    const response = authenticator.authenticate((await b.pk('step-up-options')).value);
+    expect(await b.pk('remove', { id: 1 })).toMatchObject({ ok: true });
+    expect(await b.pk('step-up', { passkey: response })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
+  });
+
+  it('leaves a suspended passkey out of the options, and refuses it as a response', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    const options = (await b.pk('step-up-options')).value;
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
+    expect((await b.pk('step-up-options')).value.allowCredentials).toHaveLength(1);
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+  });
+
+  it('a counter regression refuses it and raises the clone event', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate((await b.pk('step-up-options')).value) })).toEqual({ ok: true });
+    await b.pk('forget-proof');
+    events.length = 0;
+    const stale = authenticator.authenticate((await b.pk('step-up-options')).value, { signCount: 1 });
+    expect(await b.pk('step-up', { passkey: stale })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    expect(events.filter((event) => event instanceof PasskeyCloneSuspected)).toHaveLength(1);
+  });
+
+  it('uses the generous counter, 10 a minute, and leaves the budget of authenticator codes untouched', async () => {
+    const booted = await boot();
+    const b = await unproven(booted);
+    const kinds = [];
+    for (let i = 0; i < 11; i++) kinds.push((await b.pk('step-up', { passkey: { id: 'x' } })).kind);
+    expect(kinds.slice(0, 10).every((kind) => kind === 'invalid-code')).toBe(true);
+    expect(kinds[10]).toBe('throttled');
+    const limiter = booted.application.container.make(RateLimiter);
+    for (let i = 0; i < 5; i++) expect(await limiter.attempt('two-factor-minute:1', 5, 60)).toBe(true);
+    expect(await b.pk('who')).toEqual({ id: 1 });
+  });
+
+  it('has nothing to prove without a factor', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login(bob.email);
+    expect(await b.pk('step-up', { passkey: { id: 'x' } })).toEqual({ ok: false, kind: 'no-challenge' });
   });
 });
 

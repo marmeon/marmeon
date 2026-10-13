@@ -26,6 +26,8 @@ import type { PasskeyChallengeOptionsController } from '../modules/auth/controll
 import type { PasskeyRegistrationOptionsController } from '../modules/auth/controllers/PasskeyRegistrationOptionsController.ts';
 import type { PasskeySignInController } from '../modules/auth/controllers/PasskeySignInController.ts';
 import type { PasskeySignInOptionsController } from '../modules/auth/controllers/PasskeySignInOptionsController.ts';
+import type { PasskeyStepUpController } from '../modules/auth/controllers/PasskeyStepUpController.ts';
+import type { PasskeyStepUpOptionsController } from '../modules/auth/controllers/PasskeyStepUpOptionsController.ts';
 import type { RedirectToOwnProfileController } from '../modules/user-profile/controllers/RedirectToOwnProfileController.ts';
 import type { RegenerateRecoveryCodesController } from '../modules/auth/controllers/RegenerateRecoveryCodesController.ts';
 import type { RegisterController } from '../modules/auth/controllers/RegisterController.ts';
@@ -84,6 +86,8 @@ declare module '@marmeon/router' {
     'auth.passkeys.release': { method: 'post'; path: '/settings/passkeys/:passkey/release'; controller: typeof ReleasePasskeyController };
     'auth.passkeys.sign-in': { method: 'post'; path: '/passkeys/sign-in'; controller: typeof PasskeySignInController };
     'auth.passkeys.sign-in.options': { method: 'post'; path: '/passkeys/sign-in/options'; controller: typeof PasskeySignInOptionsController };
+    'auth.passkeys.step-up': { method: 'post'; path: '/settings/two-factor/verify/passkey'; controller: typeof PasskeyStepUpController };
+    'auth.passkeys.step-up.options': { method: 'post'; path: '/settings/two-factor/verify/passkey/options'; controller: typeof PasskeyStepUpOptionsController };
     'auth.passkeys.store': { method: 'post'; path: '/settings/passkeys'; controller: typeof RegisterPasskeyController };
     'auth.passkeys.update': { method: 'put'; path: '/settings/passkeys/:passkey'; controller: typeof RenamePasskeyController };
     'auth.password.confirm': { method: 'get'; path: '/confirm-password'; controller: typeof ShowConfirmPasswordController };

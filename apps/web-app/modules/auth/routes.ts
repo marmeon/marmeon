@@ -12,6 +12,8 @@ import { LoginController } from './controllers/LoginController.ts';
 import { PasskeyChallengeController } from './controllers/PasskeyChallengeController.ts';
 import { PasskeyChallengeOptionsController } from './controllers/PasskeyChallengeOptionsController.ts';
 import { PasskeyRegistrationOptionsController } from './controllers/PasskeyRegistrationOptionsController.ts';
+import { PasskeyStepUpController } from './controllers/PasskeyStepUpController.ts';
+import { PasskeyStepUpOptionsController } from './controllers/PasskeyStepUpOptionsController.ts';
 import { PasskeySignInController } from './controllers/PasskeySignInController.ts';
 import { PasskeySignInOptionsController } from './controllers/PasskeySignInOptionsController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
@@ -111,6 +113,9 @@ export default defineRoutes((Route) => {
   // per session at a time (block()), as at the sign-in.
   confirmed.get('/settings/two-factor/verify', ShowTwoFactorVerifyController).name('auth.two-factor.verify');
   confirmed.post('/settings/two-factor/verify', TwoFactorVerifyController).name('auth.two-factor.verify.store').block();
+  // The same with a passkey: the options open a challenge, so they have a limit of their own (per user); the check is throttled per account inside `TwoFactor`.
+  confirmed.middleware(throttle('passkey-step-up-options')).post('/settings/two-factor/verify/passkey/options', PasskeyStepUpOptionsController).name('auth.passkeys.step-up.options');
+  confirmed.post('/settings/two-factor/verify/passkey', PasskeyStepUpController).name('auth.passkeys.step-up').block();
   // Only for sessions that proved a second factor within 15 minutes — an example of `twoFactor()`. An app chooses where to put it; nothing else
   // here requires a factor, and the framework never installs it by itself.
   confirmed.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 })).get('/settings/sensitive', ShowSensitiveController).name('auth.sensitive');

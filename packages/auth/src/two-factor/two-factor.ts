@@ -11,7 +11,7 @@ import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
-import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type SecondFactor } from './state.ts';
+import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type SecondFactor } from './state.ts';
 import { TwoFactorStore } from './store.ts';
 import { generateSecret, otpauthUri, verifyTotp } from './totp.ts';
 
@@ -127,10 +127,12 @@ export class TwoFactor {
     const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
 
-    if (!(await this.#verify(userId, input))) {
+    const verdict = await this.#verify(userId, input);
+    if (verdict !== 'valid') {
       const failures = this.#auth[RECORD_PENDING_FAILURE]() ?? PENDING_MAX_FAILURES;
       const found = await this.#users.findById(userId as never);
-      if (found) await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }));
+      // The owner is told of a wrong answer only, not of a challenge that timed out or was sent twice: the client sees `invalid-code` either way.
+      if (found && verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }));
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, PENDING_MAX_FAILURES - failures) });
     }
     // Only the minute counter: hour and day keep the attempts that guessing used up.
@@ -141,7 +143,7 @@ export class TwoFactor {
   }
 
   /**
-   * Proves the second factor again for the signed-in user, in the session they already have — what the `twoFactor()` middleware sends
+   * Proves the second factor again for the signed-in user (a code, a recovery code or a passkey from `passkeys.stepUpOptions()`), in the session they already have — what the `twoFactor()` middleware sends
    * people to when this session has not proven it (or too long ago). `ok` once the code counts: the session is then marked as having
    * proven it, under a new session id. Same throttle, same events and same errors as `challenge()`, except that wrong codes do not
    * end the session (`attemptsLeft` counts down the minute's budget); `no-challenge` when the account has no factor to prove.
@@ -151,13 +153,15 @@ export class TwoFactor {
     const user = await this.#requireUser('stepUp');
     const userId = idOf(user);
     if ((await this.#state.factors(userId)).length === 0) return err({ kind: 'no-challenge' });
-    const recovery = 'recoveryCode' in input;
+    // A passkey shares the generous counter with recovery codes (it cannot be guessed); a failure ends no session, so it is not the TOTP budget.
+    const recovery = 'recoveryCode' in input || 'passkey' in input;
     const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
 
     const minute = recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId);
-    if (!(await this.#verify(userId, input))) {
-      await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }));
+    const verdict = await this.#verify(userId, input, 'step-up');
+    if (verdict !== 'valid') {
+      if (verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }));
       const budget = recovery ? RECOVERY_WINDOW.attempts : TOTP_WINDOWS[0].attempts;
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, budget - (await this.#limiter.attempts(minute))) });
     }
@@ -288,8 +292,12 @@ export class TwoFactor {
   }
 
   /** Whether `input` is a valid second factor of the account right now — checked against the store, not against what the sign-in saw. */
-  async #verify(userId: string | number, input: SecondFactorInput): Promise<boolean> {
-    if ('passkey' in input) return this.#passkeys[VERIFY_SECOND_FACTOR](userId, input.passkey);
+  async #verify(userId: string | number, input: SecondFactorInput, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
+    if ('passkey' in input) return this.#passkeys[VERIFY_SECOND_FACTOR](userId, input.passkey, during);
+    return (await this.#verifyCode(userId, input)) ? 'valid' : 'wrong';
+  }
+
+  async #verifyCode(userId: string | number, input: Exclude<SecondFactorInput, { passkey: unknown }>): Promise<boolean> {
     if ('recoveryCode' in input) {
       // Recovery codes need no secret that decrypts; they work while the account has any factor.
       if ((await this.#state.factors(userId)).length === 0) return false;

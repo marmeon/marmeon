@@ -28,6 +28,8 @@ export class AuthServiceProvider implements ServiceProvider {
     limiter.for('passkey-options', (ctx) => Limit.perMinute(30).by(ctx.ip ?? 'unknown'));
     // The options of the passkey step after a password: asked once per sign-in, so a tighter limit of its own.
     limiter.for('passkey-challenge-options', (ctx) => Limit.perMinute(10).by(ctx.ip ?? 'unknown'));
+    // The options of a passkey step-up in a signed-in session: per user (the route is behind authenticate()), asked once per proof.
+    limiter.for('passkey-step-up-options', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? ctx.ip)));
     // Resending the verification mail: per signed-in user (the route is behind authenticate()).
     limiter.for('verification', (ctx) => Limit.perMinute(3).by(String(ctx.user?.id ?? ctx.ip)));
     // Changing the address (private registration): every request sends a mail — to the new address or its owner. Per user.
