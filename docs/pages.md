@@ -158,6 +158,9 @@ export function AppLayout({ children }: LayoutProps) {
 layer's page. The props are typed by `interface SharedProps`, which the middleware declares. The
 [responses](responses.md#shared-props) page shows how to share a prop.
 
+Share what pages show. Shared props are part of every page's HTML and JSON, so a user's `name` and whether they are `verified`
+belong there, their database id does not. A page that needs more asks its controller for it.
+
 Declare shared props as optional and render without them. A path that matches no route passes no group's middleware, so its 404
 page has no shared props, yet it still renders inside the default layout.
 

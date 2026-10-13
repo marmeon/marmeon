@@ -149,9 +149,10 @@ describe('user-profile module', () => {
   describe('shared props', () => {
     it('gives every page the signed-in user and validation errors — flash messages are no prop', async () => {
       const page = await as(alan).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', {
-        auth: { user: { id: alan.id, name: 'Alan Turing' } },
+        auth: { user: { name: 'Alan Turing' } },
         errors: {},
       });
+      expect((page.page()!.props as { auth: { user: object } }).auth.user).not.toHaveProperty('id');
       expect(page.page()!.props).not.toHaveProperty('flash');
       page.assertNoFlash();
       await app.navigating().get('/login').assertPage('auth/Login', { auth: { user: null } });
@@ -256,7 +257,7 @@ describe('user-profile module', () => {
     });
     // Authentication asks the repository (it is the UserProvider): the stub's user is signed in, although no row exists.
     await stubbed.actingAs(stub).get('/users/me').assertRedirect('/users/7');
-    await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { auth: { user: { id: 7, name: 'Grace (stub)' } } });
+    await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { auth: { user: { name: 'Grace (stub)' } } });
   });
 
   it('boots modules and discovered packages through their providers', () => {

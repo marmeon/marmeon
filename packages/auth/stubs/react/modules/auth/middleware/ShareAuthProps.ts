@@ -6,8 +6,9 @@ declare module '@marmeon/http/page' {
     /**
      * The signed-in user, on every page of the `web` group — or null. Optional on purpose: a path without a route (a 404)
      * passes no group's middleware, so its error page has no shared props — a layout around it renders without them.
+     * Shared props reach every page, in its HTML and its JSON: share only what pages show, so no id.
      */
-    auth?: { user: { id: number; name: string; verified: boolean } | null };
+    auth?: { user: { name: string; verified: boolean } | null };
   }
 
   /**
@@ -32,7 +33,7 @@ export class ShareAuthProps {
   handle(_ctx: HttpContext, next: Next<{}>) {
     this.#shared.share('auth', async () => {
       const user = await this.#auth.user();
-      return { user: user ? { id: user.id, name: user.name, verified: user.email_verified_at !== null } : null };
+      return { user: user ? { name: user.name, verified: user.email_verified_at !== null } : null };
     });
     return next();
   }

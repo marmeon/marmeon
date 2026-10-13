@@ -24,7 +24,7 @@ describe('the home page', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     const home = await app.actingAs(ada).navigating().get('/');
     home.assertPage('home/Home');
-    expect(home.page()!.props.auth).toEqual({ user: { id: ada.id, name: ada.name, verified: true } });
+    expect(home.page()!.props.auth).toEqual({ user: { name: ada.name, verified: true } });
   });
 
   it('is a document with its own Content-Security-Policy nonce', async () => {
