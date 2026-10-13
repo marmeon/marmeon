@@ -51,8 +51,13 @@ export class LoginController extends Controller {
 
     // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify). The attempt stays counted.
     const signedIn = await this.#auth.attempt(email, password, { remember });
-    // `two-factor-required` (only with a factor source bound, which this module does not do) is treated like a failure: nobody is signed in.
     if (!signedIn.ok) {
+      // The password was right, but the account has a second factor and nobody is signed in yet: on to the code. Not counted as
+      // a failure — the limiter is cleared like after a sign-in (the code has its own, per account).
+      if (signedIn.error.kind === 'two-factor-required') {
+        await this.#limiter.clear(key);
+        return this.redirect().route('auth.two-factor.challenge');
+      }
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
 

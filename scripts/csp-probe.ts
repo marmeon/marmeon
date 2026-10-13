@@ -44,7 +44,7 @@ const PROFILES: Record<string, Profile> = {
   kit: {
     email: 'test@example.com',
     guest: ['/', '/login', '/register', '/forgot-password', '/nowhere'],
-    user: ['/dashboard', '/settings/security', '/settings/tokens'],
+    user: ['/dashboard', '/settings/security', '/settings/two-factor', '/settings/two-factor/verify', '/settings/tokens'],
     failing: { page: '/dashboard', link: 'a[href="/settings/security"]' },
     // The auth module's layouts: modules/auth/auth.css (make:auth imports it in bootstrap/client.tsx), no inline style.
     looks: [
@@ -52,6 +52,7 @@ const PROFILES: Record<string, Profile> = {
       { url: '/dashboard', selector: 'body', property: 'font-family', expected: '"IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif' },
       { url: '/dashboard', selector: 'header.auth-header', property: 'display', expected: 'flex' },
       { url: '/settings/tokens', selector: '.auth-settings', property: 'display', expected: 'flex' },
+      { url: '/settings/two-factor', selector: '.auth-settings', property: 'display', expected: 'flex' },
       { url: '/settings/tokens', selector: 'label.choice', property: 'display', expected: 'flex' },
     ],
   },

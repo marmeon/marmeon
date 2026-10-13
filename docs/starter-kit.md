@@ -3,7 +3,7 @@
 ## Introduction
 
 The starter kit is what `pnpm create marmeon` gives you by default: a blank app plus two modules. The `auth` module handles
-accounts: sign-in, registration, password reset, the confirmation of an address, a security page and API tokens. The `home`
+accounts: sign-in, registration, password reset, the confirmation of an address, a security page, two-factor authentication and API tokens. The `home`
 module is the page at `/`. Both are ordinary modules in your app, written as source code, so you read them, change them and
 delete what you do not need. [Your First App](first-app.md) adds a notes module of your own on top of the kit.
 
@@ -20,19 +20,19 @@ framework bring them.
 
 | Part | What it is |
 | --- | --- |
-| `index.ts` | The module's definition: its provider, the listener that sends the confirmation mail, the queued jobs, the migrations, the seeder, the routes, the schedule and the `auth:prune-unverified` command. |
-| `AuthServiceProvider.ts` | Finds users through the `UserRepository`, shares `auth` with every page, and sets the rate limits of its forms. |
+| `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:prune-unverified` and `auth:reset-two-factor`. |
+| `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app as the source of second factors, shares `auth` with every page, and sets the rate limits of its forms. |
 | `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
-| `controllers/` | 24 controllers, one per endpoint. A form's controller validates it with a request schema. |
+| `controllers/` | 34 controllers, one per endpoint. A form's controller validates it with a request schema. |
 | `views/`, `layouts/` | The React pages and the app's layout, `AppLayout`, with a settings layout inside it. |
-| `mail/` | Six mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address. |
+| `mail/` | Seven mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, and the note about the second factor. |
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
-| `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens` and `personal_access_tokens`. |
+| `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, and `two_factor_authentications` with `two_factor_recovery_codes`. |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
-| `auth.test.ts` and three more | The module's own tests. |
+| `auth.test.ts` and five more | The module's own tests. |
 
 To add a language, put a file next to every `en.ts` of the app — a locale with any language file is supported (see [Localization](localization.md), `APP_LOCALES`).
 
@@ -45,15 +45,19 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 | `/login` | `auth.login` | guests |
 | `/register` | `auth.register` | guests |
 | `/register/sent` | `auth.register.sent` | guests, after they register |
+| `/two-factor-challenge` | `auth.two-factor.challenge` | guests whose password was right and who have a second factor |
 | `/forgot-password`, `/reset-password` | `auth.password.request`, `auth.password.reset` | guests |
 | `/dashboard` | `dashboard` | signed in, with a confirmed address |
 | `/confirm-password` | `auth.password.confirm` | signed in, with a confirmed address |
 | `/settings/security` | `auth.security` | the same, and the password typed within 15 minutes |
+| `/settings/two-factor` | `auth.two-factor` | the same |
+| `/settings/two-factor/verify` | `auth.two-factor.verify` | signed in, with a confirmed address; for `twoFactor()` |
 | `/settings/tokens` | `auth.tokens` | the same |
 | `/email/verify` | `auth.verification.notice` | signed in |
 
 A signed-in user who opens a guest page goes to `/dashboard`. The security page changes the password and the e-mail address,
-and signs out the other devices. The tokens page creates and revokes API tokens. `/` belongs to the home module, so the auth
+and signs out the other devices. The two-factor page sets up an authenticator app and shows the recovery codes once; the
+challenge page asks for the code (or a recovery code) after the password. The tokens page creates and revokes API tokens. `/` belongs to the home module, so the auth
 module leaves it free.
 
 The routes are an ordinary route file, so you change a path, add a page or remove one in `modules/auth/routes.ts`. The
@@ -110,6 +114,28 @@ their look.
 The text font is IBM Plex Sans, served from your own app: `styles/app.css` imports it from `@fontsource-variable/ibm-plex-sans`,
 which Vite bundles into `/assets/`, so no request goes to another host and `font-src 'self'` is enough. To use another font,
 replace the `@import` and `--font-text`, and remove the dependency. The mono font is the system's.
+
+## Two-factor authentication
+
+Each user decides for their own account. On `/settings/two-factor` they scan a QR code with an authenticator app, type the first
+code and their password, and get ten recovery codes in a layer, shown once. Turning it on signs out their other devices and lists
+their API tokens, which keep working. From then on a sign-in with the right password waits on `/two-factor-challenge` for a code
+or a recovery code. The settings page and new recovery codes sit behind sudo mode, which asks for the password again after 15 minutes; turning it off always asks for it.
+
+The owner gets a mail when the factor is turned on or off, when a recovery code signed in (with the number left), and when a
+wrong code followed the right password ("someone knows your password", at most once an hour for each account). They are queued
+listeners in `listeners/`, and `mail/TwoFactorMail.ts` writes them in the account's language.
+
+A user who lost the phone and the recovery codes is let in by an operator, once sure it is the owner:
+
+```sh
+marmeon auth:reset-two-factor ada@example.com --force
+```
+
+The kit does not require it anywhere: the `twoFactor()` middleware is provided and not installed. It comes with the page it
+needs, `/settings/two-factor/verify`; [Two-Factor Authentication](two-factor-authentication.md#in-the-starter-kit) shows the line
+that turns it on. To switch the feature off for every account, remove the `TwoFactorState` binding in `AuthServiceProvider.ts`, and the routes,
+pages and listeners that use it.
 
 ## Private registration
 

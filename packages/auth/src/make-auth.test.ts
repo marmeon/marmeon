@@ -51,6 +51,11 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(spawned).toEqual([['route:types']]);
     expect(existsSync(join(root, 'modules/auth/controllers/LoginController.ts'))).toBe(true);
     expect(existsSync(join(root, 'modules/auth/migrations/0001_01_01_000000_create_users_table.ts'))).toBe(true);
+    // Two-factor authentication: the pages, and the tables of its factor and recovery codes (the rest of the framework is bound in the provider).
+    expect(existsSync(join(root, 'modules/auth/views/TwoFactorChallenge.tsx'))).toBe(true);
+    expect(readFileSync(join(root, 'modules/auth/migrations/0001_01_01_000004_create_two_factor_tables.ts'), 'utf8')).toContain("foreignId('user_id').constrained().cascadeOnDelete()");
+    expect(existsSync(join(root, 'modules/auth/commands/ResetTwoFactorCommand.ts'))).toBe(true);
+    expect(readFileSync(join(root, 'modules/auth/AuthServiceProvider.ts'), 'utf8')).toContain('combineFactors(c.make(TwoFactorStore))');
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import auth from '#modules/auth';");
     expect(app).toMatch(/modules: \[auth, system\]/);
@@ -255,10 +260,12 @@ describe('make:auth', { timeout: 30_000 }, () => {
       // Private registration (the default): its page and the change link — answered with 404 when the switch is off.
       expect(routeTypes).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
       expect(routeTypes).toContain("'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };");
+      expect(routeTypes).toContain("'auth.two-factor.challenge': { method: 'get'; path: '/two-factor-challenge'; controller: typeof ShowTwoFactorChallengeController };");
       expect(marmeon('route:types', '--check').code).toBe(0);
       const migrated = marmeon('migrate');
       expect(migrated.out).toContain('create_personal_access_tokens_table');
       expect(migrated.out).toContain('create_users_table');
+      expect(migrated.out).toContain('create_two_factor_tables');
       expect(migrated.code).toBe(0);
       const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
       expect(tables).toContain('password: Secret<string>;');
@@ -287,7 +294,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       // Both values of the switch: the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
       const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
       expect(ran('registration', 'private registration — the default')).toBe(6);
-      expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(4);
+      expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(5);
       expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(8);
       expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(2);
       // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS by the command, in both behaviours — the module schedules no
