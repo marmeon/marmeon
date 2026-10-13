@@ -459,3 +459,66 @@
   font-size: 0.9375rem;
   user-select: all;
 }
+
+/* Login and the second step: "Sign in with a passkey" under the form — the button, and the reason it failed beneath it. */
+.auth-alternative {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  margin-block: var(--space-4, 1rem);
+}
+
+.auth-alternative > small {
+  color: var(--color-danger, inherit);
+}
+
+/* Passkeys: one row for each, a rule between them; name and facts above, the actions beneath. */
+.auth-passkeys {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-passkey {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  padding-block: var(--space-4, 1rem);
+}
+
+.auth-passkey + .auth-passkey {
+  border-top: 1px solid var(--color-line, GrayText);
+}
+
+.auth-passkey > * {
+  margin-block: 0;
+}
+
+.auth-passkey-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+}
+
+.auth-passkey-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2, 0.5rem);
+}
+
+/* A small form inside a row: the field and its button side by side where they fit. */
+.auth-passkey-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2, 0.5rem);
+}
+
+.auth-passkey-form .field {
+  flex: 1 1 14rem;
+  margin-bottom: 0;
+}

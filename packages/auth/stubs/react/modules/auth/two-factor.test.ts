@@ -325,7 +325,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     await enable(ada);
     const info = vi.spyOn(app.make(Logger), 'info');
-    expect(await reset([ada.email.toUpperCase()])).toEqual({ code: 0, lines: [`Removed the second factor and the recovery codes of ${ada.email}.`] });
+    expect(await reset([ada.email.toUpperCase()])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}.`] });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: ada.id });
     await app.assertDatabaseCount('two_factor_authentications', 0);
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);

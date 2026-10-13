@@ -14,6 +14,10 @@ export async function twoFactorPage(twoFactor: TwoFactor) {
   const status = await twoFactor.status();
   return {
     enabled: status.factors.includes('totp'),
+    // Any factor, a passkey alone included: the recovery codes belong to the account, so they are listed and renewable.
+    secured: status.factors.length > 0,
+    // Turning the authenticator off then leaves the passkeys standing: the page says so.
+    passkey: status.factors.includes('passkey'),
     setup: status.settingUpTotp ? ((await twoFactor.setup()) ?? null) : null,
     recoveryCodesLeft: status.recoveryCodesLeft,
   };

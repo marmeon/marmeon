@@ -6,7 +6,7 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowTwoFactorController>;
 
-export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) {
+export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCodesLeft }: Props) {
   const route = useRoute();
   const t = useTranslation('auth');
   const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
@@ -93,10 +93,10 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
         </section>
       )}
 
-      {enabled && (
+      {secured && (
         <>
           <section aria-labelledby="status-heading" className="card">
-            <h2 id="status-heading">{t('two_factor.on_heading')}</h2>
+            <h2 id="status-heading">{enabled ? t('two_factor.on_heading') : t('two_factor.passkeys_heading')}</h2>
             <p>{t('two_factor.recovery_left', { count: recoveryCodesLeft })}</p>
             {recoveryCodesLeft <= 3 && (
               <p role="status" className="notice">
@@ -106,37 +106,44 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
             <Link route="auth.two-factor.codes" className="button-secondary">
               {t('two_factor.regenerate')}
             </Link>
+            {!enabled && (
+              <p>
+                {t('two_factor.passkeys_note')} <Link route="auth.passkeys">{t('two_factor.passkeys_link')}</Link>
+              </p>
+            )}
           </section>
 
-          <section aria-labelledby="disable-heading" className="card">
-            <h2 id="disable-heading">{t('two_factor.disable_heading')}</h2>
-            <form
-              method="post"
-              action={route('auth.two-factor.disable')}
-              noValidate
-              onSubmit={(event) => {
-                event.preventDefault();
-                void disableForm.submit({ onFinish: () => disableForm.reset() });
-              }}
-            >
-              <div className="field">
-                <label htmlFor="disable-password">{t('two_factor.disable_password')}</label>
-                <input
-                  id="disable-password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={disableForm.data.password}
-                  onChange={(e) => disableForm.set('password', e.target.value)}
-                  aria-invalid={!!disableForm.errors.password}
-                />
-                {disableForm.errors.password && <small role="alert"> {disableForm.errors.password}</small>}
-              </div>
-              <button type="submit" className="button" data-destructive="" disabled={disableForm.processing}>
-                {t('two_factor.disable_submit')}
-              </button>
-            </form>
-          </section>
+          {enabled && (
+            <section aria-labelledby="disable-heading" className="card">
+              <h2 id="disable-heading">{passkey ? t('two_factor.remove_app_heading') : t('two_factor.disable_heading')}</h2>
+              <form
+                method="post"
+                action={route('auth.two-factor.disable')}
+                noValidate
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void disableForm.submit({ onFinish: () => disableForm.reset() });
+                }}
+              >
+                <div className="field">
+                  <label htmlFor="disable-password">{t('two_factor.disable_password')}</label>
+                  <input
+                    id="disable-password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={disableForm.data.password}
+                    onChange={(e) => disableForm.set('password', e.target.value)}
+                    aria-invalid={!!disableForm.errors.password}
+                  />
+                  {disableForm.errors.password && <small role="alert"> {disableForm.errors.password}</small>}
+                </div>
+                <button type="submit" className="button" data-destructive="" disabled={disableForm.processing}>
+                  {passkey ? t('two_factor.remove_app_submit') : t('two_factor.disable_submit')}
+                </button>
+              </form>
+            </section>
+          )}
         </>
       )}
     </main>
