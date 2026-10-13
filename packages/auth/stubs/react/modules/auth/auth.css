@@ -1,43 +1,222 @@
 /*
  * The auth module's look — `marmeon make:auth` imports it in bootstrap/client.tsx. The views name classes, never `style` props:
  * a `style` attribute in the server's markup is what a strict `style-src` blocks. Yours to change.
+ * The tokens (`--color-*`, `--space-*`, `--radius-*`, `--shadow-*`) come from styles/app.css of the starter kit; every use here has a
+ * fallback, so the module also looks right in an app that has its own stylesheet instead.
  */
 
-/* AppLayout: the header — home link left, the account's links right. */
+/* AppLayout: the header — home link left, the account's links right; it wraps on a narrow screen. */
 .auth-header {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 8px;
+  gap: var(--space-2, 0.5rem) var(--space-4, 1rem);
+  padding: var(--space-3, 0.75rem) max(var(--space-4, 1rem), calc((100% - 64rem) / 2 + var(--space-4, 1rem)));
+  border-bottom: 1px solid var(--color-line, GrayText);
+  background: var(--color-surface, Canvas);
 }
 
-/* SettingsLayout: the settings' navigation beside the page. */
+.auth-header a:not(.button) {
+  text-decoration: none;
+}
+
+.auth-header a:not(.button):hover {
+  text-decoration: underline;
+}
+
+.auth-brand {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text, CanvasText);
+}
+
+.auth-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem) var(--space-4, 1rem);
+}
+
+/* A <button> that reads as a link (sign out is a form). */
+.auth-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent, LinkText);
+  font: inherit;
+  cursor: pointer;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
+
+/*
+ * AppLayout: the toasts, in a live region (never hidden while empty: a screen reader announces only what is added to a region it
+ * already knows). On a narrow screen they stay in the flow below the header, so they never cover the page; from 40rem they are a
+ * stack at the bottom right. Without JavaScript, the <noscript> shows them in the page.
+ */
+.auth-toasts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+}
+
+.auth-toasts p {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3, 0.75rem);
+  margin: var(--space-3, 0.75rem) var(--space-4, 1rem) 0;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 1px solid var(--color-line, GrayText);
+  border-inline-start-width: 4px;
+  border-radius: var(--radius-1, 0.375rem);
+  background: var(--color-surface, Canvas);
+  color: var(--color-text, CanvasText);
+  box-shadow: var(--shadow-2, 0 4px 12px rgb(0 0 0 / 0.2));
+}
+
+@media (min-width: 40rem) {
+  .auth-toasts {
+    position: fixed;
+    inset: auto var(--space-4, 1rem) var(--space-4, 1rem) auto;
+    z-index: 10;
+    max-width: 24rem;
+  }
+
+  .auth-toasts p {
+    margin: 0;
+  }
+}
+
+.auth-toasts p[data-toast='success'] {
+  border-color: var(--color-success, GrayText);
+}
+
+.auth-toasts p[data-toast='error'] {
+  border-color: var(--color-danger, GrayText);
+}
+
+/* The dismiss ×: plain, no fill. */
+.auth-toast-close {
+  flex: none;
+  padding: 0 var(--space-1, 0.25rem);
+  border: 0;
+  border-radius: var(--radius-1, 0.375rem);
+  background: none;
+  color: var(--color-muted, GrayText);
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.auth-toast-close:hover {
+  color: var(--color-text, CanvasText);
+}
+
+/* The guest pages: one centered card; the field is a label above its input, the error below. */
+.auth-card {
+  max-width: 26rem;
+  margin: var(--space-5, 1.5rem) auto 0;
+}
+
+.auth-card h1 {
+  font-size: 1.75rem;
+}
+
+.field {
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.field > small {
+  display: block;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: var(--space-2, 0.5rem);
+}
+
+.auth-card .cluster {
+  justify-content: space-between;
+  margin-top: var(--space-4, 1rem);
+}
+
+/* SettingsLayout: the settings' navigation — tabs on a narrow screen, a sidebar from 48rem. */
 .auth-settings {
   display: flex;
-  gap: 32px;
-  align-items: flex-start;
-}
-
-.auth-settings-nav {
-  min-width: 140px;
-  padding-top: 16px;
+  flex-direction: column;
+  gap: var(--space-4, 1rem);
+  align-items: stretch;
 }
 
 .auth-settings-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 0.25rem);
   list-style: none;
   padding: 0;
   margin: 0;
-  line-height: 2;
+}
+
+.auth-settings-nav a {
+  display: block;
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border-radius: var(--radius-1, 0.375rem);
+  color: var(--color-text, CanvasText);
+  text-decoration: none;
+}
+
+.auth-settings-nav a:hover {
+  background: var(--color-line, color-mix(in srgb, CanvasText 12%, Canvas));
+}
+
+.auth-settings-nav a[data-current] {
+  background: var(--color-line, color-mix(in srgb, CanvasText 12%, Canvas));
+  font-weight: 600;
 }
 
 .auth-settings-page {
   flex: 1;
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .auth-settings {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: var(--space-6, 2.5rem);
+  }
+
+  .auth-settings-nav {
+    flex: none;
+    min-width: 11rem;
+  }
+
+  .auth-settings-nav ul {
+    flex-direction: column;
+  }
 }
 
 /* A paragraph that holds a link that sends (a form): a <div> with a paragraph's spacing — a <p> cannot hold a form. */
 .auth-paragraph {
   margin-block: 1em;
+}
+
+/* Dashboard: the quick links. */
+.auth-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4, 1rem);
+  padding: 0;
+  margin: var(--space-5, 1.5rem) 0 0;
+  list-style: none;
+}
+
+.auth-shortcuts a {
+  font-weight: 500;
 }
 
 /* AccessTokens: one ability per line. */

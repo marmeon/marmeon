@@ -18,9 +18,8 @@ export default function Register({ old }: Props) {
     { validate: { on: 'blur', fields: ['name', 'email'] } },
   );
   const field = (name: 'name' | 'email' | 'password' | 'password_confirmation', label: string, type: string, autoComplete: string, live?: 'name' | 'email') => (
-    <p>
+    <div className="field">
       <label htmlFor={name}>{label}</label>
-      <br />
       <input
         id={name}
         name={name}
@@ -40,34 +39,36 @@ export default function Register({ old }: Props) {
           {form.errors[name]}
         </small>
       )}
-    </p>
+    </div>
   );
 
   return (
-    <main>
-      <Head title={t('register.title')} />
-      <h1>{t('register.title')}</h1>
-      <p>{t('register.confirm_hint')}</p>
-      <form
-        method="post"
-        action={route('auth.register.store')}
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.submit({ onFinish: () => form.reset('password', 'password_confirmation') });
-        }}
-      >
-        {field('name', t('register.name'), 'text', 'name', 'name')}
-        {field('email', t('register.email'), 'email', 'email', 'email')}
-        {field('password', t('register.password', { min: 8 }), 'password', 'new-password')}
-        {field('password_confirmation', t('register.password_confirmation'), 'password', 'new-password')}
-        <button type="submit" disabled={form.processing}>
-          {form.processing ? t('register.submitting') : t('register.submit')}
-        </button>
-      </form>
-      <p>
-        {t('register.registered')} <Link route="auth.login">{t('register.login')}</Link>
-      </p>
+    <main className="app-main">
+      <div className="card auth-card">
+        <Head title={t('register.title')} />
+        <h1>{t('register.title')}</h1>
+        <p>{t('register.confirm_hint')}</p>
+        <form
+          method="post"
+          action={route('auth.register.store')}
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.submit({ onFinish: () => form.reset('password', 'password_confirmation') });
+          }}
+        >
+          {field('name', t('register.name'), 'text', 'name', 'name')}
+          {field('email', t('register.email'), 'email', 'email', 'email')}
+          {field('password', t('register.password', { min: 8 }), 'password', 'new-password')}
+          {field('password_confirmation', t('register.password_confirmation'), 'password', 'new-password')}
+          <button type="submit" className="button auth-submit" disabled={form.processing}>
+            {form.processing ? t('register.submitting') : t('register.submit')}
+          </button>
+        </form>
+        <p className="muted">
+          {t('register.registered')} <Link route="auth.login">{t('register.login')}</Link>
+        </p>
+      </div>
     </main>
   );
 }

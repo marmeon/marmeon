@@ -350,6 +350,11 @@ describe('the starter kit’s own files', () => {
     ];
     expect(files.length).toBeGreaterThan(5);
     for (const file of files) expect(readFileSync(file, 'utf8'), file).not.toMatch(/\bstyle=/);
+    // No <br /> as layout (a label above its input is the stylesheet's job). The settings pages (Security, AccessTokens) still
+    // use it between label and input, so they are not checked here.
+    const laidOut = files.filter((name) => /(layouts|views)[/\\](?!Security|AccessTokens)[^/\\]+\.tsx$/.test(name) && name.startsWith(stubs));
+    expect(laidOut.length).toBeGreaterThan(5);
+    for (const file of laidOut) expect(readFileSync(file, 'utf8'), file).not.toMatch(/<br\s*\/?>/);
   });
 
   it('its client is the blank app’s — with its dialog (`confirm: Confirm`) and nothing else', () => {

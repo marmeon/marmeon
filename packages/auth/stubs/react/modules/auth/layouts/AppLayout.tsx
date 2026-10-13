@@ -14,19 +14,33 @@ export function AppLayout({ children }: LayoutProps) {
   return (
     <>
       <header className="auth-header">
-        <strong>{user ? <Link route="dashboard">{t('layout.dashboard')}</Link> : <Link route="auth.login">{t('layout.sign_in')}</Link>}</strong>
         {user ? (
-          <nav aria-label={t('layout.account')}>
-            {user.name} · <Link route="auth.security">{t('layout.settings')}</Link> · <Link route="auth.logout">{t('layout.sign_out')}</Link>
+          <Link route="dashboard" className="auth-brand">
+            {t('layout.dashboard')}
+          </Link>
+        ) : (
+          <Link route="auth.login" className="auth-brand">
+            {t('layout.sign_in')}
+          </Link>
+        )}
+        {user ? (
+          <nav aria-label={t('layout.account')} className="auth-nav">
+            <span>{user.name}</span>
+            <Link route="auth.security">{t('layout.settings')}</Link>
+            <Link route="auth.logout" className="auth-link">
+              {t('layout.sign_out')}
+            </Link>
           </nav>
         ) : (
-          <nav aria-label={t('layout.account')}>
-            <Link route="auth.register">{t('layout.register')}</Link>
+          <nav aria-label={t('layout.account')} className="auth-nav">
+            <Link route="auth.register" className="button">
+              {t('layout.register')}
+            </Link>
           </nav>
         )}
       </header>
-      {children}
       <Toasts />
+      {children}
     </>
   );
 }
@@ -46,14 +60,16 @@ function Toasts() {
         {flash
           ?.filter((message) => message.key === 'toast')
           .map((message) => (
-            <p key={message.id}>{message.data.message}</p>
+            <p key={message.id} className="notice">
+              {message.data.message}
+            </p>
           ))}
       </noscript>
-      <section aria-label={t('layout.notifications')} aria-live="polite">
+      <section aria-label={t('layout.notifications')} aria-live="polite" className="auth-toasts">
         {toasts.map((toast) => (
           <p key={toast.id} role={toast.kind === 'error' ? 'alert' : undefined} data-toast={toast.kind}>
             {toast.message}{' '}
-            <button type="button" aria-label={t('layout.dismiss')} onClick={() => setToasts((current) => current.filter((other) => other.id !== toast.id))}>
+            <button type="button" className="auth-toast-close" aria-label={t('layout.dismiss')} onClick={() => setToasts((current) => current.filter((other) => other.id !== toast.id))}>
               ×
             </button>
           </p>
