@@ -167,7 +167,7 @@ a transaction, an `err` rolls the transaction back, as the [transactions](transa
 | `repository.tryUpdate()` | `duplicate`, `missing` | [Queries](queries.md#writing) |
 | `auth.attempt()` | `invalid-credentials`, `two-factor-required` | [Authentication](authentication.md#signing-in) |
 | `twoFactor.challenge()` | `no-challenge`, `expired`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#the-sign-in) |
-| `twoFactor.confirm()` | `not-started`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#setting-up) |
+| `twoFactor.confirm()` | `not-started`, `invalid-password`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#setting-up) |
 | `RememberTokenStore.consume()` | `invalid`, `stolen` | [Authentication](authentication.md#remember-me) |
 | `PasswordBroker.createToken()` | `unavailable` | [Password reset](passwords.md#asking-for-a-link) |
 | `PasswordBroker.reset()` | `invalid-token` | [Password reset](passwords.md#resetting-the-password) |

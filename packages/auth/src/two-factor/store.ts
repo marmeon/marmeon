@@ -58,6 +58,11 @@ export class TwoFactorStore implements TwoFactorState {
     return row === undefined ? [] : ['totp'];
   }
 
+  async enabledSince(userId: number | string): Promise<Date | undefined> {
+    const row = await this.#db().selectFrom(TWO_FACTOR_TABLE).select('confirmed_at').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
+    return row?.confirmed_at == null ? undefined : new Date(row.confirmed_at);
+  }
+
   /** @internal The account's authenticator row, confirmed or not; the service decrypts the secret. */
   async find(userId: number | string): Promise<TotpRecord | undefined> {
     const row = await this.#db()
@@ -141,7 +146,13 @@ export class TwoFactorStore implements TwoFactorState {
 
   /** Replaces every recovery code of the account (spent or not) with these hashes, in one transaction. */
   async replaceRecoveryCodes(userId: number | string, codeHashes: readonly string[]): Promise<void> {
-    await this.#connections.transaction(() => this.#replaceCodes(userId, codeHashes));
+    await this.#connections.transaction(async () => {
+      // Two requests making new codes at once would interleave their deletes and inserts: the account's row is the lock.
+      if (this.#connections.options().driver === 'pgsql') {
+        await this.#db().selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
+      }
+      await this.#replaceCodes(userId, codeHashes);
+    });
   }
 
   async remainingRecoveryCodes(userId: number | string): Promise<number> {

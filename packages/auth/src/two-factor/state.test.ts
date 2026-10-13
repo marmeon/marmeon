@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthServiceProvider, combineFactors, TwoFactorState, TwoFactorStore } from '../index.ts';
 import type { SecondFactor } from './state.ts';
 
-const source = (...factors: SecondFactor[]): TwoFactorState => ({ factors: async () => factors });
+const source = (...factors: SecondFactor[]): TwoFactorState => ({ factors: async () => factors, enabledSince: async () => undefined });
+const since = (date: Date | undefined): TwoFactorState => ({ factors: async () => [], enabledSince: async () => date });
 
 describe('TwoFactorState default', () => {
   const boot = () => createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [AuthServiceProvider] });
@@ -36,5 +37,13 @@ describe('combineFactors', () => {
   it('is empty when no source reports a factor, and for no sources at all', async () => {
     expect(await combineFactors(source(), source()).factors(1)).toEqual([]);
     expect(await combineFactors().factors(1)).toEqual([]);
+  });
+
+  it('says since when the earliest of the sources has had a factor — and nothing when none has', async () => {
+    const early = new Date('2026-01-01T00:00:00Z');
+    const late = new Date('2026-06-01T00:00:00Z');
+    expect(await combineFactors(since(late), since(undefined), since(early)).enabledSince(1)).toEqual(early);
+    expect(await combineFactors(since(undefined), since(undefined)).enabledSince(1)).toBeUndefined();
+    expect(await combineFactors().enabledSince(1)).toBeUndefined();
   });
 });

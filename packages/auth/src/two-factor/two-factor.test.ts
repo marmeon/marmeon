@@ -1,3 +1,4 @@
+import { RateLimiter } from '@marmeon/cache';
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon/database';
@@ -8,7 +9,7 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
-import { TwoFactor } from './two-factor.ts';
+import { TwoFactor, type ConfirmError } from './two-factor.ts';
 
 interface TestUser {
   id: number;
@@ -57,6 +58,20 @@ class LoginController extends Controller {
   }
 }
 
+class LoginAsController extends Controller {
+  readonly #auth: Auth;
+  readonly #users: UserProvider;
+  constructor(auth: Auth, users: UserProvider) {
+    super();
+    this.#auth = auth;
+    this.#users = users;
+  }
+  async handle(ctx: HttpContext) {
+    const { id } = (await ctx.input()) as { id: number };
+    return { result: await this.#auth.login((await this.#users.findById(id as never))!.user) };
+  }
+}
+
 /** One controller for every `TwoFactor` call: `/tf/<method>` with the arguments as JSON. */
 class TwoFactorController extends Controller {
   readonly #twoFactor: TwoFactor;
@@ -76,7 +91,7 @@ class TwoFactorController extends Controller {
           return done.ok ? { ok: true, id: done.value.id } : { ok: false, ...done.error };
         }
         case 'confirm': {
-          const done = await this.#twoFactor.confirm(body.code);
+          const done = await this.#twoFactor.confirm(body.code, body.password ?? 'secret');
           return done.ok ? { ok: true, ...done.value } : { ok: false, ...done.error };
         }
         case 'begin':
@@ -104,6 +119,7 @@ class TwoFactorController extends Controller {
 
 const routes = defineRoutes((Route) => {
   Route.post('/login', LoginController);
+  Route.post('/login-as', LoginAsController);
   Route.post('/tf/:method', TwoFactorController);
 });
 
@@ -111,7 +127,7 @@ const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(env: Record<string, string> = {}) {
+async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState } = {}) {
   const users = new MemoryUsers();
   const appKey = env.APP_KEY ?? generateKey();
   const application = await createApplication({
@@ -130,7 +146,8 @@ async function boot(env: Record<string, string> = {}) {
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
-      container.bind(TwoFactorState, TwoFactorStore);
+      if (options.state === undefined) container.bind(TwoFactorState, TwoFactorStore);
+      else if (options.state !== 'unbound') container.instance(TwoFactorState, options.state);
       container.scoped(TwoFactor);
     },
   });
@@ -172,7 +189,7 @@ async function enable(booted: Booted, email = ada.email, remember = false) {
   const b = booted.browser();
   await b.login(email, 'secret', remember);
   const setup = await b.tf('begin');
-  const confirmed = await b.tf('confirm', { code: twoFactorCode(setup.secret) });
+  const confirmed = await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' });
   expect(confirmed.ok, JSON.stringify(confirmed)).toBe(true);
   return { b, secret: setup.secret as string, recoveryCodes: confirmed.recoveryCodes as string[] };
 }
@@ -248,10 +265,10 @@ describe('TwoFactor: setting up', () => {
     const booted = await boot();
     const b = booted.browser();
     await b.login();
-    expect(await b.tf('confirm', { code: '123456' })).toEqual({ ok: false, kind: 'not-started' });
+    expect(await b.tf('confirm', { code: '123456', password: 'secret' })).toEqual({ ok: false, kind: 'not-started' });
     const { secret: key } = await b.tf('begin');
     const wrong = twoFactorCode(key) === '000000' ? '111111' : '000000';
-    expect(await b.tf('confirm', { code: wrong })).toEqual({ ok: false, kind: 'invalid-code' });
+    expect(await b.tf('confirm', { code: wrong, password: 'secret' })).toEqual({ ok: false, kind: 'invalid-code' });
     expect(await b.tf('status')).toMatchObject({ factors: [], settingUpTotp: true });
   });
 
@@ -278,17 +295,202 @@ describe('TwoFactor: setting up', () => {
     const thisDevice = booted.browser();
     await thisDevice.login(ada.email, 'secret', true);
     const setup = await thisDevice.tf('begin');
-    await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret) });
+    await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' });
     const cookie = (b: Browser) => new Map([['remember_web', b.jar.get('remember_web')!]]);
     // The other device comes back with only its remember-me cookie: it signs nobody in.
     expect(await booted.browser(cookie(otherDevice)).tf('who')).toEqual({ id: null });
-    // This device keeps its token.
-    expect(await booted.browser(cookie(thisDevice)).tf('who')).toEqual({ id: 1 });
-    expect(await booted.application.container.make(RememberTokenStore).prune()).toBe(0);
+    // A token made before the factor proved none, this device's own included: signing in again with the code makes a new one.
+    expect(await booted.browser(cookie(thisDevice)).tf('who')).toEqual({ id: null });
+  });
+
+  it('a remember-me token made between signing out the other devices and switching the factor on is refused by its date', async () => {
+    const booted = await boot();
+    const { secret: key } = await (async () => {
+      const b = booted.browser();
+      await b.login();
+      const setup = await b.tf('begin');
+      // Another device signs in with "remember me" at the worst moment: after the old tokens went, before the factor is on.
+      const confirm = booted.store.confirm.bind(booted.store);
+      let raced: string | undefined;
+      vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
+        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return confirm(...args);
+      });
+      expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
+      expect(raced).toBeDefined();
+      expect(await booted.browser(new Map([['remember_web', raced!]])).tf('who')).toEqual({ id: null });
+      return setup;
+    })();
+    expect(key).toBeDefined();
+  });
+
+  it('a remember-me token made in the very millisecond the factor was confirmed is refused', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const confirm = booted.store.confirm.bind(booted.store);
+    let raced: string | undefined;
+    vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
+      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000));
+      return confirm(...args); // the clock is frozen: created_at and confirmed_at are the same instant
+    });
+    expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
+    const since = await booted.store.enabledSince(1);
+    expect(since!.getTime()).toBe(Date.now());
+    expect(await booted.browser(new Map([['remember_web', raced!]])).tf('who')).toEqual({ id: null });
+  });
+
+  it('turning it on signs out the other sessions of the account and keeps this one', async () => {
+    const booted = await boot();
+    const other = booted.browser();
+    await other.login();
+    expect(await other.tf('who')).toEqual({ id: 1 });
+    const thisDevice = booted.browser();
+    await thisDevice.login();
+    const setup = await thisDevice.tf('begin');
+    expect((await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
+    expect(await other.tf('who')).toEqual({ id: null });
+    expect(await thisDevice.tf('who')).toEqual({ id: 1 });
+  });
+
+  it('a wrong password with the right code changes nothing and does not use the code up', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const other = booted.browser();
+    await other.login();
+    const setup = await b.tf('begin');
+    const code = twoFactorCode(setup.secret);
+    expect(await b.tf('confirm', { code, password: 'wrong' })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.tf('status')).toMatchObject({ factors: [], settingUpTotp: true });
+    expect(await other.tf('who')).toEqual({ id: 1 }); // not signed out
+    expect((await booted.store.find(1))?.lastUsedStep).toBeNull();
+    expect((await b.tf('confirm', { code, password: 'secret' })).ok).toBe(true); // the same code still works
+  });
+
+  it('begin() throws for an account without a password', async () => {
+    const booted = await boot();
+    booted.users.rows.set(1, { user: ada, hash: null });
+    const b = booted.browser();
+    expect(await b.send('/login-as', { id: 1 })).toEqual({ result: 'signed-in' }); // signed in by the app, as such accounts are
+    expect(await b.tf('begin')).toMatchObject({ thrown: expect.stringContaining('with a password') });
+  });
+
+  it('begin() throws where no source of factors is bound, and confirm() rolls back a state that does not report the factor', async () => {
+    const unbound = await boot({}, { state: 'unbound' });
+    const a = unbound.browser();
+    await a.login();
+    expect(await a.tf('begin')).toMatchObject({ thrown: expect.stringContaining('source of factors') });
+
+    const deaf = await boot({}, { state: { factors: async () => [], enabledSince: async () => undefined } });
+    const b = deaf.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: expect.stringContaining('rolled back') });
+    expect(await deaf.store.find(1)).toBeUndefined();
+    expect(await deaf.store.remainingRecoveryCodes(1)).toBe(0);
   });
 });
 
 describe('TwoFactor: setting up, when it goes wrong', () => {
+  it('a sign-in with the password between signing out and the commit is signed out again after it', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const racer = booted.browser();
+    const confirm = booted.store.confirm.bind(booted.store);
+    vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
+      // The factor is not committed yet: this sign-in, with "remember me", reads "no factor" and is signed in.
+      expect(await racer.login(ada.email, 'secret', true)).toEqual({ signedIn: true });
+      expect(await racer.tf('who')).toEqual({ id: 1 });
+      return confirm(...args);
+    });
+    expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
+    expect(await racer.tf('who')).toEqual({ id: null }); // the session
+    expect(await booted.browser(new Map([['remember_web', racer.jar.get('remember_web')!]])).tf('who')).toEqual({ id: null }); // and the token
+  });
+
+  it('a sign-in that read "no factor" but finishes after the commit is taken back, token and cookie included', async () => {
+    let reads = 0;
+    const state: TwoFactorState = { factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined };
+    const booted = await boot({}, { state });
+    const b = booted.browser();
+    events.length = 0;
+    expect(await b.login(ada.email, 'secret', true)).toMatchObject({ signedIn: false, error: { kind: 'two-factor-required', factors: ['totp'] } });
+    expect(events.filter((event) => event instanceof Login)).toEqual([]); // no listener sees a sign-in that is taken back
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(b.jar.has('remember_web')).toBe(false);
+    expect(await booted.application.container.make(RememberTokenStore).prune()).toBe(0);
+    const rows = await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute();
+    expect(rows).toEqual([]);
+  });
+
+  it('fails closed when the second read of the factors throws: nobody stays signed in, no cookie, no token', async () => {
+    let reads = 0;
+    const state: TwoFactorState = {
+      factors: async () => {
+        if (reads++ === 0) return [];
+        throw new Error('the database went away');
+      },
+      enabledSince: async () => undefined,
+    };
+    const booted = await boot({}, { state });
+    const b = booted.browser();
+    await b.login(ada.email, 'secret', true); // answers 500
+    expect(b.jar.has('remember_web')).toBe(false);
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
+  });
+
+  it('fails closed when forgetting the token throws: nobody stays signed in, and the token signs nobody in', async () => {
+    let reads = 0;
+    const factorSince = new Date(Date.now() + 60_000); // the commit that the second read saw, later than the token
+    const state: TwoFactorState = { factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => (reads > 1 ? factorSince : undefined) };
+    const booted = await boot({}, { state });
+    const tokens = booted.application.container.make(RememberTokenStore);
+    let token: string | undefined;
+    const create = tokens.create.bind(tokens);
+    vi.spyOn(tokens, 'create').mockImplementation(async (...args) => (token = await create(...args)));
+    vi.spyOn(tokens, 'forget').mockRejectedValue(new Error('the database went away'));
+    const b = booted.browser();
+    await b.login(ada.email, 'secret', true); // answers 500
+    expect(b.jar.has('remember_web')).toBe(false);
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(token).toBeDefined();
+    expect(await booted.browser(new Map([['remember_web', token!]])).tf('who')).toEqual({ id: null }); // refused by its date
+  });
+
+  it('logs and rethrows when the second sign-out after the commit fails — the factor stays on', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const tokens = booted.application.container.make(RememberTokenStore);
+    const forgetUser = tokens.forgetUser.bind(tokens);
+    let calls = 0;
+    vi.spyOn(tokens, 'forgetUser').mockImplementation(async (...args) => {
+      if (++calls === 2) throw new Error('the database went away');
+      return forgetUser(...args);
+    });
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: 'the database went away' });
+    expect(await booted.store.factors(1)).toEqual(['totp']);
+  });
+
+  it('login() takes a sign-in back the same way', async () => {
+    let reads = 0;
+    const state: TwoFactorState = { factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined };
+    const booted = await boot({}, { state });
+    const b = booted.browser();
+    events.length = 0;
+    expect(await b.send('/login-as', { id: 1 })).toEqual({ result: 'two-factor-required' });
+    expect(events.filter((event) => event instanceof Login)).toEqual([]);
+    expect(await b.tf('who')).toEqual({ id: null });
+  });
+
   it('ends the other devices\' remember-me tokens even when storing the confirmation fails afterwards', async () => {
     const booted = await boot();
     const otherDevice = booted.browser();
@@ -297,7 +499,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     await thisDevice.login();
     const setup = await thisDevice.tf('begin');
     vi.spyOn(booted.store, 'confirm').mockRejectedValue(new Error('the database went away'));
-    expect(await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret) })).toMatchObject({ thrown: 'the database went away' });
+    expect(await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: 'the database went away' });
     expect(await booted.browser(new Map([['remember_web', otherDevice.jar.get('remember_web')!]])).tf('who')).toEqual({ id: null });
   });
 
@@ -307,6 +509,28 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     await b.login();
     expect(await b.tf('begin')).toMatchObject({ thrown: expect.stringContaining('APP_NAME') });
     expect(await b.tf('status')).toMatchObject({ settingUpTotp: false });
+  });
+});
+
+describe('TwoFactor: the errors of confirm()', () => {
+  it('names every kind', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const kinds = new Set<ConfirmError['kind']>(['not-started', 'invalid-password', 'invalid-code', 'throttled']);
+    const kindOf = (error: ConfirmError): string => {
+      switch (error.kind) {
+        case 'not-started':
+        case 'invalid-password':
+        case 'invalid-code':
+        case 'throttled':
+          return error.kind;
+        default:
+          return error satisfies never;
+      }
+    };
+    expect([...kinds].map((kind) => kindOf({ kind, retryAfter: 1 } as ConfirmError))).toEqual([...kinds]);
+    expect(await b.tf('confirm', { code: '123456', password: 'secret' })).toMatchObject({ kind: 'not-started' });
   });
 });
 
@@ -371,7 +595,8 @@ describe('TwoFactor: signing in', () => {
     for (let round = 0; round < 4; round++) {
       vi.useFakeTimers({ toFake: ['Date'], now: start + round * 61_000 });
       const b = await waiting(booted);
-      for (let i = 0; i < 5; i++) expect(await b.tf('challenge', { code: '000000' })).toMatchObject({ kind: 'invalid-code' });
+      // The confirmation that turned the factor on counted as the first try of the hour.
+      for (let i = 0; i < (round === 3 ? 4 : 5); i++) expect(await b.tf('challenge', { code: '000000' })).toMatchObject({ kind: 'invalid-code' });
     }
     vi.useFakeTimers({ toFake: ['Date'], now: start + 4 * 61_000 });
     const b = await waiting(booted);
@@ -393,7 +618,7 @@ describe('TwoFactor: signing in', () => {
     const b0 = booted.browser();
     await b0.login();
     const { secret: key } = await b0.tf('begin');
-    await b0.tf('confirm', { code: twoFactorCode(key) });
+    await b0.tf('confirm', { code: twoFactorCode(key), password: 'secret' });
     const first = await waiting(booted);
     expect(await first.tf('challenge', { code: twoFactorCode(key) })).toMatchObject({ ok: false, kind: 'invalid-code' });
     expect(await first.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toEqual({ ok: true, id: 1 });
@@ -493,6 +718,58 @@ describe('TwoFactor: signing in', () => {
     const b = booted.browser();
     await b.login(ada.email, 'secret', true);
     expect(b.jar.has('remember_web')).toBe(false);
+  });
+});
+
+/** The cache key a counter of the package uses: the counter's name and the account. */
+function counterKey(_booted: Booted, name: string, userId = 1) {
+  return `${name}:${userId}`;
+}
+
+describe('TwoFactor: the budget of code attempts', () => {
+  it('counts per account in three windows and clears only the minute counter on a success', async () => {
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    const limiter = booted.application.container.make(RateLimiter);
+    const b = await waiting(booted);
+    await b.tf('challenge', { code: '000000' });
+    expect(await limiter.attempts(await counterKey(booted, 'two-factor-day'))).toBe(2); // the confirmation counted too
+    const c = await waiting(booted);
+    expect(await c.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toEqual({ ok: true, id: 1 });
+    expect(await limiter.attempts(await counterKey(booted, 'two-factor-minute'))).toBe(0);
+    expect(await limiter.attempts(await counterKey(booted, 'two-factor-hour'))).toBeGreaterThan(0);
+    expect(await limiter.attempts(await counterKey(booted, 'two-factor-day'))).toBeGreaterThan(0);
+  });
+
+  it('refuses a code once the day\'s fifty are used, while a recovery code still works', async () => {
+    const booted = await boot();
+    const { secret: key, recoveryCodes } = await enable(booted);
+    const limiter = booted.application.container.make(RateLimiter);
+    for (let i = 0; i < 50; i++) await limiter.hit(await counterKey(booted, 'two-factor-day'), 86_400);
+    const b = await waiting(booted);
+    expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toMatchObject({ ok: false, kind: 'throttled' });
+    const c = await waiting(booted);
+    expect(await c.tf('challenge', { recoveryCode: recoveryCodes[0] })).toEqual({ ok: true, id: 1 });
+  });
+
+  it('a password reset gives no fresh code attempts', async () => {
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    const limiter = booted.application.container.make(RateLimiter);
+    for (let i = 0; i < 60; i++) await limiter.hit(await counterKey(booted, 'two-factor-day'), 86_400);
+    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('another'); // whoever took the mailbox resets the password
+    const b = await waiting(booted, ada.email, 'another');
+    expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toMatchObject({ ok: false, kind: 'throttled' });
+  });
+
+  it('limits recovery code attempts to ten a minute, on a counter of their own', async () => {
+    const booted = await boot();
+    await enable(booted);
+    const limiter = booted.application.container.make(RateLimiter);
+    for (let i = 0; i < 10; i++) await limiter.hit(await counterKey(booted, 'two-factor-recovery'), 60);
+    const b = await waiting(booted);
+    expect(await b.tf('challenge', { recoveryCode: 'AAAA-AAAA-AAAA-AAAA' })).toMatchObject({ ok: false, kind: 'throttled' });
+    expect(await b.tf('challenge', { code: '000000' })).toMatchObject({ ok: false, kind: 'invalid-code' }); // the code counter is separate
   });
 });
 

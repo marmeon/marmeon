@@ -27,6 +27,12 @@ export interface RememberedDevice {
   readonly userId: number | string;
   readonly cookie: string | undefined;
   readonly expiresAt: Date;
+  /**
+   * When the token was made (rotation keeps it), on the same clock as `confirmed_at` of the second factor and with its time zone — a
+   * database default without a zone would compare wrongly. A token made before (or in the same millisecond as) the account's
+   * second factor never proved one, and is refused.
+   */
+  readonly createdAt: Date;
 }
 
 /**
@@ -87,7 +93,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     const db = this.#db();
     const row = await db
       .selectFrom(REMEMBER_TABLE)
-      .select((eb) => ['id', 'user_id', secret(eb, 'validator_hash'), secret(eb, 'previous_validator_hash'), 'rotated_at', 'expires_at'])
+      .select((eb) => ['id', 'user_id', secret(eb, 'validator_hash'), secret(eb, 'previous_validator_hash'), 'rotated_at', 'expires_at', 'created_at'])
       .where('selector', '=', parts.selector)
       .executeTakeFirst();
     if (!row) return err({ kind: 'invalid' });
@@ -109,11 +115,11 @@ export class DatabaseRememberTokens implements RememberTokenStore {
         .where(sql<boolean>`${sql.ref('validator_hash')} = ${row.validator_hash}`)
         .executeTakeFirst();
       const rotated = result.numUpdatedRows > 0n;
-      return ok({ userId: row.user_id, cookie: rotated ? `${parts.selector}.${validator}` : undefined, expiresAt });
+      return ok({ userId: row.user_id, cookie: rotated ? `${parts.selector}.${validator}` : undefined, expiresAt, createdAt: new Date(row.created_at) });
     }
     const rotatedAt = row.rotated_at === null ? 0 : new Date(row.rotated_at).getTime();
     if (row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash) && this.#clock.now() - rotatedAt < GRACE_MS) {
-      return ok({ userId: row.user_id, cookie: undefined, expiresAt }); // the other tab's response carries the new cookie
+      return ok({ userId: row.user_id, cookie: undefined, expiresAt, createdAt: new Date(row.created_at) }); // the other tab's response carries the new cookie
     }
     // A validator that is neither current nor just rotated: someone else used this cookie first.
     await this.forgetUser(row.user_id);

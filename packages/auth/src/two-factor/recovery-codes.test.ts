@@ -9,7 +9,7 @@ describe('generateRecoveryCodes', () => {
     for (const code of codes) {
       const typed = code.toLowerCase().replaceAll('-', '');
       expect(normalizeRecoveryCode(typed)).toBe(code.replaceAll('-', ''));
-      expect(hashRecoveryCode(typed)).toBe(hashRecoveryCode(code));
+      expect(hashRecoveryCode(1, typed)).toBe(hashRecoveryCode(1, code));
     }
     expect(new Set(codes).size).toBe(10);
     for (const code of codes) expect(code).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/);
@@ -32,14 +32,18 @@ describe('normalizeRecoveryCode', () => {
 
 describe('hashRecoveryCode', () => {
   it('is a SHA-256 hex digest that ignores formatting and look-alike characters', () => {
-    const hash = hashRecoveryCode('ABCD-EFGH-1234-5678');
+    const hash = hashRecoveryCode(1, 'ABCD-EFGH-1234-5678');
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashRecoveryCode('abcd efgh 1234 5678')).toBe(hash);
-    expect(hashRecoveryCode('0000-0000-0000-0001')).toBe(hashRecoveryCode('OOOO-oooo-0000-000l'));
+    expect(hashRecoveryCode(1, 'abcd efgh 1234 5678')).toBe(hash);
+    expect(hashRecoveryCode(1, '0000-0000-0000-0001')).toBe(hashRecoveryCode(1, 'OOOO-oooo-0000-000l'));
+  });
+
+  it('is bound to the user: the same code hashes differently for another account', () => {
+    expect(hashRecoveryCode(1, 'ABCD-EFGH-1234-5678')).not.toBe(hashRecoveryCode(2, 'ABCD-EFGH-1234-5678'));
   });
 
   it('differs per code and is stable', () => {
-    expect(hashRecoveryCode('ABCD-EFGH-1234-5678')).not.toBe(hashRecoveryCode('ABCD-EFGH-1234-5679'));
-    expect(hashRecoveryCode('ABCD-EFGH-1234-5678')).toBe(hashRecoveryCode('ABCD-EFGH-1234-5678'));
+    expect(hashRecoveryCode(1, 'ABCD-EFGH-1234-5678')).not.toBe(hashRecoveryCode(1, 'ABCD-EFGH-1234-5679'));
+    expect(hashRecoveryCode(1, 'ABCD-EFGH-1234-5678')).toBe(hashRecoveryCode(1, 'ABCD-EFGH-1234-5678'));
   });
 });

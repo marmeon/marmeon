@@ -253,7 +253,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
-      if (options.factors) container.instance(TwoFactorState, { factors: async (id) => options.factors!.get(Number(id)) ?? [] });
+      if (options.factors) container.instance(TwoFactorState, { factors: async (id) => options.factors!.get(Number(id)) ?? [], enabledSince: async () => undefined });
     },
   });
   await application.container.make(Migrator).migrate();

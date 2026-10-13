@@ -1,32 +1,45 @@
 import { RateLimiter } from '@marmeon/cache';
-import { Clock, err, EventDispatcher, ok, type Result } from '@marmeon/core';
+import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session } from '@marmeon/session';
-import { Auth, AUTH_SESSION_KEYS, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE, COMPLETE_PENDING } from '../auth.ts';
+import { Auth, AUTH_SESSION_KEYS, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
 import { AuthConfig } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
-import { TwoFactorState, type SecondFactor } from './state.ts';
+import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './state.ts';
 import { TwoFactorStore } from './store.ts';
 import { generateSecret, otpauthUri, verifyTotp } from './totp.ts';
 
 /**
- * Attempts allowed per account: five a minute and twenty an hour, counted atomically before the code is checked. Constants, not
- * settings — loosening them is a code review, not a deploy switch. A six-digit code is guessable in hours without them.
+ * Code attempts allowed per account: five a minute, twenty an hour and fifty a day, all counted atomically before the code is
+ * checked. Constants, not settings — loosening them is a code review, not a deploy switch. A six-digit code is guessable in
+ * hours without them. A success clears only the minute counter, so that hour and day keep what guessing used up.
  */
-const MINUTE = { key: 'two-factor', attempts: 5, seconds: 60 } as const;
-const HOUR = { key: 'two-factor-hour', attempts: 20, seconds: 3600 } as const;
+const TOTP_WINDOWS = [
+  { name: 'minute', attempts: 5, seconds: 60 },
+  { name: 'hour', attempts: 20, seconds: 3600 },
+  { name: 'day', attempts: 50, seconds: 86_400 },
+] as const;
+/** Recovery codes have 80 bits and cannot be guessed: this counter only limits load, and exhausting the code budget does not close it. */
+const RECOVERY_WINDOW = { attempts: 10, seconds: 60 } as const;
 
 /** Why a code did not count. */
 export type ChallengeError =
   | { readonly kind: 'no-challenge' }
   | { readonly kind: 'expired' }
   | { readonly kind: 'invalid-code'; readonly attemptsLeft: number }
+  | { readonly kind: 'throttled'; readonly retryAfter: number };
+
+/** Why `confirm()` did not turn the factor on. */
+export type ConfirmError =
+  | { readonly kind: 'not-started' }
+  | { readonly kind: 'invalid-password' }
+  | { readonly kind: 'invalid-code' }
   | { readonly kind: 'throttled'; readonly retryAfter: number };
 
 /** What the user needs to set up an authenticator app: the key to type, the `otpauth://` URI, and the QR code of it as one SVG path. */
@@ -61,6 +74,7 @@ export class TwoFactor {
   readonly #cookies: CookieJar;
   readonly #config: AuthConfig;
   readonly #clock: Clock;
+  readonly #logger: Logger;
 
   constructor(
     auth: Auth,
@@ -76,6 +90,7 @@ export class TwoFactor {
     cookies: CookieJar,
     config: AuthConfig,
     clock: Clock,
+    logger: Logger,
   ) {
     this.#auth = auth;
     this.#session = session;
@@ -90,6 +105,7 @@ export class TwoFactor {
     this.#cookies = cookies;
     this.#config = config;
     this.#clock = clock;
+    this.#logger = logger;
   }
 
   /**
@@ -103,7 +119,8 @@ export class TwoFactor {
     if (pending === undefined) return err({ kind: 'no-challenge' });
     if (pending === 'expired') return err({ kind: 'expired' });
     const userId = pending.userId;
-    const wait = await this.#throttle(userId);
+    const recovery = 'recoveryCode' in input;
+    const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
 
     if (!(await this.#verify(userId, input))) {
@@ -112,7 +129,8 @@ export class TwoFactor {
       if (found) await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent }));
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, PENDING_MAX_FAILURES - failures) });
     }
-    await this.#clearThrottle(userId);
+    // Only the minute counter: hour and day keep the attempts that guessing used up.
+    await this.#limiter.clear(recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId));
     // Signs in only the account the factor was proven for: a pending sign-in of another account is refused there.
     const done = await this.#auth[COMPLETE_PENDING](userId);
     return done.ok ? ok(done.value) : err(done.error);
@@ -128,10 +146,17 @@ export class TwoFactor {
 
   /**
    * Starts setting up an authenticator app: a new key, not yet in force. Needs a signed-in user who typed the password recently
-   * (`confirmedPassword()`); throws when an authenticator is already on (turn it off first). Replaces an earlier unconfirmed key.
+   * (`confirmedPassword()`); throws when an authenticator is already on (turn it off first), when no source of factors is bound
+   * (`TwoFactorState` is still the default that knows none, so the factor would never be asked for) and for an account without a
+   * password (turning the factor on signs the other devices out, which takes the hash). Replaces an earlier unconfirmed key.
    */
   async begin(): Promise<TotpSetup> {
-    const user = await this.#requireRecentPassword('begin');
+    const user = await this.#requireUser('begin');
+    // Without a bound source of factors a confirmed factor would never be asked for at sign-in: fail closed before anything is stored.
+    if (this.#state instanceof NoTwoFactorState) throw new Error('Two-factor authentication needs a source of factors: bind TwoFactorState to combineFactors(TwoFactorStore) in a provider of your auth module.');
+    // Turning the factor on signs the other devices out, which needs the password hash: an account without a password cannot do it.
+    if (((await this.#users.findById(idOf(user) as never))?.passwordHash ?? null) === null) throw new Error('twoFactor.begin() needs an account with a password: turning the factor on signs out the other devices with it.');
+    await this.#requireRecentPassword('begin');
     this.#issuer(); // before anything is stored: a missing app name leaves no half-made setup behind
     const secret = generateSecret();
     await this.#store.startSetup(idOf(user), await this.#encrypt(secret, idOf(user)));
@@ -148,17 +173,22 @@ export class TwoFactor {
   }
 
   /**
-   * Turns the authenticator on with the first code it shows. Throttled like a challenge. `recoveryCodes` are the account's new codes — shown now
-   * and never again — when this is its first factor, else `null`. Signs this session out of nothing, but ends every remember-me
-   * token of the other devices (they were made without a second factor).
+   * Turns the authenticator on with the first code it shows and the account's password, typed in the same form. Throttled like a
+   * challenge. Every other device is signed out: its sessions end (the password is hashed anew, so their fingerprints stop matching)
+   * and so do its remember-me tokens — each session of the account has then proven a second factor. API tokens are not touched.
+   * `recoveryCodes` are the account's new codes, shown now and never again, when this is its first factor, else `null`.
+   *
+   * Order: the throttle counts, the password is checked, the code is checked without writing, the other devices are signed out, and
+   * only then the step is stored and the factor switched on.
    */
-  async confirm(code: string): Promise<Result<{ recoveryCodes: readonly string[] | null }, { kind: 'not-started' } | { kind: 'invalid-code' } | { kind: 'throttled'; retryAfter: number }>> {
+  async confirm(code: string, password: string): Promise<Result<{ recoveryCodes: readonly string[] | null }, ConfirmError>> {
     const user = await this.#requireUser('confirm');
     const id = idOf(user);
     const row = await this.#store.find(id);
     if (row === undefined || row.confirmed) return err({ kind: 'not-started' });
-    const wait = await this.#throttle(id);
+    const wait = await this.#throttleCodes(id);
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
+    if (!(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
 
     const secret = await this.#decrypt(row.encryptedSecret, id);
     const step = secret === undefined ? undefined : verifyTotp(secret, code, new Date(this.#clock.now()));
@@ -166,13 +196,30 @@ export class TwoFactor {
 
     const first = (await this.#state.factors(id)).length === 0;
     const recoveryCodes = first ? generateRecoveryCodes() : null;
-    // Remember-me tokens made before the factor existed prove nothing about it: only this device's survives. They go first, so that a
-    // failure after this point leaves the factor off and the tokens gone — never the factor on and the old tokens alive.
-    await this.#remember.forgetUser(id, this.#cookies.get(this.#config.rememberCookie));
-    const confirmed = await this.#store.confirm(id, step, await this.#encrypt(secret, id), recoveryCodes === null ? null : recoveryCodes.map(hashRecoveryCode));
+    // Before the factor is on, so that a failure after this point leaves the factor off and the other devices out — never the factor on
+    // and an old session alive. A remember-me token made between here and the update is refused by its date (`enabledSince`).
+    await this.#auth[SIGN_OUT_OTHER_DEVICES](password);
+    const confirmed = await this.#store.confirm(id, step, await this.#encrypt(secret, id), recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
     if (!confirmed) return err({ kind: 'not-started' });
+    // Once more, now that the factor is committed: a session or remember-me token made in the window between the first sign-out and the
+    // commit (its sign-in read "no factor") dies here. Later sign-ins see the factor and are held back. This device's token goes too,
+    // as after a password change: the next sign-in makes a new one after the code.
+    try {
+      await this.#auth[SIGN_OUT_OTHER_DEVICES](password);
+      await this.#remember.forgetUser(id);
+    } catch (error) {
+      // The factor stays on (later sign-ins are asked for it); what is left to end are sessions that raced the activation: tell the operators.
+      this.#logger.error('Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+    this.#cookies.delete(this.#config.rememberCookie);
+    // The state must see the factor, else sign-in would never ask for it: a state bound to something else than the store fails closed here.
+    if (!(await this.#state.factors(id)).includes('totp')) {
+      await this.#store.removeTotp(id, { lastFactor: first });
+      throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
+    }
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(this.#clock.now() / 1000));
-    await this.#clearThrottle(id);
+    await this.#limiter.clear(this.#codeKey('minute', id));
     await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
     if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));
     return ok({ recoveryCodes });
@@ -184,7 +231,7 @@ export class TwoFactor {
     const id = idOf(user);
     if ((await this.#state.factors(id)).length === 0) throw new Error('twoFactor.regenerateRecoveryCodes() needs a second factor: recovery codes belong to one.');
     const codes = generateRecoveryCodes();
-    await this.#store.replaceRecoveryCodes(id, codes.map(hashRecoveryCode));
+    await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
     await this.#events.dispatch(new RecoveryCodesGenerated(user));
     return codes;
   }
@@ -213,7 +260,7 @@ export class TwoFactor {
     if ('recoveryCode' in input) {
       // Recovery codes need no secret that decrypts; they work while the account has any factor.
       if ((await this.#state.factors(userId)).length === 0) return false;
-      const remaining = await this.#store.consumeRecoveryCode(userId, hashRecoveryCode(input.recoveryCode));
+      const remaining = await this.#store.consumeRecoveryCode(userId, hashRecoveryCode(userId, input.recoveryCode));
       if (remaining === undefined) return false;
       const found = await this.#users.findById(userId as never);
       if (found) await this.#events.dispatch(new RecoveryCodeUsed(found.user, remaining));
@@ -230,19 +277,28 @@ export class TwoFactor {
     return this.#store.useStep(userId, step, await this.#encrypt(secret, userId));
   }
 
-  /** Counts one attempt in both windows; the seconds to wait when either is used up, else `undefined`. */
-  async #throttle(userId: string | number): Promise<number | undefined> {
+  // Per account only: a password reset, which whoever controls the mailbox can ask for, must not hand out fresh attempts.
+  #codeKey(window: (typeof TOTP_WINDOWS)[number]['name'], userId: string | number): string {
+    return `two-factor-${window}:${userId}`;
+  }
+
+  #recoveryKey(userId: string | number): string {
+    return `two-factor-recovery:${userId}`;
+  }
+
+  /** Counts one code attempt in the three windows; the seconds to wait when any is used up, else `undefined`. */
+  async #throttleCodes(userId: string | number): Promise<number | undefined> {
     const waits: number[] = [];
-    for (const window of [MINUTE, HOUR]) {
-      const key = `${window.key}:${userId}`;
+    for (const window of TOTP_WINDOWS) {
+      const key = this.#codeKey(window.name, userId);
       if (!(await this.#limiter.attempt(key, window.attempts, window.seconds))) waits.push(await this.#limiter.availableIn(key));
     }
     return waits.length === 0 ? undefined : Math.max(1, ...waits);
   }
 
-  async #clearThrottle(userId: string | number): Promise<void> {
-    await this.#limiter.clear(`${MINUTE.key}:${userId}`);
-    await this.#limiter.clear(`${HOUR.key}:${userId}`);
+  async #throttleRecovery(userId: string | number): Promise<number | undefined> {
+    const key = this.#recoveryKey(userId);
+    return (await this.#limiter.attempt(key, RECOVERY_WINDOW.attempts, RECOVERY_WINDOW.seconds)) ? undefined : Math.max(1, await this.#limiter.availableIn(key));
   }
 
   /** The secret is bound to its account: a row copied to another account does not decrypt there. */

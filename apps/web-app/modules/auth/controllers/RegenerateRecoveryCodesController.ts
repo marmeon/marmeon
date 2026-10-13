@@ -15,6 +15,6 @@ export class RegenerateRecoveryCodesController extends Controller {
   async handle(_ctx: HttpContext<Authenticated>) {
     // Recovery codes belong to a factor: without one there is nothing to make them for.
     if (!(await this.#twoFactor.status()).factors.includes('totp')) return this.redirect().route('auth.two-factor');
-    return this.view('auth/RecoveryCodes', { codes: [...(await this.#twoFactor.regenerateRecoveryCodes())] }).layer(CODES_LAYER);
+    return this.view('auth/RecoveryCodes', { codes: [...(await this.#twoFactor.regenerateRecoveryCodes())], tokens: null }).layer(CODES_LAYER);
   }
 }

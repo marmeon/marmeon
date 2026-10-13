@@ -32,9 +32,9 @@ export function normalizeRecoveryCode(code: string): string {
 }
 
 /**
- * SHA-256 of the normalized code under a fixed prefix. A fast hash is enough at 80 bits of entropy, and the hash does not
- * depend on `APP_KEY`, so codes stay valid when the key rotates.
+ * SHA-256 of the normalized code under a fixed prefix and the user's id, so a hash copied to another account is no code there. A
+ * fast hash is enough at 80 bits of entropy, and the hash does not depend on `APP_KEY`, so codes stay valid when the key rotates.
  */
-export function hashRecoveryCode(code: string): string {
-  return createHash('sha256').update(`marmeon-auth:recovery:${normalizeRecoveryCode(code)}`).digest('hex');
+export function hashRecoveryCode(userId: number | string, code: string): string {
+  return createHash('sha256').update(`marmeon-auth:recovery:${userId}:${normalizeRecoveryCode(code)}`).digest('hex');
 }

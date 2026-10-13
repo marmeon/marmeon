@@ -42,6 +42,17 @@ describe.each(drivers)('TwoFactorStore on %s', (driver) => {
       expect(await store.find(1)).toEqual({ encryptedSecret: 'enc-2', confirmed: true, lastUsedStep: 100 });
     });
 
+    it('says since when the factor is on — its confirmation — and nothing for an unconfirmed setup or another account', async () => {
+      expect(await store.enabledSince(1)).toBeUndefined();
+      await store.startSetup(1, 'enc-1');
+      expect(await store.enabledSince(1)).toBeUndefined();
+      const before = Date.now();
+      await store.confirm(1, 5, 'enc-2', null);
+      const since = await store.enabledSince(1);
+      expect(since!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+      expect(await store.enabledSince(2)).toBeUndefined();
+    });
+
     it('replaces an unconfirmed setup, but refuses to start over a confirmed one', async () => {
       await store.startSetup(1, 'enc-1');
       await store.startSetup(1, 'enc-new');

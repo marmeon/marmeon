@@ -12,6 +12,11 @@ export type SecondFactor = 'totp' | 'passkey';
  */
 export interface TwoFactorState {
   factors(userId: number | string): Promise<readonly SecondFactor[]>;
+  /**
+   * Since when the account has had a second factor — the earliest confirmation of the factors it has now — or `undefined` without
+   * one. A remember-me token made before that moment never proved a factor, and is refused.
+   */
+  enabledSince(userId: number | string): Promise<Date | undefined>;
 }
 export const TwoFactorState = token<TwoFactorState>('TwoFactorState');
 
@@ -19,6 +24,10 @@ export const TwoFactorState = token<TwoFactorState>('TwoFactorState');
 export class NoTwoFactorState implements TwoFactorState {
   async factors(): Promise<readonly SecondFactor[]> {
     return [];
+  }
+
+  async enabledSince(): Promise<Date | undefined> {
+    return undefined;
   }
 }
 
@@ -28,6 +37,10 @@ export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactor
     async factors(userId) {
       const lists = await Promise.all(sources.map((source) => source.factors(userId)));
       return [...new Set(lists.flat())];
+    },
+    async enabledSince(userId) {
+      const dates = (await Promise.all(sources.map((source) => source.enabledSince(userId)))).filter((date): date is Date => date !== undefined);
+      return dates.length === 0 ? undefined : new Date(Math.min(...dates.map((date) => date.getTime())));
     },
   };
 }

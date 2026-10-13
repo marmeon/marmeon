@@ -281,7 +281,7 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
-To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`.
+To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it.
 
 ## Sudo mode
 

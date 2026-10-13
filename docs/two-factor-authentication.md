@@ -16,7 +16,7 @@ What it adds to a sign-in:
   and both stop at an account with a second factor. The user is signed in only after the code.
 - **Codes work once.** A code that was accepted, and every older one, is refused afterwards, also when two requests send it at the
   same moment.
-- **Guessing is slow.** Five tries a minute and twenty an hour for each account, counted before the code is looked at.
+- **Guessing is slow.** Five tries a minute, twenty an hour and fifty a day for each account, counted before the code is looked at.
 - **The key is encrypted.** The authenticator's secret is stored with the [app key](encryption.md) and bound to its account.
 
 ## Setting up
@@ -71,7 +71,7 @@ export class AuthServiceProvider implements ServiceProvider {
 }
 ```
 
-`TwoFactorState` answers which factors an account has. Without a binding it says "none" and asks nothing, so an app that does
+`TwoFactorState` answers which factors an account has (`factors()`) and since when (`enabledSince()`, the earliest confirmation). Without a binding it says "none" and asks nothing, so an app that does
 not bind it behaves exactly as before. Removing the binding later switches two-factor authentication off for every account: users
 who set it up sign in with the password alone. `combineFactors()` joins several sources into one; today the authenticator app is
 the only one.
@@ -117,13 +117,30 @@ Render it as an SVG with a quiet zone of white around the modules, because scann
 The page needs neither `innerHTML` nor a `style` attribute. The key is not in force yet. `setup()` returns the same key again for a reloaded page, and `begin()` replaces an
 unconfirmed key.
 
-The user types the first code the app shows into `confirm(code)`. It returns a [`Result`](errors.md#results): `ok` with
-`recoveryCodes`, or an `err` of kind `not-started`, `invalid-code` or `throttled`. Only then the factor is on, and:
+`begin()` throws when no source of factors is bound (`TwoFactorState` is still the default that knows none), and for an account
+without a password: turning the factor on signs the other devices out, which takes the password hash.
 
+The user types the first code the app shows and the account's password into one form: `confirm(code, password)`. It returns a
+[`Result`](errors.md#results): `ok` with `recoveryCodes`, or an `err` of kind `not-started`, `invalid-password`, `invalid-code` or
+`throttled`. A wrong password with the right code changes nothing and does not use the code up. Only a right pair turns the factor
+on, and then:
+
+- **The other devices are signed out.** Their sessions end and so do their [remember-me](authentication.md#remember-me) tokens:
+  every session of the account has then proven a second factor. This session stays and gets the new fingerprint, the way
+  [`logoutOtherDevices(password)`](authentication.md#changing-the-password) does it, without a second password check. The signing out
+  runs twice, before the factor is switched on and again right after, so that a sign-in racing the activation does not survive it.
+  Say so on the page before the user submits.
+- **API tokens are not revoked.** They are integrations of your app, such as scripts and CI, and revoking them is your decision. List
+  them in the answer and link to where they are revoked, as the example app does.
 - **Recovery codes** are made when this is the account's first factor (see [Recovery codes](#recovery-codes)).
-- **The other devices** lose their [remember-me](authentication.md#remember-me) tokens. They were made when a password was enough;
-  only the device that confirmed keeps its token.
 - **This session** counts as having proven the factor.
+
+A remember-me token made before the factor was confirmed is refused, also one that another device made in the moment between
+signing out and switching the factor on: `TwoFactorState.enabledSince()` says since when the account has a factor, and an older
+token never proved one (a token made in the same millisecond counts as older). The token and cookie of the device that turned it on go
+too, as after a password change: its next sign-in makes a new one after the code. A password sign-in that reads "no factor" just before
+the commit and finishes after it is taken back: the factors are read again once the session exists, and a factor that has appeared
+then ends that sign-in, its remember-me token included.
 
 ## The sign-in
 
@@ -151,7 +168,13 @@ any code is used up. On success the user is signed in with a new session id, the
 remembered.
 
 The limits are constants of the package, not settings: a six-digit code is guessable in hours without them, and loosening them is a
-code review rather than a deploy switch. Route the `POST` with `.block()`, so that two codes of one session cannot run at once.
+code review rather than a deploy switch. Route the `POST` with `.block()`, so that two codes of one session cannot run at once. A right code clears only the minute counter, so that the hour and day counters keep what
+guessing used up. Challenge and `confirm()` share the counters, which are per account. A password reset gives no fresh attempts: whoever took over
+the mailbox could otherwise ask for one and start over. Recovery codes have a counter of their own, ten a minute and nothing more,
+because 80 bits cannot be guessed: it only limits load.
+
+The counters live in the [cache](cache.md). With `CACHE_DRIVER=memory` every process counts for itself, so several processes
+multiply each limit; use the Redis or database driver wherever more than one process serves requests.
 
 A code is accepted for the 30-second step it was made in and one step on either side, which covers a small clock difference.
 Keep the server's clock right with NTP. The step of an accepted code is stored, and any code of the same or an older step is
@@ -188,10 +211,9 @@ It protects against a stolen or guessed password, and a password from another si
 types the code into a copy of your login page that forwards it at once, against someone who already holds a signed-in session or
 controls the user's device, or against whoever has the server's `APP_KEY`. Codes by e-mail or SMS are not offered on purpose.
 
-Turning the factor on does not end sessions that are already signed in on other devices: it only deletes their remember-me tokens,
-so they cannot sign in again once the session is over. A user who suspects that someone else is signed in signs the other devices
-out, as [signing out other devices](authentication.md#signing-out-other-devices-without-a-password) and the [password
-change](authentication.md#changing-the-password) describe.
+Someone who knows the password can use up the code attempts for a day; recovery codes stay open, so the owner is not locked out. A
+password reset does not clear the counters.
+Turning the factor on signs out every other device, so a session that was open before is gone (see [Setting up](#setting-up)).
 
 ## Events
 
@@ -215,7 +237,7 @@ compute the code the authenticator would show with `twoFactorCode()`:
 import { twoFactorCode } from '@marmeon/auth';
 
 const setup = (await app.withCookie('marmeon_session', cookie).navigating().get('/settings/two-factor')).page()!.props.setup;
-await app.withCookie('marmeon_session', cookie).post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret) } });
+await app.withCookie('marmeon_session', cookie).post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } });
 ```
 
 `twoFactorCode(secret, at?)` takes the key `begin()` returned. A code works once, so a second sign-in in the same test needs a code of

@@ -8,7 +8,7 @@ type Props = PageProps<ShowTwoFactorController>;
 
 export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) {
   const t = useTranslation('auth');
-  const confirmForm = useForm('auth.two-factor.confirm', { code: '' });
+  const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
   const disableForm = useForm('auth.two-factor.disable', { password: '' });
 
   return (
@@ -40,6 +40,9 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
               void confirmForm.submit({ onFinish: () => confirmForm.reset() });
             }}
           >
+            <p role="note">
+              <small>{t('two_factor.confirm_notice')}</small>
+            </p>
             <p>
               <label htmlFor="confirm-code">{t('two_factor.confirm_code')}</label>
               <br />
@@ -54,6 +57,20 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
                 aria-invalid={!!confirmForm.errors.code}
               />
               {confirmForm.errors.code && <small role="alert"> {confirmForm.errors.code}</small>}
+            </p>
+            <p>
+              <label htmlFor="confirm-password">{t('two_factor.disable_password')}</label>
+              <br />
+              <input
+                id="confirm-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={confirmForm.data.password}
+                onChange={(e) => confirmForm.set('password', e.target.value)}
+                aria-invalid={!!confirmForm.errors.password}
+              />
+              {confirmForm.errors.password && <small role="alert"> {confirmForm.errors.password}</small>}
             </p>
             <button type="submit" disabled={confirmForm.processing}>
               {t('two_factor.confirm_submit')}
@@ -75,11 +92,7 @@ export default function TwoFactor({ enabled, setup, recoveryCodesLeft }: Props) 
             <p>
               <Link route="auth.two-factor.codes">{t('two_factor.regenerate')}</Link>
             </p>
-            <p role="note">
-              <small>
-                {t('two_factor.devices_note')} <Link route="auth.security">{t('settings.security')}</Link>.
-              </small>
-            </p>
+
           </section>
 
           <section aria-labelledby="disable-heading">

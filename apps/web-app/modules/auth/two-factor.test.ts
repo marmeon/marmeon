@@ -24,7 +24,7 @@ async function enable(user: User) {
   await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup').assertRedirect('/settings/two-factor');
   const page = await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
   const setup = page.page()!.props.setup as { secret: string; qr: { size: number; path: string } };
-  const confirmed = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret) } }).assertLayer('auth/RecoveryCodes');
+  const confirmed = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
   return { cookie, secret: setup.secret, recoveryCodes: confirmed.page()!.props.codes as string[], qr: setup.qr };
 }
 
@@ -48,6 +48,34 @@ describe('two-factor authentication', () => {
     await app.assertDatabaseCount('two_factor_recovery_codes', 10);
     // Forward asks the layer's URL with a GET: the answer is the settings page, never the codes.
     await app.withCookie(SESSION, cookie).get('/settings/two-factor/confirm').assertRedirect('/settings/two-factor');
+  });
+
+  it('turning it on signs out the other devices, says so, and lists the API tokens without revoking them', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const other = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
+    await app.withCookie(SESSION, other).get('/users/me').assertAuthenticated(ada);
+    const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
+    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } });
+    await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup');
+    const setup = (await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
+    const done = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
+    expect(done.page()!.props.tokens).toEqual([expect.objectContaining({ name: 'CI' })]);
+    await app.withCookie(SESSION, other).get('/users/me').assertRedirect('/login'); // the other device is signed out
+    await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).get('/users/me').assertRedirect(`/users/${ada.id}`); // this one is not
+    await app.assertDatabaseCount('personal_access_tokens', 1);
+  });
+
+  it('a wrong password with the right code turns nothing on', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
+    await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup');
+    const setup = (await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
+    await app
+      .withCookie(SESSION, cookie)
+      .post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'wrong' }, headers: { referer: 'http://localhost/settings/two-factor' } })
+      .assertInvalid({ password: 'The password is incorrect.' });
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
+    await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me'); // still no second factor
   });
 
   it('signs in with the password and then a code — wrong first, then right', async () => {
@@ -136,7 +164,7 @@ describe('two-factor authentication', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 901_000 });
     try {
       await app.withCookie(SESSION, cookie).get('/settings/two-factor').assertRedirect('/confirm-password'); // sudo mode is over for the page …
-      await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret) } }).assertLayer('auth/RecoveryCodes'); // … but not for the code
+      await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes'); // … but not for the code
     } finally {
       vi.useRealTimers();
     }
