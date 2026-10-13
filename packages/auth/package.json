@@ -70,9 +70,11 @@
     "@marmeon/router": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/validation": "workspace:*",
+    "uqr": "0.1.3",
     "valibot": "^1.5.0"
   },
   "devDependencies": {
+    "jsqr": "1.4.0",
     "marmeon": "workspace:*",
     "@marmeon/cache": "workspace:*",
     "@marmeon/encryption": "workspace:*",

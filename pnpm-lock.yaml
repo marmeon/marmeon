@@ -520,6 +520,9 @@ importers:
       '@marmeon/validation':
         specifier: workspace:*
         version: link:../validation
+      uqr:
+        specifier: 0.1.3
+        version: 0.1.3
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
@@ -536,6 +539,9 @@ importers:
       '@marmeon/server':
         specifier: workspace:*
         version: link:../server
+      jsqr:
+        specifier: 1.4.0
+        version: 1.4.0
       marmeon:
         specifier: workspace:*
         version: link:../cli
@@ -2565,6 +2571,9 @@ packages:
   json-parse-even-better-errors@2.3.1:
     resolution: {integrity: sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w==}
 
+  jsqr@1.4.0:
+    resolution: {integrity: sha512-dxLob7q65Xg2DvstYkRpkYtmKm2sPJ9oFhrhmudT1dZvNFFTlroai3AWSpLey/w5vMcLBXRgOJsbXpdN9HzU/A==}
+
   juice@11.1.1:
     resolution: {integrity: sha512-4SBfZqKcc6DrIS+5b/WiGoWaZsdUPBH+e6SbRlNjJpaIRtfoBhYReAtobIEW6mcLeFFDXLBJMuZwkJLkBJjs2w==}
     engines: {node: '>=18.17'}
@@ -3424,6 +3433,9 @@ packages:
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
+
+  uqr@0.1.3:
+    resolution: {integrity: sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==}
 
   use-sync-external-store@1.7.0:
     resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==}
@@ -4851,6 +4863,8 @@ snapshots:
 
   json-parse-even-better-errors@2.3.1: {}
 
+  jsqr@1.4.0: {}
+
   juice@11.1.1:
     dependencies:
       cheerio: 1.0.0
@@ -6109,6 +6123,8 @@ snapshots:
       browserslist: 4.29.3
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uqr@0.1.3: {}
 
   use-sync-external-store@1.7.0(react@19.3.0):
     dependencies:
