@@ -73,7 +73,7 @@ export interface CacheStore {
   /** Who holds the lock now; undefined when it is free or expired. */
   lockOwner(name: string): Promise<string | undefined>;
   /**
-   * Removes expired entries and locks — which stay until read or overwritten otherwise — and returns how many. Stores
+   * Removes expired entries and locks — which file and database stores keep until read or overwritten — and returns how many. Stores
    * whose entries expire on their own (Redis) have none (`marmeon cache:prune` says so).
    */
   prune?(): Promise<number>;

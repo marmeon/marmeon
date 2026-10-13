@@ -3,8 +3,8 @@ import { Cache } from '../cache.ts';
 import { CacheConfig } from '../config.ts';
 
 /**
- * `marmeon cache:prune`: removes expired entries and locks — in memory, file and database stores they stay until read
- * or overwritten (`job.once` markers, rate-limit windows, the scheduler's locks …). For the scheduler:
+ * `marmeon cache:prune`: removes expired entries and locks — in file and database stores they stay until read or
+ * overwritten (`job.once` markers, rate-limit windows, the scheduler's locks …); the memory store sweeps as it writes. For the scheduler:
  * `s.command('cache:prune').hourly()`. Redis expires them itself.
  */
 export class CachePruneCommand {

@@ -181,10 +181,11 @@ So the warning above holds for all of them: with more than one server, the cache
 
 ## Expired entries and clearing
 
-The `memory`, `file` and `database` stores keep an expired entry until it is read or overwritten. `cache:prune` deletes expired
-entries and locks, and never touches one that is still valid. Redis expires keys by itself, and the command says so. Schedule it
-in a module's schedule, which counts once the module lists it as `schedule` in its definition, as the
-[task scheduling](scheduling.md#defining-tasks) page shows:
+The `file` and `database` stores keep an expired entry until it is read or overwritten. The `memory` store also clears expired
+entries and locks as it writes, a few at a time, because `cache:prune` in the scheduler's process cannot reach a web process's
+memory. `cache:prune` deletes expired entries and locks, and never touches one that is still valid. Redis expires keys by
+itself, and the command says so. Schedule it in a module's schedule, which counts once the module lists it as `schedule` in its
+definition, as the [task scheduling](scheduling.md#defining-tasks) page shows:
 
 ```ts title="modules/system/schedule.ts"
 import { defineSchedule } from '@marmeon/scheduler';
