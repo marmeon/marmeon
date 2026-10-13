@@ -2,12 +2,15 @@
 // `marmeon dev` and `marmeon build` keep it current; CI checks it with `marmeon route:types --check`.
 
 import type { AddProfileLinkController } from '../modules/user-profile/controllers/AddProfileLinkController.ts';
+import type { BeginTwoFactorController } from '../modules/auth/controllers/BeginTwoFactorController.ts';
 import type { ConfirmEmailChangeController } from '../modules/auth/controllers/ConfirmEmailChangeController.ts';
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
+import type { ConfirmTwoFactorController } from '../modules/auth/controllers/ConfirmTwoFactorController.ts';
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { DeleteNotificationController } from '../modules/notifications/controllers/DeleteNotificationController.ts';
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
+import type { DisableTwoFactorController } from '../modules/auth/controllers/DisableTwoFactorController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
 import type { ListMembersController } from '../modules/members/controllers/ListMembersController.ts';
@@ -19,6 +22,7 @@ import type { LogoutOtherDevicesController } from '../modules/auth/controllers/L
 import type { MarkAllNotificationsReadController } from '../modules/notifications/controllers/MarkAllNotificationsReadController.ts';
 import type { MarkNotificationReadController } from '../modules/notifications/controllers/MarkNotificationReadController.ts';
 import type { RedirectToOwnProfileController } from '../modules/user-profile/controllers/RedirectToOwnProfileController.ts';
+import type { RegenerateRecoveryCodesController } from '../modules/auth/controllers/RegenerateRecoveryCodesController.ts';
 import type { RegisterController } from '../modules/auth/controllers/RegisterController.ts';
 import type { ResendVerificationController } from '../modules/auth/controllers/ResendVerificationController.ts';
 import type { ResetPasswordController } from '../modules/auth/controllers/ResetPasswordController.ts';
@@ -38,8 +42,11 @@ import type { ShowRegisterController } from '../modules/auth/controllers/ShowReg
 import type { ShowRegistrationSentController } from '../modules/auth/controllers/ShowRegistrationSentController.ts';
 import type { ShowResetPasswordController } from '../modules/auth/controllers/ShowResetPasswordController.ts';
 import type { ShowSecurityController } from '../modules/auth/controllers/ShowSecurityController.ts';
+import type { ShowTwoFactorChallengeController } from '../modules/auth/controllers/ShowTwoFactorChallengeController.ts';
+import type { ShowTwoFactorController } from '../modules/auth/controllers/ShowTwoFactorController.ts';
 import type { ShowUserProfileController } from '../modules/user-profile/controllers/ShowUserProfileController.ts';
 import type { ShowVerifyEmailNoticeController } from '../modules/auth/controllers/ShowVerifyEmailNoticeController.ts';
+import type { TwoFactorChallengeController } from '../modules/auth/controllers/TwoFactorChallengeController.ts';
 import type { UpdateAvatarController } from '../modules/user-profile/controllers/UpdateAvatarController.ts';
 import type { UpdateEmailController } from '../modules/auth/controllers/UpdateEmailController.ts';
 import type { UpdateLocaleController } from '../modules/locale/controllers/UpdateLocaleController.ts';
@@ -71,6 +78,13 @@ declare module '@marmeon/router' {
     'auth.tokens.create': { method: 'get'; path: '/settings/tokens/create'; controller: typeof ShowCreateAccessTokenController };
     'auth.tokens.destroy': { method: 'delete'; path: '/settings/tokens/:token'; controller: typeof RevokeAccessTokenController };
     'auth.tokens.store': { method: 'post'; path: '/settings/tokens'; controller: typeof CreateAccessTokenController };
+    'auth.two-factor': { method: 'get'; path: '/settings/two-factor'; controller: typeof ShowTwoFactorController };
+    'auth.two-factor.begin': { method: 'post'; path: '/settings/two-factor/setup'; controller: typeof BeginTwoFactorController };
+    'auth.two-factor.challenge': { method: 'get'; path: '/two-factor-challenge'; controller: typeof ShowTwoFactorChallengeController };
+    'auth.two-factor.challenge.store': { method: 'post'; path: '/two-factor-challenge'; controller: typeof TwoFactorChallengeController };
+    'auth.two-factor.codes': { method: 'post'; path: '/settings/two-factor/recovery-codes'; controller: typeof RegenerateRecoveryCodesController };
+    'auth.two-factor.confirm': { method: 'post'; path: '/settings/two-factor/confirm'; controller: typeof ConfirmTwoFactorController };
+    'auth.two-factor.disable': { method: 'post'; path: '/settings/two-factor/disable'; controller: typeof DisableTwoFactorController };
     'auth.verification.notice': { method: 'get'; path: '/email/verify'; controller: typeof ShowVerifyEmailNoticeController };
     'auth.verification.send': { method: 'post'; path: '/email/verification-notification'; controller: typeof ResendVerificationController };
     'auth.verification.verify': { method: 'get'; path: '/email/verify/:id/:hash'; controller: typeof VerifyEmailController; browser: false };
@@ -105,10 +119,13 @@ declare module '@marmeon/http/page' {
     'auth/ForgotPassword': true;
     'auth/Login': true;
     'auth/NewAccessToken': true;
+    'auth/RecoveryCodes': true;
     'auth/Register': true;
     'auth/RegistrationSent': true;
     'auth/ResetPassword': true;
     'auth/Security': true;
+    'auth/TwoFactor': true;
+    'auth/TwoFactorChallenge': true;
     'auth/VerifyEmail': true;
     'dashboard/MemberStats': true;
     'dashboard/MyActivity': true;

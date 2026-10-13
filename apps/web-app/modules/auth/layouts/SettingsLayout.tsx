@@ -17,6 +17,11 @@ export function SettingsLayout({ children }: LayoutProps) {
             </Link>
           </li>
           <li>
+            <Link route="auth.two-factor" activeMatch="auth.two-factor.*">
+              {t('settings.two_factor')}
+            </Link>
+          </li>
+          <li>
             <Link route="auth.tokens" activeMatch="auth.tokens.*">
               {t('settings.tokens')}
             </Link>

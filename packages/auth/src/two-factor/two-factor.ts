@@ -41,7 +41,7 @@ export type SecondFactorInput = { readonly code: string } | { readonly recoveryC
 
 /**
  * The second factor of an account, for this request: finish a sign-in that waits for it, set an authenticator app up, take recovery codes,
- * turn it off. See `docs/authentication.md`.
+ * turn it off. See `docs/two-factor-authentication.md#the-sign-in`.
  *
  * Invariants: a code or recovery code works once (the store decides atomically); every check is throttled per account before it
  * runs; the secret is stored encrypted and bound to its account; nothing here signs anybody in except `challenge()`, and that

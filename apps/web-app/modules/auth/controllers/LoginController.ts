@@ -53,11 +53,11 @@ export class LoginController extends Controller {
     // The Login event carries the request's address and browser by itself (RequestInfo) — the "new sign-in" notice shows them.
     const signedIn = await this.#auth.attempt(email, password, { remember });
     if (!signedIn.ok) {
-      // The password was right, but the account has a second factor and nobody is signed in: the challenge pages come later.
-      // Not counted as a failure — the limiter is cleared like after a sign-in.
+      // The password was right, but the account has a second factor and nobody is signed in yet: on to the code. Not counted as
+      // a failure — the limiter is cleared like after a sign-in (the code has its own, per account).
       if (signedIn.error.kind === 'two-factor-required') {
         await this.#limiter.clear(key);
-        throw new ValidationError({ email: [this.#translator.get('auth.login.two_factor_pending')] }, { email });
+        return this.redirect().route('auth.two-factor.challenge');
       }
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }

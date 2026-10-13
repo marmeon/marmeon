@@ -172,7 +172,7 @@ describe('auth module', () => {
     await app.post('/login', credentials(alan, 'wrong')).assertInvalid<LoginController>({ email: /^Too many login attempts/ });
   });
 
-  it('an account with a second factor is not signed in: a hint instead, and the throttle budget is not spent', async () => {
+  it('an account with a second factor is not signed in: on to the code, and the throttle budget is not spent', async () => {
     let withFactor: unknown;
     await app.close(); // one database app per test
     app = await createTestApp(application, {
@@ -182,10 +182,7 @@ describe('auth module', () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;
     for (let attempt = 1; attempt <= 4; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
-    const held = await app
-      .post('/login', credentials(ada))
-      .assertInvalid<LoginController>({ email: 'This account uses two-factor authentication, which this page cannot complete yet.' })
-      .assertGuest();
+    const held = await app.post('/login', credentials(ada)).assertRedirect('/two-factor-challenge').assertGuest();
     // The waiting sign-in is a guest for the pages too: the shared props, and a route behind authenticate().
     const session = held.cookie('marmeon_session')!;
     await app.withCookie('marmeon_session', session).navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { auth: { user: null } });
