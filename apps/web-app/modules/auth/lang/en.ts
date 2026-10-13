@@ -84,6 +84,7 @@ const en = {
     challenge_title: 'Two-factor authentication',
     challenge_intro: 'Enter the code your authenticator app shows.',
     verify_title: 'Verify your second factor',
+    verify_passkey_intro: 'Confirm with a passkey to open this page.',
     verify_intro: 'Enter the code your authenticator app shows to open this page.',
     sensitive_title: 'A page behind a second factor',
     sensitive_intro: 'You proved your second factor recently, so this page is open. Pages like it ask for a code again after 15 minutes.',

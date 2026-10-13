@@ -84,6 +84,7 @@ export default {
     challenge_title: 'Zwei-Faktor-Anmeldung',
     challenge_intro: 'Gib den Code ein, den deine Authenticator-App anzeigt.',
     verify_title: 'Zweiten Faktor bestätigen',
+    verify_passkey_intro: 'Bestätige mit einem Passkey, um diese Seite zu öffnen.',
     verify_intro: 'Gib den Code deiner Authenticator-App ein, um diese Seite zu öffnen.',
     sensitive_title: 'Eine Seite hinter dem zweiten Faktor',
     sensitive_intro: 'Du hast deinen zweiten Faktor vor Kurzem bestätigt, deshalb ist diese Seite offen. Solche Seiten fragen nach 15 Minuten wieder nach einem Code.',

@@ -1,7 +1,7 @@
 import { softAuthenticator } from '@marmeon/auth';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -62,6 +62,57 @@ describe('passkeys', () => {
       .post('/two-factor-challenge/passkey', { json: { response: authenticator.authenticate(options.json() as never) } })
       .assertRedirect('/users/me');
     await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).get('/users/me').assertAuthenticated(ada);
+  });
+
+  describe('as a step-up', () => {
+    /** The page that asks for the factor again, in the session of an account with only a passkey: the proof is older than the page's 15 minutes. */
+    async function stale(user: User) {
+      const { cookie, authenticator } = await enrol(user);
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 901_000 });
+      return { cookie, authenticator };
+    }
+    afterEach(() => vi.useRealTimers());
+
+    it('lets an account with only a passkey into a page that asks for the factor again', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const { cookie, authenticator } = await stale(ada); // the registration proved the factor, 15 minutes ago
+      const as = () => app.withCookie(SESSION, cookie);
+      await as().get('/settings/sensitive').assertRedirect('/settings/two-factor/verify');
+      await as().navigating().get('/settings/two-factor/verify').assertPage('auth/TwoFactorVerify', { passkey: true, totp: false });
+      const options = await as().post('/settings/two-factor/verify/passkey/options', { json: {} }).assertOk();
+      expect(options.json()).toMatchObject({ userVerification: 'required' });
+      const done = await as().post('/settings/two-factor/verify/passkey', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect('/settings/sensitive');
+      await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).navigating().get('/settings/sensitive').assertPage('auth/Sensitive');
+    });
+
+    it('says nothing about why a response did not count, and leaves the session signed in', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const { cookie, authenticator } = await stale(ada);
+      const as = () => app.withCookie(SESSION, cookie);
+      const options = await as().post('/settings/two-factor/verify/passkey/options', { json: {} }).assertOk();
+      const refused = await as()
+        .post('/settings/two-factor/verify/passkey', { json: { response: authenticator.authenticate(options.json() as never, { origin: 'https://evil.example' }) } })
+        .assertStatus(422);
+      expect(refused.json()).toEqual({ error: 'That passkey did not work.' });
+      await as().get('/settings/sensitive').assertRedirect('/settings/two-factor/verify');
+      await as().get('/users/me').assertAuthenticated(ada);
+    });
+
+    it('limits the options per user, and keeps guests out', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const { cookie } = await enrol(ada);
+      for (let i = 0; i < 10; i++) await app.withCookie(SESSION, cookie).post('/settings/two-factor/verify/passkey/options', { json: {} }).assertOk();
+      await app.withCookie(SESSION, cookie).post('/settings/two-factor/verify/passkey/options', { json: {} }).assertStatus(429);
+      for (const path of ['/settings/two-factor/verify/passkey/options', '/settings/two-factor/verify/passkey']) {
+        await app.post(path, { json: {} }).assertRedirect('/login');
+      }
+    });
+
+    it('offers nothing to an account without a passkey', async () => {
+      const ada = await app.factory(UserFactory).create();
+      const cookie = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
+      await app.withCookie(SESSION, cookie).post('/settings/two-factor/verify/passkey/options', { json: {} }).assertStatus(422);
+    });
   });
 
   it('refuses a response from another origin, and says nothing about why', async () => {

@@ -148,6 +148,27 @@ passkey counts against the five tries of the waiting sign-in and dispatches `Two
 
 Passkeys cannot be guessed, so they share the generous counter of the recovery codes, ten a minute, not the budget of the code attempts.
 
+## As a step-up
+
+An account that has only passkeys must also get through a page behind [`twoFactor()`](two-factor-authentication.md#requiring-it). On the
+`verify` page the signed-in user proves a passkey again: `stepUpOptions()` opens a challenge bound to the signed-in account and allows
+only its passkeys that are not suspended, and `TwoFactor.stepUp()` takes the answer:
+
+```ts title="modules/auth/controllers/PasskeyStepUpController.ts"
+const done = await this.#twoFactor.stepUp({ passkey: ctx.body.response });
+if (done.ok) return this.redirect().intended().route('auth.sensitive');
+```
+
+The challenge has its own purpose, `step-up`: one issued for a waiting sign-in does not serve a step-up, and the reverse. It leaves the
+session before anything is checked and is used up atomically, so a response works once. The passkey is looked up at that moment, must
+belong to the signed-in account and must not be suspended; user verification is required, and the sign count follows the rule above. Every
+failed check is `invalid-code`, whatever the reason, so the client learns nothing. `TwoFactorChallengeFailed` with `during: 'step-up'` fires only for a
+wrong answer (a bad signature, an unknown, foreign or suspended passkey), not for a challenge that is missing, used or expired. A wrong response does not end the session.
+`throttled` and `no-challenge` are the only other answers: the latter means the account has no factor at all. A success marks the session as proven under a new session id, as with a code.
+
+The check is throttled per account by the generous counter of the recovery codes, before the response is looked at. `stepUpOptions()`
+only opens a challenge and has no throttle of its own: give its route a limit, as the example app does (ten a minute per user).
+
 ## Managing passkeys
 
 `Passkeys` offers what a settings page needs:
@@ -216,7 +237,7 @@ plus `TwoFactorStore.removeAll(userId)`, and the events dispatched by the comman
 | `PasskeyCloneSuspected` | A sign-in was refused for its sign count, and the passkey suspended | `user`, `passkeyId` |
 | `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `ip`, `userAgent` |
 | `Login` | A passwordless sign-in | `via: 'passkey'` |
-| `TwoFactorChallengeFailed` | A wrong passkey after the password | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`) |
+| `TwoFactorChallengeFailed` | A wrong passkey after the password, or at a step-up | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in` or `step-up`) |
 
 The first passkey also dispatches `TwoFactorEnabled` and `RecoveryCodesGenerated`, and removing the last factor `TwoFactorDisabled`. All of
 them can be [queued](events.md#queued-listeners). Send the owner a mail on `PasskeyRegistered`, `PasskeyRemoved`,

@@ -49,16 +49,22 @@ export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactor
 export type PasskeyAssertion = object;
 
 /**
+ * What a passkey check found: `valid`; `wrong` (a bad signature, a passkey that is unknown, another account's or suspended — a real wrong answer);
+ * `stale` (no open challenge, an expired or used one, one of another purpose — a timeout or a double submit, which is no guess).
+ */
+export type PasskeyVerdict = 'valid' | 'wrong' | 'stale';
+
+/**
  * Checks a passkey as the second factor of an account. The passkeys service binds itself here (`PasskeyServiceProvider`); the default
  * knows no passkeys and refuses every response, so an app without them never loads the WebAuthn library.
  */
 export interface SecondFactorPasskeys {
   /**
    * Whether `assertion` proves a passkey of exactly `userId` right now: against the stored passkey (not what the sign-in saw), with the
-   * open challenge for this account used up either way. Never throws for a bad response — `false`. Package-internal (a symbol key):
+   * open challenge of this account and of `during` (the waiting sign-in, or the signed-in session's step-up) used up either way. Never throws for a bad response — a verdict other than `valid`. Package-internal (a symbol key):
    * `TwoFactor` calls it after it has read the waiting sign-in and counted the attempt, so an app cannot call it without those.
    */
-  [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion): Promise<boolean>;
+  [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 /** The key of {@link SecondFactorPasskeys.verify}'s method. */
 export const VERIFY_SECOND_FACTOR = Symbol('marmeon.auth.verifySecondFactor');
@@ -66,7 +72,7 @@ export const SecondFactorPasskeys = token<SecondFactorPasskeys>('SecondFactorPas
 
 /** The default {@link SecondFactorPasskeys}: no passkeys, every response refused. */
 export class NoSecondFactorPasskeys implements SecondFactorPasskeys {
-  async [VERIFY_SECOND_FACTOR](): Promise<boolean> {
-    return false;
+  async [VERIFY_SECOND_FACTOR](): Promise<PasskeyVerdict> {
+    return 'wrong';
   }
 }

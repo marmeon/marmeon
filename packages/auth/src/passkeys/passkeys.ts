@@ -10,7 +10,7 @@ import { AuthConfig } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
-import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion } from '../two-factor/state.ts';
+import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
 import { TwoFactorStore } from '../two-factor/store.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
 import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
@@ -73,7 +73,7 @@ export interface PasskeySummary {
 }
 
 /**
- * Passkeys for the current request: register them, sign in without a password, and prove one as the second factor of a sign-in. See
+ * Passkeys for the current request: register them, sign in without a password, and prove one as the second factor of a sign-in or again in a signed-in session. See
  * `docs/passkeys.md#managing-passkeys`.
  *
  * Invariants: a challenge works once and only for its purpose (it leaves the session before anything is checked); user verification is
@@ -266,9 +266,26 @@ export class Passkeys implements SecondFactorPasskeys {
     return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
   }
 
-  /** @internal What `TwoFactor.challenge({ passkey })` calls, after it has read the pending sign-in and counted the attempt. */
-  async [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion): Promise<boolean> {
-    return (await this.#check(assertion as AuthenticationResponseJSON, 'second-factor', userId)).ok;
+  /**
+   * The options for proving a passkey again in the session that is signed in, for `TwoFactor.stepUp({ passkey })`: only the signed-in
+   * account's own passkeys are allowed, and the challenge is bound to that account. Needs a signed-in user. `no-challenge` when the
+   * account has no usable passkey. The route that serves it needs its own limit — it opens a challenge per call.
+   */
+  async stepUpOptions(): Promise<Result<PublicKeyCredentialRequestOptionsJSON, { readonly kind: 'no-challenge' }>> {
+    const user = await this.#requireUser('stepUpOptions');
+    const id = idOf(user);
+    const allow = (await this.#store.forUser(id)).filter((passkey) => passkey.suspendedAt === null).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
+    if (allow.length === 0) return err({ kind: 'no-challenge' });
+    const { bytes } = issueChallenge(this.#session, 'step-up', this.#now(), id);
+    return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
+  }
+
+  /** @internal What `TwoFactor.challenge({ passkey })` and `stepUp({ passkey })` call, after they have found the account and counted the attempt. */
+  async [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
+    // No challenge to answer (a timeout, a double submit) is `stale`; only an answer that was given and failed is `wrong`.
+    const challenge = await this.#takeChallenge(during === 'step-up' ? 'step-up' : 'second-factor', userId);
+    if (!challenge.ok) return 'stale';
+    return (await this.#answer(assertion as AuthenticationResponseJSON, challenge.value, userId)).ok ? 'valid' : 'wrong';
   }
 
   // -- Managing --------------------------------------------------------------------------------------------------------------
@@ -346,11 +363,26 @@ export class Passkeys implements SecondFactorPasskeys {
    * count is written only for a response that passed everything, and only if no other request moved it meanwhile.
    */
   async #check(response: AuthenticationResponseJSON, purpose: ChallengePurpose, expectedUser?: number | string): Promise<Result<PasskeyRecord, PasskeyError>> {
+    const taken = await this.#takeChallenge(purpose, expectedUser);
+    if (!taken.ok) return err(taken.error);
+    return this.#answer(response, taken.value, expectedUser);
+  }
+
+  /**
+   * The challenge step: the open challenge leaves the session (it must be for `purpose` and `expectedUser`, and not past its time) and is
+   * spent for every process at once — requests that carry the same session cookie at the same moment all read the challenge before any
+   * of them removed it, and a synchronised passkey (counter 0) could be replayed without limit.
+   */
+  async #takeChallenge(purpose: ChallengePurpose, expectedUser?: number | string): Promise<Result<string, PasskeyError>> {
     const taken = takeChallenge(this.#session, purpose, this.#now(), expectedUser);
     if (!taken.ok) return err(taken.error);
-    // Spent for every process at once: requests that carry the same session cookie at the same moment all read the challenge before any
-    // of them removed it, and a synchronised passkey (counter 0) could be replayed without limit.
     if (!(await this.#spend(taken.value.challenge))) return err({ kind: 'no-challenge' });
+    return ok(taken.value.challenge);
+  }
+
+  /** The answer step: the passkey, the signature and flags, the sign count — for a challenge already taken. */
+  async #answer(response: AuthenticationResponseJSON, challenge: string, expectedUser?: number | string): Promise<Result<PasskeyRecord, PasskeyError>> {
+    const purposeIsSignIn = expectedUser === undefined;
     const credentialId = typeof (response as { id?: unknown } | null)?.id === 'string' ? response.id : '';
     const record = credentialId === '' ? undefined : await this.#store.findByCredentialId(credentialId);
     if (record === undefined) return err({ kind: 'invalid' });
@@ -359,7 +391,7 @@ export class Passkeys implements SecondFactorPasskeys {
 
     const verified = await verifyAuthentication(
       response,
-      { ...this.#config.relyingParty(), challenge: taken.value.challenge, discoverable: purpose === 'sign-in' },
+      { ...this.#config.relyingParty(), challenge, discoverable: purposeIsSignIn },
       { credentialId: record.credentialId, publicKey: record.publicKey, signCount: record.signCount, transports: record.transports, userHandle: record.userHandle, backupEligible: record.backupEligible },
       this.#logger,
     );
@@ -371,7 +403,7 @@ export class Passkeys implements SecondFactorPasskeys {
         await this.#store.suspend(record.id);
         if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
         this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
-      } else if (purpose === 'sign-in' && found) {
+      } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
         await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }));
       }
