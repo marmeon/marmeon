@@ -23,4 +23,7 @@ export default {
   kit_title: 'Über das Starter-Kit',
   kit_text: 'Was Anmeldung, Registrierung und Einstellungen mitbringen und wie du sie änderst.',
   kit_link: 'Das Starter-Kit',
+  guide_title: 'Baue ein erstes Feature',
+  guide_text: 'Eine Notizen-App auf dem Starter-Kit, Schritt für Schritt: ein Modul, eine Tabelle, Seiten und Tests.',
+  guide_link: 'Deine erste App',
 } satisfies Messages<typeof en>;

@@ -23,6 +23,9 @@ const en = {
   kit_title: 'About the starter kit',
   kit_text: 'What sign-in, registration and the settings pages include, and how to change them.',
   kit_link: 'The starter kit',
+  guide_title: 'Build a first feature',
+  guide_text: 'A notes app on the starter kit, step by step: a module, a table, pages and tests.',
+  guide_link: 'Your first app',
 } as const;
 
 export default en;

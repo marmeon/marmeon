@@ -8,7 +8,7 @@ type Props = PageProps<ListNotesController>;
 /** A note's body as paragraphs: a blank line starts a new one. */
 const paragraphs = (body: string) => body.split(/\n\s*\n/).filter((paragraph) => paragraph.trim() !== '');
 
-export default function Index({ notes }: Props) {
+export default function ListNotes({ notes }: Props) {
   const t = useTranslation('notes');
   return (
     <main className="app-main stack stack-loose">
@@ -75,4 +75,4 @@ export default function Index({ notes }: Props) {
   );
 }
 
-Index.layout = AppLayout;
+ListNotes.layout = AppLayout;

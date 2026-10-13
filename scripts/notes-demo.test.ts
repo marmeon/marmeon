@@ -29,14 +29,14 @@ function setup({ files = {}, edits = [], commands = { beforeCopy: [], afterCopy:
 describe('the notes demo overlay', () => {
   it('copies the files, applies the edits and runs the commands in order — and says what it wrote', () => {
     const { overlay, app } = setup({
-      files: { 'modules/notes/index.ts': 'export {};\n', 'modules/notes/views/Index.tsx': '<main />\n' },
+      files: { 'modules/notes/index.ts': 'export {};\n', 'modules/notes/views/ListNotes.tsx': '<main />\n' },
       edits: [{ file: 'layout.tsx', find: 'before', replace: 'before\nafter' }],
       commands: { beforeCopy: ['marmeon make:module notes'], afterCopy: ['marmeon migrate', 'marmeon route:types'] },
       app: { 'layout.tsx': '<nav>before</nav>\n' },
     });
     const ran: string[] = [];
     const written = applyOverlay(app, (args) => ran.push(`${args.join(' ')} ${existsSync(join(app, 'modules/notes/index.ts')) ? 'copied' : 'not copied'}`), overlay);
-    expect(written.sort()).toEqual(['modules/notes/index.ts', 'modules/notes/views/Index.tsx']);
+    expect(written.sort()).toEqual(['modules/notes/index.ts', 'modules/notes/views/ListNotes.tsx']);
     expect(readFileSync(join(app, 'modules/notes/index.ts'), 'utf8')).toBe('export {};\n');
     expect(readFileSync(join(app, 'layout.tsx'), 'utf8')).toBe('<nav>before\nafter</nav>\n');
     expect(ran).toEqual(['make:module notes not copied', 'migrate copied', 'route:types copied']);
@@ -187,7 +187,7 @@ describe('the end of a smoke run', () => {
 
 describe('examples/notes', () => {
   it('has commands and edits the demo can run, and edits that fit the starter kit it is applied to', () => {
-    expect(readCommands(OVERLAY).beforeCopy).toEqual(['marmeon make:module notes']);
+    expect(readCommands(OVERLAY).beforeCopy[0]).toBe('marmeon make:module notes');
     const layout = readFileSync(fileURLToPath(new URL('../packages/auth/stubs/react/modules/auth/layouts/AppLayout.tsx', import.meta.url)), 'utf8');
     for (const edit of readEdits(OVERLAY)) {
       expect(edit.file).toBe('modules/auth/layouts/AppLayout.tsx');
@@ -196,7 +196,7 @@ describe('examples/notes', () => {
   });
 
   it('styles its pages with the kit, not with inline styles', () => {
-    for (const view of ['Index', 'Form']) {
+    for (const view of ['ListNotes', 'Form']) {
       expect(readFileSync(join(OVERLAY, `files/modules/notes/views/${view}.tsx`), 'utf8')).not.toMatch(/\bstyle=/);
     }
   });

@@ -52,6 +52,7 @@ export default defineDocs({
         { slug: 'configuration', label: 'Configuration' },
         { slug: 'structure', label: 'Directory Structure' },
         { slug: 'starter-kit', label: 'Starter Kit' },
+        { slug: 'first-app', label: 'Your First App' },
         { slug: 'deployment', label: 'Deployment' },
       ],
     },

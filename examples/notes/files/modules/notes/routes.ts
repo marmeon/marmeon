@@ -1,6 +1,5 @@
-import { authenticate } from '@marmeon/auth';
+import { authenticate, verified } from '@marmeon/auth';
 import { defineRoutes } from '@marmeon/http';
-import { ConfirmedAddress } from '#modules/auth';
 import { CreateNoteController } from './controllers/CreateNoteController.ts';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { EditNoteController } from './controllers/EditNoteController.ts';
@@ -11,10 +10,10 @@ import { UnpinNoteController } from './controllers/UnpinNoteController.ts';
 import { UpdateNoteController } from './controllers/UpdateNoteController.ts';
 import { NoteRepository } from './NoteRepository.ts';
 
-// Signed in, with a confirmed address like the dashboard. A note in the URL is looked up by its id and then checked
+// Signed in, with a confirmed address. A note in the URL is looked up by its id and then checked
 // against the signed-in user by NotePolicy: somebody else's note is a 404.
 export default defineRoutes((Route) => {
-  const notes = Route.prefix('/notes').middleware(authenticate()).middleware(ConfirmedAddress).name('notes.');
+  const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
 
   notes.get('/', ListNotesController).name('index');
   notes.get('/create', CreateNoteController).name('create');

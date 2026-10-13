@@ -20,6 +20,6 @@ export class ListNotesController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof ListNotesRequest> & Authenticated) {
-    return this.view('notes/Index', { notes: await this.#notes.pageOf(ctx.user.id, ctx.query) });
+    return this.view('notes/ListNotes', { notes: await this.#notes.pageOf(ctx.user.id, ctx.query) });
   }
 }

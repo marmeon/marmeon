@@ -200,6 +200,7 @@ has no such delay.
 
 ## Next steps
 
+- [Your First App](first-app.md) builds a small notes app on the starter kit, step by step.
 - [Directory Structure](structure.md) shows where everything in the new app lives, and walks you through your first module.
 - [Configuration](configuration.md) explains `.env`, `NODE_ENV` and each package's settings.
 - [Routing](routing.md) is where every feature starts: a URL, a controller and a page.

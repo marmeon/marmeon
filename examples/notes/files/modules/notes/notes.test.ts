@@ -5,7 +5,7 @@ import { UserFactory, UserRepository } from '../auth/index.ts';
 import type { ListNotesController } from './controllers/ListNotesController.ts';
 import { NoteRepository } from './NoteRepository.ts';
 
-// The notes demo's tests: who may see and change which note.
+// Who may see and change which note.
 
 let app: TestApp;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
@@ -29,7 +29,7 @@ describe('the notes', { timeout: 30_000 }, () => {
     await notes().insert({ user_id: ada.id, title: 'Ideas', body: 'Many', pinned: true });
     await notes().insert({ user_id: bob.id, title: 'Secret', body: 'Not for Ada' });
 
-    await app.actingAs(ada).navigating().get('/notes').assertPage<ListNotesController>('notes/Index', (props) => {
+    await app.actingAs(ada).navigating().get('/notes').assertPage<ListNotesController>('notes/ListNotes', (props) => {
       expect(props.notes.data.map((note) => note.title)).toEqual(['Ideas', 'Groceries']);
       expect(props.notes.meta.total).toBe(2);
     });
@@ -38,7 +38,7 @@ describe('the notes', { timeout: 30_000 }, () => {
   it('pages the list', async () => {
     const ada = await app.factory(UserFactory).create();
     for (let number = 1; number <= 12; number++) await notes().insert({ user_id: ada.id, title: `Note ${number}`, body: '' });
-    await app.actingAs(ada).navigating().get('/notes?page=2').assertPage<ListNotesController>('notes/Index', (props) => {
+    await app.actingAs(ada).navigating().get('/notes?page=2').assertPage<ListNotesController>('notes/ListNotes', (props) => {
       expect(props.notes.data).toHaveLength(2);
       expect(props.notes.meta.lastPage).toBe(2);
     });

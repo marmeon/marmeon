@@ -308,4 +308,4 @@ The first migration of a module also needs its folder in the module's definition
 `migrations: new URL('./migrations/', import.meta.url)` and prints the line only when the file has another shape or you pass
 `--no-register`. `pnpm marmeon migrate` then creates the table and, in development,
 writes its types into `bootstrap/database.d.ts`. The [migrations](migrations.md) and [repositories](queries.md) pages go on
-from there.
+from there. [Your First App](first-app.md) takes this module on to a complete notes app with a policy, forms and tests.
