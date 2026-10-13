@@ -455,7 +455,7 @@ describe('Back after signing out', () => {
       'GET /settings/tokens (visit)',
       'GET /settings/tokens/create (visit)', // the form: a layer
       'POST /settings/tokens (visit)', // its answer: the plain text, a layer shown once
-      'POST /logout (visit)', // → 409, x-marmeon-location: /login, Clear-Site-Data: "cache", "storage"
+      'POST /logout (visit)', // → 409, x-marmeon-location: /login, Clear-Site-Data: "storage"
       'GET /login',
     ]);
   });
@@ -493,18 +493,18 @@ describe('Cache headers', () => {
     const ada = await app.factory(UserFactory).create();
     const visit = await app.actingAs(ada).navigating().post('/logout').assertStatus(409).assertGuest();
     expect(visit.headers.get(LOCATION_HEADER)).toBe('/login');
-    expect(visit.headers.get('clear-site-data')).toBe('"cache", "storage"');
+    expect(visit.headers.get('clear-site-data')).toBe('"storage"');
     expect(visit.headers.get('location')).toBeNull();
 
     const form = await app.actingAs(ada).post('/logout').assertStatus(303).assertRedirect('/login');
-    expect(form.headers.get('clear-site-data')).toBe('"cache", "storage"');
+    expect(form.headers.get('clear-site-data')).toBe('"storage"');
   });
 
   it('answers a sign-in visit with a full page load to where the login was headed', async () => {
     const ada = await app.factory(UserFactory).create();
     const visit = await app.navigating().post('/login', { json: { email: ada.email, password: 'password' } }).assertStatus(409).assertAuthenticated(ada);
     expect(visit.headers.get(LOCATION_HEADER)).toBe('/users/me');
-    expect(visit.headers.get('clear-site-data')).toBeNull(); // only signing out clears the HTTP cache
+    expect(visit.headers.get('clear-site-data')).toBeNull(); // only signing out clears the storage
 
     // A failed login changes nobody: an ordinary visit answer (back to the form, with errors).
     await app.navigating().post('/login', { json: { email: ada.email, password: 'wrong' } }).assertStatus(303);

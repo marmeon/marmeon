@@ -6,8 +6,10 @@ import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './
  * After `clear()`, no page the client keeps in memory may come back: a client-side visit is answered with `409` and
  * `x-marmeon-location`, so the browser loads the next page fully.
  *
- * `{ siteData: true }` (sign-out) also sends `Clear-Site-Data: "cache", "storage"`; `['cache']` drops the cache alone, `false`
- * takes back an earlier call's. Never `"cookies"` (the response sets the session's own), nor `"executionContexts"` (no browser
+ * `{ siteData: ['storage'] }` (what `Auth.logout()` asks for) also sends `Clear-Site-Data: "storage"`; `true` is `"cache", "storage"`,
+ * `['cache']` the cache alone, `false` takes back an earlier call's. Naming `"cache"` makes Chrome scan its
+ * whole disk cache, all sites, before it goes on: seconds on a busy profile. Browsers honour the header in secure contexts
+ * (HTTPS, `http://localhost`). Never `"cookies"` (the response sets the session's own), nor `"executionContexts"` (no browser
  * does it; tab sync clears the other tabs). See docs/client-features.md#the-browsers-storage-on-sign-out.
  */
 export class ClientHistory {
@@ -91,7 +93,8 @@ function refererPath(request: Request): string {
  * Sets `Cache-Control` on the route's responses that do not set it themselves — e.g. to let the browser keep a
  * page that `@marmeon/auth` would otherwise mark `no-store` for signed-in users:
  * `Route.middleware(cacheControl('private, max-age=60')).get('/report.pdf', ShowReportController)`.
- * Never `public` for what depends on the user: shared caches (proxies, CDNs) would hand it to others.
+ * Never `public` for what depends on the user: shared caches (proxies, CDNs) would hand it to others. The answer outlives a
+ * sign-out in the browser's cache: such an app signs out with `history.clear({ siteData: ['cache', 'storage'] })`.
  */
 export function cacheControl(value: string): MiddlewareClass<{}, {}> {
   const CacheControl = class {

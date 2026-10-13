@@ -136,15 +136,15 @@ export class Auth {
 
   /**
    * Signs out on this device: the session's data, id and CSRF token are all replaced, the remember-me token is dropped.
-   * The browser loads the next page fully (its in-memory pages are gone) and clears its HTTP cache for the site
-   * and the site's storage (`Clear-Site-Data: "cache", "storage"`) — see `ClientHistory`; an app that keeps something in
+   * The browser loads the next page fully (its in-memory pages are gone) and clears the site's storage
+   * (`Clear-Site-Data: "storage"`; signed-in answers are `no-store`, so the HTTP cache holds none of them) — see `ClientHistory`; an app that keeps something in
    * the browser's storage across a sign-out takes that back with `history.clear({ siteData: false })` after `logout()`.
    */
   async logout(): Promise<void> {
     const user = await this.user();
     await this.#forgetDevice();
     this.#session.invalidate();
-    this.#history.clear({ siteData: true });
+    this.#history.clear({ siteData: ['storage'] });
     this.#user = Promise.resolve(undefined);
     if (user) await this.#events.dispatch(new Logout(user));
   }
