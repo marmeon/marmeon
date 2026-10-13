@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/notifications",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Notifications for Marmeon apps: classes with channels (mail, database, live), recipients as data, delivered by the queue.",
   "keywords": [
     "marmeon",

@@ -1,5 +1,14 @@
 # @marmeon/scheduler
 
+## 0.1.2
+
+### Patch Changes
+
+- @marmeon/cache@0.1.2
+  - marmeon@0.1.2
+  - @marmeon/queue@0.1.2
+  - @marmeon/core@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

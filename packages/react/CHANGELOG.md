@@ -1,5 +1,13 @@
 # @marmeon/react
 
+## 0.1.2
+
+### Patch Changes
+
+- @marmeon/http@0.1.2
+  - @marmeon/i18n@0.1.2
+  - @marmeon/table@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

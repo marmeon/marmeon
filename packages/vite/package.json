@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/vite",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The Vite plugin for Marmeon apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic — the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
   "keywords": [
     "marmeon",

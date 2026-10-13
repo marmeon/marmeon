@@ -1,5 +1,13 @@
 # @marmeon/i18n
 
+## 0.1.2
+
+### Patch Changes
+
+- @marmeon/session@0.1.2
+  - @marmeon/core@0.1.2
+  - @marmeon/router@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

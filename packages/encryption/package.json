@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/encryption",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Authenticated encryption with the application key (AES-256-GCM) and key rotation for Marmeon apps.",
   "keywords": [
     "marmeon",
