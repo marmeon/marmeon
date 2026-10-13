@@ -15,76 +15,45 @@ function repositoryWith(changelogs: Record<string, string | undefined>): string 
   return dir;
 }
 
-const core = `# @marmeon/core
+const body = `### Breaking changes
 
-## 0.2.0
+- Rename the thing by @max in https://github.com/marmeon/marmeon/pull/7
 
-### Minor Changes
+### Features
 
-- aaa1111: A new thing,
-  over two lines.
+- Add a thing by @ana in https://github.com/marmeon/marmeon/pull/5
 
-### Patch Changes
+### Fixes
 
-- bbb2222: A fix.
+- Fix the other thing by @max in https://github.com/marmeon/marmeon/pull/6
 
-## 0.1.0
+### New contributors
 
-### Minor Changes
+- @ana made their first contribution in https://github.com/marmeon/marmeon/pull/5
 
-- The first release.
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v0.1.2...v0.2.0
 `;
 
-const http = `# @marmeon/http
-
-## 0.2.0
-
-### Minor Changes
-
-- aaa1111: A new thing,
-  over two lines.
-
-### Patch Changes
-
-- bbb2222: A fix.
-- ccc3333: Only in http.
-- Updated dependencies [aaa1111]
-  - @marmeon/core@0.2.0
-
-## 0.1.0
-
-### Patch Changes
-
-- Updated dependencies
-  - @marmeon/core@0.1.0
-`;
+const changelog = (section: string, name = 'core') => `# @marmeon/${name}\n\n## 0.2.0\n\n${section}\n## 0.1.0\n\n### Minor Changes\n\n- The first release.\n`;
 
 describe('releaseNotes', () => {
-  it('merges the packages, lists a shared entry once and drops the dependency bullets', () => {
-    expect(releaseNotes(repositoryWith({ core, http }), '0.2.0')).toBe(
-      [
-        '### Minor Changes\n\n- aaa1111: A new thing,\n  over two lines.',
-        '### Patch Changes\n\n- bbb2222: A fix.\n- ccc3333: Only in http.',
-      ].join('\n\n') + '\n',
-    );
+  it('prints the shared section once, verbatim', () => {
+    const dir = repositoryWith({ core: changelog(body), http: changelog(body, 'http') });
+    expect(releaseNotes(dir, '0.2.0')).toBe(`${body.trim()}\n`);
   });
 
-  it('keeps a multi-paragraph entry with a code block whole', () => {
-    const entry = '- ddd4444: First paragraph.\n\n  Second paragraph:\n\n  ```ts\n  const a = 1;\n\n  const b = 2;\n  ```\n\n  Last paragraph.';
-    const changelog = `# @marmeon/core\n\n## 0.2.0\n\n### Minor Changes\n\n${entry}\n- eee5555: Next.\n\n### Patch Changes\n\n- fff6666: Fix.\n`;
-    expect(releaseNotes(repositoryWith({ core: changelog }), '0.2.0')).toBe(`### Minor Changes\n\n${entry}\n- eee5555: Next.\n\n### Patch Changes\n\n- fff6666: Fix.\n`);
+  it('names a package without the section', () => {
+    const dir = repositoryWith({ core: changelog(body), http: '# @marmeon/http\n\n## 0.1.0\n\n- Old.\n', auth: undefined });
+    expect(() => releaseNotes(dir, '0.2.0')).toThrow(/No "## 0\.2\.0" section.*@marmeon\/http.*@marmeon\/auth|No "## 0\.2\.0" section.*@marmeon\/auth.*@marmeon\/http/);
   });
 
-  it('reads only the section of the version', () => {
-    expect(releaseNotes(repositoryWith({ core }), '0.1.0')).toBe('### Minor Changes\n\n- The first release.\n');
+  it('names a package whose section differs', () => {
+    const dir = repositoryWith({ core: changelog(body), http: changelog(`${body}\n- Extra.\n`, 'http') });
+    expect(() => releaseNotes(dir, '0.2.0')).toThrow(/section of @marmeon\/http differs from @marmeon\/core/);
   });
 
-  it('refuses a version a package has no section for', () => {
-    expect(() => releaseNotes(repositoryWith({ core, http }), '0.3.0')).toThrow('no "## 0.3.0" section in the CHANGELOG.md of @marmeon/core, @marmeon/http');
-    expect(() => releaseNotes(repositoryWith({ core, http: undefined }), '0.2.0')).toThrow('of @marmeon/http');
-  });
-
-  it('refuses a section that holds only dependency updates', () => {
-    expect(() => releaseNotes(repositoryWith({ http }), '0.1.0')).toThrow('hold no changes');
+  it('refuses an empty section', () => {
+    const dir = repositoryWith({ core: changelog(''), http: changelog('', 'http') });
+    expect(() => releaseNotes(dir, '0.2.0')).toThrow('the "## 0.2.0" section holds no changes');
   });
 });
