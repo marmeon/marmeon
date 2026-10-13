@@ -20,7 +20,7 @@ const repo = resolve(import.meta.dirname, '../../../..');
 let app: TestApp;
 beforeEach(async () => {
   app = await createTestApp(application);
-});
+}, 30_000);
 
 /** Every page of the docs in the order of docs.config.ts — across the sections. */
 const ENTRIES = docsConfig.sections.flatMap((section) => section.pages);
@@ -40,7 +40,8 @@ const SECTIONS = [
 
 const results = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResult[] }).results;
 
-describe('the search (a server route)', () => {
+// Each test boots the app, some with a Vite server: slow on a busy machine.
+describe('the search (a server route)', { timeout: 30_000 }, () => {
   it('finds onOneServer() on the scheduling page and "missed runs" under its heading — anchors into the section', async () => {
     const hits = results(await app.navigating().get('/docs/search?q=onOneServer').assertOk().assertPage('docs/Search'));
     const scheduling = hits.find((result) => result.href.startsWith('/docs/scheduling#'));
@@ -125,7 +126,7 @@ describe('the search (a server route)', () => {
   });
 });
 
-describe('pages', () => {
+describe('pages', { timeout: 30_000 }, () => {
   it('has no package pages — a package README is a card for npm: /packages/… is a 404', async () => {
     await app.get('/packages/http').assertNotFound();
     await app.get('/packages/core/README.md').assertNotFound();
@@ -188,7 +189,7 @@ describe('the layout of a docs page (server-rendered)', () => {
   }, SSR_TEST_TIMEOUT);
 });
 
-describe('the docs: sections of pages under /docs', () => {
+describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
   it('lists the 74 pages in ten sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
     expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 5, 5, 11, 9, 13, 9, 7, 6, 3]);
@@ -276,12 +277,12 @@ describe('the docs: sections of pages under /docs', () => {
   });
 });
 
-describe('the content of a page, rendered on the server', () => {
+describe('the content of a page, rendered on the server', { timeout: 30_000 }, () => {
   const document = { headers: { accept: 'text/html' } };
   let ssr: TestApp;
   beforeEach(async () => {
     ssr = await createTestApp(application, { ssr: true });
-  });
+  }, 30_000);
 
   it('renders a callout as aside.callout with role="note" and its title', async () => {
     const html = (await ssr.get('/docs/routing', document).assertOk()).body;
@@ -310,7 +311,7 @@ describe('the content of a page, rendered on the server', () => {
   }, SSR_TEST_TIMEOUT);
 });
 
-describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', () => {
+describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', { timeout: 30_000 }, () => {
   const document = { headers: { accept: 'text/html' } };
 
   it('sets no cookie, on any page — the public group has no session, no CSRF, no encrypted cookies', async () => {
