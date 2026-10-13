@@ -15,16 +15,14 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
   const devicesForm = useForm('auth.devices.logout', { password: '' });
 
   return (
-    <main>
+    <main className="stack stack-loose">
       <Head title={t('security.title')} />
       <h1>{t('security.title')}</h1>
       {viaRemember && (
-        <p>
-          <small>{t('security.remembered', { name: auth?.user?.name ?? '' })}</small>
-        </p>
+        <p className="hint">{t('security.remembered', { name: auth?.user?.name ?? '' })}</p>
       )}
 
-      <section aria-labelledby="email-heading">
+      <section aria-labelledby="email-heading" className="card">
         <h2 id="email-heading">{t('security.email_heading')}</h2>
         <form
           noValidate
@@ -35,25 +33,24 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
             void emailForm.submit({ onSuccess: () => (emailChangeWaits ? emailForm.reset() : undefined) });
           }}
         >
-          <p>
+          <div className="field">
             <label htmlFor="email">{t('security.email')}</label>
-            <br />
             <input id="email" type="email" autoComplete="email" value={emailForm.data.email} onChange={(e) => emailForm.set('email', e.target.value)} aria-invalid={!!emailForm.errors.email} />
             {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
             {auth?.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
-          </p>
+          </div>
           {pendingEmail && (
-            <p role="status">
+            <p role="status" className="notice">
               <small>{t('security.email_pending', { email: pendingEmail, current: email })}</small>
             </p>
           )}
-          <button type="submit" disabled={emailForm.processing || !emailForm.isDirty()}>
+          <button type="submit" className="button" disabled={emailForm.processing || !emailForm.isDirty()}>
             {t('security.change_email')}
           </button>
         </form>
       </section>
 
-      <section aria-labelledby="password-heading">
+      <section aria-labelledby="password-heading" className="card">
         <h2 id="password-heading">{t('security.password_heading')}</h2>
         <form
           noValidate
@@ -69,9 +66,8 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
               ['password_confirmation', t('security.repeat_password'), 'new-password'],
             ] as const
           ).map(([name, label, autoComplete]) => (
-            <p key={name}>
+            <div className="field" key={name}>
               <label htmlFor={name}>{label}</label>
-              <br />
               <input
                 id={name}
                 type="password"
@@ -81,16 +77,16 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
                 aria-invalid={!!passwordForm.errors[name]}
               />
               {passwordForm.errors[name] && <small role="alert"> {passwordForm.errors[name]}</small>}
-            </p>
+            </div>
           ))}
-          <button type="submit" disabled={passwordForm.processing}>
+          <button type="submit" className="button" disabled={passwordForm.processing}>
             {t('security.change_password')}
           </button>
         </form>
         <ApiTokensNote />
       </section>
 
-      <section aria-labelledby="devices-heading">
+      <section aria-labelledby="devices-heading" className="card">
         <h2 id="devices-heading">{t('security.devices_heading')}</h2>
         <p>{t('security.devices_intro')}</p>
         <ApiTokensNote />
@@ -101,9 +97,8 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
             void devicesForm.submit({ onFinish: () => devicesForm.reset() });
           }}
         >
-          <p>
+          <div className="field">
             <label htmlFor="devices-password">{t('security.devices_password')}</label>
-            <br />
             <input
               id="devices-password"
               type="password"
@@ -113,8 +108,8 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
               aria-invalid={!!devicesForm.errors.password}
             />
             {devicesForm.errors.password && <small role="alert"> {devicesForm.errors.password}</small>}
-          </p>
-          <button type="submit" disabled={devicesForm.processing}>
+          </div>
+          <button type="submit" className="button-secondary" disabled={devicesForm.processing}>
             {t('security.devices_submit')}
           </button>
         </form>
@@ -129,10 +124,8 @@ Security.layout = [AppLayout, SettingsLayout];
 function ApiTokensNote() {
   const t = useTranslation('auth');
   return (
-    <p role="note">
-      <small>
-        {t('security.tokens_note')} <Link route="auth.tokens">{t('settings.tokens')}</Link>.
-      </small>
+    <p role="note" className="hint">
+      {t('security.tokens_note')} <Link route="auth.tokens">{t('settings.tokens')}</Link>.
     </p>
   );
 }

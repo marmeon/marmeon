@@ -26,6 +26,7 @@ import {
   registerModule,
   titleOf,
   vendorTarballs,
+  withKitDependencies,
   writeEnv,
   writeTitle,
   type FrameworkSource,
@@ -181,7 +182,8 @@ export async function main(io: Io = processIo()): Promise<number> {
     if (vendored.size === 0) return fail(`MARMEON_CREATE_TARBALLS=${tarballs} has no framework tarballs (marmeon-*.tgz).`);
     source = { tarballs: vendored, app: target };
   }
-  const template = readFileSync(join(target, 'package.json'), 'utf8');
+  const blank = readFileSync(join(target, 'package.json'), 'utf8');
+  const template = choices.kit ? withKitDependencies(blank) : blank;
   if ('tarballs' in source && pm === 'pnpm') writeFileSync(join(target, 'pnpm-workspace.yaml'), pnpmWorkspace(source.tarballs, installedClosure(JSON.parse(template), source)));
   const manifest = appManifest(template, { name, packageManager: pm, source });
   writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);

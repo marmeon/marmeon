@@ -8,25 +8,54 @@ import { useState } from 'react';
  */
 export function AppLayout({ children }: LayoutProps) {
   // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.
-  const user = usePage().props.auth?.user ?? null;
+  const { auth, appName } = usePage().props;
+  const user = auth?.user ?? null;
   const t = useTranslation('auth');
 
   return (
     <>
       <header className="auth-header">
-        <strong>{user ? <Link route="dashboard">{t('layout.dashboard')}</Link> : <Link route="auth.login">{t('layout.sign_in')}</Link>}</strong>
+        {/* The app's name, linked to `/` (a blank app has no `home` route). Without it — a 404 has no shared props — the former link. */}
+        {appName ? (
+          <Link href="/" className="auth-brand">
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <rect width="20" height="20" rx="4" fill="currentColor" />
+            </svg>
+            {appName}
+          </Link>
+        ) : user ? (
+          <Link route="dashboard" className="auth-brand">
+            {t('layout.dashboard')}
+          </Link>
+        ) : (
+          <Link route="auth.login" className="auth-brand">
+            {t('layout.sign_in')}
+          </Link>
+        )}
         {user ? (
-          <nav aria-label={t('layout.account')}>
-            {user.name} · <Link route="auth.security">{t('layout.settings')}</Link> · <Link route="auth.logout">{t('layout.sign_out')}</Link>
+          <nav aria-label={t('layout.account')} className="auth-nav">
+            <Link route="dashboard">{t('layout.dashboard')}</Link>
+            <Link route="auth.security" activeMatch={['auth.security', 'auth.tokens']}>
+              {t('layout.settings')}
+            </Link>
+            <span className="auth-account">
+              <span className="auth-user">{user.name}</span>
+              <Link route="auth.logout" className="auth-link">
+                {t('layout.sign_out')}
+              </Link>
+            </span>
           </nav>
         ) : (
-          <nav aria-label={t('layout.account')}>
-            <Link route="auth.register">{t('layout.register')}</Link>
+          <nav aria-label={t('layout.account')} className="auth-nav">
+            <Link route="auth.login">{t('layout.sign_in')}</Link>
+            <Link route="auth.register" className="button-secondary">
+              {t('layout.register')}
+            </Link>
           </nav>
         )}
       </header>
-      {children}
       <Toasts />
+      {children}
     </>
   );
 }
@@ -46,14 +75,16 @@ function Toasts() {
         {flash
           ?.filter((message) => message.key === 'toast')
           .map((message) => (
-            <p key={message.id}>{message.data.message}</p>
+            <p key={message.id} className="notice">
+              {message.data.message}
+            </p>
           ))}
       </noscript>
-      <section aria-label={t('layout.notifications')} aria-live="polite">
+      <section aria-label={t('layout.notifications')} aria-live="polite" className="auth-toasts">
         {toasts.map((toast) => (
           <p key={toast.id} role={toast.kind === 'error' ? 'alert' : undefined} data-toast={toast.kind}>
             {toast.message}{' '}
-            <button type="button" aria-label={t('layout.dismiss')} onClick={() => setToasts((current) => current.filter((other) => other.id !== toast.id))}>
+            <button type="button" className="auth-toast-close" aria-label={t('layout.dismiss')} onClick={() => setToasts((current) => current.filter((other) => other.id !== toast.id))}>
               ×
             </button>
           </p>

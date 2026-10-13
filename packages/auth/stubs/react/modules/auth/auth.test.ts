@@ -4,6 +4,7 @@ import type { Mailable } from '@marmeon/mail';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { AppConfig } from '../../config/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
@@ -70,6 +71,19 @@ describe('signing in and out', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });
     await app.withCookie('remember_web', login.cookie('remember_web')!).get('/dashboard').assertOk().assertAuthenticated(ada);
+  });
+});
+
+describe('the app name in the layout', { timeout: 30_000 }, () => {
+  it('comes with the first page only (a once prop) — the browser keeps it; a path without a route has none', async () => {
+    const name = app.make(AppConfig).name;
+    const first = await app.navigating().get('/login');
+    expect(first.page()!.props.appName).toBe(name);
+    // The browser tells which once props it holds: the server leaves them out.
+    const later = await app.navigating().get('/register', { headers: { 'x-marmeon-once': 'appName' } });
+    expect(later.page()!.props.appName).toBeUndefined();
+    const missing = await app.navigating().get('/nowhere').assertNotFound();
+    expect(missing.page()!.props.appName).toBeUndefined();
   });
 });
 

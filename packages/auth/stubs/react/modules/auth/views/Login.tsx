@@ -13,59 +13,62 @@ export default function Login({ appName, old }: Props) {
   const form = useForm('auth.login.store', { email: old.email ?? '', password: '', remember: false });
 
   return (
-    <main>
-      <Head title={t('login.title')} />
-      <h1>{t('login.heading', { app: appName })}</h1>
-      {/* Works without JavaScript too: a plain form post — the browser's Fetch Metadata and Origin vouch for it. */}
-      <form
-        method="post"
-        action={route('auth.login.store')}
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.submit({ onFinish: () => form.set('password', '') });
-        }}
-      >
-        <p>
-          <label htmlFor="email">{t('login.email')}</label>
-          <br />
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="username"
-            value={form.data.email}
-            onChange={(e) => form.set('email', e.target.value)}
-            aria-invalid={!!form.errors.email}
-          />
-          {form.errors.email && <small role="alert"> {form.errors.email}</small>}
+    <main className="app-main">
+      <div className="card auth-card">
+        <Head title={t('login.title')} />
+        <h1>{t('login.heading', { app: appName })}</h1>
+        {/* Works without JavaScript too: a plain form post — the browser's Fetch Metadata and Origin vouch for it. */}
+        <form
+          method="post"
+          action={route('auth.login.store')}
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.submit({ onFinish: () => form.set('password', '') });
+          }}
+        >
+          <div className="field">
+            <label htmlFor="email">{t('login.email')}</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="username"
+              value={form.data.email}
+              onChange={(e) => form.set('email', e.target.value)}
+              aria-invalid={!!form.errors.email}
+            />
+            {form.errors.email && <small role="alert"> {form.errors.email}</small>}
+          </div>
+          <div className="field">
+            <label htmlFor="password">{t('login.password')}</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={form.data.password}
+              onChange={(e) => form.set('password', e.target.value)}
+              aria-invalid={!!form.errors.password}
+            />
+            {form.errors.password && <small role="alert"> {form.errors.password}</small>}
+          </div>
+          <div className="field">
+            <label className="choice">
+              <input type="checkbox" name="remember" checked={form.data.remember === true} onChange={(e) => form.set('remember', e.target.checked)} /> {t('login.remember')}
+            </label>
+          </div>
+          <button type="submit" className="button auth-submit" disabled={form.processing}>
+            {form.processing ? t('login.submitting') : t('login.submit')}
+          </button>
+        </form>
+        <p className="cluster auth-card-footer">
+          <Link route="auth.password.request">{t('login.forgot')}</Link>
+          <span className="muted">
+            {t('login.new_here')} <Link route="auth.register">{t('login.register')}</Link>
+          </span>
         </p>
-        <p>
-          <label htmlFor="password">{t('login.password')}</label>
-          <br />
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={form.data.password}
-            onChange={(e) => form.set('password', e.target.value)}
-            aria-invalid={!!form.errors.password}
-          />
-          {form.errors.password && <small role="alert"> {form.errors.password}</small>}
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="remember" checked={form.data.remember === true} onChange={(e) => form.set('remember', e.target.checked)} /> {t('login.remember')}
-          </label>
-        </p>
-        <button type="submit" disabled={form.processing}>
-          {form.processing ? t('login.submitting') : t('login.submit')}
-        </button>
-      </form>
-      <p>
-        <Link route="auth.password.request">{t('login.forgot')}</Link> · {t('login.new_here')} <Link route="auth.register">{t('login.register')}</Link>
-      </p>
+      </div>
     </main>
   );
 }

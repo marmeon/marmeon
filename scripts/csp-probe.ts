@@ -28,8 +28,8 @@ interface Profile {
   readonly clickLayer?: { readonly page: string; readonly link: string };
   /** A visit started by a click on `link` on `page` — failed (no network) and answered with a 500. */
   readonly failing: { readonly page: string; readonly link: string };
-  /** The app's own look from its stylesheet, signed in: on `url`, `selector`'s computed `property` is `expected`. */
-  readonly looks?: readonly { readonly url: string; readonly selector: string; readonly property: string; readonly expected: string }[];
+  /** The app's own look from its stylesheet, signed in (or as a guest with `guest: true`): on `url`, `selector`'s computed `property` is `expected`. */
+  readonly looks?: readonly { readonly url: string; readonly selector: string; readonly property: string; readonly expected: string; readonly guest?: boolean }[];
 }
 
 const PROFILES: Record<string, Profile> = {
@@ -43,20 +43,22 @@ const PROFILES: Record<string, Profile> = {
   },
   kit: {
     email: 'test@example.com',
-    guest: ['/login', '/register', '/forgot-password', '/nowhere'],
+    guest: ['/', '/login', '/register', '/forgot-password', '/nowhere'],
     user: ['/dashboard', '/settings/security', '/settings/tokens'],
     failing: { page: '/dashboard', link: 'a[href="/settings/security"]' },
     // The auth module's layouts: modules/auth/auth.css (make:auth imports it in bootstrap/client.tsx), no inline style.
     looks: [
+      { url: '/login', selector: 'label.choice', property: 'display', expected: 'flex', guest: true },
+      { url: '/dashboard', selector: 'body', property: 'font-family', expected: '"IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif' },
       { url: '/dashboard', selector: 'header.auth-header', property: 'display', expected: 'flex' },
       { url: '/settings/tokens', selector: '.auth-settings', property: 'display', expected: 'flex' },
-      { url: '/settings/tokens', selector: 'label.auth-choice', property: 'display', expected: 'block' },
+      { url: '/settings/tokens', selector: 'label.choice', property: 'display', expected: 'flex' },
     ],
   },
 };
 
 /** The policy added to every document: what a strict app sets. */
-const STRICT = "style-src 'self'";
+const STRICT = "style-src 'self'; font-src 'self'";
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36';
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
@@ -176,6 +178,8 @@ class Tab {
     await tab.send('Page.enable');
     await tab.send('Runtime.enable');
     await tab.send('Network.enable');
+    // The browser keeps one cookie jar for every tab: a check starts with the cookies it names and no others.
+    await tab.send('Network.clearBrowserCookies');
     // Sign-in happens over HTTP and the cookie is set here: a form sign-in leaves headless Chrome deaf to CDP input.
     for (const cookie of cookies) await tab.send('Network.setCookie', { ...cookie, url: base });
     // The counter must exist before the first script of any document runs, or early violations go uncounted.
@@ -354,7 +358,7 @@ async function probe(port: number, base: string, profile: Profile): Promise<{ re
     });
   }
   for (const look of profile.looks ?? []) {
-    await check(`the app's look on ${look.url}: ${look.selector}`, session, async (tab, problems) => {
+    await check(`the app's look on ${look.url}: ${look.selector}`, look.guest ? [] : session, async (tab, problems) => {
       await tab.goto(base + look.url);
       await looks(tab, look.selector, look.property, look.expected, problems);
     });
