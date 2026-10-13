@@ -54,7 +54,7 @@ export class MakeDockerCommand {
     output.line(style('dim', `  docker compose -f compose.production.yaml up -d --build   # with .env.production on the server`));
     output.line();
     output.line(`Production configuration goes into ${style('bold', '.env.production')} (APP_KEY, APP_URL=https://…, DB_*, MAIL_MAILER=smtp) —`);
-    output.line('never into the image; storage/ is a volume. Proxies, Kubernetes, SHUTDOWN_DELAY: https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#the-docker-image');
+    output.line('never into the image; storage/ is a volume. Proxies, Kubernetes, SHUTDOWN_DELAY: https://marmeon.com/docs/deployment#the-docker-image');
     return 0;
   }
 }

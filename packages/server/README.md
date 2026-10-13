@@ -26,11 +26,11 @@ server leaves readiness, finishes the requests in flight and exits.
 
 ## Documentation
 
-- [Request Lifecycle](https://github.com/marmeon/marmeon/blob/main/docs/lifecycle.md)
-- [Deployment](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md)
-- [Deployment: staging](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#staging)
-- [Deployment: stopping without dropped requests](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#stopping-without-dropped-requests)
-- [Health Checks](https://github.com/marmeon/marmeon/blob/main/docs/health.md)
-- [Error Handling: the development error page](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#the-development-error-page)
+- [Request Lifecycle](https://marmeon.com/docs/lifecycle)
+- [Deployment](https://marmeon.com/docs/deployment)
+- [Deployment: staging](https://marmeon.com/docs/deployment#staging)
+- [Deployment: stopping without dropped requests](https://marmeon.com/docs/deployment#stopping-without-dropped-requests)
+- [Health Checks](https://marmeon.com/docs/health)
+- [Error Handling: the development error page](https://marmeon.com/docs/errors#the-development-error-page)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

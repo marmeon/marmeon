@@ -532,9 +532,14 @@ describe('pack:check — the rules over an unpacked tarball', () => {
     expect(problems).toContain('README.md is missing');
   });
 
+  it('names a missing CHANGELOG', () => {
+    expect(problemsOf({ LICENSE: 'The license.\n', 'README.md': '# Sample\n' })).toContain('CHANGELOG.md is missing — add it to "files"');
+    expect(problemsOf({ 'CHANGELOG.md': '# Sample\n' })).not.toContain('CHANGELOG.md is missing — add it to "files"');
+  });
+
   it('finds nothing to name when LICENSE and README are there and no test ships', () => {
-    const problems = problemsOf({ LICENSE: 'The license.\n', 'README.md': '# Sample\n' });
-    expect(problems.filter((problem) => /LICENSE|README|is a test/.test(problem))).toEqual([]);
+    const problems = problemsOf({ LICENSE: 'The license.\n', 'README.md': '# Sample\n', 'CHANGELOG.md': '# Sample\n' });
+    expect(problems.filter((problem) => /LICENSE|README|CHANGELOG|is a test/.test(problem))).toEqual([]);
   });
 });
 

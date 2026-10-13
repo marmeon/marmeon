@@ -30,12 +30,12 @@ is a compile error.
 
 ## Documentation
 
-- [Routing](https://github.com/marmeon/marmeon/blob/main/docs/routing.md)
-- [Routing: route model binding](https://github.com/marmeon/marmeon/blob/main/docs/routing.md#route-model-binding)
-- [Middleware](https://github.com/marmeon/marmeon/blob/main/docs/middleware.md)
-- [Controllers](https://github.com/marmeon/marmeon/blob/main/docs/controllers.md)
-- [Requests](https://github.com/marmeon/marmeon/blob/main/docs/requests.md)
-- [URL Generation](https://github.com/marmeon/marmeon/blob/main/docs/urls.md)
-- [HTTP Tests](https://github.com/marmeon/marmeon/blob/main/docs/http-tests.md)
+- [Routing](https://marmeon.com/docs/routing)
+- [Routing: route model binding](https://marmeon.com/docs/routing#route-model-binding)
+- [Middleware](https://marmeon.com/docs/middleware)
+- [Controllers](https://marmeon.com/docs/controllers)
+- [Requests](https://marmeon.com/docs/requests)
+- [URL Generation](https://marmeon.com/docs/urls)
+- [HTTP Tests](https://marmeon.com/docs/http-tests)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

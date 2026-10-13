@@ -28,13 +28,13 @@ The page `modules/notes/views/Show.tsx` gets its props typed from the controller
 
 ## Documentation
 
-- [Controllers](https://github.com/marmeon/marmeon/blob/main/docs/controllers.md)
-- [Responses](https://github.com/marmeon/marmeon/blob/main/docs/responses.md)
-- [Pages & Layouts](https://github.com/marmeon/marmeon/blob/main/docs/pages.md)
-- [URL Generation](https://github.com/marmeon/marmeon/blob/main/docs/urls.md)
-- [Content Security Policy](https://github.com/marmeon/marmeon/blob/main/docs/csp.md)
-- [Request Lifecycle](https://github.com/marmeon/marmeon/blob/main/docs/lifecycle.md)
-- [Client Features & Tab Sync](https://github.com/marmeon/marmeon/blob/main/docs/client-features.md)
-- [Error Handling: error codes](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#error-codes)
+- [Controllers](https://marmeon.com/docs/controllers)
+- [Responses](https://marmeon.com/docs/responses)
+- [Pages & Layouts](https://marmeon.com/docs/pages)
+- [URL Generation](https://marmeon.com/docs/urls)
+- [Content Security Policy](https://marmeon.com/docs/csp)
+- [Request Lifecycle](https://marmeon.com/docs/lifecycle)
+- [Client Features & Tab Sync](https://marmeon.com/docs/client-features)
+- [Error Handling: error codes](https://marmeon.com/docs/errors#error-codes)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

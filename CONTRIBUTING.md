@@ -550,8 +550,8 @@ other page.
   splitting on your own.
 - **Package READMEs are cards for npm**, not documentation: one sentence on what the package is, how to install it (or that a
   new app has it), one short example taken from its docs page, the page's links and the licence line. npm shows a README without
-  the repository, so a card links with absolute GitHub URLs
-  (`https://github.com/marmeon/marmeon/blob/main/docs/<page>.md#<anchor>`) — the website's links test checks each page and
+  the repository, so a card links with absolute website URLs
+  (`https://marmeon.com/docs/<slug>#<anchor>`) — the website's links test checks each page and
   anchor. A package that needs a third-party driver names the exact install command. Everything else belongs on a docs page.
 
 When the code and a README disagree, the code is right: describe what it does, and report the difference (or the bug) rather

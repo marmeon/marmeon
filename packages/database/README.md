@@ -29,13 +29,13 @@ export class NoteRepository extends Repository<'notes'> {
 
 ## Documentation
 
-- [Database: Getting Started](https://github.com/marmeon/marmeon/blob/main/docs/database.md)
-- [Repositories & Queries](https://github.com/marmeon/marmeon/blob/main/docs/queries.md)
-- [Migrations](https://github.com/marmeon/marmeon/blob/main/docs/migrations.md)
-- [Seeding & Factories](https://github.com/marmeon/marmeon/blob/main/docs/seeding.md)
-- [Transactions](https://github.com/marmeon/marmeon/blob/main/docs/transactions.md)
-- [Pagination](https://github.com/marmeon/marmeon/blob/main/docs/pagination.md)
-- [Database Testing](https://github.com/marmeon/marmeon/blob/main/docs/database-testing.md)
-- [Deployment: drivers](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#drivers-what-an-app-installs)
+- [Database: Getting Started](https://marmeon.com/docs/database)
+- [Repositories & Queries](https://marmeon.com/docs/queries)
+- [Migrations](https://marmeon.com/docs/migrations)
+- [Seeding & Factories](https://marmeon.com/docs/seeding)
+- [Transactions](https://marmeon.com/docs/transactions)
+- [Pagination](https://marmeon.com/docs/pagination)
+- [Database Testing](https://marmeon.com/docs/database-testing)
+- [Deployment: drivers](https://marmeon.com/docs/deployment#drivers-what-an-app-installs)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

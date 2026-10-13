@@ -41,10 +41,10 @@ The module lists the job in `jobs: [...]`, and any code that injects the `Queue`
 
 ## Documentation
 
-- [Queues](https://github.com/marmeon/marmeon/blob/main/docs/queues.md)
-- [Queues: what the queue promises](https://github.com/marmeon/marmeon/blob/main/docs/queues.md#what-the-queue-promises)
-- [Queues: running workers](https://github.com/marmeon/marmeon/blob/main/docs/queues.md#running-workers)
-- [Transactions](https://github.com/marmeon/marmeon/blob/main/docs/transactions.md)
-- [Fakes: the queue](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md#queue)
+- [Queues](https://marmeon.com/docs/queues)
+- [Queues: what the queue promises](https://marmeon.com/docs/queues#what-the-queue-promises)
+- [Queues: running workers](https://marmeon.com/docs/queues#running-workers)
+- [Transactions](https://marmeon.com/docs/transactions)
+- [Fakes: the queue](https://marmeon.com/docs/fakes#queue)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

@@ -26,11 +26,11 @@ Every command runs with `NODE_ENV` `development`, `test` or `production` and sto
 
 ## Documentation
 
-- [Console](https://github.com/marmeon/marmeon/blob/main/docs/console.md)
-- [Console: the development server](https://github.com/marmeon/marmeon/blob/main/docs/console.md#the-development-server)
-- [Console: writing commands](https://github.com/marmeon/marmeon/blob/main/docs/console.md#writing-commands)
-- [Console: lint](https://github.com/marmeon/marmeon/blob/main/docs/console.md#lint)
-- [Configuration: the environment](https://github.com/marmeon/marmeon/blob/main/docs/configuration.md#the-environment-node_env)
-- [Deployment](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md)
+- [Console](https://marmeon.com/docs/console)
+- [Console: the development server](https://marmeon.com/docs/console#the-development-server)
+- [Console: writing commands](https://marmeon.com/docs/console#writing-commands)
+- [Console: lint](https://marmeon.com/docs/console#lint)
+- [Configuration: the environment](https://marmeon.com/docs/configuration#the-environment-node_env)
+- [Deployment](https://marmeon.com/docs/deployment)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

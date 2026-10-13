@@ -78,6 +78,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   if (!files.has('LICENSE')) problems.push('LICENSE is missing — pnpm license:sync');
   else if (readFileSync(join(dir, 'LICENSE'), 'utf8') !== license) problems.push('LICENSE is not the root LICENSE — pnpm license:sync');
   if (!files.has('README.md')) problems.push('README.md is missing');
+  if (!files.has('CHANGELOG.md')) problems.push('CHANGELOG.md is missing — add it to "files"');
 
   if (JSON.stringify(manifest).includes(SOURCE_CONDITION)) {
     problems.push(`the packed package.json still has the "${SOURCE_CONDITION}" condition — packed without pnpm, or publishConfig.exports is missing`);

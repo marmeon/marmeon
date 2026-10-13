@@ -44,9 +44,9 @@ export class ShowNoteController extends Controller {
 
 ## Documentation
 
-- [Session](https://github.com/marmeon/marmeon/blob/main/docs/session.md)
-- [Session: drivers](https://github.com/marmeon/marmeon/blob/main/docs/session.md#drivers)
-- [CSRF Protection](https://github.com/marmeon/marmeon/blob/main/docs/csrf.md)
-- [Security: sessions and cookies](https://github.com/marmeon/marmeon/blob/main/docs/security.md#sessions-and-cookies)
+- [Session](https://marmeon.com/docs/session)
+- [Session: drivers](https://marmeon.com/docs/session#drivers)
+- [CSRF Protection](https://marmeon.com/docs/csrf)
+- [Security: sessions and cookies](https://marmeon.com/docs/security#sessions-and-cookies)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

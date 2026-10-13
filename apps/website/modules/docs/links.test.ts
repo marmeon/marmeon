@@ -149,11 +149,23 @@ describe('the docs the framework names', () => {
   it('every docs path the framework names leads to a page and its anchor', () => {
     const docs = app.make(DocsRepository);
     const anchorsOf = new Map(docs.pages().map((page) => [page.file, new Set(page.anchors)]));
+    const anchorsOfSlug = new Map(docs.pages().map((page) => [page.name, new Set(page.anchors)]));
     const problems: string[] = [];
     let named = 0;
     for (const { path, text } of namingFiles()) {
       text.split('\n').forEach((line, index) => {
         const at = `${path}:${index + 1}`;
+        for (const [github] of line.matchAll(GITHUB_DOCS)) problems.push(`${at}: ${github} — link the page on the website: https://marmeon.com/docs/<slug>#<anchor>`);
+        for (const [url, slug, hash] of line.matchAll(SITE_DOCS)) {
+          named++;
+          const anchor = hash?.replace(/[.:!?]+$/, '');
+          const anchors = slug === undefined ? undefined : anchorsOfSlug.get(slug);
+          if (slug !== undefined && !anchors) problems.push(`${at}: ${url} — no such page of the docs`);
+          else if (slug === undefined && anchor !== undefined) problems.push(`${at}: ${url} — an anchor needs a page`);
+          else if (anchor === undefined && slug !== undefined && !CARD.test(path)) problems.push(`${at}: ${url} — name the section too (#<anchor>): a whole page is no answer`);
+          else if (anchor !== undefined && !SLUG.test(anchor)) problems.push(`${at}: ${url} — no anchor GitHub makes (lower-case letters, digits, - and _)`);
+          else if (anchor !== undefined && anchors && !anchors.has(anchor)) problems.push(`${at}: ${url} — no #${anchor} on that page`);
+        }
         for (const [readme] of line.matchAll(README_PATH)) problems.push(`${at}: ${readme} names a README — the docs live in docs/`);
         for (const [, file = '', hash] of line.matchAll(DOCS_PATH)) {
           named++;
@@ -168,9 +180,9 @@ describe('the docs the framework names', () => {
       });
     }
     expect(problems, problems.join('\n')).toEqual([]);
-    // The pages named (measured 182: 31 by the solutions, messages and comments, the rest by the cards and the root README's links).
+    // The pages named (measured 428: 267 by the solutions, messages, comments, stubs and templates, 152 by the cards, 9 by the root README).
     // The threshold is that − 10 %: a scan that reads no file, or not the cards, would pass with too little found.
-    expect(named).toBeGreaterThan(163);
+    expect(named).toBeGreaterThan(385);
   });
 });
 
@@ -180,6 +192,10 @@ describe('the docs the framework names', () => {
  * a comma, so an anchor GitHub cannot make (`#Foo`, `#a.b`, `#${name}`) is caught whole and refused, never cut to a valid prefix.
  */
 const DOCS_PATH = /\b(docs\/[a-z0-9-]+\.md)(?:#([^\s`'"()[\]<>,;]*))?/g;
+/** A page of the docs as a card or a message links it: `https://marmeon.com/docs/<slug>#<anchor>`, or the start page `https://marmeon.com/docs`. */
+const SITE_DOCS = /https:\/\/marmeon\.com\/docs(?:\/([a-z0-9-]+))?(?:#([^\s`'"()[\]<>,;]*))?/g;
+/** The old form of a link to a page — a GitHub URL — which must not come back: the website is the documentation. */
+const GITHUB_DOCS = /github\.com\/marmeon\/marmeon\/(?:blob|tree)\/main\/docs\/?[^\s`'"()[\]<>,;]*/g;
 /** An anchor as GitHub makes it from an English heading: lower-case letters, digits, `-` and `_` (`#the-environment-node_env`). */
 const SLUG = /^[a-z0-9_-]+$/;
 /** A package's card or the root README: a list of the docs' pages, so a link to a whole page is what they mean. */
@@ -191,8 +207,8 @@ const README_PATH = /packages\/[a-z-]+\/README\.md/g;
  * What reaches apps and their developers and may name a page of the docs: a package's code (`packages/<name>/src`, its tests and
  * fixtures aside), every package's stubs (`make:auth`'s module, the migrations `make:*-table` copies), the starter's template, the
  * two apps, the packages' cards (`packages/<name>/README.md`, what npm shows) and the root README — tracked, or new and not ignored,
- * as git lists them. The cards and the README link a page by its GitHub URL (`https://github.com/marmeon/marmeon/blob/main/docs/
- * <page>.md#<anchor>`); {@link DOCS_PATH} finds the `docs/…` inside it.
+ * as git lists them. The cards link a page by its website URL (`https://marmeon.com/docs/<slug>#<anchor>`, found by
+ * {@link SITE_DOCS}); a GitHub URL of a docs page is refused ({@link GITHUB_DOCS}).
  */
 function namingFiles(): { path: string; text: string }[] {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'packages', 'apps/web-app', 'apps/blank-app', 'README.md'], {

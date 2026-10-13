@@ -42,16 +42,16 @@ development or protected (`NODE_ENV`: `development`, `test` or `production`, not
 
 ## Documentation
 
-- [Modules & Discovery](https://github.com/marmeon/marmeon/blob/main/docs/modules.md)
-- [Service Container](https://github.com/marmeon/marmeon/blob/main/docs/container.md)
-- [Service Providers](https://github.com/marmeon/marmeon/blob/main/docs/providers.md)
-- [Configuration](https://github.com/marmeon/marmeon/blob/main/docs/configuration.md)
-- [Configuration: `NODE_ENV` and `APP_ENV`](https://github.com/marmeon/marmeon/blob/main/docs/configuration.md#the-environment-node_env)
-- [Events](https://github.com/marmeon/marmeon/blob/main/docs/events.md)
-- [Context](https://github.com/marmeon/marmeon/blob/main/docs/context.md)
-- [Health Checks](https://github.com/marmeon/marmeon/blob/main/docs/health.md)
-- [Observability](https://github.com/marmeon/marmeon/blob/main/docs/observability.md)
-- [Error Handling: results](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#results)
-- [Error Handling: solutions](https://github.com/marmeon/marmeon/blob/main/docs/errors.md#solutions)
+- [Modules & Discovery](https://marmeon.com/docs/modules)
+- [Service Container](https://marmeon.com/docs/container)
+- [Service Providers](https://marmeon.com/docs/providers)
+- [Configuration](https://marmeon.com/docs/configuration)
+- [Configuration: `NODE_ENV` and `APP_ENV`](https://marmeon.com/docs/configuration#the-environment-node_env)
+- [Events](https://marmeon.com/docs/events)
+- [Context](https://marmeon.com/docs/context)
+- [Health Checks](https://marmeon.com/docs/health)
+- [Observability](https://marmeon.com/docs/observability)
+- [Error Handling: results](https://marmeon.com/docs/errors#results)
+- [Error Handling: solutions](https://marmeon.com/docs/errors#solutions)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

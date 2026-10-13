@@ -25,9 +25,9 @@ export default defineConfig({ plugins: [marmeon(), react()] });
 
 ## Documentation
 
-- [Asset Bundling (Vite)](https://github.com/marmeon/marmeon/blob/main/docs/vite.md)
-- [Vite: the dev server](https://github.com/marmeon/marmeon/blob/main/docs/vite.md#the-dev-server)
-- [Vite: server code in the browser](https://github.com/marmeon/marmeon/blob/main/docs/vite.md#server-code-in-the-browser)
-- [URL Generation: which routes the browser knows](https://github.com/marmeon/marmeon/blob/main/docs/urls.md#which-routes-the-browser-knows)
+- [Asset Bundling (Vite)](https://marmeon.com/docs/vite)
+- [Vite: the dev server](https://marmeon.com/docs/vite#the-dev-server)
+- [Vite: server code in the browser](https://marmeon.com/docs/vite#server-code-in-the-browser)
+- [URL Generation: which routes the browser knows](https://marmeon.com/docs/urls#which-routes-the-browser-knows)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

@@ -8,7 +8,7 @@
     "generators",
     "scaffolding"
   ],
-  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/cli#readme",
+  "homepage": "https://marmeon.com/docs/console",
   "bugs": {
     "url": "https://github.com/marmeon/marmeon/issues"
   },
@@ -57,6 +57,7 @@
     "src",
     "LICENSE",
     "README.md",
+    "CHANGELOG.md",
     "!{dist,src}/**/*.test.*",
     "!{dist,src}/**/*.type-test.*",
     "!{dist,src}/**/__fixtures__/**",

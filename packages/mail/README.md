@@ -44,10 +44,10 @@ await this.#mailer.queue(new NoteReminderMail(user.email, note.title, url));
 
 ## Documentation
 
-- [Mail](https://github.com/marmeon/marmeon/blob/main/docs/mail.md)
-- [Mail: sending mails](https://github.com/marmeon/marmeon/blob/main/docs/mail.md#sending-mails)
-- [Mail: SMTP and TLS](https://github.com/marmeon/marmeon/blob/main/docs/mail.md#smtp-and-tls)
-- [Mail: previews](https://github.com/marmeon/marmeon/blob/main/docs/mail.md#previews)
-- [Fakes: mail](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md#mail)
+- [Mail](https://marmeon.com/docs/mail)
+- [Mail: sending mails](https://marmeon.com/docs/mail#sending-mails)
+- [Mail: SMTP and TLS](https://marmeon.com/docs/mail#smtp-and-tls)
+- [Mail: previews](https://marmeon.com/docs/mail#previews)
+- [Fakes: mail](https://marmeon.com/docs/fakes#mail)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

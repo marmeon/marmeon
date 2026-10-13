@@ -43,10 +43,10 @@ export class DownloadMyNotesController extends Controller {
 
 ## Documentation
 
-- [File Storage](https://github.com/marmeon/marmeon/blob/main/docs/storage.md)
-- [File Storage: S3](https://github.com/marmeon/marmeon/blob/main/docs/storage.md#s3)
-- [File Storage: uploads](https://github.com/marmeon/marmeon/blob/main/docs/storage.md#uploads)
-- [Forms: uploads](https://github.com/marmeon/marmeon/blob/main/docs/forms.md#uploads)
-- [Fakes: storage](https://github.com/marmeon/marmeon/blob/main/docs/fakes.md#storage)
+- [File Storage](https://marmeon.com/docs/storage)
+- [File Storage: S3](https://marmeon.com/docs/storage#s3)
+- [File Storage: uploads](https://marmeon.com/docs/storage#uploads)
+- [Forms: uploads](https://marmeon.com/docs/forms#uploads)
+- [Fakes: storage](https://marmeon.com/docs/fakes#storage)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)

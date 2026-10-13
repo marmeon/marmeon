@@ -293,8 +293,8 @@ export function readme({ title, packageManager, kit, docker }: ReadmeOptions): s
     '```',
     '',
     `Development tools — the error page, the devtools at \`/_marmeon/devtools\` and the in-page bar — run with \`NODE_ENV=development\``,
-    `only (\`${run('dev')}\`). The framework's guides: https://github.com/marmeon/marmeon#readme${docker ? ' — deployment:' : ''}`,
-    ...(docker ? ['https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#the-docker-image'] : []),
+    `only (\`${run('dev')}\`). The framework's guides: https://marmeon.com/docs${docker ? ' — deployment:' : ''}`,
+    ...(docker ? ['https://marmeon.com/docs/deployment#the-docker-image'] : []),
     '',
   ];
   return lines.join('\n');

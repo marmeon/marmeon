@@ -25,9 +25,9 @@ Redis is optional: every package works without it, and `pnpm dev` and `pnpm test
 
 ## Documentation
 
-- [Redis](https://github.com/marmeon/marmeon/blob/main/docs/redis.md)
-- [Redis: which connection a driver uses](https://github.com/marmeon/marmeon/blob/main/docs/redis.md#which-connection-a-driver-uses)
-- [Redis: when Redis is down](https://github.com/marmeon/marmeon/blob/main/docs/redis.md#when-redis-is-down)
-- [Deployment: more than one instance](https://github.com/marmeon/marmeon/blob/main/docs/deployment.md#more-than-one-instance)
+- [Redis](https://marmeon.com/docs/redis)
+- [Redis: which connection a driver uses](https://marmeon.com/docs/redis#which-connection-a-driver-uses)
+- [Redis: when Redis is down](https://marmeon.com/docs/redis#when-redis-is-down)
+- [Deployment: more than one instance](https://marmeon.com/docs/deployment#more-than-one-instance)
 
 MIT · part of [Marmeon](https://github.com/marmeon/marmeon)
