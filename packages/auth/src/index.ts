@@ -13,6 +13,8 @@ import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { warnAboutCookieSessions } from './session-driver.ts';
+import { NoTwoFactorState, TwoFactorState } from './two-factor/state.ts';
+import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 
 export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
@@ -26,6 +28,10 @@ export type { PasswordResetTokenTable } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
 export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
+export { combineFactors, TwoFactorState } from './two-factor/state.ts';
+export type { SecondFactor } from './two-factor/state.ts';
+export { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE, TwoFactorStore } from './two-factor/store.ts';
+export type { RecoveryCodeTable, TwoFactorTable } from './two-factor/store.ts';
 export type { RememberedDevice, RememberTokenError, RememberTokenTable } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
@@ -91,6 +97,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
     // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
+    // Nobody has a second factor until the app binds a source: container.bind(TwoFactorState, TwoFactorStore). Removing that binding turns two-factor off for every account.
+    container.singleton(TwoFactorState, NoTwoFactorState);
+    container.singleton(TwoFactorStore);
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
