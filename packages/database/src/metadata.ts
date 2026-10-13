@@ -12,7 +12,7 @@ export const SECRETS_TABLE = 'secret_columns';
 export const MARKERS_TABLE = 'schema_markers';
 
 /** How a column's values must be converted when they arrive inside nested JSON (relations). */
-export type ColumnKind = 'boolean' | 'json' | 'timestamp' | { decimal: number } | 'other';
+export type ColumnKind = 'boolean' | 'json' | 'timestamp' | 'uuid' | { decimal: number } | 'other';
 
 /**
  * What the connection knows about its schema: column kinds (for relations), secret columns, the relations the foreign keys
@@ -217,6 +217,7 @@ function kindOf(type: string): ColumnKind {
   if (type === 'boolean' || type === 'bool') return 'boolean';
   if (type === 'json' || type === 'jsonb') return 'json';
   if (type === 'datetime' || type.startsWith('timestamp')) return 'timestamp';
+  if (type === 'uuid') return 'uuid';
   return 'other';
 }
 
