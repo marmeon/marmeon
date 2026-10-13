@@ -35,6 +35,13 @@ export default function Dashboard({ name, verified }: Props) {
           <p className="muted">{t('dashboard.tokens_text')}</p>
         </li>
       </ul>
+      <section aria-labelledby="placeholder-heading" className="placeholder">
+        <h2 id="placeholder-heading">{t('dashboard.placeholder_title')}</h2>
+        <p>
+          {t('dashboard.placeholder_before')} <code>modules/auth/views/Dashboard.tsx</code>
+          {t('dashboard.placeholder_after')}
+        </p>
+      </section>
     </main>
   );
 }

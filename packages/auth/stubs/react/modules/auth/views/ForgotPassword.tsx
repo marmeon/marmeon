@@ -12,7 +12,7 @@ export default function ForgotPassword() {
       <div className="card auth-card">
         <Head title={t('forgot.title')} />
         <h1>{t('forgot.title')}</h1>
-        <p>{t('forgot.intro')}</p>
+        <p className="muted">{t('forgot.intro')}</p>
         <form
           method="post"
           action={route('auth.password.email')}
@@ -39,7 +39,7 @@ export default function ForgotPassword() {
             {t('forgot.submit')}
           </button>
         </form>
-        <p>
+        <p className="auth-card-footer">
           <Link route="auth.login">{t('forgot.back')}</Link>
         </p>
       </div>

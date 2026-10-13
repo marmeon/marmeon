@@ -12,7 +12,7 @@ export default function VerifyEmail({ email }: Props) {
       <div className="card auth-card">
         <Head title={t('verify.title')} />
         <h1>{t('verify.title')}</h1>
-        <p>{t('verify.intro', { email })}</p>
+        <p className="muted">{t('verify.intro', { email })}</p>
         {/* A <div>, not a <p>: the first link sends (a POST), so it renders a form — which a <p> cannot hold. */}
         <div className="auth-paragraph cluster">
           <Link route="auth.verification.send" className="button">

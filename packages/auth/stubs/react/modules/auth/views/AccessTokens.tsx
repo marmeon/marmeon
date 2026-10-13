@@ -14,20 +14,21 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
   const selected = [form.data.abilities ?? []].flat();
 
   return (
-    <main className="stack">
+    <main className="stack stack-loose">
       <Head title={t('tokens.title')} />
       <h1>{t('tokens.title')}</h1>
       {plainText && (
-        <section aria-label={t('tokens.new')} role="alert" className="card">
+        <section aria-label={t('tokens.new')} role="alert" className="card" data-kind="success">
           <p>
             <strong>{t('tokens.copy')}</strong>
           </p>
           <pre className="secret">
             <code>{plainText}</code>
           </pre>
-          <p>
-            {t('tokens.usage')} <code>curl -H "Authorization: Bearer {plainText.slice(0, 8)}…" /api/user</code>
-          </p>
+          <p>{t('tokens.usage')}</p>
+          <pre>
+            <code>curl -H "Authorization: Bearer {plainText.slice(0, 8)}…" /api/user</code>
+          </pre>
         </section>
       )}
 
@@ -91,13 +92,15 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
           <fieldset>
             <legend>{t('tokens.may')}</legend>
             {Object.entries(abilities).map(([ability, description]) => (
-              <label key={ability} className="auth-choice">
+              <label key={ability} className="choice">
                 <input
                   type="checkbox"
                   checked={selected.includes(ability as never)}
                   onChange={(e) => form.set('abilities', (e.target.checked ? [...selected, ability] : selected.filter((item) => item !== ability)) as never)}
-                />{' '}
-                <code>{ability}</code> — {description}
+                />
+                <span>
+                  <code>{ability}</code> — {description}
+                </span>
               </label>
             ))}
             {form.errors.abilities && <small role="alert">{form.errors.abilities}</small>}

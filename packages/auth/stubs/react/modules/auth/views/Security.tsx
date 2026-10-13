@@ -15,13 +15,11 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
   const devicesForm = useForm('auth.devices.logout', { password: '' });
 
   return (
-    <main className="stack">
+    <main className="stack stack-loose">
       <Head title={t('security.title')} />
       <h1>{t('security.title')}</h1>
       {viaRemember && (
-        <p>
-          <small>{t('security.remembered', { name: auth?.user?.name ?? '' })}</small>
-        </p>
+        <p className="hint">{t('security.remembered', { name: auth?.user?.name ?? '' })}</p>
       )}
 
       <section aria-labelledby="email-heading" className="card">
@@ -126,10 +124,8 @@ Security.layout = [AppLayout, SettingsLayout];
 function ApiTokensNote() {
   const t = useTranslation('auth');
   return (
-    <p role="note">
-      <small>
-        {t('security.tokens_note')} <Link route="auth.tokens">{t('settings.tokens')}</Link>.
-      </small>
+    <p role="note" className="hint">
+      {t('security.tokens_note')} <Link route="auth.tokens">{t('settings.tokens')}</Link>.
     </p>
   );
 }

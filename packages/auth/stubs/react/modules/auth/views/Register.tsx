@@ -47,7 +47,7 @@ export default function Register({ old }: Props) {
       <div className="card auth-card">
         <Head title={t('register.title')} />
         <h1>{t('register.title')}</h1>
-        <p>{t('register.confirm_hint')}</p>
+        <p className="muted">{t('register.confirm_hint')}</p>
         <form
           method="post"
           action={route('auth.register.store')}
@@ -65,7 +65,7 @@ export default function Register({ old }: Props) {
             {form.processing ? t('register.submitting') : t('register.submit')}
           </button>
         </form>
-        <p className="muted">
+        <p className="auth-card-footer">
           {t('register.registered')} <Link route="auth.login">{t('register.login')}</Link>
         </p>
       </div>

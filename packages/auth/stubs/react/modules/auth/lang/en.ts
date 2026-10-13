@@ -159,6 +159,9 @@ const en = {
     verify: 'Please confirm your e-mail address — the link is in your inbox.',
     verify_again: 'Send it again',
     security_text: 'Your e-mail address, your password and the devices you are signed in on.',
+    placeholder_title: 'Your app starts here',
+    placeholder_before: 'This is the place for what your app shows after sign-in. Change',
+    placeholder_after: ', or add a module of your own.',
     tokens_text: 'Let scripts and programs use your account without your password.',
   },
   validation: {

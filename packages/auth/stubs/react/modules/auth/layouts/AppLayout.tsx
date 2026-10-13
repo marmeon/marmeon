@@ -18,6 +18,9 @@ export function AppLayout({ children }: LayoutProps) {
         {/* The app's name, linked to `/` (a blank app has no `home` route). Without it — a 404 has no shared props — the former link. */}
         {appName ? (
           <Link href="/" className="auth-brand">
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <rect width="20" height="20" rx="4" fill="currentColor" />
+            </svg>
             {appName}
           </Link>
         ) : user ? (
@@ -32,16 +35,20 @@ export function AppLayout({ children }: LayoutProps) {
         {user ? (
           <nav aria-label={t('layout.account')} className="auth-nav">
             <Link route="dashboard">{t('layout.dashboard')}</Link>
-            <Link route="auth.security">{t('layout.settings')}</Link>
-            <span className="muted">{user.name}</span>
-            <Link route="auth.logout" className="auth-link">
-              {t('layout.sign_out')}
+            <Link route="auth.security" activeMatch={['auth.security', 'auth.tokens']}>
+              {t('layout.settings')}
             </Link>
+            <span className="auth-account">
+              <span className="auth-user">{user.name}</span>
+              <Link route="auth.logout" className="auth-link">
+                {t('layout.sign_out')}
+              </Link>
+            </span>
           </nav>
         ) : (
           <nav aria-label={t('layout.account')} className="auth-nav">
             <Link route="auth.login">{t('layout.sign_in')}</Link>
-            <Link route="auth.register" className="button">
+            <Link route="auth.register" className="button-secondary">
               {t('layout.register')}
             </Link>
           </nav>

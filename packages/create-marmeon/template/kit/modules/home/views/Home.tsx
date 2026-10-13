@@ -43,7 +43,16 @@ export default function Home({ appName }: Props) {
         <ul className="cards">
           <li className="card">
             <h3>{t('edit_title')}</h3>
-            <p className="muted">{t('edit_text')}</p>
+            <p className="muted">
+              {t('edit_page')} <code>modules/home/views/Home.tsx</code>
+            </p>
+            <p className="muted">
+              {t('edit_look')} <code>styles/app.css</code>
+            </p>
+            <p className="muted">{t('edit_module')}</p>
+            <pre>
+              <code>pnpm marmeon make:module notes</code>
+            </pre>
           </li>
           <li className="card">
             <h3>{t('docs_title')}</h3>

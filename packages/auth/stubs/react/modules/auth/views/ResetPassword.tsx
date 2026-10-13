@@ -29,7 +29,7 @@ export default function ResetPassword({ email }: Props) {
       <div className="card auth-card">
         <Head title={t('reset.title')} />
         <h1>{t('reset.heading')}</h1>
-        <p>{t('reset.for', { email })}</p>
+        <p className="muted">{t('reset.for', { email })}</p>
         <form
           method="post"
           action={route('auth.password.store')}

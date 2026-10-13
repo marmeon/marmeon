@@ -54,7 +54,7 @@ export default function Login({ appName, old }: Props) {
             {form.errors.password && <small role="alert"> {form.errors.password}</small>}
           </div>
           <div className="field">
-            <label>
+            <label className="choice">
               <input type="checkbox" name="remember" checked={form.data.remember === true} onChange={(e) => form.set('remember', e.target.checked)} /> {t('login.remember')}
             </label>
           </div>
@@ -62,7 +62,7 @@ export default function Login({ appName, old }: Props) {
             {form.processing ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
-        <p className="cluster">
+        <p className="cluster auth-card-footer">
           <Link route="auth.password.request">{t('login.forgot')}</Link>
           <span className="muted">
             {t('login.new_here')} <Link route="auth.register">{t('login.register')}</Link>

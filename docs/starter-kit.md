@@ -67,7 +67,7 @@ A new starter kit app has two stylesheets, both yours to change. They are plain 
 | File | Holds |
 | --- | --- |
 | `styles/app.css` | The tokens, the base styles for plain HTML, the layout classes, the font. |
-| `modules/auth/auth.css` | The auth module's classes: header, toasts, guest cards, settings navigation, the dashboard cards, the token table and `.secret`, the box that shows a new token. |
+| `modules/auth/auth.css` | The auth module's classes: header, toasts, guest cards, settings navigation, the dashboard cards and `.placeholder`, `.hint`, the width of the settings forms, the token table and `.secret`, the box that shows a new token. |
 
 `bootstrap/client.tsx` imports `styles/app.css` right after the framework's stylesheet, and `make:auth` adds `auth.css` after it.
 The module's rules use the tokens with a fallback, so `auth.css` also works in an app that has a stylesheet of its own.
@@ -76,20 +76,34 @@ The tokens are custom properties on `:root`:
 
 | Token | Use |
 | --- | --- |
-| `--color-page`, `--color-surface` | The page and the cards on it. |
+| `--color-page`, `--color-surface`, `--color-sunken` | The page, the cards on it, and quiet fills such as a hovered button. |
+| `--color-field`, `--color-control` | The background and the border of form fields. |
 | `--color-text`, `--color-muted`, `--color-line` | Text, quieter text, borders. |
 | `--color-accent`, `--color-accent-text`, `--color-focus` | Buttons and links, the text on a button, the focus ring. |
+| `--color-accent-hover`, `--color-accent-surface` | A hovered button, and the tint behind the current page in a menu. |
 | `--color-danger`, `--color-success` (and `-surface`) | Errors, confirmations. |
 | `--font-text`, `--font-mono` | The two font stacks. |
-| `--space-1` to `--space-6`, `--radius-1`, `--radius-2`, `--shadow-1`, `--shadow-2` | Spacing, corners, shadows. |
+| `--text-sm` to `--text-display`, `--control-height`, `--card-padding` | The type scale, the height of fields and buttons, the padding of cards. |
+| `--space-1` to `--space-7`, `--radius-1`, `--radius-2`, `--shadow-2` | Spacing, corners, the shadow of raised things. |
 
 To change the colors, change the values of the tokens, and every page follows. The dark colors sit in the
 `@media (prefers-color-scheme: dark)` block of the same file, so edit both. The same file sets the framework's own variables
 (`--marmeon-progress-color` and the failure notice) from the tokens.
 
-A button is `.button`, a quieter one `.button-secondary`, and both work on a `<button>` and on a `<Link>`. Mark a destructive
-action with `data-destructive`. There is deliberately no rule for the bare `button` element: the framework's own buttons, such
-as the ones in dialogs, keep their look.
+The classes the pages use are small and yours to reuse:
+
+| Class | For |
+| --- | --- |
+| `.button`, `.button-secondary` | A button, filled or quiet, on a `<button>` or a `<Link>`. Add `data-destructive` to an action that cannot be undone. |
+| `.choice` | A checkbox or radio with its label, in a row. |
+| `.card` | A box with a border. `data-kind="success"` colors it green. |
+| `.notice` | A short message, with `data-kind="success"` or `"error"`. |
+| `.stack`, `.stack-loose`, `.cluster` | Vertical and horizontal spacing between children. |
+| `.hint`, `.muted` | Quieter text. |
+| `.placeholder` | The dashed box on the dashboard, where your app's own content goes. |
+
+There is deliberately no rule for the bare `button` element: the framework's own buttons, such as the ones in dialogs, keep
+their look.
 
 The text font is IBM Plex Sans, served from your own app: `styles/app.css` imports it from `@fontsource-variable/ibm-plex-sans`,
 which Vite bundles into `/assets/`, so no request goes to another host and `font-src 'self'` is enough. To use another font,

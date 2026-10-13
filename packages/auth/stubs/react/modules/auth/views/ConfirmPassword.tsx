@@ -11,7 +11,7 @@ export default function ConfirmPassword() {
       <div className="card auth-card">
         <Head title={t('confirm.title')} />
         <h1>{t('confirm.title')}</h1>
-        <p>{t('confirm.intro')}</p>
+        <p className="muted">{t('confirm.intro')}</p>
         <form
           method="post"
           action={route('auth.password.confirm.store')}
