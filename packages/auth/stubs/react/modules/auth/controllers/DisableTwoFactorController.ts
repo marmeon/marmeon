@@ -29,6 +29,8 @@ export class DisableTwoFactorController extends Controller {
 
   async handle(ctx: ContextOf<typeof DisableTwoFactorRequest>) {
     await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'password', () => this.#twoFactor.disable(ctx.body.password));
-    return this.redirect().route('auth.two-factor').flash('toast', { kind: 'success', message: this.#translator.get('auth.two_factor.disabled') });
+    // With a passkey left, only the authenticator app went: the account is still protected.
+    const stillProtected = (await this.#twoFactor.status()).factors.length > 0;
+    return this.redirect().route('auth.two-factor').flash('toast', { kind: 'success', message: this.#translator.get(stillProtected ? 'auth.two_factor.authenticator_removed' : 'auth.two_factor.disabled') });
   }
 }

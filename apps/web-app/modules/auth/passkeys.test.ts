@@ -1,4 +1,4 @@
-import { softAuthenticator } from '@marmeon/auth';
+import { softAuthenticator, twoFactorCode } from '@marmeon/auth';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -183,6 +183,28 @@ describe('passkeys', () => {
       .post('/settings/passkeys', { json: { response: device().register(options.json() as never), name: 'Laptop', password: 'password' } })
       .assertOk()
       .assertHeader('cache-control', 'no-store, private');
+  });
+
+  it('shows an account with only passkeys its recovery codes, and makes new ones', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie } = await enrol(ada);
+    const as = () => app.withCookie(SESSION, cookie);
+    await as().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: false, secured: true, recoveryCodesLeft: 10 });
+    const made = await as().layering().post('/settings/two-factor/recovery-codes').assertLayer('auth/RecoveryCodes');
+    expect(made.page()!.props.codes).toHaveLength(10);
+  });
+
+  it('removing the authenticator app of an account with a passkey leaves the passkeys, and the page says so', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie } = await enrol(ada);
+    const as = () => app.withCookie(SESSION, cookie);
+    await as().post('/settings/two-factor/setup');
+    const setup = (await as().navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
+    await as().layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } });
+    await as().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: true, passkey: true });
+    const done = await as().post('/settings/two-factor/disable', { form: { password: 'password' } }).assertRedirect('/settings/two-factor');
+    expect(done.flashed().map((message) => JSON.stringify(message.data))).toEqual([expect.stringContaining('Your passkeys still protect the account')]);
+    await as().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: false, secured: true, passkey: true });
   });
 
   it('releases a suspended passkey only with the right password', async () => {

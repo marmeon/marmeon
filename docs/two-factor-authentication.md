@@ -271,7 +271,7 @@ an API token never counts as a proven second factor, and `twoFactor()` there ans
 
 The [starter kit](starter-kit.md) brings the pages, so a new app has two-factor authentication without writing any. `make:auth`
 adds a migration for both tables (`foreignId('user_id').constrained().cascadeOnDelete()`, as the kit's other tables), the
-binding `combineFactors(TwoFactorStore)` in `AuthServiceProvider.ts`, the controllers and routes, and these pages, in both
+binding `combineFactors(TwoFactorStore, PasskeyStore)` in `AuthServiceProvider.ts` (the [passkeys](passkeys.md#in-the-starter-kit) are the kit's second source), the controllers and routes, and these pages, in both
 languages:
 
 | Page | What it does |

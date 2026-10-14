@@ -11,7 +11,9 @@ export class ShowTwoFactorChallengeController extends Controller {
   }
 
   handle() {
-    if (this.#auth.pendingSecondFactor() === undefined) return this.redirect().route('auth.login');
-    return this.view('auth/TwoFactorChallenge', {});
+    const pending = this.#auth.pendingSecondFactor();
+    if (pending === undefined) return this.redirect().route('auth.login');
+    // Which factors the account has: the page offers the authenticator app's code and a passkey accordingly (recovery codes always).
+    return this.view('auth/TwoFactorChallenge', { totp: pending.factors.includes('totp'), passkey: pending.factors.includes('passkey') });
   }
 }

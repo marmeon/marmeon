@@ -22,6 +22,11 @@ export function SettingsLayout({ children }: LayoutProps) {
             </Link>
           </li>
           <li>
+            <Link route="auth.passkeys" activeMatch="auth.passkeys.*">
+              {t('settings.passkeys')}
+            </Link>
+          </li>
+          <li>
             <Link route="auth.tokens">
               {t('settings.tokens')}
             </Link>

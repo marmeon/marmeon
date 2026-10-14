@@ -1,6 +1,12 @@
-import { RecoveryCodeUsed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
+import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
+import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
+import { NotifyAboutFailedPasskeySignIn } from './listeners/NotifyAboutFailedPasskeySignIn.ts';
 import { NotifyAboutFailedTwoFactor } from './listeners/NotifyAboutFailedTwoFactor.ts';
+import { NotifyAboutPasskeyCloneSuspected } from './listeners/NotifyAboutPasskeyCloneSuspected.ts';
+import { NotifyAboutPasskeyRegistered } from './listeners/NotifyAboutPasskeyRegistered.ts';
+import { NotifyAboutPasskeyRemoved } from './listeners/NotifyAboutPasskeyRemoved.ts';
+import { NotifyAboutPasskeysAfterReset } from './listeners/NotifyAboutPasskeysAfterReset.ts';
 import { NotifyAboutRecoveryCodeUsed } from './listeners/NotifyAboutRecoveryCodeUsed.ts';
 import { NotifyAboutTwoFactorDisabled } from './listeners/NotifyAboutTwoFactorDisabled.ts';
 import { NotifyAboutTwoFactorEnabled } from './listeners/NotifyAboutTwoFactorEnabled.ts';
@@ -25,15 +31,24 @@ export type { User } from './users.ts';
 
 export default defineModule({
   name: 'auth',
-  providers: [AuthServiceProvider],
+  // PasskeyServiceProvider switches passkeys on. To switch them off, remove it, `PasskeyStore` from `combineFactors` in AuthServiceProvider, and
+  // both imports of '@marmeon/auth/passkeys': the WebAuthn library is loaded only by code that imports that subpath.
+  providers: [AuthServiceProvider, PasskeyServiceProvider],
   // Queued listeners (static queue): a worker sends the verification mail once the registration committed, and the owner's mails
-  // about the second factor: turned on or off, a recovery code used, and (at most once an hour) a wrong code after the right password.
+  // about the second factor: turned on or off, a recovery code used, and (at most once an hour) a wrong code after the right password —
+  // and about passkeys: added, removed, suspended as a possible clone, and (at most once an hour) a failed passkey sign-in.
   listeners: [
     listen(Registered, SendEmailVerification),
     listen(TwoFactorEnabled, NotifyAboutTwoFactorEnabled),
     listen(TwoFactorDisabled, NotifyAboutTwoFactorDisabled),
     listen(RecoveryCodeUsed, NotifyAboutRecoveryCodeUsed),
     listen(TwoFactorChallengeFailed, NotifyAboutFailedTwoFactor),
+    listen(PasskeyRegistered, NotifyAboutPasskeyRegistered),
+    listen(PasskeyRemoved, NotifyAboutPasskeyRemoved),
+    listen(PasskeyCloneSuspected, NotifyAboutPasskeyCloneSuspected),
+    listen(PasskeySignInFailed, NotifyAboutFailedPasskeySignIn),
+    // Not queued (the event cannot be): it queues the mail that lists the passkeys a password reset left standing.
+    listen(PasswordReset, NotifyAboutPasskeysAfterReset),
   ],
   // Queued work — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   // Private registration: the note to an account's owner that someone signed up with its address; the link to a new

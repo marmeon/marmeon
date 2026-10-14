@@ -15,7 +15,7 @@ There is no password to phish, reuse or leak.
 Passkeys are optional per user and per app. An app that does not register the provider ([Setting up](#setting-up)) has no passkey
 configuration and no routes, and the WebAuthn library behind them is loaded only by code that imports `@marmeon/auth/passkeys`: as long as
 none of yours does, nothing loads it. The example app in `apps/web-app` shows the pages: the
-login page, the passkey step of the sign-in and a settings page.
+login page, the passkey step of the sign-in and a settings page; [the starter kit](#in-the-starter-kit) brings them to a new app.
 
 ## Requirements
 
@@ -227,6 +227,35 @@ authenticator that cannot verify the user. That keeps the passwordless sign-in a
 It does not protect against someone who controls the user's unlocked device or the account's recovery path, or against a server whose code or
 `APP_URL` an attacker changes. A user who lost every passkey and the recovery codes needs the operator's reset (`PasskeyStore.removeAll(userId)`
 plus `TwoFactorStore.removeAll(userId)`, and the events dispatched by the command).
+
+## In the starter kit
+
+`make:auth` writes the passkeys into a new app (the [starter kit](starter-kit.md#passkeys)): the migration of the `passkeys` table
+(`foreignId('user_id').constrained().cascadeOnDelete()`, with `suspended_at`), the binding
+`combineFactors(TwoFactorStore, PasskeyStore)` and `PasskeyServiceProvider` in the module, the controllers and routes, the limits of the
+options requests (`passkey-options`, 30 a minute for each address; `passkey-challenge-options`, 10), the mails and the pages, in both languages:
+
+| Page | What it does |
+| --- | --- |
+| `auth/Login` | A button "Sign in with a passkey" after the page has loaded, and the browser's autofill in the e-mail field (`autocomplete="username webauthn"`). The password form works without JavaScript. |
+| `auth/TwoFactorChallenge` | A button for a passkey when the account has one, the code form when it has an authenticator app, the recovery code always. |
+| `auth/Passkeys` | In the settings: the list with the dates, rename, release of a suspended passkey, removal, and the form that adds one with a name and the password. The first passkey shows the recovery codes once. |
+
+`modules/auth/passkeys.ts` is the browser side, written as app code you can change: it uses the browser's own conversion of the
+options and responses where it has one (`parseCreationOptionsFromJSON`, `toJSON()`) and a short fallback otherwise. The conditional sign-in
+in the e-mail field ends with an `AbortController` when the button is pressed or the page closes, and does not start again after a
+sign-in. The pages send no inline script and no `style`, so a strict content security policy accepts them.
+
+An account with a passkey has a second factor, so `twoFactor()` applies to it. The kit's `/settings/two-factor/verify` page, where
+`twoFactor()` sends a session, offers a passkey, the code of an authenticator app and a recovery code, as the sign-in does (its options
+request has its own limit, `passkey-step-up-options`, 10 a minute for each user). On `/settings/two-factor` an account with passkeys only
+shows "Protected by passkeys", the recovery codes left and "Make new recovery codes".
+
+The kit's listeners mail the owner on `PasskeyRegistered`, `PasskeyRemoved`, `PasskeyCloneSuspected` and `PasskeySignInFailed` (the
+last at most once an hour for each account). Passkeys outlive a password reset, so `NotifyAboutPasskeysAfterReset` also listens to
+`PasswordReset` and mails the passkeys the account still has; it is no queued listener, because that event is not queueable, and it logs
+rather than throws if the mail cannot be queued, so a reset that happened is never undone. The operator's `marmeon auth:reset-two-factor`
+removes the passkeys together with the authenticator and the recovery codes.
 
 ## Events
 
