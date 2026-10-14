@@ -1,6 +1,6 @@
 // A plain JavaScript module with its declaration beside it (temp-dir.d.ts): every package's tests import it by a relative path, and a
 // TypeScript source outside a package's `rootDir` would break its composite build (`tsc -b`) — a declaration file does not.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, onTestFinished } from 'vitest';
@@ -14,9 +14,12 @@ afterAll(() => {
   for (const dir of pending) remove(dir);
 });
 
+// On Linux `rmSync` returns without an error when an entry vanishes during its walk (e.g. a lock file a detached git process deletes) and
+// leaves the rest of the tree behind, so it is repeated until the directory is gone.
 function remove(dir) {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  for (let attempt = 0; attempt < 3 && existsSync(dir); attempt++) rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   pending.delete(dir);
+  if (existsSync(dir)) throw new Error(`tempDir: could not remove ${dir}`);
 }
 
 /**
