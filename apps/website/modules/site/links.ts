@@ -1,5 +1,7 @@
 /** Where the website points outside itself and into the docs. Client-safe: no server imports. */
 export const GITHUB_URL = 'https://github.com/marmeon/marmeon';
+export const DISCORD_URL = 'https://discord.gg/Kv9hvscd9';
+export const DISCUSSIONS_URL = `${GITHUB_URL}/discussions`;
 
 export const COMPANY_URL = 'https://bespokecode.de';
 

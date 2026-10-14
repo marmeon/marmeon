@@ -38,6 +38,7 @@ export function contrast(a: string, b: string): number {
 const PAIRS: ReadonlyArray<readonly [string, string, number]> = [
   ...['--fg', '--fg-body', '--fg-2', '--muted'].flatMap((text) => ['--bg', '--bg-raised'].map((ground) => [text, ground, 4.5] as const)),
   ['--accent', '--bg', 4.5],
+  ['--accent', '--bg-raised', 4.5],
   ['--accent-strong', '--accent-tint', 4.5],
   ['--term-fg', '--term-bg', 4.5],
   ['--term-dim', '--term-bg', 4.5],

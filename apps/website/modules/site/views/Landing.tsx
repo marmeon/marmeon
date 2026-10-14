@@ -3,6 +3,7 @@ import { Link, usePage } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import { ChainStep } from '../components/ChainStep.tsx';
 import { CodeBlock } from '../components/CodeBlock.tsx';
+import { AudienceSection } from '../components/landing/AudienceSection.tsx';
 import { BatteriesSection } from '../components/landing/BatteriesSection.tsx';
 import { DevtoolsSection } from '../components/landing/DevtoolsSection.tsx';
 import { ModulesSection } from '../components/landing/ModulesSection.tsx';
@@ -33,7 +34,7 @@ const PRINCIPLES: { name: string; text: ReactNode }[] = [
 ];
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
 
-/** `/`: what Marmeon is, its principles, one type followed from the database to the form, and the rest of the framework in six sections. */
+/** `/`: what Marmeon is, its principles, who it is for, one type followed from the database to the form, and the rest of the framework in six sections. */
 export default function Landing({ snippets }: PageProps<ShowLandingController>) {
   const version = usePage().props.site?.version;
   return (
@@ -92,6 +93,8 @@ export default function Landing({ snippets }: PageProps<ShowLandingController>) 
           </ol>
         </div>
       </section>
+
+      <AudienceSection />
 
       <section className="chain" aria-labelledby="chain-title">
         <div className="landing-inner">

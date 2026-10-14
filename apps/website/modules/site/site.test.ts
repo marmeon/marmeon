@@ -35,13 +35,37 @@ describe('the landing page', () => {
     for (const mistake of ['user_ud', 'ctx.params.nte', 'notes.indx', 'note.titel', 'form.errors.titel']) expect(body).toContain(mistake);
   }, SSR_TEST_TIMEOUT);
 
+  it('says who Marmeon is for: four situations, each with a link to its proof, and who it does not fit', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    expect(body).toContain('<section class="audience" aria-labelledby="audience-title"');
+    expect(body).toContain('<h2 id="audience-title"');
+    const [principles, audience, chain] = ['principles-title', 'audience-title', 'chain-title'].map((id) => body.indexOf(`id="${id}"`)) as [number, number, number];
+    expect(principles).toBeGreaterThan(-1);
+    expect(principles).toBeLessThan(audience);
+    expect(audience).toBeLessThan(chain);
+    const section = body.slice(audience, chain);
+    expect(body.match(/<li class="audience-card"/g)).toHaveLength(4);
+    expect(section.match(/<dt>You know this<\/dt>/g)).toHaveLength(4);
+    expect(section.match(/With Marmeon<\/dt>/g)).toHaveLength(4);
+    expect(section.match(/<h3>/g)).toHaveLength(4);
+    for (const href of ['/docs/installation#running-the-app', '/docs/structure', '/docs/authorization', '/docs/authorization#every-route-decides']) expect(section, href).toContain(`href="${href}"`);
+    expect(section).toContain('Not the right fit');
+  }, SSR_TEST_TIMEOUT);
+
+  it('points to the community from the start section', async () => {
+    const body = (await app.get('/', document).assertOk()).body;
+    const start = body.slice(body.indexOf('id="start-title"')).replaceAll('<!-- -->', '');
+    expect(start).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
+    expect(start).toContain('<a href="https://github.com/marmeon/marmeon/discussions" rel="noopener">discussion on GitHub</a>');
+  }, SSR_TEST_TIMEOUT);
+
   it('has the six sections after the chain, each named by its heading', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     for (const name of ['modules', 'batteries', 'secure', 'testing', 'devtools', 'start']) {
       expect(body, name).toMatch(new RegExp(`<section class="${name}" aria-labelledby="${name}-title"`));
       expect(body, name).toMatch(new RegExp(`<h2 id="${name}-title"`));
     }
-    expect(body.match(/<h2[ >]/g)).toHaveLength(8);
+    expect(body.match(/<h2[ >]/g)).toHaveLength(9);
     expect(body).toContain('<nav aria-label="Start reading">');
     expect(body).toContain('aria-label="Files of the notes module"');
     for (const group of ['In every new app', 'Add when you need it']) expect(body).toContain(group);
@@ -119,6 +143,7 @@ describe('the shared chrome', () => {
     const legal = footer.replaceAll('<!-- -->', '');
     expect(legal).toContain('<a href="https://bespokecode.de" rel="noopener">BespokeCode</a>');
     expect(legal).not.toContain('nofollow');
+    expect(legal).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
     expect(legal).toContain('Made with <span role="img" aria-label="love">❤️</span> in Munich');
   }, SSR_TEST_TIMEOUT);
 

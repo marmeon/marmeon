@@ -1,5 +1,5 @@
 import { Link } from '@marmeon/react';
-import { COMPANY_URL, DOCS_URL, GITHUB_URL, LICENSE_URL, RELEASE_POLICY_URL, SECURITY_POLICY_URL } from '../links.ts';
+import { COMPANY_URL, DISCORD_URL, DOCS_URL, GITHUB_URL, LICENSE_URL, RELEASE_POLICY_URL, SECURITY_POLICY_URL } from '../links.ts';
 import { Wordmark } from './Wordmark.tsx';
 
 export function SiteFooter() {
@@ -29,6 +29,9 @@ export function SiteFooter() {
           <Link href={DOCS_URL}>Docs</Link>
           <a href={GITHUB_URL} rel="noopener">
             GitHub
+          </a>
+          <a href={DISCORD_URL} rel="noopener">
+            Discord
           </a>
           <Link href={SECURITY_POLICY_URL}>Security Policy</Link>
           <Link href={RELEASE_POLICY_URL}>Release Policy</Link>
