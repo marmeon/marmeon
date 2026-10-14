@@ -233,6 +233,13 @@ describe('two-factor authentication', () => {
       await app.withCookie(SESSION, done.cookie(SESSION)!).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
       await as().post('/settings/two-factor/confirm', { form: { code: '123456', password: 'password' } }).assertRedirect();
     });
+
+    it('lets the same session change the address once it proved the factor', async () => {
+      const { ada, as } = await passwordOnly();
+      const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(KEY) } }).assertRedirect();
+      await app.withCookie(SESSION, done.cookie(SESSION)!).put('/settings/email', { form: { email: 'new@example.com' } }).assertRedirect();
+      await app.assertDatabaseHas('users', { id: ada.id, pending_email: 'new@example.com' });
+    });
   });
 
   describe('a page behind the twoFactor() middleware', () => {

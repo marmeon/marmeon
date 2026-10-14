@@ -203,7 +203,7 @@ On an account that already has a factor, the password is not enough to change it
 `regenerateRecoveryCodes()` and `disable()` of `TwoFactor`, and `registrationOptions()`, `register()`, `remove()` and `release()` of
 [`Passkeys`](passkeys.md#managing-passkeys) throw unless this session proved a second factor within the last 15 minutes
 ([how long](authentication.md#how-long-a-sign-in-lasts); not a setting). Without it, a stolen session whose factor was proven more than 15 minutes ago and a phished password would
-be enough to add a factor of the thief's own, or to take the owner's away and set up a "first" one. The same holds for the routes that change the e-mail address (a reset link goes to the new one) and create API tokens: guard them too.
+be enough to add a factor of the thief's own, or to take the owner's away and set up a "first" one. The same holds for the routes that change the e-mail address (a reset link goes to the new one) and create API tokens: guard them too, and for an action of your own that weighs as much, call `twoFactor.requireRecentProof('exportData')` — it throws under the same conditions as the methods above, with the name in the message, and lets an account without a factor through. The starter kit's `UpdateEmailController` calls it itself, so a route added to it by hand cannot skip the check.
 An account without a factor
 needs only the password for its first one, and finishing a setup with `confirm()` needs no new proof: the code shows the key that a
 guarded `begin()` made. `confirm()` also records the proof only for the first factor, since a further factor says nothing about the one
