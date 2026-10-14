@@ -7,12 +7,15 @@ import { TwoFactorState } from './state.ts';
 
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);
 
+/** How long a proven second factor counts when `twoFactor()` gets no `maxAge`, in seconds (24 hours). */
+export const TWO_FACTOR_MAX_AGE = 86_400;
+
 export interface TwoFactorMiddlewareOptions<S extends string = string, V extends string = string, L extends string = string> {
   /** Named route of the page where a user without a second factor sets one up. */
   readonly setup: CheckRouteName<S>;
   /** Named route of the page that asks this session for its second factor (a form calling `TwoFactor.stepUp()`). */
   readonly verify: CheckRouteName<V>;
-  /** How long a proven second factor counts, in seconds; after that the session is asked again. Default: for as long as the session lasts. */
+  /** How long a proven second factor counts, in seconds; after that the session is asked again. Default: 24 hours (`TWO_FACTOR_MAX_AGE`). */
   readonly maxAge?: number;
   /** Named route of the login page for a request without a user (default `auth.login`) — put `authenticate()` before this middleware, which makes it unreachable. */
   readonly loginRoute?: CheckRouteName<L>;
@@ -21,7 +24,7 @@ export interface TwoFactorMiddlewareOptions<S extends string = string, V extends
 /**
  * Opens a route group only to sessions that have proven a second factor: `Route.middleware(authenticate()).middleware(twoFactor({ setup, verify }))`.
  * A user without a factor is sent to `setup`, one whose session has not proven it (a session from before the factor, or older
- * than `maxAge`) to `verify`; both come back afterwards. JSON clients get 403 with `{ error: 'two_factor_required' }` or
+ * than `maxAge`, 24 hours by default) to `verify`; both come back afterwards. JSON clients get 403 with `{ error: 'two_factor_required' }` or
  * `{ error: 'two_factor_unverified' }`. Nobody passes by default: whatever is unclear is refused.
  *
  * Provided, never installed: nothing in the framework or in a new app adds it to a route. It reads the session, so it belongs
@@ -63,7 +66,7 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
       const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.twoFactorAt) : undefined;
       if (typeof at !== 'number' || !Number.isFinite(at)) return false;
       const age = Math.floor(Date.now() / 1000) - at;
-      return age >= 0 && (maxAge === undefined || age <= maxAge);
+      return age >= 0 && age <= (maxAge ?? TWO_FACTOR_MAX_AGE);
     }
 
     #refuse(ctx: HttpContext<Authenticated>, error: 'two_factor_required' | 'two_factor_unverified', route: string): Response {
