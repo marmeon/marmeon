@@ -642,10 +642,6 @@ Every app with `@marmeon/auth` has it.
 A route that sets its own `Cache-Control` keeps it, such as one with `cacheControl('private, max-age=60')`. Then its answer may
 stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user. An app that does keep such answers signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `logout()`, which asks the browser to drop its cache too; the [client features](client-features.md#the-browsers-storage-on-sign-out) page has the cost.
 
-An app with sign-in needs a session driver that keeps the sessions on the server. With `SESSION_DRIVER=cookie`, a request still
-running during a sign-out brings the signed-in cookie back with its answer, and the app warns about it at start-up. The
-[session](session.md#the-cookie-driver) page explains why.
-
 ## Events
 
 `@marmeon/auth` dispatches these events through the app's event dispatcher:
@@ -729,6 +725,5 @@ it('shows the notes to signed-in users only', async () => {
 });
 ```
 
-`UserFactory` makes users with a confirmed address. `actingAs()` needs a session driver on the server; a new app's `.env.test`
-sets `SESSION_DRIVER=memory`. The [HTTP tests](http-tests.md#sessions-and-signing-in) page shows the assertions for sessions,
+`UserFactory` makes users with a confirmed address. A new app's `.env.test` sets `SESSION_DRIVER=memory`, so the sessions of `actingAs()` live in the test process. The [HTTP tests](http-tests.md#sessions-and-signing-in) page shows the assertions for sessions,
 sign-in and sign-out.

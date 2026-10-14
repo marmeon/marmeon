@@ -87,8 +87,6 @@ The [CSRF protection](csrf.md) page explains every stage.
   [client features](client-features.md#the-browsers-storage-on-sign-out) pages explain them.
 - **Requests that only read never write.** Islands, live streams and the tabs' session checks write no session data and set no
   cookie. The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.
-- **Use a session driver on the server for an app with sign-in:** `file`, `database` or `redis`. The `cookie` driver cannot
-  protect a sign-out against a request that was still running.
 
 ## Keys
 
@@ -256,7 +254,7 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`, or the proxy.
 - `TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
   `X-Forwarded-*` itself and does not compress pages.
-- Sessions in `file`, `database` or `redis`, not `cookie`, for an app with sign-in. `SESSION_ENCRYPT=true` when the store is shared.
+- `SESSION_ENCRYPT=true` when the session store is shared.
 - Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the
   table's routes.
 - Update the framework's packages together and read [UPGRADING.md](../UPGRADING.md). Security fixes go to the latest minor

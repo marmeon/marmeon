@@ -90,12 +90,7 @@ input a `422` with the errors instead of a redirect back.
 ## Sessions and signing in
 
 `actingAs(user)` writes a session as a sign-in leaves it and sends its cookie. `withSession(data)` writes a session that holds
-`data`. Both need a session driver on the server, which `.env.test` sets with `SESSION_DRIVER=memory`. With the `cookie` driver
-they stop the test:
-
-```text
-Session helpers in tests need a server-side session driver — memory, file, database or redis (set SESSION_DRIVER=memory in .env.test).
-```
+`data`. Both use the session driver `.env.test` sets with `SESSION_DRIVER=memory`.
 
 A view made by `actingAs()` or `withSession()` keeps one session id across its requests, like one browser. The session is stored
 as the app stores its own: under the hash of its id, and encrypted when the app encrypts its sessions. To go on with the session
@@ -259,7 +254,7 @@ not compile. The [pages](pages.md#flash-messages) page explains flash messages.
 | `assertAuthenticated(user)` | The session is signed in, as `user` when given, compared by id. |
 | `assertGuest()` | The session is not signed in. |
 
-These read the session the response's cookie points to, so they need a session driver on the server. When the response sets
+These read the session the response's cookie points to. When the response sets
 no session cookie at all, such as on a route outside the `web` group, `assertSessionHas()`, `assertAuthenticated()` and
 `assertGuest()` fail with `Expected the response to carry a session (is StartSession on this route?)`.
 

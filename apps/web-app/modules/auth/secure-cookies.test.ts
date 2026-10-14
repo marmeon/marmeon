@@ -4,7 +4,7 @@ import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
 // Cookies follow APP_URL — `https://` sends every cookie of the app with `Secure` (the session's, the XSRF token, the
-// remember-me token, the reset link's, the cookie store's), `http://` without; SESSION_SECURE_COOKIE=true/false decides itself.
+// remember-me token, the reset link's), `http://` without; SESSION_SECURE_COOKIE=true/false decides itself.
 let app: TestApp | undefined;
 afterEach(async () => {
   await app?.close();

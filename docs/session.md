@@ -99,7 +99,7 @@ token it hands out must still be valid when it comes back.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis`, `memory` or `cookie`. |
+| `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis` or `memory`. |
 | `SESSION_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
 | `SESSION_LIFETIME` | `120` | Minutes without a request until the session expires. |
 | `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. |
@@ -133,7 +133,6 @@ Cookies are sent without Secure: APP_URL is not https:// — the session cookie 
 | `database` | A row of the `sessions` table. | Apps with sign-in, several processes or servers. |
 | `redis` | A key in Redis, which expires by itself. | Apps with sign-in that run Redis anyway. |
 | `memory` | The process. Gone when it stops. | Tests. |
-| `cookie` | An encrypted cookie, about 2.8 KB of data at most. | Apps without sign-in. |
 
 The `database` driver needs `@marmeon/database`, and the `redis` driver `@marmeon/redis`. A driver whose package is missing stops
 the app at start-up with the command that installs it.
@@ -172,13 +171,6 @@ export const schedule = defineSchedule((s) => {
 
 The module lists it as `schedule` in its definition. The [task scheduling](scheduling.md) page explains schedules.
 
-### The `cookie` driver
-
-> [!WARNING]
-> The `cookie` driver cannot protect a sign-out. The whole session travels in the cookie, so a slow request that started before
-> the sign-out brings the signed-in cookie back with its response. With the authentication package installed, the app warns about
-> it at start-up. Use `file`, `database` or `redis` for an app with sign-in.
-
 ## How sessions are stored
 
 **Hashed keys.** The cookie carries the session's id, 240 random bits, encrypted like every cookie. The store sees only the id's
@@ -187,7 +179,7 @@ SHA-256 hash. Whoever reads the store, from a leaked backup or a shared Redis, g
 **Encryption.** With `SESSION_ENCRYPT=true`, the data in the store is encrypted with `APP_KEY` and bound to its key, so data
 copied into another session's place does not open there. Keys in `APP_PREVIOUS_KEYS` still decrypt older data. It is off by
 default: with hashed keys, the data alone signs nobody in. Turn it on when the store is shared, or backed up where the data should
-not be read. Turning it on or off signs everybody out once. The `cookie` driver's data is always encrypted.
+not be read. Turning it on or off signs everybody out once.
 
 **Concurrent requests.** A browser often has several requests of one session in flight, a page and its deferred props. Each write
 compares the version the request read. When another request wrote the session in between, the store reads it again and applies
@@ -300,5 +292,4 @@ it('remembers the notes a visitor opened', async () => {
 });
 ```
 
-`assertSessionMissing(key)` checks that a key is gone. The `cookie` driver has no session helpers in tests. The
-[HTTP tests](http-tests.md#sessions-and-signing-in) page covers sessions, signing in and flash messages.
+`assertSessionMissing(key)` checks that a key is gone. The [HTTP tests](http-tests.md#sessions-and-signing-in) page covers sessions, signing in and flash messages.
