@@ -101,7 +101,7 @@ token it hands out must still be valid when it comes back.
 | --- | --- | --- |
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis`, `memory` or `cookie`. |
 | `SESSION_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
-| `SESSION_LIFETIME` | `120` | Minutes without a request until the session expires. |
+| `SESSION_LIFETIME` | `120` | Minutes without a request until the session expires on the server. The cookie itself has no expiry. |
 | `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. |
 | `SESSION_FILES` | `storage/framework/sessions` | Where the `file` driver keeps sessions, relative to the app. |
 | `SESSION_SECURE_COOKIE` | follows `APP_URL` | `true` or `false` decides `Secure` yourself. Unset, every cookie gets it when `APP_URL` starts with `https://`. |
@@ -116,7 +116,8 @@ cookie your code sets without saying otherwise. An app served as `https://` ther
 proxy that terminates TLS, nothing else is needed, since the decision comes from `APP_URL` and not from the request.
 
 The session cookie itself is encrypted like every cookie of the `web` group, `HttpOnly`, so no script can read it, and sent with
-the `SameSite` of `SESSION_SAME_SITE`. `SameSite=None` requires `Secure`: with `SESSION_SAME_SITE=none` and cookies without
+the `SameSite` of `SESSION_SAME_SITE`. It has no `Max-Age` or `Expires`: the browser drops it when it closes (see
+[expiry](#expiry-and-clean-up)). `SameSite=None` requires `Secure`: with `SESSION_SAME_SITE=none` and cookies without
 `Secure`, every response that sets the session cookie throws.
 
 Outside development and tests, an app whose cookies go without `Secure` says so once at start-up:
@@ -156,7 +157,12 @@ app's own file has a single connection, and a session written inside a transacti
 
 ### Expiry and clean-up
 
-A session expires `SESSION_LIFETIME` minutes after its last request. A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is; [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists every lifetime. Expired sessions of the `file` and `database` drivers are
+The session cookie and the `XSRF-TOKEN` cookie are browser-session cookies: they carry no `Max-Age`, so the browser drops them
+when it closes, and a guest's session data, such as a chosen language, goes with them. A browser that restores its tabs on start
+may keep them; then the server's lifetimes below decide. A user who wants to stay signed in across a restart ticks "Keep me
+signed in" ([remember me](authentication.md#remember-me)).
+
+A session expires `SESSION_LIFETIME` minutes after its last request, whatever the cookie says. A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is; [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists every lifetime. Expired sessions of the `file` and `database` drivers are
 deleted after the response of 2 in 100 requests, as `SESSION_LOTTERY` says. The `redis` driver needs no clean-up.
 
 On a busy app, run the clean-up on a schedule instead. When the app's scheduler runs `session:prune`, requests stop drawing the

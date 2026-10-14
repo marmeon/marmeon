@@ -57,7 +57,7 @@ export class StartSession {
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
-    const { cookie, lifetime, secure, sameSite } = this.#config;
+    const { cookie, secure, sameSite } = this.#config;
     if (this.#readOnly.active) {
       // An island resolved while its page renders reads the page request's session as it is now — whoever the page
       // signed in (a remember-me sign-in included, which the cookie does not know yet) — as a copy.
@@ -81,7 +81,8 @@ export class StartSession {
       } finally {
         // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
         // keeps the one the sign-out sent.
-        if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
+        // No Max-Age: the browser drops the cookie when it closes; the store's lifetime ends the session on the server either way.
+        if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { secure, sameSite });
         else if (this.#session.abandoned) {
           this.#logger.warn('The session was not saved: other requests of the same session wrote it on every attempt — Route.block() serialises such a route', {
             route: ctx.route?.routeName ?? ctx.route?.path,

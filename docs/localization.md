@@ -201,7 +201,7 @@ container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await
 A value from a session, a header or a form becomes a locale only when it names a supported one, and then in the app's spelling.
 So what reaches `<html lang>`, the page and the browser's language files is always one of your locales, never a path or markup.
 Every response of the `web` group carries `Content-Language`. With more than one supported locale it also carries
-`Vary: accept-language`, so a cache keeps the languages apart — but the chosen locale lives in the session, so a shared cache
+`Vary: accept-language`, so a cache keeps the languages apart — but the chosen locale lives in the session (a guest's is gone when the browser closes), so a shared cache
 must not store pages per URL (or the locale belongs in the URL). Routes of the `api` group pass no `SetLocale`: their `Translator`
 speaks `APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads
 those itself.
