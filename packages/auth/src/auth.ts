@@ -545,8 +545,13 @@ export class Auth {
       return undefined;
     }
     // A token made before the account's second factor existed proved none (a sign-in racing the activation can make one): refused.
+    // An unreadable time (an Invalid Date compares false with everything), on either side, is refused too — also without `enabledSince`
+    // when the account has a factor — never taken as "after".
     const since = await this.#twoFactor.enabledSince(device.userId);
-    if (since !== undefined && device.createdAt.getTime() <= since.getTime()) {
+    const madeAt = device.createdAt?.getTime();
+    const readable = Number.isFinite(madeAt);
+    const refused = since !== undefined ? !(madeAt! > since.getTime()) : !readable && (await this.#twoFactor.factors(device.userId)).length > 0;
+    if (refused) {
       await this.#remember.forget(device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
@@ -556,7 +561,7 @@ export class Auth {
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
-    if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(device.createdAt.getTime() / 1000));
+    if (readable && (await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
     return found.user;
   }
 
