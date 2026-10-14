@@ -263,14 +263,17 @@ it runs is your decision, route by route. It refuses by default; each of these i
 | --- | --- | --- |
 | Nobody is signed in (also a sign-in that waits for its code, or an API token) | Redirect to the login page | `401` |
 | Signed in, the account has no factor | Redirect to `setup`: the page where a factor is turned on | `403` `{ "error": "two_factor_required" }` |
-| Signed in, the account has a factor, this session has not proven it, or not within `maxAge` | Redirect to `verify` | `403` `{ "error": "two_factor_unverified" }` |
+| Signed in, the account has a factor, this session has not proven it, or not within `maxAge` (24 hours by default) | Redirect to `verify` | `403` `{ "error": "two_factor_unverified" }` |
 | The session proved its factor | The request goes on | The request goes on |
 
-A browser that is sent away comes back to the page it asked for (`redirect().intended()`). A session proves its factor by passing
-the code step of the sign-in, by turning the factor on, or by `stepUp()` below; a remember-me sign-in of an account with a factor
-counts as proven at the time its cookie was made (after a code, and kept when the cookie rotates), so with a `maxAge` an old cookie sends the session to `verify` too. A session that was open before the factor was added has not proven it, so
-it is sent to `verify`. The proof stays for as long as the session lasts, or for `maxAge` seconds when you give one; then the
-user is asked again. Typing the password again ([sudo mode](authentication.md)) is a different thing and proves nothing about the second factor.
+A browser that is sent away comes back to the page it asked for (`redirect().intended()`). A session proves its factor by
+passing the code step of the sign-in, by turning the factor on, or by `stepUp()` below; a remember-me sign-in of an account with
+a factor counts as proven at the time its cookie was made (after a code, and kept when the cookie rotates), so an old cookie
+(older than `maxAge`, 24 hours by default) sends the session to `verify` too. A session that was open before the factor was
+added has not proven it, so it is sent to `verify`. The proof stays for 24 hours (`TWO_FACTOR_MAX_AGE` from
+`@marmeon/auth/two-factor`), or for `maxAge` seconds when you give one, longer or shorter; then the user is asked again. There
+is no setting for "never". Typing the password again ([sudo mode](authentication.md)) is a different thing and proves nothing
+about the second factor.
 
 The `verify` page asks for a code and calls `TwoFactor.stepUp()`, which takes the same input and uses the same throttle, events and
 errors as `challenge()`:

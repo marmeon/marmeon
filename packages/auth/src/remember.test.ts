@@ -110,6 +110,26 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(await rows()).toEqual([]);
   });
 
+  it('prune deletes expired tokens and tokens older than the given days — all of them with 0', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() - 20 * 86_400_000 });
+    await tokens.create(1, inAMonth()); // made 20 days ago, still valid by its row
+    vi.setSystemTime(Date.now() + 20 * 86_400_000);
+    await tokens.create(2, inAMonth());
+    await tokens.create(3, new Date(Date.now() - 1000)); // expired
+    expect(await tokens.prune(30)).toBe(1); // only the expired one
+    expect(await tokens.prune(10)).toBe(1); // the 20-day-old one: older than the lowered setting
+    expect((await rows()).map((row) => Number(row.user_id))).toEqual([2]);
+    expect(await tokens.prune(0)).toBe(1); // 0: remember-me is off
+    expect(await rows()).toEqual([]);
+  });
+
+  it.runIf(driver === 'sqlite')('refuses a token with an unreadable expiry and removes it', async () => {
+    const cookie = await tokens.create(1, inAMonth());
+    await connections.get<any>().updateTable(REMEMBER_TABLE).set({ expires_at: 'not a date' }).execute();
+    expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
+    expect(await rows()).toEqual([]);
+  });
+
   it('refuses malformed cookies without asking the database', async () => {
     const queries: string[] = [];
     const stop = connections.onQuery((query) => queries.push(query.sql));

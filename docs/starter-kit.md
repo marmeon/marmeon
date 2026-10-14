@@ -301,7 +301,7 @@ primary key.
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days an account may stay without a confirmed address before `auth:prune-unverified` deletes it. `0`: the command deletes none. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every API token of the user. Set it with `AUTH_PRIVATE_REGISTRATION=false`. |
 
-The [authentication](authentication.md#configuration) page lists the other `AUTH_*` variables, such as how long "remember me" lasts.
+The [authentication](authentication.md#configuration) page lists the other `AUTH_*` variables, such as how long "remember me" lasts. The login page shows its checkbox only while `AUTH_REMEMBER_DAYS` is above `0`.
 
 ## Adding the module to an existing app
 

@@ -156,7 +156,7 @@ app's own file has a single connection, and a session written inside a transacti
 
 ### Expiry and clean-up
 
-A session expires `SESSION_LIFETIME` minutes after its last request. Expired sessions of the `file` and `database` drivers are
+A session expires `SESSION_LIFETIME` minutes after its last request. A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is: [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts). Expired sessions of the `file` and `database` drivers are
 deleted after the response of 2 in 100 requests, as `SESSION_LOTTERY` says. The `redis` driver needs no clean-up.
 
 On a busy app, run the clean-up on a schedule instead. When the app's scheduler runs `session:prune`, requests stop drawing the

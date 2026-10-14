@@ -152,6 +152,7 @@ const routes = openRoutes((Route) => {
   signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).get('/area', Page);
   signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
   signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 60 })).get('/area-fresh', Page);
+  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 7 * 86_400 })).get('/area-week', Page);
   // Without authenticate() before it, which the types ask for: whoever is not signed in must still be refused.
   Route.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' }) as never).get('/area-bare', Page);
   Route.post('/login-as', LoginAsController);
@@ -478,7 +479,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(events.filter((event) => event instanceof Login)).toEqual([]); // no listener sees a sign-in that is taken back
     expect(await b.tf('who')).toEqual({ id: null });
     expect(b.jar.has('remember_web')).toBe(false);
-    expect(await booted.application.container.make(RememberTokenStore).prune()).toBe(0);
+    expect(await booted.application.container.make(RememberTokenStore).prune(30)).toBe(0);
     const rows = await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute();
     expect(rows).toEqual([]);
   });
@@ -1097,9 +1098,32 @@ describe('twoFactor() middleware', () => {
     expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
     vi.setSystemTime(inSeconds(61));
     expect(await b.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
-    expect(await b.visit('/area')).toMatchObject({ status: 200 }); // an area without maxAge keeps the proof for the session
+    expect(await b.visit('/area')).toMatchObject({ status: 200 }); // an area without maxAge keeps the proof for 24 hours
     expect(await b.tf('step-up', { code: twoFactorCode(key, new Date(Date.now() + 30_000)) })).toEqual({ ok: true });
     expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
+  });
+
+  it('an area without maxAge keeps the proof for 24 hours, then asks again', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const booted = await boot({ SESSION_LIFETIME: '20160', AUTH_SESSION_MAX_HOURS: '720' });
+    const { b, secret: key } = await enable(booted);
+    vi.setSystemTime(inSeconds(86_400 - 1));
+    expect(await b.visit('/area')).toMatchObject({ status: 200 });
+    vi.setSystemTime(inSeconds(86_400 + 1));
+    expect(await b.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
+    expect(await b.visit('/area', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
+    expect(await b.tf('step-up', { code: twoFactorCode(key, new Date(Date.now() + 30_000)) })).toEqual({ ok: true });
+    expect(await b.visit('/area')).toMatchObject({ status: 200 });
+  });
+
+  it('takes a maxAge longer than the default', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const booted = await boot({ SESSION_LIFETIME: '20160', AUTH_SESSION_MAX_HOURS: '720' });
+    const { b } = await enable(booted);
+    vi.setSystemTime(inSeconds(3 * 86_400));
+    expect(await b.visit('/area-week')).toMatchObject({ status: 200 });
+    vi.setSystemTime(inSeconds(8 * 86_400));
+    expect(await b.visit('/area-week')).toMatchObject({ status: 302, location: '/account/verify' });
   });
 
   it('lets a sign-in with the factor through, also one made with a remember-me cookie', async () => {
@@ -1126,10 +1150,23 @@ describe('twoFactor() middleware', () => {
     vi.setSystemTime(inSeconds(61));
     const stolen = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
     expect(await stolen.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
-    expect(await stolen.visit('/area')).toMatchObject({ status: 200 }); // without maxAge a remember-me sign-in goes through
+    expect(await stolen.visit('/area')).toMatchObject({ status: 200 }); // a token under 24 hours old goes through without maxAge
     // Rotation of the cookie keeps the age of the proof.
     const again = booted.browser(new Map([['remember_web', stolen.jar.get('remember_web') ?? login.jar.get('remember_web')!]]));
     expect(await again.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
+  });
+
+  it('a remember-me token older than 24 hours is sent to verify without maxAge', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    vi.setSystemTime(inSeconds(1));
+    const login = booted.browser();
+    await login.login(ada.email, 'secret', true);
+    await login.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) });
+    vi.setSystemTime(inSeconds(25 * 3600));
+    const old = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
+    expect(await old.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
   });
 
   it.each([

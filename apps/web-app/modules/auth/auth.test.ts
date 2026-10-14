@@ -388,6 +388,25 @@ describe('remember me', () => {
     await app.assertDatabaseCount('remember_tokens', 0);
   });
 
+  it('offers the checkbox by default', async () => {
+    await app.navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { remember: true });
+  });
+
+  describe('with AUTH_REMEMBER_DAYS=0', () => {
+    beforeEach(async () => {
+      await app.close();
+      app = await createTestApp(application, { database: 'refresh', env: { AUTH_REMEMBER_DAYS: '0' } });
+    });
+
+    it('hides the checkbox, and a form that sends it anyway gets no cookie and no token', async () => {
+      await app.navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { remember: false });
+      const ada = await app.factory(UserFactory).create();
+      const login = await rememberLogin(ada).assertAuthenticated(ada);
+      expect(login.cookie('remember_web')).toBeUndefined();
+      await app.assertDatabaseCount('remember_tokens', 0);
+    });
+  });
+
   it('a copied cookie used by someone else first ends every remember-me sign-in of the user', async () => {
     const ada = await app.factory(UserFactory).create();
     const copied = (await rememberLogin(ada)).cookie('remember_web')!;

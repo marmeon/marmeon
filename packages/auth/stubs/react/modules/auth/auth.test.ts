@@ -97,6 +97,19 @@ describe('signing in and out', { timeout: 30_000 }, () => {
   });
 });
 
+describe('remember me turned off', { timeout: 30_000 }, () => {
+  it('offers the checkbox by default, and hides it with AUTH_REMEMBER_DAYS=0 — a form that sends it anyway gets no cookie', async () => {
+    expect((await app.navigating().get('/login')).page()!.props.remember).toBe(true);
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh', env: { AUTH_REMEMBER_DAYS: '0' } });
+    expect((await app.navigating().get('/login')).page()!.props.remember).toBe(false);
+    const ada = await app.factory(UserFactory).create();
+    const login = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });
+    expect(login.cookie('remember_web')).toBeUndefined();
+    await app.assertDatabaseCount('remember_tokens', 0);
+  });
+});
+
 describe('the app name in the layout', { timeout: 30_000 }, () => {
   it('comes with the first page only (a once prop) — the browser keeps it; a path without a route has none', async () => {
     const name = app.make(AppConfig).name;

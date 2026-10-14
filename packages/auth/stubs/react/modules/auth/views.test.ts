@@ -20,4 +20,13 @@ describe('the forms of the views', () => {
     }
     expect(offenders, 'a form with named fields and no method="post"').toEqual([]);
   });
+
+  it('show the "keep me signed in" checkbox only when the page says remember-me is on', () => {
+    const source = readFileSync(new URL('Login.tsx', views), 'utf8');
+    const checkbox = source.indexOf('name="remember"');
+    expect(checkbox).toBeGreaterThan(-1);
+    const guard = source.lastIndexOf('{rememberOffered && (', checkbox);
+    expect(guard, 'the checkbox sits in {rememberOffered && (…)}').toBeGreaterThan(-1);
+    expect(source.slice(guard, checkbox)).not.toContain(')}');
+  });
 });
