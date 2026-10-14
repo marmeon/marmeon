@@ -304,7 +304,7 @@ describe('marmeon auth:reset-two-factor and passkeys', { timeout: 30_000 }, () =
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
     const code = await app.make(ResetTwoFactorCommand).handle({ args: [ada.email], options: { force: true }, output } as never);
-    expect({ code, lines }).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}.`] });
+    expect({ code, lines }).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
     await app.assertDatabaseCount('passkeys', 0);
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
