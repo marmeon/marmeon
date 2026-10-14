@@ -1,4 +1,5 @@
 import { AuthConfig, type Authenticated } from '@marmeon/auth';
+import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Clock } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
@@ -19,8 +20,8 @@ export const UpdateEmailRequest = defineRequest({
 });
 
 /**
- * A new address — on the security page, behind confirmedPassword(): a hijacked session must not take over the account by
- * changing the address and then resetting the password. Private registration (the default): the change is pending — the
+ * A new address — on the security page, behind confirmedPassword() and confirmedSecondFactor() (the controller asks for the
+ * factor itself too): a hijacked session must not take over the account by changing the address and then resetting the password. Private registration (the default): the change is pending — the
  * new address waits beside the old one, and a link goes to it; the account's address changes only once that link is clicked
  * (signed in). A free address and one another account has get the same answer in the same time: this request does the same
  * either way — one write, one job. The worker decides: the link to a free address, a note to the owner of a taken one.
@@ -33,6 +34,7 @@ export class UpdateEmailController extends Controller {
 
   readonly #connections: Connections;
   readonly #users: UserRepository;
+  readonly #twoFactor: TwoFactor;
   readonly #queue: Queue;
   readonly #clock: Clock;
   readonly #translator: Translator;
@@ -44,6 +46,7 @@ export class UpdateEmailController extends Controller {
   constructor(
     connections: Connections,
     users: UserRepository,
+    twoFactor: TwoFactor,
     queue: Queue,
     clock: Clock,
     translator: Translator,
@@ -55,6 +58,7 @@ export class UpdateEmailController extends Controller {
     super();
     this.#connections = connections;
     this.#users = users;
+    this.#twoFactor = twoFactor;
     this.#queue = queue;
     this.#clock = clock;
     this.#translator = translator;
@@ -65,6 +69,8 @@ export class UpdateEmailController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof UpdateEmailRequest> & Authenticated) {
+    // Also without the route's confirmedSecondFactor(): a route added by hand to this controller must not skip the factor.
+    await this.#twoFactor.requireRecentProof('changeEmail');
     const { email } = ctx.body;
     if (!this.#private) return this.#changeNow(ctx.user, email);
     // The account's own address again: a pending change is dropped.

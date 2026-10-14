@@ -1,3 +1,4 @@
+import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Limit, RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { UrlSigner } from '@marmeon/http';
@@ -5,6 +6,7 @@ import type { Mailable } from '@marmeon/mail';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { ConfirmNewEmailMail } from './mail/ConfirmNewEmailMail.ts';
@@ -208,5 +210,34 @@ describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', { timeout:
     expect((await reload(kj)).email).toBe('kj@example.com');
     const link = new URL(app.make(UrlSigner).temporarySignedRoute('auth.email.confirm', { id: kj.id, token: 'token' }, 600), 'http://localhost');
     await session.expectingJson().get(link.pathname + link.search).assertNotFound();
+  });
+});
+
+describe('the change of address asks for a recent factor itself', () => {
+  /** The controller built from the container, with the check of the second factor answering `check`: no route, no middleware in front of it. */
+  const controllerAsking = (check: () => Promise<void>) => {
+    const scope = app.container.createScope();
+    scope.instance(TwoFactor, { requireRecentProof: check } as unknown as TwoFactor);
+    return scope.make(UpdateEmailController);
+  };
+  const handle = (controller: UpdateEmailController, user: User, email: string) => controller.handle({ body: { email }, user } as never);
+
+  it('throws before anything is stored when the session has no recent factor — even on a route without confirmedSecondFactor()', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const asked: string[] = [];
+    const stale = controllerAsking(async () => {
+      asked.push('changeEmail');
+      throw new Error('twoFactor.requireRecentProof(\'changeEmail\') needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().');
+    });
+    await expect(handle(stale, kj, 'katherine@nasa.example')).rejects.toThrow('second factor proven within 15 minutes');
+    expect(asked).toEqual(['changeEmail']);
+    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null });
+    app.queue.assertNothingDispatched();
+  });
+
+  it('goes on when the check passes', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    await handle(controllerAsking(async () => {}), kj, 'katherine@nasa.example');
+    expect((await reload(kj)).pending_email).toBe('katherine@nasa.example');
   });
 });

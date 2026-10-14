@@ -407,6 +407,17 @@ export class TwoFactor {
     return { secret, uri, qr: qrPath(uri) };
   }
 
+  /**
+   * For an action of your own that weighs as much as changing a factor (a new e-mail address, an API token): throws unless this
+   * session proved a second factor within the last 15 minutes, on an account that has one; an account without a factor passes.
+   * `action` is named in the error message. Put the route behind `confirmedSecondFactor()` to send a stale session to the page
+   * that asks again. See `docs/two-factor-authentication.md#changing-the-factors`.
+   */
+  async requireRecentProof(action: string): Promise<void> {
+    const user = await this.#requireUser('requireRecentProof');
+    await this.#requireRecentSecondFactor('requireRecentProof', idOf(user), `requireRecentProof('${action}')`);
+  }
+
   async #requireUser(method: string): Promise<AuthUser> {
     const user = await this.#auth.user();
     if (!user) throw new Error(`twoFactor.${method}() needs a signed-in user — put the route behind authenticate().`);
@@ -420,9 +431,9 @@ export class TwoFactor {
   }
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
-  async #requireRecentSecondFactor(method: string, userId: string | number): Promise<void> {
+  async #requireRecentSecondFactor(method: string, userId: string | number, call = `${method}()`): Promise<void> {
     if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE)) {
-      throw new Error(`twoFactor.${method}() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
+      throw new Error(`twoFactor.${call} needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }
 }

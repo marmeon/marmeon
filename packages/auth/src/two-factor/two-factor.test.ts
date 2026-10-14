@@ -128,6 +128,9 @@ class TwoFactorController extends Controller {
           return { codes: await this.#twoFactor.regenerateRecoveryCodes() };
         case 'disable':
           return { disabled: await this.#twoFactor.disable(body.password) };
+        case 'recent-proof':
+          await this.#twoFactor.requireRecentProof('changeEmail');
+          return { ok: true };
         case 'confirm-password':
           return { confirmed: await this.#auth.confirmPassword(body.password) };
         case 'who':
@@ -949,6 +952,19 @@ describe('TwoFactor: changing the factors of an account that has one', () => {
     expect(await booted.store.remainingRecoveryCodes(1)).toBe(10);
     expect(await b.visit('/area-fresh', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
     expect(recoveryCodes).toHaveLength(10);
+  });
+
+  it('requireRecentProof() throws for a stale proof, passes for a fresh one and for an account without a factor', async () => {
+    const booted = await boot();
+    const plain = booted.browser();
+    await plain.login();
+    expect(await plain.tf('recent-proof')).toEqual({ ok: true });
+    const { b } = await enable(booted);
+    await setProof(b, secondsAgo(25 * 3600));
+    expect(await b.tf('recent-proof')).toMatchObject({ thrown: expect.stringContaining('twoFactor.requireRecentProof(\'changeEmail\') needs a second factor proven within 15 minutes') });
+    await setProof(b, secondsAgo(60));
+    expect(await b.tf('recent-proof')).toEqual({ ok: true });
+    expect(await booted.browser().tf('recent-proof')).toMatchObject({ thrown: expect.stringContaining('signed-in user') });
   });
 
   it('allows them after stepUp(), and only for fifteen minutes', async () => {
