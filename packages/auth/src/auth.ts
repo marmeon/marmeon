@@ -1,8 +1,9 @@
-import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
 import { err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
+import { rotateSessionKey } from './account-sessions.ts';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -375,21 +376,8 @@ export class Auth {
    */
   async updateSessionKey(): Promise<void> {
     const user = await this.#requireUser('updateSessionKey');
-    if (typeof this.#users.updateSessionKey !== 'function') {
-      throw new Error(
-        'auth.updateSessionKey() needs UserProvider.updateSessionKey(id, key): store the key in a column of the account ' +
-          '(a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
-      );
-    }
-    const key = randomBytes(32).toString('base64url');
-    await this.#users.updateSessionKey(idOf(user) as never, key);
-    const credentials = await this.#credentials(user);
-    if (credentials.sessionKey !== key) {
-      throw new Error(
-        'auth.updateSessionKey() stored a new key, but UserProvider.findById() does not hand it back as sessionKey — the other ' +
-          'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForLogin().',
-      );
-    }
+    const credentials = await rotateSessionKey(this.#users, idOf(user), 'auth.updateSessionKey()');
+    if (credentials === undefined) throw new Error(`Cannot sign in user ${idOf(user)}: the UserProvider does not find them.`);
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
     this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(credentials));
   }
@@ -553,6 +541,13 @@ export class Auth {
     const refused = since !== undefined ? !(madeAt! > since.getTime()) : !readable && (await this.#twoFactor.factors(device.userId)).length > 0;
     if (refused) {
       await this.#remember.forget(device.cookie ?? cookie);
+      this.#cookies.delete(this.#config.rememberCookie);
+      return undefined;
+    }
+    // `AccountSessions.end()` deletes the tokens before it replaces the key, so a sign-in whose `findById()` already saw the new key
+    // finds its token gone here, and one that saw the old key cannot outlive the key's replacement: it fails this check or, if it passed,
+    // the next request's fingerprint check ends the session.
+    if (!(await this.#remember.exists(device.cookie ?? cookie))) {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }

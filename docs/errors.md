@@ -169,6 +169,7 @@ a transaction, an `err` rolls the transaction back, as the [transactions](transa
 | `twoFactor.challenge()` | `no-challenge`, `expired`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#the-sign-in) |
 | `twoFactor.confirm()` | `not-started`, `invalid-password`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#setting-up) |
 | `RememberTokenStore.consume()` | `invalid`, `stolen` | [Authentication](authentication.md#remember-me) |
+| `AccountSessions.end()` | `missing` | [Authentication](authentication.md#ending-every-session-of-a-user) |
 | `PasswordBroker.createToken()` | `unavailable` | [Password reset](passwords.md#asking-for-a-link) |
 | `PasswordBroker.reset()` | `invalid-token` | [Password reset](passwords.md#resetting-the-password) |
 | `PasswordResetTokenStore.create()` | `throttled` | [Password reset](passwords.md#a-store-of-your-own) |

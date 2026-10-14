@@ -476,8 +476,54 @@ its next request. When the user is deleted, the lookup
 finds nobody, and the session ends the same way. A request that only reads, such as an island, treats such a session as a guest
 and leaves the ending to the next page request.
 
-`UserSessions` of `@marmeon/session` ends a user's sessions at once. Deleting an account needs it, and the starter kit's
-`AccountDeletion` calls it after the account is gone:
+`AccountSessions` of `@marmeon/auth` ends every session of an account, and every remember-me cookie with them. Use it after an
+incident, from a command, a job or an admin controller. Put the route behind `authenticate()` and decide who may call it with `authorize(can(…))`, such as with a policy of your own:
+
+```ts title="modules/admin/routes.ts"
+Route.middleware(authenticate()).authorize(can(AdminPolicy, 'endSessions')).post('/admin/users/:id/end-sessions', EndSessionsController);
+```
+
+```ts title="modules/admin/EndSessionsController.ts"
+import { AccountSessions, type Authenticated } from '@marmeon/auth';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+
+export class EndSessionsController extends Controller {
+  readonly #accounts: AccountSessions;
+
+  constructor(accounts: AccountSessions) {
+    super();
+    this.#accounts = accounts;
+  }
+
+  async handle(ctx: HttpContext<Authenticated, { id: string }>) {
+    const id = Number(ctx.params.id);
+    if (!Number.isSafeInteger(id)) abort(404);
+    const ended = await this.#accounts.end(id);
+    if (!ended.ok) abort(404);
+    return { removed: ended.value.removed };
+  }
+}
+```
+
+`end(id)` answers `missing` for an id that is no account (and for one that is not a valid id, such as `NaN` or an empty
+string), and writes nothing then. Otherwise it goes in three steps, in this order:
+
+1. It deletes every remember-me token of the account, so no cookie signs in again, and a remember-me sign-in that is running
+   finds its token gone.
+2. It stores a new session key with `updateSessionKey()` of your `UserProvider`. The fingerprint of every session changes, so each
+   one ends at its next request, with every driver.
+3. It deletes the sessions a store can find at once (only `database`, by its `user_id` column) and returns how many: `removed`.
+
+The session key is what ends the sessions, so your `UserProvider` must store one: without `updateSessionKey()`, `end()` throws
+before it changes anything, and names what to add. It also throws when `findById()` does not hand the new key back; the
+remember-me tokens are gone by then. The starter kit's accounts have a `session_key` column. Inside a database transaction `end()` throws: each step commits on its own, and a rollback would bring the deleted tokens back.
+
+A custom `RememberTokenStore` needs `exists(cookie)`, which says whether the token of a cookie is still stored and must see a `forgetUser()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
+remember-me cookie asks it right before it starts.
+
+`UserSessions` of `@marmeon/session` is the low-level variant, and deleting an account needs it. The starter kit's
+`AccountDeletion` calls it after the account is gone. It does not touch remember-me cookies, which sign the user in again, so use
+`AccountSessions` for an account that stays:
 
 ```ts title="modules/auth/AccountDeletion.ts"
 import { PasswordResetTokenStore } from '@marmeon/auth';
@@ -514,11 +560,10 @@ export class AccountDeletion {
 The starter kit's own version also dispatches `AccountDeleted` for other modules inside the transaction. Use it for every deletion
 of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
 
-`end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
+`UserSessions.canEnd()` tells whether the store is one of these. `UserSessions.end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
 table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account
 that does no harm, since its sessions end at their next request. For a user who still exists, a new fingerprint ends the other
-sessions with every driver: a new password, `logoutOtherDevices(password)` or `updateSessionKey()`. `end(id)` stays the way to
-end every session of a user at once, the current one included, and only with the `database` driver.
+sessions with every driver: a new password, `logoutOtherDevices(password)` or `updateSessionKey()`. `UserSessions.end(id)` ends every session of a user at once, the current one included, and only with the `database` driver.
 
 ## Signed-in pages are never cached
 
