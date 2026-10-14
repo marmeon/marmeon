@@ -294,9 +294,11 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(marmeon('make:lint-config', '--boundaries', '--force').code).toBe(0);
       expect(lint()).toMatchObject({ code: 0 });
 
-      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
+      // The first test boots the whole app cold (every module transformed): 3 to 5 s on a loaded machine, so the child run
+      // does not hold it to Vitest's default 5 s.
+      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose', '--testTimeout=30000'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
       const failed = [...tests.out.matchAll(/^\s*× (modules\/\S+ > .+?)(?: \d+ms)?$/gm)].map((match) => match[1]);
-      expect(failed, `generated tests failed: ${failed.join(' | ')}`).toEqual([]);
+      expect(failed, `generated tests failed: ${failed.join(' | ')}\n${tests.out}`).toEqual([]);
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
       expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
       // Both values of the switch: the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
