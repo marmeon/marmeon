@@ -1,5 +1,5 @@
 import { PasskeyStore } from '@marmeon/auth/passkeys';
-import { Auth, combineFactors, TwoFactorState, TwoFactorStore, UserProvider } from '@marmeon/auth';
+import { Auth, combineFactors, DatabaseSignIns, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from '@marmeon/auth';
 import { Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { LocalePreference } from '@marmeon/i18n';
@@ -13,6 +13,9 @@ export class AuthServiceProvider implements ServiceProvider {
     // Accounts may set up a second factor: the authenticator app and passkeys (their tables are in this module's migrations). Removing this
     // binding switches two-factor authentication off for every account.
     container.bind(TwoFactorState, (c) => combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore)));
+    // The sign-ins list on the security page: a row per browser signed in, which can be ended one by one. Removing this binding turns the
+    // list off (and the `sign_ins` migration is not needed then).
+    container.singleton(SignInStore, DatabaseSignIns);
     // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @marmeon/i18n).
     container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await c.make(Auth).user())?.locale }));
   }

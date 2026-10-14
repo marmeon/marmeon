@@ -12,6 +12,7 @@ import type { DeleteNotificationController } from '../modules/notifications/cont
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { DisableTwoFactorController } from '../modules/auth/controllers/DisableTwoFactorController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
+import type { EndSignInController } from '../modules/auth/controllers/EndSignInController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
 import type { ListMembersController } from '../modules/members/controllers/ListMembersController.ts';
 import type { ListPeopleController } from '../modules/user-profile/controllers/ListPeopleController.ts';
@@ -102,6 +103,7 @@ declare module '@marmeon/router' {
     'auth.register.store': { method: 'post'; path: '/register'; controller: typeof RegisterController };
     'auth.security': { method: 'get'; path: '/settings/security'; controller: typeof ShowSecurityController };
     'auth.sensitive': { method: 'get'; path: '/settings/sensitive'; controller: typeof ShowSensitiveController };
+    'auth.sign-ins.destroy': { method: 'post'; path: '/settings/sign-ins/:signIn/end'; controller: typeof EndSignInController };
     'auth.tokens': { method: 'get'; path: '/settings/tokens'; controller: typeof ShowAccessTokensController };
     'auth.tokens.create': { method: 'get'; path: '/settings/tokens/create'; controller: typeof ShowCreateAccessTokenController };
     'auth.tokens.destroy': { method: 'delete'; path: '/settings/tokens/:token'; controller: typeof RevokeAccessTokenController };
