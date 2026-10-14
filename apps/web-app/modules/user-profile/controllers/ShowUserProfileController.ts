@@ -29,12 +29,13 @@ export class ShowUserProfileController extends Controller {
 
   /** `user` is bound by the route (ProfileDirectory): a missing one never gets here — it is a 404. */
   async handle(ctx: HttpContext<Authenticated, { user: Profile }>) {
-    // The selected row goes to the view as it is — the migration's column types reach the view.
-    // Held back on purpose: the e-mail (owner only) and the last sign-in (shown as lastLoginAt).
+    // This route serves every confirmed account for any user, so only what the page shows leaves the server: an explicit
+    // list, never the row. The rest (a pending e-mail, locale, verification times) stays here, and so do the e-mail
+    // (owner only) and the last sign-in (shown as lastLoginAt).
     // The avatar as its public URL (the public disk serves it: raster images only, `nosniff`) — never the storage key.
     const { email, activity: login, links, avatar_path, ...user } = ctx.params.user;
+    const { public_id, name, bio, created_at } = user;
     const avatar = avatar_path ? this.#storage.disk('public').url(avatar_path) : null;
-    const { id: _id, ...profile } = user;
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
@@ -43,7 +44,10 @@ export class ShowUserProfileController extends Controller {
       // A function: a partial reload for other props (the activity poll) never asks the policy.
       // Without the integer `id` and the links' `user_id`: the page is addressed by `public_id`, the policies decide here.
       profile: async () => ({
-        ...profile,
+        public_id,
+        name,
+        bio,
+        created_at,
         avatar,
         links: (await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete'])).map(({ user_id: _owner, ...link }) => link),
       }),

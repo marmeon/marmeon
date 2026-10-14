@@ -82,6 +82,16 @@ describe('user-profile module', () => {
     await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', { email: null, isOwnProfile: false });
   });
 
+  it("sends another user's page only the fields it shows — never the rest of the row", async () => {
+    await app.make(UserRepository).requestEmailChange(alan.id, { email: 'new-alan@example.com', tokenHash: 'a'.repeat(64), expiresAt: new Date(Date.now() + 3_600_000) });
+    const props = (await as(ada).get(profile(alan)).assertOk()).page()!.props as { profile: Record<string, unknown> };
+    expect(Object.keys(props.profile).sort()).toEqual(['avatar', 'bio', 'created_at', 'links', 'name', 'public_id']);
+    for (const field of ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'locale', 'email_verified_at', 'first_verified_at']) {
+      expect(props.profile).not.toHaveProperty(field);
+    }
+    expect(JSON.stringify(props)).not.toContain('new-alan@example.com');
+  });
+
   it('carries the page object in full page loads too', async () => {
     await app.actingAs(ada).get(profile(ada)).assertOk().assertPage('user-profile/Show');
   });
