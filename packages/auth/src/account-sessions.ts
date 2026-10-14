@@ -4,6 +4,22 @@ import type { UserSessions } from '@marmeon/session';
 import type { RememberTokenStore } from './remember.ts';
 import { UserProvider, type AuthUserId } from './user.ts';
 
+/** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
+export function claimRefused(caller: string): Error {
+  return new Error(
+    `${caller}: UserProvider.updateSessionKey(id, key, expected) returned false for the key the session holds, which is still the stored one. ` +
+      'It must return true when key equals the stored key and expected matches it, even if no value changes (do not skip no-op writes or count only changed rows).',
+  );
+}
+
+/** The error for a provider whose `updateSessionKey()` does not answer with a boolean (the old contract). */
+export function notABoolean(caller: string): Error {
+  return new Error(
+    `${caller}: UserProvider.updateSessionKey(id, key, expected) must return whether it stored the key (compare-and-set: write only ` +
+      'when the stored key equals expected, in one statement). See docs/authentication.md#signing-out-other-devices-without-a-password.',
+  );
+}
+
 /**
  * Replaces the session key of the account `id` by a new random one, so every other session's fingerprint stops matching.
  * `expected` is a string or `null` (compare-and-set: only while the stored key is that, `conflict` otherwise), or `undefined` to
@@ -29,12 +45,7 @@ export async function rotateSessionKey(
     );
   const key = randomBytes(32).toString('base64url');
   const stored: unknown = await users.updateSessionKey(id as never, key, expected);
-  if (typeof stored !== 'boolean') {
-    throw new Error(
-      `${caller}: UserProvider.updateSessionKey(id, key, expected) must return whether it stored the key (compare-and-set: write only ` +
-        'when the stored key equals expected, in one statement). See docs/authentication.md#signing-out-other-devices-without-a-password.',
-    );
-  }
+  if (typeof stored !== 'boolean') throw notABoolean(caller);
   const credentials = await users.findById(id as never);
   if (!stored) {
     // Somebody else's key stands: the provider has to hand it back, or nothing here could tell a conflict from a lost write.

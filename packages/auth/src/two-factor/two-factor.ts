@@ -1,10 +1,12 @@
 import { RateLimiter } from '@marmeon/cache';
 import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
 import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session } from '@marmeon/session';
-import { Auth, AUTH_SESSION_KEYS, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
+import { claimRefused } from '../account-sessions.ts';
 import { AuthConfig } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
@@ -41,7 +43,9 @@ export type ConfirmError =
   | { readonly kind: 'not-started' }
   | { readonly kind: 'invalid-password' }
   | { readonly kind: 'invalid-code' }
-  | { readonly kind: 'throttled'; readonly retryAfter: number };
+  | { readonly kind: 'throttled'; readonly retryAfter: number }
+  /** The session ended while the factor was being set up (another device changed the password, `AccountSessions.end()`): nothing was stored. */
+  | { readonly kind: 'signed-out' };
 
 /** What the user needs to set up an authenticator app: the key to type, the `otpauth://` URI, and the QR code of it as one SVG path. */
 export interface TotpSetup {
@@ -77,6 +81,7 @@ export class TwoFactor {
   readonly #config: AuthConfig;
   readonly #clock: Clock;
   readonly #logger: Logger;
+  readonly #connections: Connections;
 
   constructor(
     auth: Auth,
@@ -94,6 +99,7 @@ export class TwoFactor {
     clock: Clock,
     logger: Logger,
     passkeys: SecondFactorPasskeys,
+    connections: Connections,
   ) {
     this.#auth = auth;
     this.#session = session;
@@ -110,6 +116,7 @@ export class TwoFactor {
     this.#clock = clock;
     this.#logger = logger;
     this.#passkeys = passkeys;
+    this.#connections = connections;
   }
 
   /**
@@ -238,8 +245,32 @@ export class TwoFactor {
     // Before the factor is on, so that a failure after this point leaves the factor off and the other devices out — never the factor on
     // and an old session alive. A remember-me token made between here and the update is refused by its date (`enabledSince`).
     await this.#auth[SIGN_OUT_OTHER_DEVICES](password);
-    const confirmed = await this.#store.confirm(id, step, await this.#encrypt(secret, id), recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
-    if (!confirmed) return err({ kind: 'not-started' });
+    const encrypted = await this.#encrypt(secret, id);
+    const hashes = recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode));
+    // The session is checked against the account in the transaction that stores the factor (with a session key, the account's row stays
+    // locked until the commit): a session that ended meanwhile stores nothing.
+    const stored = await this.#connections.transaction(async () => {
+      if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);
+      return ok(await this.#store.confirm(id, step, encrypted, hashes));
+    });
+    if (!stored.ok) {
+      // After the rollback: ends the session for good. A session that still fits means the claim itself failed.
+      if (await this.#auth[ACCOUNT_STILL_CLAIMED]()) throw claimRefused('twoFactor.confirm()');
+      return err(stored.error);
+    }
+    if (!stored.value) return err({ kind: 'not-started' });
+    // Once more now that the factor is committed, with a fresh read and no lock (also for an account without a session key, whose row
+    // could not be locked): an ending that landed in between takes the factor out again. Before the second sign-out below, which
+    // writes the hash anew.
+    if (!(await this.#auth[ACCOUNT_STILL_CLAIMED]())) {
+      try {
+        await this.#store.removeTotp(id, { lastFactor: (await this.#state.factors(id)).every((factor) => factor === 'totp') });
+      } catch (error) {
+        this.#logger.error('Two-factor authentication was turned on for a session that had ended, and taking it out again failed: the factor may be on without its owner having set it up', { user: id, error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+      return err({ kind: 'signed-out' });
+    }
     // Once more, now that the factor is committed: a session or remember-me token made in the window between the first sign-out and the
     // commit (its sign-in read "no factor") dies here. Later sign-ins see the factor and are held back. This device's token goes too,
     // as after a password change: the next sign-in makes a new one after the code.
@@ -254,7 +285,7 @@ export class TwoFactor {
     this.#cookies.delete(this.#config.rememberCookie);
     // The state must see the factor, else sign-in would never ask for it: a state bound to something else than the store fails closed here.
     if (!(await this.#state.factors(id)).includes('totp')) {
-      await this.#store.removeTotp(id, { lastFactor: first });
+      await this.#store.removeTotp(id, { lastFactor: (await this.#state.factors(id)).every((factor) => factor === 'totp') });
       throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
     }
     // Only the first factor proves anything about this session: a further one, set up with just the password, must not stand for the one already there.

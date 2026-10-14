@@ -5,7 +5,8 @@ import { Connections } from '@marmeon/database';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session } from '@marmeon/session';
-import { Auth, AUTH_SESSION_KEYS, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
+import { claimRefused } from '../account-sessions.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
 import { AuthConfig } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
@@ -59,7 +60,9 @@ export type RegisterError =
   | { readonly kind: 'invalid-password' }
   | { readonly kind: 'throttled'; readonly retryAfter: number }
   | { readonly kind: 'limit' }
-  | { readonly kind: 'duplicate' };
+  | { readonly kind: 'duplicate' }
+  /** The session ended while the passkey was being added (another device changed the password, `AccountSessions.end()`): nothing was stored. */
+  | { readonly kind: 'signed-out' };
 
 /** What a settings page lists of a passkey. */
 export interface PasskeySummary {
@@ -202,6 +205,8 @@ export class Passkeys implements SecondFactorPasskeys {
     // Before the factor exists, so that a failure after this point leaves it off and the other devices out — never the factor on and an old session alive.
     if (first) await this.#auth[SIGN_OUT_OTHER_DEVICES](password!);
     const created = await this.#connections.transaction(async () => {
+      // First, so the account's row is locked until the commit: a session that ended meanwhile stores no passkey.
+      if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);
       const result = await this.#store.create({ userId: id, userHandle: handle, name: cleanName, ...verified.value });
       if (result.ok && recoveryCodes !== null) {
         await this.#twoFactorStore.replaceRecoveryCodes(id, recoveryCodes.map((code) => hashRecoveryCode(id, code)));
@@ -210,7 +215,23 @@ export class Passkeys implements SecondFactorPasskeys {
       }
       return result; // an err rolls the transaction back
     });
-    if (!created.ok) return err({ kind: 'duplicate' });
+    if (!created.ok) {
+      if (created.error.kind !== 'signed-out') return err({ kind: 'duplicate' });
+      // After the rollback: ends the session for good. A session that still fits means the claim itself failed.
+      if (await this.#auth[ACCOUNT_STILL_CLAIMED]()) throw claimRefused('passkeys.register()');
+      return err(created.error);
+    }
+    // Once more now that the passkey is committed, with a fresh read and no lock (also for an account without a session key, whose row
+    // could not be locked): an ending that landed in between takes it out again. Before the second sign-out below, which writes the hash anew.
+    if (!(await this.#auth[ACCOUNT_STILL_CLAIMED]())) {
+      try {
+        await this.#store.remove(id, created.value.id, { lastFactorAllowed: true });
+      } catch (error) {
+        this.#logger.error('A passkey was registered for a session that had ended, and taking it out again failed: the passkey may be on without its owner having added it', { user: id, error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+      return err({ kind: 'signed-out' });
+    }
 
     if (first) {
       // Once more, now that the factor is committed: a session or token made in the window since the first sign-out dies here.

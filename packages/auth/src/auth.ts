@@ -3,7 +3,7 @@ import { afterCommit, afterRollback, err, EventDispatcher, Logger, ok, type Resu
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
-import { AccountSessions, rotateSessionKey } from './account-sessions.ts';
+import { AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -61,6 +61,15 @@ export const READ_PENDING = Symbol('marmeon.auth.readPending');
 
 /** Signs out every other device without a second password check (package-internal): `TwoFactor.confirm()` has checked the password itself. */
 export const SIGN_OUT_OTHER_DEVICES = Symbol('marmeon.auth.signOutOtherDevices');
+
+/**
+ * Checks this session against the account, in the transaction of the caller (package-internal): `TwoFactor.confirm()` and
+ * `Passkeys.register()` call it as the first step of the transaction that stores a new factor.
+ */
+export const CLAIM_ACCOUNT = Symbol('marmeon.auth.claimAccount');
+
+/** The check of `CLAIM_ACCOUNT` without the lock (package-internal): runs after every commit of a factor, and after a rollback that `CLAIM_ACCOUNT` asked for. */
+export const ACCOUNT_STILL_CLAIMED = Symbol('marmeon.auth.accountStillClaimed');
 
 /** Counts a wrong second factor against the pending sign-in (package-internal): the failures so far, or `undefined` without one. The fifth drops it. */
 export const RECORD_PENDING_FAILURE = Symbol('marmeon.auth.recordPendingFailure');
@@ -408,14 +417,57 @@ export class Auth {
     const rotated = await rotateSessionKey(this.#users, idOf(user), verified.sessionKey ?? null, 'auth.updateSessionKey()');
     if (rotated.kind === 'conflict') {
       // The key is not the one this request checked: this session is over, and so is this device's token.
-      await this.#forgetDevice();
-      this.#session.invalidate();
-      this.#user = Promise.resolve(undefined);
-      this.#verified = undefined;
+      await this.#end();
       return false;
     }
     this.#anchor({ ...verified, sessionKey: rotated.key });
     return true;
+  }
+
+  /**
+   * Whether this session still fits the account, decided inside the transaction that stores a factor: `false` means it ended meanwhile
+   * (`AccountSessions.end()`, a password change or a key rotation elsewhere) and the caller rolls back. It ends nothing itself — the
+   * caller runs `ACCOUNT_STILL_CLAIMED` after the rollback, so that dropping the device's remember-me token is not rolled back too.
+   * Invariant: a factor stays only while the session still fits the account. With a provider that has `updateSessionKey()` and an
+   * account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
+   * transaction), so an ending cannot land between this check and the factor. A `null` key is never rotated and cannot be locked
+   * (a rotation would sign the other devices out). Every ending writes the account's row (the key, the hash or the row itself), so a
+   * fresh read sees each ending that committed before it.
+   */
+  async [CLAIM_ACCOUNT](): Promise<boolean> {
+    const verified = this.#requireVerified();
+    if (typeof this.#users.updateSessionKey === 'function' && typeof verified.sessionKey === 'string') {
+      // The same key, compare-and-set: writes nothing new, but takes the row's lock until the commit.
+      const held: unknown = await this.#users.updateSessionKey(idOf(verified.user) as never, verified.sessionKey, verified.sessionKey);
+      if (typeof held !== 'boolean') throw notABoolean('Auth');
+      if (!held) return false;
+    }
+    return this.#fits(verified);
+  }
+
+  /**
+   * The check of `CLAIM_ACCOUNT` without a lock: the whole fingerprint (key, hash, row) is read afresh, and a session that no longer fits
+   * is signed out (outside any transaction, so it stays ended). Callers run it after the factor is committed — it also covers an
+   * account without a session key and a provider whose compare-and-set takes no lock for this transaction — and after a rollback
+   * that `CLAIM_ACCOUNT` asked for. `false`: the session ended meanwhile.
+   */
+  async [ACCOUNT_STILL_CLAIMED](): Promise<boolean> {
+    if (await this.#fits(this.#requireVerified())) return true;
+    await this.#end();
+    return false;
+  }
+
+  async #fits(verified: Credentials): Promise<boolean> {
+    const found = await this.#users.findById(idOf(verified.user) as never);
+    return found !== undefined && equal(sessionFingerprint(found), sessionFingerprint(verified));
+  }
+
+  /** Ends this session and this device's remember-me token, as `logout()` does without the event. */
+  async #end(): Promise<void> {
+    await this.#forgetDevice();
+    this.#session.invalidate();
+    this.#user = Promise.resolve(undefined);
+    this.#verified = undefined;
   }
 
   /** Binds this session to `credentials`, which are built from what this request verified and wrote itself (see `#verified`). */

@@ -492,6 +492,10 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 
 `User` is `Row<'users'>` in the starter kit's `users.ts`: the secret columns are not part of it.
 
+`updateSessionKey(id, key, expected)` must answer `true` when `key` equals the stored key and `expected` matches it: setting up a second
+factor calls it with the same key twice to lock the account's row until the factor is stored. A provider that skips writes that change
+nothing, or counts only rows whose value changed, must still return `true` there; otherwise `confirm()` and `register()` throw an error that names this rule.
+
 `updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. Without
 `updateSessionKey` on the provider it throws an error that names the method, and it throws as well when `findById()` does not hand
 the new key back, or when `updateSessionKey()` of the provider does not answer with a boolean (an older provider, which took no

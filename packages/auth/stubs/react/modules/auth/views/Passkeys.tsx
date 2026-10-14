@@ -49,6 +49,8 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
         return setError({ message: t('passkeys.cancelled') });
       }
       const done = await postJson(route('auth.passkeys.store'), { response: credential, name: name.trim() || t('passkeys.name_default'), password });
+      // The session ended while the passkey was being added (nothing was stored): the sign-in is the next page.
+      if (done.status === 401) return window.location.assign(route('auth.login'));
       if (!done.ok) return fail(done);
       setPassword('');
       if (Array.isArray(done.data.recoveryCodes)) setCodes(done.data.recoveryCodes as string[]);

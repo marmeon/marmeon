@@ -6,6 +6,7 @@ import application from '../../bootstrap/app.ts';
 import { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
+import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
@@ -253,5 +254,36 @@ describe('passkeys', () => {
     app.queue.assertListenerQueued(NotifyAboutNewSignIn, (payload) => payload.userId === ada.id && payload.via === 'passkey');
     await app.queue.work();
     app.notifications.assertSent({ type: 'user', id: ada.id }, NewSignInNotification);
+  });
+});
+
+describe('a session that ends while a passkey is added', () => {
+  it('stores no passkey and answers 401, so the page can send the user to the sign-in', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const login = await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me');
+    const cookie = login.cookie(SESSION)!;
+    const options = await app.withCookie(SESSION, cookie).post('/settings/passkeys/options', { json: {} }).assertOk();
+    const response = device().register(options.json() as never);
+    // The moment after the other devices are signed out, an operator ends the account's sessions.
+    const write = UserRepository.prototype.updatePasswordHash;
+    const spy = vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash) {
+      await write.call(this, id, hash);
+      await this.updateSessionKey(id, 'e'.repeat(40), undefined);
+    });
+    try {
+      await app.withCookie(SESSION, cookie).post('/settings/passkeys', { json: { response, name: 'Laptop', password: 'password' } }).assertStatus(401);
+    } finally {
+      spy.mockRestore();
+    }
+    await app.assertDatabaseCount('passkeys', 0);
+  });
+
+  it('adds a passkey on an account with a real session_key and keeps the key', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const key = 'k'.repeat(43);
+    await app.make(UserRepository).updateSessionKey(ada.id, key, null);
+    await enrol(ada);
+    await app.assertDatabaseCount('passkeys', 1);
+    expect((await app.make(UserRepository).findById(ada.id))?.sessionKey).toBe(key);
   });
 });

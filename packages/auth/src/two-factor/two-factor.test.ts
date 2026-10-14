@@ -42,6 +42,24 @@ class MemoryUsers implements UserProvider<TestUser> {
   }
 }
 
+/** A provider that stores a session key, so `confirm()` can lock the account's row. */
+class KeyedUsers extends MemoryUsers {
+  readonly keys = new Map<number, string>();
+  override async findById(id: number): Promise<Credentials<TestUser> | undefined> {
+    const found = await super.findById(id);
+    return found && { ...found, sessionKey: this.keys.get(Number(id)) ?? null };
+  }
+  override async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
+    const found = await super.findForLogin(email);
+    return found && { ...found, sessionKey: this.keys.get(found.user.id) ?? null };
+  }
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    if (expected !== undefined && (this.keys.get(Number(id)) ?? null) !== expected) return false;
+    this.keys.set(Number(id), key);
+    return true;
+  }
+}
+
 const events: object[] = [];
 class RecordEvent {
   handle(event: object) {
@@ -163,8 +181,8 @@ const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState } = {}) {
-  const users = new MemoryUsers();
+async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState; users?: MemoryUsers } = {}) {
+  const users = options.users ?? new MemoryUsers();
   const appKey = env.APP_KEY ?? generateKey();
   const application = await createApplication({
     root: import.meta.dirname,
@@ -623,13 +641,14 @@ describe('TwoFactor: the errors of confirm()', () => {
     const booted = await boot();
     const b = booted.browser();
     await b.login();
-    const kinds = new Set<ConfirmError['kind']>(['not-started', 'invalid-password', 'invalid-code', 'throttled']);
+    const kinds = new Set<ConfirmError['kind']>(['not-started', 'invalid-password', 'invalid-code', 'throttled', 'signed-out']);
     const kindOf = (error: ConfirmError): string => {
       switch (error.kind) {
         case 'not-started':
         case 'invalid-password':
         case 'invalid-code':
         case 'throttled':
+        case 'signed-out':
           return error.kind;
         default:
           return error satisfies never;
@@ -1221,5 +1240,173 @@ describe('twoFactor() middleware', () => {
     walk(join(root, 'stubs'));
     const users = files.filter((file) => /\btwoFactor\(\s*\{/.test(readFileSync(file, 'utf8')));
     expect(users.map((file) => file.slice(root.length))).toEqual(['src/two-factor/middleware.ts']);
+  });
+});
+
+describe('TwoFactor: the session must still fit the account when the factor is stored', () => {
+  /** Runs `change` right after the password hash is written to sign the other devices out — the moment another device could act. */
+  function interleave(users: MemoryUsers, change: () => void | Promise<void>) {
+    const write = users.updatePasswordHash.bind(users);
+    users.updatePasswordHash = async (id, hash) => {
+      await write(id, hash);
+      await change();
+    };
+  }
+
+  it('stores nothing and signs the session out when the password was changed by another device meanwhile', async () => {
+    const booted = await boot();
+    const other = await booted.application.container.make(Hasher).make('changed elsewhere');
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    interleave(booted.users, () => void (booted.users.rows.get(1)!.hash = other));
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
+    expect(await booted.store.factors(1)).toEqual([]);
+    expect(await booted.store.remainingRecoveryCodes(1)).toBe(0);
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(events.some((event) => event instanceof TwoFactorEnabled)).toBe(false);
+  });
+
+  it('stores nothing when the account\'s sessions were ended meanwhile, on a provider that keeps a session key', async () => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    interleave(users, () => void users.keys.set(1, 'ended-elsewhere'));
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
+    expect(await booted.store.factors(1)).toEqual([]);
+    expect(await b.tf('who')).toEqual({ id: null });
+  });
+
+  it('locks the account\'s row when it has a session key: the factor is stored, the key stays, this session stays', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const write = vi.spyOn(users, 'updateSessionKey');
+    const { b } = await enable(booted);
+    expect(write).toHaveBeenCalledWith(1, 'k'.repeat(43), 'k'.repeat(43)); // the claim: the same key, compare-and-set
+    expect(users.keys.get(1)).toBe('k'.repeat(43));
+    expect(await booted.store.factors(1)).toEqual(['totp']);
+    expect(await b.tf('who')).toEqual({ id: 1 });
+  });
+
+  it('stops at the lock when the session key was replaced meanwhile: nothing is stored and nothing had to be taken out again', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const removal = vi.spyOn(TwoFactorStore.prototype, 'removeTotp');
+    const write = users.updatePasswordHash.bind(users);
+    users.updatePasswordHash = async (id, hash) => {
+      await write(id, hash);
+      users.keys.set(1, 'e'.repeat(43)); // AccountSessions.end() lands right after the other devices were signed out
+    };
+    try {
+      expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
+      expect(removal, 'the in-transaction claim caught it, not the check after the commit').not.toHaveBeenCalled();
+    } finally {
+      removal.mockRestore();
+    }
+    expect(await booted.store.factors(1)).toEqual([]);
+    expect(await booted.store.remainingRecoveryCodes(1)).toBe(0);
+    expect(await b.tf('who')).toEqual({ id: null });
+  });
+
+  it('throws, and names the rule, when updateSessionKey(id, k, k) says false for the key that is stored', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    users.updateSessionKey = async () => false; // a provider that counts only rows whose value changed
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: expect.stringContaining('must return true when key equals the stored key') });
+    expect(await booted.store.factors(1)).toEqual([]);
+  });
+
+  it('answers a provider whose updateSessionKey() does not return a boolean with an error naming the remedy', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    users.updateSessionKey = (async () => undefined) as never;
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: expect.stringContaining('must return whether it stored the key') });
+    expect(await booted.store.factors(1)).toEqual([]);
+  });
+
+  it('takes the factor out again when the sessions were ended after the transaction, on an account without a session key', async () => {
+    const users = new KeyedUsers(); // its key is null: nothing to lock, so the check is repeated after the commit
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const confirm = TwoFactorStore.prototype.confirm;
+    const spy = vi.spyOn(TwoFactorStore.prototype, 'confirm').mockImplementation(async function (this: TwoFactorStore, ...args) {
+      const stored = await confirm.apply(this, args);
+      users.keys.set(1, 'ended-elsewhere'); // AccountSessions.end() commits between the check and the end of the confirmation
+      return stored;
+    });
+    try {
+      expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await booted.store.factors(1)).toEqual([]);
+    expect(await booted.store.remainingRecoveryCodes(1)).toBe(0);
+    expect(await b.tf('who')).toEqual({ id: null });
+  });
+
+  it('checks a provider without updateSessionKey after the commit too', async () => {
+    const booted = await boot();
+    const other = await booted.application.container.make(Hasher).make('changed elsewhere');
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const confirm = TwoFactorStore.prototype.confirm;
+    const spy = vi.spyOn(TwoFactorStore.prototype, 'confirm').mockImplementation(async function (this: TwoFactorStore, ...args) {
+      const stored = await confirm.apply(this, args);
+      booted.users.rows.get(1)!.hash = other;
+      return stored;
+    });
+    try {
+      expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await booted.store.factors(1)).toEqual([]);
+  });
+
+  it('confirms as before when nothing happened, signing the other devices out and keeping this one', async () => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const elsewhere = booted.browser();
+    await elsewhere.login();
+    const { b } = await enable(booted);
+    expect(await booted.store.factors(1)).toEqual(['totp']);
+    expect(await b.tf('who')).toEqual({ id: 1 });
+    expect(await elsewhere.tf('who')).toEqual({ id: null });
+  });
+
+  it('adds a kind to ConfirmError that an exhaustive switch has to handle', () => {
+    const label = (error: ConfirmError): string => {
+      switch (error.kind) {
+        case 'not-started':
+        case 'invalid-password':
+        case 'invalid-code':
+        case 'throttled':
+          return error.kind;
+        default: {
+          // @ts-expect-error `signed-out` is not handled above
+          const unhandled: never = error;
+          return unhandled;
+        }
+      }
+    };
+    expect(label({ kind: 'signed-out' })).toEqual({ kind: 'signed-out' });
   });
 });
