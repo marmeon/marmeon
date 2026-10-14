@@ -265,6 +265,33 @@ the next page loads in full. A sign-out from the client side answers `409` with 
 that is the full reload, not an error. The other tabs of the same browser follow by themselves. The
 [client features](client-features.md#the-browsers-storage-on-sign-out) page explains both, and how to keep the storage.
 
+## How long a sign-in lasts
+
+Four settings bound a sign-in, each from its own side:
+
+| Setting | Default | Limits |
+| --- | --- | --- |
+| `SESSION_LIFETIME` | 120 minutes | Inactivity: the time since the last request |
+| `AUTH_SESSION_MAX_HOURS` | 24 hours | The absolute duration of a sign-in |
+| `AUTH_REMEMBER_DAYS` | 30 days | [Remember me](#remember-me) |
+| `twoFactor()` `maxAge` | 24 hours | The [second factor](two-factor-authentication.md#requiring-it) |
+
+`SESSION_LIFETIME` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
+is the longest a sign-in lasts, however active the user is: a session signed in by password or passkey ends that many hours
+after the sign-in, and the user types the password again. It matches the 24 hours that NIST SP 800-63B asks of a session at
+assurance level AAL2, and the absolute lifetime of ASVS 7.3.2. Sessions guests use are not affected.
+
+A user who ticked "Keep me signed in" is not asked: when the limit is reached, a remember-me cookie that is still valid signs
+the user in again in the same request, with a new limit. The session starts afresh, with new data, no old input and a new CSRF
+token. A session restored this way never outlives its token, so the whole stay is bound by `AUTH_REMEMBER_DAYS`. That sign-in is
+AAL1, not a re-authentication at AAL2: AAL2 holds on routes behind [`twoFactor()`](two-factor-authentication.md#requiring-it),
+which asks for a fresh proof. Confirming the password, a second factor or a new password does not move the limit.
+
+A session that was open when the app was updated has no sign-in time: its limit starts with its next request, so an update signs
+nobody out. A time the session holds that cannot be read, or that lies more than a minute in the future (servers whose clocks
+differ), ends the sign-in. Once the limit is reached, requests that only read (islands) cannot sign in again: they see a guest
+until the page's own request does.
+
 ## Remember me
 
 Remember me is a convenience each user chooses, and the starter kit's checkbox is not ticked. It signs in without the password
@@ -281,7 +308,7 @@ lasts longer. `marmeon auth:prune-tokens` (the starter kit schedules it daily) d
 `AUTH_REMEMBER_DAYS` days, all of them with `0`, so raising the value again does not bring old tokens back. A value above 30 stops
 the boot.
 
-The cookie is consulted only when the session has no user. It holds a selector and a secret validator. The `remember_tokens`
+The cookie is consulted when the session has no user, and when the session's [sign-in has reached its limit](#how-long-a-sign-in-lasts). It holds a selector and a secret validator. The `remember_tokens`
 table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. A table of your
 own needs what the starter kit's migration gives it: a unique `selector` of up to 32 characters, the validator hashes as
 64-character `secret()` columns, and `user_id` with `cascadeOnDelete()`, so a deleted user's tokens go with the account.
@@ -664,6 +691,7 @@ listeners.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
+| `AUTH_SESSION_MAX_HOURS` | `24` | The longest a sign-in lasts in hours, however active: 1 to 720. A valid remember-me cookie signs in again. See [how long a sign-in lasts](#how-long-a-sign-in-lasts). |
 | `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in: 0 to 30. `0` turns remember me off: no cookie signs in. |
 | `AUTH_REMEMBER_COOKIE` | `remember_web` | The name of the remember-me cookie: letters, digits, `_` and `-`. |
 | `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password counts for `confirmedPassword()`. |

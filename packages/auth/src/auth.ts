@@ -24,11 +24,18 @@ export const AUTH_SESSION_KEYS = {
   confirmedAt: '_auth_confirmed_at',
   /** Signed in by the remember-me cookie, not by a password. */
   viaRemember: '_auth_via_remember',
+  /** When the sign-in happened, in Unix seconds — the start of its absolute lifetime (`AUTH_SESSION_MAX_HOURS`); no activity extends it. */
+  signedInAt: '_auth_signed_in_at',
+  /** For a session restored by the remember-me cookie: when its token ends, in Unix seconds — the session never outlives it. */
+  rememberUntil: '_auth_remember_until',
   /** A correct password whose account still owes a second factor — not a sign-in (see {@link PendingSecondFactor}). */
   pending: '_auth_pending',
   /** When this session proved a second factor, in Unix seconds — for the middleware that asks for one. */
   twoFactorAt: '_auth_two_factor_at',
 } as const;
+
+/** How far ahead of this server's clock another server's sign-in time may lie, in seconds. */
+const CLOCK_SKEW_SECONDS = 60;
 
 /** How long a correct password waits for the second factor, in seconds. */
 export const PENDING_SECONDS = 300;
@@ -89,6 +96,8 @@ declare module '@marmeon/session' {
     _auth_password: string;
     _auth_confirmed_at: number;
     _auth_via_remember: boolean;
+    _auth_signed_in_at: number;
+    _auth_remember_until: number;
     _auth_pending: PendingSecondFactor;
     _auth_two_factor_at: number;
   }
@@ -463,7 +472,7 @@ export class Auth {
       return after;
     } catch (error) {
       // Fail closed: an error here (the second read of the factors, the removal of the token) must not leave the sign-in standing.
-      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt);
+      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil);
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
       this.#cookies.delete(this.#config.rememberCookie);
@@ -478,6 +487,7 @@ export class Auth {
     credentials: Credentials,
     { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions,
     via: LoginVia,
+    rememberUntil?: number,
   ): Promise<{ readonly token: string | undefined; announce(): Promise<void> }> {
     const { user } = credentials;
     const viaRemember = via === 'remember';
@@ -487,8 +497,11 @@ export class Auth {
     this.#session.forget(AUTH_SESSION_KEYS.twoFactorAt);
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
+    this.#session.put(AUTH_SESSION_KEYS.signedInAt, now());
     if (viaRemember) this.#session.put(AUTH_SESSION_KEYS.viaRemember, true);
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
+    if (viaRemember && rememberUntil !== undefined) this.#session.put(AUTH_SESSION_KEYS.rememberUntil, rememberUntil);
+    else this.#session.forget(AUTH_SESSION_KEYS.rememberUntil);
     let token: string | undefined;
     // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
     if (remember && !viaRemember && this.#config.remember) {
@@ -511,7 +524,7 @@ export class Auth {
    */
   #hold(credentials: Credentials, factors: readonly SecondFactor[], { remember = false }: LoginOptions, via: LoginVia): void {
     this.#session.regenerate();
-    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt] as const) {
+    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil] as const) {
       this.#session.forget(key);
     }
     this.#session.put(AUTH_SESSION_KEYS.pending, {
@@ -550,6 +563,16 @@ export class Auth {
       if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
     }
+    const signedInAt = this.#session.get(AUTH_SESSION_KEYS.signedInAt);
+    // Invariant: a sign-in ends at most `AUTH_SESSION_MAX_HOURS` after it began, however active; after that only a still-valid
+    // remember-me cookie signs in again, and `AUTH_REMEMBER_DAYS` bounds that. Unreadable times end it too (fail closed).
+    if (this.#lifetimeOver(signedInAt)) {
+      if (this.#session.readOnly) return undefined;
+      this.#session.invalidate();
+      return this.#fromRememberCookie();
+    }
+    // A session from before the lifetime was kept: its clock starts now, so a deploy signs nobody out.
+    if (signedInAt === undefined && !this.#session.readOnly) this.#session.put(AUTH_SESSION_KEYS.signedInAt, now());
     this.#verified = found;
     return found.user;
   }
@@ -574,6 +597,19 @@ export class Auth {
     };
     await afterRollback(end);
     await afterCommit(end);
+  }
+
+  /**
+   * Whether the sign-in is over: past its maximum, dated in the future (beyond {@link CLOCK_SKEW_SECONDS}, for servers whose clocks
+   * differ), its remember-me token over, or any of those times unreadable. A missing sign-in time is no end (see the caller).
+   */
+  #lifetimeOver(signedInAt: unknown): boolean {
+    const at = now();
+    if (signedInAt !== undefined) {
+      if (typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || signedInAt > at + CLOCK_SKEW_SECONDS || at - signedInAt >= this.#config.sessionMaxSeconds) return true;
+    }
+    const until = this.#session.get(AUTH_SESSION_KEYS.rememberUntil);
+    return until !== undefined && (typeof until !== 'number' || !Number.isFinite(until) || until <= at);
   }
 
   async #fromRememberCookie(): Promise<AuthUser | undefined> {
@@ -623,8 +659,9 @@ export class Auth {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
-    if (device.cookie) this.#setCookie(device.cookie, new Date(Math.min(device.expiresAt.getTime(), cap)));
-    await (await this.#login(found, {}, 'remember')).announce();
+    const until = Math.min(device.expiresAt.getTime(), cap);
+    if (device.cookie) this.#setCookie(device.cookie, new Date(until));
+    await (await this.#login(found, {}, 'remember', Math.floor(until / 1000))).announce();
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.

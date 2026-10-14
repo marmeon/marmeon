@@ -1105,7 +1105,7 @@ describe('twoFactor() middleware', () => {
 
   it('an area without maxAge keeps the proof for 24 hours, then asks again', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
-    const booted = await boot({ SESSION_LIFETIME: '20160' });
+    const booted = await boot({ SESSION_LIFETIME: '20160', AUTH_SESSION_MAX_HOURS: '720' });
     const { b, secret: key } = await enable(booted);
     vi.setSystemTime(inSeconds(86_400 - 1));
     expect(await b.visit('/area')).toMatchObject({ status: 200 });
@@ -1118,7 +1118,7 @@ describe('twoFactor() middleware', () => {
 
   it('takes a maxAge longer than the default', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
-    const booted = await boot({ SESSION_LIFETIME: '20160' });
+    const booted = await boot({ SESSION_LIFETIME: '20160', AUTH_SESSION_MAX_HOURS: '720' });
     const { b } = await enable(booted);
     vi.setSystemTime(inSeconds(3 * 86_400));
     expect(await b.visit('/area-week')).toMatchObject({ status: 200 });

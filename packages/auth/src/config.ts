@@ -3,6 +3,7 @@ import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 const whole = (fallback: number, min: number) => env.integer().min(min).default(fallback);
 const DAYS = 'a whole number of days (0 keeps unconfirmed accounts)';
 const REMEMBER = 'a whole number of days from 0 (off) to 30';
+const HOURS = 'a whole number of hours from 1 to 720';
 
 export const AuthConfig = defineConfig('auth', {
   env: env({
@@ -12,6 +13,12 @@ export const AuthConfig = defineConfig('auth', {
      * `auth:prune-tokens` deletes every token older than it. At most 30. See `docs/authentication.md#remember-me`.
      */
     AUTH_REMEMBER_DAYS: env.integer(REMEMBER).min(0, REMEMBER).max(30, REMEMBER).default(30),
+    /**
+     * The longest a sign-in lasts, in hours, however active — then the password is asked again, or a valid "Keep me signed in"
+     * cookie signs in anew. A session older than an app's first start with this setting counts from its next request.
+     * See `docs/authentication.md#how-long-a-sign-in-lasts`.
+     */
+    AUTH_SESSION_MAX_HOURS: env.integer(HOURS).min(1, HOURS).max(720, HOURS).default(24),
     /** The remember-me cookie (encrypted, HttpOnly). */
     AUTH_REMEMBER_COOKIE: env.string().regex(/^[\w-]+$/).default('remember_web'),
     /** How long a password confirmation counts for `confirmedPassword()` routes, in seconds (default 15 minutes). */
@@ -50,6 +57,7 @@ export const AuthConfig = defineConfig('auth', {
     rememberDays: e.AUTH_REMEMBER_DAYS,
     /** Whether "Keep me signed in" is on (`AUTH_REMEMBER_DAYS` above 0). */
     remember: e.AUTH_REMEMBER_DAYS > 0,
+    sessionMaxSeconds: e.AUTH_SESSION_MAX_HOURS * 3600,
     rememberCookie: e.AUTH_REMEMBER_COOKIE,
     appName: e.APP_NAME,
     passwordTimeout: e.AUTH_PASSWORD_TIMEOUT,

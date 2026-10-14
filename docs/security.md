@@ -237,6 +237,9 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `APP_URL=https://…`, and a fresh `APP_KEY` per environment, kept in the server's secrets.
 - `contentSecurityPolicy()` in `bootstrap/app.ts`, which a new app has. New inline scripts take `ctx.nonce()`. With a `styleSrc`,
   classes instead of `style` props, and `@marmeon/react/styles.css` imported in the client entry.
+- `AUTH_SESSION_MAX_HOURS` as long as you accept a stolen session to work (24 hours by default), and `AUTH_REMEMBER_DAYS` for "Keep me signed in" (30 at most, 0 turns it off).
+  [How long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists both. An app that needs AAL2 sets `SESSION_LIFETIME=60`
+  (at most an hour of inactivity); the silent sign-in by a remember-me cookie is AAL1, and AAL2 holds only behind `twoFactor()`.
 - `verified()` after `authenticate()` on every route of your own that signed-in users reach.
 - Every route of your own has a decision that you chose: a policy for a record, `everyone` only when anyone the middleware lets
   through may call it. `marmeon route:list` shows the `ACCESS` of each route.
