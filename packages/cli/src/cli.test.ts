@@ -40,17 +40,17 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(code).toBe(0);
     // Execution order: global first, then the web group (cookies before the session), the route's own last.
     expect(stdout).toMatch(
-      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+none\s+ShowUserProfileController/,
+      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+everyone\s+ShowUserProfileController/,
     );
-    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, authenticate:api, abilities:users:read\s+none\s+ListUsersController/);
+    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, authenticate:api, abilities:users:read\s+everyone\s+ListUsersController/);
     expect(stdout).toMatch(/\n\d+ routes\n$/); // the count grows with the app
   });
 
-  it('shows who may call each route: a policy check, none for an undecided route, framework for the framework’s own', () => {
+  it('shows who may call each route: a policy check, everyone for an open one, framework for the framework’s own (none: route-list.test.ts)', () => {
     const { stdout } = marmeon(webApp, ['route:list']);
     expect(stdout).toMatch(/^METHOD\s+PATH\s+NAME\s+GROUP\s+MIDDLEWARE\s+ACCESS\s+ACTION$/m);
     expect(stdout).toMatch(/PUT\s+\/users\/:user\s+user-profile\.update\s.*\scan ProfilePolicy\.update\(user\)\s+UpdateUserProfileController/);
-    expect(stdout).toMatch(/GET\s+\/users\/:user\s+user-profile\.show\s.*\snone\s+ShowUserProfileController/);
+    expect(stdout).toMatch(/GET\s+\/users\/:user\s+user-profile\.show\s.*\severyone\s+ShowUserProfileController/);
     expect(stdout).toMatch(/GET\s+\/_marmeon\/live\s.*\sframework\s+LiveStreamController/);
   });
 
@@ -257,7 +257,7 @@ describe('marmeon route:types (access problems)', { timeout: 30_000 }, () => {
     const { code, stderr } = marmeon(app, ['route:types']);
     expect(code).toBe(1);
     expect(stderr).toContain('GET  /about  about  Closure  modules/pages/routes.ts:4');
-    expect(stderr).toContain('docs/authorization.md#authorizing-requests');
+    expect(stderr).toContain('docs/authorization.md#every-route-decides');
     expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'about'");
   });
 
@@ -267,6 +267,21 @@ describe('marmeon route:types (access problems)', { timeout: 30_000 }, () => {
     const { code, stderr } = marmeon(app, ['route:types', '--check']);
     expect(code).toBe(1);
     expect(stderr).toContain('/about');
+  });
+
+  it('refuses marmeon start --workers=2 once, in the primary, before any worker is forked', () => {
+    const app = appWithRoute(undecided);
+    const { MARMEON_CHILD: _child, NODE_ENV: _env, ...parent } = process.env;
+    const result = spawnSync(process.execPath, [bin, 'start', '--workers=2'], {
+      cwd: app,
+      encoding: 'utf8',
+      timeout: 20_000,
+      env: { ...parent, APP_KEY: generateKey(), APP_NAME: 'Access', APP_URL: 'https://example.test', HOST: '127.0.0.1', PORT: '0', NODE_ENV: 'production', NO_COLOR: '1' },
+    });
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).toBe(1);
+    expect(output.split('does not say who may call it').length - 1).toBe(1);
+    expect(output).not.toContain('Starting 2 workers');
   });
 
   it('passes once the route says everyone may call it', () => {
@@ -733,7 +748,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
         "import { join } from 'node:path';",
         "import { setTimeout as sleep } from 'node:timers/promises';",
         "import { defineApplication, defineModule, Logger, type Application } from '@marmeon/core';",
-        "import { defineRoutes, view } from '@marmeon/http';",
+        "import { defineRoutes, everyone, view } from '@marmeon/http';",
         "import { Greeter } from '../services/Greeter.ts';",
         '// The logger as a service takes it while the app boots — its warnings later on are said.',
         'let bootLogger: Logger | undefined;',
@@ -758,9 +773,9 @@ describe('marmeon start', { timeout: 30_000 }, () => {
         '    process.on(signal, listener);',
         '  }',
         '}',
-        "const slow = defineModule({ name: 'slow', apiRoutes: defineRoutes((Route) => { Route.get('/slow', async () => { await sleep(600); return { pid: process.pid }; }); Route.get('/warn', () => { bootLogger?.warn('warned at runtime'); return { pid: process.pid }; }); Route.get('/signal-exit', () => { loadSignalExit(); return { pid: process.pid }; }); }) });",
+        "const slow = defineModule({ name: 'slow', apiRoutes: defineRoutes((Root) => { const Route = Root.authorize(everyone); Route.get('/slow', async () => { await sleep(600); return { pid: process.pid }; }); Route.get('/warn', () => { bootLogger?.warn('warned at runtime'); return { pid: process.pid }; }); Route.get('/signal-exit', () => { loadSignalExit(); return { pid: process.pid }; }); }) });",
         "// A page whose Suspense boundary fails after the shell (the staging probe's /lab/late-error).",
-        "const late = defineModule({ name: 'late', routes: defineRoutes((Route) => { Route.get('/late-error', () => view('lab/LateError', {})); }) });",
+        "const late = defineModule({ name: 'late', routes: defineRoutes((Root) => { const Route = Root.authorize(everyone); Route.get('/late-error', () => view('lab/LateError', {})); }) });",
         "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider], modules: [slow, late] });",
         '',
       ].join('\n'),

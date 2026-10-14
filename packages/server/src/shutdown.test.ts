@@ -9,7 +9,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { AfterResponse, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { AfterResponse, HttpServiceProvider } from '@marmeon/http';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { startServer } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
@@ -62,7 +63,7 @@ describe('stopping the server', () => {
       modules: [
         defineModule({
           name: 'deferred',
-          apiRoutes: defineRoutes((Route) => Route.post('/work', DeferController)),
+          apiRoutes: openRoutes((Route) => Route.post('/work', DeferController)),
         }),
       ],
     });
@@ -83,7 +84,7 @@ describe('stopping the server', () => {
       modules: [
         defineModule({
           name: 'hanging',
-          apiRoutes: defineRoutes((Route) => Route.post('/hang', HangController)),
+          apiRoutes: openRoutes((Route) => Route.post('/hang', HangController)),
         }),
       ],
     });
@@ -102,7 +103,7 @@ describe('stopping the server', () => {
       discover: false,
       env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '0.6' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-      modules: [defineModule({ name: 'hello', apiRoutes: defineRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
+      modules: [defineModule({ name: 'hello', apiRoutes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
     });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;

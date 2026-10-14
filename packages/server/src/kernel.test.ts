@@ -1,7 +1,7 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@marmeon/core';
 import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { ServerConfig, ServerServiceProvider } from './provider.ts';
@@ -34,7 +34,7 @@ describe('createHttpKernel — container', async () => {
     discover: false,
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, RequestScopeProvider],
-    modules: [defineModule({ name: 'ids', routes: defineRoutes((Route) => Route.get('/id', ShowRequestIdController)) })],
+    modules: [defineModule({ name: 'ids', routes: openRoutes((Route) => Route.get('/id', ShowRequestIdController)) })],
   });
   const app = createHttpKernel(application);
 
@@ -103,7 +103,7 @@ describe('createHttpKernel — errors & logging', async () => {
       if (new URL(ctx.request.url).pathname === '/cookie-defer') throw new Error(`a terminate hook refused ${LEAKY_COOKIE}`);
     }
   }
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.get('/boom', () => {
       throw new Error('database password is hunter2 (postgres://app:hunter3@db/app)');
     });
@@ -244,7 +244,7 @@ describe('createHttpKernel — the request line at a level that discards it', as
     discover: false,
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SilentLoggingProvider],
-    modules: [defineModule({ name: 'users', routes: defineRoutes((Route) => Route.get('/users/:id', () => ({ ok: true }))) })],
+    modules: [defineModule({ name: 'users', routes: openRoutes((Route) => Route.get('/users/:id', () => ({ ok: true }))) })],
   });
   const redactor = application.container.make(Redactor);
   let built = 0;
@@ -284,7 +284,7 @@ describe('createHttpKernel — requests & responses', async () => {
     }
   }
 
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.get('/drafts/:id', (ctx) => ({ id: ctx.params.id })).name('drafts.show');
     Route.post('/drafts', SaveDraftController);
     Route.put('/drafts/:id', (ctx) => ctx.input());
@@ -398,12 +398,12 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
     modules: [
       defineModule({
         name: 'groups',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/page', () => 'page');
           Route.get('/admin', () => abort(403));
           Route.get('/defer', DeferringController);
         }),
-        apiRoutes: defineRoutes((Route) => Route.get('/items', () => [])),
+        apiRoutes: openRoutes((Route) => Route.get('/items', () => [])),
       }),
     ],
   });
@@ -470,7 +470,7 @@ describe('createHttpKernel — shared props', async () => {
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     middleware: { web: [ShareTheme] },
-    modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/page', () => view('pages/Show', { title: 'own' }))) })],
+    modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => Route.get('/page', () => view('pages/Show', { title: 'own' }))) })],
   });
   const app = createHttpKernel(application, { debug: true });
 
@@ -489,7 +489,7 @@ describe('createHttpKernel — asset versioning', async () => {
     modules: [
       defineModule({
         name: 'pages',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/page', () => view('pages/Show', {}));
           Route.post('/save', () => ({ saved: true }));
         }),
@@ -536,7 +536,7 @@ describe('createHttpKernel — response copies', async () => {
     modules: [
       defineModule({
         name: 'pages',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/shared', () => SHARED);
           Route.get('/page', () => view('pages/Show', {}));
         }),

@@ -144,7 +144,7 @@ const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
  * Refuses the start when a route does not say who may call it, or lets everyone call it and binds a record by its key. It
  * holds in every environment, production included: an app that starts with such a route is open until someone notices —
  * fail closed, as for a route name given twice. Paths in the message go through the redactor: a webhook's secret segment
- * does not reach the logs. See docs/authorization.md#authorizing-requests.
+ * does not reach the logs. See docs/authorization.md#every-route-decides.
  */
 export function refuseUndecidedRoutes(application: Application): void {
   const problems = application.container.make(Router).accessProblems();

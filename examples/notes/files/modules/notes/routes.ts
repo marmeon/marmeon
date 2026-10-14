@@ -1,5 +1,5 @@
 import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { CreateNoteController } from './controllers/CreateNoteController.ts';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { EditNoteController } from './controllers/EditNoteController.ts';
@@ -15,9 +15,11 @@ import { NoteRepository } from './NoteRepository.ts';
 export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
 
-  notes.get('/', ListNotesController).name('index');
-  notes.get('/create', CreateNoteController).name('create');
-  notes.post('/', StoreNoteController).name('store');
+  // These three never take a note from the path: the list asks for `ctx.user.id`, and a new note is created for the signed-in user.
+  const mine = notes.authorize(everyone);
+  mine.get('/', ListNotesController).name('index');
+  mine.get('/create', CreateNoteController).name('create');
+  mine.post('/', StoreNoteController).name('store');
 
   const note = notes.bind('note', NoteRepository);
   note.get('/:note/edit', EditNoteController).name('edit');

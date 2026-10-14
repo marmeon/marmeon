@@ -205,12 +205,12 @@ and frees it after saving it:
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { CheckoutController } from './controllers/CheckoutController.ts';
 import { WizardStepController } from './controllers/WizardStepController.ts';
 
 export default defineRoutes((Route) => {
-  const signedIn = Route.middleware(authenticate());
+  const signedIn = Route.middleware(authenticate()).authorize(everyone); // the user's own cart
   signedIn.post('/notes/checkout', CheckoutController).name('notes.checkout').block();
   signedIn.post('/notes/wizard', WizardStepController).name('notes.wizard').block(5, 2);
 });

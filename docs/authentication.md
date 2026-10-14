@@ -292,14 +292,14 @@ default:
 
 ```ts title="modules/auth/routes.ts"
 import { authenticate, confirmedPassword } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import { ShowAccessTokensController } from './controllers/ShowAccessTokensController.ts';
 import { ShowConfirmPasswordController } from './controllers/ShowConfirmPasswordController.ts';
 import { ConfirmedAddress } from './middleware/ConfirmedAddress.ts';
 
 export default defineRoutes((Route) => {
-  const confirmedAddress = Route.middleware(authenticate()).middleware(ConfirmedAddress);
+  const confirmedAddress = Route.middleware(authenticate()).middleware(ConfirmedAddress).authorize(everyone); // the user's own account
   confirmedAddress.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
   confirmedAddress.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
   confirmedAddress.middleware(confirmedPassword()).get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');

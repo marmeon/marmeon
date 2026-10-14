@@ -119,6 +119,8 @@ export class Router {
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
   readonly #framework = new WeakSet<RouteDefinition>();
+  /** The access problems of the routes `dispatch` has seen, so a request costs a lookup. */
+  readonly #judged = new WeakMap<RouteDefinition, AccessProblem[]>();
   #byName = new Map<string, RouteDefinition>();
   /** Middleware groups and the global stack — packages and apps add to them while booting. */
   readonly middleware = new MiddlewareGroups();
@@ -151,23 +153,22 @@ export class Router {
 
   /**
    * The routes that do not say who may call them, and the open ones that bind a record by its key. Nothing is enforced here:
-   * the kernel and the CLI refuse them. See docs/authorization.md#authorizing-requests.
+   * the kernel and the CLI refuse them. See docs/authorization.md#every-route-decides.
    *
    * @internal
    */
   accessProblems(): AccessProblem[] {
-    const problems: AccessProblem[] = [];
-    for (const route of this.#routes) {
-      if (this.#framework.has(route)) continue;
-      const checks = routeAccess(route);
-      if (checks.length === 0) {
-        problems.push({ kind: 'undecided', route });
-      } else if (checks.every(isEveryone)) {
-        const write = !route.methods.every((method) => method === 'GET' || method === 'HEAD');
-        for (const binding of openBindings(route)) problems.push({ kind: 'open-binding', route, param: binding.param, binder: binding.binder.name, write });
-      }
-    }
-    return problems;
+    return this.#routes.flatMap((route) => this.#problemsOf(route));
+  }
+
+  /** What `accessProblems()` says of one route; none for the framework's own. */
+  #problemsOf(route: RouteDefinition): AccessProblem[] {
+    if (this.#framework.has(route)) return [];
+    const checks = routeAccess(route);
+    if (checks.length === 0) return [{ kind: 'undecided', route }];
+    if (!checks.every(isEveryone)) return [];
+    const write = !route.methods.every((method) => method === 'GET' || method === 'HEAD');
+    return openBindings(route).map((binding) => ({ kind: 'open-binding', route, param: binding.param, binder: binding.binder.name, write }));
   }
 
   load(...definitions: RouteDefinitions[]): this;
@@ -279,9 +280,10 @@ export class Router {
   dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
     const state = options.state ?? createRequestState(input.request);
     // Whoever calls dispatch directly (a custom server) gets no way around the rule the kernel enforces at start.
-    if (!this.#framework.has(route) && route.checks.length === 0 && routeAccess(route).length === 0) {
-      return Promise.reject(new RouteAccessError(formatAccessProblems([{ kind: 'undecided', route }])));
-    }
+    // Judged once per route: a route's checks and bindings are frozen when it is registered.
+    let problems = this.#judged.get(route);
+    if (problems === undefined) this.#judged.set(route, (problems = this.#problemsOf(route)));
+    if (problems.length > 0) return Promise.reject(new RouteAccessError(formatAccessProblems(problems)));
     const ctx: HttpContext = { ...state, request: input.request, params: input.params, route };
     const toResponse = options.toResponse ?? defaultToResponse;
     const resolve = options.resolve ?? this.#resolve;

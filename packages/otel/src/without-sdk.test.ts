@@ -2,12 +2,12 @@ import { createApplication, defineModule, Logger } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { trace } from '@opentelemetry/api';
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { afterAll, describe, expect, it } from 'vitest';
 import { OtelServiceProvider } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 // This file registers no SDK first (its own worker: Vitest isolates test files), then one without a context manager.
 afterAll(() => trace.disable());
@@ -38,7 +38,7 @@ async function boot() {
     discover: false,
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, OtelServiceProvider],
-    modules: [defineModule({ name: 'app', routes: defineRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
+    modules: [defineModule({ name: 'app', routes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
     override: (container) => container.instance(Logger, logger),
   });
   return { app, logger };

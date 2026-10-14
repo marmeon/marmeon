@@ -1,11 +1,12 @@
 import { createApplication, defineModule, type Application } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRequest, defineRoutes, HttpServiceProvider, VALIDATE_HEADER, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, HttpServiceProvider, VALIDATE_HEADER, type ContextOf } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { CacheServiceProvider } from './index.ts';
 import { DEFAULT_LIVE_VALIDATION_LIMIT, Limit, RateLimiter, throttle, type LimiterCallback } from './rate-limiter.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const LoginRequest = defineRequest({ schema: v.object({ email: v.pipe(v.string(), v.email('Not an e-mail address.')) }) });
 class LoginController extends Controller {
@@ -30,7 +31,7 @@ async function boot(liveLimit?: LimiterCallback) {
     modules: [
       defineModule({
         name: 'live',
-        apiRoutes: defineRoutes((Route) => {
+        apiRoutes: openRoutes((Route) => {
           Route.middleware(throttle('login')).post('/login', LoginController).name('login');
           Route.post('/subscribe', LoginController).name('subscribe');
         }),

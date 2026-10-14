@@ -155,14 +155,24 @@ has no account, or the address confirmation in a mail: nobody can change its par
 route, and the `signed()` middleware checks the signature:
 
 ```ts title="modules/notes/routes.ts"
-import { defineRoutes, signed } from '@marmeon/http';
+import { defineRoutes, everyone, signed } from '@marmeon/http';
 import { ShowSharedNoteController } from './controllers/ShowSharedNoteController.ts';
 import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(signed()).bind('note', NoteRepository).get('/shared/:note', ShowSharedNoteController).name('notes.shared').internal();
+  // Whoever holds the signed link may read the note it names, so the binding is public.
+  Route.middleware(signed())
+    .authorize(everyone)
+    .bind('note', NoteRepository, { public: true })
+    .get('/shared/:note', ShowSharedNoteController)
+    .name('notes.shared')
+    .internal();
 });
 ```
+
+A signature is not a decision about who may call the route: `signed()` proves the link is genuine, and the route still says who
+may call it. `everyone` states that the link is the whole key. Without `public: true` the route would not start, since an open
+route may not look a note up by any key. See [every route decides](authorization.md#every-route-decides).
 
 The route is `.internal()`, since only the server builds its links. A service signs one:
 

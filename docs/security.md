@@ -20,6 +20,10 @@ mirror images of each other:
   the warnings at start-up and the absence of lab pages hold there. `test` belongs to the test runner alone: it turns every
   protection off, and development-only routes answer under it, so it never belongs on a server.
 
+One check does not depend on `NODE_ENV` at all: an app whose routes do not all say who may call them does not start, in
+development, in `test` and in `production`. The same holds for an open route that loads a record by any key. The
+[authorization](authorization.md#every-route-decides) page has the rule.
+
 `APP_ENV` names the environment (`staging`, `production`, a name of your own) and changes neither rule: `APP_ENV=local` on a
 server with `NODE_ENV=production` is protected, and its development routes answer 404. A staging server is
 `NODE_ENV=production APP_ENV=staging`, with the production builds of the framework and of React, so a server error never reaches
@@ -135,8 +139,10 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
   a local relay only. The [mail](mail.md#smtp-and-tls) page has the settings.
 - **Policies decide what a user may do,** on every request: the session's user on a page, the token's user on a route behind
   `authenticate('api')`. Authorize an API route with the token's abilities and a policy. An ability only says what kind of action
-  a token may do, never on whose record, so it alone leaves every user's records one id away. The
+  a token may do, never on whose record, so it alone leaves the records of every user open to whoever changes an id. The
   [authorization](authorization.md#policies-and-api-tokens) page shows both on one route.
+- **Every route says who may call it.** The app does not start with a route that does not, and `abilities()` is not that decision.
+  The [authorization](authorization.md#every-route-decides) page shows the check and its limits.
 
 ### Private registration
 
@@ -232,6 +238,8 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `contentSecurityPolicy()` in `bootstrap/app.ts`, which a new app has. New inline scripts take `ctx.nonce()`. With a `styleSrc`,
   classes instead of `style` props, and `@marmeon/react/styles.css` imported in the client entry.
 - `verified()` after `authenticate()` on every route of your own that signed-in users reach.
+- Every route of your own has a decision that you chose: a policy for a record, `everyone` only when anyone the middleware lets
+  through may call it. `marmeon route:list` shows the `ACCESS` of each route.
 - `marmeon dev` over HTTPS or with `allowedHosts: true` only on a trusted network. Staging private, since it shows server errors.
 - Whether unconfirmed accounts go: the `auth:prune-unverified` line in `modules/auth/schedule.ts`, and `AUTH_UNVERIFIED_DAYS` as you
   want it, 7 by default. With `AUTH_PRIVATE_REGISTRATION=false`, tell your users that an unconfirmed account goes, and set

@@ -1,10 +1,11 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { HttpServiceProvider } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { CacheServiceProvider } from './index.ts';
 import { Limit, RateLimiter, throttle } from './rate-limiter.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 class LoginLimits {
   boot(app: { container: { make(key: typeof RateLimiter): RateLimiter } }) {
@@ -33,7 +34,7 @@ async function boot({ broken = false } = {}) {
     modules: [
       defineModule({
         name: 'limits',
-        apiRoutes: defineRoutes((Route) => {
+        apiRoutes: openRoutes((Route) => {
           Route.middleware(throttle('login')).post('/login', () => ({ ok: true }));
           Route.middleware(throttle('api')).get('/items', () => []);
           if (broken) Route.middleware(throttle('nope')).get('/broken', () => []);

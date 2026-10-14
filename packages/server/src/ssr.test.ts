@@ -1,7 +1,7 @@
 import { createApplication, currentRequest, defineModule, Logger, Redactor, type Application, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, SharedData, view, type HttpContext, type Next, type PageObject, type SsrRender } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel, type KernelOptions } from './kernel.ts';
@@ -72,7 +72,7 @@ async function appWith(render: SsrRender, options: KernelOptions = {}) {
     modules: [
       defineModule({
         name: 'pages',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/profile', () => view('users/Show', { name: 'Ada', lastLoginAt: new Date('2026-10-01T12:00:00.600Z') }));
           Route.get('/broken', () => {
             throw new Error('the controller failed');

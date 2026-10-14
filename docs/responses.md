@@ -315,7 +315,7 @@ Pages of a signed-in user go out with `Cache-Control: no-store, private`, so the
 sign-out. A route that may be kept sets its own header, for example with the `cacheControl()` middleware:
 
 ```ts
-Route.middleware(authenticate()).middleware(cacheControl('private, max-age=60')).get('/notes/report', ShowReportController);
+Route.middleware(authenticate()).middleware(cacheControl('private, max-age=60')).authorize(everyone).get('/notes/report', ShowReportController);
 ```
 
 Never use `public` for anything that depends on the user: a shared cache would hand it to the next visitor.

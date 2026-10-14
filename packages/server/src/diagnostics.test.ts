@@ -2,7 +2,7 @@ import { createApplication, defineModule, Logger, runWithRequest, type Applicati
 import { channels, messageBase, publishEnded, type ExceptionMessage, type HttpRequestMessage, type SsrRenderMessage } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, HttpServiceProvider, view } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { DevDocument, withDevBody } from './dev-document.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -22,7 +22,7 @@ class ShowUserController extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/users/:user', ShowUserController).name('users.show');
   Route.get('/ping', () => ({ pong: true }));
   Route.get('/reset/:token', () => ({ ok: true })).name('reset');

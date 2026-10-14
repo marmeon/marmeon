@@ -243,11 +243,11 @@ sends an account whose address is not confirmed yet to the auth module's notice:
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).middleware(verified()).get('/notes', ListNotesController).name('notes.index');
+  Route.middleware(authenticate()).middleware(verified()).authorize(everyone).get('/notes', ListNotesController).name('notes.index');
 });
 ```
 

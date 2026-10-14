@@ -1,11 +1,12 @@
 import { tmpdir } from 'node:os';
 import { defineModule, type ApplicationOptions } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, LIVE_PATH, ServerClosing, SharedData, type HttpContext, type Next } from '@marmeon/http';
+import { Controller, HttpServiceProvider, LIVE_PATH, ServerClosing, SharedData, type HttpContext, type Next } from '@marmeon/http';
 import { Broadcaster, LiveServiceProvider } from '@marmeon/live';
 import { Session, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 declare module '@marmeon/http/page' {
   interface SharedProps {
@@ -69,7 +70,7 @@ class ShareCounter {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/boards/:board', ShowBoardController).name('board.show');
   Route.get('/boards/:board/edit', EditBoardController);
   Route.get('/islands/board', BoardIslandController);

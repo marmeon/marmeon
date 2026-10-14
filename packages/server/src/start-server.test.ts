@@ -8,8 +8,15 @@ import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { RouteAccessError } from '@marmeon/router';
 import { describe, expect, it, vi } from 'vitest';
 import { startServer } from './kernel.ts';
+import { createViteDevRenderer } from './vite.ts';
 import { ServerServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+
+// A spy that runs the real thing: the refused start below must never reach it.
+vi.mock('./vite.ts', async (original) => {
+  const actual = await original<typeof import('./vite.ts')>();
+  return { ...actual, createViteDevRenderer: vi.fn(actual.createViteDevRenderer) };
+});
 
 const root = tempDir('marmeon-serve-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
@@ -163,10 +170,10 @@ describe('startServer', () => {
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/about', () => 'about')) })],
     });
-    const before = process.getActiveResourcesInfo().length;
+    vi.mocked(createViteDevRenderer).mockClear();
     try {
       await expect(startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' })).rejects.toBeInstanceOf(RouteAccessError);
-      expect(process.getActiveResourcesInfo().length).toBeLessThanOrEqual(before);
+      expect(createViteDevRenderer).not.toHaveBeenCalled();
     } finally {
       await app.shutdown();
     }

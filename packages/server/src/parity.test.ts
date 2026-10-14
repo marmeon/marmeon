@@ -16,7 +16,8 @@ import {
   type Next,
   type PageObject,
 } from '@marmeon/http';
-import { defineRoutes, Router } from '@marmeon/router';
+import { Router } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { METHOD_FIELD_WINDOW, overrideMethod } from './method-override.ts';
@@ -48,7 +49,7 @@ describe('once props on the server', async () => {
     modules: [
       defineModule({
         name: 'pages',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/a', () => view('pages/A', { rates: once(() => (count('rates'), [1.1, 1.2]), { ttl: 60_000 }), name: 'A' }));
           Route.get('/b', () => view('pages/B', { shared: once(() => (count('shared'), 'kept'), { key: 'shared-key' }) }));
         }),
@@ -124,7 +125,7 @@ describe('the two kinds of 409 — a new build may wait, signing in or out never
     discover: false,
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
-    modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => void Route.get('/a', () => view('pages/A', {}))) })],
+    modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => void Route.get('/a', () => view('pages/A', {}))) })],
   });
   application.container.make(Router).middleware.append('web', SignsInEarly, 220);
   const app = createHttpKernel(application, { version: 'build-2' });
@@ -154,7 +155,7 @@ describe('method spoofing — a form without JavaScript sends PUT, PATCH and DEL
     modules: [
       defineModule({
         name: 'pages',
-        apiRoutes: defineRoutes((Route) => {
+        apiRoutes: openRoutes((Route) => {
           for (const method of ['post', 'put', 'patch', 'delete'] as const) {
             Route[method]('/links/1', async (ctx: HttpContext) => {
               seen.push(`${method} ${JSON.stringify(await ctx.input())}`);
@@ -267,7 +268,7 @@ describe('the view a route renders, for instant visits', () => {
       discover: false,
       env: { APP_KEY: generateKey() },
       providers: [EncryptionServiceProvider, HttpServiceProvider],
-      modules: [defineModule({ name: 'users', routes: defineRoutes((Route) => void Route.get('/users/:id', ShowController).name('users.show')) })],
+      modules: [defineModule({ name: 'users', routes: openRoutes((Route) => void Route.get('/users/:id', ShowController).name('users.show')) })],
     });
     expect(browserRoutes(application.container.make(Router).routes).routes).toEqual({ 'users.show': { method: 'get', path: '/users/:id', view: 'users/Show' } });
   });

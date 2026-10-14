@@ -225,8 +225,11 @@ Two-factor authentication is a choice of each user. When an area of your app sho
 ```ts title="modules/auth/routes.ts"
 import { authenticate } from '@marmeon/auth';
 import { twoFactor } from '@marmeon/auth/two-factor';
+import { everyone } from '@marmeon/http';
 
-const protectedArea = Route.middleware(authenticate()).middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 }));
+const protectedArea = Route.middleware(authenticate())
+  .middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 }))
+  .authorize(everyone); // the user's own settings
 protectedArea.get('/settings/sensitive', ShowSensitiveController);
 ```
 
@@ -284,7 +287,7 @@ languages:
 The QR code is drawn on white, also in the dark mode, because some apps do not scan it otherwise.
 
 The kit does not install `twoFactor()`, but it has the routes it needs. To require the factor on a route, add the middleware
-to it in `modules/auth/routes.ts`:
+to it in `modules/auth/routes.ts`, on a registrar that already says who may call it, such as `confirmedAddress`:
 
 ```ts
 confirmedAddress.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify' })).get('/reports', ShowReportsController);

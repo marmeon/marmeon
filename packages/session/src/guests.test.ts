@@ -1,14 +1,15 @@
 import { readdirSync } from 'node:fs';
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
+import { HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { redisConnections, storeKinds, storeUnderTest, type StoreUnderTest } from './__fixtures__/stores.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/login', () => view('auth/Login', {}));
   Route.post('/login', () => {
     throw new ValidationError({ email: ['These credentials do not match our records.'] }, { email: 'ada@example.com' });

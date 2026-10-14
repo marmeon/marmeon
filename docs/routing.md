@@ -6,17 +6,26 @@ A route connects an HTTP method and a path to the code that answers it. A module
 each route usually points to an invokable controller: a class with a single `handle()` method.
 
 ```ts title="modules/notes/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 
 export default defineRoutes((Route) => {
-  Route.get('/notes', ListNotesController).name('notes.index');
-  Route.post('/notes', StoreNoteController).name('notes.store');
-  Route.get('/notes/:note', ShowNoteController).name('notes.show');
+  // Every signed-in user may call these: each controller reads and writes only the user's own notes.
+  const notes = Route.middleware(authenticate()).authorize(everyone);
+
+  notes.get('/notes', ListNotesController).name('notes.index');
+  notes.post('/notes', StoreNoteController).name('notes.store');
+  notes.get('/notes/:note', ShowNoteController).name('notes.show');
 });
 ```
+
+Every route says who may call it, or the app does not start. Here the registrar says it with `authorize(everyone)`; a policy
+or a check of your own says it otherwise. The [authorization](authorization.md#every-route-decides) page has the rule. The
+other examples on this page show the routing, and they sit in a registrar that has a decision, or leave it out where it is not the
+topic.
 
 Routes are typed from end to end. The path's parameters become typed properties of the controller's context, route names are
 checked wherever you link to a route, and a route that cannot work, such as a binding without its parameter, is a compile error.
@@ -54,14 +63,16 @@ Routes load in the order of `modules: [...]` in `bootstrap/app.ts`, and within a
 The registrar has a method for each HTTP verb:
 
 ```ts title="modules/notes/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { PinNoteController } from './controllers/PinNoteController.ts';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 import { UpdateNoteController } from './controllers/UpdateNoteController.ts';
 
-export default defineRoutes((Route) => {
+export default defineRoutes((Root) => {
+  const Route = Root.middleware(authenticate()).authorize(everyone); // the user's own notes
   Route.get('/notes', ListNotesController);
   Route.post('/notes', StoreNoteController);
   Route.put('/notes/:note', UpdateNoteController);
@@ -93,9 +104,10 @@ props](deferred-props.md#islands) page explains islands.
 A route can also answer with a function. It gets the same context a controller gets:
 
 ```ts title="modules/status/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 
-export default defineRoutes((Route) => {
+export default defineRoutes((Root) => {
+  const Route = Root.authorize(everyone); // a closure has no request, so the registrar decides
   Route.get('/ping', () => 'pong');
   Route.get('/version', () => ({ version: '1.4.0' }));
 });
@@ -112,11 +124,13 @@ a controller, which the container builds for each request. The [controllers](con
 A segment that starts with a colon is a parameter. Its value arrives in `ctx.params`, always as a string:
 
 ```ts title="modules/notes/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ShowRevisionController } from './controllers/ShowRevisionController.ts';
 
 export default defineRoutes((Route) => {
-  Route.get('/notes/:note/revisions/:revision', ShowRevisionController).name('notes.revisions.show');
+  // The controller looks the note up within the signed-in user's own notes.
+  Route.middleware(authenticate()).authorize(everyone).get('/notes/:note/revisions/:revision', ShowRevisionController).name('notes.revisions.show');
 });
 ```
 
@@ -162,11 +176,13 @@ When two routes match the same path, the one registered first answers. Register 
 also match them:
 
 ```ts title="modules/notes/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListDraftsController } from './controllers/ListDraftsController.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
 
-export default defineRoutes((Route) => {
+export default defineRoutes((Root) => {
+  const Route = Root.middleware(authenticate()).authorize(everyone); // the user's own notes
   Route.get('/notes/drafts', ListDraftsController).name('notes.drafts');
   Route.get('/notes/:note', ShowNoteController).name('notes.show');
 });
@@ -245,12 +261,13 @@ A client build ships only the names its code actually uses. Call `.internal()` o
 
 ```ts title="modules/auth/routes.ts"
 import { authenticate } from '@marmeon/auth';
-import { defineRoutes, signed } from '@marmeon/http';
+import { defineRoutes, everyone, signed } from '@marmeon/http';
 import { VerifyEmailController } from './controllers/VerifyEmailController.ts';
 
 export default defineRoutes((Route) => {
   Route.middleware(authenticate())
     .middleware(signed())
+    .authorize(everyone) // the controller verifies the signed-in user's own address
     .get('/email/verify/:id/:hash', VerifyEmailController)
     .name('auth.verification.verify')
     .internal();
@@ -275,13 +292,13 @@ original stays unchanged. Keep the registrar in a constant and register through 
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
 
 export default defineRoutes((Route) => {
-  const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
+  const notes = Route.prefix('/notes').middleware(authenticate()).authorize(everyone).name('notes.');
 
   notes.get('/', ListNotesController).name('index'); // GET /notes, notes.index
   notes.get('/:note', ShowNoteController).name('show'); // GET /notes/:note, notes.show
@@ -304,7 +321,7 @@ The attributes combine in any order:
 `group()` reads well when a block of routes shares its attributes:
 
 ```ts
-Route.prefix('/teams/:team').name('teams.').group((Route) => {
+Route.prefix('/teams/:team').name('teams.').middleware(authenticate()).authorize((ctx) => ctx.user.teamIds.includes(ctx.params.team)).group((Route) => {
   Route.get('/notes', (ctx) => `The notes of ${ctx.params.team}`).name('notes.index'); // GET /teams/:team/notes
 });
 ```
@@ -335,7 +352,7 @@ around the whole `Route.authorize(check)…` call instead.
 
 Checks add up: a group inside `admin` can call `authorize` again, and a request has to pass the registrar's checks and then its
 own `authorize`. A later check never opens what an earlier one closed. `everyone`, exported by `@marmeon/http`, is the check that
-says yes to anyone its middleware lets through: `Route.authorize(everyone)`. See [authorization](authorization.md#authorizing-requests).
+says yes to anyone its middleware lets through: `Route.authorize(everyone)`. See [authorization](authorization.md#every-route-decides).
 
 ### Middleware
 
@@ -369,15 +386,16 @@ A route usually loads a record by the id in its path, and answers 404 when there
 controller is built. `bind()` names the parameter and the class that resolves it:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes } from '@marmeon/http';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
 import { NoteRepository } from './NoteRepository.ts';
+import { NotePolicy } from './NotePolicy.ts';
 
 export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
 
-  notes.bind('note', NoteRepository).get('/:note', ShowNoteController).name('show');
+  notes.bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note')).get('/:note', ShowNoteController).name('show');
 });
 ```
 
@@ -406,9 +424,9 @@ Route.bind('note') needs a :note parameter in the path
 ```
 
 > [!WARNING]
-> A binding finds the record. It does not decide who may see it. Add a policy to the controller's request, such as
-> `authorize: can(NotePolicy, 'view', 'note')`, or the note of any user is one id away. The
-> [authorization](authorization.md#authorizing-requests) page explains policies.
+> A binding finds the record. It does not decide who may see it. A route that binds a record must ask a policy, as above, or the
+> binding must be scoped to an owner or marked public: a route that lets `everyone` call it and binds a record by any key does
+> not start. See [every route decides](authorization.md#every-route-decides).
 
 ### Binding a repository
 
@@ -442,14 +460,15 @@ export class NoteRepository extends Repository<'notes'> {
 A record that belongs to another record is looked up within its parent. Pass `scopedBy` with the parent's parameter:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes } from '@marmeon/http';
 import { AttachmentRepository } from './AttachmentRepository.ts';
 import { ShowAttachmentController } from './controllers/ShowAttachmentController.ts';
+import { NotePolicy } from './NotePolicy.ts';
 import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Route) => {
-  const note = Route.prefix('/notes').middleware(authenticate()).name('notes.').bind('note', NoteRepository);
+  const note = Route.prefix('/notes').middleware(authenticate()).name('notes.').bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note'));
   const attachment = note.bind('attachment', AttachmentRepository, { scopedBy: 'note' });
 
   attachment.get('/:note/attachments/:attachment', ShowAttachmentController).name('attachments.show');
@@ -489,15 +508,16 @@ public within its parent.
 `with` names [relations](queries.md#relations) a repository loads with the record, in the same query:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes } from '@marmeon/http';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
+import { NotePolicy } from './NotePolicy.ts';
 import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
 
-  notes.bind('note', NoteRepository, { with: ['tags'] }).get('/:note', ShowNoteController).name('show');
+  notes.bind('note', NoteRepository, { with: ['tags'] }).authorize(can(NotePolicy, 'view', 'note')).get('/:note', ShowNoteController).name('show');
 });
 ```
 
@@ -545,12 +565,13 @@ export class PublishedNotes implements RouteBinder<Row<'notes'>> {
 ```
 
 ```ts title="modules/notes/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ShowPublishedNoteController } from './controllers/ShowPublishedNoteController.ts';
 import { PublishedNotes } from './PublishedNotes.ts';
 
 export default defineRoutes((Route) => {
-  Route.bind('note', PublishedNotes).get('/p/:note', ShowPublishedNoteController).name('notes.published');
+  // PublishedNotes finds published notes only, so every visitor may read what it finds.
+  Route.authorize(everyone).bind('note', PublishedNotes, { public: true }).get('/p/:note', ShowPublishedNoteController).name('notes.published');
 });
 ```
 
@@ -565,11 +586,12 @@ these routes have no CSRF check either. Clients authenticate with a token instea
 
 ```ts title="modules/notes/api-routes.ts"
 import { abilities, authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesApiController } from './controllers/ListNotesApiController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate('api')).middleware(abilities('notes:read')).get('/notes', ListNotesApiController).name('api.notes.index');
+  // `abilities()` limits which tokens get in; it does not say who may call, so the route still decides.
+  Route.middleware(authenticate('api')).middleware(abilities('notes:read')).authorize(everyone).get('/notes', ListNotesApiController).name('api.notes.index');
 });
 ```
 
@@ -582,11 +604,11 @@ Some routes read the session, decide on it and write it back. Two such requests 
 
 ```ts title="modules/auth/routes.ts"
 import { authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
+  Route.middleware(authenticate()).authorize(everyone).put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
 });
 ```
 
@@ -643,12 +665,12 @@ export class DevelopmentOnly {
 ```
 
 ```ts title="modules/playground/routes.ts"
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ShowPlaygroundController } from './controllers/ShowPlaygroundController.ts';
 import { DevelopmentOnly } from './DevelopmentOnly.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(DevelopmentOnly).get('/_playground', ShowPlaygroundController);
+  Route.middleware(DevelopmentOnly).authorize(everyone).get('/_playground', ShowPlaygroundController);
 });
 ```
 

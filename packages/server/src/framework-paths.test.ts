@@ -1,10 +1,11 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider, SESSION_PATH } from '@marmeon/http';
+import { HttpServiceProvider, SESSION_PATH } from '@marmeon/http';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
-async function kernelFor(routes: ReturnType<typeof defineRoutes>) {
+async function kernelFor(routes: ReturnType<typeof openRoutes>) {
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -22,7 +23,7 @@ describe('framework routes against greedy app routes', () => {
     ['a parameter before a literal', '/:a/session', '/x/session'],
   ])('are not hidden by %s', async (_name, path, other) => {
     const kernel = await kernelFor(
-      defineRoutes((Route) => {
+      openRoutes((Route) => {
         Route.get(path, () => 'app');
       }),
     );

@@ -24,11 +24,11 @@ export class AuthServiceProvider implements ServiceProvider {
 
 ```ts title="modules/auth/routes.ts"
 import { throttle } from '@marmeon/cache';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { RegisterController } from './controllers/RegisterController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
+  Route.middleware(throttle('register')).authorize(everyone).post('/register', RegisterController).name('auth.register.store');
 });
 ```
 
@@ -84,11 +84,11 @@ address is found.
 ```ts title="modules/auth/routes.ts"
 import { authenticate } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ResendVerificationController } from './controllers/ResendVerificationController.ts';
 
 export default defineRoutes((Route) => {
-  const signedIn = Route.middleware(authenticate());
+  const signedIn = Route.middleware(authenticate()).authorize(everyone);
   signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController);
 });
 ```

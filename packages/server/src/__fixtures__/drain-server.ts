@@ -4,9 +4,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createApplication, defineModule, type ServiceProvider } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { AfterResponse, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { AfterResponse, HttpServiceProvider } from '@marmeon/http';
 import { startServer } from '../kernel.ts';
 import { ServerServiceProvider } from '../provider.ts';
+import { openRoutes } from '../test-helpers/open-routes.ts';
 
 const transport = {
   open: true,
@@ -41,7 +42,7 @@ const app = await createApplication({
   discover: false,
   env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
   providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, TransportProvider],
-  modules: [defineModule({ name: 'reset', apiRoutes: defineRoutes((Route) => Route.post('/reset', SendResetLinkController)) })],
+  modules: [defineModule({ name: 'reset', apiRoutes: openRoutes((Route) => Route.post('/reset', SendResetLinkController)) })],
 });
 const server = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
 process.once('SIGTERM', async () => {

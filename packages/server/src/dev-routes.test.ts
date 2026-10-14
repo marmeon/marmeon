@@ -2,7 +2,8 @@ import { createApplication, defineConfig, defineModule, env, type ConfigOf } fro
 import { devHosts, devOnly } from '@marmeon/core/dev';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
-import { defineRoutes, type EmptyObject, type HttpContext, type Next } from '@marmeon/router';
+import type { EmptyObject, HttpContext, Next } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -42,7 +43,7 @@ describe("an app's development route", () => {
       modules: [
         defineModule({
           name: 'playground',
-          routes: defineRoutes((Route) => {
+          routes: openRoutes((Route) => {
             Route.middleware(DevelopmentOnly).get('/_playground', () => new Response('playground'));
             Route.get('/_playground/env', devOnly(devHosts(process.env.APP_URL), () => new Response('playground')));
           }),

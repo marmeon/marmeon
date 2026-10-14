@@ -31,7 +31,7 @@ describe('createHttpKernel — routes that do not say who may call them', () => 
     const application = await boot(defineRoutes((Route) => Route.get('/about', ShowNoteController).name('about')));
     try {
       expect(() => createHttpKernel(application)).toThrow(/GET {2}\/about {2}about {2}ShowNoteController {2}.*kernel-access\.test\.ts:\d+/);
-      expect(() => createHttpKernel(application)).toThrow('docs/authorization.md#authorizing-requests');
+      expect(() => createHttpKernel(application)).toThrow('docs/authorization.md#every-route-decides');
     } finally {
       await application.shutdown();
     }

@@ -2,7 +2,7 @@ import { CacheServiceProvider } from '@marmeon/cache';
 import { CliServiceProvider } from 'marmeon';
 import { createApplication, defineModule, Logger, type Container, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { abort, Controller, HttpServiceProvider } from '@marmeon/http';
 import { defineSchedule, SchedulerServiceProvider } from '@marmeon/scheduler';
 import { createHttpKernel } from '@marmeon/server';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -11,6 +11,7 @@ import { CsrfProtection } from './csrf.ts';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { Session } from './session.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 class CountVisitsController extends Controller {
   readonly #session: Session;
@@ -59,7 +60,7 @@ class SlowCountController extends Controller {
 }
 
 // Module routes join the `web` group, where the session provider put StartSession.
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/count', CountVisitsController);
   Route.post('/slow', SlowCountController);
   Route.post('/slow/blocked', SlowCountController).block(2, 2);
@@ -67,7 +68,7 @@ const routes = defineRoutes((Route) => {
   Route.post('/save', SaveController);
   Route.post('/fail', FailingController);
 });
-const apiRoutes = defineRoutes((Route) => {
+const apiRoutes = openRoutes((Route) => {
   Route.post('/no-session', () => new SaveController().handle());
 });
 

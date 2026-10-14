@@ -185,6 +185,11 @@ A refusal answers 403, "This action is unauthorized.", in the request's language
 shows its own reason instead. A policy's `denyAsNotFound()` answers 404, so the record's existence stays hidden. The
 [authorization](authorization.md) page explains policies and the gate.
 
+Every route has to say who may call it, in the request's `authorize` or on the registrar. A controller registered without a
+decision stops the app from starting, and the message names the file and line of the route. A request that has no check of its
+own and is open to anyone writes `authorize: everyone`. The [authorization](authorization.md#every-route-decides) page has the
+rule.
+
 ### Types for the browser
 
 A request's types travel to the views without its code:

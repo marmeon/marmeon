@@ -137,6 +137,10 @@ createTestApp(…, { seed: true }) seeds a refreshed database: add database: 're
 The [database testing](database-testing.md) page covers the database, the [fakes](fakes.md) page the fakes, and the
 [testing pages](testing-pages.md) page server rendering.
 
+A test app checks its routes as the real app does. A route that a test registers for itself has to say who may call it as well,
+most simply with `Route.authorize(everyone)`; a route without a decision stops `createTestApp()` with the report that names the
+file and line. See [every route decides](authorization.md#every-route-decides).
+
 ### What every test app has
 
 Besides what the options add, every test app has:

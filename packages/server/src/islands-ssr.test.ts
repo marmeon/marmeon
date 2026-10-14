@@ -12,7 +12,8 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@marmeon/http';
-import { defineRoutes, type Next } from '@marmeon/router';
+import type { Next } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -79,7 +80,7 @@ describe('islands resolved in-process while the page streams', async () => {
   }
   const slow = { gate: later() };
   const computed: { headersSent: boolean }[] = [];
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.get('/page', (ctx: HttpContext) =>
       view('pages/Show', { islands: (new URL(ctx.request.url).searchParams.get('islands') ?? '').split(',').filter(Boolean) }),
     );

@@ -165,13 +165,14 @@ The prop is a function, so a partial reload of another prop leaves the table out
 ```ts title="modules/members/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { tableRoutes } from '@marmeon/table';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
 
 export default defineRoutes((Route) => {
-  const members = Route.prefix('/members').middleware(authenticate()).middleware(verified()).name('members.');
+  // Every verified user may see the members. The table's endpoints inherit this decision from the registrar.
+  const members = Route.prefix('/members').middleware(authenticate()).middleware(verified()).authorize(everyone).name('members.');
   members.get('/', ListMembersController).name('index');
   tableRoutes(members.middleware(throttle('members-table')), MembersTable);
 });

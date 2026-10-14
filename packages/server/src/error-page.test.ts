@@ -5,7 +5,8 @@ import { createApplication, defineModule, Logger, token, type Application } from
 import { channels, messageBase, publishEnded } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, HttpServiceProvider, view, type PageObject } from '@marmeon/http';
-import { defineMiddleware, defineRoutes } from '@marmeon/router';
+import { defineMiddleware } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -48,7 +49,7 @@ class SendWelcomeController {
 }
 
 let release: (() => void) | undefined;
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.middleware(defineMiddleware('AuditTrail', (_ctx, next) => next())).get('/explode/:user', ExplodingController).name('lab.explode');
   Route.post('/login', async (ctx) => {
     await ctx.input();

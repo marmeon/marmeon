@@ -6,3 +6,8 @@ import { defineRoutes, type RouteDefinitions } from '../router.ts';
 export function openRoutes(register: (Route: Route) => void): RouteDefinitions {
   return defineRoutes((Root) => register(Root.authorize(everyone)));
 }
+
+/** Route files for tests of bindings: a check of their own decides, so no binding is an open one. */
+export function checkedRoutes(register: (Route: Route) => void): RouteDefinitions {
+  return defineRoutes((Root) => register(Root.authorize(() => true)));
+}

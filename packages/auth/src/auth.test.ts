@@ -1,7 +1,7 @@
 import { createApplication, defineModule, err, inTransaction, listen, type Container } from '@marmeon/core';
 import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
+import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
@@ -30,6 +30,7 @@ import {
 } from './index.ts';
 import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 interface TestUser {
   id: number;
@@ -213,7 +214,7 @@ class RecordEvent {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.middleware(guest('/home')).get('/login', () => 'login page').name('auth.login');
   Route.post('/login', LoginController);
   Route.post('/logout', LogoutController);
@@ -726,7 +727,7 @@ describe('password changes and confirmation', () => {
 // --- Type guarantees (never called) -----------------------------------------------------------
 
 export function authTypes() {
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     // @ts-expect-error — `ctx.user` needs authenticate() on the route
     Route.get('/me', (ctx: HttpContext<Authenticated>) => ctx.user.name);
     Route.middleware(authenticate()).get('/me', (ctx: HttpContext<Authenticated>) => ctx.user.name);
@@ -739,7 +740,7 @@ export function authTypes() {
       return `${ctx.user.name}: ${ctx.body.name}`;
     }
   }
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     Route.middleware(authenticate()).put('/rename', RenameController);
     // @ts-expect-error — `Authenticated` in the controller's context needs authenticate() on the route
     Route.put('/rename-anyone', RenameController);

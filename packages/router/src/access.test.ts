@@ -485,7 +485,7 @@ describe('Router.accessProblems()', () => {
     expect(text).toContain('Route.authorize(');
     expect(text).toContain('binds `note` with NoteBinder');
     expect(text).toContain('{ public: true }');
-    expect(text).toContain('docs/authorization.md#authorizing-requests');
+    expect(text).toContain('docs/authorization.md#every-route-decides');
   });
 });
 

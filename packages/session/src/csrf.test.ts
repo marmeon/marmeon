@@ -1,10 +1,11 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
+import { Controller, HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { Session } from './session.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 class LoginController extends Controller {
   readonly #session: Session;
@@ -73,7 +74,7 @@ class Peek {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.middleware(Peek).get('/peek', () => view('shop/Page', {}));
   // A page whose request writes the session (a guest's first data): kept — its page carries the token it makes now.
   Route.get('/count', CountController);

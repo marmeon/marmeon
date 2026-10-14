@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineMiddleware, defineRoutes, Router, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
+import { defineMiddleware, defineRoutes, everyone, Router, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
 import { FRAMEWORK_ROUTES } from './internal.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
@@ -268,5 +268,15 @@ describe('The framework prefix', () => {
   it('does not run a route that neither is the framework\'s nor says who may call it — also when dispatch is called directly', async () => {
     const router = new Router().load(defineRoutes((Route) => Route.get('/x', () => 'ran')));
     await expect(router.dispatch(router.routes[0]!, { request: new Request('http://localhost/x'), params: {} })).rejects.toThrow('does not say who may call');
+  });
+
+  it('does not run an open route that binds a record by its key either — dispatch called directly', async () => {
+    class NoteBinder {
+      resolveRouteBinding() {
+        return { id: '1' };
+      }
+    }
+    const router = new Router().load(defineRoutes((Root) => Root.authorize(everyone).bind('note', NoteBinder).get('/notes/:note', () => 'ran')));
+    await expect(router.dispatch(router.routes[0]!, { request: new Request('http://localhost/notes/1'), params: { note: '1' } })).rejects.toThrow('binds `note` with NoteBinder');
   });
 });

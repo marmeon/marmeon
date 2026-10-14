@@ -80,8 +80,8 @@ start`, and `marmeon dev` refuses it.
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
 | `start [--workers=N]` | Starts the production server on the build. |
-| `route:list` | Every route with its method, path, name, group, middleware and action. See [listing routes](routing.md#listing-routes). |
-| `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. See [typed route names](routing.md#typed-route-names). |
+| `route:list` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
+| `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
 | `tinker [--sandbox] [--execute "<code>"] [--no-history]` | A REPL with the booted app. See [tinker](#tinker). |

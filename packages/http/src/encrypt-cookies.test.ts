@@ -1,13 +1,14 @@
 import { AesGcmEncrypter } from '@marmeon/encryption';
-import { createRequestState, defineRoutes, Router, withQueuedCookies } from '@marmeon/router';
+import { createRequestState, Router, withQueuedCookies } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const encrypter = new AesGcmEncrypter(crypto.getRandomValues(new Uint8Array(32)));
 const settings = new CookieEncryption().except('XSRF-TOKEN');
 
 const router = new Router({ resolve: () => new EncryptCookies(encrypter, settings) as never }).load(
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     Route.middleware(EncryptCookies).group((Route) => {
       Route.get('/remember', (ctx) => {
         ctx.cookies.set('theme', 'dark');

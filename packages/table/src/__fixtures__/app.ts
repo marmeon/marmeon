@@ -2,11 +2,12 @@ import { Gate, type Auth, type Authenticated } from '@marmeon/auth';
 import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Schema, sql, type QueryEvent } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
-import { Controller, defineRequest, defineRoutes, HttpServiceProvider, IncomingRequest, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, HttpServiceProvider, IncomingRequest, type ContextOf } from '@marmeon/http';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { action, bulk, column, defineTable, exportCsv, filter, Tables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
 import { MemberPolicy } from './policies.ts';
+import { openRoutes } from '../test-helpers/open-routes.ts';
 import './schema.ts';
 
 /** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
@@ -318,7 +319,7 @@ export class NoSchemaPage extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   const team = Route.prefix('/teams/:team').middleware(acting);
   team.get('/members', MembersPage);
   tableRoutes(team, MembersTable);

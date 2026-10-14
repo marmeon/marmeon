@@ -6,7 +6,7 @@ import type { ClassResolver, RouteBinding } from './types.ts';
 
 /**
  * A decision about who may call a route: `true` lets the request on, `false` answers 403, and it may throw its own `HttpError`.
- * See docs/authorization.md#authorizing-requests.
+ * See docs/authorization.md#every-route-decides.
  */
 export type AccessCheck<TCtx = any> = (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
 
@@ -17,7 +17,7 @@ const labels = new WeakMap<object, string>();
 
 /**
  * Gives a check the name `route:list` shows for it. The label `everyone` is reserved for {@link everyone} itself and
- * {@link everyone} cannot carry another, so `route:list` never shows an open route as guarded or the other way round. See docs/authorization.md#authorizing-requests.
+ * {@link everyone} cannot carry another, so `route:list` never shows an open route as guarded or the other way round. See docs/authorization.md#every-route-decides.
  */
 export function describeAccess<F extends (...args: any[]) => unknown>(check: F, label: string): F {
   if (isEveryone(check) !== (label === 'everyone')) {
@@ -34,7 +34,7 @@ export function accessLabel(check: AccessCheck): string {
 
 /**
  * The decision that anyone its middleware lets through may call the route: `Route.authorize(everyone)` or `defineRequest({ authorize: everyone })`.
- * It never opens a route further than another check allows. See docs/authorization.md#authorizing-requests.
+ * It never opens a route further than another check allows. See docs/authorization.md#every-route-decides.
  */
 export const everyone: () => true = (): true => true;
 // A brand besides identity: a second installed copy of the package has an `everyone` of its own, and it counts here too.
@@ -65,7 +65,7 @@ export function siteOf(stack: string | undefined): string | undefined {
 
 /**
  * Every check a request to the route passes, in the order they run: the registrar's, then the request's `authorize`
- * of a controller that has one. See docs/authorization.md#authorizing-requests.
+ * of a controller that has one. See docs/authorization.md#every-route-decides.
  */
 export function routeAccess(route: RouteDefinition): readonly AccessCheck[] {
   const own = isControllerClass(route.action) ? route.action.request?.authorize : undefined;
@@ -99,7 +99,7 @@ export class RouteAccessError extends Error {
 
 /**
  * The message the kernel and `route:types` give for the problems of `Router.accessProblems()`, naming where each route was
- * registered. `path` shows a route's path — a caller that logs it passes it through its redactor. See docs/authorization.md#authorizing-requests.
+ * registered. `path` shows a route's path — a caller that logs it passes it through its redactor. See docs/authorization.md#every-route-decides.
  */
 export function formatAccessProblems(problems: readonly AccessProblem[], { path = (route: RouteDefinition) => route.path }: { path?: (route: RouteDefinition) => string } = {}): string {
   const row = (route: RouteDefinition) =>
@@ -127,7 +127,7 @@ export function formatAccessProblems(problems: readonly AccessProblem[], { path 
       "  - say that every record is public, on a route that only reads: bind('param', Binder, { public: true })",
     );
   }
-  parts.push('See docs/authorization.md#authorizing-requests.');
+  parts.push('See docs/authorization.md#every-route-decides.');
   return parts.join('\n');
 }
 

@@ -2,7 +2,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Clock, createApplication, defineModule, env, TestClock, type ConfigDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { HttpServiceProvider } from '@marmeon/http';
 import { accessLabel, Router, routeAccess } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -11,6 +11,7 @@ import { defineStorage } from './config.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { StorageFake } from './fake.ts';
 import { diskAttachment, Storage, StorageError, StorageManager, StorageServiceProvider, StorageSetupError } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 afterAll(removeDirectories);
 
@@ -402,7 +403,7 @@ describe('the signed storage route against greedy app routes', () => {
       env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
       config: [storageConfig(freshDirectory())],
       providers: [EncryptionServiceProvider, HttpServiceProvider, StorageServiceProvider],
-      modules: [defineModule({ name: 'greedy', routes: defineRoutes((Route) => Route.get(path, () => 'app')) })],
+      modules: [defineModule({ name: 'greedy', routes: openRoutes((Route) => Route.get(path, () => 'app')) })],
     });
     const kernel = createHttpKernel(app);
     expect((await kernel.request('/_marmeon/storage/local/a.txt')).status).toBe(403);

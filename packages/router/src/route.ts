@@ -187,7 +187,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * Declares who may call every route registered through the returned registrar. It runs after the bindings (so it sees the
    * bound records) and before the request's own `authorize`, validation, interceptors and the handler; `false` answers 403.
    * Several checks all have to say yes, and `everyone` never opens a route further than another check allows.
-   * See docs/routing.md#route-groups and docs/authorization.md#authorizing-requests.
+   * See docs/routing.md#route-groups and docs/authorization.md#every-route-decides.
    */
   authorize(
     check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>,

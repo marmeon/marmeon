@@ -199,7 +199,7 @@ installs the package, also for paths without a route, so keep it cheap.
 
 ```ts title="src/AuditServiceProvider.ts"
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
-import { defineRoutes, Router } from '@marmeon/http';
+import { defineRoutes, everyone, Router } from '@marmeon/http';
 import { GLOBAL } from '@marmeon/router';
 import { AuditConfig } from './AuditConfig.ts';
 import { AuditLog } from './AuditLog.ts';
@@ -216,7 +216,8 @@ export class AuditServiceProvider implements ServiceProvider {
     container.make(Router).load(
       { group: 'web', prefix: '/audit' },
       defineRoutes((Route) => {
-        Route.get('/', ShowAuditController).name('audit.index');
+        // The page is open to anyone by this package's design, so it says so.
+        Route.authorize(everyone).get('/', ShowAuditController).name('audit.index');
       }),
     );
   }

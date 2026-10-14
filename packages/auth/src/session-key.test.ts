@@ -4,13 +4,14 @@ import { join } from 'node:path';
 import { createApplication, defineModule, type Container } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
+import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { RedisServiceProvider } from '@marmeon/redis';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore } from '@marmeon/session';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
 import { Auth, authenticate, AuthServiceProvider, Hasher, sessionFingerprint, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
@@ -104,7 +105,7 @@ class WhoController extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.post('/as/:id', SignInController);
   Route.get('/login', () => 'login').name('auth.login');
   Route.get('/who', WhoController);

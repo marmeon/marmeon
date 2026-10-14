@@ -145,17 +145,101 @@ To decide for a whole group of routes, put the check on the registrar. It runs a
 const notes = Route.middleware(authenticate()).bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note'));
 ```
 
-`everyone` is the check that says yes to anyone its middleware lets through. It stands for a decision, and it never opens a
-route further than another check allows.
+`everyone` is the check that says yes to anyone its middleware lets through. A route has to say who may call it, and
+[the next section](#every-route-decides) shows how.
+
+## Every route decides
+
+A route that does not say who may call it does not start, and neither does an open route that loads records by id. The kernel
+checks every route when the app boots, in every environment, production included. `marmeon route:types` and `marmeon build`
+check them too and exit with 1.
+
+A route says it in one of two places:
+
+- the `authorize` of its request, which `can()` or a function of your own provides;
+- the registrar, with `Route.authorize(check)`, for every route registered through it.
+
+`everyone` is the third word. It is a check that says yes to anyone the route's middleware lets through, so `Route.middleware(authenticate()).authorize(everyone)`
+means "any signed-in user". Use it when that is the whole truth: a login page, a list of the user's own notes, a public page. It stands
+for a decision you made, and the file shows it. A route that mixes `everyone` with another check keeps the other check: checks add
+up, and `everyone` never opens a route further than another check allows.
+
+```ts title="modules/notes/routes.ts"
+export default defineRoutes((Route) => {
+  // The list and the form ask for the signed-in user's own notes, so every signed-in user may call them.
+  const mine = Route.prefix('/notes').middleware(authenticate()).authorize(everyone);
+  mine.get('/', ListNotesController).name('notes.index');
+
+  // A note belongs to someone, so its routes ask the policy.
+  const note = Route.prefix('/notes').middleware(authenticate()).bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note'));
+  note.get('/:note', ShowNoteController).name('notes.show');
+});
+```
+
+### A request or a registrar
+
+Put the decision on the registrar when the routes share it, and in the request when one route differs. A route passes only when
+every check passes: the registrar's checks first, in the order you declared them, then the request's. A group inside a registrar
+inherits its checks, and a middleware such as `abilities('notes:read')` is not a decision: it limits which tokens get in, and the
+route still says who may call it.
+
+A route that answers with a closure has no request, so it takes its decision from the registrar:
+
+```ts
+Route.authorize(everyone).get('/ping', () => 'pong');
+```
+
+### Open routes and bindings
+
+A route whose only checks are `everyone` may not bind a record that any key finds. `bind('note', NoteRepository)` on such a route
+would hand out every note to whoever guesses an id. The route fails to start unless the binding does one of these:
+
+- the route asks a policy as well: `Route.authorize(can(NotePolicy, 'view', 'note'))`;
+- the binding is scoped to its parent: `bind('attachment', AttachmentRepository, { scopedBy: 'note' })`, with the parent checked;
+- the records are public by design, on a route that only reads: `bind('user', ProfileDirectory, { public: true })`. A route that
+  changes data always needs a real check.
+
+### The report
+
+The report names every route with where it was registered, so a long list is easy to work through:
+
+```text
+2 routes do not say who may call them:
+  GET  /notes       notes.index  ListNotesController  modules/notes/routes.ts:12
+  POST /notes       notes.store  StoreNoteController  modules/notes/routes.ts:13
+Say it with one of these:
+  - can(Policy, 'ability', 'param') as the request's `authorize`, or on its registrar: Route.authorize(can(…))
+  - a check of your own: Route.authorize((ctx) => …) or `authorize` in defineRequest()
+  - everyone, last: Route.authorize(everyone) says anyone its middleware lets through may call it — nothing else about it is checked
+See docs/authorization.md#every-route-decides.
+```
+
+`marmeon route:list` shows the state in its `ACCESS` column: the checks of each route, `everyone` for an open one, `none` for a
+route that has no decision. Routes of the framework itself, such as the signed upload and the `/_marmeon/` pages, decide for
+themselves and show `framework`.
+
+### Moving an app that has routes without a decision
+
+The quickest way to the behaviour an app had before is one line per route file, visible where you read it:
+
+```ts
+export default defineRoutes((Root) => {
+  const Route = Root.authorize(everyone);
+  // …
+});
+```
+
+Then answer the reports about open bindings one at a time. Each is a record that anyone who reaches the route can read.
+
+### What the check does not see
 
 A check is only as good as what it can see. The router cannot tell a check that always returns `true` from a real one, a custom
 binder that ignores the `scope` it is given, or a handler that loads `ctx.params.id` itself instead of binding it. A policy check
-on one record also says nothing about a different record the route binds without `scopedBy`. Review these by hand.
+on one record also says nothing about a different record the route binds without `scopedBy`. Review these by hand: the rule makes
+sure somebody decided, not that they decided right.
 
-> [!WARNING]
-> Route model binding finds a record by its id, whoever owns it. Without `authorize`, the note of any user is one id away. Give
-> every route that binds a record a policy, or bind it within its owner, as the
-> [routing](routing.md#scoped-bindings) page shows.
+A refusal is a 403. Where ids must not be enumerable, a policy answers `denyAsNotFound()`, which makes a foreign record and a
+missing one look alike.
 
 ## The gate
 

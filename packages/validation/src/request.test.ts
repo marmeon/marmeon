@@ -1,7 +1,8 @@
 import type { StandardSchemaV1 } from '@marmeon/core';
-import { defineRequest, defineRoutes, Router, translatable, VALIDATE_HEADER, ValidationError, type ContextOf, type HttpContext, type MessageTranslator, type Next } from '@marmeon/router';
+import { defineRequest, Router, translatable, VALIDATE_HEADER, ValidationError, type ContextOf, type HttpContext, type MessageTranslator, type Next } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { rules as r } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 // ——— A repository as @marmeon/database's are: query() gives a Kysely-like builder, which leaves soft-deleted rows out unless withTrashed() ———
 
@@ -184,7 +185,7 @@ function app() {
       return (Class === (UserRepository as never) ? users : new Class()) as never;
     },
   }).load(
-    defineRoutes((Route) => {
+    openRoutes((Route) => {
       Route.middleware(Authenticate).put('/profile', UpdateProfileController);
       Route.middleware(Authenticate).post('/live', LiveController);
       Route.middleware(Authenticate).post('/invite', InviteController);
