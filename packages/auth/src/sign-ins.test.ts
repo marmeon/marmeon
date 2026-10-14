@@ -168,6 +168,15 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(false);
   });
 
+  it('endRemembered ends the row of that selector for that user only — never by selector alone', async () => {
+    await signIns.create({ userId: 1, userAgent: undefined, remember: { selector: SELECTOR, until: inAMonth() } });
+    expect(await signIns.endRemembered(2, SELECTOR), 'another user').toBe(false);
+    expect(await rows()).toHaveLength(1);
+    expect(await signIns.endRemembered(1, 'b'.repeat(22))).toBe(false);
+    expect(await signIns.endRemembered(1, SELECTOR)).toBe(true);
+    expect(await rows()).toEqual([]);
+  });
+
   it('asks the database nothing for a malformed id', async () => {
     const queries: string[] = [];
     const stop = connections.onQuery((query) => queries.push(query.sql));

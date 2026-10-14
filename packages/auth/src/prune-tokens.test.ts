@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-reset.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
+import { DatabaseSignIns, SIGN_INS_TABLE, SignInTracker } from './sign-ins.ts';
 import { DatabaseRememberTokens, REMEMBER_TABLE } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
 
@@ -40,7 +41,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const prune = (hours?: string) =>
-      new PruneTokensCommand(resets, remember, access, config).handle({ args: [], options: hours === undefined ? {} : { hours }, output, root: '/', spawn: async () => 0 } as never);
+      new PruneTokensCommand(resets, remember, access, config, { lifetime: 120 } as never, new SignInTracker(undefined)).handle({ args: [], options: hours === undefined ? {} : { hours }, output, root: '/', spawn: async () => 0 } as never);
 
     // With --hours=1: only API tokens expired more than an hour ago.
     expect(await prune('1')).toBe(0);
@@ -73,10 +74,32 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     clock.travel({ minutes: 1 });
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const command = new PruneTokensCommand(new DatabasePasswordResetTokens(connections, clock), remember, new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), { resetExpire: 60, rememberDays: 0 } as never);
+    const command = new PruneTokensCommand(new DatabasePasswordResetTokens(connections, clock), remember, new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), { resetExpire: 60, rememberDays: 0 } as never, { lifetime: 120 } as never, new SignInTracker(undefined));
     await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
     expect(lines.pop()).toMatch(/ remember-me tokens?/);
     expect(await connections.get<any>().selectFrom(REMEMBER_TABLE).select('id').execute()).toEqual([]);
+  });
+
+  it('also deletes the sign-ins that are over when a SignInStore is bound — and counts them', async () => {
+    const clock = new TestClock();
+    clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
+    const signIns = new DatabaseSignIns(connections, clock);
+    await signIns.create({ userId: 1, userAgent: 'old' });
+    clock.travel({ hours: 3 }); // past SESSION_LIFETIME (120 minutes) and the write granularity
+    const live = await signIns.create({ userId: 1, userAgent: 'live' });
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
+    const command = new PruneTokensCommand(
+      new DatabasePasswordResetTokens(connections, clock),
+      new DatabaseRememberTokens(connections, clock),
+      new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock),
+      { resetExpire: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never,
+      { lifetime: 120 } as never,
+      new SignInTracker(() => signIns),
+    );
+    await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
+    expect(lines.pop()).toMatch(/ and 1 sign-in\.$/);
+    expect((await connections.get<any>().selectFrom(SIGN_INS_TABLE).select('id').execute()).map((row: { id: string }) => row.id)).toEqual([live]);
   });
 
 });

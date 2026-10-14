@@ -36,3 +36,17 @@ export async function loginResult() {
   const nothing: void = await auth.login({} as never);
   return [outcome, nothing];
 }
+
+export async function signInsAreReadOnly() {
+  // @ts-expect-error an id is a string
+  await auth.endSignIn(1);
+  const [signIn] = await auth.signIns();
+  // @ts-expect-error a listed sign-in is read-only
+  signIn!.current = false;
+  const ended = await auth.endSignIn('id');
+  if (!ended.ok) {
+    const kind: 'missing' | 'current' = ended.error.kind;
+    return kind;
+  }
+  return undefined;
+}

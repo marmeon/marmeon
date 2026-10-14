@@ -46,7 +46,7 @@ export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
 export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 export { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
-export type { SignInRecord, SignInsTable, SignInWindow } from './sign-ins.ts';
+export type { SignIn, SignInRecord, SignInsTable, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
@@ -115,9 +115,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
-    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger)));
+    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), c.make(SignInTracker)));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker)));
     // Sign-ins are opt-in: without `container.singleton(SignInStore, DatabaseSignIns)` (and its table) `Auth` tracks none.
     container.singleton(SignInTracker, (c) => new SignInTracker(container.has(SignInStore) ? () => c.make(SignInStore) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.

@@ -9,7 +9,8 @@ import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, type LoginVia }
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { RememberTokenStore, selectorOf } from './remember.ts';
-import { SignInTracker } from './sign-ins.ts';
+import { describeDevice } from './device.ts';
+import { SignInTracker, type SignIn } from './sign-ins.ts';
 import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 // An optional peer: it only types a rate limiter's `ctx.user` (below) where the app has the cache — nothing of it is loaded.
@@ -375,6 +376,44 @@ export class Auth {
   }
 
   /**
+   * The browsers the signed-in user is signed in on, the current one first and marked `current`, then by last request. Only sign-ins
+   * that are alive: within `SESSION_LIFETIME` and `AUTH_SESSION_MAX_HOURS`, or kept by a remember-me cookie. Throws without a bound
+   * `SignInStore`. See `docs/authentication.md#sign-ins`.
+   */
+  async signIns(): Promise<readonly SignIn[]> {
+    const user = await this.#requireUser('signIns');
+    this.#requireSignInStore('signIns');
+    const current = this.#ownSignIn()?.id;
+    const records = await this.#signIns.list(idOf(user), { idleSeconds: this.#sessionConfig.lifetime * 60, maxSeconds: this.#config.sessionMaxSeconds });
+    const list = records.map((record): SignIn => ({
+      id: record.id,
+      current: record.id === current,
+      remembered: record.remembered,
+      signedInAt: record.signedInAt,
+      lastSeenAt: record.lastSeenAt,
+      createdAt: record.createdAt,
+      userAgent: record.userAgent,
+      device: describeDevice(record.userAgent),
+    }));
+    return [...list.filter((signIn) => signIn.current), ...list.filter((signIn) => !signIn.current)];
+  }
+
+  /**
+   * Signs the user out of one of the browsers listed by `signIns()`: from its next request on, that browser is a guest, and its
+   * remember-me cookie signs nobody in again. Only the user's own sign-ins can be ended — an id of anybody else's is `missing`, like
+   * an unknown or malformed one. `current`: that is this browser's — end it with `logout()`. Throws without a bound `SignInStore`,
+   * and without a recently typed password (put the route behind `confirmedPassword()`): a stolen session cookie must not be able to
+   * sign its owner out everywhere else.
+   */
+  async endSignIn(id: string): Promise<Result<void, { readonly kind: 'missing' } | { readonly kind: 'current' }>> {
+    const user = await this.#requireUser('endSignIn');
+    this.#requireSignInStore('endSignIn');
+    if (!this.passwordRecentlyConfirmed()) throw new Error('auth.endSignIn() needs a recently typed password — put the route behind confirmedPassword().');
+    if (id === this.#ownSignIn()?.id) return err({ kind: 'current' });
+    return (await this.#signIns.end(idOf(user), id)) ? ok(undefined) : err({ kind: 'missing' });
+  }
+
+  /**
    * Sets a new password for the signed-in user. Every other session ends (their fingerprint no
    * longer matches) and every remember-me token is dropped — this device's too; this session stays.
    * With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked in the transaction of the new hash.
@@ -387,6 +426,7 @@ export class Auth {
     this.#cookies.delete(this.#config.rememberCookie);
     this.#anchor({ ...verified, passwordHash: hash });
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
+    await this.#endOtherSignIns(idOf(user), true); // after the hash: the hash is what ends the other sessions, the rows only leave the list
     await this.#events.dispatch(new PasswordChanged(user, revoked));
   }
 
@@ -415,6 +455,7 @@ export class Auth {
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
     await this.#users.updatePasswordHash(idOf(user) as never, hash);
     this.#anchor({ ...verified, passwordHash: hash });
+    await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
   }
 
   /**
@@ -436,6 +477,7 @@ export class Auth {
       return false;
     }
     this.#anchor({ ...verified, sessionKey: rotated.key });
+    await this.#endOtherSignIns(idOf(user), false); // after the key, see updatePassword()
     return true;
   }
 
@@ -475,6 +517,38 @@ export class Auth {
   async #fits(verified: Credentials): Promise<boolean> {
     const found = await this.#users.findById(idOf(verified.user) as never);
     return found !== undefined && equal(sessionFingerprint(found), sessionFingerprint(verified));
+  }
+
+  /**
+   * Deletes the rows of the user's other sign-ins (the other devices were signed out by the caller's hash or key already; this takes
+   * them off the list). `ownTokenGone`: the caller dropped this device's remember-me token too, so this row stops claiming one.
+   */
+  async #endOtherSignIns(userId: string | number, ownTokenGone: boolean): Promise<void> {
+    if (!this.#signIns.enabled) return;
+    const own = this.#ownSignIn();
+    // Clean-up after the real effect (the hash or the key is stored): a failing store is logged, never turned into a failed password change.
+    try {
+      await this.#signIns.endAll(userId, own?.id);
+      if (ownTokenGone && own !== undefined) await this.#signIns.remember(userId, own.id, undefined);
+    } catch (error) {
+      this.#logger.error('The sign-in rows of the other devices could not be ended', { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /** The row of a remember-me token that was forgotten, off the list (clean-up: a failing store is logged). Only the user's own row — never by selector alone. */
+  async #endRememberedRow(userId: string | number, cookie: string): Promise<void> {
+    if (!this.#signIns.enabled) return;
+    await this.#signIns.endRemembered(userId, selectorOf(cookie)).catch((error: unknown) => {
+      this.#logger.error('A sign-in row could not be ended', { error: error instanceof Error ? error.message : String(error) });
+    });
+  }
+
+  #requireSignInStore(method: string): void {
+    if (!this.#signIns.enabled) {
+      throw new Error(
+        `auth.${method}() needs a SignInStore: container.singleton(SignInStore, DatabaseSignIns) and the sign_ins table (marmeon make:sign-ins-table). See docs/authentication.md#sign-ins.`,
+      );
+    }
   }
 
   /** Ends this session and this device's remember-me token, as `logout()` does without the event. */
@@ -574,7 +648,13 @@ export class Auth {
     let token: string | undefined;
     let expiresAt: Date | undefined;
     // One token per device, and a guest carrying the cookie of another sign-in must not end up with two live rows.
-    if (!viaRemember) await this.#forgetDevice();
+    if (!viaRemember) {
+      const old = this.#cookies.get(this.#config.rememberCookie);
+      await this.#forgetDevice();
+      // The row of the dropped token is a ghost otherwise: listed as kept signed in by a cookie that no longer works. Scoped to this
+      // user: the row of another user's token (a shared browser) stays listed until its remember time ends or its owner ends it.
+      if (old !== undefined) await this.#endRememberedRow(idOf(user), old);
+    }
     // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
     if (remember && !viaRemember && this.#config.remember) {
       expiresAt = new Date(Date.now() + this.#config.rememberDays * 86_400_000);
@@ -754,6 +834,7 @@ export class Auth {
     const found = await this.#users.findById(device.userId as never);
     if (!found) {
       await this.#remember.forget(device.cookie ?? cookie);
+      await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
@@ -767,6 +848,7 @@ export class Auth {
     const refused = expired || (since !== undefined && !(madeAt! > since.getTime()));
     if (refused) {
       await this.#remember.forget(device.cookie ?? cookie);
+      await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
@@ -774,6 +856,7 @@ export class Auth {
     // finds its token gone here, and one that saw the old key cannot outlive the key's replacement: it fails this check or, if it passed,
     // the next request's fingerprint check ends the session (the rule at `#verified`).
     if (!(await this.#remember.exists(device.cookie ?? cookie))) {
+      await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }

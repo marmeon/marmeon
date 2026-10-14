@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Clock, token } from '@marmeon/core';
 import { Connections, type Generated } from '@marmeon/database';
+import type { DeviceDescription } from './device.ts';
 
 /** The table the app's migration creates (`marmeon make:sign-ins-table` writes it) — see {@link SignInsTable}. */
 export const SIGN_INS_TABLE = 'sign_ins';
@@ -19,6 +20,23 @@ export interface SignInsTable {
   last_seen_at: string | Date;
   created_at: Generated<string | Date>;
   updated_at: Generated<string | Date>;
+}
+
+/** One of the browsers a user is signed in on, as `auth.signIns()` lists it. */
+export interface SignIn {
+  readonly id: string;
+  /** The sign-in of the request that asks. */
+  readonly current: boolean;
+  /** Whether a remember-me cookie keeps this browser signed in. */
+  readonly remembered: boolean;
+  readonly signedInAt: Date;
+  /** Written at most every {@link SEEN_GRANULARITY_SECONDS} seconds. */
+  readonly lastSeenAt: Date;
+  readonly createdAt: Date;
+  /** The browser's `User-Agent`, cut to 255 characters. */
+  readonly userAgent: string | undefined;
+  /** What `describeDevice()` makes of it — structured, so an app words it in its own language. */
+  readonly device: DeviceDescription;
 }
 
 /** A sign-in as listed to its user. */
@@ -53,6 +71,8 @@ export interface SignInStore {
   resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
   /** Sets or removes the remember-me selector of a sign-in. */
   remember(userId: number | string, id: string, remember: { selector: string; until: Date } | undefined): Promise<void>;
+  /** Deletes the sign-in of the user that holds this remember-me selector (its token was dropped); `false` when there is none. Never matches by selector alone. */
+  endRemembered(userId: number | string, selector: string): Promise<boolean>;
   /** Whether the sign-in still exists; with `touch`, also writes `last_seen_at` when it is older than {@link SEEN_GRANULARITY_SECONDS}. Never creates one. */
   seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
   /** The user's living sign-ins, the most recently seen first. */
@@ -164,6 +184,11 @@ export class DatabaseSignIns implements SignInStore {
     }));
   }
 
+  async endRemembered(userId: number | string, selector: string): Promise<boolean> {
+    const result = await this.#db().deleteFrom(SIGN_INS_TABLE).where('user_id', '=', userId).where('remember_selector', '=', selector).executeTakeFirst();
+    return result.numDeletedRows > 0n;
+  }
+
   async end(userId: number | string, id: string): Promise<boolean> {
     if (!ID.test(id)) return false;
     const result = await this.#db().deleteFrom(SIGN_INS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
@@ -236,6 +261,26 @@ export class SignInTracker {
 
   seen(userId: number | string, id: string, touch: boolean): Promise<boolean> {
     return this.#need().seen(userId, id, touch);
+  }
+
+  remember(userId: number | string, id: string, remember: { selector: string; until: Date } | undefined): Promise<void> {
+    return this.#need().remember(userId, id, remember);
+  }
+
+  endRemembered(userId: number | string, selector: string): Promise<boolean> {
+    return this.#need().endRemembered(userId, selector);
+  }
+
+  list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]> {
+    return this.#need().list(userId, window);
+  }
+
+  endAll(userId: number | string, except?: string): Promise<number> {
+    return this.#need().endAll(userId, except);
+  }
+
+  prune(window: SignInWindow): Promise<number> {
+    return this.#need().prune(window);
   }
 
   end(userId: number | string, id: string): Promise<boolean> {

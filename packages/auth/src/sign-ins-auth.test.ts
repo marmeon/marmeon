@@ -1,4 +1,4 @@
-import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -7,20 +7,31 @@ import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionSto
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
-import { Auth, AUTH_SESSION_KEYS, AuthServiceProvider, DatabaseRememberTokens, DatabaseSignIns, Hasher, SIGN_INS_TABLE, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
+import { NewPassword } from './new-password.ts';
+import { AccountSessions, Auth, PasswordChanged, AUTH_SESSION_KEYS, AuthServiceProvider, RememberTokenStore, DatabaseRememberTokens, DatabaseSignIns, Hasher, SIGN_INS_TABLE, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
+const bob: AuthUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 
 class Users implements UserProvider {
   hash: PasswordHash | null = null;
-  async findById(): Promise<Credentials | undefined> {
-    return { user: ada, passwordHash: this.hash };
+  readonly keys = new Map<number, string | null>();
+  async findById(id: number): Promise<Credentials | undefined> {
+    const user = id === 2 ? bob : id === 1 ? ada : undefined;
+    return user && { user, passwordHash: this.hash, sessionKey: this.keys.get(id) ?? null };
   }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return { user: ada, passwordHash: this.hash };
+  async findForLogin(email: string): Promise<Credentials | undefined> {
+    return this.findById(email === bob.email ? 2 : 1);
   }
-  async updatePasswordHash(): Promise<void> {}
+  async updatePasswordHash(_id: unknown, hash: PasswordHash): Promise<void> {
+    this.hash = hash;
+  }
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    if (expected !== undefined && (this.keys.get(id) ?? null) !== expected) return false;
+    this.keys.set(id, key);
+    return true;
+  }
 }
 
 /** A second factor the test switches on and off. */
@@ -39,6 +50,20 @@ class EndedMeanwhile extends DatabaseSignIns {
   override async resume(...args: Parameters<DatabaseSignIns['resume']>) {
     await this.end(1, (await this.list(1, { idleSeconds: 1e9, maxSeconds: 1e9 }))[0]!.id);
     return super.resume(...args);
+  }
+}
+
+class RecordPasswordChanged {
+  static count = 0;
+  handle() {
+    RecordPasswordChanged.count++;
+  }
+}
+
+/** A store that cannot end the rows of the other devices. */
+class CannotEndAll extends DatabaseSignIns {
+  override async endAll(): Promise<number> {
+    throw new Error('store down');
   }
 }
 
@@ -61,7 +86,7 @@ class Route extends Controller {
 
 class LoginController extends Route {
   async handle(ctx: HttpContext) {
-    const result = await this.auth.attempt(ada.email, 'secret', { remember: ctx.request.headers.get('x-remember') === 'yes' });
+    const result = await this.auth.attempt(ctx.request.headers.get('x-user') ?? ada.email, 'secret', { remember: ctx.request.headers.get('x-remember') === 'yes' });
     return { ok: result.ok };
   }
 }
@@ -91,6 +116,38 @@ class WhoController extends Route {
     return { id: (await this.auth.user())?.id ?? null, viaRemember: this.auth.viaRemember() };
   }
 }
+class ListController extends Route {
+  async handle() {
+    return (await this.auth.signIns()).map((signIn) => ({ ...signIn, signedInAt: undefined, lastSeenAt: undefined, createdAt: undefined }));
+  }
+}
+/** Runs one `Auth` method named by the path and reports what it answered, or what it threw. */
+class ActController extends Route {
+  async handle(ctx: HttpContext) {
+    const [action, id] = [ctx.request.headers.get('x-action'), ctx.request.headers.get('x-id') ?? ''];
+    try {
+      switch (action) {
+        case 'end': {
+          const result = await this.auth.endSignIn(id);
+          return result.ok ? { ok: true } : { error: result.error.kind };
+        }
+        case 'confirm':
+          return { ok: await this.auth.confirmPassword('secret') };
+        case 'password':
+          await this.auth.updatePassword('new password');
+          return { ok: true };
+        case 'others':
+          return { ok: await this.auth.logoutOtherDevices('secret') };
+        case 'key':
+          return { ok: await this.auth.updateSessionKey() };
+        default:
+          return { error: 'unknown' };
+      }
+    } catch (error) {
+      return { threw: (error as Error).message };
+    }
+  }
+}
 class IslandController extends Route {
   async handle() {
     this.session.lock(() => false); // an island's request: StartSession does this
@@ -106,6 +163,8 @@ const routes = openRoutes((Route) => {
   Route.post('/logout', LogoutController);
   Route.get('/who', WhoController);
   Route.get('/island', IslandController);
+  Route.get('/list', ListController);
+  Route.post('/act', ActController);
 });
 
 async function boot(options: { signIns?: (new (...args: never[]) => SignInStore) | false; env?: Record<string, string> } = {}) {
@@ -116,7 +175,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
     discover: false,
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...options.env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
-    modules: [defineModule({ name: 'sign-ins-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
+    modules: [defineModule({ name: 'sign-ins-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(PasswordChanged, RecordPasswordChanged)] })],
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
@@ -135,7 +194,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
   const browser = (jar: Map<string, string> = new Map()) => {
     const send = async (path: string, init: { method?: string; headers?: Record<string, string> } = {}) => {
       const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
-      const response = await kernel.request(path, { method: init.method ?? (path === '/who' || path === '/island' ? 'GET' : 'POST'), headers: { cookie, accept: 'application/json', 'user-agent': 'Test Browser', ...init.headers } });
+      const response = await kernel.request(path, { method: init.method ?? (path === '/who' || path === '/island' || path === '/list' ? 'GET' : 'POST'), headers: { cookie, accept: 'application/json', 'user-agent': 'Test Browser', ...init.headers } });
       for (const header of response.headers.getSetCookie()) {
         const [pair, ...attributes] = header.split(';');
         const [name, value] = pair!.split('=') as [string, string];
@@ -144,6 +203,8 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
       }
       return response;
     };
+    const act = async (action: string, id = '') => (await send('/act', { headers: { 'x-action': action, 'x-id': id } })).json() as Promise<Record<string, unknown>>;
+    const list = async () => (await send('/list')).json() as Promise<{ id: string; current: boolean; remembered: boolean; userAgent: string | undefined; device: { browser: string | undefined; system: string | undefined } }[]>;
     const who = async () => (await send('/who')).json() as Promise<{ id: number | null; viaRemember: boolean }>;
     const sessionKeyOf = async () => sessionKey(await application.container.make(Encrypter).decrypt(decodeURIComponent(jar.get('marmeon_session')!), 'cookie:marmeon_session'));
     const stored = async () => JSON.parse((await store.read(await sessionKeyOf()))!.data) as Record<string, unknown>;
@@ -156,13 +217,13 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
     };
     /** A browser that kept only its remember-me cookie: the session is gone. */
     const reopened = () => browser(new Map([['remember_web', jar.get('remember_web')!]]));
-    return { send, who, jar, stored, edit, reopened };
+    return { send, who, act, list, jar, stored, edit, reopened };
   };
-  return { application, browser, rows, tokens, db, factors };
+  return { application, browser, rows, tokens, db, factors, users };
 }
 
-const login = (b: ReturnType<Awaited<ReturnType<typeof boot>>['browser']>, remember = false) =>
-  b.send('/login', { headers: { 'x-remember': remember ? 'yes' : 'no' } });
+const login = (b: ReturnType<Awaited<ReturnType<typeof boot>>['browser']>, remember = false, user: string = ada.email) =>
+  b.send('/login', { headers: { 'x-remember': remember ? 'yes' : 'no', 'x-user': user } });
 
 describe('sign-ins tracked by Auth', () => {
   it('without a bound store changes nothing: no key in the session, no row', async () => {
@@ -394,5 +455,179 @@ describe('sign-ins tracked by Auth', () => {
     expect(await rows()).toHaveLength(1);
     expect(await tokens()).toBe(0);
     expect(await b.who()).toMatchObject({ id: null });
+  });
+
+  describe('listing and ending sign-ins', () => {
+    it('lists every browser of the user, the asking one first and marked, with what the user agent says', async () => {
+      const { browser } = await boot();
+      const laptop = browser();
+      const phone = browser();
+      await login(laptop);
+      await login(phone, true);
+      const seenByLaptop = await laptop.list();
+      expect(seenByLaptop).toHaveLength(2);
+      expect(seenByLaptop.map((signIn) => signIn.current)).toEqual([true, false]);
+      expect(seenByLaptop[1]!.remembered).toBe(true);
+      expect(seenByLaptop[0]).toMatchObject({ remembered: false, userAgent: 'Test Browser', device: {} }); // undefined parts are left out of the JSON
+      const seenByPhone = await phone.list();
+      expect(seenByPhone.map((signIn) => signIn.current)).toEqual([true, false]);
+      expect(seenByPhone[0]!.id).toBe(seenByLaptop[1]!.id);
+    });
+
+    it('signs a browser out when its sign-in is ended — its remember-me cookie included', async () => {
+      const { browser, tokens } = await boot();
+      const laptop = browser();
+      const phone = browser();
+      await login(laptop);
+      await login(phone, true);
+      await laptop.act('confirm');
+      const other = (await laptop.list()).find((signIn) => !signIn.current)!;
+      expect(await laptop.act('end', other.id)).toEqual({ ok: true });
+      expect(await phone.who()).toMatchObject({ id: null });
+      expect(await phone.reopened().who(), 'the cookie signs nobody in').toMatchObject({ id: null });
+      expect(await tokens()).toBe(0);
+      expect(await laptop.who()).toMatchObject({ id: 1 });
+      expect(await laptop.list()).toHaveLength(1);
+    });
+
+    it("cannot end another user's sign-in: it answers missing, and that session lives on", async () => {
+      const { browser, rows } = await boot();
+      const ada1 = browser();
+      const bob1 = browser();
+      await login(ada1);
+      await login(bob1, false, bob.email);
+      await ada1.act('confirm');
+      const adasId = (await ada1.list())[0]!.id;
+      const bobsRow = (await rows()).find((row) => row.id !== adasId)!;
+      expect(await ada1.act('end', bobsRow.id)).toEqual({ error: 'missing' });
+      expect(await ada1.act('end', 'A'.repeat(22)), 'unknown looks the same').toEqual({ error: 'missing' });
+      expect(await bob1.who()).toMatchObject({ id: 2 });
+      expect(await rows()).toHaveLength(2);
+    });
+
+    it('needs a recently typed password, and ends nothing without it', async () => {
+      const { browser, rows } = await boot();
+      const laptop = browser();
+      const phone = browser();
+      await login(laptop);
+      await login(phone);
+      await laptop.edit((data) => delete data[AUTH_SESSION_KEYS.confirmedAt]);
+      const other = (await laptop.list()).find((signIn) => !signIn.current)!;
+      expect(await laptop.act('end', other.id)).toEqual({ threw: expect.stringContaining('recently typed password') });
+      expect(await rows()).toHaveLength(2);
+      expect(await phone.who()).toMatchObject({ id: 1 });
+    });
+
+    it('refuses to end its own sign-in (that is logout) and a malformed id', async () => {
+      const { browser, rows } = await boot();
+      const b = browser();
+      await login(b);
+      const [own] = await b.list();
+      expect(await b.act('end', own!.id)).toEqual({ error: 'current' });
+      expect(await b.act('end', '../x')).toEqual({ error: 'missing' });
+      expect(await rows()).toHaveLength(1);
+    });
+
+    it('throws, naming the remedy, without a bound store', async () => {
+      const { browser } = await boot({ signIns: false });
+      const b = browser();
+      await login(b);
+      expect(await (await b.send('/act', { headers: { 'x-action': 'end', 'x-id': 'A'.repeat(22) } })).json()).toEqual({ threw: expect.stringContaining('SignInStore') });
+    });
+
+    it('leaves out sign-ins older than the absolute lifetime, unless a remember-me cookie keeps them', async () => {
+      const { browser, db } = await boot();
+      const laptop = browser();
+      const old = browser();
+      const kept = browser();
+      await login(laptop);
+      await login(old);
+      await login(kept, true);
+      const longAgo = new Date(Date.now() - 48 * 3_600_000);
+      await db.updateTable(SIGN_INS_TABLE).set({ signed_in_at: longAgo }).where('remember_selector', 'is', null).where('user_agent', 'is not', null).execute();
+      const listed = await laptop.list();
+      expect(listed.map((signIn) => signIn.remembered), 'the old rows are gone from the list, the remembered one stays').toEqual([true]);
+    });
+
+    it('takes every other row off the list after a new password, signing out the others, or a new session key', async () => {
+      for (const action of ['password', 'others', 'key']) {
+        const { browser, rows } = await boot();
+        const laptop = browser();
+        await login(laptop, true);
+        await login(browser());
+        await login(browser(), true);
+        expect(await rows()).toHaveLength(3);
+        await laptop.act('confirm');
+        expect(await laptop.act(action)).toMatchObject({ ok: true });
+        const left = await rows();
+        expect(left, action).toHaveLength(1);
+        expect(left[0]!.id).toBe((await laptop.list())[0]!.id);
+        expect(await laptop.who(), action).toMatchObject({ id: 1 });
+      }
+    });
+
+    it('a store that cannot end the other rows does not fail a password change that was stored: the event still fires', async () => {
+      const { browser, users } = await boot({ signIns: CannotEndAll });
+      const b = browser();
+      await login(b);
+      const before = RecordPasswordChanged.count;
+      expect(await b.act('password')).toEqual({ ok: true });
+      expect(RecordPasswordChanged.count).toBe(before + 1);
+      expect(users.hash).not.toBeNull();
+      expect(await b.act('key')).toEqual({ ok: true });
+    });
+
+    it('a refused remember-me token takes its row off the list, not only its token', async () => {
+      const { browser, rows, db } = await boot();
+      const b = browser();
+      await login(b, true);
+      // Past AUTH_REMEMBER_DAYS from its creation: refused, though the row still says "remembered".
+      await db.updateTable('remember_tokens').set({ created_at: new Date(Date.now() - 400 * 86_400_000) }).execute();
+      expect(await b.reopened().who()).toMatchObject({ id: null });
+      expect(await rows()).toEqual([]);
+    });
+
+    it('keeps no row for this device after a password change took its remember-me token', async () => {
+      const { browser, rows } = await boot();
+      const laptop = browser();
+      await login(laptop, true);
+      await laptop.act('confirm');
+      await laptop.act('password');
+      expect((await rows())[0]!.remember_selector).toBeNull();
+      expect((await laptop.list())[0]!.remembered).toBe(false);
+    });
+
+    it('AccountSessions.end() takes every row of the account, and only its rows', async () => {
+      const { browser, rows, application } = await boot();
+      await login(browser());
+      await login(browser(), true);
+      const other = browser();
+      await login(other, false, bob.email);
+      expect((await application.container.make(AccountSessions).end(1 as never)).ok).toBe(true);
+      expect(await rows()).toHaveLength(1);
+      expect(await other.who()).toMatchObject({ id: 2 });
+    });
+
+    it('a password reset takes every row of the account', async () => {
+      const { browser, rows, application, users } = await boot();
+      await login(browser());
+      await login(browser(), true);
+      await login(browser(), false, bob.email);
+      const container = application.container;
+      await container.make(NewPassword).store(users, container.make(RememberTokenStore), 1, 'x' as never, 'reset');
+      expect((await rows()).map((row) => row.id)).toHaveLength(1);
+    });
+
+    it('a password sign-in with remember-me replaces the old row of the device: the old one leaves the list', async () => {
+      const { browser, rows } = await boot();
+      const first = browser();
+      await login(first, true);
+      const guest = first.reopened();
+      expect((await rows())).toHaveLength(1);
+      await login(guest, true);
+      const after = await rows();
+      expect(after).toHaveLength(1);
+      expect((await guest.list())).toHaveLength(1);
+    });
   });
 });

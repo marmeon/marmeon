@@ -3,6 +3,7 @@ import type { Connections } from '@marmeon/database';
 import type { AuthConfig } from './config.ts';
 import type { PasswordHash } from './hashing.ts';
 import type { RememberTokenStore } from './remember.ts';
+import { SignInTracker } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import type { UserProvider } from './user.ts';
 
@@ -18,12 +19,14 @@ export class NewPassword {
   readonly #connections: () => Connections;
   readonly #config: AuthConfig;
   readonly #logger: Logger;
+  readonly #signIns: SignInTracker;
 
-  constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger) {
+  constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: SignInTracker = new SignInTracker(undefined)) {
     this.#tokens = tokens;
     this.#connections = connections;
     this.#config = config;
     this.#logger = logger;
+    this.#signIns = signIns;
   }
 
   /** Stores `hash` as the password of the user `id` (`via`: a change or a reset) — how many API tokens it revoked. */
@@ -36,6 +39,8 @@ export class NewPassword {
       // account) must not see the new hash next to a token that still exists.
       await remember.forgetUser(id);
       await users.updatePasswordHash(id as never, hash);
+      // A reset has no session of its own to keep: every sign-in of the user is over, and none stays listed (a change keeps the current one, `Auth` ends the others).
+      if (via === 'reset' && this.#signIns.enabled) await this.#signIns.endAll(id);
       return revoked;
     };
     if (!this.#config.revokeTokensOnPasswordChange) return write(false);
