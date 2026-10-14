@@ -11,6 +11,8 @@ import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { NewPassword } from './new-password.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
+import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
+import { SignInStore, SignInTracker } from './sign-ins.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -40,6 +42,11 @@ export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyRespo
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
 export { PruneTokensCommand } from './prune-tokens.ts';
+export { describeDevice } from './device.ts';
+export type { DeviceDescription } from './device.ts';
+export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
+export { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
+export type { SignIn, SignInRecord, SignInsTable, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
@@ -90,7 +97,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  static commands = [MakeAuthCommand, PruneTokensCommand];
+  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
@@ -108,9 +115,11 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
-    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger)));
+    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), c.make(SignInTracker)));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker)));
+    // Sign-ins are opt-in: without `container.singleton(SignInStore, DatabaseSignIns)` (and its table) `Auth` tracks none.
+    container.singleton(SignInTracker, (c) => new SignInTracker(container.has(SignInStore) ? () => c.make(SignInStore) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new Error(

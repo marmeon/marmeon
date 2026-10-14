@@ -1,21 +1,23 @@
-import { Auth, AuthConfig, type Authenticated } from '@marmeon/auth';
-import { Clock } from '@marmeon/core';
+import { Auth, AuthConfig, SignInStore, type Authenticated } from '@marmeon/auth';
+import { Clock, Container } from '@marmeon/core';
 import { Controller, type HttpContext } from '@marmeon/http';
 
-/** Password and devices — behind confirmedPassword() ("sudo mode"). */
+/** Password, sign-ins and devices — behind confirmedPassword() ("sudo mode"). */
 export class ShowSecurityController extends Controller {
   readonly #auth: Auth;
   readonly #clock: Clock;
+  readonly #container: Container;
   readonly #private: boolean;
 
-  constructor(auth: Auth, clock: Clock, config: AuthConfig) {
+  constructor(auth: Auth, clock: Clock, container: Container, config: AuthConfig) {
     super();
     this.#auth = auth;
     this.#clock = clock;
+    this.#container = container;
     this.#private = config.privateRegistration;
   }
 
-  handle(ctx: HttpContext<Authenticated>) {
+  async handle(ctx: HttpContext<Authenticated>) {
     const { pending_email: pending, pending_email_expires_at: expires } = ctx.user;
     return this.view('auth/Security', {
       viaRemember: this.#auth.viaRemember(),
@@ -25,6 +27,20 @@ export class ShowSecurityController extends Controller {
       emailChangeWaits: this.#private,
       // The address that waits for its link — what this user typed, free or taken alike.
       pendingEmail: this.#private && pending && expires && new Date(expires).getTime() > this.#clock.now() ? pending : null,
+      // The browsers the account is signed in on, this one first — null where the list is off (no SignInStore bound, see the provider).
+      // Only what the page shows: a name for the device, never the raw user agent. No IP address is stored.
+      signIns: this.#container.has(SignInStore) ? await this.#signIns() : null,
     });
+  }
+
+  async #signIns() {
+    return (await this.#auth.signIns()).map((signIn) => ({
+      id: signIn.id,
+      current: signIn.current,
+      remembered: signIn.remembered,
+      lastSeenAt: signIn.lastSeenAt.toISOString(),
+      createdAt: signIn.createdAt.toISOString(),
+      device: { browser: signIn.device.browser ?? null, system: signIn.device.system ?? null },
+    }));
   }
 }

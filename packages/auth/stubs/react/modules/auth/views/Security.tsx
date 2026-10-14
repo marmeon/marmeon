@@ -1,12 +1,12 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useForm, useTranslation } from '@marmeon/react';
+import { Form, Head, Link, useForm, useTranslation } from '@marmeon/react';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, emailChangeWaits, pendingEmail, auth }: Props) {
+export default function Security({ viaRemember, email, emailChangeWaits, pendingEmail, signIns, auth }: Props) {
   const t = useTranslation('auth');
   // Leaving with a changed address or typed passwords asks first (the navigation guard); the address — never a password —
   // is still there after Back/Forward (remembered in memory).
@@ -85,6 +85,43 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
         </form>
         <ApiTokensNote />
       </section>
+
+      {signIns && (
+        <section aria-labelledby="sign-ins-heading" className="card">
+          <h2 id="sign-ins-heading">{t('security.sign_ins_heading')}</h2>
+          <p>{t('security.sign_ins_intro')}</p>
+          <ul className="auth-passkeys">
+            {signIns.map((signIn) => {
+              const { browser, system } = signIn.device;
+              return (
+                <li key={signIn.id} className="auth-passkey">
+                  <p className="auth-passkey-name">
+                    <strong>
+                      {t('security.sign_ins_device', {
+                        browser: browser ?? t('security.sign_ins_unknown_browser'),
+                        system: system ?? t('security.sign_ins_unknown_system'),
+                      })}
+                    </strong>
+                    {signIn.current && <span className="badge">{t('security.sign_ins_current')}</span>}
+                    {signIn.remembered && <span className="badge">{t('security.sign_ins_remembered')}</span>}
+                  </p>
+                  <p className="hint">
+                    {t('security.sign_ins_last_active', { at: `${t.format.date(signIn.lastSeenAt, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC` })}
+                  </p>
+                  {/* This browser's own sign-in is ended by Sign out. */}
+                  {!signIn.current && (
+                    <Form route="auth.sign-ins.destroy" params={{ signIn: signIn.id }} className="auth-passkey-actions">
+                      <button type="submit" className="button-secondary" data-size="small">
+                        {t('security.sign_ins_end')}
+                      </button>
+                    </Form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section aria-labelledby="devices-heading" className="card">
         <h2 id="devices-heading">{t('security.devices_heading')}</h2>

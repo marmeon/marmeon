@@ -7,6 +7,7 @@ import { ConfirmPasswordController } from './controllers/ConfirmPasswordControll
 import { CreateAccessTokenController, ShowCreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
 import { BeginTwoFactorController } from './controllers/BeginTwoFactorController.ts';
 import { ConfirmTwoFactorController } from './controllers/ConfirmTwoFactorController.ts';
+import { EndSignInController } from './controllers/EndSignInController.ts';
 import { DisableTwoFactorController } from './controllers/DisableTwoFactorController.ts';
 import { LoginController } from './controllers/LoginController.ts';
 import { PasskeyChallengeController } from './controllers/PasskeyChallengeController.ts';
@@ -135,6 +136,9 @@ export default defineRoutes((Route) => {
   sudo.put('/settings/passkeys/:passkey', RenamePasskeyController).name('auth.passkeys.update');
   factors.post('/settings/passkeys/:passkey/release', ReleasePasskeyController).name('auth.passkeys.release').block();
   factors.post('/settings/passkeys/:passkey/remove', RemovePasskeyController).name('auth.passkeys.destroy').block();
+  // Ending one sign-in: sudo mode (a stolen session must not sign its owner out elsewhere without the password). The id is looked up
+  // within `ctx.user`'s own sign-ins; another account's is not found. Without a bound `SignInStore` (AuthServiceProvider) the page lists none.
+  sudo.post('/settings/sign-ins/:signIn/end', EndSignInController).name('auth.sign-ins.destroy');
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import type { UserSessions } from '@marmeon/session';
 import type { RememberTokenStore } from './remember.ts';
+import { SignInTracker } from './sign-ins.ts';
 import { UserProvider, type AuthUserId } from './user.ts';
 
 /** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
@@ -69,17 +70,19 @@ export interface EndedSessions {
 
 /**
  * Ends every session and every remember-me cookie of one account, such as after an incident or an operator's reset. Inject it into
- * a command, a job or an admin controller. See `docs/authentication.md#ending-every-session-of-a-user`.
+ * a command, a job or an admin controller. With sign-ins switched on, their rows go too. See `docs/authentication.md#ending-every-session-of-a-user`.
  */
 export class AccountSessions {
   readonly #users: UserProvider;
   readonly #remember: RememberTokenStore;
   readonly #sessions: UserSessions | undefined;
+  readonly #signIns: SignInTracker;
 
-  constructor(users: UserProvider, remember: RememberTokenStore, sessions: UserSessions | undefined) {
+  constructor(users: UserProvider, remember: RememberTokenStore, sessions: UserSessions | undefined, signIns: SignInTracker = new SignInTracker(undefined)) {
     this.#users = users;
     this.#remember = remember;
     this.#sessions = sessions;
+    this.#signIns = signIns;
   }
 
   /**
@@ -112,6 +115,8 @@ export class AccountSessions {
       throw new Error('AccountSessions.end(): UserProvider.updateSessionKey(id, key, undefined) answered false for an account that exists — it must write regardless of the stored key.');
     }
     const removed = (await this.#sessions?.end(id)) ?? 0;
+    // The list of sign-ins goes with them (the key already ended every session; this only keeps rows from being listed as live).
+    if (this.#signIns.enabled) await this.#signIns.endAll(id);
     return ok({ removed });
   }
 }

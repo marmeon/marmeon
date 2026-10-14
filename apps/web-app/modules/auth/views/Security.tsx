@@ -1,12 +1,12 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
+import { Form, Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../../../layouts/AppLayout.tsx';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, emailChangeWaits, pendingEmail, auth }: Props) {
+export default function Security({ signIns, viaRemember, email, emailChangeWaits, pendingEmail, auth }: Props) {
   const t = useTranslation('auth');
   const route = useRoute();
   // Leaving with a changed address or typed passwords asks first (the navigation guard); the address — never a password —
@@ -90,6 +90,32 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
         </form>
         <ApiTokensNote />
       </section>
+
+      {signIns && (
+        <section aria-labelledby="sign-ins-heading">
+          <h2 id="sign-ins-heading">{t('security.sign_ins_heading')}</h2>
+          <p>{t('security.sign_ins_intro')}</p>
+          <ul>
+            {signIns.map((signIn) => (
+              <li key={signIn.id}>
+                {t('security.sign_ins_device', {
+                  browser: signIn.device.browser ?? t('security.sign_ins_unknown_browser'),
+                  system: signIn.device.system ?? t('security.sign_ins_unknown_system'),
+                })}
+                {signIn.current && <strong> · {t('security.sign_ins_current')}</strong>}
+                {signIn.remembered && <small> · {t('security.sign_ins_remembered')}</small>}
+                <small> · {t('security.sign_ins_last_active', { at: `${t.format.date(signIn.lastSeenAt, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC` })}</small>
+                {/* This browser's own is ended by Sign out. */}
+                {!signIn.current && (
+                  <Form route="auth.sign-ins.destroy" params={{ signIn: signIn.id }}>
+                    <button type="submit">{t('security.sign_ins_end')}</button>
+                  </Form>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section aria-labelledby="devices-heading">
         <h2 id="devices-heading">{t('security.devices_heading')}</h2>

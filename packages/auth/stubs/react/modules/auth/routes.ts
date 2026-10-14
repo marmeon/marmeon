@@ -8,6 +8,7 @@ import { ConfirmPasswordController } from './controllers/ConfirmPasswordControll
 import { ConfirmTwoFactorController } from './controllers/ConfirmTwoFactorController.ts';
 import { CreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
 import { DisableTwoFactorController } from './controllers/DisableTwoFactorController.ts';
+import { EndSignInController } from './controllers/EndSignInController.ts';
 import { LoginController } from './controllers/LoginController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
 import { LogoutOtherDevicesController } from './controllers/LogoutOtherDevicesController.ts';
@@ -131,6 +132,9 @@ export default defineRoutes((Route) => {
   sudo.put('/settings/passkeys/:passkey', RenamePasskeyController).name('auth.passkeys.update');
   factors.post('/settings/passkeys/:passkey/release', ReleasePasskeyController).name('auth.passkeys.release').block();
   factors.post('/settings/passkeys/:passkey/remove', RemovePasskeyController).name('auth.passkeys.destroy').block();
+  // Ending one of the account's other sign-ins (the list on the security page): sudo mode, because a stolen session must not sign its owner out
+  // elsewhere. The id is looked up within `ctx.user`'s own sign-ins — another account's is answered like an unknown one.
+  sudo.post('/settings/sign-ins/:signIn/end', EndSignInController).name('auth.sign-ins.destroy');
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // A new token and a new address are as good as a factor of one's own: a stolen session must not make either with the password alone.
   factors.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');

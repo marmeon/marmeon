@@ -7,6 +7,7 @@ import { PasswordHasher, type PasswordHash } from './hashing.ts';
 import type { RememberTokenStore } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
 import { NewPassword } from './new-password.ts';
+import { SignInTracker } from './sign-ins.ts';
 import type { AuthUser, UserProvider } from './user.ts';
 
 function must<T>(result: Result<T, { readonly kind: string }>): T {
@@ -43,7 +44,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
       remember,
       { dispatch: async (event: object) => void events.push(event) } as never,
       { resetExpire: 60, resetThrottle: 60 } as never,
-      new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger),
+      new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger, new SignInTracker(undefined)),
     );
   let apiTokens: DatabaseAccessTokens;
 
