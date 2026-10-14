@@ -1,8 +1,9 @@
 import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { Session } from '@marmeon/session';
-import { Auth, AUTH_SESSION_KEYS } from '../auth.ts';
+import { Auth } from '../auth.ts';
 import { idOf, type Authenticated } from '../user.ts';
+import { secondFactorProvenWithin } from './proof.ts';
 import { TwoFactorState } from './state.ts';
 
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);
@@ -57,16 +58,8 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
         return this.#redirect(ctx, loginRoute);
       }
       if ((await this.#state.factors(idOf(user))).length === 0) return this.#refuse(ctx, 'two_factor_required', options.setup);
-      if (!this.#proven()) return this.#refuse(ctx, 'two_factor_unverified', options.verify);
+      if (!secondFactorProvenWithin(this.#session, maxAge ?? TWO_FACTOR_MAX_AGE)) return this.#refuse(ctx, 'two_factor_unverified', options.verify);
       return next();
-    }
-
-    /** Whether this session proved a second factor, and recently enough. A missing, malformed or future time counts as not proven. */
-    #proven(): boolean {
-      const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.twoFactorAt) : undefined;
-      if (typeof at !== 'number' || !Number.isFinite(at)) return false;
-      const age = Math.floor(Date.now() / 1000) - at;
-      return age >= 0 && age <= (maxAge ?? TWO_FACTOR_MAX_AGE);
     }
 
     #refuse(ctx: HttpContext<Authenticated>, error: 'two_factor_required' | 'two_factor_unverified', route: string): Response {

@@ -121,7 +121,7 @@ export function sessionFingerprint(credentials: Credentials): string {
 }
 
 export interface LoginOptions {
-  /** Keep the user signed in on this device beyond the session ("remember me"). */
+  /** Keeps this browser signed in for up to `AUTH_REMEMBER_DAYS` days without the password — a convenience, not a proof. See `docs/authentication.md#remember-me`. */
   readonly remember?: boolean;
   /**
    * The client's address for the `Login` event (for "a new sign-in" notices, audit logs). Default: the request's (`RequestInfo`,

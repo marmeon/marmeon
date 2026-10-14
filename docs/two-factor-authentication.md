@@ -104,7 +104,7 @@ import { TwoFactor } from '@marmeon/auth/two-factor';
 const setup = await this.#twoFactor.begin(); // { secret, uri, qr }
 ```
 
-`begin()` needs a signed-in user who typed the password recently (the [`confirmedPassword()`](authentication.md#sudo-mode)
+`begin()` needs a signed-in user who typed the password within 15 minutes by default (the [`confirmedPassword()`](authentication.md#sudo-mode)
 middleware) and returns a new key: `secret` to type in, `uri` for the `otpauth://` link and `qr`, the QR code as `{ size, path }`.
 Render it as an SVG with a quiet zone of white around the modules, because scanners need one and a dark theme would take it away:
 
@@ -192,7 +192,7 @@ asks the URL with a `GET` that must not show them. Do not redirect with them in 
 
 `challenge({ recoveryCode })` accepts a code typed in lower case or with spaces. A spent code is refused. `status()` returns
 `recoveryCodesLeft`, and the example app asks for new ones when three or fewer remain. `regenerateRecoveryCodes()` makes ten new
-codes in place of all the old ones, spent or not; it needs the password typed recently, like `begin()`.
+codes in place of all the old ones, spent or not; it needs the password typed within 15 minutes by default, like `begin()`.
 
 Recovery codes belong to the account, not to the authenticator app: they stay when another factor is added and go with the last
 one. They work even when the secret of the authenticator can no longer be decrypted.
@@ -202,7 +202,7 @@ one. They work even when the secret of the authenticator can no longer be decryp
 On an account that already has a factor, the password is not enough to change its factors. `begin()`, `setup()`,
 `regenerateRecoveryCodes()` and `disable()` of `TwoFactor`, and `registrationOptions()`, `register()`, `remove()` and `release()` of
 [`Passkeys`](passkeys.md#managing-passkeys) throw unless this session proved a second factor within the last 15 minutes
-(`FACTOR_CHANGE_MAX_AGE`, 900 seconds, not a setting). Without it, a stolen session whose factor was proven more than 15 minutes ago and a phished password would
+([how long](authentication.md#how-long-a-sign-in-lasts); not a setting). Without it, a stolen session whose factor was proven more than 15 minutes ago and a phished password would
 be enough to add a factor of the thief's own, or to take the owner's away and set up a "first" one. The same holds for the routes that change the e-mail address (a reset link goes to the new one) and create API tokens: guard them too.
 An account without a factor
 needs only the password for its first one, and finishing a setup with `confirm()` needs no new proof: the code shows the key that a
@@ -234,7 +234,8 @@ await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'pass
 
 It protects against a stolen or guessed password, and a password from another site's leak. It does not protect against a user who
 types the code into a copy of your login page that forwards it at once, against someone who already holds a signed-in session or
-controls the user's device, or against whoever has the server's `APP_KEY`. Codes by e-mail or SMS are not offered on purpose.
+controls the user's device, or against whoever has the server's `APP_KEY`. A [remember-me](authentication.md#remember-me) cookie
+signs in without the code, so it counts as a proven factor only for `maxAge`, counted from the sign-in that made it (24 hours by default). Codes by e-mail or SMS are not offered on purpose.
 
 Someone who knows the password or holds a signed-in session can use up the code attempts for a day; recovery codes stay open, so the owner is not locked out. A
 password reset does not clear the counters.
@@ -269,10 +270,11 @@ it runs is your decision, route by route. It refuses by default; each of these i
 A browser that is sent away comes back to the page it asked for (`redirect().intended()`). A session proves its factor by
 passing the code step of the sign-in, by turning the factor on, or by `stepUp()` below; a remember-me sign-in of an account with
 a factor counts as proven at the time its cookie was made (after a code, and kept when the cookie rotates), so an old cookie
-(older than `maxAge`, 24 hours by default) sends the session to `verify` too. A session that was open before the factor was
-added has not proven it, so it is sent to `verify`. The proof stays for 24 hours (`TWO_FACTOR_MAX_AGE` from
+(older than `maxAge`, 24 hours by default) sends the session to `verify` too. That holds when `AUTH_SESSION_MAX_HOURS` ends a
+sign-in and the cookie signs the user in anew: the new session inherits the cookie's proof time, not the time of the new
+sign-in. A session that was open before the factor was added has not proven it, so it is sent to `verify`. The proof stays for 24 hours (`TWO_FACTOR_MAX_AGE` from
 `@marmeon/auth/two-factor`), or for `maxAge` seconds when you give one, longer or shorter; then the user is asked again. There
-is no setting for "never". Typing the password again ([sudo mode](authentication.md)) is a different thing and proves nothing
+is no setting for "never". [How long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists it with the other lifetimes. Typing the password again ([sudo mode](authentication.md#sudo-mode)) is a different thing and proves nothing
 about the second factor.
 
 The `verify` page asks for a code and calls `TwoFactor.stepUp()`, which takes the same input and uses the same throttle, events and
