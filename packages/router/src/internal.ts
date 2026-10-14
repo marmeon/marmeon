@@ -3,4 +3,5 @@
  * reason to, and the symbol is deliberately absent from the package index.
  * @internal
  */
+export { isEveryone } from './access.ts';
 export { FRAMEWORK_ROUTES } from './router.ts';

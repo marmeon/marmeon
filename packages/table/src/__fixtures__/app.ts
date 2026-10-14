@@ -6,7 +6,7 @@ import { Controller, defineRequest, HttpServiceProvider, IncomingRequest, type C
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { action, bulk, column, defineTable, exportCsv, filter, Tables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
-import { MemberPolicy } from './policies.ts';
+import { EmailPolicy, MemberPolicy } from './policies.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import './schema.ts';
 
@@ -168,8 +168,7 @@ export const ByEmailTable = defineTable({
   query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
   key: { column: 'members.email', type: 'string' },
   columns: { name: column('members.name').sortable() },
-  // Authorized by a policy written for another row shape: these tests are about keys, not about the policy.
-  actions: { deactivate: action(DeactivateByEmail).authorize(MemberPolicy as never, 'deactivate' as never) as unknown as ReturnType<typeof action<typeof DeactivateByEmail>> },
+  actions: { deactivate: action(DeactivateByEmail).authorize(EmailPolicy, 'deactivate') },
 });
 
 /** A base query that loads a relation: the table pages it like any other query. */

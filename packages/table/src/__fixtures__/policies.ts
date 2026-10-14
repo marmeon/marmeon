@@ -18,3 +18,10 @@ export class MemberPolicy {
     return member.id !== user.id && member.id !== 3;
   }
 }
+
+/** For the table keyed by e-mail: whoever is not the signed-in user's own address. */
+export class EmailPolicy {
+  deactivate(user: AuthUser, member: { readonly email: string }) {
+    return member.email !== user.email;
+  }
+}

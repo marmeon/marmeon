@@ -1,5 +1,6 @@
 import { Controller } from '@marmeon/http';
-import { isEveryone, type HttpContext, type Route } from '@marmeon/router';
+import type { HttpContext, Route } from '@marmeon/router';
+import { isEveryone } from '@marmeon/router/internal';
 import type { Table } from './define.ts';
 import { endpointOf, recordEndpoint, Tables } from './tables.ts';
 
