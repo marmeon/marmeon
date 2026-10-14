@@ -285,12 +285,13 @@ describe('TwoFactor: setting up', () => {
 
   it('needs a recently typed password to begin, to show the key again and to make new recovery codes', async () => {
     const booted = await boot();
-    const { b } = await enable(booted);
+    const { b, secret } = await enable(booted);
     vi.useFakeTimers({ toFake: ['Date'], now: inSeconds(901) });
     for (const method of ['begin', 'setup', 'regenerate']) {
       expect(await b.tf(method), method).toMatchObject({ thrown: expect.stringContaining('recently typed password') });
     }
     expect(await b.tf('confirm-password', { password: 'secret' })).toEqual({ confirmed: true });
+    expect(await b.tf('step-up', { code: twoFactorCode(secret) })).toEqual({ ok: true });
     expect(await b.tf('regenerate')).toMatchObject({ codes: expect.any(Array) });
   });
 
@@ -874,6 +875,107 @@ describe('TwoFactor: the budget of code attempts', () => {
     const b = await waiting(booted);
     expect(await b.tf('challenge', { recoveryCode: 'AAAA-AAAA-AAAA-AAAA' })).toMatchObject({ ok: false, kind: 'throttled' });
     expect(await b.tf('challenge', { code: '000000' })).toMatchObject({ ok: false, kind: 'invalid-code' }); // the code counter is separate
+  });
+});
+
+describe('TwoFactor: changing the factors of an account that has one', () => {
+  const needsProof = { thrown: expect.stringContaining('second factor proven within 15 minutes') };
+  const setProof = (b: Browser, value: unknown) => b.send('/set-proof', { value });
+  const secondsAgo = (seconds: number) => Math.floor(Date.now() / 1000) - seconds;
+
+  /** An account whose only factor is a passkey (a state that reports one beside the store), signed in with a session that proved nothing lately. */
+  async function withPasskey() {
+    let store: TwoFactorStore | undefined;
+    let passkey = false;
+    const state: TwoFactorState = {
+      factors: async (id) => [...(passkey ? (['passkey'] as const) : []), ...(await store!.factors(id))],
+      enabledSince: async (id) => store!.enabledSince(id),
+    };
+    const booted = await boot({}, { state });
+    store = booted.store;
+    const b = booted.browser();
+    await b.login();
+    return { booted, b, addPasskey: () => void (passkey = true) };
+  }
+
+  it('refuses begin() on an account with a passkey when the session has only the password (a remember-me session older than a day)', async () => {
+    const { b, addPasskey } = await withPasskey();
+    addPasskey();
+    await setProof(b, secondsAgo(25 * 3600));
+    expect(await b.tf('confirm-password', { password: 'secret' })).toEqual({ confirmed: true });
+    expect(await b.tf('begin')).toMatchObject(needsProof);
+    await setProof(b, 'not a time');
+    expect(await b.tf('begin')).toMatchObject(needsProof);
+    expect(await b.tf('status')).toMatchObject({ settingUpTotp: false });
+  });
+
+  it('refuses to show a setup again, to make recovery codes and to turn the authenticator off', async () => {
+    const booted = await boot();
+    const { b } = await enable(booted);
+    await setProof(b, secondsAgo(25 * 3600));
+    await b.tf('confirm-password', { password: 'secret' });
+    expect(await b.tf('setup')).toMatchObject(needsProof);
+    expect(await b.tf('regenerate')).toMatchObject(needsProof);
+    expect(await b.tf('disable', { password: 'secret' })).toMatchObject(needsProof);
+    expect(await b.tf('status')).toEqual({ factors: ['totp'], settingUpTotp: false, recoveryCodesLeft: 10 });
+  });
+
+  it('does not let new recovery codes turn into a fresh proof: the old codes still stand and stepUp() with them is not possible', async () => {
+    const booted = await boot();
+    const { b, recoveryCodes } = await enable(booted);
+    await setProof(b, secondsAgo(25 * 3600));
+    await b.tf('confirm-password', { password: 'secret' });
+    expect(await b.tf('regenerate')).toMatchObject(needsProof);
+    expect(await booted.store.remainingRecoveryCodes(1)).toBe(10);
+    expect(await b.visit('/area-fresh', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
+    expect(recoveryCodes).toHaveLength(10);
+  });
+
+  it('allows them after stepUp(), and only for fifteen minutes', async () => {
+    const booted = await boot();
+    const { b, secret } = await enable(booted);
+    await setProof(b, 'not a time');
+    await b.tf('confirm-password', { password: 'secret' });
+    expect(await b.tf('regenerate')).toMatchObject(needsProof);
+    vi.setSystemTime(inSeconds(60)); // the code of the setup is used up; the next step's is not
+    expect(await b.tf('step-up', { code: twoFactorCode(secret) })).toEqual({ ok: true });
+    expect(await b.tf('regenerate')).toMatchObject({ codes: expect.any(Array) });
+    expect(await b.tf('status')).toMatchObject({ settingUpTotp: false });
+    await setProof(b, secondsAgo(900));
+    expect(await b.tf('regenerate')).toMatchObject({ codes: expect.any(Array) });
+    await setProof(b, secondsAgo(901));
+    expect(await b.tf('regenerate')).toMatchObject(needsProof);
+  });
+
+  it('confirm() of a further factor does not write the proof: a stale session stays stale', async () => {
+    const { booted, b, addPasskey } = await withPasskey();
+    addPasskey();
+    await setProof(b, secondsAgo(60)); // proven lately, so that begin() is allowed
+    const setup = await b.tf('begin');
+    await setProof(b, secondsAgo(25 * 3600));
+    const confirmed = await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' });
+    expect(confirmed, JSON.stringify(confirmed)).toMatchObject({ ok: true, recoveryCodes: null });
+    expect(await booted.store.factors(1)).toEqual(['totp']);
+    expect(await b.visit('/area-fresh', { json: true })).toMatchObject({ status: 403, body: { error: 'two_factor_unverified' } });
+  });
+
+  it('confirm() of the first factor still proves the session', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ ok: true });
+    expect(await b.visit('/area-fresh', { json: true })).toMatchObject({ status: 200 });
+  });
+
+  it('an account without a factor sets one up with the password alone, and an unfinished setup is removed freely', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    await setProof(b, secondsAgo(25 * 3600));
+    expect(await b.tf('begin')).toMatchObject({ secret: expect.any(String) });
+    expect(await b.tf('setup')).toMatchObject({ secret: expect.any(String) });
+    expect(await b.tf('disable', { password: 'secret' })).toEqual({ disabled: true });
   });
 });
 

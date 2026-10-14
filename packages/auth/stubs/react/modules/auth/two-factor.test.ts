@@ -347,3 +347,46 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     expect(await reset([grace.email])).toEqual({ code: 0, lines: [`${grace.email} has no second factor.`] });
   });
 });
+
+describe('changing the factors of an account that has one', { timeout: 30_000 }, () => {
+  /** The settings routes 15 minutes later: the password typed again opens sudo mode, but the factor proven when it was turned on is too old. */
+  async function later(run: (as: () => ReturnType<typeof app.withCookie>, secret: string, cookie: string) => Promise<void>) {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, secret } = await enable(ada);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
+    try {
+      const as = () => app.withCookie(SESSION, cookie);
+      await as().post('/confirm-password', { form: { password: 'password' } });
+      await run(as, secret, cookie);
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it('sends such a session to the verify page, for the page and for every change, and changes nothing', async () => {
+    await later(async (as) => {
+      await as().get('/settings/two-factor').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/two-factor/setup').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/two-factor/recovery-codes').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/two-factor/disable', { form: { password: 'password' } }).assertRedirect('/settings/two-factor/verify');
+      await as().withHeaders({ accept: 'application/json' }).post('/settings/two-factor/disable', { form: { password: 'password' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await app.assertDatabaseCount('two_factor_authentications', 1);
+      await app.assertDatabaseCount('two_factor_recovery_codes', 10);
+    });
+  });
+
+  it('keeps the address and the API tokens out of reach of such a session, too', async () => {
+    await later(async (as) => {
+      await as().put('/settings/email', { form: { email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
+      await as().withHeaders({ accept: 'application/json' }).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await app.assertDatabaseCount('personal_access_tokens', 0);
+    });
+  });
+
+  it('lets the same session in once it proved the factor again', async () => {
+    await later(async (as, secret, cookie) => {
+      const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(secret) } }).assertRedirect();
+      await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
+    });
+  });
+});

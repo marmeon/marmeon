@@ -197,9 +197,32 @@ codes in place of all the old ones, spent or not; it needs the password typed re
 Recovery codes belong to the account, not to the authenticator app: they stay when another factor is added and go with the last
 one. They work even when the secret of the authenticator can no longer be decrypted.
 
+## Changing the factors
+
+On an account that already has a factor, the password is not enough to change its factors. `begin()`, `setup()`,
+`regenerateRecoveryCodes()` and `disable()` of `TwoFactor`, and `registrationOptions()`, `register()`, `remove()` and `release()` of
+[`Passkeys`](passkeys.md#managing-passkeys) throw unless this session proved a second factor within the last 15 minutes
+(`FACTOR_CHANGE_MAX_AGE`, 900 seconds, not a setting). Without it, a stolen session whose factor was proven more than 15 minutes ago and a phished password would
+be enough to add a factor of the thief's own, or to take the owner's away and set up a "first" one. The same holds for the routes that change the e-mail address (a reset link goes to the new one) and create API tokens: guard them too.
+An account without a factor
+needs only the password for its first one, and finishing a setup with `confirm()` needs no new proof: the code shows the key that a
+guarded `begin()` made. `confirm()` also records the proof only for the first factor, since a further factor says nothing about the one
+that is already there.
+
+Put `confirmedSecondFactor({ verify })` from `@marmeon/auth/two-factor` beside `confirmedPassword()` on the routes that call these
+methods, so that a stale session is sent to the page that asks for the factor again (and comes back) instead of seeing an error:
+
+```ts
+const factors = sudo.middleware(confirmedSecondFactor({ verify: 'auth.two-factor.verify' }));
+factors.post('/settings/two-factor/disable', DisableTwoFactorController).name('auth.two-factor.disable');
+```
+
+JSON clients get `403 {"error":"two_factor_unverified"}`. Unlike `twoFactor()`, it lets an account without a factor through, so the
+setup page stays reachable. An app with its own routes for these methods has to put them behind it; without it the methods throw.
+
 ## Turning it off
 
-`disable(password)` checks the password typed now and returns `false` for a wrong one, with nothing changed. With the right one it
+`disable(password)` (see [Changing the factors](#changing-the-factors) for the proof it needs) checks the password typed now and returns `false` for a wrong one, with nothing changed. With the right one it
 removes the authenticator, and the recovery codes with the last factor, and returns `true`. Throttle the password checks in the
 caller; the example app uses the same limiter as for its other password checks.
 
@@ -286,7 +309,9 @@ languages:
 
 The QR code is drawn on white, also in the dark mode, because some apps do not scan it otherwise.
 
-The kit does not install `twoFactor()`, but it has the routes it needs. To require the factor on a route, add the middleware
+The kit puts the settings pages and routes that change factors (the two-factor page, setup, new recovery codes, turning it off, and every
+passkey route but renaming) and, for the same reason, changing the e-mail address and creating an API token behind `confirmedSecondFactor()` after sudo mode: a session that has not proven a factor within 15
+minutes lands on `auth/TwoFactorVerify` first. Confirming a setup is left out. The kit does not install `twoFactor()`, but it has the routes it needs. To require the factor on a route, add the middleware
 to it in `modules/auth/routes.ts`, on a registrar that already says who may call it, such as `confirmedAddress`:
 
 ```ts
