@@ -62,8 +62,12 @@ export interface RememberTokenStore {
   forget(cookie: string): Promise<void>;
   /** Drops every token of the user — except the one of `except` (the current device). */
   forgetUser(userId: number | string, except?: string): Promise<void>;
-  /** Deletes every expired token (`marmeon auth:prune-tokens`) — a lookup drops only the one it finds. How many. */
-  prune(): Promise<number>;
+  /**
+   * Deletes every expired token and every token made `maxAgeDays` days ago or earlier (`marmeon auth:prune-tokens`, with
+   * `AUTH_REMEMBER_DAYS`): a lookup drops only the one it finds, and a lowered or zeroed setting must not leave tokens that a
+   * raised one would revive. `0` deletes every token. How many.
+   */
+  prune(maxAgeDays: number): Promise<number>;
 }
 export const RememberTokenStore = token<RememberTokenStore>('RememberTokenStore');
 
@@ -104,7 +108,8 @@ export class DatabaseRememberTokens implements RememberTokenStore {
       .executeTakeFirst();
     if (!row) return err({ kind: 'invalid' });
     const expiresAt = new Date(row.expires_at);
-    if (expiresAt.getTime() <= this.#clock.now()) {
+    // `!(a > b)`: an unreadable time counts as expired.
+    if (!(expiresAt.getTime() > this.#clock.now())) {
       await db.deleteFrom(REMEMBER_TABLE).where('id', '=', row.id).execute();
       return commitAnyway(err({ kind: 'invalid' })); // the delete stays when an ambient transaction would roll back an err
     }
@@ -152,8 +157,12 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     await query.execute();
   }
 
-  async prune(): Promise<number> {
-    const result = await this.#db().deleteFrom(REMEMBER_TABLE).where('expires_at', '<=', new Date(this.#clock.now())).executeTakeFirst();
+  async prune(maxAgeDays: number): Promise<number> {
+    const now = this.#clock.now();
+    const result = await this.#db()
+      .deleteFrom(REMEMBER_TABLE)
+      .where((eb) => eb.or([eb('expires_at', '<=', new Date(now)), eb('created_at', '<=', new Date(now - maxAgeDays * 86_400_000))]))
+      .executeTakeFirst();
     return Number(result.numDeletedRows);
   }
 

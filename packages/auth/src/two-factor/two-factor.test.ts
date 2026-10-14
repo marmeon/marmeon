@@ -478,7 +478,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(events.filter((event) => event instanceof Login)).toEqual([]); // no listener sees a sign-in that is taken back
     expect(await b.tf('who')).toEqual({ id: null });
     expect(b.jar.has('remember_web')).toBe(false);
-    expect(await booted.application.container.make(RememberTokenStore).prune()).toBe(0);
+    expect(await booted.application.container.make(RememberTokenStore).prune(30)).toBe(0);
     const rows = await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute();
     expect(rows).toEqual([]);
   });

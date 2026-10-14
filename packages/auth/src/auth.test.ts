@@ -11,6 +11,7 @@ import {
   Auth,
   AUTH_SESSION_KEYS,
   authenticate,
+  AuthConfig,
   AuthServiceProvider,
   confirmedPassword,
   Failed,
@@ -610,6 +611,104 @@ describe('remember me', () => {
     const response = await rememberLogin(browser().send);
     const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('remember_web='))!;
     expect(header).toMatch(/; Max-Age=60(4799|4800); HttpOnly; SameSite=Lax$/);
+  });
+
+  describe('how long it lasts', () => {
+    const tokenCount = async (application: Awaited<ReturnType<typeof boot>>['application']) =>
+      (await application.container.make(Connections).get<any>().selectFrom('remember_tokens').select('id').execute()).length;
+    const age = (application: Awaited<ReturnType<typeof boot>>['application'], madeDaysAgo: number, expiresInDays: number) =>
+      application.container
+        .make(Connections)
+        .get<any>()
+        .updateTable('remember_tokens')
+        .set({ created_at: new Date(Date.now() - madeDaysAgo * 86_400_000), expires_at: new Date(Date.now() + expiresInDays * 86_400_000) })
+        .execute();
+
+    it('refuses values above 30 days at boot, and accepts 0 and the default', async () => {
+      await expect(boot({ env: { AUTH_REMEMBER_DAYS: '31' } })).rejects.toThrow(/AUTH_REMEMBER_DAYS/);
+      await expect(boot({ env: { AUTH_REMEMBER_DAYS: '-1' } })).rejects.toThrow(/AUTH_REMEMBER_DAYS/);
+      const { application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
+      expect(application.container.make(AuthConfig)).toMatchObject({ rememberDays: 0, remember: false });
+      expect((await boot()).application.container.make(AuthConfig)).toMatchObject({ rememberDays: 30, remember: true });
+    });
+
+    it('with 0 a sign-in that asks to be remembered gets no cookie and no token', async () => {
+      const { add, browser, application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
+      await add(ada);
+      const laptop = browser();
+      const response = await rememberLogin(laptop.send);
+      expect(response.headers.get('location')).toBe('/home'); // signed in all the same
+      expect(laptop.jar.has('remember_web')).toBe(false);
+      expect(await tokenCount(application)).toBe(0);
+    });
+
+    it('with 0 a cookie issued earlier signs nobody in and its token is deleted', async () => {
+      const { add, browser, application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
+      await add(ada);
+      // A token a higher value issued: valid by its row, encrypted like the app's own cookie.
+      const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000));
+      const cookie = encodeURIComponent(await application.container.make(Encrypter).encrypt(raw, 'cookie:remember_web'));
+      expect(await tokenCount(application)).toBe(1);
+      const reopened = browser(new Map([['remember_web', cookie]]));
+      expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(reopened.jar.has('remember_web')).toBe(false);
+      expect(await tokenCount(application)).toBe(0);
+    });
+
+    it('refuses a token made 31 days ago although its row says it lasts 30 more — and deletes it', async () => {
+      const { add, browser, application } = await boot();
+      await add(ada);
+      const laptop = browser();
+      await rememberLogin(laptop.send);
+      await age(application, 31, 30);
+      const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+      expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(reopened.jar.has('remember_web')).toBe(false);
+      expect(await tokenCount(application)).toBe(0);
+    });
+
+    it('refuses a token whose store reports an unreadable expiry, and forgets it', async () => {
+      const { add, browser, application } = await boot();
+      await add(ada);
+      const laptop = browser();
+      await rememberLogin(laptop.send);
+      const real = application.container.make(RememberTokenStore);
+      const forgotten: string[] = [];
+      application.container.instance(RememberTokenStore, {
+        create: (...args) => real.create(...args),
+        consume: async (cookie) => {
+          const result = await real.consume(cookie);
+          return result.ok ? { ...result, value: { ...result.value, expiresAt: new Date(Number.NaN) } } : result;
+        },
+        forget: async (cookie) => {
+          forgotten.push(cookie);
+          await real.forget(cookie);
+        },
+        exists: (cookie) => real.exists(cookie),
+        forgetUser: (...args) => real.forgetUser(...args),
+        prune: (days) => real.prune(days),
+      });
+      const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+      expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(reopened.jar.has('remember_web')).toBe(false);
+      expect(forgotten).toHaveLength(1);
+      expect(await tokenCount(application)).toBe(0);
+    });
+
+    it('signs in with a token made 29 days ago and shortens the new cookie to what is left', async () => {
+      const { add, browser, application } = await boot();
+      await add(ada);
+      const laptop = browser();
+      await rememberLogin(laptop.send);
+      await age(application, 29, 30);
+      const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+      const response = await reopened.send('/who');
+      expect(await response.json()).toEqual({ id: 1, viaRemember: true });
+      const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('remember_web='))!;
+      const maxAge = Number(/Max-Age=(\d+)/.exec(header)![1]);
+      expect(maxAge).toBeLessThanOrEqual(86_400);
+      expect(maxAge).toBeGreaterThan(86_400 - 60);
+    });
   });
 
   it('a copied cookie signs out the thief and the owner, and every device of the user with them', async () => {

@@ -7,7 +7,7 @@ import { conditionalAvailable, getPasskey, passkeysAvailable, postJson } from '.
 
 type Props = PageProps<ShowLoginController>;
 
-export default function Login({ appName, old }: Props) {
+export default function Login({ appName, old, remember: rememberOffered }: Props) {
   const route = useRoute();
   const t = useTranslation('auth');
   // Method, URL, fields and errors come from the route (auth.login.store → LoginController's LoginRequest).
@@ -21,7 +21,7 @@ export default function Login({ appName, old }: Props) {
   const optionsInFlight = useRef<Promise<unknown> | null>(null);
   const mounted = useRef(false);
   const remember = useRef(false);
-  remember.current = form.data.remember === true;
+  remember.current = rememberOffered && form.data.remember === true;
 
   // One ceremony at a time: the autofill's (conditional) wait ends when the button is pressed. The options request of the one that ends
   // is awaited first — the session holds a single challenge, and a late answer of the old request must not replace the new one's.
@@ -111,11 +111,13 @@ export default function Login({ appName, old }: Props) {
             />
             {form.errors.password && <small role="alert"> {form.errors.password}</small>}
           </div>
-          <div className="field">
-            <label className="choice">
-              <input type="checkbox" name="remember" checked={form.data.remember === true} onChange={(e) => form.set('remember', e.target.checked)} /> {t('login.remember')}
-            </label>
-          </div>
+          {rememberOffered && (
+            <div className="field">
+              <label className="choice">
+                <input type="checkbox" name="remember" checked={form.data.remember === true} onChange={(e) => form.set('remember', e.target.checked)} /> {t('login.remember')}
+              </label>
+            </div>
+          )}
           <button type="submit" className="button auth-submit" disabled={form.processing}>
             {form.processing ? t('login.submitting') : t('login.submit')}
           </button>

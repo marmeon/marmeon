@@ -5,9 +5,9 @@ import { RememberTokenStore } from './remember.ts';
 import { AccessTokenStore } from './tokens.ts';
 
 /**
- * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than
- * `AUTH_RESET_EXPIRE`, expired remember-me tokens, and API tokens expired more than `--hours` ago (a lookup drops only
- * the one it finds). Valid tokens stay. For the scheduler:
+ * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than `AUTH_RESET_EXPIRE`,
+ * remember-me tokens that expired or are older than `AUTH_REMEMBER_DAYS` (all of them with `0`), and API tokens expired more
+ * than `--hours` ago (a lookup drops only the one it finds). Valid reset and API tokens stay. For the scheduler:
  * `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`.
  */
 export class PruneTokensCommand {
@@ -35,7 +35,7 @@ export class PruneTokensCommand {
       return 1;
     }
     const resets = await this.#resets.prune(this.#config.resetExpire * 60);
-    const remember = await this.#remember.prune();
+    const remember = await this.#remember.prune(this.#config.rememberDays);
     const access = await this.#access.prune(hours * 3600);
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`;
     output.success(`Pruned ${count(resets, 'password reset token')}, ${count(remember, 'remember-me token')} and ${count(access, 'API token')}.`);

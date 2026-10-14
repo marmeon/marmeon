@@ -267,9 +267,19 @@ that is the full reload, not an error. The other tabs of the same browser follow
 
 ## Remember me
 
+Remember me is a convenience each user chooses, and the starter kit's checkbox is not ticked. It signs in without the password
+and without a second factor of its own, so it counts as the lowest assurance level (AAL1), not as a proof.
+
 `attempt(email, password, { remember: true })` keeps the user signed in on this device after the session has expired. The browser
 gets a cookie, `remember_web`, that is encrypted, `HttpOnly`, and `Secure` and `SameSite` like the session cookie. It is valid for
-`AUTH_REMEMBER_DAYS` days from the sign-in, 30 by default, and using it never extends it.
+`AUTH_REMEMBER_DAYS` days from the sign-in, at most 30 (the default), and using it never extends it.
+
+`AUTH_REMEMBER_DAYS=0` turns remember me off: `remember: true` still signs in, without a token or cookie, and the starter kit
+hides the checkbox. No cookie signs in any more, and a cookie that is presented has its token deleted. The bound also holds for
+tokens issued under a higher value: a token older than `AUTH_REMEMBER_DAYS` days is refused and deleted, even if its row says it
+lasts longer. `marmeon auth:prune-tokens` (the starter kit schedules it daily) deletes every token that expired or is older than
+`AUTH_REMEMBER_DAYS` days, all of them with `0`, so raising the value again does not bring old tokens back. A value above 30 stops
+the boot.
 
 The cookie is consulted only when the session has no user. It holds a selector and a secret validator. The `remember_tokens`
 table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. A table of your
@@ -288,7 +298,7 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
-To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it.
+To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(maxAgeDays)` must delete the tokens that expired and those made `maxAgeDays` days ago or earlier (every token with `0`).
 
 ## Sudo mode
 
@@ -654,7 +664,7 @@ listeners.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in. |
+| `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in: 0 to 30. `0` turns remember me off: no cookie signs in. |
 | `AUTH_REMEMBER_COOKIE` | `remember_web` | The name of the remember-me cookie: letters, digits, `_` and `-`. |
 | `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password counts for `confirmedPassword()`. |
 | `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |

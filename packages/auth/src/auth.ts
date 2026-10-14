@@ -490,7 +490,8 @@ export class Auth {
     if (viaRemember) this.#session.put(AUTH_SESSION_KEYS.viaRemember, true);
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
     let token: string | undefined;
-    if (remember && !viaRemember) {
+    // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
+    if (remember && !viaRemember && this.#config.remember) {
       const expiresAt = new Date(Date.now() + this.#config.rememberDays * 86_400_000);
       await this.#forgetDevice(); // one token per device
       token = await this.#remember.create(idOf(user), expiresAt);
@@ -501,7 +502,7 @@ export class Auth {
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
     const at = new Date();
-    return { token, announce: () => this.#events.dispatch(new Login(user, remember || viaRemember, at, { via, ip, userAgent })) };
+    return { token, announce: () => this.#events.dispatch(new Login(user, token !== undefined || viaRemember, at, { via, ip, userAgent })) };
   }
 
   /**
@@ -580,6 +581,12 @@ export class Auth {
     // A read-only request (an island) cannot sign in: consuming the token rotates it, and the new one would never
     // reach the browser (the next request would present the old one — "stolen"). The page's request signs in.
     if (!cookie || this.#session.readOnly) return undefined;
+    // Remember-me is off: no cookie signs in, and its token goes (a lower `AUTH_REMEMBER_DAYS` ends what a higher one issued).
+    if (!this.#config.remember) {
+      await this.#remember.forget(cookie);
+      this.#cookies.delete(this.#config.rememberCookie);
+      return undefined;
+    }
     const result = await this.#remember.consume(cookie);
     if (!result.ok) {
       this.#cookies.delete(this.#config.rememberCookie);
@@ -596,13 +603,14 @@ export class Auth {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
-    // A token made before the account's second factor existed proved none (a sign-in racing the activation can make one): refused.
-    // An unreadable time (an Invalid Date compares false with everything), on either side, is refused too — also without `enabledSince`
-    // when the account has a factor — never taken as "after".
+    // Refused: a token made before the account's second factor existed (it proved none; a sign-in racing the activation can make one),
+    // one past `AUTH_REMEMBER_DAYS` from its creation (also when issued under a longer setting), and any with an unreadable time
+    // (an Invalid Date compares false with everything) — never taken as "after" or "not yet over".
     const since = await this.#twoFactor.enabledSince(device.userId);
     const madeAt = device.createdAt?.getTime();
-    const readable = Number.isFinite(madeAt);
-    const refused = since !== undefined ? !(madeAt! > since.getTime()) : !readable && (await this.#twoFactor.factors(device.userId)).length > 0;
+    const cap = Number.isFinite(madeAt) ? madeAt! + this.#config.rememberDays * 86_400_000 : Number.NaN;
+    const expired = !(cap > Date.now()) || !Number.isFinite(device.expiresAt.getTime());
+    const refused = expired || (since !== undefined && !(madeAt! > since.getTime()));
     if (refused) {
       await this.#remember.forget(device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);
@@ -615,12 +623,12 @@ export class Auth {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
-    if (device.cookie) this.#setCookie(device.cookie, device.expiresAt);
+    if (device.cookie) this.#setCookie(device.cookie, new Date(Math.min(device.expiresAt.getTime(), cap)));
     await (await this.#login(found, {}, 'remember')).announce();
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
-    if (readable && (await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
+    if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
     return found.user;
   }
 
@@ -632,7 +640,8 @@ export class Auth {
 
   #setCookie(value: string, expiresAt: Date): void {
     const { secure, sameSite } = this.#sessionConfig;
-    const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    const left = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+    const maxAge = Number.isFinite(left) ? Math.max(0, left) : 0;
     this.#cookies.set(this.#config.rememberCookie, value, { httpOnly: true, secure, sameSite, maxAge });
   }
 

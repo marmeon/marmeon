@@ -206,8 +206,9 @@ pnpm marmeon auth:prune-tokens
 pnpm marmeon auth:prune-tokens --hours=48
 ```
 
-The command deletes the password reset tokens older than `AUTH_RESET_EXPIRE`, the expired remember-me tokens and the API tokens
-that expired more than `--hours` hours ago, `0` by default. Valid tokens stay. It reports how many of each it deleted. The starter
+The command deletes the password reset tokens older than `AUTH_RESET_EXPIRE`, the remember-me tokens that expired or are older
+than `AUTH_REMEMBER_DAYS` (every one with `0`, see [remember me](authentication.md#remember-me)) and the API tokens that expired
+more than `--hours` hours ago, `0` by default. Valid reset and API tokens stay. It reports how many of each it deleted. The starter
 kit runs it every night at 03:10 on one server:
 
 ```ts title="modules/auth/schedule.ts"
