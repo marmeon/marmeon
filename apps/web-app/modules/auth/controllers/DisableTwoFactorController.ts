@@ -1,7 +1,7 @@
 import type { Authenticated } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
 import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 import { throttlePasswordChecks } from '../throttle.ts';
@@ -9,7 +9,6 @@ import { throttlePasswordChecks } from '../throttle.ts';
 export const DisableTwoFactorRequest = defineRequest({
   schema: r.object({ password: r.string().required().max(4096) }),
   messages: { 'password.required': 'auth.validation.password_required' },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /** Turns the authenticator off — with the password typed now, however recently it was confirmed. */
@@ -27,7 +26,7 @@ export class DisableTwoFactorController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof DisableTwoFactorRequest>) {
+  async handle(ctx: ContextOf<typeof DisableTwoFactorRequest> & Authenticated) {
     await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'password', () => this.#twoFactor.disable(ctx.body.password));
     // With a passkey left, only the authenticator app went: the account is still protected.
     const stillProtected = (await this.#twoFactor.status()).factors.length > 0;

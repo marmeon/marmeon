@@ -335,7 +335,7 @@ around the whole `Route.authorize(check)…` call instead.
 
 Checks add up: a group inside `admin` can call `authorize` again, and a request has to pass the registrar's checks and then its
 own `authorize`. A later check never opens what an earlier one closed. `everyone`, exported by `@marmeon/http`, is the check that
-says yes to anyone: `Route.authorize(everyone)`. See [authorization](authorization.md#authorizing-requests).
+says yes to anyone its middleware lets through: `Route.authorize(everyone)`. See [authorization](authorization.md#authorizing-requests).
 
 ### Middleware
 

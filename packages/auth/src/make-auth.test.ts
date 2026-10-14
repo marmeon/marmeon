@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { formatAccessProblems, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { AUTH_STYLES_IMPORT, MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, STUBS } from './make-auth.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -77,6 +78,26 @@ describe('make:auth', { timeout: 30_000 }, () => {
     // The auth mails' queue, and the worker production needs for it.
     expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
     expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out.');
+  });
+
+  it('writes no check that always says yes: a controller types its context, and the routes decide', async () => {
+    const root = blankApp();
+    expect(await new MakeAuthCommand().handle(fakeInput(root).input)).toBe(0);
+    const written = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? written(join(directory, entry.name)) : [join(directory, entry.name)]));
+    for (const file of written(join(root, 'modules/auth')).filter((path) => /\.tsx?$/.test(path))) {
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/\) => true\b/);
+    }
+    const routes = readFileSync(join(root, 'modules/auth/routes.ts'), 'utf8');
+    expect(routes).toMatch(/const guests = Route\.middleware\(guest\([^)]*\)\)\.authorize\(everyone\);/);
+    expect(routes).toContain('const account = Route.middleware(authenticate()).authorize(everyone);');
+    expect(readFileSync(join(root, 'modules/auth/controllers/RenamePasskeyController.ts'), 'utf8')).toContain('ContextOf<typeof RenamePasskeyRequest> & Authenticated');
+    // Every route of the generated module, the API one included, says who may call it.
+    const router = new Router();
+    for (const file of ['routes.ts', 'api-routes.ts']) {
+      const loaded = (await import(pathToFileURL(join(root, 'modules/auth', file)).href)) as { default: Parameters<Router['load']>[0] };
+      router.load(loaded.default);
+    }
+    expect(router.accessProblems().length, formatAccessProblems(router.accessProblems())).toBe(0);
   });
 
   it('registers in the real modules list — a commented-out one before the call is left alone', async () => {

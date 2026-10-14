@@ -1,6 +1,6 @@
 import type { Authenticated } from '@marmeon/auth';
 import { Passkeys, type RegistrationResponseJSON } from '@marmeon/auth/passkeys';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 
@@ -12,7 +12,6 @@ export const RegisterPasskeyRequest = defineRequest({
     password: r.string().required().max(4096),
   }),
   messages: { 'password.required': 'auth.validation.password_required' },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /**
@@ -31,7 +30,7 @@ export class RegisterPasskeyController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof RegisterPasskeyRequest>) {
+  async handle(ctx: ContextOf<typeof RegisterPasskeyRequest> & Authenticated) {
     const done = await this.#passkeys.register(ctx.body.response, ctx.body.name, ctx.body.password);
     if (done.ok) return this.json({ recoveryCodes: done.value.recoveryCodes });
     switch (done.error.kind) {

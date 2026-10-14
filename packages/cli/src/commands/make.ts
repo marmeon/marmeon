@@ -183,6 +183,9 @@ export class MakeControllerCommand {
     input.output.line(`Add a route in modules/${module}/routes.ts:`);
     const method = input.options.request === true && !reads ? 'post' : 'get';
     input.output.line(style('dim', `  Route.${method}('/…', ${name}).name('${module}.…');`));
+    input.output.line(
+      style('dim', 'Say who may call it: `authorize: can(Policy, …)` in its request, or `Route.authorize(…)` on its registrar; `everyone` if anyone may.'),
+    );
     return 0;
   }
 }
@@ -581,8 +584,8 @@ ${page ? `    return this.view('${page}', { q: ctx.query.q, page: ctx.query.page
 }
 `;
 
-/** REPR: the request (schema + authorize), the endpoint and its answer in one file. */
-const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+/** REPR: the request (schema), the endpoint and its answer in one file. */
+const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 
 export const ${subject}Request = defineRequest({
@@ -590,8 +593,6 @@ export const ${subject}Request = defineRequest({
   schema: r.object({
     name: r.string().trim().required().max(255),
   }),
-  // Runs before validation; returning false answers 403. Its context type is what the route must provide.
-  authorize: (_ctx: HttpContext) => true,
 });
 
 /** One endpoint. The body is validated before \`handle\` runs; dependencies are injected into the constructor. */

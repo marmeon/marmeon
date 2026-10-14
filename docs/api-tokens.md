@@ -32,7 +32,7 @@ token belongs to.
 
 ```ts title="modules/auth/controllers/CreateAccessTokenController.ts"
 import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
@@ -44,7 +44,6 @@ export const CreateAccessTokenRequest = defineRequest({
     name: r.string().trim().required().max(60),
     abilities: r.union([r.in(abilityNames), r.array(r.in(abilityNames)).required()]).transform((value) => [value].flat()),
   }),
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 export class CreateAccessTokenController extends Controller {
@@ -59,7 +58,7 @@ export class CreateAccessTokenController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest>) {
+  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
     return this.view('auth/AccessTokens', {
       tokens: await this.#tokens.list(ctx.user.id),

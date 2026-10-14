@@ -1,6 +1,6 @@
 import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
-import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 import { CODES_LAYER } from '../two-factor-page.ts';
@@ -9,7 +9,6 @@ export const ConfirmTwoFactorRequest = defineRequest({
   // The password in the same form: turning the factor on signs the other devices out, which needs it.
   schema: r.object({ code: r.string().trim().required().max(32), password: r.string().required().max(4096) }),
   messages: { 'code.required': 'auth.two_factor.code_required', 'password.required': 'auth.validation.password_required' },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /**
@@ -31,7 +30,7 @@ export class ConfirmTwoFactorController extends Controller {
     this.#tokens = tokens;
   }
 
-  async handle(ctx: ContextOf<typeof ConfirmTwoFactorRequest>) {
+  async handle(ctx: ContextOf<typeof ConfirmTwoFactorRequest> & Authenticated) {
     const done = await this.#twoFactor.confirm(ctx.body.code, ctx.body.password);
     if (!done.ok) {
       switch (done.error.kind) {

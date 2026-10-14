@@ -116,6 +116,8 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 
+`make:controller` decides nothing about who may call the controller: say it in the request's `authorize`, or with `Route.authorize(…)` on the registrar (`everyone` if anyone may). The command prints that reminder after the route line.
+
 ### Commands of the packages
 
 The installed packages add their commands when the app boots:

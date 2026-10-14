@@ -1,7 +1,7 @@
 import { AuthConfig, type Authenticated } from '@marmeon/auth';
 import { Clock } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator, Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import { Queue } from '@marmeon/queue';
@@ -16,7 +16,6 @@ export const UpdateEmailRequest = defineRequest({
   // Nothing here asks the database — whether an address has an account is never told by the form.
   schema: r.object({ email: r.string().trim().lowercase().required().max(255).email() }),
   messages: { 'email.required': 'auth.validation.email_any', 'email.email': 'auth.validation.email_invalid' },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /**
@@ -65,7 +64,7 @@ export class UpdateEmailController extends Controller {
     this.#private = config.privateRegistration;
   }
 
-  async handle(ctx: ContextOf<typeof UpdateEmailRequest>) {
+  async handle(ctx: ContextOf<typeof UpdateEmailRequest> & Authenticated) {
     const { email } = ctx.body;
     if (!this.#private) return this.#changeNow(ctx.user, email);
     // The account's own address again: a pending change is dropped.
@@ -86,7 +85,7 @@ export class UpdateEmailController extends Controller {
   }
 
   /** `AUTH_PRIVATE_REGISTRATION=false`: the new address at once — "taken" tells a signed-in user (in sudo mode) that it has an account. */
-  async #changeNow(user: ContextOf<typeof UpdateEmailRequest>['user'], email: string) {
+  async #changeNow(user: Authenticated['user'], email: string) {
     if (email === user.email) return this.back('/settings/security');
     const changed = await this.#users.changeEmail(user.id, email);
     if (!changed.ok) {

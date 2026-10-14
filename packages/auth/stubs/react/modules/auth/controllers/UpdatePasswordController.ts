@@ -1,6 +1,6 @@
 import { Auth, password, type Authenticated } from '@marmeon/auth';
 import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 import { throttlePasswordChecks } from '../throttle.ts';
@@ -12,7 +12,6 @@ export const UpdatePasswordRequest = defineRequest({
     'password_confirmation.required': 'auth.validation.new_password_repeat',
     'password_confirmation.confirmed': 'auth.validation.passwords_differ',
   },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /** A new password: every other session and every remember-me token ends; this session stays. */
@@ -30,7 +29,7 @@ export class UpdatePasswordController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof UpdatePasswordRequest>) {
+  async handle(ctx: ContextOf<typeof UpdatePasswordRequest> & Authenticated) {
     await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     await this.#auth.updatePassword(ctx.body.password);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });

@@ -135,9 +135,10 @@ export class UpdateNoteController extends Controller {
 `authorize` check is a compile error where the controller is registered.
 
 `ContextOf` takes the route's side of the context from the type of `authorize`. `can()` brings the signed-in user and the bound
-record with it. A request without a check of its own declares what it needs in the parameter's type, as
-`authorize: (_ctx: HttpContext<Authenticated>) => true`, or the controller adds it: `handle(ctx: ContextOf<typeof Request> &
-Authenticated)`.
+record with it. A request without a check of its own adds what the controller needs to `handle`:
+`handle(ctx: ContextOf<typeof Request> & Authenticated)`, or `handle(ctx: HttpContext<Authenticated>)` when there is no request.
+The context's type belongs to `handle`, the decision to `authorize`: write `authorize: everyone` in the request, or call
+`Route.authorize(everyone)` on the registrar, when anyone who reaches the route may call it.
 
 | Option | What it does |
 | --- | --- |

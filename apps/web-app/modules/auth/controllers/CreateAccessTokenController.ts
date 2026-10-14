@@ -19,7 +19,6 @@ export const CreateAccessTokenRequest = defineRequest({
     'abilities.union': 'auth.validation.token_abilities',
     'abilities.*.in': 'auth.validation.token_abilities',
   },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /** The two steps of creating a token share one layer: the answer replaces the form in place. */
@@ -55,7 +54,7 @@ export class CreateAccessTokenController extends Controller {
     this.#tokens = tokens;
   }
 
-  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest>) {
+  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
     return this.view('auth/NewAccessToken', { name: ctx.body.name, plainText: plainText as string }).layer(LAYER);
   }

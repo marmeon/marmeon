@@ -1,6 +1,6 @@
 import { authenticate, confirmedPassword, guest } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
-import { defineRoutes, signed } from '@marmeon/http';
+import { defineRoutes, everyone, signed } from '@marmeon/http';
 import { BeginTwoFactorController } from './controllers/BeginTwoFactorController.ts';
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
@@ -52,7 +52,9 @@ import { ConfirmedAddress } from './middleware/ConfirmedAddress.ts';
 // Loaded into the `web` middleware group: encrypted cookies and the session come with it.
 export default defineRoutes((Route) => {
   // Guests only: signed-in people go to the dashboard.
-  const guests = Route.middleware(guest('/dashboard'));
+  // Decided for this module's own routes only: signing in and signing up are for people who are not signed in yet, and `guest()` turns
+  // signed-in people away. A route you add needs its own decision.
+  const guests = Route.middleware(guest('/dashboard')).authorize(everyone);
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.post('/login', LoginController).name('auth.login.store');
   // The second step of signing in: a correct password waits here for the code (a guest still — nobody is signed in yet). One
@@ -77,12 +79,15 @@ export default defineRoutes((Route) => {
   guests.get('/reset-password', ShowResetPasswordController).name('auth.password.reset');
   guests.post('/reset-password', ResetPasswordController).name('auth.password.store');
 
-  const signedIn = Route.middleware(authenticate());
-  signedIn.post('/logout', LogoutController).name('auth.logout');
+  // Decided for this module's own routes only: each concerns the signed-in user's own account, and the ids in the paths (passkeys,
+  // tokens, verification links) are looked up within `ctx.user` or bound by a signature. A route you add needs its own decision:
+  // build it on `Route.middleware(authenticate())`, not on this registrar or the ones derived from it.
+  const account = Route.middleware(authenticate()).authorize(everyone);
+  account.post('/logout', LogoutController).name('auth.logout');
   // Private registration (the default): the app is for confirmed addresses only — whoever signed up with somebody else's
   // address (it was free then) signs in, but sees nothing but the notice until the link from that inbox is clicked while signed
   // in. `verified()` then; with AUTH_PRIVATE_REGISTRATION=false everyone signed in passes (middleware/ConfirmedAddress.ts).
-  const confirmedAddress = signedIn.middleware(ConfirmedAddress);
+  const confirmedAddress = account.middleware(ConfirmedAddress);
   confirmedAddress.get('/dashboard', ShowDashboardController).name('dashboard');
   confirmedAddress.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
   confirmedAddress.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
@@ -127,10 +132,10 @@ export default defineRoutes((Route) => {
 
   // E-mail verification: the link is signed (made by the app, expires) — and only for its own user. Internal: only
   // the server builds it (for the mail), so the browser never learns its name or pattern.
-  signedIn.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
-  signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
-  signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
+  account.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
+  account.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
+  account.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
   // The link to a new address: signed, expiring, for its own user and request only — internal too (404 with
   // AUTH_PRIVATE_REGISTRATION=false: no change waits for a link then).
-  signedIn.middleware(signed()).get('/email/change/:id/:token', ConfirmEmailChangeController).name('auth.email.confirm').internal();
+  account.middleware(signed()).get('/email/change/:id/:token', ConfirmEmailChangeController).name('auth.email.confirm').internal();
 });
