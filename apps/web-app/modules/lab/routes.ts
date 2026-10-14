@@ -1,4 +1,4 @@
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import {
   ShowBrowserOnlyLabController,
   ShowClientOnlyLabController,
@@ -13,7 +13,10 @@ import { RaceValidationLabController, ShowValidationLabController, StoreValidati
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
 // manifest) and answer 404 unless the lab is on.
 export default defineRoutes((Route) => {
-  const lab = Route.prefix('/lab');
+  // Open to everyone, since the lab shows nothing of the app's records: the pages answer 404 unless the lab is on. A lab route added
+  // later decides for itself.
+  const group = Route.prefix('/lab');
+  const lab = group.authorize(everyone);
   lab.get('/streaming', ShowStreamingLabController);
   lab.get('/client-only', ShowClientOnlyLabController);
   lab.get('/browser-only', ShowBrowserOnlyLabController);

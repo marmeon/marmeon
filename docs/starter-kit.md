@@ -34,6 +34,10 @@ framework bring them.
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and seven more | The module's own tests. |
 
+The module's routes each say who may call them, as the app's do. Its groups decide with `everyone`: the sign-in and registration
+pages are open to guests, and every action behind `authenticate()` concerns only the signed-in user's own account. A route you
+add to the module needs a decision of its own. The [authorization](authorization.md#every-route-decides) page has the rule.
+
 To add a language, put a file next to every `en.ts` of the app — a locale with any language file is supported (see [Localization](localization.md), `APP_LOCALES`).
 
 `apps/web-app` in the framework's repository shows such a module grown further, with a welcome mail.
@@ -185,11 +189,11 @@ registered with somebody else's address. Add `verified()` of `@marmeon/auth` aft
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).middleware(verified()).get('/notes', ListNotesController).name('notes.index');
+  Route.middleware(authenticate()).middleware(verified()).authorize(everyone).get('/notes', ListNotesController).name('notes.index');
 });
 ```
 

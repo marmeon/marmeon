@@ -1,10 +1,11 @@
 import { SystemClock } from '@marmeon/core';
 import { secret as secretColumn, type Connections } from '@marmeon/database';
-import { defineRoutes, type HttpContext } from '@marmeon/http';
+import type { HttpContext } from '@marmeon/http';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { abilities, authenticate } from './middleware.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, parseAccessToken, tokenCan, type AccessTokenTable, type WithToken } from './tokens.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 describe.each(drivers)('API tokens on %s', (driver) => {
   let connections: Connections;
@@ -85,7 +86,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
 // --- Type guarantees (never called) -----------------------------------------------------------
 
 export function tokenTypes() {
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     Route.middleware(authenticate('api')).middleware(abilities('users:read')).get('/users', (ctx) => ({ id: ctx.user.id, abilities: ctx.token.abilities }));
     // @ts-expect-error — abilities() needs the token: authenticate('api') first
     Route.middleware(abilities('users:read'));

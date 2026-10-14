@@ -3,7 +3,7 @@ import { Clock, createApplication, defineModule, Logger, TestClock, type HealthC
 import { channels } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, ServerClosing } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
@@ -47,7 +47,7 @@ class Recording implements Logger {
   }
 }
 
-async function boot({ env = {}, routes }: { env?: Record<string, string>; routes?: ReturnType<typeof defineRoutes> } = {}) {
+async function boot({ env = {}, routes }: { env?: Record<string, string>; routes?: ReturnType<typeof openRoutes> } = {}) {
   const logger = new Recording();
   // `/up/ready` keeps a result for a second: the tests move this clock past it.
   const clock = new TestClock();
@@ -58,7 +58,7 @@ async function boot({ env = {}, routes }: { env?: Record<string, string>; routes
     env: { APP_KEY: generateKey(), ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     health: [FakeDatabaseCheck],
-    modules: [defineModule({ name: 'app', health: [StorageCheck], routes: routes ?? defineRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
+    modules: [defineModule({ name: 'app', health: [StorageCheck], routes: routes ?? openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
     override: (container) => {
       container.instance(Logger, logger);
       container.instance(Clock, clock);
@@ -210,7 +210,7 @@ describe('health endpoints', () => {
     expect((await kernel.request('/up')).status).toBe(404);
     await moved.application.shutdown();
 
-    const ownUp = defineRoutes((Route) => void Route.get('/up', () => ({ mine: true })).name('status'));
+    const ownUp = openRoutes((Route) => void Route.get('/up', () => ({ mine: true })).name('status'));
     const off = await boot({ env: { HEALTH_PATH: 'off' }, routes: ownUp });
     expect(await (await createHttpKernel(off.application).request('/up')).json()).toEqual({ mine: true });
     await off.application.shutdown();

@@ -7,7 +7,6 @@ import {
   defineRoutes,
   describeAccess,
   everyone,
-  FRAMEWORK_ROUTES,
   routeAccess,
   Router,
   VALIDATE_HEADER,
@@ -17,6 +16,7 @@ import {
   RouteDefinition,
   type RouteDefinitions,
 } from './index.ts';
+import { FRAMEWORK_ROUTES } from './internal.ts';
 
 interface Note {
   id: string;
@@ -150,7 +150,7 @@ describe('Route.authorize()', () => {
     const router = load((Route) => {
       const closed = Route.authorize(() => false);
       closed.get('/closed', () => 'closed');
-      Route.get('/sibling', () => 'sibling');
+      Route.authorize(everyone).get('/sibling', () => 'sibling');
     });
     expect(await call(router, '/closed')).toMatchObject({ status: 403 });
     expect(await call(router, '/sibling')).toEqual({ status: 200, body: 'sibling' });
@@ -272,6 +272,16 @@ describe('framework routes', () => {
   it('knows the routes loaded with the framework marker', () => {
     const router = load((Route) => Route.get('/_marmeon/x', () => 'x'), { framework: FRAMEWORK_ROUTES });
     expect(router.isFrameworkRoute(router.routes[0]!)).toBe(true);
+  });
+
+  it('is not the marker of the old public registry symbol: Symbol.for(\'marmeon.router.framework\') exempts nothing', () => {
+    const forged = Symbol.for('marmeon.router.framework') as never;
+    expect(forged as unknown).not.toBe(FRAMEWORK_ROUTES);
+    // Under /_marmeon/ it is refused, and elsewhere it is an app route like any other.
+    expect(() => load((Route) => Route.get('/_marmeon/x', () => 'x'), { framework: forged })).toThrow('belong to the framework');
+    const router = load((Route) => Route.get('/x', () => 'x'), { framework: forged });
+    expect(router.isFrameworkRoute(router.routes[0]!)).toBe(false);
+    expect(router.accessProblems()).toHaveLength(1);
   });
 
   it('does not count an app route whose `reserved` was set by hand', () => {
@@ -475,7 +485,7 @@ describe('Router.accessProblems()', () => {
     expect(text).toContain('Route.authorize(');
     expect(text).toContain('binds `note` with NoteBinder');
     expect(text).toContain('{ public: true }');
-    expect(text).toContain('docs/authorization.md#authorizing-requests');
+    expect(text).toContain('docs/authorization.md#every-route-decides');
   });
 });
 

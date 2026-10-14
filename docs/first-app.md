@@ -177,7 +177,7 @@ names the columns the page shows, so nothing else reaches the browser. See [repo
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { CreateNoteController } from './controllers/CreateNoteController.ts';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { EditNoteController } from './controllers/EditNoteController.ts';
@@ -193,9 +193,11 @@ import { NoteRepository } from './NoteRepository.ts';
 export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
 
-  notes.get('/', ListNotesController).name('index');
-  notes.get('/create', CreateNoteController).name('create');
-  notes.post('/', StoreNoteController).name('store');
+  // These three never take a note from the path: the list asks for `ctx.user.id`, and a new note is created for the signed-in user.
+  const mine = notes.authorize(everyone);
+  mine.get('/', ListNotesController).name('index');
+  mine.get('/create', CreateNoteController).name('create');
+  mine.post('/', StoreNoteController).name('store');
 
   const note = notes.bind('note', NoteRepository);
   note.get('/:note/edit', EditNoteController).name('edit');
@@ -213,6 +215,11 @@ pages](starter-kit.md#your-own-pages), [route groups](routing.md#route-groups) a
 
 `notes.bind('note', NoteRepository)` ties `:note` in a path to the repository. The controller receives the row, and a path whose
 note does not exist answers 404. See [binding a repository](routing.md#binding-a-repository).
+
+Every route says who may call it, or the app does not start. The note routes say it in their requests, with `can(NotePolicy, …)`
+(next chapters). The list, the form and the store route take no note from the path, so `mine` marks them with `everyone`: they ask
+for `ctx.user.id`, never for a note by its id. A route that binds a record and says `everyone` does not start. See [every route
+decides](authorization.md#every-route-decides).
 
 A controller is a class with a `handle()` method for one endpoint. The container builds it and injects what its constructor asks
 for. Start with the list and the empty form:
@@ -749,7 +756,7 @@ export class DeleteNoteController extends Controller {
 ```
 
 Pinning is a `PUT` and unpinning a `DELETE` on the same path. `PUT` sets a state, so the second pin leaves the note as the first
-one did. See [authorizing requests](authorization.md#authorizing-requests).
+one did. See [every route decides](authorization.md#every-route-decides).
 
 ## Run it
 

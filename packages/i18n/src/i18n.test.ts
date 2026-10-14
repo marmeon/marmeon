@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { ConfigError, createApplication, defineModule, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import type { StandardOptions } from '@marmeon/router';
-import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, PAGE_HEADER, view, type ContextOf, type HttpContext } from '@marmeon/http';
+import { abort, Controller, defineRequest, HttpServiceProvider, PAGE_HEADER, view, type ContextOf, type HttpContext } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import { password } from '@marmeon/auth';
 import { Session, SessionServiceProvider } from '@marmeon/session';
@@ -11,6 +11,7 @@ import { rules as r } from '@marmeon/validation';
 import { describe, expect, it, vi } from 'vitest';
 import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
 import { createTranslator } from './translator.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 // Counts the translators made (only for a request that asks for one).
 vi.mock('./translator.ts', async (original) => {
@@ -86,7 +87,7 @@ class SignupController extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/hello', HelloController);
   Route.get('/slow/:id', SlowController);
   Route.get('/choose/:locale', ChooseLocaleController);

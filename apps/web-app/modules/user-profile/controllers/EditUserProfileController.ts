@@ -1,5 +1,5 @@
-import { Gate, type Authenticated } from '@marmeon/auth';
-import { Controller, type HttpContext } from '@marmeon/http';
+import { can, Gate, type Authenticated } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Session } from '@marmeon/session';
 import { Storage } from '@marmeon/storage';
 import type { User } from '#modules/auth';
@@ -7,11 +7,16 @@ import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileDirectory } from '../ProfileDirectory.ts';
 
+/** The layer's own authorization, whatever page it opens over: only your own profile. */
+export const EditUserProfileRequest = defineRequest({ authorize: can(ProfilePolicy, 'update', 'user') });
+
 /**
  * Editing a profile — a layer: opened from a page, it shows over that page (a modal), with a history entry of its own
  * (Back closes it). A deep link or a reload of `/users/:user/edit` shows its base, the profile, under it.
  */
 export class EditUserProfileController extends Controller {
+  static request = EditUserProfileRequest;
+
   readonly #session: Session;
   readonly #gate: Gate;
   readonly #directory: ProfileDirectory;
@@ -25,10 +30,8 @@ export class EditUserProfileController extends Controller {
     this.#storage = storage;
   }
 
-  async handle(ctx: HttpContext<Authenticated, { user: User }>) {
+  async handle(ctx: ContextOf<typeof EditUserProfileRequest> & Authenticated & { params: { user: User } }) {
     const { user } = ctx.params;
-    // The layer's own authorization — whatever page it opens over (a GET without a request schema: the Gate in code).
-    await this.#gate.authorize(ProfilePolicy, 'update', user);
 
     return this.view('user-profile/Edit', {
       // The layer's own projection: each link with `can.delete` — a region asks its own policies.

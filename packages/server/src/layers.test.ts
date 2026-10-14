@@ -1,7 +1,8 @@
 import { ConsoleLogger, createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, CloseLayerResult, HttpServiceProvider, isPageObject, MAX_LAYER_DEPTH, view, type HttpContext, type PageObject } from '@marmeon/http';
-import { defineRoutes, type Next } from '@marmeon/router';
+import type { Next } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -39,7 +40,7 @@ describe('createHttpKernel — layers', async () => {
       return next();
     }
   }
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.get('/users/:user', (ctx: HttpContext<{}, { user: string }>) => {
       ran.push('profile');
       return view('users/Show', { name: `User ${ctx.params.user}`, secret: 'profile data' });

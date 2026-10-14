@@ -1,7 +1,7 @@
 import { ConsoleLogger, createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, AfterResponse, defer, HttpServiceProvider, island, merge, view, type HttpContext } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -25,7 +25,7 @@ describe('createHttpKernel — islands', async () => {
       container.singleton(Logger, () => new CollectingLogger());
     }
   }
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.get('/islands/feed', (ctx: HttpContext) =>
       island('dashboard/Feed', { items: merge(['a', 'b']), more: defer(() => ['later']), at: new URL(ctx.request.url).search }),
     );
@@ -54,7 +54,7 @@ describe('createHttpKernel — islands', async () => {
       return island('dashboard/Feed', { items: [] });
     }
   }
-  const deferring = defineRoutes((Route) => Route.get('/islands/defers', DeferringIsland));
+  const deferring = openRoutes((Route) => Route.get('/islands/defers', DeferringIsland));
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,

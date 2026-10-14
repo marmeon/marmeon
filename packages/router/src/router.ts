@@ -1,4 +1,5 @@
-import { isEveryone, isScoped, openBindings, routeAccess, type AccessProblem } from './access.ts';
+import { Redactor } from '@marmeon/core';
+import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { HttpError } from './errors.ts';
 import { runPipeline } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
@@ -79,10 +80,12 @@ export interface DispatchOptions {
 }
 
 /**
- * Lets `load()` take routes under `/_marmeon/`, which belong to the framework (docs/routing.md#the-frameworks-paths).
- * @internal Only the framework's own packages load routes with it.
+ * Lets `load()` take routes under `/_marmeon/`, which belong to the framework (docs/routing.md#the-frameworks-paths), and
+ * exempts them from the access rule. A plain `Symbol()`, not in the registry: nothing but this module's export can make one
+ * that matches, and the framework's packages reach it through `@marmeon/router/internal`, not the package's index.
+ * @internal
  */
-export const FRAMEWORK_ROUTES = Symbol.for('marmeon.router.framework');
+export const FRAMEWORK_ROUTES: unique symbol = Symbol('marmeon.router.framework');
 
 /** The path prefix only routes loaded with {@link FRAMEWORK_ROUTES} may use. */
 const RESERVED_PREFIX = '/_marmeon';
@@ -111,12 +114,18 @@ export const defaultToResponse: ResponseFactory = (result) => {
   return Response.json(result);
 };
 
+/** Masks secrets in the paths the router names in its errors: a webhook's token must not reach a log. */
+const shown = new Redactor();
+const showPath = (route: RouteDefinition): string => shown.path(route.path, route.path);
+
 export class Router {
   readonly #routes: RouteDefinition[] = [];
   #snapshot: readonly RouteDefinition[] | undefined;
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
   readonly #framework = new WeakSet<RouteDefinition>();
+  /** The access problems of the routes `dispatch` has seen, so a request costs a lookup. */
+  readonly #judged = new WeakMap<RouteDefinition, AccessProblem[]>();
   #byName = new Map<string, RouteDefinition>();
   /** Middleware groups and the global stack — packages and apps add to them while booting. */
   readonly middleware = new MiddlewareGroups();
@@ -149,23 +158,22 @@ export class Router {
 
   /**
    * The routes that do not say who may call them, and the open ones that bind a record by its key. Nothing is enforced here:
-   * the kernel and the CLI refuse them. See docs/authorization.md#authorizing-requests.
+   * the kernel and the CLI refuse them. See docs/authorization.md#every-route-decides.
    *
    * @internal
    */
   accessProblems(): AccessProblem[] {
-    const problems: AccessProblem[] = [];
-    for (const route of this.#routes) {
-      if (this.#framework.has(route)) continue;
-      const checks = routeAccess(route);
-      if (checks.length === 0) {
-        problems.push({ kind: 'undecided', route });
-      } else if (checks.every(isEveryone)) {
-        const write = !route.methods.every((method) => method === 'GET' || method === 'HEAD');
-        for (const binding of openBindings(route)) problems.push({ kind: 'open-binding', route, param: binding.param, binder: binding.binder.name, write });
-      }
-    }
-    return problems;
+    return this.#routes.flatMap((route) => this.#problemsOf(route));
+  }
+
+  /** What `accessProblems()` says of one route; none for the framework's own. */
+  #problemsOf(route: RouteDefinition): AccessProblem[] {
+    if (this.#framework.has(route)) return [];
+    const checks = routeAccess(route);
+    if (checks.length === 0) return [{ kind: 'undecided', route }];
+    if (!checks.every(isEveryone)) return [];
+    const write = !route.methods.every((method) => method === 'GET' || method === 'HEAD');
+    return openBindings(route).map((binding) => ({ kind: 'open-binding', route, param: binding.param, binder: binding.binder.name, write }));
   }
 
   load(...definitions: RouteDefinitions[]): this;
@@ -205,8 +213,12 @@ export class Router {
       throw new Error(`Route.authorize() at ${dropped.site ?? 'a route file'} made a registrar that never registered a route: its check applies only to routes registered through the registrar it returns — keep it in a constant (const admin = Route.authorize(…)) and register through that. A condition belongs around the whole \`Route.authorize(…)…\` call, not around the routes after it.`);
     }
     if (options.framework === FRAMEWORK_ROUTES) {
+      // The exemption is for the framework's own paths alone: a marker in the wrong hands cannot open `/admin`.
       for (const route of this.#routes.slice(before)) {
-        route.reserved = isReserved(route.path);
+        if (!isReserved(route.path)) {
+          throw new Error(`${route.methods.join('|')} ${showPath(route)}: only routes under /_marmeon/ load as the framework's own — give this one a decision with Route.authorize(…).`);
+        }
+        route.reserved = true;
         this.#framework.add(route);
       }
     }
@@ -272,6 +284,11 @@ export class Router {
   /** Runs a matched route through its middleware pipeline and action. */
   dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
     const state = options.state ?? createRequestState(input.request);
+    // Whoever calls dispatch directly (a custom server) gets no way around the rule the kernel enforces at start.
+    // Judged once per route: a route's checks and bindings are frozen when it is registered.
+    let problems = this.#judged.get(route);
+    if (problems === undefined) this.#judged.set(route, (problems = this.#problemsOf(route)));
+    if (problems.length > 0) return Promise.reject(new RouteAccessError(formatAccessProblems(problems, { path: showPath })));
     const ctx: HttpContext = { ...state, request: input.request, params: input.params, route };
     const toResponse = options.toResponse ?? defaultToResponse;
     const resolve = options.resolve ?? this.#resolve;

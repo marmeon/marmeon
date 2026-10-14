@@ -1,7 +1,7 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
 import { authenticate } from '@marmeon/auth';
 import { defineModule } from '@marmeon/core';
-import { AfterResponse, Controller, defineRoutes } from '@marmeon/http';
+import { AfterResponse, Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Session } from '@marmeon/session';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -54,7 +54,7 @@ class SaveController extends Controller {
 const fixtures = defineModule({
   name: 'island-fixtures',
   routes: defineRoutes((Route) => {
-    const signedIn = Route.middleware(authenticate());
+    const signedIn = Route.middleware(authenticate()).authorize(everyone);
     signedIn.get('/fixtures/islands/writes-session', WritesSessionIsland);
     signedIn.get('/fixtures/islands/flashes', FlashesIsland);
     signedIn.get('/fixtures/islands/defers', DefersIsland);

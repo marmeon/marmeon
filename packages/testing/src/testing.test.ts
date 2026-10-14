@@ -1,11 +1,12 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { tmpdir } from 'node:os';
 import { Clock, defineModule, type ApplicationOptions } from '@marmeon/core';
-import { Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { DevtoolsServiceProvider } from '@marmeon/devtools';
 import { ServerServiceProvider } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 export class Greeting {
   text(name: string) {
@@ -32,7 +33,7 @@ const definition: ApplicationOptions = {
   modules: [
     defineModule({
       name: 'greetings',
-      routes: defineRoutes((Route) => {
+      routes: openRoutes((Route) => {
         Route.get('/greeting', ShowGreetingController);
         Route.post('/echo', async (ctx) => Response.json(await ctx.request.json(), { status: 201 }));
         Route.post('/upload', async (ctx) => {

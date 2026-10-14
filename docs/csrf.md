@@ -8,11 +8,11 @@ for every route of the `web` group. You do not have to do anything for your own 
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).post('/notes', StoreNoteController).name('notes.store');
+  Route.middleware(authenticate()).authorize(everyone).post('/notes', StoreNoteController).name('notes.store');
 });
 ```
 

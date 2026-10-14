@@ -260,7 +260,7 @@ type ResourceSource<R, TParams extends object> = keyof TParams | ((ctx: HttpCont
 /**
  * A request's `authorize`, asking a policy after route binding — `authorize: can(ProfilePolicy, 'update', 'user')`.
  * A parameter bound to the wrong type, or not bound at all, is a compile error where the controller is registered.
- * Denials throw `AuthorizationError`, so `denyAsNotFound()` answers 404. See `docs/authorization.md#authorizing-requests`.
+ * Denials throw `AuthorizationError`, so `denyAsNotFound()` answers 404. See `docs/authorization.md#every-route-decides`.
  */
 export function can<P extends object, K extends AbilityOf<P>>(
   policy: PolicyClass<P>,

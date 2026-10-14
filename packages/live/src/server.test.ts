@@ -6,13 +6,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, type PageObject } from '@marmeon/http';
+import { Controller, HttpServiceProvider, type PageObject } from '@marmeon/http';
 import { ServerServiceProvider, startServer } from '@marmeon/server';
 import { SessionEndings, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { Broadcaster, LiveBackend, LiveHub, LiveServiceProvider, MemoryLiveBackend } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const root = tempDir('marmeon-live-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
@@ -33,7 +34,7 @@ describe('a live stream and the server', () => {
       discover: false,
       env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
-      modules: [defineModule({ name: 'board', routes: defineRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
+      modules: [defineModule({ name: 'board', routes: openRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
     });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
@@ -79,7 +80,7 @@ describe('a live stream and the server', () => {
       discover: false,
       env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
-      modules: [defineModule({ name: 'board', routes: defineRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
+      modules: [defineModule({ name: 'board', routes: openRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
       override: (container: Container) => container.instance(LiveBackend, slow),
     });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });

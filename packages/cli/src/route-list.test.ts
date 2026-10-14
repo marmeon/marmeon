@@ -1,4 +1,5 @@
-import { defineRoutes, FRAMEWORK_ROUTES, Router } from '@marmeon/router';
+import { defineRoutes, Router } from '@marmeon/router';
+import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RouteListCommand } from './commands/route-list.ts';
 import { Output } from './output.ts';

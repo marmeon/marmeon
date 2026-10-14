@@ -1,13 +1,14 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineModule, type ApplicationOptions } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@marmeon/database';
-import { Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { workerDatabase } from './database.ts';
 import { createTestApp, type TestApp } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 interface NotesTables {
   notes: { id: Generated<number>; title: string; pinned: Generated<boolean> };
@@ -48,7 +49,7 @@ describe.each(drivers)('a refreshed database on %s', (driver) => {
         name: 'notes',
         migrations: new URL('./__fixtures__/migrations/', import.meta.url),
         seeders: [WelcomeNoteSeeder],
-        routes: defineRoutes((Route) => Route.post('/notes', CreateNoteController)),
+        routes: openRoutes((Route) => Route.post('/notes', CreateNoteController)),
       }),
     ],
   };

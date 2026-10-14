@@ -14,7 +14,8 @@ import {
   type ContextOf,
   type HttpContext,
 } from '@marmeon/http';
-import { defineRoutes, type Next } from '@marmeon/router';
+import type { Next } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -37,7 +38,7 @@ describe('createHttpKernel — actions', async () => {
       return this.redirect(`/links?added=${ctx.body.label}`);
     }
   }
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.delete('/links/:link', (ctx: HttpContext<{}, { link: string }>) => json({ deleted: Number(ctx.params.link) })).name('links.destroy');
     Route.post('/links', StoreLinkController).name('links.store');
     Route.middleware(Cached).post('/cached', () => json({ at: 'now' })).name('cached');

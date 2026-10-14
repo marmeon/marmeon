@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { HttpServiceProvider } from '@marmeon/http';
 import { RedisServiceProvider } from '@marmeon/redis';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +15,7 @@ import { DatabaseStore } from './stores/database.ts';
 import { RedisStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 class Limits {
   boot(app: { container: { make(key: typeof RateLimiter): RateLimiter } }) {
@@ -29,7 +30,7 @@ function boot(env: Record<string, string>, providers: ServiceProviderClass[], co
     config,
     env: { APP_KEY: generateKey(), ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ...providers, CacheServiceProvider, Limits],
-    modules: [defineModule({ name: 'limits', apiRoutes: defineRoutes((Route) => Route.middleware(throttle('login')).post('/login', () => ({ ok: true }))) })],
+    modules: [defineModule({ name: 'limits', apiRoutes: openRoutes((Route) => Route.middleware(throttle('login')).post('/login', () => ({ ok: true }))) })],
   });
 }
 

@@ -5,7 +5,7 @@ import { createApplication, defineModule, listen, type Container } from '@marmeo
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon/database';
 import { AesGcmEncrypter, Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
+import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ import { authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, 
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
 import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
+import { openRoutes } from '../test-helpers/open-routes.ts';
 
 interface TestUser {
   id: number;
@@ -141,7 +142,7 @@ class Page extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.post('/login', LoginController).name('auth.login');
   // Pages for the middleware: the one it sends people to, and areas behind it (the second one asks again after a minute).
   Route.post('/set-proof', SetProof);

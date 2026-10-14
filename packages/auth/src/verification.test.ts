@@ -1,13 +1,14 @@
 import { SystemClock } from '@marmeon/core';
 import type { EncryptionConfig } from '@marmeon/encryption';
 import { generateKey } from '@marmeon/encryption';
-import { defineRoutes, UrlSigner } from '@marmeon/http';
+import { UrlSigner } from '@marmeon/http';
 import { Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { authenticate, EmailVerification, emailHash, verified } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const router = new Router().load(
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     Route.get('/email/verify', () => 'notice').name('auth.verification.notice');
     Route.get('/email/verify/:id/:hash', () => 'verify').name('auth.verification.verify');
   }),
@@ -63,7 +64,7 @@ describe('verified()', () => {
 // --- Type guarantees (never called) -----------------------------------------------------------
 
 export function verifiedTypes() {
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     // @ts-expect-error — verified() needs the user: authenticate() first
     Route.middleware(verified());
     // @ts-expect-error — the package's test user type (AuthTypes in auth.test.ts) has no email_verified_at

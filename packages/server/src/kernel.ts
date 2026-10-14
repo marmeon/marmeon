@@ -43,6 +43,8 @@ import {
   CookieJar,
   createRequestState,
   editableResponse,
+  formatAccessProblems,
+  RouteAccessError,
   isLiveValidation,
   RequestNonce,
   liveValidationFields,
@@ -139,6 +141,19 @@ export type HttpKernel = Hono & {
 const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
 
 /**
+ * Refuses the start when a route does not say who may call it, or lets everyone call it and binds a record by its key. It
+ * holds in every environment, production included: an app that starts with such a route is open until someone notices —
+ * fail closed, as for a route name given twice. Paths in the message go through the redactor: a webhook's secret segment
+ * does not reach the logs. See docs/authorization.md#every-route-decides.
+ */
+export function refuseUndecidedRoutes(application: Application): void {
+  const problems = application.container.make(Router).accessProblems();
+  if (problems.length === 0) return;
+  const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
+  throw new RouteAccessError(formatAccessProblems(problems, { path: (route) => redactor.path(route.path, route.path) }));
+}
+
+/**
  * The HTTP kernel: Hono does the URL matching, the Marmeon router runs the
  * typed middleware pipeline and the action. Controllers and middleware classes
  * are resolved from a fresh container scope per request.
@@ -162,6 +177,8 @@ export function createHttpKernel(
     health = container.has(ServerConfig) ? container.make(ServerConfig).health : '/up',
   }: KernelOptions = {},
 ): HttpKernel {
+  // Before anything else is set up, so a refused start leaves nothing behind.
+  refuseUndecidedRoutes(application);
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
   // The log line's path without secrets in it: `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
@@ -801,6 +818,8 @@ export async function startServer({
 }: ServeOptions): Promise<RunningServer> {
   // An unknown NODE_ENV never serves — also where a script changed it after the app booted.
   environment.check();
+  // Before Vite starts: a refused start must not leave a dev server running.
+  refuseUndecidedRoutes(app);
   const mode = chosenMode ?? (environment.isDevelopment() ? 'development' : 'production');
   // Node closes an idle keep-alive connection after 5 s; a proxy that keeps its connections longer (nginx's upstream keepalive:
   // 60 s) would send a request on one the app is closing — a 502 now and then — so the app waits longer than the proxy.
@@ -827,7 +846,12 @@ export async function startServer({
       devHead: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).head : ''),
     });
     // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development`, not this mode: Vite asked for elsewhere shows no stack.
-    kernel = createHttpKernel(app, { renderer });
+    try {
+      kernel = createHttpKernel(app, { renderer });
+    } catch (error) {
+      await vite.close();
+      throw error;
+    }
     const handle = getRequestListener(kernel.fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));

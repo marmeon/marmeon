@@ -199,7 +199,7 @@ installs the package, also for paths without a route, so keep it cheap.
 
 ```ts title="src/AuditServiceProvider.ts"
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
-import { defineRoutes, Router } from '@marmeon/http';
+import { defineRoutes, everyone, Router } from '@marmeon/http';
 import { GLOBAL } from '@marmeon/router';
 import { AuditConfig } from './AuditConfig.ts';
 import { AuditLog } from './AuditLog.ts';
@@ -216,7 +216,8 @@ export class AuditServiceProvider implements ServiceProvider {
     container.make(Router).load(
       { group: 'web', prefix: '/audit' },
       defineRoutes((Route) => {
-        Route.get('/', ShowAuditController).name('audit.index');
+        // The page is open to anyone by this package's design, so it says so.
+        Route.authorize(everyone).get('/', ShowAuditController).name('audit.index');
       }),
     );
   }
@@ -236,7 +237,11 @@ routes loaded in `boot()` serve requests but are not in `bootstrap/routes.ts`. L
 is bound by `@marmeon/http`, whose provider registers before yours when your package depends on it. Routes without a name may load
 in `boot()`. Prefix the paths and the names with the package's name, and protect a route the way an app would, with its own
 middleware such as `authenticate()`. The prefix `/_marmeon/` belongs to the framework: a package route there stops the app at
-start (see [the framework's paths](routing.md#the-frameworks-paths)).
+start (see [the framework's paths](routing.md#the-frameworks-paths)). A package route says who may call it like an app's: with
+`can(…)` or a check of your own through `Route.authorize(…)` or the request's `authorize`, or with `everyone` when anyone may. The
+`@marmeon/*/internal` subpaths are how the framework's own packages mark theirs as the framework's, they are not API and outside semver, so they can change in any release, and a route
+loaded with their marker outside `/_marmeon/` is refused at load; `pnpm check:source` refuses importing them outside the
+framework's own sources.
 
 ### Hooks of the router
 

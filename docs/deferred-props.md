@@ -217,7 +217,7 @@ export class ShowRecentNotesController extends Controller {
 ```
 
 ```ts
-notes.get('/islands/recent', ShowRecentNotesController).name('recent');
+notes.get('/islands/recent', ShowRecentNotesController).name('recent'); // `notes` is a registrar with a decision
 ```
 
 An island's route answers only an island's request. Opened directly, visited, linked or prefetched, it is a 404, and a route of

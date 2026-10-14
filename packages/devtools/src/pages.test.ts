@@ -6,12 +6,13 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, view } from '@marmeon/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
 import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
-import { defineRoutes, Router, type HttpContext } from '@marmeon/router';
+import { Router, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, DevDocument, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
 import { BASE, DevtoolsServiceProvider, DevtoolsStore, enableDevtoolsForTests, MAIL_CSP, type AnyEntry, type DevtoolsTester } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const roots: string[] = [];
 afterAll(() => {
@@ -50,7 +51,7 @@ class ShowPersonController {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/people/:person', ShowPersonController).name('people.show');
   Route.get('/plain', () => ({ ok: true }));
 });

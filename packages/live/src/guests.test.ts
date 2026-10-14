@@ -1,10 +1,11 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider, island, view, type PageObject } from '@marmeon/http';
+import { HttpServiceProvider, island, view, type PageObject } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { LiveServiceProvider } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 describe('a guest without a session follows a channel (no guest sessions)', async () => {
   const application = await createApplication({
@@ -15,7 +16,7 @@ describe('a guest without a session follows a channel (no guest sessions)', asyn
     modules: [
       defineModule({
         name: 'board',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/board', () => view('board/Show', {}).live('board.1'));
           Route.get('/islands/cards', () => island('board/Cards', { cards: [] }).live('board.cards'));
         }),

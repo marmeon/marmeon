@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { abort, Controller, HttpServiceProvider } from '@marmeon/http';
 import { RedisConnections, RedisServiceProvider } from '@marmeon/redis';
 import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +18,7 @@ import { DatabaseSessionStore } from './stores/database.ts';
 import { RedisSessionStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 class CountController extends Controller {
   readonly #session: Session;
@@ -44,7 +45,7 @@ class FormController extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/count', CountController);
   Route.get('/form', FormController);
   Route.get('/status', () => ({ ok: true }));

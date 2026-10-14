@@ -1,6 +1,7 @@
 import { Application, type Container, type ServiceProvider } from '@marmeon/core';
 import { Encrypter } from '@marmeon/encryption';
-import { defineRoutes, FRAMEWORK_ROUTES, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@marmeon/router';
+import { defineRoutes, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@marmeon/router';
+import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
 import { AfterResponse } from './after-response.ts';
 import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { ClearClientHistory, ClientHistory } from './client-history.ts';

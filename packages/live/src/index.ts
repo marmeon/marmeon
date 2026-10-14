@@ -1,7 +1,8 @@
 import cluster from 'node:cluster';
 import { Application, CLUSTER_WORKER, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
-import { CONNECTION_HEADER, defineRoutes, FRAMEWORK_ROUTES, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
+import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
+import { FRAMEWORK_ROUTES } from '@marmeon/http/internal';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { LiveConfig } from './config.ts';

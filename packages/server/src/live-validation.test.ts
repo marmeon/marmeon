@@ -11,7 +11,8 @@ import {
   type ContextOf,
   type HttpContext,
 } from '@marmeon/http';
-import { defineRoutes, type Next } from '@marmeon/router';
+import type { Next } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -92,7 +93,7 @@ describe('createHttpKernel — live validation', async () => {
     }
   }
 
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.post('/sign-up', SignUpController).name('sign-up');
     Route.put('/profile', UpdateController).name('profile.update');
     Route.get('/search', SearchController).name('search');

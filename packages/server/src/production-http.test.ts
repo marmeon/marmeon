@@ -6,7 +6,7 @@ import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { createApplication, CSP_NONCE_PLACEHOLDER, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { cacheControl, contentSecurityPolicy, HttpServiceProvider, PAGE_HEADER, view, type SsrRender } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { ASSET_CACHE_CONTROL } from './assets.ts';
 import { withNonce } from './html.ts';
@@ -60,8 +60,8 @@ describe('TRUSTED_PROXIES', async () => {
     modules: [
       defineModule({
         name: 'whoami',
-        routes: defineRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))),
-        apiRoutes: defineRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))),
+        routes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))),
+        apiRoutes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))),
       }),
     ],
   });
@@ -86,7 +86,7 @@ describe('TRUSTED_PROXIES', async () => {
         discover: false,
         env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '*' },
         providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-        modules: [defineModule({ name: 'whoami', routes: defineRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))) })],
+        modules: [defineModule({ name: 'whoami', routes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))) })],
       }),
     );
     const ask = async (remote: string, headers: Record<string, string>) =>
@@ -122,7 +122,7 @@ describe('the build\'s assets', async () => {
     discover: false,
     env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/page', () => view('pages/Show', { secret: 'x'.repeat(4000) }))) })],
+    modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => Route.get('/page', () => view('pages/Show', { secret: 'x'.repeat(4000) }))) })],
   });
   const app = createHttpKernel(application, { clientDir });
 
@@ -191,7 +191,7 @@ describe('the CSP nonce', async () => {
     modules: [
       defineModule({
         name: 'pages',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/page', () => view('pages/Show', {}));
           Route.get('/data', () => ({ ok: true }));
           Route.get('/own', () => new Response('<p>sandboxed</p>', { headers: { 'content-type': 'text/html', 'content-security-policy': 'sandbox' } }));
@@ -270,7 +270,7 @@ describe('the CSP nonce', async () => {
       discover: false,
       env: { APP_KEY: generateKey(), NODE_ENV: 'test' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-      modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/page', () => view('pages/Show', {}))) })],
+      modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => Route.get('/page', () => view('pages/Show', {}))) })],
     });
     const kernel = createHttpKernel(plain, { renderer: createDocumentRenderer({ template: () => TEMPLATE, ssr: () => render }) });
     const response = await kernel.request('/page', { headers: { accept: 'text/html' } });

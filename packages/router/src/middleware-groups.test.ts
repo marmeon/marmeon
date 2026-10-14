@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { HttpError } from './errors.ts';
 import { defineMiddleware } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';
-import { defineRoutes, Router } from './router.ts';
+import { Router } from './router.ts';
 import type { HttpContext, Next } from './types.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 /** A middleware that records its name, so tests can see the order. */
 const tracer = (name: string, log: string[]) =>
@@ -36,12 +37,12 @@ describe('Router — groups, global middleware, terminate', () => {
     router.middleware.append(GLOBAL, tracer('global', log)).append('web', group);
     router.load(
       { group: 'web' },
-      defineRoutes((Route) => {
+      openRoutes((Route) => {
         Route.middleware(tracer('own', log)).get('/page', () => 'page').name('page');
         Route.middleware(group).get('/twice', () => 'twice');
       }),
     );
-    router.load({ group: 'api', prefix: '/api' }, defineRoutes((Route) => Route.get('/items', () => []).name('items')));
+    router.load({ group: 'api', prefix: '/api' }, openRoutes((Route) => Route.get('/items', () => []).name('items')));
     return { router, log };
   }
   const request = (path: string) => ({ request: new Request(`http://app.test${path}`), params: {} });
@@ -86,8 +87,8 @@ describe('Router — groups, global middleware, terminate', () => {
   });
 
   it('refuses a route name used twice, naming both routes', () => {
-    const router = new Router().load(defineRoutes((Route) => Route.get('/a', () => 'a').name('home')));
-    expect(() => router.load(defineRoutes((Route) => Route.get('/b', () => 'b').name('home')))).toThrow(
+    const router = new Router().load(openRoutes((Route) => Route.get('/a', () => 'a').name('home')));
+    expect(() => router.load(openRoutes((Route) => Route.get('/b', () => 'b').name('home')))).toThrow(
       'Route name [home] is used twice: GET /a and GET /b.',
     );
   });
@@ -102,7 +103,7 @@ describe('Router — groups, global middleware, terminate', () => {
         terminated.push(`${ctx.request.url} → ${response.status}`);
       }
     }
-    const router = new Router().load(defineRoutes((Route) => Route.middleware(Metrics).get('/m', () => 'ok')));
+    const router = new Router().load(openRoutes((Route) => Route.middleware(Metrics).get('/m', () => 'ok')));
     const collected: [{ terminate?: (ctx: HttpContext, response: Response) => unknown }, HttpContext][] = [];
     const response = await router.dispatch(router.routes[0]!, request('/m'), {
       onTerminable: (handler, ctx) => collected.push([handler, ctx]),

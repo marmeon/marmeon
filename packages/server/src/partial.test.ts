@@ -1,7 +1,7 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defer, HttpServiceProvider, optional, view, type PageObject } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -20,7 +20,7 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
     modules: [
       defineModule({
         name: 'pages',
-        routes: defineRoutes((Route) => {
+        routes: openRoutes((Route) => {
           Route.get('/users/1', () =>
             view('users/Show', {
               name: 'Ada',

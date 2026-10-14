@@ -15,7 +15,7 @@ export const SNIPPETS = {
     file: 'modules/notes/routes.ts',
     lang: 'ts',
     code: `import { authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
 import { NoteRepository } from './NoteRepository.ts';
@@ -23,7 +23,8 @@ import { NoteRepository } from './NoteRepository.ts';
 export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
 
-  notes.get('/', ListNotesController).name('index');
+  // The list asks for the signed-in user's notes; the note route is decided by its request (NotePolicy).
+  notes.authorize(everyone).get('/', ListNotesController).name('index');
   notes.bind('note', NoteRepository).get('/:note', ShowNoteController).name('show');
 });
 `,

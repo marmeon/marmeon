@@ -142,16 +142,18 @@ in the order they should run:
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { RequireBetaAccess } from './middleware/RequireBetaAccess.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).middleware(verified()).middleware(RequireBetaAccess).get('/notes', ListNotesController).name('notes.index');
+  Route.middleware(authenticate()).middleware(verified()).middleware(RequireBetaAccess).authorize(everyone).get('/notes', ListNotesController).name('notes.index');
 });
 ```
 
-Only middleware added this way adds to the types of a route's context. The [route groups](routing.md#route-groups) section of the
+Middleware narrows who gets to a route, but it does not decide who may call it: every route also says that, here with
+`authorize(everyone)`, or with a policy through `can()`. See [every route decides](authorization.md#every-route-decides). Only
+middleware added this way adds to the types of a route's context. The [route groups](routing.md#route-groups) section of the
 routing page shows how to share middleware between routes.
 
 ### For every request, or every route of a group

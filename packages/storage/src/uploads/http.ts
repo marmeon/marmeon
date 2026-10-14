@@ -1,5 +1,6 @@
 import type { Container, Resolver } from '@marmeon/core';
 import { HttpError, type ClassResolver, type HttpContext, type RequestDefinition, type StandardSchemaV1 } from '@marmeon/router';
+import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
 import { RejectedUpload } from './temporary-upload.ts';
 import { uploadFields } from './rule.ts';
 import type { TemporaryUploads } from './service.ts';
@@ -109,7 +110,7 @@ export function registerUploads(http: Http, container: Container, uploads: () =>
   container.scoped(ReceiveUploadController, (scope: Resolver) => new ReceiveUploadController(() => sessionScope(http, (key) => scope.make(key as never))));
 
   router.load(
-    { group: 'web', framework: http.FRAMEWORK_ROUTES },
+    { group: 'web', framework: FRAMEWORK_ROUTES },
     http.defineRoutes((Route) => {
       Route.middleware(http.signed()).put(`${UPLOADS_PREFIX}/:id`, ReceiveUploadController);
     }),

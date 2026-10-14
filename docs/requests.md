@@ -193,7 +193,8 @@ export class AttachFileController extends Controller {
 ```
 
 `store()` uses the upload once and moves it to its place, under a random name. Whoever may send the form may upload its files: the
-route's middleware and `authorize` decide both. An upload belongs to the session it was made in. The [file
+route's middleware and `authorize` decide both, and the route has to say who may call it, as the
+[authorization](authorization.md#every-route-decides) page explains. An upload belongs to the session it was made in. The [file
 storage](storage.md#uploads) page explains disks, the uploads table and its clean-up, and the [forms](forms.md#uploads) page shows
 the browser's side.
 

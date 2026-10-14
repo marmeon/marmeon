@@ -2,9 +2,10 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { defineModule, type ApplicationOptions } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, inTransaction, type Generated } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { AfterResponse, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { AfterResponse, Controller, HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 // The HTTP kernel cuts the ambient transaction context at its own boundary: work after the response.
 
@@ -55,7 +56,7 @@ describe.each(drivers)('work after the response on %s', (driver) => {
       defineModule({
         name: 'notes',
         migrations: new URL('./__fixtures__/migrations/', import.meta.url),
-        routes: defineRoutes((Route) => Route.get('/defer', DeferInTransactionController)),
+        routes: openRoutes((Route) => Route.get('/defer', DeferInTransactionController)),
       }),
     ],
   };

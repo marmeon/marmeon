@@ -9,13 +9,14 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, optional, SharedData, view } from '@marmeon/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
 import { Queue, QueueServiceProvider } from '@marmeon/queue';
-import { defineRoutes, type HttpContext } from '@marmeon/router';
+import type { HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { DevtoolsStore, enableDevtoolsForTests, FileStore, MemoryStore, Recorder, type AnyEntry, type DevtoolsTester } from './index.ts';
 import { DevtoolsServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const API_TOKEN = `marmeon_7|${randomBytes(30).toString('hex').slice(0, 40)}`;
@@ -134,7 +135,7 @@ class ShowOriginsController {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/people/:person', ShowPersonController).name('people.show');
   Route.get('/origins', ShowOriginsController).name('origins');
   Route.post('/login', LoginController).name('login');

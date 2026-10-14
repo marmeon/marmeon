@@ -2,13 +2,21 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer as createNetServer, type AddressInfo, type Server as NetServer } from 'node:net';
 import { dirname, join } from 'node:path';
-import { createApplication, Logger } from '@marmeon/core';
+import { createApplication, defineModule, Logger } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider } from '@marmeon/http';
+import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { RouteAccessError } from '@marmeon/router';
 import { describe, expect, it, vi } from 'vitest';
 import { startServer } from './kernel.ts';
+import { createViteDevRenderer } from './vite.ts';
 import { ServerServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+
+// A spy that runs the real thing: the refused start below must never reach it.
+vi.mock('./vite.ts', async (original) => {
+  const actual = await original<typeof import('./vite.ts')>();
+  return { ...actual, createViteDevRenderer: vi.fn(actual.createViteDevRenderer) };
+});
 
 const root = tempDir('marmeon-serve-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
@@ -150,6 +158,23 @@ describe('startServer', () => {
     } finally {
       if (before === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = before;
+      await app.shutdown();
+    }
+  });
+
+  it('refuses to start in development when a route does not say who may call it — before Vite starts, so nothing is left running', async () => {
+    const app = await createApplication({
+      root,
+      discover: false,
+      env: { APP_KEY: generateKey(), PORT: '1' },
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+      modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/about', () => 'about')) })],
+    });
+    vi.mocked(createViteDevRenderer).mockClear();
+    try {
+      await expect(startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' })).rejects.toBeInstanceOf(RouteAccessError);
+      expect(createViteDevRenderer).not.toHaveBeenCalled();
+    } finally {
       await app.shutdown();
     }
   });

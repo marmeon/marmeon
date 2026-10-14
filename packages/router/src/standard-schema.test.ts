@@ -2,7 +2,8 @@ import { defineConfig, resolveConfig, type StandardSchemaV1 } from '@marmeon/cor
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { defineRequest, parseQuery, ValidationError, type ContextOf } from './request-definition.ts';
 import { VALIDATE_HEADER } from './live-validation.ts';
-import { defineRoutes, Router } from './router.ts';
+import { Router } from './router.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 /**
  * A schema of another library, as Zod 4 builds them: Standard Schema and nothing else of ours — its own vendor, its
@@ -45,7 +46,7 @@ class CreateNoteController {
 }
 
 describe('another library\'s Standard Schema (Zod-like) works where rules do', () => {
-  const router = new Router().load(defineRoutes((Route) => Route.post('/notes', CreateNoteController)));
+  const router = new Router().load(openRoutes((Route) => Route.post('/notes', CreateNoteController)));
   const post = (body: unknown) =>
     router.dispatch(router.routes[0]!, { request: new Request('http://app.test/notes', { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }), params: {} });
 
@@ -100,7 +101,7 @@ describe('another library\'s schema in a live validation: fail-closed', () => {
     }
   }
   const router = new Router().load(
-    defineRoutes((Route) => {
+    openRoutes((Route) => {
       Route.post('/sign-up', SignUp);
       Route.post('/slug', TeamSlug);
     }),

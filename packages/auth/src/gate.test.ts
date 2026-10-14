@@ -1,11 +1,12 @@
 import { createApplication, defineModule, err, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
+import { abort, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import { accessLabel, type RouteBinder } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import {
   abilities,
   AccessTokenStore,
@@ -156,17 +157,20 @@ const memoryTokens: AccessTokenStore = {
   prune: async () => 0,
 };
 
+/** The handler asks the gate itself, so the registrar has no policy to name; a check of its own keeps the route from counting as open. */
+const handlerAsks = () => true;
+
 /** The `api` group: no session — the token guard says who it is, and the token must also grant `posts:write`. */
-const apiRoutes = defineRoutes((Route) => {
+const apiRoutes = openRoutes((Route) => {
   const api = Route.middleware(authenticate('api'));
   const post = api.bind('post', PostBinder);
   post.get('/posts/:post', ShowPostController);
   // The order the docs show: the ability first, then the binding.
   api.middleware(abilities('posts:write')).bind('post', PostBinder).put('/posts/:post', UpdatePostController);
-  post.middleware(abilities('posts:write')).delete('/posts/:post', DeletePostController);
+  post.middleware(abilities('posts:write')).authorize(handlerAsks).delete('/posts/:post', DeletePostController);
 });
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.post('/as/:id', SignInController);
   Route.get('/login', () => 'login').name('auth.login');
   Route.get('/missing', () => abort(404));
@@ -175,7 +179,7 @@ const routes = defineRoutes((Route) => {
   const post = signedIn.bind('post', PostBinder);
   post.get('/posts/:post', ShowPostController);
   post.put('/posts/:post', UpdatePostController);
-  post.delete('/posts/:post', DeletePostController);
+  post.authorize(handlerAsks).delete('/posts/:post', DeletePostController);
   // The same policy asked once, at the registrar, for every route below it.
   const guarded = signedIn.bind('post', PostBinder).authorize(can(PostPolicy, 'view', 'post'));
   guarded.get('/guarded/:post', () => 'guarded');
@@ -366,7 +370,7 @@ export function policyTypes() {
   // @ts-expect-error — can() without the resource the ability needs
   can(PostPolicy, 'update');
 
-  defineRoutes((Route) => {
+  openRoutes((Route) => {
     const signedIn = Route.middleware(authenticate());
     signedIn.bind('post', PostBinder).put('/posts/:post', UpdatePostController);
     // @ts-expect-error — `post` is not bound here: a string, not a Post

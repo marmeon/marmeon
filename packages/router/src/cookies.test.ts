@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
-import { defineRoutes, Router } from './router.ts';
+import { Router } from './router.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 describe('cookies', () => {
   it('parses the Cookie header — decoded, quoted values unwrapped, first occurrence wins', () => {
@@ -84,7 +85,7 @@ describe('cookies', () => {
 
   it('are part of every context the router dispatches', async () => {
     const router = new Router().load(
-      defineRoutes((Route) => {
+      openRoutes((Route) => {
         Route.post('/prefs', async (ctx) => {
           const { theme } = await ctx.input();
           ctx.cookies.set('theme', String(theme));

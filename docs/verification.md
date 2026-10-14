@@ -11,12 +11,12 @@ A route that needs a confirmed address puts `verified()` after `authenticate()`:
 
 ```ts title="modules/notes/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 
 export default defineRoutes((Route) => {
-  const confirmed = Route.middleware(authenticate()).middleware(verified());
+  const confirmed = Route.middleware(authenticate()).middleware(verified()).authorize(everyone); // the user's own notes
   confirmed.get('/notes', ListNotesController).name('notes.index');
   confirmed.post('/notes', StoreNoteController).name('notes.store');
 });
@@ -91,11 +91,12 @@ The route behind the link sits behind `authenticate()` and `signed()`, and is in
 
 ```ts title="modules/auth/routes.ts"
 import { authenticate } from '@marmeon/auth';
-import { defineRoutes, signed } from '@marmeon/http';
+import { defineRoutes, everyone, signed } from '@marmeon/http';
 import { VerifyEmailController } from './controllers/VerifyEmailController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
+  // The controller checks that the link names the signed-in user.
+  Route.middleware(authenticate()).middleware(signed()).authorize(everyone).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
 });
 ```
 

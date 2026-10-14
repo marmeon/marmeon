@@ -1,7 +1,8 @@
 import { createApplication, defineModule, ErrorSolutions, Logger, Redactor, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ExceptionHandler, HttpServiceProvider, island, SharedData, view, type HttpContext, type SsrRender } from '@marmeon/http';
-import { defineRoutes, type Next } from '@marmeon/router';
+import type { Next } from '@marmeon/router';
+import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -60,7 +61,7 @@ class SharesAFailingProp {
 }
 
 describe('createHttpKernel — what its error lines write', async () => {
-  const routes = defineRoutes((Route) => {
+  const routes = openRoutes((Route) => {
     Route.get('/page', (ctx: HttpContext) => view('pages/Show', { islands: (new URL(ctx.request.url).searchParams.get('islands') ?? '').split(',').filter(Boolean) }));
     Route.get('/islands/never/:token', () => new Promise(() => {}));
     // Answers as an island but not with an island's JSON: reading it fails.

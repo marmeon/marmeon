@@ -2,7 +2,7 @@ import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
+import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +36,7 @@ import { TwoFactor } from '../two-factor/two-factor.ts';
 import { Passkeys } from './passkeys.ts';
 import { PasskeyServiceProvider } from './provider.ts';
 import { PASSKEYS_TABLE, PasskeyStore } from './store.ts';
+import { openRoutes } from '../test-helpers/open-routes.ts';
 
 interface TestUser {
   id: number;
@@ -166,7 +167,7 @@ class ChallengeController extends Controller {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.post('/login', LoginController).name('auth.login');
   Route.post('/pk/:method', PasskeyController);
   Route.get('/account/two-factor', Page).name('test.setup');

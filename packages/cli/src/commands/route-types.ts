@@ -1,4 +1,6 @@
 import { relative } from 'node:path';
+import { Application, Redactor } from '@marmeon/core';
+import { formatAccessProblems, Router } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 import { RouteTypes } from '../route-types.ts';
 
@@ -17,23 +19,37 @@ export class RouteTypesCommand {
   static boots = 'build' as const;
 
   readonly #types: RouteTypes;
+  readonly #router: Router;
+  readonly #app: Application;
 
-  constructor(types: RouteTypes) {
+  constructor(types: RouteTypes, router: Router, app: Application) {
     this.#types = types;
+    this.#router = router;
+    this.#app = app;
   }
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
     const file = relative(root, this.#types.path);
+    let status = 0;
     if (options.check === true) {
-      if (await this.#types.isCurrent()) {
-        output.success(`${file} matches the routes and views.`);
-        return 0;
+      if (await this.#types.isCurrent()) output.success(`${file} matches the routes and views.`);
+      else {
+        output.error(`${file} is out of date — run: marmeon route:types`);
+        status = 1;
       }
-      output.error(`${file} is out of date — run: marmeon route:types`);
+    } else {
+      await writeRouteTypes(this.#types, output, root);
+    }
+    // After the file is written, so that fixing the routes is not made harder by type errors about missing route names.
+    // `marmeon build` runs this command and stops on a non-zero exit.
+    const problems = this.#router.accessProblems();
+    if (problems.length > 0) {
+      // Build and CI logs: the paths go through the app's redactor, as the kernel's message does.
+      const redactor = this.#app.container.has(Redactor) ? this.#app.container.make(Redactor) : new Redactor();
+      output.error(formatAccessProblems(problems, { path: (route) => redactor.path(route.path, route.path) }));
       return 1;
     }
-    await writeRouteTypes(this.#types, output, root);
-    return 0;
+    return status;
   }
 }
 

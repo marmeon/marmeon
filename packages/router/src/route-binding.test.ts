@@ -1,8 +1,9 @@
 import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { defineRequest } from './request-definition.ts';
-import { defineRoutes, Router } from './router.ts';
+import { Router } from './router.ts';
 import type { HttpContext, RouteBinder, RouteBindingContext, RouteBindingWith } from './types.ts';
+import { checkedRoutes } from './test-helpers/open-routes.ts';
 
 interface Team {
   id: number;
@@ -76,7 +77,7 @@ class UpdateTeamController {
 
 function router() {
   return new Router().load(
-    defineRoutes((Route) => {
+    checkedRoutes((Route) => {
       Route.bind('team', Teams).bind('member', Members, { scopedBy: 'team' }).get('/teams/:team/members/:member', ShowMemberController);
       Route.bind('team', Teams).get('/teams/:team', (ctx) => ({ name: ctx.params.team.name }));
       Route.bind('team', Teams).put('/teams/:team', UpdateTeamController);
@@ -141,14 +142,14 @@ describe('Route.bind', () => {
   });
 
   it('refuses a column without scopedBy — at boot, for untyped code: it would bind the record without its parent', () => {
-    const untyped = defineRoutes((Route) => (Route.bind('team', Teams) as any).bind('member', Members, { column: 'team_id' }));
+    const untyped = checkedRoutes((Route) => (Route.bind('team', Teams) as any).bind('member', Members, { column: 'team_id' }));
     expect(() => new Router().load(untyped)).toThrow(
       "Route.bind('member') has a column (team_id) but no scopedBy — name the parent parameter, or the record is looked up without it.",
     );
   });
 
   it('refuses a binding for a parameter the path does not have — at boot, for untyped code', () => {
-    const untyped = defineRoutes((Route) => (Route.bind('team', Teams) as any).get('/teams/:id', () => 'x'));
+    const untyped = checkedRoutes((Route) => (Route.bind('team', Teams) as any).get('/teams/:id', () => 'x'));
     expect(() => new Router().load(untyped)).toThrow("Route.bind('team') needs a :team parameter in /teams/:id.");
   });
 });
@@ -163,7 +164,7 @@ class MembersOfTeam extends Members {
 
 // Type guarantees — compiled, not run.
 export function typeLevelTests() {
-  defineRoutes((Route) => {
+  checkedRoutes((Route) => {
     Route.bind('team', Teams).get('/teams/:team', (ctx) => {
       expectTypeOf(ctx.params.team).toEqualTypeOf<Team>();
       return null;

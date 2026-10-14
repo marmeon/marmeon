@@ -9,13 +9,17 @@ every request proves itself with its token.
 
 ```ts title="modules/notes/api-routes.ts"
 import { abilities, authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesApiController } from './controllers/ListNotesApiController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate('api')).middleware(abilities('notes:read')).get('/notes', ListNotesApiController).name('api.notes.index');
+  Route.middleware(authenticate('api')).middleware(abilities('notes:read')).authorize(everyone).get('/notes', ListNotesApiController).name('api.notes.index');
 });
 ```
+
+`abilities()` is not a decision about who may call the route: it limits which tokens get in. The route still says who may call
+it, here with `authorize(everyone)` because the controller lists only the token's own user's notes; without a decision the app
+does not start. The [authorization](authorization.md#every-route-decides) page has the rule.
 
 The module lists the file as `apiRoutes` in its definition, and the route answers `GET /api/notes`:
 
@@ -139,12 +143,12 @@ A token carries a list of abilities, strings your app chooses, such as `notes:re
 
 ```ts title="modules/notes/api-routes.ts"
 import { abilities, authenticate } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesApiController } from './controllers/ListNotesApiController.ts';
 import { StoreNoteApiController } from './controllers/StoreNoteApiController.ts';
 
 export default defineRoutes((Route) => {
-  const api = Route.middleware(authenticate('api'));
+  const api = Route.middleware(authenticate('api')).authorize(everyone); // each controller works on the token's own user
   api.middleware(abilities('notes:read')).get('/notes', ListNotesApiController).name('api.notes.index');
   api.middleware(abilities('notes:write')).post('/notes', StoreNoteApiController).name('api.notes.store');
 });

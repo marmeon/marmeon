@@ -165,13 +165,14 @@ The prop is a function, so a partial reload of another prop leaves the table out
 ```ts title="modules/members/routes.ts"
 import { authenticate, verified } from '@marmeon/auth';
 import { throttle } from '@marmeon/cache';
-import { defineRoutes } from '@marmeon/http';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { tableRoutes } from '@marmeon/table';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
 
 export default defineRoutes((Route) => {
-  const members = Route.prefix('/members').middleware(authenticate()).middleware(verified()).name('members.');
+  // Every verified user may see the members. The table's endpoints inherit this decision from the registrar.
+  const members = Route.prefix('/members').middleware(authenticate()).middleware(verified()).authorize(everyone).name('members.');
   members.get('/', ListMembersController).name('index');
   tableRoutes(members.middleware(throttle('members-table')), MembersTable);
 });
@@ -316,6 +317,7 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | Sorting by a column you may not see: the order alone tells its values | The **allowlist**: a sort, a filter, a search or a page size the definition does not offer is a 400, never a fallback. Sorting or filtering by a hidden column is a 400 too, and the search never looks into one. |
 | Another tenant's rows | The **base query**: a row action looks its row up there, a bulk action intersects with it, an export reads from it. |
 | An endpoint without the page's protection | `tableRoutes()` runs on the **page's registrar**, with its middleware. A registrar without what the base query needs does not compile. |
+| An action or export open to anyone who sees the table | On a registrar whose checks are all `everyone`, nothing decides who may act on a row key sent in a body: `tableRoutes()` refuses to load a row action, bulk action or export without `.authorize()`. |
 | Keys of rows you may not touch, in a bulk action's body | **Keys ∩ base query ∩ policy per row**: what is left out is counted, never acted on. |
 | "All matching" as a huge or forged list | The **state** is sent, never keys, and parsed again. More rows than `max` is a 422. |
 | A cell a spreadsheet runs, such as `=HYPERLINK(…)` | **Escaping** of every text cell that starts like a formula. |

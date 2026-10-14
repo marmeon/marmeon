@@ -72,18 +72,19 @@ export class DestroyNoteController extends Controller {
 ```
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate, verified } from '@marmeon/auth';
-import { defineRoutes } from '@marmeon/http';
+import { authenticate, can, verified } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/http';
 import { DestroyNoteController } from './controllers/DestroyNoteController.ts';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { PinNoteController } from './controllers/PinNoteController.ts';
+import { NotePolicy } from './policies/NotePolicy.ts';
 import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Route) => {
   const notes = Route.prefix('/notes').middleware(authenticate()).middleware(verified()).name('notes.');
-  notes.get('/', ListNotesController).name('index');
+  notes.authorize(everyone).get('/', ListNotesController).name('index'); // the user's own notes
 
-  const note = notes.bind('note', NoteRepository);
+  const note = notes.bind('note', NoteRepository).authorize(can(NotePolicy, 'update', 'note')); // the group asks; a controller's request may ask more
   note.post('/:note/pin', PinNoteController).name('pin');
   note.delete('/:note', DestroyNoteController).name('destroy');
 });

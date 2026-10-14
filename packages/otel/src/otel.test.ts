@@ -8,7 +8,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, HttpServiceProvider } from '@marmeon/http';
 import { createPinoLogger } from '@marmeon/log';
 import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider, type JobContext } from '@marmeon/queue';
-import { defineRoutes, type HttpContext } from '@marmeon/router';
+import type { HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { context, propagation, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadOtelApi, OtelServiceProvider, redactedPath } from './index.ts';
 import { ErrorSolutions, Redactor } from '@marmeon/core';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 // The SDK, as an app's bootstrap/telemetry.ts would register it — with an in-memory exporter (SDK 3 names: `TracerProvider`).
 const exporter = new InMemorySpanExporter();
@@ -79,7 +80,7 @@ class ShowPersonController {
   }
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/people/:person', ShowPersonController).name('people.show');
   Route.get('/fail', () => {
     throw new Error('The report failed, token=tok-123');
