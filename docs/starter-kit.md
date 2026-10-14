@@ -53,7 +53,7 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 | `/forgot-password`, `/reset-password` | `auth.password.request`, `auth.password.reset` | guests |
 | `/dashboard` | `dashboard` | signed in, with a confirmed address |
 | `/confirm-password` | `auth.password.confirm` | signed in, with a confirmed address |
-| `/settings/security` | `auth.security` | the same, and the password typed within 15 minutes |
+| `/settings/security` | `auth.security` | the same, and the password typed within 15 minutes by default |
 | `/settings/two-factor` | `auth.two-factor` | the same |
 | `/settings/two-factor/verify` | `auth.two-factor.verify` | signed in, with a confirmed address; for `twoFactor()` |
 | `/settings/passkeys` | `auth.passkeys` | the same as the security page |
@@ -125,7 +125,7 @@ replace the `@import` and `--font-text`, and remove the dependency. The mono fon
 Each user decides for their own account. On `/settings/two-factor` they scan a QR code with an authenticator app, type the first
 code and their password, and get ten recovery codes in a layer, shown once. Turning it on signs out their other devices and lists
 their API tokens, which keep working. From then on a sign-in with the right password waits on `/two-factor-challenge` for a code
-or a recovery code. The settings page and new recovery codes sit behind sudo mode, which asks for the password again after 15 minutes; turning it off always asks for it.
+or a recovery code. The settings page and new recovery codes sit behind sudo mode, which asks for the password again after 15 minutes by default ([how long](authentication.md#how-long-a-sign-in-lasts)); turning it off always asks for it.
 
 The owner gets a mail when the factor is turned on or off, when a recovery code signed in (with the number left), and when a
 wrong code followed the right password ("someone knows your password", at most once an hour for each account). They are queued
@@ -301,7 +301,7 @@ primary key.
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days an account may stay without a confirmed address before `auth:prune-unverified` deletes it. `0`: the command deletes none. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every API token of the user. Set it with `AUTH_PRIVATE_REGISTRATION=false`. |
 
-The [authentication](authentication.md#configuration) page lists the other `AUTH_*` variables, such as how long "remember me" lasts. The login page shows its checkbox only while `AUTH_REMEMBER_DAYS` is above `0`.
+The [authentication](authentication.md#configuration) page lists the other `AUTH_*` variables, and [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) every lifetime. The login page shows its checkbox only while `AUTH_REMEMBER_DAYS` is above `0`.
 
 ## Adding the module to an existing app
 

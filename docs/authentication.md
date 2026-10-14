@@ -111,8 +111,8 @@ The package brings four middleware for the routes of the `web` group:
 | `authenticate()` | A signed-in user, as `ctx.user`. | A browser goes to the login page, a JSON client gets 401. |
 | `guest(home)` | Guests. For the login and registration pages. | A redirect to `home`, `/` by default. |
 | `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
-| `confirmedPassword()` | A user who typed the password within the last 15 minutes. After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
-| `confirmedSecondFactor({ verify })` | A user whose account has no second factor, or whose session proved one within 15 minutes. After `confirmedPassword()`, on routes that change factors, the e-mail address or API tokens. | A browser goes to `verify`, a JSON client gets 403. See [changing the factors](two-factor-authentication.md#changing-the-factors). |
+| `confirmedPassword()` | A user who typed the password within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
+| `confirmedSecondFactor({ verify })` | A user whose account has no second factor, or whose session proved one within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `confirmedPassword()`, on routes that change factors, the e-mail address or API tokens. | A browser goes to `verify`, a JSON client gets 403. See [changing the factors](two-factor-authentication.md#changing-the-factors). |
 | `twoFactor({ setup, verify, maxAge? })` | A user whose session proved a second factor. After `authenticate()`; never installed by the framework. | A browser goes to `setup` or `verify`, a JSON client gets 403. See [requiring it](two-factor-authentication.md#requiring-it). |
 
 `authenticate('api')` checks an API token instead of the session. The [API tokens](api-tokens.md) page covers it, and the
@@ -267,25 +267,28 @@ that is the full reload, not an error. The other tabs of the same browser follow
 
 ## How long a sign-in lasts
 
-Four settings bound a sign-in, each from its own side:
+Every lifetime of a sign-in is listed here:
 
-| Setting | Default | Limits |
-| --- | --- | --- |
-| `SESSION_LIFETIME` | 120 minutes | Inactivity: the time since the last request |
-| `AUTH_SESSION_MAX_HOURS` | 24 hours | The absolute duration of a sign-in |
-| `AUTH_REMEMBER_DAYS` | 30 days | [Remember me](#remember-me) |
-| `twoFactor()` `maxAge` | 24 hours | The [second factor](two-factor-authentication.md#requiring-it) |
+| What | Default | What it ends | Assurance |
+| --- | --- | --- | --- |
+| `SESSION_LIFETIME` | 120 minutes | A session that makes no request: the time since the last one. | `SESSION_LIFETIME=60` (at most an hour idle) is recommended for an app that needs AAL2 (ASVS 7.3.1). |
+| `AUTH_SESSION_MAX_HOURS` | 24 hours | A sign-in, however active the user is. A valid remember-me cookie signs in again. | 24 hours is the limit NIST SP 800-63B-4 sets at AAL2. |
+| `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
+| `twoFactor()` `maxAge` | 24 hours | The proof of a [second factor](two-factor-authentication.md#requiring-it); then the user is asked for it again. | AAL2 holds only on routes behind `twoFactor()`. |
+| `FACTOR_CHANGE_MAX_AGE` | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
+| `AUTH_PASSWORD_TIMEOUT` | 15 minutes | The password confirmation of [sudo mode](#sudo-mode). | The password only; no second factor. |
 
 `SESSION_LIFETIME` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
 is the longest a sign-in lasts, however active the user is: a session signed in by password or passkey ends that many hours
-after the sign-in, and the user types the password again. It matches the 24 hours that NIST SP 800-63B asks of a session at
-assurance level AAL2, and the absolute lifetime of ASVS 7.3.2. Sessions guests use are not affected.
+after the sign-in, and the user types the password again. It matches the absolute lifetime of ASVS 7.3.2.
+Sessions guests use are not affected.
 
 A user who ticked "Keep me signed in" is not asked: when the limit is reached, a remember-me cookie that is still valid signs
 the user in again in the same request, with a new limit. The session starts afresh, with new data, no old input and a new CSRF
 token. A session restored this way never outlives its token, so the whole stay is bound by `AUTH_REMEMBER_DAYS`. That sign-in is
 AAL1, not a re-authentication at AAL2: AAL2 holds on routes behind [`twoFactor()`](two-factor-authentication.md#requiring-it),
-which asks for a fresh proof. Confirming the password, a second factor or a new password does not move the limit.
+which asks for a fresh proof; a remember-me sign-in carries the time its token's second factor was proven, so such an area asks
+again once that is older than its `maxAge`, whatever the new limit says. Confirming the password, a second factor or a new password does not move the limit.
 
 A session that was open when the app was updated has no sign-in time: its limit starts with its next request, so an update signs
 nobody out. A time the session holds that cannot be read, or that lies more than a minute in the future (servers whose clocks
@@ -299,7 +302,7 @@ and without a second factor of its own, so it counts as the lowest assurance lev
 
 `attempt(email, password, { remember: true })` keeps the user signed in on this device after the session has expired. The browser
 gets a cookie, `remember_web`, that is encrypted, `HttpOnly`, and `Secure` and `SameSite` like the session cookie. It is valid for
-`AUTH_REMEMBER_DAYS` days from the sign-in, at most 30 (the default), and using it never extends it.
+`AUTH_REMEMBER_DAYS` days from the sign-in (30 at most) and using it never extends it.
 
 `AUTH_REMEMBER_DAYS=0` turns remember me off: `remember: true` still signs in, without a token or cookie, and the starter kit
 hides the checkbox. No cookie signs in any more, and a cookie that is presented has its token deleted. The bound also holds for
@@ -354,7 +357,7 @@ needs a confirmed address as well as the password, because a token outlives a pa
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`: an account registered with somebody else's address must never reach it. With open registration, use `verified()` there, as the
 [API tokens](api-tokens.md#creating-tokens) page explains.
 
-The password alone does not change the factors of an account that has [a second factor](two-factor-authentication.md#changing-the-factors): that needs a factor proven within 15 minutes as well.
+The password alone does not change the factors of an account that has [a second factor](two-factor-authentication.md#changing-the-factors): that needs a factor proven within 15 minutes as well ([how long](#how-long-a-sign-in-lasts)).
 
 Everyone else goes to `auth.password.confirm`, and after the confirmation back to the page they asked for. A JSON client gets
 `423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another

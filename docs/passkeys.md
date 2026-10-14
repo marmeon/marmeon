@@ -176,14 +176,14 @@ only opens a challenge and has no throttle of its own: give its route a limit, a
 | Method | Does |
 | --- | --- |
 | `list()` | The signed-in user's passkeys: `id`, `name`, `createdAt`, `lastUsedAt`, `suspended`, `synced`. |
-| `registrationOptions()` | The options for `navigator.credentials.create()`. Needs the password typed recently. |
+| `registrationOptions()` | The options for `navigator.credentials.create()`. Needs the password typed within 15 minutes by default. |
 | `register(response, name, password)` | Adds the passkey. Resolves with `recoveryCodes` (the first factor) or `null`. |
 | `rename(id, name)` | Renames; `false` for an empty or too long name or one that is not the user's. |
 | `remove(id, password?)` | Removes. The account's last factor, and a suspended passkey, need `password`; the recovery codes go with the last factor. |
 | `release(id, password)` | Lets a suspended passkey sign in again, with the password typed now. |
 
 On an account that already has a factor, `registrationOptions()`, `register()`, `remove()` and `release()` also throw unless this
-session proved a second factor within 15 minutes, because the password alone must not let a stolen session add a passkey or take one
+session proved a second factor within 15 minutes by default ([how long](authentication.md#how-long-a-sign-in-lasts)), because the password alone must not let a stolen session add a passkey or take one
 away; put those routes behind `confirmedSecondFactor()` (see [Changing the factors](two-factor-authentication.md#changing-the-factors)).
 `rename()` and `list()` stay free of it.
 
