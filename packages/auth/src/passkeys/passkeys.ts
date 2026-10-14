@@ -9,6 +9,7 @@ import { Auth, AUTH_SESSION_KEYS, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER
 import { AuthConfig } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
+import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
 import { TwoFactorStore } from '../two-factor/store.ts';
@@ -147,6 +148,7 @@ export class Passkeys implements SecondFactorPasskeys {
     // Without a bound source of factors a registered passkey would never be asked for at sign-in: fail closed before anything is made.
     if (this.#state instanceof NoTwoFactorState) throw new Error('Passkeys need a source of factors: bind TwoFactorState to combineFactors(TwoFactorStore, PasskeyStore) in a provider of your auth module.');
     const id = idOf(user);
+    await this.#requireRecentSecondFactor('registrationOptions', id);
     const relyingParty = this.#config.relyingParty();
     const userHandle = await this.#store.userHandle(id);
     const { bytes } = issueChallenge(this.#session, 'register', this.#now(), id, userHandle);
@@ -176,6 +178,8 @@ export class Passkeys implements SecondFactorPasskeys {
   async register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{ recoveryCodes: readonly string[] | null }, RegisterError>> {
     const user = await this.#requireRecentPassword('register');
     const id = idOf(user);
+    // Before the challenge is taken: a session that may not add a passkey keeps the challenge it holds.
+    await this.#requireRecentSecondFactor('register', id);
     // First of all, so that this challenge is spent whatever happens next.
     const taken = takeChallenge(this.#session, 'register', this.#now(), id);
     if (!taken.ok) return err(taken.error);
@@ -199,7 +203,11 @@ export class Passkeys implements SecondFactorPasskeys {
     if (first) await this.#auth[SIGN_OUT_OTHER_DEVICES](password!);
     const created = await this.#connections.transaction(async () => {
       const result = await this.#store.create({ userId: id, userHandle: handle, name: cleanName, ...verified.value });
-      if (result.ok && recoveryCodes !== null) await this.#twoFactorStore.replaceRecoveryCodes(id, recoveryCodes.map((code) => hashRecoveryCode(id, code)));
+      if (result.ok && recoveryCodes !== null) {
+        await this.#twoFactorStore.replaceRecoveryCodes(id, recoveryCodes.map((code) => hashRecoveryCode(id, code)));
+        // An authenticator setup begun before this first factor has no confirmed secret to protect: left over, it could later be confirmed as a further factor.
+        await this.#twoFactorStore.removeTotp(id, { lastFactor: false });
+      }
       return result; // an err rolls the transaction back
     });
     if (!created.ok) return err({ kind: 'duplicate' });
@@ -313,6 +321,7 @@ export class Passkeys implements SecondFactorPasskeys {
   async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
     const user = await this.#requireRecentPassword('remove');
     const userId = idOf(user);
+    await this.#requireRecentSecondFactor('remove', userId);
     let lastFactorAllowed = false;
     if (password !== undefined) {
       const checked = await this.#checkPassword(userId, password);
@@ -336,6 +345,7 @@ export class Passkeys implements SecondFactorPasskeys {
   async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
     const user = await this.#requireRecentPassword('release');
     const userId = idOf(user);
+    await this.#requireRecentSecondFactor('release', userId);
     if (!(await this.#store.forUser(userId)).some((passkey) => passkey.id === id && passkey.suspendedAt !== null)) return err({ kind: 'not-found' });
     const checked = await this.#checkPassword(userId, password);
     if (!checked.ok) return err(checked.error);
@@ -442,6 +452,13 @@ export class Passkeys implements SecondFactorPasskeys {
     const user = await this.#requireUser(method);
     if (!this.#auth.passwordRecentlyConfirmed()) throw new Error(`passkeys.${method}() needs a recently typed password — put the route behind confirmedPassword().`);
     return user;
+  }
+
+  /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
+  async #requireRecentSecondFactor(method: string, userId: number | string): Promise<void> {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE)) {
+      throw new Error(`passkeys.${method}() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
+    }
   }
 }
 

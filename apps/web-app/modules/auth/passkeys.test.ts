@@ -127,6 +127,25 @@ describe('passkeys', () => {
     expect(refused.json()).toEqual({ error: 'That passkey did not work.' });
   });
 
+  it('refuses to change the passkeys of a session whose factor is older than 15 minutes, even with the password typed again', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie } = await enrol(ada);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
+    try {
+      const as = () => app.withCookie(SESSION, cookie);
+      await as().post('/confirm-password', { form: { password: 'password' } });
+      const json = { accept: 'application/json' };
+      await as().get('/settings/passkeys').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/passkeys/options', { json: {}, headers: json }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await as().post('/settings/passkeys', { json: { response: {}, name: 'x', password: 'password' }, headers: json }).assertForbidden();
+      await as().post('/settings/passkeys/1/remove', { json: { password: 'password' }, headers: json }).assertForbidden();
+      await as().post('/settings/passkeys/1/release', { json: { password: 'password' }, headers: json }).assertForbidden();
+      await app.assertDatabaseCount('passkeys', 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('asks for the password with every passkey', async () => {
     const ada = await app.factory(UserFactory).create();
     const { cookie } = await enrol(ada);

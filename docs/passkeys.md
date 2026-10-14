@@ -182,6 +182,11 @@ only opens a challenge and has no throttle of its own: give its route a limit, a
 | `remove(id, password?)` | Removes. The account's last factor, and a suspended passkey, need `password`; the recovery codes go with the last factor. |
 | `release(id, password)` | Lets a suspended passkey sign in again, with the password typed now. |
 
+On an account that already has a factor, `registrationOptions()`, `register()`, `remove()` and `release()` also throw unless this
+session proved a second factor within 15 minutes, because the password alone must not let a stolen session add a passkey or take one
+away; put those routes behind `confirmedSecondFactor()` (see [Changing the factors](two-factor-authentication.md#changing-the-factors)).
+`rename()` and `list()` stay free of it.
+
 Both the registration and the list are behind `confirmedPassword()` ("sudo mode"), and **`register()` asks for the password again in the
 same form for every passkey, not only the first**. A passkey outlives a password change and a password reset, and it works without the password.
 Someone who held a stolen session inside the sudo window could otherwise add one and keep a way in that survives the owner's recovery.

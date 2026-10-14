@@ -112,6 +112,7 @@ The package brings four middleware for the routes of the `web` group:
 | `guest(home)` | Guests. For the login and registration pages. | A redirect to `home`, `/` by default. |
 | `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
 | `confirmedPassword()` | A user who typed the password within the last 15 minutes. After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
+| `confirmedSecondFactor({ verify })` | A user whose account has no second factor, or whose session proved one within 15 minutes. After `confirmedPassword()`, on routes that change factors, the e-mail address or API tokens. | A browser goes to `verify`, a JSON client gets 403. See [changing the factors](two-factor-authentication.md#changing-the-factors). |
 | `twoFactor({ setup, verify, maxAge? })` | A user whose session proved a second factor. After `authenticate()`; never installed by the framework. | A browser goes to `setup` or `verify`, a JSON client gets 403. See [requiring it](two-factor-authentication.md#requiring-it). |
 
 `authenticate('api')` checks an API token instead of the session. The [API tokens](api-tokens.md) page covers it, and the
@@ -315,6 +316,8 @@ export default defineRoutes((Route) => {
 needs a confirmed address as well as the password, because a token outlives a password reset unless
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`: an account registered with somebody else's address must never reach it. With open registration, use `verified()` there, as the
 [API tokens](api-tokens.md#creating-tokens) page explains.
+
+The password alone does not change the factors of an account that has [a second factor](two-factor-authentication.md#changing-the-factors): that needs a factor proven within 15 minutes as well.
 
 Everyone else goes to `auth.password.confirm`, and after the confirmation back to the page they asked for. A JSON client gets
 `423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another

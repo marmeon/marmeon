@@ -126,6 +126,9 @@ class PasskeyController extends Controller {
           const done = await this.#twoFactor.stepUp(body as never);
           return done.ok ? { ok: true } : { ok: false, ...done.error };
         }
+        case 'set-proof':
+          this.#session.put('_auth_two_factor_at', body.value ?? Math.floor(Date.now() / 1000));
+          return { set: true };
         case 'forget-proof':
           this.#session.forget('_auth_two_factor_at');
           return { forgotten: true };
@@ -345,6 +348,7 @@ describe('Passkeys: registering', () => {
     await booted.application.container.make(PasskeyStore).create({
       userId: 1, userHandle: 'someone-elses', credentialId: 'other', publicKey: 'k', algorithm: -7, signCount: 0, transports: [], aaguid: '', backupEligible: false, backedUp: false, name: 'x',
     });
+    await b.pk('set-proof'); // the account has a factor now, so a further passkey needs one proven lately
     const done = await b.pk('register', { response: device().register(options), name: 'Laptop', password: 'secret' });
     expect(done).toMatchObject({ ok: true });
     const stored = (await rows(booted, PASSKEYS_TABLE)).find((row) => row.credential_id !== 'other');
@@ -915,12 +919,15 @@ describe('Passkeys: as a step-up', () => {
     const booted = await boot();
     const authenticator = device();
     const b = await unproven(booted, authenticator);
+    await b.pk('set-proof');
     await addPasskey(b, device('EdDSA'), 'Phone');
     expect(await b.pk('forget-proof')).toEqual({ forgotten: true });
     const options = (await b.pk('step-up-options')).value;
     expect(await b.pk('step-up', { passkey: authenticator.authenticate(options, { userVerified: false }) })).toMatchObject({ ok: false, kind: 'invalid-code' });
     const response = authenticator.authenticate((await b.pk('step-up-options')).value);
+    await b.pk('set-proof');
     expect(await b.pk('remove', { id: 1 })).toMatchObject({ ok: true });
+    await b.pk('forget-proof');
     expect(await b.pk('step-up', { passkey: response })).toMatchObject({ ok: false, kind: 'invalid-code' });
     expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
   });
@@ -929,7 +936,9 @@ describe('Passkeys: as a step-up', () => {
     const booted = await boot();
     const authenticator = device();
     const b = await unproven(booted, authenticator);
+    await b.pk('set-proof');
     await addPasskey(b, device('EdDSA'), 'Phone');
+    await b.pk('forget-proof');
     const options = (await b.pk('step-up-options')).value;
     await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
     expect((await b.pk('step-up-options')).value.allowCredentials).toHaveLength(1);
@@ -965,6 +974,77 @@ describe('Passkeys: as a step-up', () => {
     const b = booted.browser();
     await b.login(bob.email);
     expect(await b.pk('step-up', { passkey: { id: 'x' } })).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+});
+
+describe('Passkeys: changing the factors of an account that has one', () => {
+  const needsProof = { thrown: expect.stringContaining('second factor proven within 15 minutes') };
+  const old = () => Math.floor(Date.now() / 1000) - 25 * 3600;
+
+  it('refuses to add a passkey to a session that only has the password: no options, no registration, no passkey to step up with', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    await b.pk('set-proof', { value: old() });
+    expect(await b.pk('options')).toMatchObject(needsProof);
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(1);
+  });
+
+  it('refuses the registration of a challenge made while the proof was fresh, once it is old', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    const options = await b.pk('options');
+    await b.pk('set-proof', { value: old() });
+    expect(await b.pk('register', { response: device('EdDSA').register(options), name: 'Phone', password: 'secret' })).toMatchObject(needsProof);
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(1);
+  });
+
+  it('refuses to remove or release a passkey, even with the password', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 2).execute();
+    await b.pk('forget-proof');
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject(needsProof);
+    expect(await b.pk('release', { id: 2, password: 'secret' })).toMatchObject(needsProof);
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(2);
+  });
+
+  it('allows all of it once a factor was proven lately, and the boundary is fifteen minutes', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    await b.pk('forget-proof');
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate((await b.pk('step-up-options')).value) })).toEqual({ ok: true });
+    expect(await addPasskey(b, device('EdDSA'), 'Phone')).toMatchObject({ ok: true });
+    await b.pk('set-proof', { value: Math.floor(Date.now() / 1000) - 900 });
+    expect(await b.pk('remove', { id: 2 })).toMatchObject({ ok: true });
+    await b.pk('set-proof', { value: Math.floor(Date.now() / 1000) - 901 });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject(needsProof);
+  });
+
+  it('lets an account without a factor add its first passkey with the password alone, and that proves the session', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    expect(await addPasskey(b, device())).toMatchObject({ ok: true });
+    expect(await b.pk('options')).toMatchObject({ challenge: expect.any(String) });
+  });
+
+  it('drops an authenticator setup begun before the first passkey, so that it cannot be confirmed as a further factor', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    await booted.application.container.make(TwoFactorStore).startSetup(1, 'enc');
+    expect(await rows(booted, 'two_factor_authentications')).toHaveLength(1);
+    expect(await addPasskey(b, device())).toMatchObject({ ok: true });
+    expect(await rows(booted, 'two_factor_authentications')).toHaveLength(0);
+  });
+
+  it('keeps renaming free: it changes no factor', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    await b.pk('forget-proof');
+    expect(await b.pk('rename', { id: 1, name: 'Work' })).toEqual({ renamed: true });
   });
 });
 

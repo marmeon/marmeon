@@ -192,6 +192,49 @@ describe('two-factor authentication', () => {
     await app.actingAs(ada).get('/settings/two-factor').assertRedirect('/confirm-password');
   });
 
+  describe('changing the factors of an account that has one', () => {
+    const KEY = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+    const asJson = { accept: 'application/json' };
+
+    /** A session that signed in before the account had a factor, and typed the password just now: all that a stolen session plus a phished password has. */
+    async function passwordOnly() {
+      const ada = await app.factory(UserFactory).create();
+      const cookie = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
+      const encrypted = await app.make(Encrypter).encrypt(KEY, `marmeon-auth:two-factor:${ada.id}`);
+      const store = app.make(TwoFactorStore);
+      await store.startSetup(ada.id, encrypted);
+      expect(await store.confirm(ada.id, 0, encrypted, null)).toBe(true);
+      await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
+      return { ada, as: () => app.withCookie(SESSION, cookie), cookie };
+    }
+
+    it('sends such a session to the verify page, for the page and for every change, and changes nothing', async () => {
+      const { as } = await passwordOnly();
+      await as().get('/settings/two-factor').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/two-factor/setup').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/two-factor/recovery-codes').assertRedirect('/settings/two-factor/verify');
+      await as().post('/settings/two-factor/disable', { form: { password: 'password' } }).assertRedirect('/settings/two-factor/verify');
+      await as().withHeaders(asJson).post('/settings/two-factor/disable', { form: { password: 'password' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await app.assertDatabaseCount('two_factor_authentications', 1);
+      await app.assertDatabaseCount('two_factor_recovery_codes', 0);
+    });
+
+    it('keeps the address and the API tokens out of reach of such a session, too', async () => {
+      const { ada, as } = await passwordOnly();
+      await as().put('/settings/email', { form: { email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
+      await as().withHeaders(asJson).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await app.assertDatabaseCount('personal_access_tokens', 0);
+      await app.assertDatabaseMissing('users', { id: ada.id, email: 'thief@example.com' });
+    });
+
+    it('lets the same session in once it proved the factor, and confirming a setup stays reachable', async () => {
+      const { as } = await passwordOnly();
+      const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(KEY) } }).assertRedirect();
+      await app.withCookie(SESSION, done.cookie(SESSION)!).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
+      await as().post('/settings/two-factor/confirm', { form: { code: '123456', password: 'password' } }).assertRedirect();
+    });
+  });
+
   describe('a page behind the twoFactor() middleware', () => {
     const KEY = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
     const asJson = { accept: 'application/json' };

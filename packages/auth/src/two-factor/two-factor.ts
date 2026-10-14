@@ -9,6 +9,7 @@ import { AuthConfig } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
+import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type SecondFactor } from './state.ts';
@@ -193,6 +194,7 @@ export class TwoFactor {
     // Turning the factor on signs the other devices out, which needs the password hash: an account without a password cannot do it.
     if (((await this.#users.findById(idOf(user) as never))?.passwordHash ?? null) === null) throw new Error('twoFactor.begin() needs an account with a password: turning the factor on signs out the other devices with it.');
     await this.#requireRecentPassword('begin');
+    await this.#requireRecentSecondFactor('begin', idOf(user));
     this.#issuer(); // before anything is stored: a missing app name leaves no half-made setup behind
     const secret = generateSecret();
     await this.#store.startSetup(idOf(user), await this.#encrypt(secret, idOf(user)));
@@ -202,6 +204,7 @@ export class TwoFactor {
   /** The setup that was begun but not confirmed, to show it again (a reloaded page); `undefined` when there is none. Same requirements as `begin()`. */
   async setup(): Promise<TotpSetup | undefined> {
     const user = await this.#requireRecentPassword('setup');
+    await this.#requireRecentSecondFactor('setup', idOf(user));
     const row = await this.#store.find(idOf(user));
     if (row === undefined || row.confirmed) return undefined;
     const secret = await this.#decrypt(row.encryptedSecret, idOf(user));
@@ -254,7 +257,8 @@ export class TwoFactor {
       await this.#store.removeTotp(id, { lastFactor: first });
       throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
     }
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(Date.now() / 1000));
+    // Only the first factor proves anything about this session: a further one, set up with just the password, must not stand for the one already there.
+    if (first) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(Date.now() / 1000));
     await this.#limiter.clear(this.#codeKey('minute', id));
     await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
     if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));
@@ -266,6 +270,7 @@ export class TwoFactor {
     const user = await this.#requireRecentPassword('regenerateRecoveryCodes');
     const id = idOf(user);
     if ((await this.#state.factors(id)).length === 0) throw new Error('twoFactor.regenerateRecoveryCodes() needs a second factor: recovery codes belong to one.');
+    await this.#requireRecentSecondFactor('regenerateRecoveryCodes', id);
     const codes = generateRecoveryCodes();
     await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
     await this.#events.dispatch(new RecoveryCodesGenerated(user));
@@ -282,6 +287,8 @@ export class TwoFactor {
     const id = idOf(user);
     if (!(await this.#auth.confirmPassword(password))) return false;
     const factors = await this.#state.factors(id);
+    // An unfinished setup on an account without the authenticator takes nothing away, so it needs no proof.
+    if (factors.includes('totp')) await this.#requireRecentSecondFactor('disable', id);
     if (!factors.includes('totp')) {
       await this.#store.removeTotp(id, { lastFactor: false }); // an unconfirmed setup, if any; nothing was in force
       return true;
@@ -379,6 +386,13 @@ export class TwoFactor {
     const user = await this.#requireUser(method);
     if (!this.#auth.passwordRecentlyConfirmed()) throw new Error(`twoFactor.${method}() needs a recently typed password — put the route behind confirmedPassword().`);
     return user;
+  }
+
+  /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
+  async #requireRecentSecondFactor(method: string, userId: string | number): Promise<void> {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE)) {
+      throw new Error(`twoFactor.${method}() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
+    }
   }
 }
 
