@@ -63,6 +63,10 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(passkeyTable).toContain("foreignId('user_id').constrained().cascadeOnDelete()");
     expect(passkeyTable).toContain('suspended_at');
     expect(readFileSync(join(root, 'modules/auth/AuthServiceProvider.ts'), 'utf8')).toContain('combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore))');
+    // The sign-ins list: opt-in by the binding of its store, the table of it, and the route that ends one.
+    expect(readFileSync(join(root, 'modules/auth/AuthServiceProvider.ts'), 'utf8')).toContain('container.singleton(SignInStore, DatabaseSignIns)');
+    expect(readFileSync(join(root, 'modules/auth/migrations/0001_01_01_000006_create_sign_ins_table.ts'), 'utf8')).toContain("foreignId('user_id').constrained().cascadeOnDelete()");
+    expect(existsSync(join(root, 'modules/auth/controllers/EndSignInController.ts'))).toBe(true);
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import auth from '#modules/auth';");
     expect(app).toMatch(/modules: \[auth, system\]/);
@@ -295,6 +299,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(migrated.out).toContain('create_users_table');
       expect(migrated.out).toContain('create_two_factor_tables');
       expect(migrated.out).toContain('create_passkeys_table');
+      expect(migrated.out).toContain('create_sign_ins_table');
       expect(migrated.code).toBe(0);
       const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
       expect(tables).toContain('password: Secret<string>;');
@@ -338,6 +343,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(ran('passkeys', 'the mails about passkeys')).toBe(8);
       expect(ran('passkeys', 'marmeon auth:reset-two-factor and passkeys')).toBe(2);
       expect(ran('passkeys', 'an account with the authenticator app and a passkey')).toBe(1);
+      expect(ran('sign-ins', 'the sign-ins on the security page')).toBe(8);
       expect(ran('end-sessions', 'marmeon auth:end-sessions')).toBe(3);
       expect(ran('passkeys-browser', 'the base64url converters of the browser code')).toBe(3);
       expect(tests.code).toBe(0);

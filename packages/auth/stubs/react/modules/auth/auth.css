@@ -472,7 +472,7 @@
   color: var(--color-danger, inherit);
 }
 
-/* Passkeys: one row for each, a rule between them; name and facts above, the actions beneath. */
+/* Passkeys, and the sign-ins on the security page: one row for each, a rule between them; name and facts above, the actions beneath. */
 .auth-passkeys {
   display: flex;
   flex-direction: column;
