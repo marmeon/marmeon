@@ -22,7 +22,7 @@ framework bring them.
 | --- | --- |
 | `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:prune-unverified` and `auth:reset-two-factor`. |
 | `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, shares `auth` with every page, and sets the rate limits of its forms. |
-| `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash. |
+| `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
 | `controllers/` | 46 controllers, one per endpoint. A form's controller validates it with a request schema. |
 | `views/`, `layouts/` | The React pages and the app's layout, `AppLayout`, with a settings layout inside it. |
