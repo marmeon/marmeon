@@ -157,7 +157,7 @@ The router runs a request in a fixed order, and builds the controller only when 
 
 1. The middleware: global, the group's, the route's own. Authentication answers here, before a 404 could tell what exists.
 2. The bindings. A missing record is a 404.
-3. `authorize`. A refusal is a 403.
+3. `authorize`: the registrar's (`Route.authorize(check)`), then the request's. A refusal is a 403.
 4. The query, parsed by `query`. This never fails.
 5. The body, validated by `schema`. Invalid input is a 422, or a redirect back to the form.
 6. `handle(ctx)`, with `ctx.body` and the parsed `ctx.query`.

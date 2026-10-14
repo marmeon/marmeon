@@ -1,3 +1,4 @@
+import type { AccessCheck } from './access.ts';
 import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
 /**
@@ -14,6 +15,8 @@ export class RouteDefinition {
   readonly group: string | undefined;
   /** Route parameters resolved to records before the action runs (`Route.bind`). */
   readonly bindings: readonly RouteBinding[];
+  /** The registrar's `authorize` checks, in declaration order; they run after the bindings and before anything else answers. */
+  declare readonly checks: readonly AccessCheck[];
   readonly #namePrefix: string;
   #name: string | undefined;
   /** @internal Set by `Router.load` for a framework route under `/_marmeon/`, which the server registers before all others. */
@@ -29,6 +32,7 @@ export class RouteDefinition {
     namePrefix: string;
     group?: string | undefined;
     bindings?: readonly RouteBinding[];
+    checks?: readonly AccessCheck[];
     internal?: boolean;
   }) {
     this.methods = options.methods;
@@ -37,6 +41,8 @@ export class RouteDefinition {
     this.middleware = options.middleware;
     this.group = options.group;
     this.bindings = options.bindings ?? [];
+    // Not writable and frozen: a check cannot be removed once the route is registered.
+    Object.defineProperty(this, 'checks', { value: Object.freeze([...(options.checks ?? [])]), writable: false, enumerable: true });
     this.#namePrefix = options.namePrefix;
     this.#internal = options.internal ?? false;
   }

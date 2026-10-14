@@ -389,10 +389,16 @@ export interface ValidateOptions {
   readonly hooks?: readonly ValidationHook[] | undefined;
 }
 
+/** The 403 every refused check answers with, so a route's registrar and its request look the same from outside. */
+export function unauthorized(): HttpError {
+  return new HttpError(403, 'This action is unauthorized.', {}, { key: 'marmeon.errors.unauthorized' });
+}
+
 /** The request's `authorize` — a 403 when it says no. (What {@link validateRequest} runs first.) */
 export async function authorizeRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<void> {
-  if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
-    throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'marmeon.errors.unauthorized' });
+  // Only `true` lets a request on: a policy response, a Result or any other truthy value is a refusal.
+  if (definition.authorize && (await definition.authorize(ctx, resolve)) !== true) {
+    throw unauthorized();
   }
 }
 

@@ -1,3 +1,5 @@
+export { accessLabel, describeAccess, everyone, routeAccess } from './access.ts';
+export type { AccessCheck } from './access.ts';
 export { Route, joinPaths } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
 export type { RouteBlocking } from './route-definition.ts';

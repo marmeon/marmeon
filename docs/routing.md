@@ -297,6 +297,7 @@ The attributes combine in any order:
 | `name(prefix)` | Puts `prefix` in front of every route's name: `name('show')` under `name('notes.')` is `notes.show`. |
 | `middleware(m)` | Adds a middleware to every route. Call it once per middleware. |
 | `bind(param, binder)` | Resolves a parameter to a record for every route. See [route model binding](#route-model-binding). |
+| `authorize(check)` | Asks `check` before any route answers. See [below](#asking-who-may-call-a-group). |
 | `internal()` | Keeps every route out of the browser. See [above](#routes-the-browser-never-learns). |
 | `group(callback)` | Calls `callback` with the registrar, to write a block of routes with the same attributes. |
 
@@ -307,6 +308,34 @@ Route.prefix('/teams/:team').name('teams.').group((Route) => {
   Route.get('/notes', (ctx) => `The notes of ${ctx.params.team}`).name('notes.index'); // GET /teams/:team/notes
 });
 ```
+
+### Asking who may call a group
+
+`authorize(check)` declares a check for every route of the registrar. It gets the route's context, with the records the registrar
+binds, and a `resolve` function. `false` answers 403, and the check may throw its own `HttpError`. It runs after the bindings and
+before everything else a route does: the request's `authorize`, the validation (a live validation included), an interceptor
+such as a file upload, and the handler.
+
+```ts title="modules/admin/routes.ts"
+export default defineRoutes((Route) => {
+  const admin = Route.prefix('/admin').middleware(authenticate()).authorize((ctx) => ctx.user.isAdmin);
+
+  admin.get('/users', ListUsersController).name('admin.users.index');
+  admin.delete('/users/:user', DeleteUserController).name('admin.users.destroy');
+});
+```
+
+Bindings run before the registrar's check. A check that ignores the record therefore answers 404 for an id that does not exist
+and 403 for one that does, which tells a caller which ids exist. Where ids must not be enumerable, use `can(...)` with a policy
+that answers `denyAsNotFound()`.
+
+A registrar that never registers a route makes `load()` fail: `Route.authorize(check);` on a line of its own would throw the
+check away, and `const dev = Route.authorize(check); if (flag) dev.get(…)` fails whenever `flag` is false. Put the condition
+around the whole `Route.authorize(check)…` call instead.
+
+Checks add up: a group inside `admin` can call `authorize` again, and a request has to pass the registrar's checks and then its
+own `authorize`. A later check never opens what an earlier one closed. `everyone`, exported by `@marmeon/http`, is the check that
+says yes to anyone: `Route.authorize(everyone)`. See [authorization](authorization.md#authorizing-requests).
 
 ### Middleware
 

@@ -1,3 +1,4 @@
+import { siteOf, type AccessCheck } from './access.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { StandardSchemaV1 } from './request-definition.ts';
 import type {
@@ -6,6 +7,7 @@ import type {
   AnyMiddleware,
   BindingWith,
   BoundValue,
+  ClassResolver,
   ConsistentBinder,
   EmptyObject,
   ExtractParams,
@@ -33,6 +35,12 @@ type BindOptions<TScope extends string, TWith> =
 /** What `scopedBy` takes before any parameter is bound — the message the compiler shows. */
 type NoParent = 'scopedBy names a parameter bound before this one — bind the parent first: Route.bind(parent, …).bind(child, …, { scopedBy: parent })';
 
+/** A registrar made by `authorize()`; `used` turns true when a route is registered through it or one derived from it. */
+export interface RegistrarAudit {
+  used: boolean;
+  readonly site: string | undefined;
+}
+
 export interface GroupAttributes {
   readonly prefix: string;
   readonly namePrefix: string;
@@ -40,6 +48,12 @@ export interface GroupAttributes {
   /** Middleware group of every route registered through this registrar (`web`, `api`). */
   readonly group?: string | undefined;
   readonly bindings?: readonly RouteBinding[];
+  /** Checks of every route registered through this registrar (`Route.authorize`), in declaration order. */
+  readonly checks?: readonly AccessCheck[];
+  /** Where `authorize()` registrars are recorded, so `Router.load` can refuse one that registered nothing. */
+  readonly audit?: RegistrarAudit[];
+  /** The `authorize()` registrars this one descends from. */
+  readonly pending?: readonly RegistrarAudit[];
   /** Every route of the group is internal: never sent to the browser (`RouteDefinition.internal()`). */
   readonly internal?: boolean;
 }
@@ -164,6 +178,26 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   /**
+   * Declares who may call every route registered through the returned registrar. It runs after the bindings (so it sees the
+   * bound records) and before the request's own `authorize`, validation, interceptors and the handler; `false` answers 403.
+   * Several checks all have to say yes, and `everyone` never opens a route further than another check allows.
+   * See docs/routing.md#route-groups and docs/authorization.md#authorizing-requests.
+   */
+  authorize(
+    check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>,
+  ): Route<TState, TParams, TBindings> {
+    // Untyped code gets past the parameter type; a check that is not callable would otherwise fail on the first request.
+    if (typeof check !== 'function') {
+      throw new TypeError(`Route.authorize() takes a function (ctx, resolve) => boolean — got ${typeof check} at ${this.#attributes.prefix}.`);
+    }
+    const holder: { stack?: string } = {};
+    Error.captureStackTrace(holder, this.authorize);
+    const entry: RegistrarAudit = { used: false, site: siteOf(holder.stack) };
+    this.#attributes.audit?.push(entry);
+    return this.#with({ checks: [...(this.#attributes.checks ?? []), check as AccessCheck], pending: [...(this.#attributes.pending ?? []), entry] });
+  }
+
+  /**
    * Every route registered through the returned registrar is internal — never sent to the browser
    * (see `RouteDefinition.internal()`): `Route.internal().prefix('/admin').group((Route) => { … })`.
    */
@@ -172,6 +206,8 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   group(callback: (Route: this) => void): void {
+    // Calling group() is use, even with an empty callback.
+    for (const entry of this.#attributes.pending ?? []) entry.used = true;
     callback(this);
   }
 
@@ -263,8 +299,10 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       namePrefix: this.#attributes.namePrefix,
       group: this.#attributes.group,
       bindings,
+      checks: this.#attributes.checks ?? [],
       internal: this.#attributes.internal ?? false,
     });
+    for (const entry of this.#attributes.pending ?? []) entry.used = true;
     this.#register(route);
     return route;
   }

@@ -176,6 +176,10 @@ const routes = defineRoutes((Route) => {
   post.get('/posts/:post', ShowPostController);
   post.put('/posts/:post', UpdatePostController);
   post.delete('/posts/:post', DeletePostController);
+  // The same policy asked once, at the registrar, for every route below it.
+  const guarded = signedIn.bind('post', PostBinder).authorize(can(PostPolicy, 'view', 'post'));
+  guarded.get('/guarded/:post', () => 'guarded');
+  signedIn.authorize(() => deny('Not today.') as never).get('/denied', () => 'denied');
 });
 
 async function boot() {
@@ -241,6 +245,20 @@ describe('policies at the request (can) — after route binding', () => {
     expect(hidden).toEqual(missing);
     expect(hidden).toEqual({ status: 404, body: { message: 'Not Found' } });
     expect(await (await as(2))('GET', '/posts/2')).toMatchObject({ status: 200 }); // the author sees it
+  });
+
+  it('asks can() at the registrar, after the binding: 403 for a refusal, 404 through denyAsNotFound(), and the user it is for', async () => {
+    const as = await boot();
+    expect(await (await as(2))('GET', '/guarded/2')).toMatchObject({ status: 200 }); // the author of the draft
+    expect(await (await as(1))('GET', '/guarded/3')).toMatchObject({ status: 200 });
+    expect(await (await as(1))('GET', '/guarded/2')).toEqual({ status: 404, body: { message: 'Not Found' } });
+    expect((await (await as(1))('GET', '/guarded/999')).status).toBe(404);
+    expect(await (await as(undefined))('GET', '/guarded/3')).toMatchObject({ status: 401 }); // authenticate() answers before the check
+  });
+
+  it('treats a policy response returned by a registrar check as a refusal, not a pass', async () => {
+    const as = await boot();
+    expect((await (await as(1))('GET', '/denied')).status).toBe(403);
   });
 
   it('runs before() first — an admin may do anything', async () => {
@@ -341,5 +359,9 @@ export function policyTypes() {
     signedIn.put('/posts/:post', UpdatePostController);
     // @ts-expect-error — the policy needs a signed-in user: no authenticate()
     Route.bind('post', PostBinder).put('/posts/:post', UpdatePostController);
+
+    signedIn.bind('post', PostBinder).authorize(can(PostPolicy, 'update', 'post'));
+    // @ts-expect-error — the registrar binds no `post`
+    signedIn.authorize(can(PostPolicy, 'update', 'post'));
   });
 }
