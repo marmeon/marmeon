@@ -380,7 +380,7 @@ export class TwoFactor {
    * For an action of your own that weighs as much as changing a factor (a new e-mail address, an API token): throws unless this
    * session proved a second factor within the last 15 minutes, on an account that has one; an account without a factor passes.
    * `action` is named in the error message. Put the route behind `confirmedSecondFactor()` to send a stale session to the page
-   * that asks again. See `docs/two-factor-authentication.md`.
+   * that asks again. See `docs/two-factor-authentication.md#changing-the-factors`.
    */
   async requireRecentProof(action: string): Promise<void> {
     const user = await this.#requireUser('requireRecentProof');
