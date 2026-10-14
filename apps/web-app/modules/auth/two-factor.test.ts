@@ -4,6 +4,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
@@ -287,5 +288,60 @@ describe('two-factor authentication', () => {
       await app.get('/settings/two-factor/verify').assertRedirect('/login');
       await app.post('/settings/two-factor/verify', { form: { code: '123456' } }).assertRedirect('/login');
     });
+  });
+});
+
+describe('a session that ends while the authenticator is set up', () => {
+  /** The moment after the other devices are signed out, an operator ends the account's sessions. */
+  function endSessionsAfterSignOut() {
+    const write = UserRepository.prototype.updatePasswordHash;
+    return vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash) {
+      await write.call(this, id, hash);
+      await this.updateSessionKey(id, 'e'.repeat(40), undefined);
+    });
+  }
+
+  async function begin(user: User) {
+    const login = await app.post('/login', credentialsOf(user)).assertRedirect('/users/me');
+    const cookie = login.cookie(SESSION)!;
+    await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup').assertRedirect('/settings/two-factor');
+    const page = await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
+    return { cookie, secret: (page.page()!.props.setup as { secret: string }).secret };
+  }
+
+  it('stores no factor and sends the user to the sign-in', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, secret } = await begin(ada);
+    const spy = endSessionsAfterSignOut();
+    try {
+      await app.withCookie(SESSION, cookie).post('/settings/two-factor/confirm', { form: { code: twoFactorCode(secret), password: 'password' } }).assertRedirect('/login');
+    } finally {
+      spy.mockRestore();
+    }
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
+    expect(await app.make(TwoFactorStore).factors(ada.id)).toEqual([]);
+  });
+
+  it('holds the account\'s row on a real session_key and keeps the key', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const key = 'k'.repeat(43);
+    await app.make(UserRepository).updateSessionKey(ada.id, key, null);
+    const { cookie, secret } = await begin(ada);
+    await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
+    expect(await app.make(TwoFactorStore).factors(ada.id)).toEqual(['totp']);
+    expect((await app.make(UserRepository).findById(ada.id))?.sessionKey).toBe(key);
+  });
+
+  it('stops at the lock when a real session_key was replaced meanwhile', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await app.make(UserRepository).updateSessionKey(ada.id, 'k'.repeat(43), null);
+    const { cookie, secret } = await begin(ada);
+    const spy = endSessionsAfterSignOut();
+    try {
+      await app.withCookie(SESSION, cookie).post('/settings/two-factor/confirm', { form: { code: twoFactorCode(secret), password: 'password' } }).assertRedirect('/login');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await app.make(TwoFactorStore).factors(ada.id)).toEqual([]);
   });
 });

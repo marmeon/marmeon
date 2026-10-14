@@ -187,6 +187,9 @@ session proved a second factor within 15 minutes by default ([how long](authenti
 away; put those routes behind `confirmedSecondFactor()` (see [Changing the factors](two-factor-authentication.md#changing-the-factors)).
 `rename()` and `list()` stay free of it.
 
+`register()` checks the session against the account in the transaction that stores the passkey: when the session ended meanwhile (another
+device changed the password, `AccountSessions.end()` ran), nothing is stored and it returns `{ kind: 'signed-out' }`; send the user to the sign-in.
+
 Both the registration and the list are behind `confirmedPassword()` ("sudo mode"), and **`register()` asks for the password again in the
 same form for every passkey, not only the first**. A passkey outlives a password change and a password reset, and it works without the password.
 Someone who held a stolen session inside the sudo window could otherwise add one and keep a way in that survives the owner's recovery.

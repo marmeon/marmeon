@@ -59,6 +59,8 @@ export interface UserProvider<U = AuthUser> {
    * (`UPDATE … WHERE session_key = expected`), and return whether it wrote. Two callers that read the same key must not both win.
    * `expected === undefined` writes regardless of the stored key: `AccountSessions.end()` passes it, to end every session of an
    * account, and must not fail because somebody else replaced the key at the same time.
+   * `updateSessionKey(id, k, k)` with `k` the stored key must return `true`: a new factor takes the account's row lock that way, and
+   * a provider that skips no-op writes or counts only changed rows would sign the user out of every factor setup.
    * Optional — needed only by apps that end the other sessions of an account without changing its password.
    */
   updateSessionKey?(id: U extends { readonly id: infer Id } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;

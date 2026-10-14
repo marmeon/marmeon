@@ -36,6 +36,9 @@ export class ConfirmTwoFactorController extends Controller {
       switch (done.error.kind) {
         case 'not-started':
           return this.redirect().route('auth.two-factor');
+        case 'signed-out':
+          // The session ended while the factor was set up: nothing was stored.
+          return this.redirect().route('auth.login');
         case 'throttled':
           throw new ValidationError({ code: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter })] });
         case 'invalid-password':

@@ -33,7 +33,7 @@ import { twoFactor } from '../two-factor/middleware.ts';
 import { NoTwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE } from '../two-factor/store.ts';
 import { TwoFactor } from '../two-factor/two-factor.ts';
-import { Passkeys } from './passkeys.ts';
+import { Passkeys, type RegisterError } from './passkeys.ts';
 import { PasskeyServiceProvider } from './provider.ts';
 import { PASSKEYS_TABLE, PasskeyStore } from './store.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
@@ -62,6 +62,24 @@ class MemoryUsers implements UserProvider<TestUser> {
   }
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
     this.rows.get(Number(id))!.hash = hash;
+  }
+}
+
+/** A provider that stores a session key (null until something sets one), as an app's repository with a `session_key` column does. */
+class KeyedUsers extends MemoryUsers {
+  readonly keys = new Map<number, string>();
+  override async findById(id: number): Promise<Credentials<TestUser> | undefined> {
+    const found = await super.findById(id);
+    return found && { ...found, sessionKey: this.keys.get(Number(id)) ?? null };
+  }
+  override async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
+    const found = await super.findForLogin(email);
+    return found && { ...found, sessionKey: this.keys.get(found.user.id) ?? null };
+  }
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    if (expected !== undefined && (this.keys.get(Number(id)) ?? null) !== expected) return false;
+    this.keys.set(Number(id), key);
+    return true;
   }
 }
 
@@ -184,8 +202,8 @@ const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 const ORIGIN = 'http://localhost:3000';
 
-async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean } = {}) {
-  const users = new MemoryUsers();
+async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean; users?: MemoryUsers } = {}) {
+  const users = options.users ?? new MemoryUsers();
   const passkeys = options.passkeys !== false;
   const application = await createApplication({
     root: import.meta.dirname,
@@ -313,6 +331,106 @@ describe('Passkeys: registering', () => {
     expect((await b.pk('list')).map((passkey: any) => passkey.name)).toEqual(['Laptop', 'Phone']);
   });
 
+  it('signs nobody out for a further passkey, also on an account whose session key is null, and leaves the key null', async () => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const { b } = await enrolled(booted);
+    const hash = users.rows.get(1)!.hash;
+    expect(await addPasskey(b, device('EdDSA'), 'Phone')).toMatchObject({ ok: true });
+    expect(users.rows.get(1)!.hash, 'the password hash is not written anew').toBe(hash);
+    expect(users.keys.has(1), 'the key is never rotated').toBe(false);
+    expect(await b.pk('who')).toEqual({ id: 1 });
+  });
+
+  it('locks the account\'s row when it has a session key: the passkey is stored, the key stays, a further passkey signs nobody out', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const { b } = await enrolled(booted);
+    expect(users.keys.get(1)).toBe('k'.repeat(43));
+    const hash = users.rows.get(1)!.hash;
+    expect(await addPasskey(b, device('EdDSA'), 'Phone')).toMatchObject({ ok: true });
+    expect(users.rows.get(1)!.hash, 'the password hash is not written anew').toBe(hash);
+    expect(users.keys.get(1)).toBe('k'.repeat(43));
+    expect(await b.pk('who')).toEqual({ id: 1 });
+  });
+
+  it('stops at the lock when the session key was replaced meanwhile: nothing is stored and nothing had to be taken out again', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const removed = [vi.spyOn(PasskeyStore.prototype, 'remove'), vi.spyOn(TwoFactorStore.prototype, 'removeTotp')];
+    const write = users.updatePasswordHash.bind(users);
+    users.updatePasswordHash = async (id, hash) => {
+      await write(id, hash);
+      users.keys.set(1, 'e'.repeat(43)); // AccountSessions.end() lands right after the other devices were signed out
+    };
+    try {
+      expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
+      for (const spy of removed) expect(spy, 'the in-transaction claim caught it, not the check after the commit').not.toHaveBeenCalled();
+    } finally {
+      for (const spy of removed) spy.mockRestore();
+    }
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(0);
+    expect(await b.pk('who')).toEqual({ id: null });
+  });
+
+  it('throws, and names the rule, when updateSessionKey(id, k, k) says false for the key that is stored', async () => {
+    const users = new KeyedUsers();
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    users.updateSessionKey = async () => false; // a provider that counts only rows whose value changed
+    expect(await addPasskey(b, device())).toMatchObject({ thrown: expect.stringContaining('must return true when key equals the stored key') });
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+  });
+
+  it('names every kind of RegisterError, signed-out included', () => {
+    const label = (error: RegisterError): string => {
+      switch (error.kind) {
+        case 'no-challenge':
+        case 'expired':
+        case 'invalid':
+        case 'invalid-password':
+        case 'throttled':
+        case 'limit':
+        case 'duplicate':
+          return error.kind;
+        default: {
+          // @ts-expect-error `signed-out` is not handled above
+          const unhandled: never = error;
+          return unhandled;
+        }
+      }
+    };
+    expect(label({ kind: 'signed-out' })).toEqual({ kind: 'signed-out' });
+  });
+
+  it('takes the passkey out again when the sessions were ended after the transaction, on an account without a session key', async () => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const create = PasskeyStore.prototype.create;
+    const spy = vi.spyOn(PasskeyStore.prototype, 'create').mockImplementation(async function (this: PasskeyStore, ...args) {
+      const created = await create.apply(this, args);
+      users.keys.set(1, 'ended-elsewhere'); // AccountSessions.end() commits before the check that follows the transaction
+      return created;
+    });
+    try {
+      expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(0);
+    expect(await b.pk('who')).toEqual({ id: null });
+  });
+
   it('throttles the password check per account: five wrong ones a minute, then even the right one waits', async () => {
     const booted = await boot();
     const b = booted.browser();
@@ -406,6 +524,23 @@ describe('Passkeys: registering', () => {
     const { b } = await enrolled(booted);
     expect(await other.pk('who')).toEqual({ id: null });
     expect(await b.pk('who')).toEqual({ id: 1 });
+  });
+
+  it('stores no passkey when the password was changed by another device meanwhile: signed-out, nothing stored, the session ends', async () => {
+    const booted = await boot();
+    const other = await booted.application.container.make(Hasher).make('changed elsewhere');
+    const b = booted.browser();
+    await b.login();
+    // The moment after this request signed the other devices out, another device sets its own password.
+    const write = booted.users.updatePasswordHash.bind(booted.users);
+    booted.users.updatePasswordHash = async (id, hash) => {
+      await write(id, hash);
+      booted.users.rows.get(1)!.hash = other;
+    };
+    expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+    expect(await b.pk('who')).toEqual({ id: null });
+    expect(events.some((event) => event instanceof PasskeyRegistered)).toBe(false);
   });
 
   it('turns nothing on when the state does not know the passkey: it fails closed and rolls back', async () => {

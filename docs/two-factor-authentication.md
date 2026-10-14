@@ -209,6 +209,10 @@ needs only the password for its first one, and finishing a setup with `confirm()
 guarded `begin()` made. `confirm()` also records the proof only for the first factor, since a further factor says nothing about the one
 that is already there.
 
+`confirm()` also checks the session against the account in the transaction that stores the factor. When the session ended meanwhile
+(another device changed the password, `AccountSessions.end()` or an operator's reset ran), it stores nothing and returns
+`{ kind: 'signed-out' }`; send the user to the sign-in. `Passkeys.register()` does the same.
+
 Put `confirmedSecondFactor({ verify })` from `@marmeon/auth/two-factor` beside `confirmedPassword()` on the routes that call these
 methods, so that a stale session is sent to the page that asks for the factor again (and comes back) instead of seeing an error:
 
