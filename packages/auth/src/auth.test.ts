@@ -1,5 +1,5 @@
-import { createApplication, defineModule, err, inTransaction, listen, type Container } from '@marmeon/core';
-import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
+import { createApplication, defineModule, err, inTransaction, listen, Logger, type Container, type LogContext } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
@@ -65,6 +65,14 @@ class MemoryUsers implements UserProvider<TestUser> {
     this.rows.get(id)!.hash = hash;
     this.rehashed.push(id);
     this.inTransaction.push(inTransaction());
+  }
+
+  /** Compare-and-set; `expected === undefined` writes regardless. */
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    const row = this.rows.get(id);
+    if (!row || (expected !== undefined && (row.key ?? null) !== expected)) return false;
+    row.key = key;
+    return true;
   }
 }
 
@@ -138,6 +146,30 @@ class WhoController extends Controller {
     const user = await this.#auth.user();
     return { id: user?.id ?? null, viaRemember: this.#auth.viaRemember() };
   }
+}
+
+class WhoInTransactionController extends Controller {
+  readonly #auth: Auth;
+  readonly #connections: Connections;
+  constructor(auth: Auth, connections: Connections) {
+    super();
+    this.#auth = auth;
+    this.#connections = connections;
+  }
+  protected readonly fails: boolean = false;
+  async handle() {
+    // A route without authenticate() whose first auth.user() happens inside the app's own transaction.
+    const user = await this.#connections.transaction(async () => {
+      const found = await this.#auth.user();
+      if (this.fails) throw new Error('the route fails after auth.user()');
+      return found;
+    });
+    return { id: user?.id ?? null };
+  }
+}
+
+class WhoInFailingTransactionController extends WhoInTransactionController {
+  protected override readonly fails: boolean = true;
 }
 
 class TokenController extends Controller {
@@ -226,6 +258,8 @@ const routes = openRoutes((Route) => {
   Route.get('/home', () => 'home').name('home');
   Route.middleware(authenticate()).get('/me', (ctx) => ({ id: ctx.user.id, name: ctx.user.name }));
   Route.get('/who', WhoController);
+  Route.get('/who-in-transaction', WhoInTransactionController);
+  Route.get('/who-in-failing-transaction', WhoInFailingTransactionController);
   Route.get('/confirm-password', () => 'confirm').name('auth.password.confirm');
   Route.post('/confirm-password', ConfirmPasswordController);
   const signedIn = Route.middleware(authenticate());
@@ -237,7 +271,7 @@ const routes = openRoutes((Route) => {
 
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; factors?: Map<number, SecondFactor[]> } = {}) {
+async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]> } = {}) {
   const users = options.users ?? new MemoryUsers();
   const application = await createApplication({
     root: import.meta.dirname,
@@ -255,6 +289,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
+      if (options.logger) container.instance(Logger, options.logger);
       if (options.factors) container.instance(TwoFactorState, { factors: async (id) => options.factors!.get(Number(id)) ?? [], enabledSince: async () => undefined });
     },
   });
@@ -354,7 +389,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState());
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -380,7 +415,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState());
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never);
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),
@@ -600,6 +635,98 @@ describe('remember me', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('a copied cookie ends the session the thief already holds', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const copied = owner.jar.get('remember_web')!;
+
+    const thief = browser(new Map([['remember_web', copied]]));
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 }); // from the session now, no cookie needed
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+  });
+
+  it('ends the thief\'s session even when the stolen cookie is presented inside a transaction', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const copied = owner.jar.get('remember_web')!;
+    const thief = browser(new Map([['remember_web', copied]]));
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      const ownerLater = browser(new Map([['remember_web', copied]]));
+      expect(await (await ownerLater.send('/who-in-transaction')).json()).toEqual({ id: null });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+  });
+
+  it('ends the thief\'s session even when the transaction around the stolen cookie rolls back', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const copied = owner.jar.get('remember_web')!;
+    const thief = browser(new Map([['remember_web', copied]]));
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
+    const rotated = thief.jar.get('remember_web')!;
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      expect((await browser(new Map([['remember_web', copied]])).send('/who-in-failing-transaction')).status).toBe(500);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect(await (await browser(new Map([['remember_web', rotated]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+  });
+
+  it('ends nothing when a second tab presents the old validator within the grace period', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const old = owner.jar.get('remember_web')!;
+    const tab = browser(new Map([['remember_web', old]]));
+    expect(await (await tab.send('/who')).json()).toMatchObject({ id: 1 }); // rotates
+    const secondTab = browser(new Map([['remember_web', old]]));
+    expect(await (await secondTab.send('/who')).json()).toMatchObject({ id: 1 }); // the old validator still passes
+    expect(await (await tab.send('/who')).json()).toMatchObject({ id: 1 });
+    expect(await (await secondTab.send('/who')).json()).toMatchObject({ id: 1 });
+  });
+
+  it('logs, and does not throw, when the sessions of a thief cannot be ended', async () => {
+    const errors: { message: string; context?: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => void errors.push({ message, context }), child: () => logger };
+    const { add, browser } = await boot({ users: Object.assign(new MemoryUsers(), { updateSessionKey: undefined }) as unknown as MemoryUsers, logger });
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const copied = owner.jar.get('remember_web')!;
+    expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      const later = browser(new Map([['remember_web', copied]]));
+      expect(await (await later.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(later.jar.has('remember_web')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.context).toMatchObject({ user: 1 });
+    expect(JSON.stringify(errors)).not.toContain(copied);
   });
 
   it('signs out only this device', async () => {
