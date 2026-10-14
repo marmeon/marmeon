@@ -145,7 +145,8 @@ describe('the link check', () => {
   });
 });
 
-describe('the docs the framework names', () => {
+// Reads every tracked file synchronously: about 200 ms alone, past Vitest's default 5 s while the other suites run.
+describe('the docs the framework names', { timeout: 30_000 }, () => {
   it('every docs path the framework names leads to a page and its anchor', () => {
     const docs = app.make(DocsRepository);
     const anchorsOf = new Map(docs.pages().map((page) => [page.file, new Set(page.anchors)]));
