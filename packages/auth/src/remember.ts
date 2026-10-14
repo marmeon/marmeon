@@ -46,7 +46,7 @@ export type RememberTokenError = { readonly kind: 'invalid' } | { readonly kind:
  * Remember-me tokens, one per device: `<selector>.<validator>` in the cookie, the selector in
  * clear (to find the row), the validator only as SHA-256 (the cookie is the secret, the database
  * is not). Every use rotates the validator; an old one coming back means the cookie was copied, so
- * all of the user's tokens are dropped.
+ * all of the user's tokens are dropped. The selector stays the same over every rotation: it names the device (the sign-ins list hangs on it).
  */
 export interface RememberTokenStore {
   /** A new token for `userId`; returns the cookie value. */
@@ -172,6 +172,11 @@ export class DatabaseRememberTokens implements RememberTokenStore {
   #db() {
     return this.#connections.get<{ [REMEMBER_TABLE]: RememberTokenTable }>();
   }
+}
+
+/** The selector of a `<selector>.<validator>` cookie value — the part that stays the same over rotations. */
+export function selectorOf(cookie: string): string {
+  return cookie.split('.')[0]!;
 }
 
 function parse(cookie: string): { selector: string; validator: string } | undefined {

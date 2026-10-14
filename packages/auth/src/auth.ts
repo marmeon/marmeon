@@ -8,7 +8,8 @@ import { AuthConfig } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
-import { RememberTokenStore } from './remember.ts';
+import { RememberTokenStore, selectorOf } from './remember.ts';
+import { SignInTracker } from './sign-ins.ts';
 import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 // An optional peer: it only types a rate limiter's `ctx.user` (below) where the app has the cache — nothing of it is loaded.
@@ -32,6 +33,8 @@ export const AUTH_SESSION_KEYS = {
   pending: '_auth_pending',
   /** When this session proved a second factor, in Unix seconds — for the middleware that asks for one. */
   twoFactorAt: '_auth_two_factor_at',
+  /** The sign-in's row in `SignInStore` — its end ends the session. Only with a bound `SignInStore`. */
+  signIn: '_auth_sign_in',
 } as const;
 
 /** How far ahead of this server's clock another server's sign-in time may lie, in seconds. */
@@ -109,6 +112,7 @@ declare module '@marmeon/session' {
     _auth_remember_until: number;
     _auth_pending: PendingSecondFactor;
     _auth_two_factor_at: number;
+    _auth_sign_in: string;
   }
 }
 
@@ -165,6 +169,7 @@ export class Auth {
   readonly #newPassword: NewPassword;
   readonly #twoFactor: TwoFactorState;
   readonly #accountSessions: AccountSessions;
+  readonly #signIns: SignInTracker;
   #user: Promise<AuthUser | undefined> | undefined;
   /**
    * The credentials this request checked its session against (`#resolve`) or signed in with (`#login`).
@@ -189,6 +194,7 @@ export class Auth {
     newPassword: NewPassword,
     twoFactor: TwoFactorState,
     accountSessions: AccountSessions,
+    signIns: SignInTracker,
   ) {
     this.#session = session;
     this.#users = users;
@@ -204,6 +210,7 @@ export class Auth {
     this.#newPassword = newPassword;
     this.#twoFactor = twoFactor;
     this.#accountSessions = accountSessions;
+    this.#signIns = signIns;
   }
 
   /**
@@ -314,11 +321,19 @@ export class Auth {
    */
   async logout(): Promise<void> {
     const user = await this.user();
-    await this.#forgetDevice();
-    this.#session.invalidate();
-    this.#history.clear({ siteData: ['storage'] });
-    this.#user = Promise.resolve(undefined);
-    this.#verified = undefined;
+    const signIn = this.#ownSignIn();
+    try {
+      await this.#forgetDevice();
+    } finally {
+      // Signed out whatever the stores do: a failing store must not keep the user signed in.
+      this.#session.invalidate();
+      this.#history.clear({ siteData: ['storage'] });
+      this.#user = Promise.resolve(undefined);
+      this.#verified = undefined;
+      // A token that could not be removed must not sign this browser in again: its cookie goes and so does its row (which ends the token).
+      if (this.#cookies.get(this.#config.rememberCookie) !== undefined) this.#cookies.delete(this.#config.rememberCookie);
+      await this.#endSignIn(signIn);
+    }
     if (user) await this.#events.dispatch(new Logout(user));
   }
 
@@ -464,10 +479,18 @@ export class Auth {
 
   /** Ends this session and this device's remember-me token, as `logout()` does without the event. */
   async #end(): Promise<void> {
-    await this.#forgetDevice();
-    this.#session.invalidate();
-    this.#user = Promise.resolve(undefined);
-    this.#verified = undefined;
+    const signIn = this.#ownSignIn();
+    try {
+      await this.#forgetDevice();
+    } finally {
+      // Signed out whatever the stores do: a failing store must not keep the user signed in.
+      this.#session.invalidate();
+      this.#user = Promise.resolve(undefined);
+      this.#verified = undefined;
+      // A token that could not be removed must not sign this browser in again: its cookie goes and so does its row (which ends the token).
+      if (this.#cookies.get(this.#config.rememberCookie) !== undefined) this.#cookies.delete(this.#config.rememberCookie);
+      await this.#endSignIn(signIn);
+    }
   }
 
   /** Binds this session to `credentials`, which are built from what this request verified and wrote itself (see `#verified`). */
@@ -507,7 +530,7 @@ export class Auth {
     const id = idOf(credentials.user);
     const factors = await this.#twoFactor.factors(id);
     if (factors.length > 0) {
-      this.#hold(credentials, factors, options, via);
+      await this.#hold(credentials, factors, options, via);
       return factors;
     }
     const signedIn = await this.#login(credentials, options, via);
@@ -518,16 +541,17 @@ export class Auth {
         return [];
       }
       // Taken back first, synchronously, then the token is forgotten: whatever fails later, nobody stays signed in.
-      this.#hold(credentials, after, options, via);
+      await this.#hold(credentials, after, options, via); // also ends the row the sign-in just made
       this.#cookies.delete(this.#config.rememberCookie);
       if (signedIn.token !== undefined) await this.#remember.forget(signedIn.token);
       return after;
     } catch (error) {
       // Fail closed: an error here (the second read of the factors, the removal of the token) must not leave the sign-in standing.
-      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil);
+      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn);
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
       this.#cookies.delete(this.#config.rememberCookie);
+      if (signedIn.signIn !== undefined) await this.#signIns.end(idOf(credentials.user), signedIn.signIn).catch(() => undefined);
       // A token that cannot be removed now is refused later by its date, once the factor is committed (`enabledSince`).
       if (signedIn.token !== undefined) await this.#remember.forget(signedIn.token).catch(() => undefined);
       throw error;
@@ -540,9 +564,32 @@ export class Auth {
     { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions,
     via: LoginVia,
     rememberUntil?: number,
-  ): Promise<{ readonly token: string | undefined; announce(): Promise<void> }> {
+    resumed?: string,
+  ): Promise<{ readonly token: string | undefined; readonly signIn: string | undefined; announce(): Promise<void> }> {
     const { user } = credentials;
     const viaRemember = via === 'remember';
+    const previous = this.#ownSignIn(); // the row of the sign-in this one replaces
+    // The writes that can fail come first, before the session says anything: a store that throws leaves no half sign-in behind
+    // (the session is saved even when the request fails, and a signed-in session without a row would be given one lazily).
+    let token: string | undefined;
+    let expiresAt: Date | undefined;
+    // One token per device, and a guest carrying the cookie of another sign-in must not end up with two live rows.
+    if (!viaRemember) await this.#forgetDevice();
+    // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
+    if (remember && !viaRemember && this.#config.remember) {
+      expiresAt = new Date(Date.now() + this.#config.rememberDays * 86_400_000);
+      token = await this.#remember.create(idOf(user), expiresAt);
+    }
+    let signIn: string | undefined;
+    if (this.#signIns.enabled) {
+      try {
+        // A remember-me sign-in continues the row of its token (one browser, one entry); every other one is a new row.
+        signIn = resumed ?? (await this.#signIns.create({ userId: idOf(user), userAgent, remember: token === undefined || expiresAt === undefined ? undefined : { selector: selectorOf(token), until: expiresAt } }));
+      } catch (error) {
+        if (token !== undefined) await this.#remember.forget(token).catch(() => undefined);
+        throw error;
+      }
+    }
     // A session id (and CSRF token) handed out before login must not survive it: session fixation.
     this.#session.regenerate();
     this.#session.forget(AUTH_SESSION_KEYS.pending);
@@ -554,29 +601,26 @@ export class Auth {
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
     if (viaRemember && rememberUntil !== undefined) this.#session.put(AUTH_SESSION_KEYS.rememberUntil, rememberUntil);
     else this.#session.forget(AUTH_SESSION_KEYS.rememberUntil);
-    let token: string | undefined;
-    // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
-    if (remember && !viaRemember && this.#config.remember) {
-      const expiresAt = new Date(Date.now() + this.#config.rememberDays * 86_400_000);
-      await this.#forgetDevice(); // one token per device
-      token = await this.#remember.create(idOf(user), expiresAt);
-      this.#setCookie(token, expiresAt);
-    }
+    if (token !== undefined && expiresAt !== undefined) this.#setCookie(token, expiresAt);
+    if (signIn !== undefined) this.#session.put(AUTH_SESSION_KEYS.signIn, signIn);
+    else this.#session.forget(AUTH_SESSION_KEYS.signIn);
     this.#user = Promise.resolve(user);
     // Another person may sit at this browser now: pages kept from before the sign-in must not come back.
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
+    if (previous && previous.id !== signIn) await this.#endSignIn(previous); // a sign-in over a sign-in leaves no orphan
     const at = new Date();
-    return { token, announce: () => this.#events.dispatch(new Login(user, token !== undefined || viaRemember, at, { via, ip, userAgent })) };
+    return { token, signIn, announce: () => this.#events.dispatch(new Login(user, token !== undefined || viaRemember, at, { via, ip, userAgent })) };
   }
 
   /**
    * Parks a correct password: a new session id (as at sign-in), every sign-in key gone, only {@link PendingSecondFactor} left.
    * Invariant: no `Login` event, no remember-me token or cookie, no `_auth_id` — the account is not signed in until a factor is proven.
    */
-  #hold(credentials: Credentials, factors: readonly SecondFactor[], { remember = false }: LoginOptions, via: LoginVia): void {
+  async #hold(credentials: Credentials, factors: readonly SecondFactor[], { remember = false }: LoginOptions, via: LoginVia): Promise<void> {
+    const previous = this.#ownSignIn();
     this.#session.regenerate();
-    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil] as const) {
+    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn] as const) {
       this.#session.forget(key);
     }
     this.#session.put(AUTH_SESSION_KEYS.pending, {
@@ -592,6 +636,8 @@ export class Auth {
     this.#verified = undefined;
     // Pages of the person before may still be in the browser; the next person is at the keyboard (as at sign-in).
     this.#history.clear();
+    // Everything above ran before the first await: the session is held back whatever the store does.
+    await this.#endSignIn(previous);
   }
 
   /** The pending sign-in if it is well-formed and has not run out; anything else counts as none. */
@@ -625,6 +671,22 @@ export class Auth {
     }
     // A session from before the lifetime was kept: its clock starts now, so a deploy signs nobody out.
     if (signedInAt === undefined && !this.#session.readOnly) this.#session.put(AUTH_SESSION_KEYS.signedInAt, now());
+    if (this.#signIns.enabled) {
+      // Invariant: the row in the store is the authority over a sign-in. A session whose row is gone — ended from another device, by
+      // the user's list or by `prune` — is over, whatever the session driver still holds; its remember-me cookie hangs on the same row.
+      const signIn = this.#session.get(AUTH_SESSION_KEYS.signIn);
+      if (signIn === undefined) {
+        // A session from before sign-ins were switched on: its row is made now, so a deploy signs nobody out. Only a session without a
+        // key gets one — a session whose row was ended has the key and takes the branch below.
+        if (!this.#session.readOnly) {
+          this.#session.put(AUTH_SESSION_KEYS.signIn, await this.#signIns.create({ userId: idOf(found.user), userAgent: this.#request.userAgent }));
+        }
+      } else if (typeof signIn !== 'string' || !(await this.#signIns.seen(idOf(found.user), signIn, !this.#session.readOnly))) {
+        if (this.#session.readOnly) return undefined;
+        this.#session.invalidate();
+        return this.#fromRememberCookie();
+      }
+    }
     this.#verified = found;
     return found.user;
   }
@@ -716,13 +778,39 @@ export class Auth {
       return undefined;
     }
     const until = Math.min(device.expiresAt.getTime(), cap);
+    // A token without a row was ended (the user's list, or sign-ins were not switched on when it was made): it never signs in again.
+    let resumed: string | undefined;
+    if (this.#signIns.enabled) {
+      resumed = await this.#signIns.resume(device.userId, selectorOf(device.cookie ?? cookie), new Date(until));
+      if (resumed === undefined) {
+        await this.#remember.forget(device.cookie ?? cookie);
+        this.#cookies.delete(this.#config.rememberCookie);
+        return undefined;
+      }
+    }
     if (device.cookie) this.#setCookie(device.cookie, new Date(until));
-    await (await this.#login(found, {}, 'remember', Math.floor(until / 1000))).announce();
+    await (await this.#login(found, {}, 'remember', Math.floor(until / 1000), resumed)).announce();
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
     if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
     return found.user;
+  }
+
+  /** The row of this session's sign-in, with the user it belongs to — `undefined` without a started session, a user or a row. */
+  #ownSignIn(): { readonly userId: string | number; readonly id: string } | undefined {
+    if (!this.#session.started) return undefined;
+    const userId = this.#session.get(AUTH_SESSION_KEYS.id);
+    const id = this.#session.get(AUTH_SESSION_KEYS.signIn);
+    return userId === undefined || typeof id !== 'string' ? undefined : { userId, id };
+  }
+
+  async #endSignIn(signIn: { readonly userId: string | number; readonly id: string } | undefined): Promise<void> {
+    if (signIn === undefined || !this.#signIns.enabled) return;
+    // Clean-up only: the sign-in it belonged to is over or replaced already, so a store that fails here leaves a row that `prune` removes.
+    await this.#signIns.end(signIn.userId, signIn.id).catch((error: unknown) => {
+      this.#logger.error('A sign-in row could not be ended', { error: error instanceof Error ? error.message : String(error) });
+    });
   }
 
   async #forgetDevice(): Promise<void> {

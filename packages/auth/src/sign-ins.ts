@@ -210,3 +210,40 @@ function cleanUserAgent(userAgent: string | undefined): string | null {
   const clean = (userAgent ?? '').replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, USER_AGENT_LENGTH).replace(/[\uD800-\uDBFF]$/, '');
   return clean === '' ? null : clean;
 }
+
+/**
+ * What `Auth` holds of the sign-ins: the app's {@link SignInStore} when it has bound one, else nothing — then `Auth` keeps and checks
+ * no sign-in rows. Package-internal; the store is looked up on first use.
+ */
+export class SignInTracker {
+  readonly #store: (() => SignInStore) | undefined;
+
+  constructor(store: (() => SignInStore) | undefined) {
+    this.#store = store;
+  }
+
+  get enabled(): boolean {
+    return this.#store !== undefined;
+  }
+
+  create(input: Parameters<SignInStore['create']>[0]): Promise<string> {
+    return this.#need().create(input);
+  }
+
+  resume(userId: number | string, selector: string, until: Date): Promise<string | undefined> {
+    return this.#need().resume(userId, selector, until);
+  }
+
+  seen(userId: number | string, id: string, touch: boolean): Promise<boolean> {
+    return this.#need().seen(userId, id, touch);
+  }
+
+  end(userId: number | string, id: string): Promise<boolean> {
+    return this.#need().end(userId, id);
+  }
+
+  #need(): SignInStore {
+    if (!this.#store) throw new Error('auth: no SignInStore is bound — bind it with container.singleton(SignInStore, DatabaseSignIns).');
+    return this.#store();
+  }
+}
