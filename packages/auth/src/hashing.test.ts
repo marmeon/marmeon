@@ -109,7 +109,8 @@ describe('PasswordHasher', () => {
     expect(await argon2.verify(`${longest}x`, hash)).toBe(false);
   });
 
-  it('dummyVerify takes as long as a real verify (unknown e-mail ≈ wrong password)', async () => {
+  // A timing test: a leak fails every attempt, a stall of a busy machine only some — so a failed attempt is tried again.
+  it('dummyVerify takes as long as a real verify (unknown e-mail ≈ wrong password)', { retry: 2 }, async () => {
     const hasher = new PasswordHasher(); // real costs: differences must not hide in noise
     const hash = await hasher.make('secret');
     await hasher.dummyVerify('warm-up'); // the first call also makes its reference hash

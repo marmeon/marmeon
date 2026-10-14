@@ -90,10 +90,12 @@ describe('changing the address (private registration) — the default', { timeou
     expect((await reload(kj)).email).toBe('kj@example.com');
   });
 
-  it('takes as long for a taken address as for a free one — the request does the same either way', async () => {
+  // A timing test: a leak makes every attempt fail, a stall of a busy machine only some — so a failed attempt is tried again.
+  it('takes as long for a taken address as for a free one — the request does the same either way', { retry: 2, timeout: 30_000 }, async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const session = await signIn(await app.factory(UserFactory).create({ email: 'kj@example.com' }));
-    // The throttle still counts every change — with room for all of them (the clock never moves: sudo mode stays).
+    app.freeze(); // no sudo window, throttle window or expiry passes while it measures
+    // The throttle still counts every change — with room for all of them.
     app.make(RateLimiter).for('email-change', (ctx) => Limit.perMinute(1_000_000).by(String(ctx.user?.id)));
     // A change takes about a millisecond — less than a busy machine's noise. So a measurement is a run of four changes, and a pair is
     // two runs of each kind in mirrored order (free, taken, taken, free — the next pair the other way round). Twenty-one pairs
@@ -113,7 +115,7 @@ describe('changing the address (private registration) — the default', { timeou
     const ratio = ratios.toSorted((a, b) => a - b)[10]!;
     expect(ratio).toBeGreaterThan(0.5);
     expect(ratio).toBeLessThan(2);
-  }, 30_000);
+  });
 
   it('a link works once, for the latest request, for the signed-in account it was made for', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });

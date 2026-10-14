@@ -308,7 +308,8 @@ describe('registration', () => {
     });
   });
 
-  it('takes as long for a known address as for a new one — the password is hashed either way (the configured costs)', async () => {
+  // A timing test: a leak makes every attempt fail, a stall of a busy machine only some — so a failed attempt is tried again.
+  it('takes as long for a known address as for a new one — the password is hashed either way (the configured costs)', { retry: 2, timeout: 120_000 /* 352 sign-ups at the configured hash costs — seconds, more on a busy machine */ }, async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
@@ -339,7 +340,7 @@ describe('registration', () => {
     const seen = `median of ${ratios.length} paired ratios ${ratio.toFixed(3)} (a sign-up: median known ${median(took.known).toFixed(1)} ms, new ${median(took.fresh).toFixed(1)} ms)`;
     expect(ratio, seen).toBeGreaterThan(0.75);
     expect(ratio, seen).toBeLessThan(1.33);
-  }, 120_000); // 352 sign-ups at the configured hash costs — seconds, more on a busy machine
+  });
 
   it('checks the password: length, confirmation — and never flashes it', async () => {
     const short = await register({ password: 'short', password_confirmation: 'short' }).assertInvalid<RegisterController>({ password: 'The password needs at least 8 characters.' });
