@@ -517,6 +517,57 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(await booted.browser(new Map([['remember_web', token!]])).tf('who')).toEqual({ id: null }); // refused by its date
   });
 
+  it('a remember-me token whose time cannot be read is refused, not taken as a proof', async () => {
+    let on = false;
+    const state: TwoFactorState = { factors: async () => (on ? ['totp'] : []), enabledSince: async () => (on ? new Date(Date.now() - 60_000) : undefined) };
+    const booted = await boot({}, { state });
+    const first = booted.browser();
+    await first.login(ada.email, 'secret', true);
+    const cookie = first.jar.get('remember_web')!;
+    on = true;
+    const tokens = booted.application.container.make(RememberTokenStore);
+    const consume = tokens.consume.bind(tokens);
+    vi.spyOn(tokens, 'consume').mockImplementation(async (value) => {
+      const result = await consume(value);
+      return result.ok ? { ok: true, value: { ...result.value, createdAt: new Date(Number.NaN) } } : result;
+    });
+    const forget = vi.spyOn(tokens, 'forget');
+    const b = booted.browser(new Map([['remember_web', cookie]]));
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(forget).toHaveBeenCalled();
+    expect(b.jar.has('remember_web')).toBe(false);
+  });
+
+  it('a remember-me token is refused when the factor\'s start time cannot be read', async () => {
+    let on = false;
+    const state: TwoFactorState = { factors: async () => (on ? ['totp'] : []), enabledSince: async () => (on ? new Date(Number.NaN) : undefined) };
+    const booted = await boot({}, { state });
+    const first = booted.browser();
+    await first.login(ada.email, 'secret', true);
+    on = true;
+    const b = booted.browser(new Map([['remember_web', first.jar.get('remember_web')!]]));
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(b.jar.has('remember_web')).toBe(false);
+  });
+
+  it('a remember-me token with an unreadable time is refused when the account has a factor but no start time', async () => {
+    let on = false;
+    const state: TwoFactorState = { factors: async () => (on ? ['totp'] : []), enabledSince: async () => undefined };
+    const booted = await boot({}, { state });
+    const first = booted.browser();
+    await first.login(ada.email, 'secret', true);
+    on = true;
+    const tokens = booted.application.container.make(RememberTokenStore);
+    const consume = tokens.consume.bind(tokens);
+    vi.spyOn(tokens, 'consume').mockImplementation(async (value) => {
+      const result = await consume(value);
+      return result.ok ? { ok: true, value: { ...result.value, createdAt: new Date(Number.NaN) } } : result;
+    });
+    const b = booted.browser(new Map([['remember_web', first.jar.get('remember_web')!]]));
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(b.jar.has('remember_web')).toBe(false);
+  });
+
   it('logs and rethrows when the second sign-out after the commit fails — the factor stays on', async () => {
     const booted = await boot();
     const b = booted.browser();
