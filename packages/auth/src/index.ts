@@ -1,6 +1,8 @@
 import { defineConfig, env, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
+import { UserSessions } from '@marmeon/session';
 import { MiddlewarePriority, Router } from '@marmeon/router';
+import { AccountSessions } from './account-sessions.ts';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
@@ -17,6 +19,8 @@ import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFact
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 
+export { AccountSessions } from './account-sessions.ts';
+export type { EndedSessions } from './account-sessions.ts';
 export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
 export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
@@ -107,6 +111,8 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
     container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger)));
+    // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new Error(

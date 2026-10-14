@@ -20,6 +20,16 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   beforeEach(() => connections.get<any>().deleteFrom(REMEMBER_TABLE).execute());
   afterEach(() => vi.useRealTimers());
 
+  it('exists() finds a token by its selector, and says false for a deleted token and a malformed cookie', async () => {
+    const cookie = await tokens.create(1, inAMonth());
+    expect(await tokens.exists(cookie)).toBe(true);
+    expect(await tokens.exists(`${cookie.split('.')[0]}.${'x'.repeat(43)}`), 'the validator is not checked').toBe(true);
+    expect(await tokens.exists('garbage')).toBe(false);
+    expect(await tokens.exists('')).toBe(false);
+    await tokens.forgetUser(1);
+    expect(await tokens.exists(cookie)).toBe(false);
+  });
+
   it('hands out selector.validator and stores only the selector and a hash of the validator', async () => {
     const cookie = await tokens.create(1, inAMonth());
     expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);

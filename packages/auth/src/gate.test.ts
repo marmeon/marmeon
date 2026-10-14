@@ -138,7 +138,7 @@ const provider: UserProvider = {
   findForLogin: async () => undefined,
   updatePasswordHash: async () => {},
 };
-const noRemember: RememberTokenStore = { create: async () => '', consume: async () => err({ kind: 'invalid' }), forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
+const noRemember: RememberTokenStore = { create: async () => '', consume: async () => err({ kind: 'invalid' }), exists: async () => false, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
 /** API tokens in memory: the plain text is `<user>/<abilities>` — what the token guard needs, nothing more. */
 const memoryTokens: AccessTokenStore = {

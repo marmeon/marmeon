@@ -10,7 +10,7 @@ import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore } from '@marmeon/session';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
-import { Auth, authenticate, AuthServiceProvider, Hasher, sessionFingerprint, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { AccountSessions, Auth, authenticate, AuthServiceProvider, Hasher, sessionFingerprint, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
@@ -28,11 +28,26 @@ class KeyedUsers implements UserProvider {
     for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: row.key };
     return undefined;
   }
+  /** Runs once, right after the next write of a hash or a key — a request of another device landing in the middle of a change. */
+  afterWrite: (() => Promise<unknown>) | undefined;
+  async #written() {
+    const hook = this.afterWrite;
+    this.afterWrite = undefined;
+    await hook?.();
+  }
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
     this.rows.get(id)!.hash = hash;
+    await this.#written();
   }
-  async updateSessionKey(id: number, key: string): Promise<void> {
-    this.rows.get(id)!.key = key;
+  /** Runs once, between a request's sign-in check and the action it then takes — another request landing at that moment. */
+  between: (() => Promise<unknown>) | undefined;
+  /** Compare-and-set, as a repository does it in one statement. */
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    const row = this.rows.get(id)!;
+    if (expected !== undefined && (row.key ?? null) !== expected) return false;
+    row.key = key;
+    await this.#written();
+    return true;
   }
 }
 
@@ -73,8 +88,7 @@ class EndOtherSessionsController extends Controller {
   }
   async handle() {
     try {
-      await this.#auth.updateSessionKey();
-      return { done: true };
+      return { done: await this.#auth.updateSessionKey() };
     } catch (error) {
       return { error: (error as Error).message };
     }
@@ -105,7 +119,28 @@ class WhoController extends Controller {
   }
 }
 
+/** Checks the sign-in, lets `users.between` run (a request of the account landing now), then takes `action`. */
+class RacingController extends Controller {
+  readonly #auth: Auth;
+  readonly #users: KeyedUsers;
+  constructor(auth: Auth, users: UserProvider) {
+    super();
+    this.#auth = auth;
+    this.#users = users as KeyedUsers;
+  }
+  async handle(ctx: HttpContext<{}, { action: string }>) {
+    await this.#auth.user();
+    const between = this.#users.between;
+    this.#users.between = undefined;
+    await between?.();
+    if (ctx.params.action === 'key') return { result: await this.#auth.updateSessionKey() };
+    if (ctx.params.action === 'password') return { result: await this.#auth.updatePassword('a new password') };
+    return { result: await this.#auth.logoutOtherDevices('secret') };
+  }
+}
+
 const routes = openRoutes((Route) => {
+  Route.post('/race/:action', RacingController);
   Route.post('/as/:id', SignInController);
   Route.get('/login', () => 'login').name('auth.login');
   Route.get('/who', WhoController);
@@ -212,7 +247,7 @@ async function boot(driver: Driver, users: UserProvider) {
     };
     return { send, jar };
   };
-  return { browser, hasher: application.container.make(Hasher) };
+  return { browser, hasher: application.container.make(Hasher), accounts: application.container.make(AccountSessions) };
 }
 
 const link: AuthUser = { id: 2, name: 'Link', email: 'link@example.com' };
@@ -235,7 +270,9 @@ describe('the fingerprint of an account', () => {
     expectTypeOf<PlainUsers>().toMatchTypeOf<UserProvider>();
     expectTypeOf<Credentials['sessionKey']>().toEqualTypeOf<string | null | undefined>();
     class WrongKey extends PlainUsers {
-      async updateSessionKey(_id: number, _key: number): Promise<void> {}
+      async updateSessionKey(_id: number, _key: number, _expected: string | null | undefined): Promise<boolean> {
+        return true;
+      }
     }
     // @ts-expect-error — the key is a string
     expectTypeOf<WrongKey>().toMatchTypeOf<UserProvider>();
@@ -298,7 +335,7 @@ describe('auth.updateSessionKey() fails loudly', () => {
     const laptop = browser();
     await laptop.send('/as/2', { method: 'POST' });
     const body = await (await laptop.send('/end-other-sessions', { method: 'POST' })).json();
-    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/updateSessionKey\(id, key\)/) });
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/updateSessionKey\(id, key, expected\)/) });
     expect((await laptop.send('/me')).status).toBe(200);
   });
 
@@ -310,6 +347,118 @@ describe('auth.updateSessionKey() fails loudly', () => {
       }
     }
     const users = new ForgetfulUsers();
+    users.rows.set(2, { user: link, hash: null, key: null });
+    const { browser } = await boot(drivers[0]!, users);
+    const laptop = browser();
+    await laptop.send('/as/2', { method: 'POST' });
+    const body = await (await laptop.send('/end-other-sessions', { method: 'POST' })).json();
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/does not hand it back as sessionKey/) });
+  });
+});
+
+describe('a request that checked its session before AccountSessions.end() ran', () => {
+  const ada = { id: 4, name: 'Ada', email: 'ada@example.com' };
+  async function racing(action: 'key' | 'password' | 'others') {
+    const users = new KeyedUsers();
+    const { browser, hasher, accounts } = await boot(drivers[0]!, users);
+    users.rows.set(4, { user: ada, hash: await hasher.make('secret'), key: null });
+    const laptop = browser();
+    await laptop.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret' } });
+    expect((await laptop.send('/me')).status, 'signed in').toBe(200);
+    users.between = async () => {
+      await accounts.end(4);
+    };
+    const response = await laptop.send(`/race/${action}`, { method: 'POST', json: {} });
+    return { users, laptop, response };
+  }
+
+  it('auth.updateSessionKey() answers false and signs the request out — it does not bind itself to the new key', async () => {
+    const { users, laptop, response } = await racing('key');
+    expect(await response.json()).toEqual({ result: false });
+    const stored = users.rows.get(4)!.key;
+    expect(stored).toMatch(/^[\w-]{43}$/);
+    expect((await laptop.send('/me')).status).toBe(401);
+    expect(users.rows.get(4)!.key, 'the key of end() stays').toBe(stored);
+  });
+
+  it('updatePassword() does not bind the session to the state it did not check', async () => {
+    const { laptop } = await racing('password');
+    expect((await laptop.send('/me')).status).toBe(401);
+  });
+
+  it('logoutOtherDevices() does not bind the session to the state it did not check', async () => {
+    const { laptop } = await racing('others');
+    expect((await laptop.send('/me')).status).toBe(401);
+  });
+});
+
+describe('the compare-and-set contract of updateSessionKey', () => {
+  it('a provider that answers with nothing (the old contract) is refused, with the remedy', async () => {
+    class OldContract extends KeyedUsers {
+      override async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+        await super.updateSessionKey(id, key, expected);
+        return undefined as never;
+      }
+    }
+    const users = new OldContract();
+    users.rows.set(2, { user: link, hash: null, key: null });
+    const { browser } = await boot(drivers[0]!, users);
+    const laptop = browser();
+    await laptop.send('/as/2', { method: 'POST' });
+    const body = await (await laptop.send('/end-other-sessions', { method: 'POST' })).json();
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/must return whether it stored the key/) });
+  });
+});
+
+describe('a remember-me sign-in that is running while the account changes', () => {
+  const ada = { id: 4, name: 'Ada', email: 'ada@example.com' };
+  it.each(['key', 'password', 'others'] as const)('stays a guest when the change is %s: the tokens are gone before the new hash or key is written', async (action) => {
+    const users = new KeyedUsers();
+    const { browser, hasher } = await boot(drivers[0]!, users);
+    users.rows.set(4, { user: ada, hash: await hasher.make('secret'), key: null });
+    const laptop = browser();
+    await laptop.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret' } });
+    const phone = browser();
+    await phone.send('/as/4', { method: 'POST', headers: { 'x-remember': 'yes' } });
+    const cookie = phone.jar.get('remember_web')!;
+    expect(cookie).toBeDefined();
+    let who: unknown;
+    // The phone's sign-in lands right after the new hash or key was written: it reads the new state.
+    users.afterWrite = async () => {
+      who = await (await browser(new Map([['remember_web', cookie]])).send('/who')).json();
+    };
+    await laptop.send(`/race/${action}`, { method: 'POST', json: {} });
+    expect(who).toEqual({ id: null });
+  });
+});
+
+describe('what a provider answers after the key was written', () => {
+  it('a compare-and-set that says true without writing is refused', async () => {
+    class Liar extends KeyedUsers {
+      override async updateSessionKey(): Promise<boolean> {
+        return true;
+      }
+    }
+    const users = new Liar();
+    users.rows.set(2, { user: link, hash: null, key: 'k'.repeat(40) });
+    const { browser } = await boot(drivers[0]!, users);
+    const laptop = browser();
+    await laptop.send('/as/2', { method: 'POST' });
+    const body = await (await laptop.send('/end-other-sessions', { method: 'POST' })).json();
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/does not hand it back as sessionKey/) });
+  });
+
+  it('a conflict whose stored key the provider does not hand back is an error, not a silent sign-out', async () => {
+    class Hiding extends KeyedUsers {
+      override async findById(id: number): Promise<Credentials | undefined> {
+        const found = await super.findById(id);
+        return found && { user: found.user, passwordHash: found.passwordHash, sessionKey: found.sessionKey };
+      }
+      override async updateSessionKey(): Promise<boolean> {
+        return false;
+      }
+    }
+    const users = new Hiding();
     users.rows.set(2, { user: link, hash: null, key: null });
     const { browser } = await boot(drivers[0]!, users);
     const laptop = browser();

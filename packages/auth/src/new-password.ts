@@ -32,8 +32,10 @@ export class NewPassword {
       // The tokens go first: a revocation that fails writes no hash, also where the provider keeps its accounts outside this
       // transaction — a new password never stands next to live tokens.
       const revoked = revoke ? await this.#tokens().revokeAll(id) : 0;
-      await users.updatePasswordHash(id as never, hash);
+      // The remember-me tokens go before the hash: a remember-me sign-in that is running (it consumed its token, then reads the
+      // account) must not see the new hash next to a token that still exists.
       await remember.forgetUser(id);
+      await users.updatePasswordHash(id as never, hash);
       return revoked;
     };
     if (!this.#config.revokeTokensOnPasswordChange) return write(false);

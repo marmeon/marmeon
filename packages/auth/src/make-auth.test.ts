@@ -238,7 +238,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
     const migrations = readdirSync(join(defaults, 'modules/auth/migrations')).filter((file) => file.includes('users_table'));
     expect(migrations).toEqual(['0001_01_01_000000_create_users_table.ts']);
     const users = readFileSync(join(defaults, 'modules/auth/migrations', migrations[0]!), 'utf8');
-    for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at']) expect(users).toContain(`'${column}'`);
+    for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at', 'session_key']) expect(users).toContain(`'${column}'`);
     expect(plain.lines).toContain('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
   });
 
@@ -246,7 +246,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
     const folder = join(repo, 'apps/web-app/modules/auth/migrations');
     const files = readdirSync(folder).filter((file) => file.includes('users_table'));
     const create = files.find((file) => file.endsWith('_create_users_table.ts'))!;
-    const columns = ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at'];
+    const columns = ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at', 'session_key'];
     const users = readFileSync(join(folder, create), 'utf8');
     for (const column of columns) expect(users, `${create} makes no ${column}`).toContain(`'${column}'`);
     // Another migration that names one of them adds it to a table made without it — and backfills rows no app has.
@@ -338,6 +338,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(ran('passkeys', 'the mails about passkeys')).toBe(8);
       expect(ran('passkeys', 'marmeon auth:reset-two-factor and passkeys')).toBe(2);
       expect(ran('passkeys', 'an account with the authenticator app and a passkey')).toBe(1);
+      expect(ran('end-sessions', 'marmeon auth:end-sessions')).toBe(3);
       expect(ran('passkeys-browser', 'the base64url converters of the browser code')).toBe(3);
       expect(tests.code).toBe(0);
 

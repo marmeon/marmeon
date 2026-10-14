@@ -52,6 +52,11 @@ export interface RememberTokenStore {
   create(userId: number | string, expiresAt: Date): Promise<string>;
   /** Checks a cookie value and rotates it — an `err` for unknown, malformed or expired tokens (`invalid`) and for a copied cookie (`stolen`). The revocation of a `stolen` token and the deletion of an expired one must commit even inside a transaction that returns the err (`commitAnyway`). */
   consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+  /**
+   * Whether the token of this cookie is still stored (found by its selector, the validator is not checked); `false` for a
+   * malformed cookie. It must see a `forgetUser()` at once (read-after-write: no cache, no lagging replica): an answer of `true` for a forgotten token lets a session survive `AccountSessions.end()`. A sign-in asks it right before it starts, to notice that `end()` took the token meanwhile.
+   */
+  exists(cookie: string): Promise<boolean>;
   /** Drops the token of this cookie (sign-out on this device). */
   forget(cookie: string): Promise<void>;
   /** Drops every token of the user — except the one of `except` (the current device). */
@@ -125,6 +130,13 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     await this.forgetUser(row.user_id);
     // The revocation must survive an ambient transaction that would roll back on an err.
     return commitAnyway(err({ kind: 'stolen', userId: row.user_id }));
+  }
+
+  async exists(cookie: string): Promise<boolean> {
+    const parts = parse(cookie);
+    if (!parts) return false;
+    const row = await this.#db().selectFrom(REMEMBER_TABLE).select('selector').where('selector', '=', parts.selector).executeTakeFirst();
+    return row !== undefined;
   }
 
   async forget(cookie: string): Promise<void> {

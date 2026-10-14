@@ -8,6 +8,9 @@ export default defineMigration({
       table.string('email').unique();
       // A PHC string (argon2id); never in `Row<'users'>`, never in a select-all result.
       table.string('password').secret();
+      // A random value `auth.updateSessionKey()` and `AccountSessions` replace to end the account's sessions (the first all but the
+      // current one, the second every one); the session's fingerprint contains it. Secret: never in `Row<'users'>`.
+      table.string('session_key', 64).nullable().secret();
       table.timestamp('email_verified_at').nullable();
       // When the account confirmed an address for the first time — set once, never cleared. A change of address with
       // AUTH_PRIVATE_REGISTRATION=false empties `email_verified_at` (the new address is unconfirmed), this stays:

@@ -162,6 +162,7 @@ declare module '@marmeon/database' {
       name: string;
       email: string;
       password: Secret<string>;
+      session_key: Secret<string | null>;
       bio: Generated<string>;
       first_verified_at: Timestamp | null;
       pending_email: string | null;

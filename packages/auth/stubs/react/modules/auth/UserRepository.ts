@@ -160,10 +160,32 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     await this.update(id, { password: hash });
   }
 
+  /**
+   * The provider half of ending sessions: stores `key` only while the stored key is still `expected` (`null`: none), in one
+   * statement, and says whether it did — so two callers that read the same key cannot both win. `undefined` stores it regardless
+   * (`AccountSessions.end()` only). Call `auth.updateSessionKey()` or
+   * `AccountSessions.end()` instead: they pass `expected`, and also drop the remember-me tokens.
+   */
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    // An empty key would give the fingerprint of an account without one (NULL).
+    if (key.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.');
+    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
+    const result = await this.db
+      .updateTable('users')
+      .set({ session_key: key, updated_at: new Date() })
+      .where('id', '=', id)
+      .$if(expected !== undefined, (query) => query.where(expected === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expected}`))
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
+  }
+
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
-    const row = await query.selectAll().select((eb) => secret(eb, 'password')).executeTakeFirst();
+    const row = await query
+      .selectAll()
+      .select((eb) => [secret(eb, 'password'), secret(eb, 'session_key')])
+      .executeTakeFirst();
     if (!row) return undefined;
-    const { password, ...user } = row;
-    return { user, passwordHash: password as PasswordHash };
+    const { password, session_key: sessionKey, ...user } = row;
+    return { user, passwordHash: password as PasswordHash, sessionKey: sessionKey as string | null };
   }
 }

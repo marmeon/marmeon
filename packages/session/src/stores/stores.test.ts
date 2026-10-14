@@ -91,6 +91,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     const alan = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, 8));
     const guest = await request(store, undefined, (session) => session.put('visits' as never, 1 as never));
     const sessions = new UserSessions(() => store);
+    expect(sessions.canEnd()).toBe(kind === 'sqlite' || kind === 'pgsql');
     if (kind === 'sqlite' || kind === 'pgsql') {
       expect(await sessions.end(7)).toBe(2);
       expect(await payload(store, ada.id)).toBeUndefined();

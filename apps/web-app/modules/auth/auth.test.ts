@@ -1,5 +1,6 @@
-import { Hasher, PasswordHasher, TwoFactorState, type PasswordHash } from '@marmeon/auth';
-import { ConsoleLogger, Logger, type LogContext } from '@marmeon/core';
+import { Auth, authenticate, Hasher, PasswordHasher, TwoFactorState, type PasswordHash } from '@marmeon/auth';
+import { ConsoleLogger, defineModule, Logger, type LogContext } from '@marmeon/core';
+import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Connections } from '@marmeon/database';
 import { Database, secret } from '@marmeon/database';
 import { MailFake, Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
@@ -26,9 +27,29 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 // Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
+/** A route that ends the other sessions of the signed-in account through `auth.updateSessionKey()`. */
+class EndOtherSessionsController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    await this.#auth.updateSessionKey();
+    return { done: true };
+  }
+}
+
+const fixtures = defineModule({
+  name: 'session-key-fixtures',
+  routes: defineRoutes((Route) => {
+    Route.middleware(authenticate()).authorize(everyone).post('/fixtures/end-other-sessions', EndOtherSessionsController);
+  }),
+});
+
 let app: TestApp;
 beforeEach(async () => {
-  app = await createTestApp(application, { database: 'refresh' });
+  app = await createTestApp({ ...application, modules: [...application.modules!, fixtures] }, { database: 'refresh' });
 });
 
 describe('auth module', () => {
@@ -807,6 +828,61 @@ const credentialsOf = (user: User) => ({ form: { email: user.email, password: 'p
 /** The stored hash — read the one deliberate way. */
 const storedHash = async (id: number) =>
   (await app.make(Database).selectFrom('users').select((eb) => secret(eb, 'password')).where('id', '=', id).executeTakeFirstOrThrow()).password as PasswordHash;
+
+describe('the session key', () => {
+  it('a new key signs out every session of the account but leaves other accounts alone', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const grace = await app.factory(UserFactory).create();
+    const phone = await app.post('/login', credentialsOf(ada));
+    const other = await app.post('/login', credentialsOf(grace));
+    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+    await app.make(UserRepository).updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);
+    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie('marmeon_session', other.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+    // The account signs in again: its fingerprint carries the new key.
+    const again = await app.post('/login', credentialsOf(ada));
+    await app.withCookie('marmeon_session', again.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+  });
+
+  it('auth.updateSessionKey() in a signed-in request signs out the account\'s other sessions and remember-me devices', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
+    expect(phone.cookie('remember_web')).toBeDefined();
+    const laptop = await app.post('/login', credentialsOf(ada));
+    await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).post('/fixtures/end-other-sessions').assertOk();
+    await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/dashboard').assertUnauthorized();
+  });
+
+  it('compares and sets: a key replaces only the one that was read, and says whether it did', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const users = app.make(UserRepository);
+    const first = 'a-first-key-of-at-least-32-characters-x';
+    expect(await users.updateSessionKey(ada.id, first, 'not-the-stored-key'), 'wrong expectation on a fresh account').toBe(false);
+    expect((await users.findById(ada.id))?.sessionKey).toBeNull();
+    expect(await users.updateSessionKey(ada.id, first, null)).toBe(true);
+    expect(await users.updateSessionKey(ada.id, 'a-second-key-of-at-least-32-characters', null), 'null no longer matches').toBe(false);
+    expect(await users.updateSessionKey(ada.id, 'a-second-key-of-at-least-32-characters', 'another-key')).toBe(false);
+    expect((await users.findById(ada.id))?.sessionKey).toBe(first);
+    expect(await users.updateSessionKey(ada.id, 'a-second-key-of-at-least-32-characters', first)).toBe(true);
+    expect((await users.findById(ada.id))?.sessionKey).toBe('a-second-key-of-at-least-32-characters');
+    expect(await users.updateSessionKey(ada.id, 'a-third-key-of-at-least-32-characters-x', undefined), 'undefined writes regardless').toBe(true);
+    expect((await users.findById(ada.id))?.sessionKey).toBe('a-third-key-of-at-least-32-characters-x');
+  });
+
+  it('is a secret column: not in a select-all result, handed back by the provider as sessionKey', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const users = app.make(UserRepository);
+    expect((await users.findById(ada.id))?.sessionKey).toBeNull();
+    await users.updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);
+    expect((await users.findById(ada.id))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
+    expect((await users.findForLogin(ada.email))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
+    expect(await users.find(ada.id)).not.toHaveProperty('session_key');
+    expect(await users.findById(ada.id)).not.toHaveProperty('user.session_key');
+    await expect(users.updateSessionKey(ada.id, '', null)).rejects.toThrow(/at least 32/);
+  });
+});
 
 describe('passwords', () => {
   it('factory users have the password `password`, hashed at the test costs (no rehash needed)', async () => {
