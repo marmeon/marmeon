@@ -1,13 +1,12 @@
 import { existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { RedirectResult } from '@marmeon/http';
-import { CookieJar, Router } from '@marmeon/router';
+import { Router } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
 import { sessionKey, type SessionPayload, type SessionStore } from './store.ts';
-import { CookieSessionStore } from './stores/cookie.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -396,20 +395,6 @@ describe('session stores', () => {
     await store.write('c'.repeat(64), '{}', { expectedVersion: undefined, lifetimeSeconds: -1 });
     expect(await store.read('c'.repeat(64))).toBeUndefined();
     expect(await store.gc()).toBe(1);
-  });
-
-  it('cookie: keeps the data in a cookie next to the id — and refuses oversized sessions', async () => {
-    const jar = new CookieJar(null);
-    const store = new CookieSessionStore(jar, 'app_session');
-    await store.write('ignored', '{"user_id":"1"}', { expectedVersion: undefined, lifetimeSeconds: 60 });
-    const [cookie] = await jar.queued();
-    expect(cookie).toMatch(/^app_session_data=.*Max-Age=60/);
-
-    const next = new CookieSessionStore(new CookieJar(cookie!.split(';')[0]!), 'app_session');
-    expect(await next.read()).toEqual({ data: '{"user_id":"1"}', version: 0 });
-    await expect(store.write('x', JSON.stringify({ big: 'x'.repeat(3000) }), { expectedVersion: 0, lifetimeSeconds: 60 })).rejects.toThrow('too large for the cookie driver');
-    // It cannot know what another request destroyed or wrote: a write back always writes.
-    expect(await new CookieSessionStore(new CookieJar(null), 'app_session').write('gone', '{}', { expectedVersion: 7, lifetimeSeconds: 60 })).toBe('written');
   });
 });
 

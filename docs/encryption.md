@@ -103,7 +103,7 @@ takes the resolved `EncryptionConfig`.
 | --- | --- |
 | Every cookie of the `web` group | Encrypted with the context `cookie:<name>`. A changed, foreign or unencrypted value counts as absent. `XSRF-TOKEN` is the one exception, since the browser's JavaScript reads it. |
 | Queued jobs | Jobs with `static encrypted = true`, and the framework's own: queued mails, queued listeners and notifications. |
-| Session data | In its store, with `SESSION_ENCRYPT=true`. The `cookie` session driver always encrypts. |
+| Session data | In its store, with `SESSION_ENCRYPT=true`. |
 | Cursors | The cursors of `cursorPaginate()` and of tables. A changed or made-up cursor answers 400. |
 | Signed URLs | Signed with a key derived from `APP_KEY`. |
 | Live updates and uploads | The tokens of live channels and of uploads, each signed with a key derived from `APP_KEY`. |

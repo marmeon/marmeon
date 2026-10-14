@@ -5,7 +5,7 @@ import { SessionStore } from '../store.ts';
 
 /**
  * `marmeon session:prune`: removes expired sessions — what the lottery does now and then after a response
- * (`SESSION_LOTTERY`), as a command for a scheduler or system cron. Redis and cookie sessions expire on their own.
+ * (`SESSION_LOTTERY`), as a command for a scheduler or system cron. Redis sessions expire on their own.
  */
 export class PruneSessionsCommand {
   static command = 'session:prune';
@@ -21,7 +21,7 @@ export class PruneSessionsCommand {
 
   async handle({ output }: CommandInput): Promise<number> {
     const { driver, lifetime } = this.#config;
-    if (driver === 'cookie' || driver === 'redis') {
+    if (driver === 'redis') {
       output.line(`Nothing to prune: ${driver} sessions expire on their own.`);
       return 0;
     }

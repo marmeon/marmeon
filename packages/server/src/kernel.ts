@@ -530,7 +530,7 @@ export function createHttpKernel(
     scope.instance(RequestNonce, nonce);
     const state = createRequestState(request, { maxBodySize, ip, nonce, ...(cookieDefaults ? { cookies: cookieDefaults } : {}) });
     if (debug || requests.hasSubscribers) states.set(request, state);
-    scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
+    scope.instance(CookieJar, state.cookies); // injectable per request
     scope.instance(IncomingRequest, request); // which tab sent it (`x-marmeon-connection`), for the live Broadcaster
     // Who sent it — for services without `ctx`: `Auth`'s Login event. The header is read only when asked for.
     scope.instance(RequestInfo, {

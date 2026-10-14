@@ -1,11 +1,9 @@
 import { createApplication, Logger, type Container, type LogContext } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { CookieDefaults, HttpServiceProvider } from '@marmeon/http';
-import { CookieJar } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { insecureCookieWarning, SessionConfig } from './config.ts';
 import { SessionServiceProvider } from './provider.ts';
-import { CookieSessionStore } from './stores/cookie.ts';
 
 /** Boots the session with `env` — its config, the cookie defaults it binds, and what it warned about. */
 async function boot(env: Record<string, string>) {
@@ -38,11 +36,5 @@ describe('SESSION_SECURE_COOKIE follows APP_URL', () => {
     expect((await boot({ NODE_ENV: 'production', APP_URL: 'https://example.com' })).warnings).toEqual([]);
     expect((await boot({ NODE_ENV: 'development', APP_URL: 'http://localhost:3000' })).warnings).toEqual([]);
     expect(insecureCookieWarning('APP_URL')).toContain('APP_URL is not https://');
-  });
-
-  it('the cookie store\'s cookie follows the jar\'s defaults (it sets no secure itself)', async () => {
-    const jar = new CookieJar(null, { secure: true });
-    await new CookieSessionStore(jar, 'app_session').write('id', '{"a":"1"}', { expectedVersion: undefined, lifetimeSeconds: 60 });
-    expect(await jar.queued()).toEqual([expect.stringMatching(/^app_session_data=.*; Secure; SameSite=Lax$/)]);
   });
 });

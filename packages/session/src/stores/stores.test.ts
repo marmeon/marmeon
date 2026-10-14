@@ -103,7 +103,6 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     }
     expect(await payload(store, alan.id)).toMatchObject({ [SESSION_USER_KEY]: 8 });
     expect(await payload(store, guest.id)).toBeDefined();
-    expect(await new UserSessions(undefined).end(8)).toBe(0); // the cookie driver: nothing on the server
   });
 
   it('compares and sets: a write over an older version is a conflict and writes nothing — a new key never replaces a session', async () => {

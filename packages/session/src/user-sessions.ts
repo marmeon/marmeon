@@ -12,21 +12,21 @@ import type { SessionStore } from './store.ts';
  * remember-me cookies included, use `AccountSessions` of `@marmeon/auth`.
  */
 export class UserSessions {
-  readonly #store: (() => SessionStore) | undefined;
+  readonly #store: () => SessionStore;
 
-  /** `store`: the app's session store — none for the cookie driver (its sessions live in the browsers). */
-  constructor(store: (() => SessionStore) | undefined) {
+  /** `store`: the app's session store. */
+  constructor(store: () => SessionStore) {
     this.#store = store;
   }
 
   /** Whether `end()` can find and delete a user's sessions: only the `database` driver can. */
   canEnd(): boolean {
-    return this.#store?.().destroyUser !== undefined;
+    return this.#store().destroyUser !== undefined;
   }
 
-  /** Ends every session of the user `id` the store can find — how many (0 when it cannot: file, Redis, memory, cookie). */
+  /** Ends every session of the user `id` the store can find — how many (0 when it cannot: file, Redis, memory). */
   async end(id: string | number): Promise<number> {
-    const store = this.#store?.();
-    return store?.destroyUser ? store.destroyUser(String(id)) : 0;
+    const store = this.#store();
+    return store.destroyUser ? store.destroyUser(String(id)) : 0;
   }
 }

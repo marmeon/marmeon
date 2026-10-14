@@ -1,6 +1,6 @@
 # @marmeon/session
 
-Sessions for Marmeon apps: an injectable session on file, database, Redis, cookie or memory stores, flash data and CSRF
+Sessions for Marmeon apps: an injectable session on file, database, Redis or memory stores, flash data and CSRF
 protection.
 
 ## Installation
