@@ -1,5 +1,41 @@
 # @marmeon/notifications
 
+## 0.2.0
+
+### Breaking changes
+
+- Add two-factor authentication with TOTP and recovery codes by @maxeckel in https://github.com/marmeon/marmeon/pull/16
+- Refuse to start when a route does not say who may call it by @maxeckel in https://github.com/marmeon/marmeon/pull/33
+
+### Features
+
+- Add UUIDv7 keys, as primary keys or as public lookup keys by @maxeckel in https://github.com/marmeon/marmeon/pull/14
+- Give the starter kit a look of its own by @maxeckel in https://github.com/marmeon/marmeon/pull/15
+- Add a middleware that requires two-factor authentication on routes by @maxeckel in https://github.com/marmeon/marmeon/pull/17
+- Add passkeys as a second factor and for passwordless sign-in by @maxeckel in https://github.com/marmeon/marmeon/pull/20
+- Prove the second factor again with a passkey by @maxeckel in https://github.com/marmeon/marmeon/pull/24
+- Add two-factor authentication pages to the starter kit by @maxeckel in https://github.com/marmeon/marmeon/pull/26
+- Add passkeys to the starter kit by @maxeckel in https://github.com/marmeon/marmeon/pull/27
+- Let route groups authorize their routes, and mark open ones with `everyone` by @maxeckel in https://github.com/marmeon/marmeon/pull/29
+
+### Fixes
+
+- Give the starter kit's tests time on a busy machine by @maxeckel in https://github.com/marmeon/marmeon/pull/11
+- Stop sharing the user's id with every page of the starter kit by @maxeckel in https://github.com/marmeon/marmeon/pull/12
+- End new apps' page titles with the app's name by @maxeckel in https://github.com/marmeon/marmeon/pull/13
+- Prune expired entries from the memory cache as it writes by @maxeckel in https://github.com/marmeon/marmeon/pull/21
+- Expect the public profile id in the two-factor test by @maxeckel in https://github.com/marmeon/marmeon/pull/23
+- Post the web app's two-factor forms even before hydration by @maxeckel in https://github.com/marmeon/marmeon/pull/25
+- Send only the fields a profile page shows to other users by @maxeckel in https://github.com/marmeon/marmeon/pull/32
+- Stop writing an `authorize` that always says yes to type a controller's context by @maxeckel in https://github.com/marmeon/marmeon/pull/31
+
+### Documentation
+
+- Add a guide that builds a small app step by step by @maxeckel in https://github.com/marmeon/marmeon/pull/19
+- Say on the website whom Marmeon is for, and link the community by @maxeckel in https://github.com/marmeon/marmeon/pull/35
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v0.1.3...v0.2.0
+
 ## 0.1.3
 
 ### Fixes

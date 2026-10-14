@@ -28,7 +28,14 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * itself — the first `## Upgrading to …` section of UPGRADING.md is refused until its entries are listed here, and from then on every
  * listed entry must stand under its release.
  */
-export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {};
+export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {
+  '0.2.0': [
+    'high-every-route-has-to-say-who-may-call-it',
+    'medium-authattempt-and-authlogin-can-wait-for-a-second-factor',
+    'low-a-custom-remembertokenstore-has-to-return-createdat',
+    'low-loginvia-has-a-fourth-member-passkey',
+  ],
+};
 
 /** `gh release create` stays a draft: `--draft` or `--draft=true`. gh reads the last flag and any value but `true` may mean false. */
 const DRAFT = /\s--draft(?:=true)?(?=\s|$)/;
