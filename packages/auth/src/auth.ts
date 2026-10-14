@@ -1,9 +1,9 @@
 import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
-import { err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
+import { afterCommit, afterRollback, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
-import { rotateSessionKey } from './account-sessions.ts';
+import { AccountSessions, rotateSessionKey } from './account-sessions.ts';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -146,6 +146,7 @@ export class Auth {
   readonly #request: RequestInfo;
   readonly #newPassword: NewPassword;
   readonly #twoFactor: TwoFactorState;
+  readonly #accountSessions: AccountSessions;
   #user: Promise<AuthUser | undefined> | undefined;
   /**
    * The credentials this request checked its session against (`#resolve`) or signed in with (`#login`).
@@ -169,6 +170,7 @@ export class Auth {
     request: RequestInfo,
     newPassword: NewPassword,
     twoFactor: TwoFactorState,
+    accountSessions: AccountSessions,
   ) {
     this.#session = session;
     this.#users = users;
@@ -183,6 +185,7 @@ export class Auth {
     this.#request = request;
     this.#newPassword = newPassword;
     this.#twoFactor = twoFactor;
+    this.#accountSessions = accountSessions;
   }
 
   /**
@@ -550,6 +553,28 @@ export class Auth {
     return found.user;
   }
 
+  /**
+   * A rotated validator coming back means two browsers hold one cookie, and the one that used it first already has a session:
+   * deleting the tokens would leave that session signed in. `consume()` runs in the request's transaction when there is one, and
+   * its deletes hold row locks there, so `end()` (which must run outside a transaction) runs once that transaction has finished,
+   * committed or rolled back: a rollback brings the deleted tokens back, and `end()` deletes them again. Never throws (a provider
+   * without a session key, say): this request is a guest anyway, and the error reaches the log.
+   */
+  async #endSessionsOfThief(userId: string | number): Promise<void> {
+    const end = async () => {
+      try {
+        await this.#accountSessions.end(userId as AuthUserId);
+      } catch (error) {
+        this.#logger.error('A rotated remember-me token was used again, but the sessions of the user could not be ended', {
+          user: userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+    await afterRollback(end);
+    await afterCommit(end);
+  }
+
   async #fromRememberCookie(): Promise<AuthUser | undefined> {
     const cookie = this.#cookies.get(this.#config.rememberCookie);
     // A read-only request (an island) cannot sign in: consuming the token rotates it, and the new one would never
@@ -559,7 +584,8 @@ export class Auth {
     if (!result.ok) {
       this.#cookies.delete(this.#config.rememberCookie);
       if (result.error.kind === 'stolen') {
-        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens of the user were revoked', { user: result.error.userId });
+        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens and sessions of the user are being ended', { user: result.error.userId });
+        await this.#endSessionsOfThief(result.error.userId);
       }
       return undefined;
     }

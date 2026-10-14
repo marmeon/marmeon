@@ -38,6 +38,7 @@ export interface RememberedDevice {
 /**
  * Why a remember-me cookie did not sign anyone in. `invalid` covers unknown, malformed and expired tokens alike;
  * `stolen` means an old validator came back after rotation: the cookie was copied, and every token of the user is gone now.
+ * `Auth` then ends the user's sessions too (`AccountSessions.end()`), the one the copy already signed in included.
  */
 export type RememberTokenError = { readonly kind: 'invalid' } | { readonly kind: 'stolen'; readonly userId: number | string };
 

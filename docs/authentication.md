@@ -277,8 +277,13 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
   value within 60 seconds of the rotation still passes.
-- **A copied cookie ends every token.** An old validator that comes back later means two browsers hold the same cookie. Every
-  remember-me token of that user is deleted, and the app logs a warning.
+- **A copied cookie ends every remember-me token and every session of the user.** An old validator that comes back later means two
+  browsers hold the same cookie, and the one that used it first already has a session. All of the user's remember-me tokens are
+  deleted, every session ends at its next request (see [ending every session of a user](#ending-every-session-of-a-user)), and
+  the app logs a warning. The request that presented the old cookie is a guest. If the `UserProvider` cannot store a session
+  key, ending the sessions fails: that is logged as an error, and only the tokens are gone.
+  A false alarm, such as a lost response after a rotation or a browser that restores an old cookie, signs the user out on every
+  device.
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
