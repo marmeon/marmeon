@@ -400,7 +400,8 @@ it(
     expect(typecheck.out).toBe('');
     expect(typecheck.code).toBe(0);
     expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
-    const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
+    // The first test boots the whole app cold: slower than Vitest's default 5 s on a loaded machine.
+    const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose', '--testTimeout=30000'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
     expect(tests.out).toContain('modules/home/home.test.ts');
     // The app's dialog in the page's language: the guard's question — and tab sync's — in German too.
     expect(tests.out).toContain('modules/home/confirm.test.ts');
