@@ -279,4 +279,18 @@ describe('The framework prefix', () => {
     const router = new Router().load(defineRoutes((Root) => Root.authorize(everyone).bind('note', NoteBinder).get('/notes/:note', () => 'ran')));
     await expect(router.dispatch(router.routes[0]!, { request: new Request('http://localhost/notes/1'), params: { note: '1' } })).rejects.toThrow('binds `note` with NoteBinder');
   });
+
+  it('names no secret of a path in its errors', async () => {
+    const secret = 'k3JdP9xQw2LmZ8vTn5RbY7uHc1AeF4sG';
+    const router = new Router().load(defineRoutes((Route) => Route.get(`/hooks/${secret}`, () => 'ran')));
+    const dispatched = await router.dispatch(router.routes[0]!, { request: new Request('http://localhost/x'), params: {} }).catch((error: Error) => error.message);
+    expect(dispatched).toContain('/hooks/');
+    expect(dispatched).not.toContain(secret);
+    expect(() => new Router().load({ framework: FRAMEWORK_ROUTES }, defineRoutes((Route) => Route.get(`/hooks/${secret}`, () => 'x')))).toThrow(/\/hooks\//);
+    try {
+      new Router().load({ framework: FRAMEWORK_ROUTES }, defineRoutes((Route) => Route.get(`/hooks/${secret}`, () => 'x')));
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secret);
+    }
+  });
 });

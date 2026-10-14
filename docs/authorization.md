@@ -235,7 +235,8 @@ Then answer the reports about open bindings one at a time. Each is a record that
 
 A check is only as good as what it can see. The router cannot tell a check that always returns `true` from a real one, a custom
 binder that ignores the `scope` it is given, or a handler that loads `ctx.params.id` itself instead of binding it. A policy check
-on one record also says nothing about a different record the route binds without `scopedBy`. Review these by hand: the rule makes
+on one record also says nothing about a different record the route binds without `scopedBy`. And `{ public: true }` on a binder whose
+records are not public silences the check: the router takes your word for it. Review these by hand: the rule makes
 sure somebody decided, not that they decided right.
 
 A refusal is a 403. Where ids must not be enumerable, a policy answers `denyAsNotFound()`, which makes a foreign record and a

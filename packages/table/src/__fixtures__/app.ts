@@ -150,7 +150,7 @@ export const SmallExportTable = defineTable({
   query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
   key: 'members.id',
   columns: { name: column('members.name').sortable() },
-  export: { csv: exportCsv().max(3) },
+  export: { csv: exportCsv().max(3).authorize(() => true) },
 });
 
 /** Sorted by a boolean column (with NULLs) — exported in batches by its keyset. */
@@ -159,7 +159,7 @@ export const ActiveTable = defineTable({
   query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
   key: 'members.id',
   columns: { name: column('members.name').sortable().searchable(), active: column('members.active').sortable() },
-  export: { csv: exportCsv() },
+  export: { csv: exportCsv().authorize(() => true) },
 });
 
 /** Keyed by text (the e-mail): keys are parsed as text, never as numbers. */
@@ -168,7 +168,8 @@ export const ByEmailTable = defineTable({
   query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
   key: { column: 'members.email', type: 'string' },
   columns: { name: column('members.name').sortable() },
-  actions: { deactivate: action(DeactivateByEmail) },
+  // Authorized by a policy written for another row shape: these tests are about keys, not about the policy.
+  actions: { deactivate: action(DeactivateByEmail).authorize(MemberPolicy as never, 'deactivate' as never) as unknown as ReturnType<typeof action<typeof DeactivateByEmail>> },
 });
 
 /** A base query that loads a relation: the table pages it like any other query. */

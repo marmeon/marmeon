@@ -1,3 +1,4 @@
+import { Redactor } from '@marmeon/core';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { HttpError } from './errors.ts';
 import { runPipeline } from './middleware.ts';
@@ -113,6 +114,10 @@ export const defaultToResponse: ResponseFactory = (result) => {
   return Response.json(result);
 };
 
+/** Masks secrets in the paths the router names in its errors: a webhook's token must not reach a log. */
+const shown = new Redactor();
+const showPath = (route: RouteDefinition): string => shown.path(route.path, route.path);
+
 export class Router {
   readonly #routes: RouteDefinition[] = [];
   #snapshot: readonly RouteDefinition[] | undefined;
@@ -211,7 +216,7 @@ export class Router {
       // The exemption is for the framework's own paths alone: a marker in the wrong hands cannot open `/admin`.
       for (const route of this.#routes.slice(before)) {
         if (!isReserved(route.path)) {
-          throw new Error(`${route.methods.join('|')} ${route.path}: only routes under /_marmeon/ load as the framework's own — give this one a decision with Route.authorize(…).`);
+          throw new Error(`${route.methods.join('|')} ${showPath(route)}: only routes under /_marmeon/ load as the framework's own — give this one a decision with Route.authorize(…).`);
         }
         route.reserved = true;
         this.#framework.add(route);
@@ -283,7 +288,7 @@ export class Router {
     // Judged once per route: a route's checks and bindings are frozen when it is registered.
     let problems = this.#judged.get(route);
     if (problems === undefined) this.#judged.set(route, (problems = this.#problemsOf(route)));
-    if (problems.length > 0) return Promise.reject(new RouteAccessError(formatAccessProblems(problems)));
+    if (problems.length > 0) return Promise.reject(new RouteAccessError(formatAccessProblems(problems, { path: showPath })));
     const ctx: HttpContext = { ...state, request: input.request, params: input.params, route };
     const toResponse = options.toResponse ?? defaultToResponse;
     const resolve = options.resolve ?? this.#resolve;

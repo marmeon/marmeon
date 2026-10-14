@@ -6,24 +6,29 @@ A route connects an HTTP method and a path to the code that answers it. A module
 each route usually points to an invokable controller: a class with a single `handle()` method.
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes, everyone } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
+import { NotePolicy } from './policies/NotePolicy.ts';
+import { NoteRepository } from './NoteRepository.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 
 export default defineRoutes((Route) => {
-  // Every signed-in user may call these: each controller reads and writes only the user's own notes.
-  const notes = Route.middleware(authenticate()).authorize(everyone);
+  const signedIn = Route.middleware(authenticate());
 
-  notes.get('/notes', ListNotesController).name('notes.index');
-  notes.post('/notes', StoreNoteController).name('notes.store');
-  notes.get('/notes/:note', ShowNoteController).name('notes.show');
+  // Every signed-in user may call these two: they read and write only the user's own notes.
+  const mine = signedIn.authorize(everyone);
+  mine.get('/notes', ListNotesController).name('notes.index');
+  mine.post('/notes', StoreNoteController).name('notes.store');
+
+  // A note named in the path is somebody's: the policy decides whether it is the signed-in user's.
+  signedIn.bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note')).get('/notes/:note', ShowNoteController).name('notes.show');
 });
 ```
 
-Every route says who may call it, or the app does not start. Here the registrar says it with `authorize(everyone)`; a policy
-or a check of your own says it otherwise. The [authorization](authorization.md#every-route-decides) page has the rule. The
+Every route says who may call it, or the app does not start. Here a registrar says it with `authorize(everyone)` and another with
+a policy; a check of your own says it otherwise. The [authorization](authorization.md#every-route-decides) page has the rule. The
 other examples on this page show the routing, and they sit in a registrar that has a decision, or leave it out where it is not the
 topic.
 
@@ -63,21 +68,26 @@ Routes load in the order of `modules: [...]` in `bootstrap/app.ts`, and within a
 The registrar has a method for each HTTP verb:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes, everyone } from '@marmeon/http';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { PinNoteController } from './controllers/PinNoteController.ts';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 import { UpdateNoteController } from './controllers/UpdateNoteController.ts';
+import { NotePolicy } from './policies/NotePolicy.ts';
+import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Root) => {
-  const Route = Root.middleware(authenticate()).authorize(everyone); // the user's own notes
-  Route.get('/notes', ListNotesController);
-  Route.post('/notes', StoreNoteController);
-  Route.put('/notes/:note', UpdateNoteController);
-  Route.patch('/notes/:note/pin', PinNoteController);
-  Route.delete('/notes/:note', DeleteNoteController);
+  const signedIn = Root.middleware(authenticate());
+  const mine = signedIn.authorize(everyone); // the user's own notes
+  mine.get('/notes', ListNotesController);
+  mine.post('/notes', StoreNoteController);
+
+  const note = signedIn.bind('note', NoteRepository);
+  note.authorize(can(NotePolicy, 'update', 'note')).put('/notes/:note', UpdateNoteController);
+  note.authorize(can(NotePolicy, 'update', 'note')).patch('/notes/:note/pin', PinNoteController);
+  note.authorize(can(NotePolicy, 'delete', 'note')).delete('/notes/:note', DeleteNoteController);
 });
 ```
 
@@ -124,22 +134,28 @@ a controller, which the container builds for each request. The [controllers](con
 A segment that starts with a colon is a parameter. Its value arrives in `ctx.params`, always as a string:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
-import { defineRoutes, everyone } from '@marmeon/http';
+import { authenticate, can } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
 import { ShowRevisionController } from './controllers/ShowRevisionController.ts';
+import { NotePolicy } from './policies/NotePolicy.ts';
+import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Route) => {
-  // The controller looks the note up within the signed-in user's own notes.
-  Route.middleware(authenticate()).authorize(everyone).get('/notes/:note/revisions/:revision', ShowRevisionController).name('notes.revisions.show');
+  Route.middleware(authenticate())
+    .bind('note', NoteRepository)
+    .authorize(can(NotePolicy, 'view', 'note'))
+    .get('/notes/:note/revisions/:revision', ShowRevisionController)
+    .name('notes.revisions.show');
 });
 ```
 
 ```ts title="modules/notes/controllers/ShowRevisionController.ts"
+import type { Row } from '@marmeon/database';
 import { Controller, type HttpContext } from '@marmeon/http';
 
 export class ShowRevisionController extends Controller {
-  handle(ctx: HttpContext<{}, { note: string; revision: string }>) {
-    return this.view('notes/Revision', { note: ctx.params.note, revision: ctx.params.revision });
+  handle(ctx: HttpContext<{}, { note: Row<'notes'>; revision: string }>) {
+    return this.view('notes/Revision', { note: ctx.params.note.id, revision: ctx.params.revision });
   }
 }
 ```
@@ -176,15 +192,17 @@ When two routes match the same path, the one registered first answers. Register 
 also match them:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes, everyone } from '@marmeon/http';
 import { ListDraftsController } from './controllers/ListDraftsController.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
+import { NotePolicy } from './policies/NotePolicy.ts';
+import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Root) => {
-  const Route = Root.middleware(authenticate()).authorize(everyone); // the user's own notes
-  Route.get('/notes/drafts', ListDraftsController).name('notes.drafts');
-  Route.get('/notes/:note', ShowNoteController).name('notes.show');
+  const signedIn = Root.middleware(authenticate());
+  signedIn.authorize(everyone).get('/notes/drafts', ListDraftsController).name('notes.drafts'); // the user's own drafts
+  signedIn.bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note')).get('/notes/:note', ShowNoteController).name('notes.show');
 });
 ```
 
@@ -291,18 +309,21 @@ Every attribute call on the registrar returns a new registrar. Routes registered
 original stays unchanged. Keep the registrar in a constant and register through it:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, can } from '@marmeon/auth';
 import { defineRoutes, everyone } from '@marmeon/http';
 import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 import { ShowNoteController } from './controllers/ShowNoteController.ts';
+import { NotePolicy } from './policies/NotePolicy.ts';
+import { NoteRepository } from './NoteRepository.ts';
 
 export default defineRoutes((Route) => {
-  const notes = Route.prefix('/notes').middleware(authenticate()).authorize(everyone).name('notes.');
+  const notes = Route.prefix('/notes').middleware(authenticate()).name('notes.');
+  const note = notes.bind('note', NoteRepository);
 
-  notes.get('/', ListNotesController).name('index'); // GET /notes, notes.index
-  notes.get('/:note', ShowNoteController).name('show'); // GET /notes/:note, notes.show
-  notes.delete('/:note', DeleteNoteController).name('destroy'); // DELETE /notes/:note, notes.destroy
+  notes.authorize(everyone).get('/', ListNotesController).name('index'); // GET /notes, notes.index
+  note.authorize(can(NotePolicy, 'view', 'note')).get('/:note', ShowNoteController).name('show'); // GET /notes/:note, notes.show
+  note.authorize(can(NotePolicy, 'delete', 'note')).delete('/:note', DeleteNoteController).name('destroy'); // DELETE /notes/:note, notes.destroy
 });
 ```
 

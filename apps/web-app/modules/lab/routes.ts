@@ -15,7 +15,8 @@ import { RaceValidationLabController, ShowValidationLabController, StoreValidati
 export default defineRoutes((Route) => {
   // Open to everyone, since the lab shows nothing of the app's records: the pages answer 404 unless the lab is on. A lab route added
   // later decides for itself.
-  const lab = Route.prefix('/lab').authorize(everyone);
+  const group = Route.prefix('/lab');
+  const lab = group.authorize(everyone);
   lab.get('/streaming', ShowStreamingLabController);
   lab.get('/client-only', ShowClientOnlyLabController);
   lab.get('/browser-only', ShowBrowserOnlyLabController);

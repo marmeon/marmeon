@@ -1,4 +1,4 @@
-export { accessLabel, describeAccess, everyone, formatAccessProblems, RouteAccessError, routeAccess } from './access.ts';
+export { accessLabel, describeAccess, everyone, isEveryone, formatAccessProblems, RouteAccessError, routeAccess } from './access.ts';
 export type { AccessCheck, AccessProblem } from './access.ts';
 export { Route, joinPaths } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';

@@ -261,6 +261,15 @@ describe('marmeon route:types (access problems)', { timeout: 30_000 }, () => {
     expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'about'");
   });
 
+  it('shows the route’s path without a secret in it', () => {
+    const secret = 'k3JdP9xQw2LmZ8vTn5RbY7uHc1AeF4sG';
+    const app = appWithRoute(undecided.replace("'/about'", `'/hooks/${secret}'`).replace(".name('about')", ''));
+    const { code, stderr } = marmeon(app, ['route:types']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('/hooks/');
+    expect(stderr).not.toContain(secret);
+  });
+
   it('fails route:types --check on it, even when the committed file is current', () => {
     const app = appWithRoute(undecided);
     marmeon(app, ['route:types']);

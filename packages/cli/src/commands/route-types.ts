@@ -1,4 +1,5 @@
 import { relative } from 'node:path';
+import { Application, Redactor } from '@marmeon/core';
 import { formatAccessProblems, Router } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 import { RouteTypes } from '../route-types.ts';
@@ -19,10 +20,12 @@ export class RouteTypesCommand {
 
   readonly #types: RouteTypes;
   readonly #router: Router;
+  readonly #app: Application;
 
-  constructor(types: RouteTypes, router: Router) {
+  constructor(types: RouteTypes, router: Router, app: Application) {
     this.#types = types;
     this.#router = router;
+    this.#app = app;
   }
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
@@ -41,7 +44,9 @@ export class RouteTypesCommand {
     // `marmeon build` runs this command and stops on a non-zero exit.
     const problems = this.#router.accessProblems();
     if (problems.length > 0) {
-      output.error(formatAccessProblems(problems));
+      // Build and CI logs: the paths go through the app's redactor, as the kernel's message does.
+      const redactor = this.#app.container.has(Redactor) ? this.#app.container.make(Redactor) : new Redactor();
+      output.error(formatAccessProblems(problems, { path: (route) => redactor.path(route.path, route.path) }));
       return 1;
     }
     return status;

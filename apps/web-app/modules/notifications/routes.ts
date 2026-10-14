@@ -8,10 +8,11 @@ import { ShowNotificationsController } from './controllers/ShowNotificationsCont
 export default defineRoutes((Route) => {
   // Decided for this inbox only: every action addresses `ctx.user`'s own notifications. The inbox looks a notification up within its
   // recipient, so another user's id is a 404. A route you add needs its own decision.
-  const inbox = Route.prefix('/notifications').middleware(authenticate()).middleware(verified()).authorize(everyone).name('notifications.');
-  inbox.get('/', ShowNotificationsController).name('index');
+  const inbox = Route.prefix('/notifications').middleware(authenticate()).middleware(verified()).name('notifications.');
+  const open = inbox.authorize(everyone);
+  open.get('/', ShowNotificationsController).name('index');
   // Actions: the list changes at once (optimistic), the answer only confirms it.
-  inbox.post('/read-all', MarkAllNotificationsReadController).name('read-all');
-  inbox.post('/:notification/read', MarkNotificationReadController).name('read');
-  inbox.delete('/:notification', DeleteNotificationController).name('destroy');
+  open.post('/read-all', MarkAllNotificationsReadController).name('read-all');
+  open.post('/:notification/read', MarkNotificationReadController).name('read');
+  open.delete('/:notification', DeleteNotificationController).name('destroy');
 });

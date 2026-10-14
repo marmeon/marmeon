@@ -1,5 +1,5 @@
 import { Controller } from '@marmeon/http';
-import type { HttpContext, Route } from '@marmeon/router';
+import { isEveryone, type HttpContext, type Route } from '@marmeon/router';
 import type { Table } from './define.ts';
 import { endpointOf, recordEndpoint, Tables } from './tables.ts';
 
@@ -60,7 +60,27 @@ export function tableRoutes<R extends Route<any, any, any>, T extends Table>(Rou
   const { definition } = table;
   const base = `/_tables/${definition.name}`;
   const registrar = Route as unknown as Route;
-  recordEndpoint(registrar.post(`${base}/actions/:tableAction`, TableActionController as never), definition, 'action');
+  const action = registrar.post(`${base}/actions/:tableAction`, TableActionController as never);
+  recordEndpoint(action, definition, 'action');
   recordEndpoint(registrar.post(`${base}/bulk/:tableBulk`, TableBulkController as never), definition, 'bulk');
   recordEndpoint(registrar.get(`${base}/export/:tableExport`, TableExportController as never), definition, 'export');
+  openRegistrar(action.checks, definition);
+}
+
+/**
+ * When everything the registrar checks is `everyone`, nothing decides who may act on a row key sent in a request body — and the
+ * router cannot see keys in a body. So each action, bulk action and export then has to decide for itself.
+ */
+function openRegistrar(checks: readonly unknown[], definition: Table['definition']): void {
+  if (checks.length === 0 || !checks.every((check) => isEveryone(check as never))) return;
+  const open = [
+    ...Object.entries(definition.actions).filter(([, entry]) => entry.authorization === undefined).map(([name]) => `action '${name}'`),
+    ...Object.entries(definition.bulk).filter(([, entry]) => entry.authorization === undefined).map(([name]) => `bulk action '${name}'`),
+    ...Object.entries(definition.exports).filter(([, entry]) => entry.visibility === undefined).map(([name]) => `export '${name}'`),
+  ];
+  if (open.length === 0) return;
+  throw new Error(
+    `tableRoutes(${definition.name}): its registrar lets everyone call it, and ${open.join(', ')} ${open.length === 1 ? 'has' : 'have'} no .authorize() — anyone who sees the table could act on any key they send. ` +
+      "Add .authorize(Policy, 'ability') to each, or decide the registrar with Route.authorize(can(…)). See docs/tables.md#the-security-model.",
+  );
 }

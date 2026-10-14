@@ -239,7 +239,7 @@ in `boot()`. Prefix the paths and the names with the package's name, and protect
 middleware such as `authenticate()`. The prefix `/_marmeon/` belongs to the framework: a package route there stops the app at
 start (see [the framework's paths](routing.md#the-frameworks-paths)). A package route says who may call it like an app's: with
 `can(…)` or a check of your own through `Route.authorize(…)` or the request's `authorize`, or with `everyone` when anyone may. The
-`@marmeon/*/internal` subpaths are how the framework's own packages mark theirs as the framework's, they are not API, and a route
+`@marmeon/*/internal` subpaths are how the framework's own packages mark theirs as the framework's, they are not API and outside semver, so they can change in any release, and a route
 loaded with their marker outside `/_marmeon/` is refused at load; `pnpm check:source` refuses importing them outside the
 framework's own sources.
 
