@@ -298,7 +298,7 @@ that asked, or to the dashboard.
 
 The kit's listeners send the owner a mail on `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodeUsed` and, for
 `during: 'sign-in'`, on `TwoFactorChallengeFailed`, the last at most once an hour for each account. `marmeon auth:reset-two-factor <email> --force` is the
-[operator reset](#operator-reset) as a command: it calls `removeAll()` and dispatches `TwoFactorDisabled` with `via: 'operator'`.
+[operator reset](#operator-reset) as a command: it ends every session and remember-me cookie of the account, calls `removeAll()` and dispatches `TwoFactorDisabled` with `via: 'operator'`.
 
 ## Events
 
@@ -335,6 +335,10 @@ A user who lost both the phone and the recovery codes has to be let in by an ope
 no built-in command for it (the starter kit has one); `TwoFactorStore.removeAll(userId)` removes the authenticator and every recovery code of an account,
 for example from a command of your own. `removeAll()` dispatches nothing: the command dispatches `TwoFactorDisabled` with
 `via: 'operator'` itself, so that listeners (the mail to the owner, an audit log) hear of it.
+
+End the sessions of the account in the same command with [`AccountSessions.end()`](authentication.md#ending-every-session-of-a-user): an account without a
+factor lets a signed-in session enrol one, so a session on the lost device, or an attacker's, would own the account. The starter
+kit's command does it before it removes the factors, and exits with 1 when the account is gone or when a factor was enrolled while it ran (run it again). The password alone signs in afterwards: if a compromise is suspected, have the owner reset the password as well.
 
 ## Key rotation
 

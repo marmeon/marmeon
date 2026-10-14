@@ -1,4 +1,4 @@
-import { twoFactorCode } from '@marmeon/auth';
+import { TwoFactorStore, twoFactorCode } from '@marmeon/auth';
 import { Logger } from '@marmeon/core';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -325,7 +325,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     await enable(ada);
     const info = vi.spyOn(app.make(Logger), 'info');
-    expect(await reset([ada.email.toUpperCase()])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}.`] });
+    expect(await reset([ada.email.toUpperCase()])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: ada.id });
     await app.assertDatabaseCount('two_factor_authentications', 0);
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
@@ -334,12 +334,45 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     expect(app.mail.queued(TwoFactorMail).map((mail) => mail.message.subject)).toContain('Two-factor authentication was reset');
   });
 
-  it('changes nothing without --force, and says so for an unknown address or an account without a factor', async () => {
+  it('ends every session and remember-me cookie of the account, so none of them can enrol a first factor afterwards', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, secret } = await enable(ada);
+    const challenge = await app.post('/login', credentialsOf(ada, { remember: 'on' })).assertRedirect('/two-factor-challenge');
+    const phone = await app.withCookie(SESSION, challenge.cookie(SESSION)!).post('/two-factor-challenge', { form: { code: twoFactorCode(secret, inSeconds(30)) } }).assertAuthenticated(ada);
+    const remember = phone.cookie('remember_web')!;
+    expect(remember).toBeDefined();
+    const other = await app.factory(UserFactory).create();
+    const otherCookie = (await app.post('/login', credentialsOf(other)).assertRedirect('/dashboard')).cookie(SESSION)!;
+    await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertOk();
+    // The sign-in rotates the cookie: the reset must refuse the rotated one, which is the valid one.
+    const rotated = (await app.withCookie('remember_web', remember).expectingJson().get('/dashboard').assertOk()).cookie('remember_web') ?? remember;
+    expect((await reset([ada.email])).code).toBe(0);
+    await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup').assertRedirect('/login');
+    await app.withCookie(SESSION, otherCookie).expectingJson().get('/dashboard').assertOk();
+    await app.withCookie('remember_web', rotated).expectingJson().get('/dashboard').assertUnauthorized();
+  });
+
+  it('exits 1 and says so when a factor was enrolled while it ran', async () => {
     const ada = await app.factory(UserFactory).create();
     await enable(ada);
+    const real = TwoFactorStore.prototype.factors;
+    const factors = vi.spyOn(TwoFactorStore.prototype, 'factors');
+    factors.mockImplementationOnce(real).mockImplementationOnce(() => Promise.resolve([{}] as never));
+    try {
+      expect(await reset([ada.email])).toEqual({ code: 1, lines: [`A second factor was enrolled for ${ada.email} while the command ran. Run it again.`] });
+    } finally {
+      factors.mockRestore();
+    }
+  });
+
+  it('changes nothing without --force, and says so for an unknown address or an account without a factor', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie } = await enable(ada);
     const refused = await reset([ada.email], {});
     expect(refused.code).toBe(1);
     expect(refused.lines[0]).toContain('pass --force');
+    await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertOk();
     await app.assertDatabaseCount('two_factor_authentications', 1);
     expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the address nobody@example.com.'] });
     expect((await reset([])).code).toBe(1);

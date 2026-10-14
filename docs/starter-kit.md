@@ -137,6 +137,9 @@ A user who lost the phone and the recovery codes is let in by an operator, once 
 marmeon auth:reset-two-factor ada@example.com --force
 ```
 
+The command also ends every session and remember-me cookie of the account, so a finder of the lost device cannot enrol a new factor
+from a session that is still open; the owner signs in again with the password.
+
 The kit does not require it anywhere: the `twoFactor()` middleware is provided and not installed. It comes with the page it
 needs, `/settings/two-factor/verify`; [Two-Factor Authentication](two-factor-authentication.md#in-the-starter-kit) shows the line
 that turns it on. To switch the feature off for every account, remove the `TwoFactorState` binding in `AuthServiceProvider.ts`, and the routes,
