@@ -221,10 +221,11 @@ describe('the script', () => {
 });
 
 describe('guard in a real repository', () => {
+  /** A repository on `main`; `git` commits as a fixed identity, with no detached maintenance process that outlives the test. */
   function repository() {
     const dir = tempDir('marmeon-release-guard-');
     const git = (...args: string[]) => {
-      const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
+      const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', '-c', 'maintenance.auto=false', ...args], { cwd: dir, encoding: 'utf8' });
       if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`);
       return result.stdout.trim();
     };

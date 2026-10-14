@@ -141,11 +141,11 @@ describe('releaseTarget', () => {
 });
 
 describe('releaseCommit', () => {
-  /** A repository on `main`; `git` runs a command in it, committing as a fixed identity. */
+  /** A repository on `main`; `git` runs a command in it, committing as a fixed identity (no detached maintenance process that outlives the test). */
   function repository() {
     const dir = tempDir('marmeon-release-rules-');
     const git = (...args: string[]) => {
-      const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
+      const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', '-c', 'maintenance.auto=false', ...args], { cwd: dir, encoding: 'utf8' });
       if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`);
       return result.stdout.trim();
     };
