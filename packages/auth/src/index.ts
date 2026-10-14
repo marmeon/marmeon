@@ -11,6 +11,7 @@ import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { NewPassword } from './new-password.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
+import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -40,6 +41,11 @@ export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyRespo
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
 export { PruneTokensCommand } from './prune-tokens.ts';
+export { describeDevice } from './device.ts';
+export type { DeviceDescription } from './device.ts';
+export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
+export { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
+export type { SignInRecord, SignInsTable, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
@@ -90,7 +96,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  static commands = [MakeAuthCommand, PruneTokensCommand];
+  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.

@@ -54,7 +54,7 @@ export class MakeAuthCommand {
     const adapter = typeof input.options.adapter === 'string' ? input.options.adapter : 'react';
     const source = join(STUBS, adapter, 'modules', 'auth');
     if (!/^[a-z]+$/.test(adapter) || !existsSync(source)) {
-      input.output.error(`There are no auth templates for the UI adapter "${adapter}". Known: ${readdirSync(STUBS).join(', ')}.`);
+      input.output.error(`There are no auth templates for the UI adapter "${adapter}". Known: ${readdirSync(STUBS).filter((name) => name !== 'migrations').join(', ')}.`);
       return 1;
     }
     const target = join(input.root, 'modules', 'auth');
