@@ -29,10 +29,10 @@ framework bring them.
 | `mail/` | Eight mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, and the notes about the second factor and about passkeys. |
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
-| `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, and `passkeys`. |
+| `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys` and `sign_ins`. |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
-| `auth.test.ts` and eight more | The module's own tests. |
+| `auth.test.ts` and nine more | The module's own tests. |
 
 The module's routes each say who may call them, as the app's do. Its groups decide with `everyone`: the sign-in and registration
 pages are open to guests, and every action behind `authenticate()` concerns only the signed-in user's own account. A route you
@@ -54,6 +54,7 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 | `/dashboard` | `dashboard` | signed in, with a confirmed address |
 | `/confirm-password` | `auth.password.confirm` | signed in, with a confirmed address |
 | `/settings/security` | `auth.security` | the same, and the password typed within 15 minutes by default |
+| `/settings/sign-ins/:signIn/end` | `auth.sign-ins.destroy` | the same as the security page; `POST`, ends one other sign-in |
 | `/settings/two-factor` | `auth.two-factor` | the same |
 | `/settings/two-factor/verify` | `auth.two-factor.verify` | signed in, with a confirmed address; for `twoFactor()` |
 | `/settings/passkeys` | `auth.passkeys` | the same as the security page |
@@ -61,7 +62,7 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 | `/email/verify` | `auth.verification.notice` | signed in |
 
 A signed-in user who opens a guest page goes to `/dashboard`. The security page changes the password and the e-mail address,
-and signs out the other devices. The two-factor page sets up an authenticator app and shows the recovery codes once; the
+signs out the other devices, and lists the browsers the account is signed in on, each with a button to end it ([sign-ins](authentication.md#sign-ins)). The two-factor page sets up an authenticator app and shows the recovery codes once; the
 challenge page asks for the code, a passkey or a recovery code after the password. The passkeys page adds, renames and removes passkeys, and the login page offers "Sign in with a passkey". The tokens page creates and revokes API tokens. `/` belongs to the home module, so the auth
 module leaves it free.
 

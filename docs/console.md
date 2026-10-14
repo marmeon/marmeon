@@ -113,6 +113,7 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:seeder <Name> --module=<m> [--no-register]` | A seeder in `seeders/`, added last to the module's `seeders`. See [seeding](seeding.md#generating-a-seeder). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
+| `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses. See [sign-ins](authentication.md#sign-ins). |
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 
@@ -131,7 +132,7 @@ The installed packages add their commands when the app boots:
 | `@marmeon/session` | `session:prune`, `make:session-table`. See [session](session.md#expiry-and-clean-up). |
 | `@marmeon/storage` | `uploads:prune`, `make:uploads-table`. See [file storage](storage.md#the-uploads-table). |
 | `@marmeon/notifications` | `notifications:prune`, `make:notifications-table`. See [notifications](notifications.md#the-notifications-table). |
-| `@marmeon/auth` | `make:auth`, `auth:prune-tokens`. The module `make:auth` writes adds `auth:prune-unverified`. See [starter kit](starter-kit.md). |
+| `@marmeon/auth` | `make:auth`, `make:sign-ins-table`, `auth:prune-tokens` (also deletes the sign-ins that are over, see [sign-ins](authentication.md#pruning-sign-ins)). The module `make:auth` writes adds `auth:prune-unverified`. See [starter kit](starter-kit.md). |
 | `@marmeon/devtools` | `devtools:clear`, `devtools:prune`. See [devtools](devtools.md). |
 
 ## Writing commands

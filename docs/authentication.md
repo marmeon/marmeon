@@ -267,7 +267,7 @@ that is the full reload, not an error. The other tabs of the same browser follow
 
 ## How long a sign-in lasts
 
-Every lifetime of a sign-in is listed here:
+Every lifetime of a sign-in is listed here. The list of [sign-ins](#sign-ins) leaves out a sign-in whose lifetime is over.
 
 | What | Default | What it ends | Assurance |
 | --- | --- | --- | --- |
@@ -327,6 +327,11 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
   key, ending the sessions fails: that is logged as an error, and only the tokens are gone.
   A false alarm, such as a lost response after a rotation or a browser that restores an old cookie, signs the user out on every
   device.
+- **A sign-in without "remember me" drops the cookie the browser already carried.** One token per device: the sign-in deletes the token
+  of the cookie it finds and the cookie with it, whether or not [sign-in tracking](#sign-ins) is on. With tracking, the row of that token
+  is deleted too, so the list does not show a browser as kept signed in by a cookie that no longer works. Only the row of the user who
+  signs in is deleted: on a shared browser the cookie of another user loses its token, and its row stays listed until its remember time
+  ends or its owner ends it.
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
@@ -637,6 +642,156 @@ of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
 table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account
 that does no harm, since its sessions end at their next request. For a user who still exists, a new fingerprint ends the other
 sessions with every driver: a new password, `logoutOtherDevices(password)` or `updateSessionKey()`. `UserSessions.end(id)` ends every session of a user at once, the current one included, and only with the `database` driver.
+
+## Sign-ins
+
+By default the framework knows only sessions, and a session does not say whose it is on which browser. Sign-in tracking is opt-in:
+it keeps one row per browser a user is signed in on, so the user can see them and sign out of one.
+
+To switch it on, write the migration of the table, run it, and bind the store:
+
+```sh
+pnpm marmeon make:sign-ins-table
+pnpm marmeon migrate
+```
+
+```ts title="modules/auth/AuthServiceProvider.ts"
+import { DatabaseSignIns, SignInStore } from '@marmeon/auth';
+import type { Container, ServiceProvider } from '@marmeon/core';
+
+export class AuthServiceProvider implements ServiceProvider {
+  register(container: Container): void {
+    container.singleton(SignInStore, DatabaseSignIns);
+  }
+}
+```
+
+Without the binding `auth.signIns()` and `auth.endSignIn()` throw and `Auth` keeps no rows. The starter kit and the web app bind it.
+
+A row is the authority over its sign-in. The session carries only the row's random id (128 bits), and every request checks that the row
+is still there, with every session driver: a session whose row is gone ends at its next request, and so does its remember-me cookie,
+which hangs on the same row. That is the end of a single session ASVS 7.5.2 asks an app to offer.
+
+| Column | What it holds |
+| --- | --- |
+| `id` | 22 characters of base64url, the only thing the session stores. |
+| `user_id` | The account; the rows go with it (`cascadeOnDelete()`). |
+| `user_agent` | The browser's `User-Agent`, cleaned of control characters and cut to 255 characters. |
+| `remember_selector`, `remember_until` | The selector of the browser's [remember-me](#remember-me) token and when it ends, or `null`. |
+| `signed_in_at` | The sign-in, or the sign-in by remember-me cookie that continued the row. |
+| `last_seen_at` | The last request, exact to 5 minutes: it is written at most that often, so most requests write nothing. |
+
+No IP address is stored. A list of places needs a lookup of the address, and a table of addresses is personal data that nothing else in
+the framework needs. An app that keeps an audit log takes the address from the [`Login` event](#events), which carries `ip` and
+`userAgent`.
+
+### Listing and ending sign-ins
+
+`auth.signIns()` returns the browsers of the signed-in user: the current one first, marked `current`, then the others by last request.
+Each entry has `id`, `current`, `remembered`, `signedInAt`, `lastSeenAt`, `createdAt`, `userAgent` and `device`. `device` is what
+`describeDevice()` makes of the `User-Agent`: `{ browser, system }`, each `undefined` when it is not a known one, so the page words it
+in its own language. It is a guess and a client can write what it likes in the header.
+
+The list leaves out a sign-in whose session is over: one that has been idle longer than `SESSION_LIFETIME` or began longer ago than
+`AUTH_SESSION_MAX_HOURS`, unless a valid remember-me cookie keeps it (`remembered`). Those rows stay in the table until
+[pruned](#pruning-sign-ins).
+
+`auth.endSignIn(id)` signs the user out of one of them. It returns a `Result`: `missing` for an id that is unknown, malformed or
+another user's (the same answer for all three), and `current` for the browser that asks, which signs out with `logout()`. The route
+must be behind [`confirmedPassword()`](#sudo-mode): without a recently typed password `endSignIn()` throws, because a stolen session
+cookie must not be able to sign its owner out everywhere else. A passkey-only account has no password to type, so it cannot end a
+sign-in yet.
+
+```ts title="modules/auth/controllers/EndSignInController.ts"
+import { Auth, type Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+
+export class EndSignInController extends Controller {
+  readonly #auth: Auth;
+
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+
+  async handle(ctx: HttpContext<Authenticated, { signIn: string }>) {
+    // `missing` (unknown, malformed or another user's) and `current` (this browser: `logout()` is its way out) end nothing;
+    // the page lists what is left either way.
+    await this.#auth.endSignIn(ctx.params.signIn);
+    return this.back('/settings/security');
+  }
+}
+```
+
+```ts title="modules/auth/routes.ts"
+Route.middleware(authenticate()).authorize(everyone).middleware(confirmedPassword()).post('/settings/sign-ins/:signIn/end', EndSignInController).name('auth.sign-ins.destroy');
+```
+
+A page shows `await auth.signIns()` with a button per entry that is not `current`.
+
+### What else ends rows
+
+The rows of the other devices are deleted wherever the other devices are signed out, so the list never shows a browser that has
+been signed out already:
+
+- `logout()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
+- A new password with `updatePassword()`, `logoutOtherDevices()` and `updateSessionKey()` end the rows of every other device and keep the
+  current one. This happens after the new hash or key is stored; a failure is logged, and the sessions are over by their fingerprint anyway.
+- A password reset ends every row of the user, since it has no session of its own to keep.
+- [`AccountSessions.end()`](#ending-every-session-of-a-user) ends every row of the user.
+- A copied remember-me cookie ends every row of the user, as it ends all their sessions. A token refused for its age (`AUTH_REMEMBER_DAYS`) or for predating the second factor, and one that is already deleted, take their row with them. A token past its end is only rejected and leaves its row, which `prune` removes; a row ended from the list ends its token on its next use.
+
+`UserSessions.end()` alone does not touch the rows.
+
+### Pruning sign-ins
+
+A row of a browser that never came back stays in the table. `marmeon auth:prune-tokens` deletes exactly the rows the list does not
+show, for every user, together with the expired tokens; with a bound `SignInStore` its output counts them. It uses `SESSION_LIFETIME`
+and `AUTH_SESSION_MAX_HOURS`, so it is the one command to schedule.
+
+### Switching it on for a running app
+
+A session that is open when the store gets bound is given its row at its next request, so nobody is signed out. A remember-me cookie
+made before has no row, and a cookie without a row never signs in: those devices sign in once more by password.
+
+### Testing
+
+`actingAs()` writes the session again with every request, so it cannot stand for a browser that stays signed in. A test signs in
+twice with the real form and sends each session cookie back, ends one row through the `SignInStore`, and checks that browser's next
+request:
+
+```ts title="modules/auth/sign-ins.test.ts"
+import { SignInStore } from '@marmeon/auth';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+
+it('signs the other browser out', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const ada = await app.factory(UserFactory).create();
+  const signIn = async () => {
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password' } });
+    return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+  };
+  const laptop = await signIn();
+  const phone = await signIn();
+  await laptop.get('/dashboard').assertOk();
+  await phone.get('/dashboard').assertOk();
+
+  const window = { idleSeconds: 7200, maxSeconds: 86_400 };
+  const rows = await app.make(SignInStore).list(ada.id, window);
+  expect(rows).toHaveLength(2);
+  await app.make(SignInStore).end(ada.id, rows[0]!.id);
+
+  // The browser whose row is gone is a guest at its next request; the other one is not.
+  const signedOut = (await Promise.all([laptop.get('/dashboard'), phone.get('/dashboard')])).filter((response) => response.status === 302);
+  expect(signedOut).toHaveLength(1);
+});
+```
+
+To test the controller itself, confirm the password in the test first (the session needs a recently typed password); `POST /confirm-password`
+does that in the starter kit.
 
 ## Signed-in pages are never cached
 
