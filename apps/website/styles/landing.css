@@ -1,4 +1,4 @@
-/* The landing page's sections: hero, principles, one type end to end, modules, batteries, security, testing, devtools, get started. */
+/* The landing page's sections: hero, principles, who it is for, one type end to end, modules, batteries, security, testing, devtools, get started. */
 .landing .landing-inner {
   max-width: 1280px;
   margin: 0 auto;
@@ -141,6 +141,94 @@
   color: var(--fg-2);
   font-size: 1rem;
   line-height: 1.5;
+}
+
+/* Who it is for */
+.landing .audience {
+  border-top: 1px solid var(--line);
+}
+
+.landing .audience .landing-inner {
+  padding-block: clamp(64px, 8vw, 112px);
+}
+
+.landing .audience-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+  list-style: none;
+}
+
+.landing .audience-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: clamp(20px, 3vw, 32px);
+  background: var(--bg-raised);
+}
+
+.landing .audience-card h3 {
+  margin: 0;
+  font-size: var(--text-h3);
+  font-weight: 600;
+  /* A card title wraps to two lines in a half-width column; body leading would pull them apart. */
+  line-height: 1.3;
+}
+
+.landing .audience-card dl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.landing .audience-card dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.landing .audience-card dt + dd + dt {
+  margin-top: var(--space-3);
+}
+
+.landing .audience-card dt.audience-with {
+  color: var(--accent);
+}
+
+.landing .audience-card dd {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.landing .audience-card a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: auto;
+}
+
+.landing .audience-fit {
+  max-width: 760px;
+  margin: var(--space-5) 0 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.landing .audience-fit strong {
+  color: var(--fg);
 }
 
 /* One type, end to end */
@@ -834,6 +922,13 @@
   flex-wrap: wrap;
   gap: var(--space-3);
   padding-top: 28px;
+}
+
+.landing .start-community {
+  margin: var(--space-5) 0 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
 }
 
 @media (max-width: 519px) {

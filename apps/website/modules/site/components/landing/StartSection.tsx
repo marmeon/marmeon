@@ -1,4 +1,5 @@
 import { Link } from '@marmeon/react';
+import { DISCORD_URL, DISCUSSIONS_URL } from '../../links.ts';
 import { Terminal } from '../Terminal.tsx';
 
 const READING: { href: string; title: string; text: string }[] = [
@@ -47,6 +48,17 @@ export function StartSection() {
               Read the docs
             </Link>
           </div>
+          <p className="start-community">
+            Questions, or something to show? Join the{' '}
+            <a href={DISCORD_URL} rel="noopener">
+              Discord
+            </a>{' '}
+            or start a{' '}
+            <a href={DISCUSSIONS_URL} rel="noopener">
+              discussion on GitHub
+            </a>
+            .
+          </p>
         </div>
       </div>
     </section>
