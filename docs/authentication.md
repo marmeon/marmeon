@@ -382,7 +382,7 @@ explains `block()`.
 ### Signing out other devices without a password
 
 An account that signs in by a link or through another provider has no password to check. `updateSessionKey()` signs out its other
-devices all the same: it draws a new random session key, stores it with `updateSessionKey(id, key)` of your `UserProvider`, and
+devices all the same: it draws a new random session key, stores it with `updateSessionKey(id, key, expected)` of your `UserProvider`, and
 gives this session the new fingerprint. The other sessions end at their next request with every session driver, and the
 remember-me tokens of the other devices are deleted. It works for accounts with a password too.
 
@@ -403,7 +403,7 @@ session key added:
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
-import { Repository, secret } from '@marmeon/database';
+import { Repository, secret, sql } from '@marmeon/database';
 import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> implements UserProvider<User> {
@@ -421,8 +421,16 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     await this.update(id, { password: hash });
   }
 
-  async updateSessionKey(id: number, key: string): Promise<void> {
-    await this.update(id, { session_key: key });
+  // Compare-and-set, in one statement: writes only while the stored key is still `expected` (null: none) and says whether it did.
+  // `undefined` writes regardless: only `AccountSessions.end()` passes it, to end every session of the account.
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    const result = await this.db
+      .updateTable('users')
+      .set({ session_key: key, updated_at: new Date() })
+      .where('id', '=', id)
+      .$if(expected !== undefined, (query) => query.where(expected === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expected}`))
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
   }
 
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
@@ -438,7 +446,15 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 
 `updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. Without
 `updateSessionKey` on the provider it throws an error that names the method, and it throws as well when `findById()` does not hand
-the new key back. It never leaves the other devices signed in while it seems to have worked.
+the new key back, or when `updateSessionKey()` of the provider does not answer with a boolean (an older provider, which took no
+`expected`). It never leaves the other devices signed in while it seems to have worked.
+
+The write is a compare-and-set because a request can run while the sessions of the account are being ended
+(`AccountSessions.end()`, or another device calling this). Such a request must not bind its session to the key it did not check.
+`updateSessionKey()` returns `true` when it replaced the key, and `false` when another request had replaced it first: this session
+was ended meanwhile and is signed out now. `AccountSessions.end()` passes `undefined` as `expected`: it writes regardless of the stored key, so
+no request can keep it from ending the sessions. Use `undefined` for nothing else. The same holds for `updatePassword()` and `logoutOtherDevices()`: they anchor the
+session to what the request verified, so a session that was ended meanwhile ends at its next request.
 
 ```ts title="modules/auth/controllers/SignOutOtherDevicesController.ts"
 import { Auth, type Authenticated } from '@marmeon/auth';
@@ -453,7 +469,7 @@ export class SignOutOtherDevicesController extends Controller {
   }
 
   async handle(_ctx: HttpContext<Authenticated>) {
-    await this.#auth.updateSessionKey();
+    await this.#auth.updateSessionKey(); // false: this session was ended meanwhile, and the next request is a guest's
     return this.back('/settings/security');
   }
 }
@@ -516,7 +532,7 @@ string), and writes nothing then. Otherwise it goes in three steps, in this orde
 
 The session key is what ends the sessions, so your `UserProvider` must store one: without `updateSessionKey()`, `end()` throws
 before it changes anything, and names what to add. It also throws when `findById()` does not hand the new key back; the
-remember-me tokens are gone by then. The starter kit's accounts have a `session_key` column. Inside a database transaction `end()` throws: each step commits on its own, and a rollback would bring the deleted tokens back.
+remember-me tokens are gone by then. The starter kit's accounts have a `session_key` column. A request that is running while `end()` replaces the key cannot bind its session to the new state, so it is signed out as well; Inside a database transaction `end()` throws: each step commits on its own, and a rollback would bring the deleted tokens back.
 
 A custom `RememberTokenStore` needs `exists(cookie)`, which says whether the token of a cookie is still stored and must see a `forgetUser()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
 remember-me cookie asks it right before it starts.

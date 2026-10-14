@@ -154,7 +154,7 @@ describe('the session key', { timeout: 30_000 }, () => {
     const phone = await app.post('/login', credentials(ada));
     const other = await app.post('/login', credentials(grace));
     await continuing(phone).expectingJson().get('/dashboard').assertOk();
-    await app.make(UserRepository).updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters');
+    await app.make(UserRepository).updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);
     await continuing(phone).expectingJson().get('/dashboard').assertUnauthorized();
     await continuing(other).expectingJson().get('/dashboard').assertOk();
     // The account signs in again: its fingerprint carries the new key.
@@ -173,16 +173,32 @@ describe('the session key', { timeout: 30_000 }, () => {
     await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/dashboard').assertUnauthorized();
   });
 
+  it('compares and sets: a key replaces only the one that was read, and says whether it did', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const users = app.make(UserRepository);
+    const first = 'a-first-key-of-at-least-32-characters-x';
+    expect(await users.updateSessionKey(ada.id, first, 'not-the-stored-key'), 'wrong expectation on a fresh account').toBe(false);
+    expect((await users.findById(ada.id))?.sessionKey).toBeNull();
+    expect(await users.updateSessionKey(ada.id, first, null)).toBe(true);
+    expect(await users.updateSessionKey(ada.id, 'a-second-key-of-at-least-32-characters', null), 'null no longer matches').toBe(false);
+    expect(await users.updateSessionKey(ada.id, 'a-second-key-of-at-least-32-characters', 'another-key')).toBe(false);
+    expect((await users.findById(ada.id))?.sessionKey).toBe(first);
+    expect(await users.updateSessionKey(ada.id, 'a-second-key-of-at-least-32-characters', first)).toBe(true);
+    expect((await users.findById(ada.id))?.sessionKey).toBe('a-second-key-of-at-least-32-characters');
+    expect(await users.updateSessionKey(ada.id, 'a-third-key-of-at-least-32-characters-x', undefined), 'undefined writes regardless').toBe(true);
+    expect((await users.findById(ada.id))?.sessionKey).toBe('a-third-key-of-at-least-32-characters-x');
+  });
+
   it('is a secret column: not in a select-all result, handed back by the provider as sessionKey', async () => {
     const ada = await app.factory(UserFactory).create();
     const users = app.make(UserRepository);
     expect((await users.findById(ada.id))?.sessionKey).toBeNull();
-    await users.updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters');
+    await users.updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);
     expect((await users.findById(ada.id))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
     expect((await users.findForLogin(ada.email))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
     expect(await users.find(ada.id)).not.toHaveProperty('session_key');
     expect(await users.findById(ada.id)).not.toHaveProperty('user.session_key');
-    await expect(users.updateSessionKey(ada.id, '')).rejects.toThrow(/at least 32/);
+    await expect(users.updateSessionKey(ada.id, '', null)).rejects.toThrow(/at least 32/);
   });
 });
 

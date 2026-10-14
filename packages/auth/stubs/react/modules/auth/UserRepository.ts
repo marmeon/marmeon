@@ -161,13 +161,22 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * The provider half of ending sessions: stores the key, so every session's fingerprint stops matching. Call `auth.updateSessionKey()`
-   * or `AccountSessions.end()` instead — they also drop the remember-me tokens; a direct call leaves remember-me devices signed in.
+   * The provider half of ending sessions: stores `key` only while the stored key is still `expected` (`null`: none), in one
+   * statement, and says whether it did — so two callers that read the same key cannot both win. `undefined` stores it regardless
+   * (`AccountSessions.end()` only). Call `auth.updateSessionKey()` or
+   * `AccountSessions.end()` instead: they pass `expected`, and also drop the remember-me tokens.
    */
-  async updateSessionKey(id: number, key: string): Promise<void> {
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
     // An empty key would give the fingerprint of an account without one (NULL).
     if (key.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.');
-    await this.update(id, { session_key: key });
+    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
+    const result = await this.db
+      .updateTable('users')
+      .set({ session_key: key, updated_at: new Date() })
+      .where('id', '=', id)
+      .$if(expected !== undefined, (query) => query.where(expected === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expected}`))
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
   }
 
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {

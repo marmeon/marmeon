@@ -28,9 +28,13 @@ class Users implements UserProvider {
     return undefined;
   }
   async updatePasswordHash(): Promise<void> {}
-  async updateSessionKey(id: number, key: string): Promise<void> {
+  /** Compare-and-set; `expected === undefined` writes regardless, as `AccountSessions.end()` asks. */
+  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
     const row = this.rows.get(id);
-    if (row) row.key = key;
+    if (!row) return false;
+    if (expected !== undefined && (row.key ?? null) !== expected) return false;
+    row.key = key;
+    return true;
   }
 }
 
@@ -54,6 +58,17 @@ class SignInController extends Controller {
   }
 }
 
+class EndOtherSessionsController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    return { done: await this.#auth.updateSessionKey() };
+  }
+}
+
 class WhoController extends Controller {
   readonly #auth: Auth;
   constructor(auth: Auth) {
@@ -69,6 +84,7 @@ const routes = openRoutes((Route) => {
   Route.post('/as/:id', SignInController);
   Route.get('/login', () => 'login').name('auth.login');
   Route.get('/who', WhoController);
+  Route.middleware(authenticate()).post('/end-other-sessions', EndOtherSessionsController);
   Route.middleware(authenticate()).get('/me', (ctx) => ({ id: ctx.user.id }));
 });
 
@@ -174,6 +190,21 @@ describe('AccountSessions.end()', () => {
     expect(await rememberWho(browser, cookie), 'the tokens stay').toEqual({ id: 1 });
   });
 
+  it('is not starved by a request that replaces the key at the same moment: that request is signed out, end() succeeds', async () => {
+    const users = new Users();
+    users.rows.set(1, { user: ada, key: null });
+    const { browser, accounts } = await boot(users);
+    const attacker = browser();
+    await attacker.send('/as/1', { method: 'POST' });
+    // The attacker's own key rotation lands while end() has just read the account — before end() writes.
+    users.after = async () => {
+      expect((await attacker.send('/end-other-sessions', { method: 'POST' })).status).toBe(200);
+    };
+    expect(await accounts.end(1)).toEqual(ok({ removed: 0 }));
+    expect((await attacker.send('/me')).status).toBe(401);
+    expect(await rememberWho(browser, attacker.jar.get('remember_web') ?? 'none')).toEqual({ id: null });
+  });
+
   it('throws before it writes anything when the provider cannot store a session key', async () => {
     const users = new KeylessUsers();
     users.rows.set(1, { user: ada, key: null });
@@ -181,7 +212,7 @@ describe('AccountSessions.end()', () => {
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
     const cookie = laptop.jar.get('remember_web')!;
-    await expect(accounts.end(1)).rejects.toThrow(/updateSessionKey\(id, key\).*session_key/s);
+    await expect(accounts.end(1)).rejects.toThrow(/updateSessionKey\(id, key, expected\).*session_key/s);
     expect((await laptop.send('/me')).status, 'the session stays').toBe(200);
     expect(await rememberWho(browser, cookie), 'the tokens stay').toEqual({ id: 1 });
   });

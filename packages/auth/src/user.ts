@@ -54,10 +54,14 @@ export interface UserProvider<U = AuthUser> {
   /** Stores a new hash (rehash on login, password change, reset). */
   updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash): Promise<void>;
   /**
-   * Stores a new session key (`auth.updateSessionKey()`); `findById()` and `findForLogin()` hand it back as `sessionKey`.
+   * Stores a new session key (`auth.updateSessionKey()`, `AccountSessions`); `findById()` and `findForLogin()` hand it back as
+   * `sessionKey`. Compare-and-set: write `key` only when the stored key equals `expected` (`null`: none), in **one** statement
+   * (`UPDATE … WHERE session_key = expected`), and return whether it wrote. Two callers that read the same key must not both win.
+   * `expected === undefined` writes regardless of the stored key: `AccountSessions.end()` passes it, to end every session of an
+   * account, and must not fail because somebody else replaced the key at the same time.
    * Optional — needed only by apps that end the other sessions of an account without changing its password.
    */
-  updateSessionKey?(id: U extends { readonly id: infer Id } ? Id : never, key: string): Promise<void>;
+  updateSessionKey?(id: U extends { readonly id: infer Id } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
 }
 // Annotated: the declaration then names `UserProvider` instead of spelling out the app's user type.
 export const UserProvider: Token<UserProvider> = token<UserProvider>('UserProvider');

@@ -2,31 +2,52 @@ import { randomBytes } from 'node:crypto';
 import { err, inTransaction, ok, type Result } from '@marmeon/core';
 import type { UserSessions } from '@marmeon/session';
 import type { RememberTokenStore } from './remember.ts';
-import { UserProvider, type AuthUserId, type Credentials } from './user.ts';
+import { UserProvider, type AuthUserId } from './user.ts';
 
 /**
- * Stores a new random session key for the account `id`, so every session's fingerprint stops matching, and returns the
- * account's credentials with it — or `undefined` when the account is gone. Throws when the provider cannot store a key or does
- * not hand it back, since nobody would be signed out.
+ * Replaces the session key of the account `id` by a new random one, so every other session's fingerprint stops matching.
+ * `expected` is a string or `null` (compare-and-set: only while the stored key is that, `conflict` otherwise), or `undefined` to
+ * write regardless — only for ending every session of an account. Throws when the provider cannot store a key, answers with the
+ * old contract (no boolean), or does not hand the column back from `findById()`, since nobody would be signed out.
  */
-export async function rotateSessionKey(users: UserProvider, id: string | number, caller: string): Promise<Credentials | undefined> {
+export async function rotateSessionKey(
+  users: UserProvider,
+  id: string | number,
+  expected: string | null | undefined,
+  caller: string,
+): Promise<{ readonly kind: 'rotated'; readonly key: string } | { readonly kind: 'conflict' }> {
   if (typeof users.updateSessionKey !== 'function') {
     throw new Error(
-      `${caller} needs UserProvider.updateSessionKey(id, key): store the key in a column of the account ` +
+      `${caller} needs UserProvider.updateSessionKey(id, key, expected): store the key in a column of the account ` +
         '(a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
     );
   }
-  const key = randomBytes(32).toString('base64url');
-  await users.updateSessionKey(id as never, key);
-  const credentials = await users.findById(id as never);
-  if (credentials === undefined) return undefined;
-  if (credentials.sessionKey !== key) {
-    throw new Error(
+  const notReturned = () =>
+    new Error(
       `${caller} stored a new key, but UserProvider.findById() does not hand it back as sessionKey — the other ` +
         'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForLogin().',
     );
+  const key = randomBytes(32).toString('base64url');
+  const stored: unknown = await users.updateSessionKey(id as never, key, expected);
+  if (typeof stored !== 'boolean') {
+    throw new Error(
+      `${caller}: UserProvider.updateSessionKey(id, key, expected) must return whether it stored the key (compare-and-set: write only ` +
+        'when the stored key equals expected, in one statement). See docs/authentication.md#signing-out-other-devices-without-a-password.',
+    );
   }
-  return credentials;
+  const credentials = await users.findById(id as never);
+  if (!stored) {
+    // Somebody else's key stands: the provider has to hand it back, or nothing here could tell a conflict from a lost write.
+    if (credentials !== undefined && typeof credentials.sessionKey !== 'string') throw notReturned();
+    return { kind: 'conflict' };
+  }
+  if (credentials === undefined) return { kind: 'rotated', key };
+  // A string that is not ours is a later rotation by somebody else, which ends the sessions as well. The old key, or none, means
+  // the provider said it wrote and did not (or does not hand the column back).
+  if (typeof credentials.sessionKey !== 'string' || (expected === undefined ? credentials.sessionKey !== key : credentials.sessionKey === expected)) {
+    throw notReturned();
+  }
+  return { kind: 'rotated', key };
 }
 
 /** What `AccountSessions.end()` did right away. */
@@ -62,7 +83,7 @@ export class AccountSessions {
     }
     if (typeof this.#users.updateSessionKey !== 'function') {
       throw new Error(
-        'AccountSessions.end() needs UserProvider.updateSessionKey(id, key) to end the sessions of every session driver: store the key in a ' +
+        'AccountSessions.end() needs UserProvider.updateSessionKey(id, key, expected) to end the sessions of every session driver: store the key in a ' +
           'column of the account (a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
       );
     }
@@ -73,7 +94,12 @@ export class AccountSessions {
     // sign-in that is running finds its token gone); then the key, which ends the sessions of every driver; the store last, as a
     // tidy-up that frees the rows at once.
     await this.#remember.forgetUser(id);
-    await rotateSessionKey(this.#users, id, 'AccountSessions.end()');
+    // Written regardless of the stored key (`expected` undefined): a request replacing it at the same time cannot make this fail.
+    // A request that checked its session against an older key cannot bind itself to this one (`Auth` anchors to what it verified).
+    if ((await rotateSessionKey(this.#users, id, undefined, 'AccountSessions.end()')).kind === 'conflict') {
+      if ((await this.#users.findById(id as never)) === undefined) return err({ kind: 'missing' });
+      throw new Error('AccountSessions.end(): UserProvider.updateSessionKey(id, key, undefined) answered false for an account that exists — it must write regardless of the stored key.');
+    }
     const removed = (await this.#sessions?.end(id)) ?? 0;
     return ok({ removed });
   }
