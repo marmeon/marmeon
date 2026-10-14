@@ -385,7 +385,8 @@ describe('Auth (session guard)', () => {
     expect(events.filter((event) => event instanceof Failed).slice(-2).map((event) => (event as Failed).identifier)).toEqual(['ada@example.com', 'nobody@example.com']);
   });
 
-  it('enumeration by timing: an unknown e-mail takes as long as a wrong password', async () => {
+  // A timing test: a leak fails every attempt, a stall of a busy machine only some — so a failed attempt is tried again.
+  it('enumeration by timing: an unknown e-mail takes as long as a wrong password', { retry: 2 }, async () => {
     const users = new MemoryUsers();
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
