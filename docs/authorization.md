@@ -138,6 +138,20 @@ error TS2554: Expected 3 arguments, but got 2.
 A refusal stops the request before the body is validated, so a user who may not edit gets a 403 rather than field errors. The
 [controllers](controllers.md#the-order-of-a-request) page shows the whole order.
 
+To decide for a whole group of routes, put the check on the registrar. It runs after the bindings and before the request's own
+`authorize`, and every route registered through it has to pass:
+
+```ts
+const notes = Route.middleware(authenticate()).bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note'));
+```
+
+`everyone` is the check that says yes to anyone. It stands for a decision, and it never opens a route further than another check
+allows.
+
+A check is only as good as what it can see. The router cannot tell a check that always returns `true` from a real one, a custom
+binder that ignores the `scope` it is given, or a handler that loads `ctx.params.id` itself instead of binding it. A policy check
+on one record also says nothing about a different record the route binds without `scopedBy`. Review these by hand.
+
 > [!WARNING]
 > Route model binding finds a record by its id, whoever owns it. Without `authorize`, the note of any user is one id away. Give
 > every route that binds a record a policy, or bind it within its owner, as the

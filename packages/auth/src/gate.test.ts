@@ -1,7 +1,7 @@
 import { createApplication, defineModule, err, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
-import type { RouteBinder } from '@marmeon/router';
+import { accessLabel, type RouteBinder } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
@@ -176,6 +176,10 @@ const routes = defineRoutes((Route) => {
   post.get('/posts/:post', ShowPostController);
   post.put('/posts/:post', UpdatePostController);
   post.delete('/posts/:post', DeletePostController);
+  // The same policy asked once, at the registrar, for every route below it.
+  const guarded = signedIn.bind('post', PostBinder).authorize(can(PostPolicy, 'view', 'post'));
+  guarded.get('/guarded/:post', () => 'guarded');
+  signedIn.authorize(() => deny('Not today.') as never).get('/denied', () => 'denied');
 });
 
 async function boot() {
@@ -243,6 +247,20 @@ describe('policies at the request (can) — after route binding', () => {
     expect(await (await as(2))('GET', '/posts/2')).toMatchObject({ status: 200 }); // the author sees it
   });
 
+  it('asks can() at the registrar, after the binding: 403 for a refusal, 404 through denyAsNotFound(), and the user it is for', async () => {
+    const as = await boot();
+    expect(await (await as(2))('GET', '/guarded/2')).toMatchObject({ status: 200 }); // the author of the draft
+    expect(await (await as(1))('GET', '/guarded/3')).toMatchObject({ status: 200 });
+    expect(await (await as(1))('GET', '/guarded/2')).toEqual({ status: 404, body: { message: 'Not Found' } });
+    expect((await (await as(1))('GET', '/guarded/999')).status).toBe(404);
+    expect(await (await as(undefined))('GET', '/guarded/3')).toMatchObject({ status: 401 }); // authenticate() answers before the check
+  });
+
+  it('treats a policy response returned by a registrar check as a refusal, not a pass', async () => {
+    const as = await boot();
+    expect((await (await as(1))('GET', '/denied')).status).toBe(403);
+  });
+
   it('runs before() first — an admin may do anything', async () => {
     const as = await boot();
     expect((await (await as(4))('PUT', '/posts/1', { title: 'Admin' })).status).toBe(200);
@@ -279,6 +297,20 @@ describe('policies on api routes — the token guard tells the gate who it is', 
     const { api } = await boot();
     expect(await api('1/posts:read', 'PUT', '/posts/1', { title: 'By token' })).toEqual({ status: 403, body: { message: 'This token may not: posts:write.' } });
     expect((await api('nobody', 'PUT', '/posts/1', { title: 'x' })).status).toBe(401);
+  });
+});
+
+describe('can() labels', () => {
+  it('names the policy, the ability and where the resource comes from', () => {
+    expect(accessLabel(can(PostPolicy, 'update', 'post'))).toBe('can PostPolicy.update(post)');
+    expect(accessLabel(can(PostPolicy, 'view', (ctx: HttpContext<Authenticated, { post: Post }>) => ctx.params.post))).toBe('can PostPolicy.view(…)');
+    expect(accessLabel(can(PostPolicy, 'create'))).toBe('can PostPolicy.create');
+  });
+
+  it('labels what untyped code passes instead of throwing', () => {
+    const untyped = can as (...args: unknown[]) => never;
+    expect(accessLabel(untyped(undefined, 'view'))).toBe('can Policy.view');
+    expect(accessLabel(untyped(class {}, Symbol('x')))).toBe('can Policy.Symbol(x)');
   });
 });
 
@@ -341,5 +373,9 @@ export function policyTypes() {
     signedIn.put('/posts/:post', UpdatePostController);
     // @ts-expect-error — the policy needs a signed-in user: no authenticate()
     Route.bind('post', PostBinder).put('/posts/:post', UpdatePostController);
+
+    signedIn.bind('post', PostBinder).authorize(can(PostPolicy, 'update', 'post'));
+    // @ts-expect-error — the registrar binds no `post`
+    signedIn.authorize(can(PostPolicy, 'update', 'post'));
   });
 }

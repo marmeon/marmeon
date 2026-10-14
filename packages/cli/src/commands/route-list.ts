@@ -1,7 +1,7 @@
-import { isMiddlewareClass, Router, type AnyAction, type AnyMiddleware } from '@marmeon/router';
+import { accessLabel, isMiddlewareClass, routeAccess, Router, type AnyAction, type AnyMiddleware, type RouteDefinition } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 
-/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, action. */
+/** Prints every registered route as a table: methods, path, name, group, middleware in execution order, who may call it, action. */
 export class RouteListCommand {
   static command = 'route:list';
   static description = 'List all registered routes';
@@ -20,11 +20,19 @@ export class RouteListCommand {
       route.routeName ?? '',
       route.group ?? '',
       this.#router.middlewareFor(route).map(middlewareName).join(', '),
+      this.#access(route),
       actionName(route.action),
     ]);
-    output.table(['METHOD', 'PATH', 'NAME', 'GROUP', 'MIDDLEWARE', 'ACTION'], rows);
+    output.table(['METHOD', 'PATH', 'NAME', 'GROUP', 'MIDDLEWARE', 'ACCESS', 'ACTION'], rows);
     output.line();
     output.line(`${rows.length} routes`);
+  }
+
+  // The framework's own routes decide for themselves (signatures, their own checks), so they say so instead of `none`.
+  #access(route: RouteDefinition): string {
+    if (this.#router.isFrameworkRoute(route)) return 'framework';
+    const checks = routeAccess(route);
+    return checks.length === 0 ? 'none' : checks.map(accessLabel).join(' + ');
   }
 }
 

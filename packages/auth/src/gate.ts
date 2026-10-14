@@ -1,4 +1,4 @@
-import { HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@marmeon/router';
+import { describeAccess, HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@marmeon/router';
 import { Auth } from './auth.ts';
 import type { AuthUser, Authenticated } from './user.ts';
 
@@ -278,10 +278,13 @@ export function can<P extends object, K extends AbilityOf<P>, TParams extends ob
   resource: (ctx: HttpContext<Authenticated, TParams>) => ResourcesOf<P, K>[0],
 ): (ctx: HttpContext<Authenticated, TParams>, resolve: ClassResolver) => Promise<boolean>;
 export function can(policy: PolicyClass, ability: string, ...source: [ResourceSource<unknown, Record<string, unknown>>?]) {
-  return async (ctx: HttpContext<Authenticated, Record<string, unknown>>, resolve: ClassResolver) => {
-    const [from] = source;
+  const [from] = source;
+  const check = async (ctx: HttpContext<Authenticated, Record<string, unknown>>, resolve: ClassResolver) => {
     const resources = from === undefined ? [] : [typeof from === 'function' ? from(ctx) : ctx.params[from as string]];
     await (resolve(Gate).authorize as (policy: PolicyClass, ability: string, ...resources: unknown[]) => Promise<void>)(policy, ability, ...resources);
     return true;
   };
+  // What `route:list` shows: the parameter's name, `…` for a function, nothing without a resource.
+  const resource = from === undefined ? '' : typeof from === 'function' ? '(…)' : `(${String(from)})`;
+  return describeAccess(check, `can ${policy?.name || 'Policy'}.${String(ability)}${resource}`);
 }

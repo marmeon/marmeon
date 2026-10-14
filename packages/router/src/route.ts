@@ -1,3 +1,4 @@
+import { isScoped, registrationSite, siteOf, type AccessCheck } from './access.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { StandardSchemaV1 } from './request-definition.ts';
 import type {
@@ -6,6 +7,7 @@ import type {
   AnyMiddleware,
   BindingWith,
   BoundValue,
+  ClassResolver,
   ConsistentBinder,
   EmptyObject,
   ExtractParams,
@@ -27,11 +29,17 @@ type NoRelations = 'this binder loads nothing with the record — only one with 
  * alone would bind without the parent. `with` goes with both.
  */
 type BindOptions<TScope extends string, TWith> =
-  | { readonly scopedBy?: never; readonly column?: never; readonly with?: TWith }
-  | { readonly scopedBy: [TScope] extends [never] ? NoParent : TScope; readonly column?: string; readonly with?: TWith };
+  | { readonly scopedBy?: never; readonly column?: never; readonly public?: true; readonly with?: TWith }
+  | { readonly scopedBy: [TScope] extends [never] ? NoParent : TScope; readonly column?: string; readonly public?: true; readonly with?: TWith };
 
 /** What `scopedBy` takes before any parameter is bound — the message the compiler shows. */
 type NoParent = 'scopedBy names a parameter bound before this one — bind the parent first: Route.bind(parent, …).bind(child, …, { scopedBy: parent })';
+
+/** A registrar made by `authorize()`; `used` turns true when a route is registered through it or one derived from it. */
+export interface RegistrarAudit {
+  used: boolean;
+  readonly site: string | undefined;
+}
 
 export interface GroupAttributes {
   readonly prefix: string;
@@ -40,6 +48,12 @@ export interface GroupAttributes {
   /** Middleware group of every route registered through this registrar (`web`, `api`). */
   readonly group?: string | undefined;
   readonly bindings?: readonly RouteBinding[];
+  /** Checks of every route registered through this registrar (`Route.authorize`), in declaration order. */
+  readonly checks?: readonly AccessCheck[];
+  /** Where `authorize()` registrars are recorded, so `Router.load` can refuse one that registered nothing. */
+  readonly audit?: RegistrarAudit[];
+  /** The `authorize()` registrars this one descends from. */
+  readonly pending?: readonly RegistrarAudit[];
   /** Every route of the group is internal: never sent to the browser (`RouteDefinition.internal()`). */
   readonly internal?: boolean;
 }
@@ -154,13 +168,39 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     if (options?.column !== undefined && options.scopedBy === undefined) {
       throw new Error(`Route.bind('${param}') has a column (${options.column}) but no scopedBy — name the parent parameter, or the record is looked up without it.`);
     }
+    const scopedBy: unknown = options?.scopedBy;
+    // The router and the access check read `scopedBy` with the same test: '', null or false must not leave a binding quietly unscoped.
+    if (scopedBy !== undefined && (!isScoped({ scopedBy } as RouteBinding) || !(this.#attributes.bindings ?? []).some((bound) => bound.param === scopedBy))) {
+      throw new Error(`Route.bind('${param}') is scoped by ${JSON.stringify(scopedBy)}, which is not the name of a parameter bound before it — bind the parent first: Route.bind(parent, …).bind('${param}', …, { scopedBy: parent }).`);
+    }
     const binding: RouteBinding = {
       param,
       binder,
       ...(options?.scopedBy === undefined ? {} : { scopedBy: options.scopedBy, column: options.column }),
+      ...(options?.public ? { public: true as const } : {}),
       ...(options?.with?.length ? { with: [...options.with] } : {}),
     };
     return this.#with({ bindings: [...(this.#attributes.bindings ?? []), binding] });
+  }
+
+  /**
+   * Declares who may call every route registered through the returned registrar. It runs after the bindings (so it sees the
+   * bound records) and before the request's own `authorize`, validation, interceptors and the handler; `false` answers 403.
+   * Several checks all have to say yes, and `everyone` never opens a route further than another check allows.
+   * See docs/routing.md#route-groups and docs/authorization.md#authorizing-requests.
+   */
+  authorize(
+    check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>,
+  ): Route<TState, TParams, TBindings> {
+    // Untyped code gets past the parameter type; a check that is not callable would otherwise fail on the first request.
+    if (typeof check !== 'function') {
+      throw new TypeError(`Route.authorize() takes a function (ctx, resolve) => boolean — got ${typeof check} at ${this.#attributes.prefix}.`);
+    }
+    const holder: { stack?: string } = {};
+    Error.captureStackTrace(holder, this.authorize);
+    const entry: RegistrarAudit = { used: false, site: siteOf(holder.stack) };
+    this.#attributes.audit?.push(entry);
+    return this.#with({ checks: [...(this.#attributes.checks ?? []), check as AccessCheck], pending: [...(this.#attributes.pending ?? []), entry] });
   }
 
   /**
@@ -172,7 +212,12 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   group(callback: (Route: this) => void): void {
-    callback(this);
+    // Calling group() is use, even with an empty callback.
+    for (const entry of this.#attributes.pending ?? []) entry.used = true;
+    const returned: unknown = callback(this);
+    if (typeof (returned as { then?: unknown } | undefined)?.then === 'function') {
+      throw new Error('Route.group() takes a synchronous callback: routes registered after its first await would escape the checks made at load.');
+    }
   }
 
   // -- Route registration ----------------------------------------------------
@@ -182,42 +227,42 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     path: TPath,
     action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
-    return this.#add(['GET'], path, action as unknown as AnyAction);
+    return this.#add(['GET'], path, action as unknown as AnyAction, Route.prototype.get);
   }
 
   post<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(['POST'], path, action);
+    return this.#add(['POST'], path, action, Route.prototype.post);
   }
 
   put<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(['PUT'], path, action);
+    return this.#add(['PUT'], path, action, Route.prototype.put);
   }
 
   patch<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(['PATCH'], path, action);
+    return this.#add(['PATCH'], path, action, Route.prototype.patch);
   }
 
   delete<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(['DELETE'], path, action);
+    return this.#add(['DELETE'], path, action, Route.prototype.delete);
   }
 
   options<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(['OPTIONS'], path, action);
+    return this.#add(['OPTIONS'], path, action, Route.prototype.options);
   }
 
   match<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
@@ -225,14 +270,14 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(methods, path, action);
+    return this.#add(methods, path, action, Route.prototype.match);
   }
 
   any<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
     action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
-    return this.#add(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], path, action);
+    return this.#add(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], path, action, Route.prototype.any);
   }
 
   // -- Internals ---------------------------------------------------------------
@@ -243,7 +288,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return new Route(this.#register, { ...this.#attributes, ...attributes });
   }
 
-  #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string): RouteDefinition {
+  #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string, caller: (...args: never[]) => unknown): RouteDefinition {
     const fullPath = joinPaths(this.#attributes.prefix, path);
     // The types refuse this already; a route built without them fails at boot.
     const request = typeof action === 'function' ? (action as { request?: { schema?: unknown } }).request : undefined;
@@ -263,8 +308,11 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       namePrefix: this.#attributes.namePrefix,
       group: this.#attributes.group,
       bindings,
+      checks: this.#attributes.checks ?? [],
+      site: registrationSite(caller),
       internal: this.#attributes.internal ?? false,
     });
+    for (const entry of this.#attributes.pending ?? []) entry.used = true;
     this.#register(route);
     return route;
   }

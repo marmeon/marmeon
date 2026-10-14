@@ -297,6 +297,7 @@ The attributes combine in any order:
 | `name(prefix)` | Puts `prefix` in front of every route's name: `name('show')` under `name('notes.')` is `notes.show`. |
 | `middleware(m)` | Adds a middleware to every route. Call it once per middleware. |
 | `bind(param, binder)` | Resolves a parameter to a record for every route. See [route model binding](#route-model-binding). |
+| `authorize(check)` | Asks `check` before any route answers. See [below](#asking-who-may-call-a-group). |
 | `internal()` | Keeps every route out of the browser. See [above](#routes-the-browser-never-learns). |
 | `group(callback)` | Calls `callback` with the registrar, to write a block of routes with the same attributes. |
 
@@ -307,6 +308,34 @@ Route.prefix('/teams/:team').name('teams.').group((Route) => {
   Route.get('/notes', (ctx) => `The notes of ${ctx.params.team}`).name('notes.index'); // GET /teams/:team/notes
 });
 ```
+
+### Asking who may call a group
+
+`authorize(check)` declares a check for every route of the registrar. It gets the route's context, with the records the registrar
+binds, and a `resolve` function. `false` answers 403, and the check may throw its own `HttpError`. It runs after the bindings and
+before everything else a route does: the request's `authorize`, the validation (a live validation included), an interceptor
+such as a file upload, and the handler.
+
+```ts title="modules/admin/routes.ts"
+export default defineRoutes((Route) => {
+  const admin = Route.prefix('/admin').middleware(authenticate()).authorize((ctx) => ctx.user.isAdmin);
+
+  admin.get('/users', ListUsersController).name('admin.users.index');
+  admin.delete('/users/:user', DeleteUserController).name('admin.users.destroy');
+});
+```
+
+Bindings run before the registrar's check. A check that ignores the record therefore answers 404 for an id that does not exist
+and 403 for one that does, which tells a caller which ids exist. Where ids must not be enumerable, use `can(...)` with a policy
+that answers `denyAsNotFound()`.
+
+A registrar that never registers a route makes `load()` fail: `Route.authorize(check);` on a line of its own would throw the
+check away, and `const dev = Route.authorize(check); if (flag) dev.get(…)` fails whenever `flag` is false. Put the condition
+around the whole `Route.authorize(check)…` call instead.
+
+Checks add up: a group inside `admin` can call `authorize` again, and a request has to pass the registrar's checks and then its
+own `authorize`. A later check never opens what an earlier one closed. `everyone`, exported by `@marmeon/http`, is the check that
+says yes to anyone: `Route.authorize(everyone)`. See [authorization](authorization.md#authorizing-requests).
 
 ### Middleware
 
@@ -431,6 +460,29 @@ The attachment is looked up with `note_id` equal to the bound note's `id`. An at
 changed id in the URL cannot reach somebody else's attachment. The column defaults to the parent's name with `_id`. Pass
 `column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`. A `column` without `scopedBy` is a
 compile error, and refused when the routes load: it would look the attachment up without its note.
+
+### A binding everyone may use
+
+A binding finds any record by its key. When that is the point, because the page shows a profile every visitor may see, say so with
+`public`:
+
+```ts title="modules/user-profile/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ShowProfileController } from './controllers/ShowProfileController.ts';
+import { ProfileDirectory } from './ProfileDirectory.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone)
+    .bind('user', ProfileDirectory, { public: true })
+    .get('/people/:user', ShowProfileController)
+    .name('profiles.show');
+});
+```
+
+A route that lets `everyone` call it and binds a record without `scopedBy` or `public` is reported by the router, because anyone
+could read any record by changing the id. `public` excuses routes that only read (GET, HEAD); a route that changes data and lets everyone call it needs a real check. A
+binding scoped by a public one is open too, and says so with its own `public: true`: `{ scopedBy: 'team', public: true }` means
+public within its parent.
 
 ### Loading relations with the record
 
@@ -624,9 +676,12 @@ answers the loopback names. The
 pnpm marmeon route:list
 ```
 
-It shows each route's method, path, name, group, the middleware in the order it runs, and the controller, or `Closure`. The
-last line counts the routes. The list includes the framework's own routes, so it also answers which middleware a request really
-passes.
+It shows each route's method, path, name, group, the middleware in the order it runs, who may call it, and the controller, or
+`Closure`. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
+for a policy (the parameter it asks about in brackets, `(…)` for a function, none for an ability without a resource), and
+`check` for a function of your own. `none` marks a route that does not say who may call it; `framework` marks the framework's
+own routes, which guard themselves. The last line counts the routes. The list includes the
+framework's own routes, so it also answers which middleware a request really passes.
 
 ## Testing
 
