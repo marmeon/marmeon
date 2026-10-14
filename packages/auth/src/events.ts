@@ -14,7 +14,7 @@ const instant = v.pipe(
 const userId = v.custom<AuthUserId>((value) => typeof value === 'string' || typeof value === 'number', 'Expected a user id (a string or a number)');
 
 /** The longest user agent an event keeps — the header has no limit, a queued payload should. */
-const MAX_USER_AGENT = 512;
+export const MAX_USER_AGENT = 512;
 
 /**
  * A user signed in (password, remember-me cookie, registration). Queueable: a queued listener gets

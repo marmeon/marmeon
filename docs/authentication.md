@@ -317,11 +317,11 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 64-character `secret()` columns, and `user_id` with `cascadeOnDelete()`, so a deleted user's tokens go with the account.
 
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
-  value within 60 seconds of the rotation still passes.
+  value within 10 seconds of the rotation still passes.
 - **A copied cookie ends every remember-me token and every session of the user.** An old validator that comes back later means two
   browsers hold the same cookie, and the one that used it first already has a session. All of the user's remember-me tokens are
   deleted, every session ends at its next request (see [ending every session of a user](#ending-every-session-of-a-user)), and
-  the app logs a warning. The request that presented the old cookie is a guest. If the `UserProvider` cannot store a session
+  the app logs a warning with the address and the browser of the request that presented the old cookie. The request that presented the old cookie is a guest. If the `UserProvider` cannot store a session
   key, ending the sessions fails: that is logged as an error, and only the tokens are gone.
   A false alarm, such as a lost response after a rotation or a browser that restores an old cookie, signs the user out on every
   device.

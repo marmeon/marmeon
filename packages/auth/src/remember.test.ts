@@ -68,6 +68,15 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(await tokens.consume(issued(thief)!)).toStrictEqual(err({ kind: 'invalid' })); // the thief is out too
   });
 
+  it('takes the previous validator for 9 seconds after the rotation, and for a theft after 11', async () => {
+    const cookie = await tokens.create(1, inAMonth());
+    await tokens.consume(cookie);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9000 });
+    expect(await tokens.consume(cookie)).toMatchObject({ ok: true, value: { cookie: undefined } });
+    vi.setSystemTime(Date.now() + 2000);
+    expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'stolen', userId: 1 }));
+  });
+
   it('keeps the revocation of a theft and the removal of an expired token inside a transaction that returns the err', async () => {
     const stolen = await tokens.create(1, inAMonth());
     await tokens.create(1, inAMonth());
@@ -100,7 +109,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     const [first, second] = await Promise.all([tokens.consume(cookie), tokens.consume(cookie)]);
     expect([first!.ok, second!.ok]).toEqual([true, true]);
     expect([first!, second!].map(issued).filter(Boolean).length).toBeLessThanOrEqual(1); // at most one rotation won
-    expect(await tokens.consume(cookie)).toMatchObject({ ok: true, value: { cookie: undefined } }); // still within 60 s
+    expect(await tokens.consume(cookie)).toMatchObject({ ok: true, value: { cookie: undefined } }); // still within 10 s
     expect((await rows()).map((row) => row.user_id)).toEqual([1]);
   });
 
