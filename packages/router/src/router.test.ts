@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defineMiddleware, defineRoutes, FRAMEWORK_ROUTES, Router, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
+import { defineMiddleware, defineRoutes, Router, type EmptyObject, type HttpContext, type LoadOptions, type Next } from './index.ts';
+import { FRAMEWORK_ROUTES } from './internal.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 interface User {
   id: string;
@@ -44,7 +46,7 @@ function request(userId?: string): Request {
   return new Request('http://localhost/', { headers: userId ? { 'x-demo-user': userId } : {} });
 }
 
-const routes = defineRoutes((Route) => {
+const routes = openRoutes((Route) => {
   Route.get('/', () => 'home').name('home');
   Route.get('/ping', PingController).name('ping');
 
@@ -132,7 +134,7 @@ describe('Dispatching', () => {
   it('builds middleware classes through the resolver, once per dispatch', async () => {
     const built: string[] = [];
     const router = new Router().load(
-      defineRoutes((Route) => Route.middleware(ClassAuthenticate).get('/me', (ctx) => ctx.user.id).name('me')),
+      openRoutes((Route) => Route.middleware(ClassAuthenticate).get('/me', (ctx) => ctx.user.id).name('me')),
     );
     const resolve = <T>(Class: new () => T) => {
       built.push(Class.name);
@@ -151,7 +153,7 @@ describe('Dispatching', () => {
       await next();
       return next();
     });
-    const router = new Router().load(defineRoutes((Route) => Route.middleware(twice).get('/', () => 'ok').name('x')));
+    const router = new Router().load(openRoutes((Route) => Route.middleware(twice).get('/', () => 'ok').name('x')));
 
     await expect(router.dispatch(router.findByName('x')!, { request: request(), params: {} })).rejects.toThrow(
       /called next\(\) more than once/,
@@ -163,7 +165,7 @@ describe('Dispatching', () => {
 // Type-level guarantees — checked by `tsc`, not at runtime.
 // ---------------------------------------------------------------------------
 
-defineRoutes((Route) => {
+openRoutes((Route) => {
   // @ts-expect-error — requireAdmin needs `user`, but nothing upstream provides it.
   Route.middleware(requireAdmin);
 
@@ -204,37 +206,37 @@ describe('The framework prefix', () => {
   const reserved = /paths under \/_marmeon\/ belong to the framework/;
 
   it('refuses a route under /_marmeon/ and names its method and path', () => {
-    const load = () => new Router().load(defineRoutes((Route) => Route.get('/_marmeon/session', () => 'x')));
+    const load = () => new Router().load(openRoutes((Route) => Route.get('/_marmeon/session', () => 'x')));
     expect(load).toThrow(reserved);
     expect(load).toThrow('GET /_marmeon/session');
   });
 
   it('refuses the prefix itself', () => {
-    expect(() => new Router().load(defineRoutes((Route) => Route.get('/_marmeon', () => 'x')))).toThrow(reserved);
+    expect(() => new Router().load(openRoutes((Route) => Route.get('/_marmeon', () => 'x')))).toThrow(reserved);
   });
 
   it('refuses it through the prefix option of load()', () => {
-    expect(() => new Router().load({ prefix: '/_marmeon' }, defineRoutes((Route) => Route.get('/x', () => 'x')))).toThrow(reserved);
+    expect(() => new Router().load({ prefix: '/_marmeon' }, openRoutes((Route) => Route.get('/x', () => 'x')))).toThrow(reserved);
   });
 
   it('refuses it through a route group', () => {
-    expect(() => new Router().load(defineRoutes((Route) => Route.prefix('/_marmeon').group((Route) => Route.post('/x', () => 'x'))))).toThrow(/POST \/_marmeon\/x/);
+    expect(() => new Router().load(openRoutes((Route) => Route.prefix('/_marmeon').group((Route) => Route.post('/x', () => 'x'))))).toThrow(/POST \/_marmeon\/x/);
   });
 
   it('ignores the case of the prefix', () => {
-    expect(() => new Router().load(defineRoutes((Route) => Route.get('/_MARMEON/x', () => 'x')))).toThrow(reserved);
-    expect(() => new Router().load(defineRoutes((Route) => Route.get('/_Marmeon', () => 'x')))).toThrow(reserved);
+    expect(() => new Router().load(openRoutes((Route) => Route.get('/_MARMEON/x', () => 'x')))).toThrow(reserved);
+    expect(() => new Router().load(openRoutes((Route) => Route.get('/_Marmeon', () => 'x')))).toThrow(reserved);
   });
 
   it('does not accept anything but the marker', () => {
     // @ts-expect-error — only the marker is a valid value.
     const options: LoadOptions = { framework: true };
-    expect(() => new Router().load(options, defineRoutes((Route) => Route.get('/_marmeon/x', () => 'x')))).toThrow(reserved);
+    expect(() => new Router().load(options, openRoutes((Route) => Route.get('/_marmeon/x', () => 'x')))).toThrow(reserved);
   });
 
   it('lets look-alike paths through', () => {
     const router = new Router().load(
-      defineRoutes((Route) => {
+      openRoutes((Route) => {
         Route.get('/_marmeonish', () => 'x');
         Route.get('/x/_marmeon/y', () => 'x');
       }),
@@ -242,14 +244,29 @@ describe('The framework prefix', () => {
     expect(router.routes).toHaveLength(2);
   });
 
-  it('lets the framework load its own routes, next to others', () => {
-    const router = new Router().load(
-      { framework: FRAMEWORK_ROUTES },
-      defineRoutes((Route) => {
-        Route.get('/_marmeon/session', () => 'x');
-        Route.get('/other', () => 'x');
-      }),
-    );
-    expect(router.routes.map((route) => route.path)).toEqual(['/_marmeon/session', '/other']);
+  it('lets the framework load its own routes, and only under /_marmeon/', () => {
+    const router = new Router().load({ framework: FRAMEWORK_ROUTES }, defineRoutes((Route) => Route.get('/_marmeon/session', () => 'x')));
+    expect(router.routes.map((route) => route.path)).toEqual(['/_marmeon/session']);
+    expect(router.isFrameworkRoute(router.routes[0]!)).toBe(true);
+  });
+
+  it('refuses the marker for a path outside /_marmeon/, also in a nested load', () => {
+    const outside = new Router();
+    expect(() => outside.load({ framework: FRAMEWORK_ROUTES }, defineRoutes((Route) => Route.get('/admin/users', () => 'x')))).toThrow('only routes under /_marmeon/');
+    const nested = new Router();
+    expect(() =>
+      nested.load(
+        { framework: FRAMEWORK_ROUTES },
+        defineRoutes((Route) => {
+          Route.get('/_marmeon/own', () => 'x');
+          nested.load({ framework: FRAMEWORK_ROUTES }, defineRoutes((Inner) => Inner.get('/admin', () => 'x')));
+        }),
+      ),
+    ).toThrow('only routes under /_marmeon/');
+  });
+
+  it('does not run a route that neither is the framework\'s nor says who may call it — also when dispatch is called directly', async () => {
+    const router = new Router().load(defineRoutes((Route) => Route.get('/x', () => 'ran')));
+    await expect(router.dispatch(router.routes[0]!, { request: new Request('http://localhost/x'), params: {} })).rejects.toThrow('does not say who may call');
   });
 });

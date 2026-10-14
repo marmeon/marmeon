@@ -9,6 +9,8 @@ import {
   DOC_TEXT_RULES,
   ENGINE,
   engineHits,
+  INTERNAL,
+  internalImportHits,
   negativeEnvHits,
   mutationCommentHits,
   oldNameHits,
@@ -76,6 +78,34 @@ describe('check:source — the old name is gone', () => {
     expect(oldNameHits([{ path: 'a.md', text: `${lower}code.de-legacy` }])).toHaveLength(1);
     // The company name does not cover another mention on its line.
     expect(oldNameHits([{ path: 'LICENSE', text: `${old}Code and ${old}Core` }])).toHaveLength(1);
+  });
+});
+
+describe('check:source — the internal subpath of a package is for the framework alone', () => {
+  const internal = INTERNAL; // spelled in parts by the script: this file holds no import of one either
+
+  it('finds an import outside packages/<name>/src/ — an app, a stub, a script, a third-party style package', () => {
+    expect(
+      internalImportHits([
+        { path: 'apps/web-app/modules/x/routes.ts', text: `import { FRAMEWORK_ROUTES } from '@marmeon/router${internal}';\n` },
+        { path: 'packages/auth/stubs/react/x.ts', text: `const m = await import("@marmeon/http${internal}");` },
+        { path: 'scripts/x.ts', text: `export { y } from '@marmeon/router${internal}';` },
+      ]),
+    ).toEqual([
+      `apps/web-app/modules/x/routes.ts:1: import { FRAMEWORK_ROUTES } from '@marmeon/router${internal}';`,
+      `packages/auth/stubs/react/x.ts:1: const m = await import("@marmeon/http${internal}");`,
+      `scripts/x.ts:1: export { y } from '@marmeon/router${internal}';`,
+    ]);
+  });
+
+  it('lets the framework’s own sources, its docs and ordinary imports through', () => {
+    expect(
+      internalImportHits([
+        { path: 'packages/live/src/index.ts', text: `import { FRAMEWORK_ROUTES } from '@marmeon/http${internal}';` },
+        { path: 'docs/package-development.md', text: `@marmeon/router${internal} is not API` },
+        { path: 'apps/web-app/modules/x/routes.ts', text: `import { defineRoutes } from '@marmeon/http';` },
+      ]),
+    ).toEqual([]);
   });
 });
 

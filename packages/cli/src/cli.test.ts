@@ -234,6 +234,55 @@ describe('marmeon route:types (reserved page names)', { timeout: 30_000 }, () =>
   });
 });
 
+describe('marmeon route:types (access problems)', { timeout: 30_000 }, () => {
+  const blank = join(repo, 'apps/blank-app');
+
+  function appWithRoute(source: string): string {
+    const app = realpathSync(tempDir('marmeon-route-access'));
+    cpSync(blank, app, { recursive: true, filter: (path) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(path.slice(blank.length)) && !/[/\\]\.env$/.test(path) });
+    symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
+    mkdirSync(join(app, 'storage'));
+    mkdirSync(join(app, 'modules/pages'));
+    writeFileSync(join(app, 'modules/pages/index.ts'), "import { defineModule } from '@marmeon/core';\nimport routes from './routes.ts';\n\nexport default defineModule({ name: 'pages', routes });\n");
+    writeFileSync(join(app, 'modules/pages/routes.ts'), source);
+    const bootstrap = readFileSync(join(app, 'bootstrap/app.ts'), 'utf8');
+    writeFileSync(join(app, 'bootstrap/app.ts'), bootstrap.replace("import system from", "import pages from '../modules/pages/index.ts';\nimport system from").replace('modules: [system]', 'modules: [system, pages]'));
+    return app;
+  }
+
+  const undecided = "import { defineRoutes } from '@marmeon/http';\n\nexport default defineRoutes((Route) => {\n  Route.get('/about', () => 'about').name('about');\n});\n";
+
+  it('fails on a route that does not say who may call it, after writing the file, and names the route and where it is', () => {
+    const app = appWithRoute(undecided);
+    const { code, stderr } = marmeon(app, ['route:types']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('GET  /about  about  Closure  modules/pages/routes.ts:4');
+    expect(stderr).toContain('docs/authorization.md#authorizing-requests');
+    expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'about'");
+  });
+
+  it('fails route:types --check on it, even when the committed file is current', () => {
+    const app = appWithRoute(undecided);
+    marmeon(app, ['route:types']);
+    const { code, stderr } = marmeon(app, ['route:types', '--check']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('/about');
+  });
+
+  it('passes once the route says everyone may call it', () => {
+    const app = appWithRoute(undecided.replace("import { defineRoutes }", "import { defineRoutes, everyone }").replace('defineRoutes((Route) => {', 'defineRoutes((Root) => {\n  const Route = Root.authorize(everyone);'));
+    expect(marmeon(app, ['route:types']).code).toBe(0);
+  });
+
+  it('stops marmeon build', () => {
+    const app = appWithRoute(undecided);
+    const { code, stderr } = marmeon(app, ['build', '--no-typecheck']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('Not built: marmeon route:types failed');
+    expect(existsSync(join(app, 'dist'))).toBe(false);
+  });
+});
+
 describe('marmeon: two commands with one name', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
 

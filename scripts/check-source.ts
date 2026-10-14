@@ -2,7 +2,7 @@
  * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit. The rules: the
  * old name is gone, no Valibot outside a package's `src/`, `NODE_ENV` is checked positively, the old token prefix is gone, the
  * docs and the framework's messages speak to their readers, no reference to the private record, no mutant switched off without
- * a reason.
+ * a reason, no import of a package's internal subpath outside `packages/<name>/src/`.
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -110,6 +110,30 @@ export function engineHits(files: Iterable<SourceFile>): string[] {
     if (!CODE.test(path) || (/^packages\/[^/]+\/src\//.test(path) && !GENERATORS.includes(path)) || !IMPORT.test(text)) continue;
     text.split('\n').forEach((line, index) => {
       if (IMPORT.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
+    });
+  }
+  return hits;
+}
+
+/** The subpath of the framework's own packages, spelled in parts: this file holds no import of one either. */
+export const INTERNAL = ['/', 'internal'].join('');
+const INTERNAL_IMPORT = new RegExp(
+  [
+    `\\bfrom\\s+['"\`]@marmeon/[\\w-]+${INTERNAL}['"\`]`, // import … from (also export … from)
+    `\\bimport\\s*\\(\\s*['"\`]@marmeon/[\\w-]+${INTERNAL}['"\`]`, // a dynamic import
+    `\\brequire\\s*\\(\\s*['"\`]@marmeon/[\\w-]+${INTERNAL}['"\`]`,
+    `^\\s*import\\s+['"\`]@marmeon/[\\w-]+${INTERNAL}['"\`]`, // a bare import
+  ].join('|'),
+  'm',
+);
+
+/** Rule 9: every import of a package's internal subpath outside `packages/<name>/src/` — it is not API (docs/package-development.md). */
+export function internalImportHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!CODE.test(path) || /^packages\/[^/]+\/src\//.test(path) || !INTERNAL_IMPORT.test(text)) continue;
+    text.split('\n').forEach((line, index) => {
+      if (INTERNAL_IMPORT.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
     });
   }
   return hits;
@@ -389,6 +413,7 @@ export function checkSource(repository: string = root): string[] {
   return [
     ...oldNameHits(files).map((hit) => `the old name: ${hit}`),
     ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates: ${hit}`),
+    ...internalImportHits(files).map((hit) => `the internal subpath of a package is not API (decide access with everyone or a check; docs/package-development.md): ${hit}`),
     ...negativeEnvHits(files).map(
       (hit) => `NODE_ENV checked positively (only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
@@ -408,7 +433,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; nothing outside a package's src/ imports an internal subpath.`,
     );
   }
 }

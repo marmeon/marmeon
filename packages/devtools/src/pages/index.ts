@@ -40,8 +40,10 @@ export interface PagesOptions {
  */
 export async function registerDevtoolsPages(options: PagesOptions): Promise<boolean> {
   let router: typeof import('@marmeon/router');
+  let internal: typeof import('@marmeon/router/internal');
   try {
     router = await import('@marmeon/router');
+    internal = await import('@marmeon/router/internal');
   } catch {
     return false; // no HTTP in this app
   }
@@ -56,7 +58,7 @@ export async function registerDevtoolsPages(options: PagesOptions): Promise<bool
 
   app.container.make(router.Router).load(
     // No group: no session, no cookies. The guard runs for every route here.
-    { framework: router.FRAMEWORK_ROUTES },
+    { framework: internal.FRAMEWORK_ROUTES },
     router.defineRoutes((Route) => {
       Route.middleware(guard)
         .prefix(BASE)

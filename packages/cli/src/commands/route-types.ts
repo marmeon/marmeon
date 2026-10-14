@@ -1,4 +1,5 @@
 import { relative } from 'node:path';
+import { formatAccessProblems, Router } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 import { RouteTypes } from '../route-types.ts';
 
@@ -17,23 +18,33 @@ export class RouteTypesCommand {
   static boots = 'build' as const;
 
   readonly #types: RouteTypes;
+  readonly #router: Router;
 
-  constructor(types: RouteTypes) {
+  constructor(types: RouteTypes, router: Router) {
     this.#types = types;
+    this.#router = router;
   }
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
     const file = relative(root, this.#types.path);
+    let status = 0;
     if (options.check === true) {
-      if (await this.#types.isCurrent()) {
-        output.success(`${file} matches the routes and views.`);
-        return 0;
+      if (await this.#types.isCurrent()) output.success(`${file} matches the routes and views.`);
+      else {
+        output.error(`${file} is out of date — run: marmeon route:types`);
+        status = 1;
       }
-      output.error(`${file} is out of date — run: marmeon route:types`);
+    } else {
+      await writeRouteTypes(this.#types, output, root);
+    }
+    // After the file is written, so that fixing the routes is not made harder by type errors about missing route names.
+    // `marmeon build` runs this command and stops on a non-zero exit.
+    const problems = this.#router.accessProblems();
+    if (problems.length > 0) {
+      output.error(formatAccessProblems(problems));
       return 1;
     }
-    await writeRouteTypes(this.#types, output, root);
-    return 0;
+    return status;
   }
 }
 

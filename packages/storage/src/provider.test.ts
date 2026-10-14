@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Clock, createApplication, defineModule, env, TestClock, type ConfigDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { accessLabel, Router, routeAccess } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
@@ -44,6 +45,15 @@ async function boot(config?: ConfigDefinition<unknown>, options: { http?: boolea
 }
 
 describe('serving public disks', () => {
+  it('boots with a public disk: its route says that everyone may call it', async () => {
+    const { app, kernel } = await boot(storageConfig(freshDirectory()));
+    expect(kernel).toBeDefined();
+    const router = app.container.make(Router);
+    expect(router.accessProblems()).toEqual([]);
+    const route = router.routes.find((candidate) => candidate.path.startsWith('/storage/'))!;
+    expect(routeAccess(route).map(accessLabel)).toEqual(['everyone']);
+  });
+
   it('serves a public file under its url — raster images inline, with nosniff and a sandbox', async () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));

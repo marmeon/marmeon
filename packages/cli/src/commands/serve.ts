@@ -5,7 +5,8 @@ import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
 import { Application, CLUSTER_WORKER, environment, Logger } from '@marmeon/core';
-import { heldOnLoopback, ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
+import { refuseUndecidedRoutes, heldOnLoopback, ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
+import { RouteAccessError } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startMarmeon } from '../spawn.ts';
@@ -55,7 +56,17 @@ export class ServeCommand {
     // .env on a server. (`marmeon dev` clears the mark: it is development by itself.) Said once, by the primary of a cluster.
     const fromDotEnv = cluster.isPrimary ? environment.dotEnvDevelopmentWarning('start') : undefined;
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
-    if (workers !== undefined && cluster.isPrimary) return this.#primary(workers);
+    if (workers !== undefined && cluster.isPrimary) {
+      // Said once, here, not by each of the workers that would refuse the same start.
+      try {
+        refuseUndecidedRoutes(this.#app);
+      } catch (error) {
+        if (!(error instanceof RouteAccessError)) throw error;
+        output.error(error.message);
+        return 1;
+      }
+      return this.#primary(workers);
+    }
     // From here on a signal is ours: one that comes while the server starts is answered once it listens — Node's
     // default would end the process without a drain (and PID 1 in a container would not end at all).
     const signals = listenForSignals();
@@ -77,8 +88,8 @@ export class ServeCommand {
       signals.remove();
       // The route-types watcher would keep the process alive after the failed start.
       views?.close();
-      // A setup problem (no Vite, no marmeon() plugin) is a message, not a stack trace.
-      if (!(error instanceof ViteSetupError)) throw error;
+      // A setup problem (no Vite, no marmeon() plugin) or routes that do not say who may call them: a message, not a stack trace.
+      if (!(error instanceof ViteSetupError) && !(error instanceof RouteAccessError)) throw error;
       output.error(error.message);
       return 1;
     }

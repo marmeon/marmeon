@@ -34,6 +34,11 @@
       "@marmeon/source": "./src/url.ts",
       "types": "./dist/url.d.ts",
       "default": "./dist/url.js"
+    },
+    "./internal": {
+      "@marmeon/source": "./src/internal.ts",
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
     }
   },
   "publishConfig": {
@@ -47,6 +52,10 @@
       "./url": {
         "types": "./dist/url.d.ts",
         "default": "./dist/url.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },

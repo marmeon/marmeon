@@ -1,5 +1,6 @@
 import type { Container } from '@marmeon/core';
 import type { StorageOptions } from './config.ts';
+import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
 import { keyFromPath } from './keys.ts';
 import { notFound, serveFile } from './serve.ts';
 import { Storage, StorageManager, visibilityOf } from './storage.ts';
@@ -29,8 +30,12 @@ export function registerStorageRoutes(http: Http, container: Container, options:
   const storage = () => container.make(Storage) as unknown as StorageManager;
   // The public disks' paths come from the app's configuration: they load without the framework's marker, so a `url` under
   // /_marmeon/ fails the start instead of hiding the signed route below.
-  const publicDisks = http.defineRoutes((Route) => {
-    for (const { name, path } of servedPublicDisks(options)) {
+  const publicDisks = http.defineRoutes((Root) => {
+    // A public disk is public by its configuration: anyone may fetch its files, as the app said when it made the disk public.
+    const disks = servedPublicDisks(options);
+    if (disks.length === 0) return; // an unused `authorize` fails the load
+    const Route = Root.authorize(http.everyone);
+    for (const { name, path } of disks) {
       Route.get(`${path}/:path{.+}`, async (ctx) => {
         const key = keyFromPath(new URL(ctx.request.url).pathname, path);
         if (key === undefined) return notFound();
@@ -61,5 +66,5 @@ export function registerStorageRoutes(http: Http, container: Container, options:
   });
   const router = container.make(http.Router);
   router.load(publicDisks);
-  router.load({ framework: http.FRAMEWORK_ROUTES }, temporary);
+  router.load({ framework: FRAMEWORK_ROUTES }, temporary);
 }

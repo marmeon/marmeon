@@ -235,6 +235,10 @@ checked over every file of the repository — tracked, or new and not ignored. E
    mutant changes nothing anyone can observe. A range (`disable` without `next-line`) must be closed by `restore` comments
    covering every one of its mutators later in the same file and never covers `all`; `disable next-line all: <why>` needs only its reason.
 
+9. **The internal subpath of a package is not API**: no code file outside `packages/<name>/src/` imports
+   `@marmeon/<name>/internal` (the framework's own packages mark their routes with it). Apps, stubs, templates and scripts decide
+   access with `everyone` or a check.
+
 A new rule joins the same script, with its test.
 
 ## Dependencies of drivers

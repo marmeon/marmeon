@@ -2,9 +2,10 @@ import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { defineRequest, parseQuery, queryInput, type ContextOf, type QueryOf } from './request-definition.ts';
 import { Route } from './route.ts';
-import { defineRoutes, Router, type ResponseContext } from './router.ts';
+import { Router, type ResponseContext } from './router.ts';
 import type { EmptyObject, HttpContext } from './types.ts';
 import { toSearchParams, type Query } from './url.ts';
+import { openRoutes } from './test-helpers/open-routes.ts';
 
 const SORTS = ['name', '-name', 'last_login', '-last_login'] as const;
 
@@ -97,7 +98,7 @@ describe('query schema', () => {
 
   describe('on a route', () => {
     const router = new Router().load(
-      defineRoutes((Route) => {
+      openRoutes((Route) => {
         Route.get('/people', ListPeopleController);
         Route.get('/members', CanonicalPeopleController);
         Route.post('/people', ListPeopleController); // a query schema on a POST: parsed too, never redirected
@@ -147,7 +148,7 @@ describe('query schema', () => {
     });
 
     it('keeps a raw URLSearchParams in ctx.query without a query schema', async () => {
-      const raw = new Router().load(defineRoutes((Route) => Route.get('/raw', (ctx) => ({ q: ctx.query.get('q') }))));
+      const raw = new Router().load(openRoutes((Route) => Route.get('/raw', (ctx) => ({ q: ctx.query.get('q') }))));
       const response = await raw.dispatch(raw.routes[0]!, { request: new Request('http://app.test/raw?q=ada'), params: {} });
       expect(await response.json()).toEqual({ q: 'ada' });
     });
@@ -160,7 +161,7 @@ describe('query schema', () => {
           return null;
         }
       }
-      expect(() => new Router().load(defineRoutes((Route) => (Route.get as (path: string, action: unknown) => void)('/show', ShowWithBodyController)))).toThrow(
+      expect(() => new Router().load(openRoutes((Route) => (Route.get as (path: string, action: unknown) => void)('/show', ShowWithBodyController)))).toThrow(
         'Route GET /show: a GET request has no body — validate its URL with `query` (defineRequest({ query })) — ShowWithBodyController has a body schema.',
       );
     });

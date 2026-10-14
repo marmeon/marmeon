@@ -236,7 +236,11 @@ routes loaded in `boot()` serve requests but are not in `bootstrap/routes.ts`. L
 is bound by `@marmeon/http`, whose provider registers before yours when your package depends on it. Routes without a name may load
 in `boot()`. Prefix the paths and the names with the package's name, and protect a route the way an app would, with its own
 middleware such as `authenticate()`. The prefix `/_marmeon/` belongs to the framework: a package route there stops the app at
-start (see [the framework's paths](routing.md#the-frameworks-paths)).
+start (see [the framework's paths](routing.md#the-frameworks-paths)). A package route says who may call it like an app's: with
+`can(…)` or a check of your own through `Route.authorize(…)` or the request's `authorize`, or with `everyone` when anyone may. The
+`@marmeon/*/internal` subpaths are how the framework's own packages mark theirs as the framework's, they are not API, and a route
+loaded with their marker outside `/_marmeon/` is refused at load; `pnpm check:source` refuses importing them outside the
+framework's own sources.
 
 ### Hooks of the router
 

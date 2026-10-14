@@ -92,13 +92,18 @@ export type AccessProblem =
   | { readonly kind: 'undecided'; readonly route: RouteDefinition }
   | { readonly kind: 'open-binding'; readonly route: RouteDefinition; readonly param: string; readonly binder: string; readonly write: boolean };
 
+/** The start is refused: routes that do not say who may call them. Its message is the whole report — no stack to read. */
+export class RouteAccessError extends Error {
+  override name = 'RouteAccessError';
+}
+
 /**
  * The message the kernel and `route:types` give for the problems of `Router.accessProblems()`, naming where each route was
- * registered. See docs/authorization.md#authorizing-requests.
+ * registered. `path` shows a route's path — a caller that logs it passes it through its redactor. See docs/authorization.md#authorizing-requests.
  */
-export function formatAccessProblems(problems: readonly AccessProblem[]): string {
+export function formatAccessProblems(problems: readonly AccessProblem[], { path = (route: RouteDefinition) => route.path }: { path?: (route: RouteDefinition) => string } = {}): string {
   const row = (route: RouteDefinition) =>
-    [route.methods.join('|'), route.path, route.routeName ?? '-', isControllerClass(route.action) ? route.action.name || 'Controller' : 'Closure', route.site ?? '-'].join('  ');
+    [route.methods.join('|'), path(route), route.routeName ?? '-', isControllerClass(route.action) ? route.action.name || 'Controller' : 'Closure', route.site ?? '-'].join('  ');
   const undecided = problems.filter((problem) => problem.kind === 'undecided');
   const open = problems.filter((problem) => problem.kind === 'open-binding');
   const parts: string[] = [];
