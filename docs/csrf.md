@@ -54,8 +54,8 @@ plain HTML form, and writes the token into a hidden `_token` field when the page
 
 A session makes its token when something first needs it: the token is drawn on demand, never for a session that never hands one
 out. The first page of a session that is kept carries it, and the `XSRF-TOKEN` cookie comes with every response of such a
-session. The cookie is readable by your page's JavaScript and not encrypted, so a script can copy it into the header. It lives as
-long as the session.
+session. The cookie is readable by your page's JavaScript and not encrypted, so a script can copy it into the header. It has no
+`Max-Age`, like the session cookie: the browser drops it when it closes.
 
 Signing in and signing out give the session a new token at once. A form from before the sign-in then carries the old token, but
 it still passes by the browser's word.

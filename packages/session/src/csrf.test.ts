@@ -122,7 +122,7 @@ describe('VerifyCsrfToken', () => {
     const { send, token } = await boot();
     const response = await send('/form');
     const cookie = response.headers.getSetCookie().find((header) => header.startsWith('XSRF-TOKEN='))!;
-    expect(cookie).toMatch(/^XSRF-TOKEN=[\w-]{40}; Path=\/; Max-Age=7200; SameSite=Lax$/);
+    expect(cookie).toMatch(/^XSRF-TOKEN=[\w-]{40}; Path=\/; SameSite=Lax$/);
     expect(token()).toMatch(/^[\w-]{40}$/);
   });
 

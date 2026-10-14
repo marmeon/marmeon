@@ -6,7 +6,7 @@ import { abort, Controller, HttpServiceProvider } from '@marmeon/http';
 import { defineSchedule, SchedulerServiceProvider } from '@marmeon/scheduler';
 import { createHttpKernel } from '@marmeon/server';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CsrfProtection } from './csrf.ts';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
@@ -101,8 +101,24 @@ describe('StartSession', () => {
     const { send } = await boot();
     const first = await send('/count');
     expect(await first.json()).toEqual({ visits: 1, status: null });
-    expect(sessionCookie(first)).toMatch(/^marmeon_session=[\w-]{60,}; Path=\/; Max-Age=7200; HttpOnly; SameSite=Lax$/);
+    expect(sessionCookie(first)).toMatch(/^marmeon_session=[\w-]{60,}; Path=\/; HttpOnly; SameSite=Lax$/);
     expect(await (await send('/count')).json()).toEqual({ visits: 2, status: null });
+  });
+
+  it('ends a session on the server after SESSION_LIFETIME although its cookie carries no expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { send } = await boot({ SESSION_LIFETIME: '30' });
+      const first = await send('/count');
+      expect(sessionCookie(first)).not.toMatch(/Max-Age|Expires/i);
+      expect(await (await send('/count')).json()).toMatchObject({ visits: 2 });
+      vi.setSystemTime(Date.now() + 31 * 60_000);
+      const later = await send('/count');
+      expect(await later.json()).toMatchObject({ visits: 1 });
+      expect(sessionCookie(later)!.split(';')[0]).not.toBe(sessionCookie(first)!.split(';')[0]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('flashes redirect().with() data for the next request only', async () => {
@@ -210,6 +226,6 @@ describe('StartSession', () => {
   it('reads the cookie settings from the config', async () => {
     const { send } = await boot({ SESSION_COOKIE: 'shop_session', SESSION_LIFETIME: '30', SESSION_SECURE_COOKIE: 'true', SESSION_SAME_SITE: 'strict' });
     const cookie = (await send('/count')).headers.getSetCookie().find((header) => header.startsWith('shop_session='));
-    expect(cookie).toMatch(/^shop_session=[\w-]+; Path=\/; Max-Age=1800; HttpOnly; Secure; SameSite=Strict$/);
+    expect(cookie).toMatch(/^shop_session=[\w-]+; Path=\/; HttpOnly; Secure; SameSite=Strict$/);
   });
 });

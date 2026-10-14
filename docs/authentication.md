@@ -271,6 +271,7 @@ Every lifetime of a sign-in is listed here:
 
 | What | Default | What it ends | Assurance |
 | --- | --- | --- | --- |
+| The session cookie | Until the browser closes | The cookie in the browser, which has no `Max-Age`; the session on the server lives by the two rows below. | A browser that restores its session keeps it. |
 | `SESSION_LIFETIME` | 120 minutes | A session that makes no request: the time since the last one. | `SESSION_LIFETIME=60` (at most an hour idle) is recommended for an app that needs AAL2 (ASVS 7.3.1). |
 | `AUTH_SESSION_MAX_HOURS` | 24 hours | A sign-in, however active the user is. A valid remember-me cookie signs in again. | 24 hours is the limit NIST SP 800-63B-4 sets at AAL2. |
 | `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
@@ -300,7 +301,8 @@ until the page's own request does.
 Remember me is a convenience each user chooses, and the starter kit's checkbox is not ticked. It signs in without the password
 and without a second factor of its own, so it counts as the lowest assurance level (AAL1), not as a proof.
 
-`attempt(email, password, { remember: true })` keeps the user signed in on this device after the session has expired. The browser
+`attempt(email, password, { remember: true })` keeps the user signed in on this device after the session has expired. It is the way
+to stay signed in after a browser restart: the session cookie ends when the browser closes. The browser
 gets a cookie, `remember_web`, that is encrypted, `HttpOnly`, and `Secure` and `SameSite` like the session cookie. It is valid for
 `AUTH_REMEMBER_DAYS` days from the sign-in (30 at most) and using it never extends it.
 
