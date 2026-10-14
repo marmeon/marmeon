@@ -33,7 +33,7 @@ export function accessLabel(check: AccessCheck): string {
 }
 
 /**
- * The decision that anyone may call the route, signed in or not: `Route.authorize(everyone)` or `defineRequest({ authorize: everyone })`.
+ * The decision that anyone its middleware lets through may call the route: `Route.authorize(everyone)` or `defineRequest({ authorize: everyone })`.
  * It never opens a route further than another check allows. See docs/authorization.md#authorizing-requests.
  */
 export const everyone: () => true = (): true => true;
@@ -109,7 +109,7 @@ export function formatAccessProblems(problems: readonly AccessProblem[]): string
       'Say it with one of these:',
       "  - can(Policy, 'ability', 'param') as the request's `authorize`, or on its registrar: Route.authorize(can(…))",
       '  - a check of your own: Route.authorize((ctx) => …) or `authorize` in defineRequest()',
-      '  - everyone, last: Route.authorize(everyone) says anyone may call it, signed in or not — nothing else about it is checked',
+      '  - everyone, last: Route.authorize(everyone) says anyone its middleware lets through may call it — nothing else about it is checked',
     );
   }
   if (open.length > 0) {

@@ -1,6 +1,6 @@
 import { Auth, type Authenticated } from '@marmeon/auth';
 import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 import { throttlePasswordChecks } from '../throttle.ts';
@@ -8,7 +8,6 @@ import { throttlePasswordChecks } from '../throttle.ts';
 export const ConfirmPasswordRequest = defineRequest({
   schema: r.object({ password: r.string().required().max(4096) }),
   messages: { 'password.required': 'auth.validation.password_required' },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 export class ConfirmPasswordController extends Controller {
@@ -25,7 +24,7 @@ export class ConfirmPasswordController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof ConfirmPasswordRequest>) {
+  async handle(ctx: ContextOf<typeof ConfirmPasswordRequest> & Authenticated) {
     await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'password', () => this.#auth.confirmPassword(ctx.body.password));
     return this.redirect().intended().route('auth.security');
   }

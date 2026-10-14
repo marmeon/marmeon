@@ -1,7 +1,8 @@
 import { createApplication, defineModule, err, inTransaction, listen, type Container } from '@marmeon/core';
 import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
+import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
@@ -729,6 +730,19 @@ export function authTypes() {
     // @ts-expect-error — `ctx.user` needs authenticate() on the route
     Route.get('/me', (ctx: HttpContext<Authenticated>) => ctx.user.name);
     Route.middleware(authenticate()).get('/me', (ctx: HttpContext<Authenticated>) => ctx.user.name);
+  });
+  // A controller types its context with `& Authenticated` and carries no `authorize` for it.
+  const NameRequest = defineRequest({ schema: r.object({ name: r.string() }) });
+  class RenameController extends Controller {
+    static request = NameRequest;
+    handle(ctx: ContextOf<typeof NameRequest> & Authenticated) {
+      return `${ctx.user.name}: ${ctx.body.name}`;
+    }
+  }
+  defineRoutes((Route) => {
+    Route.middleware(authenticate()).put('/rename', RenameController);
+    // @ts-expect-error — `Authenticated` in the controller's context needs authenticate() on the route
+    Route.put('/rename-anyone', RenameController);
   });
   // Without `AuthTypes`, the user type says what to declare.
   expectTypeOf<UserOf<{}>>().toEqualTypeOf<AuthTypesNotDeclared>();

@@ -147,13 +147,12 @@ function or a promise inside it is a compile error.
 
 ```ts title="modules/notes/controllers/StoreNoteController.ts"
 import type { Authenticated } from '@marmeon/auth';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 import { NoteRepository } from '../NoteRepository.ts';
 
 export const StoreNoteRequest = defineRequest({
   schema: r.object({ title: r.string().trim().required().max(120) }),
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 export class StoreNoteController extends Controller {
@@ -166,7 +165,7 @@ export class StoreNoteController extends Controller {
     this.#notes = notes;
   }
 
-  async handle(ctx: ContextOf<typeof StoreNoteRequest>) {
+  async handle(ctx: ContextOf<typeof StoreNoteRequest> & Authenticated) {
     const note = await this.#notes.insert({ user_id: ctx.user.id, title: ctx.body.title, body: '' });
     return this.redirect().route('notes.show', { note: note.id }, { tab: 'edit' });
   }

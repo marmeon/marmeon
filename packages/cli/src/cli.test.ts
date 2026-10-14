@@ -468,7 +468,10 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(marmeon(app, ['make:seeder', 'Invoice', '--module=billing']).stdout).toContain(
       '✓ Registered InvoiceSeeder in modules/billing/index.ts (seeders)',
     );
-    expect(marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
+    const updateInvoice = marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout;
+    expect(updateInvoice).toContain("Route.post('/…', UpdateInvoiceController)");
+    // The generator decides nothing for the app: it says where the decision goes.
+    expect(updateInvoice).toContain('Route.authorize');
     // A reading endpoint is a GET, and a GET has no body: its request validates the query.
     expect(marmeon(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
     // A writing endpoint answers with a redirect: it renders no page — --view goes with a reading name, nothing is written.
@@ -523,9 +526,12 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
     expect(withRequest).toContain('handle(ctx: ContextOf<typeof UpdateInvoiceRequest>) {');
     expect(withRequest).toContain('  schema: r.object({');
+    expect(withRequest).not.toContain('authorize');
+    expect(withRequest).not.toContain('=> true');
     const withQuery = readFileSync(join(app, 'modules/billing/controllers/ListInvoicesController.ts'), 'utf8');
     expect(withQuery).toContain('  query: r.query({');
     expect(withQuery).not.toContain('schema:');
+    expect(withQuery).not.toContain('authorize');
     expect(withQuery).toContain('return this.json({ q: ctx.query.q, page: ctx.query.page });');
 
     // Generated in quick succession, they still sort in the order they were made.

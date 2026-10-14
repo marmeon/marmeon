@@ -126,13 +126,12 @@ more" a partial reload:
 
 ```ts title="modules/notes/controllers/ListNotesController.ts"
 import type { Authenticated } from '@marmeon/auth';
-import { Controller, defineRequest, merge, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, merge, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 import { NoteRepository } from '../NoteRepository.ts';
 
 export const ListNotesRequest = defineRequest({
   query: r.query({ cursor: r.string().optional() }),
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 export class ListNotesController extends Controller {
@@ -145,7 +144,7 @@ export class ListNotesController extends Controller {
     this.#notes = notes;
   }
 
-  async handle(ctx: ContextOf<typeof ListNotesRequest>) {
+  async handle(ctx: ContextOf<typeof ListNotesRequest> & Authenticated) {
     const page = await this.#notes.pageFor(ctx.user.id, ctx.query.cursor);
     return this.view('notes/Index', { notes: merge(page).matchOn('data.id') });
   }
@@ -193,13 +192,12 @@ An island's controller answers with `this.island()`. Its route is a `GET` route 
 
 ```ts title="modules/notes/controllers/ShowRecentNotesController.ts"
 import type { Authenticated } from '@marmeon/auth';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 import { NoteRepository } from '../NoteRepository.ts';
 
 export const RecentNotesRequest = defineRequest({
   query: r.query({ limit: r.integer().between(1, 20).default(5) }),
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 export class ShowRecentNotesController extends Controller {
@@ -212,7 +210,7 @@ export class ShowRecentNotesController extends Controller {
     this.#notes = notes;
   }
 
-  async handle(ctx: ContextOf<typeof RecentNotesRequest>) {
+  async handle(ctx: ContextOf<typeof RecentNotesRequest> & Authenticated) {
     return this.island('notes/RecentNotes', { notes: await this.#notes.recent(ctx.user.id, ctx.query.limit), now: new Date() });
   }
 }

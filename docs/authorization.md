@@ -145,8 +145,8 @@ To decide for a whole group of routes, put the check on the registrar. It runs a
 const notes = Route.middleware(authenticate()).bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note'));
 ```
 
-`everyone` is the check that says yes to anyone. It stands for a decision, and it never opens a route further than another check
-allows.
+`everyone` is the check that says yes to anyone its middleware lets through. It stands for a decision, and it never opens a
+route further than another check allows.
 
 A check is only as good as what it can see. The router cannot tell a check that always returns `true` from a real one, a custom
 binder that ignores the `scope` it is given, or a handler that loads `ctx.params.id` itself instead of binding it. A policy check

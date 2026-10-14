@@ -1,13 +1,12 @@
 import type { Authenticated } from '@marmeon/auth';
 import { Passkeys } from '@marmeon/auth/passkeys';
-import { abort, Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { abort, Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 
 export const ReleasePasskeyRequest = defineRequest({
   schema: r.object({ password: r.string().required().max(4096) }),
   messages: { 'password.required': 'auth.validation.password_required' },
-  authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
 /** Lets a suspended passkey (a sign count that went backwards: possibly a clone) sign in again — with the password typed now. */
@@ -23,7 +22,7 @@ export class ReleasePasskeyController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof ReleasePasskeyRequest> & { params: { passkey: string } }) {
+  async handle(ctx: ContextOf<typeof ReleasePasskeyRequest> & Authenticated & { params: { passkey: string } }) {
     const id = /^\d{1,15}$/.test(ctx.params.passkey) ? Number(ctx.params.passkey) : 0;
     const done = await this.#passkeys.release(id, ctx.body.password);
     if (done.ok) return this.json({ released: id });
