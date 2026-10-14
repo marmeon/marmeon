@@ -292,7 +292,9 @@ describe('user-profile module', () => {
       database: 'refresh', // the profile also reads login_activity
       override: (c) => c.singleton(UserRepository, (r) => new StubUserRepository(r.make(Connections))),
     });
-    // Authentication asks the repository (it is the UserProvider): the stub's user is signed in, although no row exists.
+    // The sign-in list's row needs a users row for its foreign key; its name and e-mail differ from the stub's.
+    await stubbed.factory(UserFactory).create({ id: stub.id, name: 'Grace (row)', email: 'grace-row@example.com' });
+    // Authentication asks the repository (it is the UserProvider): the stub's user is signed in, not the row.
     await stubbed.actingAs(stub).get('/users/me').assertRedirect(`/users/${stub.public_id}`);
     await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { auth: { user: { name: 'Grace (stub)' } } });
   });

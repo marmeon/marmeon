@@ -119,6 +119,18 @@ declare module '@marmeon/database' {
       last_activity: number;
       version: Generated<number>;
     };
+    /** Owned by `auth`. */
+    sign_ins: {
+      id: string;
+      user_id: number;
+      user_agent: string | null;
+      remember_selector: string | null;
+      remember_until: Timestamp | null;
+      signed_in_at: Timestamp;
+      last_seen_at: Timestamp;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
     /** Owned by `system`. */
     temporary_uploads: {
       id: string;
@@ -191,6 +203,9 @@ declare module '@marmeon/database' {
     remember_tokens: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    sign_ins: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     two_factor_authentications: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -203,6 +218,7 @@ declare module '@marmeon/database' {
       personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       remember_tokens: { kind: 'hasMany'; table: 'remember_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      sign_ins: { kind: 'hasMany'; table: 'sign_ins'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       two_factor_authentications: { kind: 'hasOne'; table: 'two_factor_authentications'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       two_factor_recovery_codes: { kind: 'hasMany'; table: 'two_factor_recovery_codes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
     };
@@ -220,6 +236,7 @@ declare module '@marmeon/database' {
     profile_links: 'user-profile';
     remember_tokens: 'auth';
     sessions: 'system';
+    sign_ins: 'auth';
     temporary_uploads: 'system';
     two_factor_authentications: 'auth';
     two_factor_recovery_codes: 'auth';
