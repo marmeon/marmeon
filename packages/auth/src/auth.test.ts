@@ -806,6 +806,31 @@ describe('remember me', () => {
     expect(await (await secondTab.send('/who')).json()).toMatchObject({ id: 1 });
   });
 
+  it('names the address and the browser of the request that presented a rotated cookie', async () => {
+    const warnings: { message: string; context?: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (message, context) => void warnings.push({ message, context }), error() {}, child: () => logger };
+    const { add, browser, kernel } = await boot({ logger });
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const copied = owner.jar.get('remember_web')!;
+    expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11_000 });
+    try {
+      await kernel.request(
+        '/who',
+        { headers: { cookie: `remember_web=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
+        { incoming: { socket: { remoteAddress: '198.51.100.7' } } },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+    const theft = warnings.filter((warning) => warning.message.startsWith('A rotated remember-me token'));
+    expect(theft).toHaveLength(1);
+    expect(theft[0]!.context).toMatchObject({ user: 1, ip: '198.51.100.7', userAgent: `Firefox/${'x'.repeat(600)}`.slice(0, 512) });
+    expect(JSON.stringify(warnings)).not.toContain(copied);
+  });
+
   it('logs, and does not throw, when the sessions of a thief cannot be ended', async () => {
     const errors: { message: string; context?: LogContext }[] = [];
     const logger: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => void errors.push({ message, context }), child: () => logger };

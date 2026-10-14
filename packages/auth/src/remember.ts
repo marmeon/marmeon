@@ -73,8 +73,11 @@ export const RememberTokenStore = token<RememberTokenStore>('RememberTokenStore'
 
 const SELECTOR = /^[A-Za-z0-9_-]{22}$/;
 const VALIDATOR = /^[A-Za-z0-9_-]{43}$/;
-/** A request racing the rotation (two tabs at once) may still present the previous validator this long. */
-const GRACE_MS = 60_000;
+/**
+ * A request racing the rotation (two tabs of one page) may still present the previous validator this long. Short on purpose: a copy of
+ * the cookie from before the rotation signs in unnoticed for as long as this lasts.
+ */
+const GRACE_MS = 10_000;
 
 /** The default {@link RememberTokenStore}, on the app's `remember_tokens` table. */
 export class DatabaseRememberTokens implements RememberTokenStore {

@@ -5,7 +5,7 @@ import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
 import { AuthConfig } from './config.ts';
-import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
+import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { RememberTokenStore } from './remember.ts';
@@ -679,7 +679,11 @@ export class Auth {
     if (!result.ok) {
       this.#cookies.delete(this.#config.rememberCookie);
       if (result.error.kind === 'stolen') {
-        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens and sessions of the user are being ended', { user: result.error.userId });
+        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens and sessions of the user are being ended', {
+          user: result.error.userId,
+          ip: this.#request.ip,
+          userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
+        });
         await this.#endSessionsOfThief(result.error.userId);
       }
       return undefined;
