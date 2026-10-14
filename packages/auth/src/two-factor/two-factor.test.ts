@@ -8,7 +8,7 @@ import { AesGcmEncrypter, Encrypter, EncryptionServiceProvider, generateKey } fr
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
 import { twoFactor } from './middleware.ts';
@@ -248,6 +248,12 @@ async function waiting(booted: Booted, email = ada.email, password = 'secret'): 
   expect(answer).toMatchObject({ signedIn: false, error: { kind: 'two-factor-required' } });
   return b;
 }
+
+// The clock stands still, five seconds into a 30-second code step: a code made "now" and one made "now + 30 s"
+// are always neighbouring steps, however slow the machine is.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: Math.floor(Date.now() / 30_000) * 30_000 + 5_000 });
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -946,6 +952,7 @@ describe('twoFactor() middleware', () => {
   it('lets a sign-in with the factor through, also one made with a remember-me cookie', async () => {
     const booted = await boot();
     const { secret: key } = await enable(booted);
+    vi.setSystemTime(inSeconds(1)); // the clock stands still: a token made in the very instant the factor was confirmed is refused
     const login = booted.browser();
     expect(await login.login(ada.email, 'secret', true)).toMatchObject({ signedIn: false });
     expect(await login.visit('/area', { json: true })).toMatchObject({ status: 401 }); // waiting for the factor is no sign-in
