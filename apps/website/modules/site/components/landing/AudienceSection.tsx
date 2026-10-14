@@ -73,7 +73,7 @@ export function AudienceSection() {
           ))}
         </ul>
         <p className="audience-fit">
-          <strong>Not the right fit</strong> if your site only shows content, like a marketing page or a static site, or if your app needs somewhere to keep data but has no logic of its own.
+          <strong>Not the right fit</strong> for a static site: pages built once and served as files, with nothing to run on a server.
         </p>
       </div>
     </section>
