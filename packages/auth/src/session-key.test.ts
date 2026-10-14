@@ -152,8 +152,8 @@ const routes = openRoutes((Route) => {
 
 interface Driver {
   readonly name: string;
-  /** The class of the store the app ends up with — the driver really is the one named (the cookie store exists per request only). */
-  readonly store?: string;
+  /** The class of the store the app ends up with — the driver really is the one named. */
+  readonly store: string;
   readonly env: () => Promise<{ env: Record<string, string>; cleanup: () => Promise<void> }>;
   readonly providers?: readonly (typeof RedisServiceProvider)[];
   readonly sessionsTable?: boolean;
@@ -161,7 +161,6 @@ interface Driver {
 
 const drivers: Driver[] = [
   { name: 'memory', store: 'MemorySessionStore', env: async () => ({ env: { SESSION_DRIVER: 'memory' }, cleanup: async () => {} }) },
-  { name: 'cookie', env: async () => ({ env: { SESSION_DRIVER: 'cookie' }, cleanup: async () => {} }) },
   {
     name: 'file',
     store: 'FileSessionStore',
@@ -225,7 +224,7 @@ async function boot(driver: Driver, users: UserProvider) {
     await migration.up(new Schema(connections.get(), connections.options('default').driver));
   }
   expect(application.container.make(SessionConfig).driver).toBe(env.SESSION_DRIVER);
-  if (driver.store) expect(application.container.make(SessionStore).constructor.name, driver.name).toBe(driver.store);
+  expect(application.container.make(SessionStore).constructor.name, driver.name).toBe(driver.store);
   if (driver.name.includes('pgsql')) expect(application.container.make(Connections).options('default').driver).toBe('pgsql');
   const kernel = createHttpKernel(application);
   /** A tiny browser: keeps its cookies between requests. */

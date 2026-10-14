@@ -14,7 +14,6 @@ import { PruneTokensCommand } from './prune-tokens.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
-import { warnAboutCookieSessions } from './session-driver.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
@@ -49,7 +48,6 @@ export { authenticatedSession, authenticatedToken, softAuthenticator, twoFactorC
 export type { SoftAssertion, SoftAuthenticatorConfig, SoftOptions, SoftOverrides, SoftRegistration } from './testing.ts';
 export { ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
 export type { AccessToken, AccessTokenTable, WithToken } from './tokens.ts';
-export { COOKIE_SESSION_WARNING } from './session-driver.ts';
 export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
 export {
@@ -126,8 +124,7 @@ export class AuthServiceProvider implements ServiceProvider {
   boot(app: Application): void {
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
-    warnAboutCookieSessions(app.container);
-    // Private registration turned off where it counts: said once, at boot — like the log mailer and the cookie driver.
+    // Private registration turned off where it counts: said once, at boot — like the log mailer.
     const config = app.container.make(AuthConfig);
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
   }

@@ -2,7 +2,7 @@ import { isAbsolute, join } from 'node:path';
 import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { Encrypter } from '@marmeon/encryption';
 import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@marmeon/http';
-import { CookieJar, MiddlewarePriority, Router } from '@marmeon/router';
+import { MiddlewarePriority, Router } from '@marmeon/router';
 import { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
 import { insecureCookieWarning, SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
@@ -14,7 +14,6 @@ import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SESSION_USER_KEY, SessionStore } from './store.ts';
 import { UserSessions } from './user-sessions.ts';
-import { CookieSessionStore } from './stores/cookie.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
@@ -45,17 +44,14 @@ export class SessionServiceProvider implements ServiceProvider {
     container.scoped(PageSession, (c) => pageSessionOf(c.make(Session)));
 
     const config = container.make(SessionConfig);
-    // Every cookie of a request gets `Secure` with the session's — the reset cookie, the cookie store's, an app's own —
+    // Every cookie of a request gets `Secure` with the session's — the reset cookie, an app's own —
     // unless its `set` says otherwise.
     container.instance(CookieDefaults, { secure: config.secure });
     container.singleton(SessionLottery, () => new SessionLottery(config.lottery));
-    // SESSION_ENCRYPT: payloads encrypted in the store — the cookie driver's are encrypted as a cookie already.
-    container.singleton(SessionCodec, (c) => (config.encrypt && config.driver !== 'cookie' ? new EncryptedSessionCodec(c.make(Encrypter)) : plainSessionCodec));
-    // The cookie store works on the request's cookie jar: one per request. The others are shared.
-    if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
-    else container.singleton(SessionStore, (c) => storeFor(config, c));
-    // A user's sessions as a whole (a deleted account's) — the shared store's; the cookie driver's live in the browsers.
-    container.singleton(UserSessions, (c) => new UserSessions(config.driver === 'cookie' ? undefined : () => c.make(SessionStore)));
+    container.singleton(SessionCodec, (c) => (config.encrypt ? new EncryptedSessionCodec(c.make(Encrypter)) : plainSessionCodec));
+    container.singleton(SessionStore, (c) => storeFor(config, c));
+    // A user's sessions as a whole (a deleted account's) — the shared store's.
+    container.singleton(UserSessions, (c) => new UserSessions(() => c.make(SessionStore)));
   }
 
   async boot(app: Application): Promise<void> {
@@ -150,8 +146,6 @@ function storeFor(config: SessionConfig, container: Resolver): SessionStore {
       );
     case 'redis':
       return new RedisSessionStore(async () => container.make((await importRedis()).RedisConnections).get(config.connection));
-    case 'cookie':
-      return new CookieSessionStore(container.make(CookieJar), config.cookie, clock);
     case 'file': {
       const { root } = container.make(Application);
       return new FileSessionStore(isAbsolute(config.files) ? config.files : join(root, config.files), clock);

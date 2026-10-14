@@ -466,10 +466,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
   const session = await importSession();
   if (!session || !container.has(session.SessionConfig)) return undefined;
   const config = container.make(session.SessionConfig);
-  const store = () => {
-    if (config.driver === 'cookie') throw new Error('Session helpers in tests need a server-side session driver — memory, file, database or redis (set SESSION_DRIVER=memory in .env.test).');
-    return container.make(session.SessionStore);
-  };
+  const store = () => container.make(session.SessionStore);
   // Like the session itself: stored under the id's hash, the payload through the app's codec (SESSION_ENCRYPT).
   const codec = () => container.make(session.SessionCodec);
   return {

@@ -7,10 +7,9 @@ export const SessionConfig = defineConfig('session', {
   env: env({
     /**
      * `file` (default: one machine, survives restarts), `database` (the app's database — `marmeon make:session-table`
-     * writes the migration), `redis` (needs @marmeon/redis and redis), `memory` (tests) or `cookie` (the data in the
-     * encrypted cookie — not for apps with sign-in).
+     * writes the migration), `redis` (needs @marmeon/redis and redis), or `memory` (tests).
      */
-    SESSION_DRIVER: env.in(['file', 'database', 'redis', 'memory', 'cookie']).default('file'),
+    SESSION_DRIVER: env.in(['file', 'database', 'redis', 'memory']).default('file'),
     /**
      * Which database or Redis connection the `database`/`redis` driver uses. The database driver never joins the app's
      * transactions: on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
@@ -34,8 +33,7 @@ export const SessionConfig = defineConfig('session', {
     /**
      * Encrypt the session data in its store — the file, the `payload` column, the Redis value — with the app's key
      * (`APP_KEY`; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Off by default; the store's keys are
-     * hashes of the session ids either way. Turning it on or off signs everybody out once. The `cookie` driver's data is always
-     * encrypted (it is a cookie).
+     * hashes of the session ids either way. Turning it on or off signs everybody out once.
      */
     SESSION_ENCRYPT: BOOLEAN.default('false'),
     /**

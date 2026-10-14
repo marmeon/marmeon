@@ -12,6 +12,7 @@ import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionConfig } from './config.ts';
 import { SessionServiceProvider, sessionTableConnection } from './provider.ts';
 import { Session } from './session.ts';
+import { UserSessions } from './user-sessions.ts';
 import { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
 import { sessionKey, SessionStore } from './store.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
@@ -139,12 +140,22 @@ describe('SESSION_DRIVER', () => {
     expect(await visit({ APP_KEY: newKey })).toEqual({ visits: 1 });
   });
 
-  it('SESSION_ENCRYPT stays off by default — and the cookie driver never encrypts twice (its data is a cookie)', async () => {
+  it('SESSION_ENCRYPT stays off by default', async () => {
     const plain = await boot({ SESSION_DRIVER: 'memory' }, []);
     expect(plain.container.make(SessionCodec)).toBe(plainSessionCodec);
-    const cookie = await boot({ SESSION_DRIVER: 'cookie', SESSION_ENCRYPT: 'true' }, []);
-    expect(cookie.container.make(SessionCodec)).toBe(plainSessionCodec);
     await expect(boot({ SESSION_DRIVER: 'memory', SESSION_ENCRYPT: 'yes' }, [])).rejects.toThrow(/SESSION_ENCRYPT/);
+  });
+
+  it('SESSION_DRIVER=cookie no longer starts — the message names the drivers there are', async () => {
+    await expect(boot({ SESSION_DRIVER: 'cookie' }, [])).rejects.toThrow(/SESSION_DRIVER.*file.*database.*redis.*memory/s);
+  });
+
+  it('SESSION_DRIVER and UserSessions take no cookie driver and no missing store', () => {
+    // @ts-expect-error `cookie` is not a driver
+    const driver: SessionConfig['driver'] = 'cookie';
+    // @ts-expect-error a store is required
+    const sessions = new UserSessions(undefined);
+    expect([driver, sessions]).toHaveLength(2);
   });
 
   it('database: an error of the sessions table goes out as the driver wrote it — the store adds no advice of its own', async () => {
@@ -281,10 +292,10 @@ describe('session:prune', () => {
   });
 
   it('has nothing to do for sessions that expire on their own', async () => {
-    const app = await boot({ SESSION_DRIVER: 'cookie' }, []);
+    const app = await boot({ SESSION_DRIVER: 'memory' }, []);
     const { input: run, lines } = input();
-    expect(await new PruneSessionsCommand(app.container.make(SessionConfig), app.container).handle(run)).toBe(0);
-    expect(lines).toEqual(['Nothing to prune: cookie sessions expire on their own.']);
+    expect(await new PruneSessionsCommand({ ...app.container.make(SessionConfig), driver: 'redis' }, app.container).handle(run)).toBe(0);
+    expect(lines).toEqual(['Nothing to prune: redis sessions expire on their own.']);
   });
 });
 

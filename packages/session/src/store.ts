@@ -34,7 +34,7 @@ export interface SessionWrite {
 export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 
 /**
- * Where session data lives: `file`, `database`, `redis`, `memory` and `cookie` implement this
+ * Where session data lives: `file`, `database`, `redis` and `memory` implement this
  * contract (`stores/`).
  *
  * Every method takes the session's **key** — `sessionKey(id)`, the SHA-256 of the id the cookie carries — never the id:
@@ -48,7 +48,7 @@ export interface SessionStore {
   read(key: string): Promise<StoredSession | undefined>;
   write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;
   destroy(key: string): Promise<void>;
-  /** Removes expired sessions; returns how many (0 for stores that expire on their own: Redis, cookies). */
+  /** Removes expired sessions; returns how many (0 for stores that expire on their own: Redis). */
   gc(lifetimeSeconds: number): Promise<number>;
   /**
    * Removes every session of the user `userId` (its id as text) — how many. Only a store that knows whose a session is has it
