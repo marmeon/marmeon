@@ -20,7 +20,7 @@ framework bring them.
 
 | Part | What it is |
 | --- | --- |
-| `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:prune-unverified` and `auth:reset-two-factor`. |
+| `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:end-sessions`, `auth:prune-unverified` and `auth:reset-two-factor`. |
 | `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, shares `auth` with every page, and sets the rate limits of its forms. |
 | `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
@@ -32,7 +32,7 @@ framework bring them.
 | `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, and `passkeys`. |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
-| `auth.test.ts` and seven more | The module's own tests. |
+| `auth.test.ts` and eight more | The module's own tests. |
 
 The module's routes each say who may call them, as the app's do. Its groups decide with `everyone`: the sign-in and registration
 pages are open to guests, and every action behind `authenticate()` concerns only the signed-in user's own account. A route you
@@ -224,6 +224,19 @@ Only `true` and `false` are allowed. Any other value stops the start; an empty o
 off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`. Set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`
 as well: an account registered with somebody else's address may have created an API token, and the owner's password reset then
 ends it, as the [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
+
+## Signing an account out everywhere
+
+After a lost device or a suspected theft, an operator ends every session and every "keep me signed in" cookie of an account:
+
+```sh
+marmeon auth:end-sessions ada@example.com --force
+```
+
+The command asks `AccountSessions` of `@marmeon/auth` (see [Authentication](authentication.md#ending-every-session-of-a-user)) and
+prints how many stored sessions it deleted at once; the others end at their next request. The password still signs in, so change
+it first when it may be known. `--force` is required in every environment, an unknown address fails with exit code 1, and an error
+of the call is shown, not hidden.
 
 ## Mail, the queue and the scheduler
 

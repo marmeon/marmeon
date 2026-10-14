@@ -537,6 +537,9 @@ remember-me tokens are gone by then. The starter kit's accounts have a `session_
 A custom `RememberTokenStore` needs `exists(cookie)`, which says whether the token of a cookie is still stored and must see a `forgetUser()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
 remember-me cookie asks it right before it starts.
 
+The starter kit brings this as a command, `marmeon auth:end-sessions <email> --force`, for an operator who has no admin page
+([Starter kit](starter-kit.md#signing-an-account-out-everywhere)).
+
 `UserSessions` of `@marmeon/session` is the low-level variant, and deleting an account needs it. The starter kit's
 `AccountDeletion` calls it after the account is gone. It does not touch remember-me cookies, which sign the user in again, so use
 `AccountSessions` for an account that stays:

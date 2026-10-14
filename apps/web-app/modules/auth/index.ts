@@ -9,6 +9,7 @@ import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
+import { EndSessionsCommand } from './commands/EndSessionsCommand.ts';
 import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
 import { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 import { UserRecipients } from './UserRecipients.ts';
@@ -46,6 +47,7 @@ export default defineModule({
   // Scheduled work: the nightly prune of tokens, expired changes of address and unconfirmed accounts (marmeon schedule:work).
   schedule,
   // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (the schedule runs it nightly).
+  // marmeon auth:end-sessions <email> --force — signs an account out everywhere (a lost device, a suspected theft).
   // Other modules clear what belongs to a deleted account by listening to AccountDeleted (user-profile: the avatar; notifications).
-  commands: [PruneUnverifiedCommand],
+  commands: [EndSessionsCommand, PruneUnverifiedCommand],
 });
