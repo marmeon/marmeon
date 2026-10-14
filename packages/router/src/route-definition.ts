@@ -14,9 +14,11 @@ export class RouteDefinition {
   /** The middleware group the route belongs to, e.g. `web` or `api`. */
   readonly group: string | undefined;
   /** Route parameters resolved to records before the action runs (`Route.bind`). */
-  readonly bindings: readonly RouteBinding[];
+  declare readonly bindings: readonly RouteBinding[];
   /** The registrar's `authorize` checks, in declaration order; they run after the bindings and before anything else answers. */
   declare readonly checks: readonly AccessCheck[];
+  /** @internal Where the route was registered, as `file:line` — for the messages about routes that do not say who may call them. */
+  declare readonly site: string | undefined;
   readonly #namePrefix: string;
   #name: string | undefined;
   /** @internal Set by `Router.load` for a framework route under `/_marmeon/`, which the server registers before all others. */
@@ -33,6 +35,7 @@ export class RouteDefinition {
     group?: string | undefined;
     bindings?: readonly RouteBinding[];
     checks?: readonly AccessCheck[];
+    site?: string | undefined;
     internal?: boolean;
   }) {
     this.methods = options.methods;
@@ -40,9 +43,15 @@ export class RouteDefinition {
     this.action = options.action;
     this.middleware = options.middleware;
     this.group = options.group;
-    this.bindings = options.bindings ?? [];
+    // Frozen like the checks: a binding cannot be unscoped or made public once the route is registered.
+    Object.defineProperty(this, 'bindings', {
+      value: Object.freeze((options.bindings ?? []).map((binding) => Object.freeze({ ...binding, ...(binding.with ? { with: Object.freeze([...binding.with]) } : {}) }))),
+      writable: false,
+      enumerable: true,
+    });
     // Not writable and frozen: a check cannot be removed once the route is registered.
     Object.defineProperty(this, 'checks', { value: Object.freeze([...(options.checks ?? [])]), writable: false, enumerable: true });
+    this.site = options.site;
     this.#namePrefix = options.namePrefix;
     this.#internal = options.internal ?? false;
   }

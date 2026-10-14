@@ -148,6 +148,10 @@ const notes = Route.middleware(authenticate()).bind('note', NoteRepository).auth
 `everyone` is the check that says yes to anyone. It stands for a decision, and it never opens a route further than another check
 allows.
 
+A check is only as good as what it can see. The router cannot tell a check that always returns `true` from a real one, a custom
+binder that ignores the `scope` it is given, or a handler that loads `ctx.params.id` itself instead of binding it. A policy check
+on one record also says nothing about a different record the route binds without `scopedBy`. Review these by hand.
+
 > [!WARNING]
 > Route model binding finds a record by its id, whoever owns it. Without `authorize`, the note of any user is one id away. Give
 > every route that binds a record a policy, or bind it within its owner, as the

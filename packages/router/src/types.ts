@@ -196,6 +196,8 @@ export interface RouteBinding {
   readonly scopedBy?: string;
   readonly column?: string;
   readonly with?: readonly string[];
+  /** The record may be found by its key by anyone who may call the route (`bind(…, { public: true })`). */
+  readonly public?: true;
 }
 
 /** Builds controller and middleware classes — per request, from the container. */

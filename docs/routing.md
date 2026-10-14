@@ -461,6 +461,29 @@ changed id in the URL cannot reach somebody else's attachment. The column defaul
 `column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`. A `column` without `scopedBy` is a
 compile error, and refused when the routes load: it would look the attachment up without its note.
 
+### A binding everyone may use
+
+A binding finds any record by its key. When that is the point, because the page shows a profile every visitor may see, say so with
+`public`:
+
+```ts title="modules/user-profile/routes.ts"
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ShowProfileController } from './controllers/ShowProfileController.ts';
+import { ProfileDirectory } from './ProfileDirectory.ts';
+
+export default defineRoutes((Route) => {
+  Route.authorize(everyone)
+    .bind('user', ProfileDirectory, { public: true })
+    .get('/people/:user', ShowProfileController)
+    .name('profiles.show');
+});
+```
+
+A route that lets `everyone` call it and binds a record without `scopedBy` or `public` is reported by the router, because anyone
+could read any record by changing the id. `public` excuses routes that only read (GET, HEAD); a route that changes data and lets everyone call it needs a real check. A
+binding scoped by a public one is open too, and says so with its own `public: true`: `{ scopedBy: 'team', public: true }` means
+public within its parent.
+
 ### Loading relations with the record
 
 `with` names [relations](queries.md#relations) a repository loads with the record, in the same query:
@@ -653,9 +676,12 @@ answers the loopback names. The
 pnpm marmeon route:list
 ```
 
-It shows each route's method, path, name, group, the middleware in the order it runs, and the controller, or `Closure`. The
-last line counts the routes. The list includes the framework's own routes, so it also answers which middleware a request really
-passes.
+It shows each route's method, path, name, group, the middleware in the order it runs, who may call it, and the controller, or
+`Closure`. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
+for a policy (the parameter it asks about in brackets, `(…)` for a function, none for an ability without a resource), and
+`check` for a function of your own. `none` marks a route that does not say who may call it; `framework` marks the framework's
+own routes, which guard themselves. The last line counts the routes. The list includes the
+framework's own routes, so it also answers which middleware a request really passes.
 
 ## Testing
 

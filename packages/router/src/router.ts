@@ -1,3 +1,4 @@
+import { isEveryone, isScoped, openBindings, routeAccess, type AccessProblem } from './access.ts';
 import { HttpError } from './errors.ts';
 import { runPipeline } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
@@ -112,6 +113,7 @@ export const defaultToResponse: ResponseFactory = (result) => {
 
 export class Router {
   readonly #routes: RouteDefinition[] = [];
+  #snapshot: readonly RouteDefinition[] | undefined;
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
   readonly #framework = new WeakSet<RouteDefinition>();
@@ -125,8 +127,9 @@ export class Router {
     this.#resolve = options.resolve ?? ((Class) => new Class());
   }
 
+  /** A frozen snapshot: pushing a route into it cannot get one past the checks made at load. */
   get routes(): readonly RouteDefinition[] {
-    return this.#routes;
+    return (this.#snapshot ??= Object.freeze([...this.#routes]));
   }
 
   /**
@@ -144,6 +147,27 @@ export class Router {
     return this.#framework.has(route);
   }
 
+  /**
+   * The routes that do not say who may call them, and the open ones that bind a record by its key. Nothing is enforced here:
+   * the kernel and the CLI refuse them. See docs/authorization.md#authorizing-requests.
+   *
+   * @internal
+   */
+  accessProblems(): AccessProblem[] {
+    const problems: AccessProblem[] = [];
+    for (const route of this.#routes) {
+      if (this.#framework.has(route)) continue;
+      const checks = routeAccess(route);
+      if (checks.length === 0) {
+        problems.push({ kind: 'undecided', route });
+      } else if (checks.every(isEveryone)) {
+        const write = !route.methods.every((method) => method === 'GET' || method === 'HEAD');
+        for (const binding of openBindings(route)) problems.push({ kind: 'open-binding', route, param: binding.param, binder: binding.binder.name, write });
+      }
+    }
+    return problems;
+  }
+
   load(...definitions: RouteDefinitions[]): this;
   load(options: LoadOptions, ...definitions: RouteDefinitions[]): this;
   load(...args: (LoadOptions | RouteDefinitions)[]): this {
@@ -152,7 +176,13 @@ export class Router {
     const definitions = (first && 'register' in first ? args : rest) as RouteDefinitions[];
 
     const audit: RegistrarAudit[] = [];
-    const root = new Route((route) => this.#routes.push(route), {
+    let sealed = false;
+    const root = new Route((route) => {
+      // A route added once the files have run (a stored registrar, an async register function) would have skipped every check made at load.
+      if (sealed) throw new Error(`A route was registered after its routes were loaded${route.site ? ` (${route.site})` : ''}: register routes synchronously, inside the defineRoutes() callback.`);
+      this.#routes.push(route);
+      this.#snapshot = undefined;
+    }, {
       prefix: options.prefix ?? '/',
       namePrefix: '',
       middleware: [],
@@ -160,7 +190,16 @@ export class Router {
       audit,
     });
     const before = this.#routes.length;
-    for (const definition of definitions) definition.register(root);
+    try {
+      for (const definition of definitions) {
+        const returned: unknown = definition.register(root);
+        if (typeof (returned as { then?: unknown } | undefined)?.then === 'function') {
+          throw new Error('defineRoutes() takes a synchronous function: routes registered after its first await would escape the checks made at load.');
+        }
+      }
+    } finally {
+      sealed = true;
+    }
     const dropped = audit.find((entry) => !entry.used);
     if (dropped) {
       throw new Error(`Route.authorize() at ${dropped.site ?? 'a route file'} made a registrar that never registered a route: its check applies only to routes registered through the registrar it returns — keep it in a constant (const admin = Route.authorize(…)) and register through that. A condition belongs around the whole \`Route.authorize(…)…\` call, not around the routes after it.`);
@@ -346,7 +385,7 @@ async function bindParams(route: RouteDefinition, ctx: HttpContext, resolve: Cla
   for (const binding of route.bindings) {
     const value = params[binding.param];
     if (value === undefined) continue; // an optional parameter that is absent stays absent
-    const scope = binding.scopedBy
+    const scope = isScoped(binding)
       ? { param: binding.scopedBy, parent: params[binding.scopedBy], column: binding.column ?? `${binding.scopedBy}_id` }
       : undefined;
     const bound = await resolve(binding.binder).resolveRouteBinding(String(value), { ctx, ...(scope ? { scope } : {}), ...(binding.with ? { with: binding.with } : {}) });

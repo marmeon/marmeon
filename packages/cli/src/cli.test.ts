@@ -40,10 +40,18 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(code).toBe(0);
     // Execution order: global first, then the web group (cookies before the session), the route's own last.
     expect(stdout).toMatch(
-      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+ShowUserProfileController/,
+      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+none\s+ShowUserProfileController/,
     );
-    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, authenticate:api, abilities:users:read\s+ListUsersController/);
+    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, authenticate:api, abilities:users:read\s+none\s+ListUsersController/);
     expect(stdout).toMatch(/\n\d+ routes\n$/); // the count grows with the app
+  });
+
+  it('shows who may call each route: a policy check, none for an undecided route, framework for the framework’s own', () => {
+    const { stdout } = marmeon(webApp, ['route:list']);
+    expect(stdout).toMatch(/^METHOD\s+PATH\s+NAME\s+GROUP\s+MIDDLEWARE\s+ACCESS\s+ACTION$/m);
+    expect(stdout).toMatch(/PUT\s+\/users\/:user\s+user-profile\.update\s.*\scan ProfilePolicy\.update\(user\)\s+UpdateUserProfileController/);
+    expect(stdout).toMatch(/GET\s+\/users\/:user\s+user-profile\.show\s.*\snone\s+ShowUserProfileController/);
+    expect(stdout).toMatch(/GET\s+\/_marmeon\/live\s.*\sframework\s+LiveStreamController/);
   });
 
   it('prints configuration errors without Node internals and exits with 1', () => {

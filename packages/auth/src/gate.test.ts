@@ -1,7 +1,7 @@
 import { createApplication, defineModule, err, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
-import type { RouteBinder } from '@marmeon/router';
+import { accessLabel, type RouteBinder } from '@marmeon/router';
 import { createHttpKernel } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
@@ -297,6 +297,20 @@ describe('policies on api routes — the token guard tells the gate who it is', 
     const { api } = await boot();
     expect(await api('1/posts:read', 'PUT', '/posts/1', { title: 'By token' })).toEqual({ status: 403, body: { message: 'This token may not: posts:write.' } });
     expect((await api('nobody', 'PUT', '/posts/1', { title: 'x' })).status).toBe(401);
+  });
+});
+
+describe('can() labels', () => {
+  it('names the policy, the ability and where the resource comes from', () => {
+    expect(accessLabel(can(PostPolicy, 'update', 'post'))).toBe('can PostPolicy.update(post)');
+    expect(accessLabel(can(PostPolicy, 'view', (ctx: HttpContext<Authenticated, { post: Post }>) => ctx.params.post))).toBe('can PostPolicy.view(…)');
+    expect(accessLabel(can(PostPolicy, 'create'))).toBe('can PostPolicy.create');
+  });
+
+  it('labels what untyped code passes instead of throwing', () => {
+    const untyped = can as (...args: unknown[]) => never;
+    expect(accessLabel(untyped(undefined, 'view'))).toBe('can Policy.view');
+    expect(accessLabel(untyped(class {}, Symbol('x')))).toBe('can Policy.Symbol(x)');
   });
 });
 
