@@ -45,7 +45,7 @@ export type RememberTokenError =
   | {
       readonly kind: 'stolen';
       readonly userId: number | string;
-      /** The presented validator was the one just replaced by a rotation (a genuinely copied cookie), not any other mismatch. A store that leaves it out announces nothing. */
+      /** The presented validator was the one just replaced by a rotation. Information only: an older validator or one never issued, on a known selector, comes from someone who held the cookie (the selector is random), and `Auth` announces every `stolen` the same way. */
       readonly reused?: boolean;
     };
 

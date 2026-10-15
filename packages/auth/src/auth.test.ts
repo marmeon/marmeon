@@ -891,7 +891,7 @@ describe('remember me', () => {
       expect(new RememberTokenReused(ada, { ip: '2001:db8::1', sessionsEnded: true }).ip).toBe('2001:db8::1');
     });
 
-    it('is not dispatched when the store reports a mismatch that was no reuse, though the sessions still end', async () => {
+    it('is dispatched when the store reports a stale validator that was not the one just replaced', async () => {
       const { add, browser } = await boot({
         consume: (real) => async () => {
           await real.forgetUser(1);
@@ -905,8 +905,33 @@ describe('remember me', () => {
       events.length = 0;
       const fresh = browser(new Map([['remember_web', owner.jar.get('remember_web')!]]));
       expect(await (await fresh.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-      expect(events.some((event) => event instanceof RememberTokenReused)).toBe(false);
+      expect(events.filter((event) => event instanceof RememberTokenReused)).toMatchObject([{ userId: 1, sessionsEnded: true }]);
       expect(await (await owner.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    });
+
+    it('is dispatched once for a copy that comes back after the owner rotated twice', async () => {
+      const { add, browser, kernel } = await boot();
+      await add(ada);
+      const owner = browser();
+      await rememberLogin(owner.send);
+      const copied = owner.jar.get('remember_web')!;
+      const request = (cookie: string) => kernel.request('/who', { headers: { cookie: `remember_web=${cookie}`, accept: 'application/json' } });
+      const rotate = async (cookie: string) => {
+        const response = await request(cookie);
+        expect(await response.json()).toMatchObject({ id: 1, viaRemember: true });
+        return /remember_web=([^;]+)/.exec(response.headers.get('set-cookie') ?? '')![1]!;
+      };
+      events.length = 0;
+      const second = await rotate(copied);
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+      try {
+        await rotate(second);
+        vi.setSystemTime(Date.now() + 61_000);
+        expect(await (await request(copied)).json()).toEqual({ id: null, viaRemember: false });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(events.filter((event) => event instanceof RememberTokenReused)).toMatchObject([{ userId: 1, sessionsEnded: true }]);
     });
 
     it('is dispatched once for parallel replays', async () => {

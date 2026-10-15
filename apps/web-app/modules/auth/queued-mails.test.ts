@@ -203,7 +203,7 @@ describe('mails without a request', () => {
     // The change of address (private registration): the link to the new address, the note to the owner of a taken one.
     expect((await app.get('/_marmeon/mail/auth/ConfirmNewEmailMail?locale=de').assertOk()).body).toContain('<th>Subject</th><td>Bestätige deine neue E-Mail-Adresse</td>');
     expect((await app.get('/_marmeon/mail/auth/EmailInUseMail').assertOk()).body).toContain('<th>Subject</th><td>Someone wanted to use your e-mail address</td>');
-    expect((await app.get('/_marmeon/mail/auth/SignInMail').assertOk()).body).toContain('A “Keep me signed in” cookie of your account was used twice');
+    expect((await app.get('/_marmeon/mail/auth/SignInMail').assertOk()).body).toContain('An old or altered “Keep me signed in” cookie of your account was sent');
     const preview = await app.get('/_marmeon/mail/auth/VerifyEmailMail?locale=de').assertOk();
     expect(preview.body).toContain('<th>Subject</th><td>Bestätige deine E-Mail-Adresse</td>');
     expect(preview.body).toContain('Ada Lovelace');

@@ -77,7 +77,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true }));
   });
 
-  it('theft: a validator that was never issued revokes the tokens but is not reported as a reuse', async () => {
+  it('theft: a validator that was never issued revokes the tokens, with only the `reused` flag false (the owner is still told)', async () => {
     const cookie = await tokens.create(1, inAMonth());
     await tokens.create(1, inAMonth());
     expect(await tokens.consume(`${cookie.split('.')[0]}.${'x'.repeat(43)}`)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: false }));
