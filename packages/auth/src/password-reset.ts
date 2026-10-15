@@ -157,7 +157,7 @@ export class PasswordBroker {
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
     const found = await this.#users.findForLogin(email);
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
-    const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(found.user), await this.#hasher.make(password), 'reset');
+    const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
     await this.#events.dispatch(new PasswordReset(found.user, revoked));
     return ok(found.user);
   }

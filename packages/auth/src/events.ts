@@ -197,15 +197,18 @@ export class TwoFactorEnabled {
   }
 }
 
-/** A second factor was turned off: by the user (`TwoFactor.disable()`) or by the operator's reset command. Queueable: `{ userId, via }`. */
+/**
+ * A second factor was turned off: by the user (`TwoFactor.disable()`), by the operator's reset command, or by the password reset of an
+ * account whose address was never confirmed (`via: 'reset'`). Queueable: `{ userId, via }`.
+ */
 export class TwoFactorDisabled {
   static readonly event = 'auth.two-factor-disabled';
-  static readonly schema = v.object({ userId, via: v.picklist(['user', 'operator']) });
+  static readonly schema = v.object({ userId, via: v.picklist(['user', 'operator', 'reset']) });
   readonly #event = true;
   readonly user: AuthUser;
-  readonly via: 'user' | 'operator';
+  readonly via: 'user' | 'operator' | 'reset';
 
-  constructor(user: AuthUser, via: 'user' | 'operator' = 'user') {
+  constructor(user: AuthUser, via: 'user' | 'operator' | 'reset' = 'user') {
     this.user = user;
     this.via = via;
   }
@@ -327,15 +330,17 @@ export class PasskeySignInFailed {
   }
 }
 
-/** A passkey was removed from the account. Queueable: `{ userId }`. */
+/** A passkey was removed from the account: by the user, or by the password reset of an account whose address was never confirmed (`via: 'reset'`). Queueable: `{ userId, via }`. */
 export class PasskeyRemoved {
   static readonly event = 'auth.passkey-removed';
-  static readonly schema = v.object({ userId });
+  static readonly schema = v.object({ userId, via: v.optional(v.picklist(['user', 'reset']), 'user') });
   readonly #event = true;
   readonly user: AuthUser;
+  readonly via: 'user' | 'reset';
 
-  constructor(user: AuthUser) {
+  constructor(user: AuthUser, via: 'user' | 'reset' = 'user') {
     this.user = user;
+    this.via = via;
   }
 
   get userId(): AuthUserId {

@@ -241,7 +241,7 @@ describe('auth module', () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, {
       database: 'refresh',
-      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
+      override: (c) => c.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
     });
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;
@@ -605,7 +605,7 @@ describe('password reset', () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, {
       database: 'refresh',
-      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
+      override: (c) => c.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
     });
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;

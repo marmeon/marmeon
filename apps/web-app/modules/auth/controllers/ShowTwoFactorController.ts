@@ -12,7 +12,8 @@ export class ShowTwoFactorController extends Controller {
     this.#twoFactor = twoFactor;
   }
 
-  async handle(_ctx: HttpContext<Authenticated>) {
-    return this.view('auth/TwoFactor', await twoFactorPage(this.#twoFactor));
+  async handle(ctx: HttpContext<Authenticated>) {
+    // An unconfirmed address cannot add a factor (the routes refuse it): the page says so instead.
+    return this.view('auth/TwoFactor', { ...(await twoFactorPage(this.#twoFactor)), verified: ctx.user.email_verified_at !== null });
   }
 }

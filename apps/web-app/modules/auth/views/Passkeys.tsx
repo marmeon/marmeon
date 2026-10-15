@@ -8,7 +8,7 @@ import { createPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
 
 type Props = PageProps<ShowPasskeysController>;
 
-export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
+export default function Passkeys({ passkeys, lastFactor, firstFactor, verified }: Props) {
   const t = useTranslation('auth');
   const route = useRoute();
   const [supported, setSupported] = useState(false);
@@ -107,6 +107,14 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
     <main>
       <Head title={t('passkeys.title')} />
       <h1>{t('passkeys.title')}</h1>
+      {!verified && (
+        <div className="card cluster">
+          <p>{t('verify.needed_for_factors')}</p>
+          <Link route="auth.verification.send" className="button">
+            {t('verify.resend')}
+          </Link>
+        </div>
+      )}
       <p>{t('passkeys.intro')}</p>
       {error?.sudo && (
         <p role="alert">
@@ -199,51 +207,53 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
         </ul>
       )}
 
-      <section aria-labelledby="add-heading">
-        <h2 id="add-heading">{t('passkeys.add_heading')}</h2>
-        {!supported ? (
-          <p>{t('passkeys.unsupported')}</p>
-        ) : (
-          <form
-            method="post"
-            action={route('auth.passkeys.store')}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              void add();
-            }}
-          >
-            {firstFactor && (
-              <p role="note">
-                <small>{t('passkeys.add_notice')}</small>
+      {verified && (
+        <section aria-labelledby="add-heading">
+          <h2 id="add-heading">{t('passkeys.add_heading')}</h2>
+          {!supported ? (
+            <p>{t('passkeys.unsupported')}</p>
+          ) : (
+            <form
+              method="post"
+              action={route('auth.passkeys.store')}
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void add();
+              }}
+            >
+              {firstFactor && (
+                <p role="note">
+                  <small>{t('passkeys.add_notice')}</small>
+                </p>
+              )}
+              <p>
+                <label htmlFor="passkey-name">{t('passkeys.name')}</label>
+                <br />
+                <input id="passkey-name" name="name" type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
               </p>
-            )}
-            <p>
-              <label htmlFor="passkey-name">{t('passkeys.name')}</label>
-              <br />
-              <input id="passkey-name" name="name" type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-            </p>
-            <p>
-              <label htmlFor="passkey-password">{t('passkeys.password')}</label>
-              <br />
-              <input
-                id="passkey-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                aria-invalid={error?.field === 'password' && !error.target}
-              />
-              {error?.field === 'password' && !error.target && <small role="alert"> {error.message}</small>}
-            </p>
-            {error && error.field !== 'password' && !error.target && <p role="alert">{error.message}</p>}
-            <button type="submit" disabled={working || password === ''}>
-              {working ? t('passkeys.working') : t('passkeys.add')}
-            </button>
-          </form>
-        )}
-      </section>
+              <p>
+                <label htmlFor="passkey-password">{t('passkeys.password')}</label>
+                <br />
+                <input
+                  id="passkey-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-invalid={error?.field === 'password' && !error.target}
+                />
+                {error?.field === 'password' && !error.target && <small role="alert"> {error.message}</small>}
+              </p>
+              {error && error.field !== 'password' && !error.target && <p role="alert">{error.message}</p>}
+              <button type="submit" disabled={working || password === ''}>
+                {working ? t('passkeys.working') : t('passkeys.add')}
+              </button>
+            </form>
+          )}
+        </section>
+      )}
     </main>
   );
 }

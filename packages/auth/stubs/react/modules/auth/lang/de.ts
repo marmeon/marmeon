@@ -70,6 +70,7 @@ export default {
     back: 'Zurück zum Dashboard',
     sent: 'Ein neuer Bestätigungslink ist unterwegs.',
     verified: 'Deine E-Mail-Adresse ist bestätigt.',
+    needed_for_factors: 'Bestätige zuerst deine E-Mail-Adresse: Ein zweiter Faktor oder ein Passkey lässt sich nur zu einer bestätigten Adresse hinzufügen.',
     wrong_account: 'Dieser Bestätigungslink gehört nicht zu deinem Konto.',
   },
   // Private Registrierung: der Link an eine neue Adresse.
@@ -354,6 +355,12 @@ export default {
         preview: 'Ein Betreiber hat den zweiten Faktor deines Kontos entfernt',
         intro: 'ein Betreiber hat auf Wunsch des Kontoinhabers den zweiten Faktor und die Wiederherstellungscodes deines Kontos entfernt.',
         outro: 'Hast du das nicht veranlasst, setze jetzt dein Passwort zurück und melde dich bei uns. Schalte die Zwei-Faktor-Anmeldung in den Einstellungen wieder ein.',
+      },
+      disabled_by_reset: {
+        subject: 'Deine zweiten Faktoren wurden entfernt',
+        preview: 'Passkeys und Authenticator deines Kontos wurden entfernt',
+        intro: 'dein Passwort wurde zurückgesetzt, obwohl die Adresse deines Kontos nicht bestätigt war. Deshalb wurden seine Passkeys, sein Authenticator, seine Wiederherstellungscodes und seine API-Tokens entfernt.',
+        outro: 'Du kannst sie in den Einstellungen wieder einrichten, sobald du deine Adresse bestätigt hast. Hast du dein Passwort nicht zurückgesetzt, setze es jetzt noch einmal zurück.',
       },
       recovery_used: {
         subject: 'Ein Wiederherstellungscode wurde benutzt',

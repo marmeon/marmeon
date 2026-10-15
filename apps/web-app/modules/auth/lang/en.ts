@@ -71,6 +71,7 @@ const en = {
     back: 'Back to your profile',
     sent: 'A new verification link is on its way.',
     verified: 'Your e-mail address is verified.',
+    needed_for_factors: 'Confirm your e-mail address first: a second factor or a passkey can be added only to a confirmed address.',
     wrong_account: 'This verification link is not for your account.',
   },
   // Private registration: the link to a new address.

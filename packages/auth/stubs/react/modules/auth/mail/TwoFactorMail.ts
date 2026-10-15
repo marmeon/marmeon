@@ -10,6 +10,7 @@ export type TwoFactorNotice =
   | { readonly kind: 'disabled' }
   | { readonly kind: 'authenticator_removed' }
   | { readonly kind: 'disabled_by_operator' }
+  | { readonly kind: 'disabled_by_reset' }
   | { readonly kind: 'recovery_used'; readonly remaining: number }
   | { readonly kind: 'failed'; readonly at: string; readonly ip: string | null };
 

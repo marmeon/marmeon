@@ -71,6 +71,7 @@ export default {
     back: 'Zurück zu deinem Profil',
     sent: 'Ein neuer Bestätigungslink ist unterwegs.',
     verified: 'Deine E-Mail-Adresse ist bestätigt.',
+    needed_for_factors: 'Bestätige zuerst deine E-Mail-Adresse: Ein zweiter Faktor oder ein Passkey lässt sich nur zu einer bestätigten Adresse hinzufügen.',
     wrong_account: 'Dieser Bestätigungslink gehört nicht zu deinem Konto.',
   },
   // Private Registrierung: der Link an eine neue Adresse.

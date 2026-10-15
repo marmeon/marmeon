@@ -185,6 +185,14 @@ A successful reset:
 - stores a new hash, so every session of the user ends at its next request,
 - deletes every remember-me token of the user,
 - with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, revokes every API token of the user, in the same transaction as the new hash,
+- when the user's `email_verified_at` is `null`, also removes every passkey, the authenticator and the recovery codes, and revokes every
+  API token whatever that setting says, in the same transaction. That is an address nobody confirmed, and also one that a change of
+  address cleared and the user has not confirmed yet: the reset proves the mailbox, but whoever registered the address first may have
+  attached a way in of their own, and a reset in the middle of a change of address removes the factors too. The factors are read again
+  afterwards; one that is still there is logged as an error. It then dispatches `PasskeyRemoved` (`via: 'reset'`) and `TwoFactorDisabled`
+  (`via: 'reset'`) for what went. A user without an `email_verified_at` property loses nothing, and with a `TwoFactorState` bound the
+  app logs a warning once that the rule is off. The removal calls `removeAll(userId)` of the `TwoFactorState` binding, which every source
+  implements: `TwoFactorStore`, `PasskeyStore` and `combineFactors()` do, and a source of your own must,
 - dispatches `PasswordReset`, with `revokedTokens`, the number of API tokens it revoked.
 
 It does not sign the user in: the starter kit sends them to the login page. The `password()` rule is explained on the

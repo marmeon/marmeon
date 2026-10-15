@@ -262,6 +262,10 @@ plus `TwoFactorStore.removeAll(userId)`, and the events dispatched by the comman
 
 ## In the starter kit
 
+The routes that ask for registration options and store a new passkey sit behind `verified()` in every registration mode: an account whose
+address nobody confirmed cannot add a passkey, and the password reset of such an account removes the ones it has. See
+[security](security.md#open-registration).
+
 `make:auth` writes the passkeys into a new app (the [starter kit](starter-kit.md#passkeys)): the migration of the `passkeys` table
 (`foreignId('user_id').constrained().cascadeOnDelete()`, with `suspended_at`), the binding
 `combineFactors(TwoFactorStore, PasskeyStore)` and `PasskeyServiceProvider` in the module, the controllers and routes, the limits of the
@@ -294,7 +298,7 @@ removes the passkeys together with the authenticator and the recovery codes.
 | Event | When | Fields |
 | --- | --- | --- |
 | `PasskeyRegistered` | `register()` added a passkey | `user`, `name` |
-| `PasskeyRemoved` | `remove()` removed one | `user` |
+| `PasskeyRemoved` | `remove()` removed one, or the password reset of an account with an unconfirmed address removed them | `user`, `via` (`user` or `reset`) |
 | `PasskeyCloneSuspected` | A sign-in was refused for its sign count, and the passkey suspended | `user`, `passkeyId` |
 | `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `ip`, `userAgent` |
 | `Login` | A passwordless sign-in | `via: 'passkey'` |
