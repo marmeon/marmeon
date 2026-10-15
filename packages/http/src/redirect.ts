@@ -3,6 +3,7 @@ import { localLocation } from '@marmeon/router/internal';
 import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@marmeon/router';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
+import { isSensitiveField } from './sensitive-fields.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 
 const REDIRECT_RESULT = Symbol.for('marmeon.redirect-result');
@@ -176,12 +177,6 @@ export const OLD_INPUT_KEY = '_old_input';
 /** Where `authenticate()` keeps the page a guest wanted, for `redirect().intended()`. */
 export const INTENDED_KEY = '_intended_url';
 
-/**
- * No field with "password" in its name is ever kept in the session (`password`, `password_confirmation`, `current_password`,
- * `new_password`, …).
- */
-const DONT_FLASH = /password/i;
-
 /** A path on this site (`/users/1?tab=links`) — not `//evil.example`, `/\\evil.example` or a full URL. */
 export function isLocalPath(value: unknown): value is string {
   // oxlint-disable-next-line no-control-regex -- control characters are exactly what it refuses
@@ -196,7 +191,7 @@ export function isLocalPath(value: unknown): value is string {
 }
 
 /**
- * The input as the session may keep it for `old()`: without fields whose name contains "password", without `_token` and
+ * The input as the session may keep it for `old()`: without credential and payment fields (`password`, `api_token`, `otp`, `recovery_code`, `card_number`, … — `isSensitiveField`), without `_token` and
  * without files, at every depth. `redirect().withInput()`, the failed form and `Session.flashInput()` all flash through it.
  */
 export function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -211,7 +206,7 @@ export function flashableInput(input: Record<string, unknown>): Record<string, u
   };
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
-    if (DONT_FLASH.test(key) || key === '_token') continue;
+    if (isSensitiveField(key) || key === '_token') continue;
     const cleaned = clean(value);
     if (cleaned !== undefined) result[key] = cleaned;
   }

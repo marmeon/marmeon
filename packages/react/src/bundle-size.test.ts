@@ -65,6 +65,8 @@ const FEATURES = {
   optimistic: { markers: ['http/client/features/optimistic'], use: inApp('useRouter'), lazy: true },
   // useForm(…, { validate }): on a form's first use, in a chunk of its own. useForm remembers (static).
   liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['guard', 'remember'], lazy: true },
+  // The rules that tell sensitive field names: loaded when something is first remembered, in a chunk of their own.
+  sensitiveFields: { markers: ['http/sensitive-fields'], use: inApp('useRemember'), brings: ['remember'], lazy: true },
   queryState: { markers: ['http/client/query-state', 'http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
@@ -128,7 +130,7 @@ type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features no app carries unless it uses them. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'revalidation', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'deferredProps', 'hooks', 'table', 'tanstack', 'viewTransitions', 'failures'];
+const EXTRACTED: readonly Feature[] = ['sensitiveFields', 'queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'revalidation', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'deferredProps', 'hooks', 'table', 'tanstack', 'viewTransitions', 'failures'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -225,6 +227,13 @@ describe('an app holds only the features it uses (leak test)', () => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('layers');
     expect(featuresIn(built, true)).toContain('layers');
+  });
+
+  // The rules that tell sensitive field names are no part of any first download — remembering loads them with its first write.
+  it.each(['minimalApp', 'everything'] as const)('the rules for sensitive fields are a chunk of their own in %s — loaded with the first write', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built), 'the rules in the first download').not.toContain('sensitiveFields');
+    expect(featuresIn(built, true)).toContain('sensitiveFields');
   });
 
   // The XHR code is no part of any first download — the core loads it with the first FormData visit with progress.

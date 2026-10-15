@@ -1,19 +1,16 @@
-import { isSensitiveRememberField, remember, type Remembered } from '@marmeon/http/client';
+import { remember, type LooksLikePassword, type LooksSensitive, type Remembered } from '@marmeon/http/client';
 import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 import { useIslandScope } from './island-scope.ts';
 
-/** Names that look like something never to keep: a password, a token, a secret, a card. */
-type LooksSensitive<K extends string> = Lowercase<K> extends `${string}${'password' | 'secret' | 'token' | 'card' | 'cvc'}${string}` ? true : false;
-
-type IsPassword<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
+type IsPassword<K extends string> = LooksLikePassword<K>;
 
 /** The key of remembered state: anything — but a name that looks sensitive needs `{ sensitive: true }` (and a password never). */
 export type RememberKey<K extends string> =
   IsPassword<K> extends true
     ? `'${K}' looks like a password — passwords are never remembered: they stay in the field until the page is left`
     : LooksSensitive<K> extends true
-      ? `'${K}' looks sensitive (a token, a secret, a card) — remembered state leaves it out unless you say so: useRemember('${K}', initial, { sensitive: true })`
+      ? `'${K}' looks sensitive (a token, a secret, a code, a card) — remembered state leaves it out unless you say so: useRemember('${K}', initial, { sensitive: true })`
       : K;
 
 /** A sensitive-looking key the app keeps on purpose — never a password. */
@@ -41,30 +38,31 @@ export function useRememberStore(key: string): { store: Remembered | undefined; 
  * const [tab, setTab] = useRemember('links-tab', 'links');
  * ```
  *
- * Never sensitive data: fields named like a password, token, secret or card and files are left out at any depth — a key
+ * Never sensitive data: fields named like a password, token, secret, credential, one-time or recovery code or card and files are left out at any depth — a key
  * named so is a compile error unless `{ sensitive: true }` (never for passwords). See docs/navigation.md#remembered-state.
  */
 export function useRemember<T, const K extends string = string>(key: RememberKey<K>, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>];
 export function useRemember<T, const K extends string = string>(key: SensitiveKey<K>, initial: T | (() => T), options: UseRememberOptions): [T, Dispatch<SetStateAction<T>>];
 export function useRemember<T>(key: string, initial: T | (() => T), { sensitive }: UseRememberOptions = {}): [T, Dispatch<SetStateAction<T>>] {
   const { store, key: scoped } = useRememberStore(key);
-  // A key named like a password is never kept; a sensitive-looking one only when asked for.
-  const keep = !isSensitiveRememberField(key, sensitive ? [key] : []);
+  // What the store holds was let in when it was written: reading needs no rules.
   const [value, setValue] = useState<T>(() => {
-    if (keep && store?.has(scoped)) return store.get(scoped) as T;
+    if (store?.has(scoped)) return store.get(scoped) as T;
     return typeof initial === 'function' ? (initial as () => T)() : initial;
   });
   const first = useRef(true);
   useEffect(() => {
     // Kept with the entry on screen — written again when the entry changes (a sort link pushed a new one with this component).
-    if (!keep || !store) return;
+    if (!store) return;
     if (first.current && !store.has(scoped)) {
       first.current = false;
       // The initial value is what a fresh entry shows anyway: nothing to keep yet.
       return;
     }
     first.current = false;
-    store.set(scoped, value, sensitive ? [key] : []);
-  }, [store, scoped, value, keep, key, sensitive]);
+    // A key named like a password is never kept; a sensitive-looking one only when asked for. The rules load with the first write.
+    const include = sensitive ? [key] : [];
+    store.set(scoped, value, include, key);
+  }, [store, scoped, value, key, sensitive]);
   return [value, setValue];
 }

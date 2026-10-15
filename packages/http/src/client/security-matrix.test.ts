@@ -29,6 +29,10 @@ import { islands, type IslandsFeature } from './features/islands.ts';
 import { REMEMBERED } from './remember.ts';
 import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, type FakeEventSource } from './test-window.ts';
 import { TOP } from './scroll.ts';
+import { loadSensitiveFields } from './remember.ts';
+
+// The rules that tell sensitive fields load on first use; these tests write and read at once.
+await loadSensitiveFields();
 
 /**
  * The security matrix: every feature × every event that must make what a signed-in user saw disappear —

@@ -234,8 +234,12 @@ const form = useForm('notes.update', { note: note.id }, { title: note.title, bod
 ```
 
 The input stays in the tab's memory with the history entry, under the key `form:<route name>`. A string sets another key. A
-reload, signing in or out and a new build start over. Fields named like a password and files are never kept. Fields named like a
-token, a secret or a card are left out unless `{ include: [...] }` names them. `<Form remember>` works the same way, and a form by
+reload, signing in or out and a new build start over. Fields named like a password and files are never kept, and neither is
+any `<input type="password">` or a control with `autocomplete="one-time-code"`, `current-password` or `new-password`, whatever
+its name; `include` does not change that. Fields named like a token, a secret, a credential, an API or private key, a session id, a recovery or one-time code (`otp`,
+`code`, `recovery_code`, `sms_code`), a card or a bank account (`card_number`, `cvc`, `iban`), and controls with
+`autocomplete="cc-*"`, are left out unless `{ include: [...] }` names them. A field that has been a password input stays out
+even if a show-password toggle makes it plain text. A zip, postal, language, currency or promo code is kept. `<Form remember>` works the same way, and a form by
 controller takes a key: `useForm<StoreNoteController>(initial, { remember: 'new-note' })`.
 
 ## Asking first

@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { LOCATION_HEADER, RELOAD_HEADER, UPLOAD_HEADER, type Upload } from '../page.ts';
 import { uploads } from './features/uploads.ts';
 import { dirtyPaths } from './forms.ts';
-import { rememberable } from './remember.ts';
+import { loadSensitiveFields, rememberable } from './remember.ts';
 import { boot, FakeWindow, ORIGIN, page, settle } from './test-window.ts';
+
+// The rules that tell sensitive fields load on first use; these tests write and read at once.
+await loadSensitiveFields();
 
 /** What the fake XHR saw: method, URL, headers and body — and what it answers. */
 interface Sent {

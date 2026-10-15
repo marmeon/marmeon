@@ -12,7 +12,9 @@ import {
   resolveRoute,
   restoreFormEntries,
   sameEntries,
+  sensitiveControl,
   type Confirm,
+  type LooksLikePassword,
   type FormLiveValidation,
   type VisitMethod,
   type VisitOptions,
@@ -112,8 +114,8 @@ export interface FormRenderState<F> {
   clearErrors(...names: FieldName<F>[]): void;
 }
 
-/** The fields of a form whose names look sensitive — what `remember.include` may name (never passwords). */
-type SensitiveName<F> = Extract<FieldName<F>, `${string}${'secret' | 'token' | 'card' | 'cvc' | 'Secret' | 'Token' | 'Card' | 'Cvc'}${string}`>;
+/** The fields of a form that `remember.include` may name: any but those named like a password, which are never remembered. */
+type IncludableName<F> = Extract<FieldName<F>, string> extends infer N ? (N extends string ? (LooksLikePassword<N> extends true ? never : N) : never) : never;
 
 type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
 
@@ -129,9 +131,9 @@ export type FormProps<N extends string> = {
   guard?: boolean | string;
   /**
    * Remember the input across Back/Forward: `true` (as `form:<route>`), a key, or `{ key, include }` — in memory only, never
-   * password-, token-, secret- or card-like fields (`include` lets the non-password ones in) or files.
+   * password-, token-, secret-, code- or card-like fields, nor password, one-time-code or card controls (`include` lets the non-password ones in, a card control by its name) or files.
    */
-  remember?: true | string | { key?: string; include?: readonly (PasswordNeverRemembered | SensitiveName<FormFieldsOf<N>>)[] };
+  remember?: true | string | { key?: string; include?: readonly (PasswordNeverRemembered | IncludableName<FormFieldsOf<N>>)[] };
   /** After it succeeded, back to the markup's values (a create form: empty again). */
   resetOnSuccess?: boolean;
   /** Visit options of the submit — keep the scroll position (the default), replace the history entry, a partial reload. */
@@ -219,16 +221,31 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     // Once, when the form mounts in its entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, rememberKey]);
+  const neverNames = useRef(new Set<string>());
   const keep = useCallback(
     (nextErrors: Partial<Record<string, string>>) => {
       const form = element.current;
       if (!form || !remember || !store) return;
-      const allowed = (name: string) => !isSensitiveRememberField(fieldPath(name), remember.include);
-      const entries = formEntries(form).filter(([name]) => allowed(name));
-      const names = [...new Set(Array.from(form.elements as ArrayLike<{ name?: string }>, (control) => control.name ?? '').filter((name) => name !== '' && allowed(name)))];
-      const unchanged = sameEntries(entries, (baseline.current ?? defaultFormEntries(form)).filter(([name]) => allowed(name)));
-      if (unchanged && Object.keys(nextErrors).length === 0) store.delete(rememberKey);
-      else store.set(rememberKey, { entries, names, errors: nextErrors } satisfies KeptEntries);
+      // A control that says what it holds (a password, a one-time code, a card detail) counts, whatever its name; only a card
+      // detail can be let in, by name, with `include`. A name stays one it has been: a show-password toggle that turns the field
+      // into plain text does not let it in.
+      const never = neverNames.current;
+      const card = new Set<string>();
+      const controls = Array.from(form.elements as unknown as ArrayLike<HTMLInputElement>);
+      for (const control of controls) {
+        const kind = sensitiveControl(control);
+        if (kind) (kind === 'never' ? never : card).add(control.name);
+      }
+      // What the controls say about themselves is noted now, before a toggle can change it; the rest is read when the rules that
+      // tell sensitive names are there (the first write waits for their chunk).
+      store.set(rememberKey, () => {
+        const allowed = (name: string) => !never.has(name) && !(card.has(name) && !remember.include.includes(fieldPath(name))) && !isSensitiveRememberField(fieldPath(name), remember.include);
+        const entries = formEntries(form).filter(([name]) => allowed(name));
+        const names = [...new Set(controls.map((control) => control.name).filter((name) => name && allowed(name)))];
+        const unchanged = sameEntries(entries, (baseline.current ?? defaultFormEntries(form)).filter(([name]) => allowed(name)));
+        // Nothing typed and nothing to show: nothing to keep.
+        return unchanged && Object.keys(nextErrors).length === 0 ? undefined : ({ entries, names, errors: nextErrors } satisfies KeptEntries);
+      });
     },
     [remember?.key, remember?.include.join(','), store, rememberKey],
   );

@@ -7,6 +7,10 @@ import { prefetch } from './prefetch.ts';
 import { remember } from './remember.ts';
 import { DEFAULT_SESSION_CHANGED_MESSAGE, isTabSyncMessage, tabSync, type EpochChange } from './tab-sync.ts';
 import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, settle } from '../test-window.ts';
+import { loadSensitiveFields } from '../remember.ts';
+
+// The rules that tell sensitive fields load on first use; these tests write and read at once.
+await loadSensitiveFields();
 
 /**
  * Tab sync: tabs of one browser — a `FakeWindow` each — share the browser's channels (`FakeChannels`) and
