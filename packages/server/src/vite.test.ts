@@ -136,6 +136,44 @@ describe('createViteDevRenderer', () => {
     }
   });
 
+  it('does not serve storage, databases or build output — but still the client sources and public files', async () => {
+    const root = app();
+    const files: Record<string, string> = {
+      'storage/database.sqlite': 'secret',
+      'storage/app/private/a.txt': 'secret',
+      'data/app.db': 'secret',
+      'dist/client/x.js': 'export {};',
+      '.marmeon/cache.json': '{}',
+      '.env': 'KEY=secret',
+      '.env.production': 'KEY=secret',
+      'bootstrap/client.ts': 'export {};',
+      'public/robots.txt': 'User-agent: *',
+    };
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), content);
+    }
+    const httpServer = createServer();
+    const { vite } = await createViteDevRenderer({ root, httpServer });
+    httpServer.on('request', vite.middlewares);
+    await new Promise<void>((done) => httpServer.listen(0, '127.0.0.1', done));
+    const { port } = httpServer.address() as { port: number };
+    const status = async (path: string) => (await fetch(`http://127.0.0.1:${port}${path}`)).status;
+    try {
+      for (const path of ['/storage/database.sqlite', '/storage/app/private/a.txt', '/data/app.db', '/dist/client/x.js', '/.marmeon/cache.json']) {
+        expect(await status(path), path).toBe(403);
+      }
+      // Vite's own deny list stays in force.
+      expect(await status('/.env')).toBe(403);
+      expect(await status('/.env.production')).toBe(403);
+      expect(await status('/bootstrap/client.ts')).toBe(200);
+      expect(await status('/robots.txt')).toBe(200);
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
   it('explains a missing Vite, a missing @marmeon/vite, and a config without marmeon()', async () => {
     await expect(start(app({ vite: false }))).rejects.toThrow(
       new ViteSetupError('Vite is not installed in this app. `marmeon dev` and `marmeon build` need it: pnpm add -D vite@^8 @marmeon/vite'),

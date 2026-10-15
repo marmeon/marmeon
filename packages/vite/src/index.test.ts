@@ -1,6 +1,6 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ConfigEnv, Plugin, UserConfig } from 'vite';
+import { mergeConfig, resolveConfig, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import { adapterPeers, marmeon, CLIENT_CHUNKS, PLUGIN_NAME, routesModule, SOURCE_CONDITION, virtualGlob, type MarmeonPluginApi } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -65,6 +65,34 @@ describe('marmeon()', () => {
     expect(configFor(marmeon(), { command: 'build', mode: 'production', isSsrBuild: true }).build).not.toHaveProperty('manifest');
     expect(configFor(marmeon({ test: true }), { command: 'build', mode: 'production' }).build).toBeUndefined();
     expect(configFor(marmeon(), { command: 'serve', mode: 'development' }).build).toBeUndefined();
+  });
+
+  it('denies storage, databases and build output to the dev server — next to Vite\'s own list, and an app\'s list stays', () => {
+    const deny = configFor(marmeon(), { command: 'serve', mode: 'development' }).server?.fs?.deny ?? [];
+    expect(deny).toEqual(expect.arrayContaining(['.env', '.env.*', '**/.git/**', '**/*.sqlite', '**/*.sqlite-*', '**/*.sqlite3', '**/*.sqlite3-*', '**/*.db', '**/*.db-*', '**/*.db3', '**/*.db3-*']));
+    expect(deny.some((pattern) => pattern.endsWith('/storage/**') && pattern.startsWith('/'))).toBe(true);
+    expect(deny.some((pattern) => pattern.endsWith('/dist/**'))).toBe(true);
+    expect(deny.some((pattern) => pattern.endsWith('/.marmeon/**'))).toBe(true);
+    const merged = mergeConfig({ server: { fs: { deny: ['secrets/**'] } } }, configFor(marmeon(), { command: 'serve', mode: 'development' }));
+    expect(merged.server?.fs?.deny).toEqual(expect.arrayContaining(['secrets/**', '.env', '**/*.sqlite']));
+    // Tests and builds keep Vite's defaults.
+    expect(configFor(marmeon({ test: true }), { command: 'serve', mode: 'test' }).server).toBeUndefined();
+    expect(configFor(marmeon(), { command: 'build', mode: 'production' }).server).toBeUndefined();
+  });
+
+  it('keeps every default of Vite\'s deny list, whatever its version holds', async () => {
+    const defaults = (await resolveConfig({ root: app, configFile: false, logLevel: 'silent' }, 'serve')).server.fs.deny;
+    expect(defaults.length).toBeGreaterThan(0);
+    expect(configFor(marmeon(), { command: 'serve', mode: 'development' }).server?.fs?.deny).toEqual(expect.arrayContaining(defaults));
+  });
+
+  it('denies the app\'s directories under the root as written and as resolved — a symlinked root with preserveSymlinks', () => {
+    const real = tree({ 'package.json': {} });
+    const link = `${tempDir('marmeon-vite-unit-')}/linked`;
+    symlinkSync(real, link, 'dir');
+    const hook = main(marmeon()).config as (config: UserConfig, env: ConfigEnv) => UserConfig;
+    const deny = hook({ root: link, resolve: { preserveSymlinks: true } }, { command: 'serve', mode: 'development' } as ConfigEnv).server?.fs?.deny ?? [];
+    expect(deny).toEqual(expect.arrayContaining([`${link}/storage/**`, `${realpathSync(real)}/storage/**`]));
   });
 
   it('pre-bundles from the client entry and the pages — and the devtools\' bar when an installed package brings it (no reload on the first request)', () => {
