@@ -204,7 +204,7 @@ export function checkWorkflow(repository: string): string[] {
     }
     if (/\bgh\s+release\s+edit\b/.test(line) && NOT_DRAFT.test(line)) problems.push(`${where}: "${line.trim()}" publishes a GitHub Release — only the maintainer does, by hand`);
   }
-  if (/\buses:\s*\S*(?:create-release|action-gh-release)\b/.test(code)) problems.push(`${where}: a release action — the release is drafted with "gh release create --draft"`);
+  if (/["']?\buses["']?\s*:\s*\S*(?:create-release|action-gh-release)\b/.test(code)) problems.push(`${where}: a release action — the release is drafted with "gh release create --draft"`);
   const events = eventsOf(code);
   if (events?.join() !== 'workflow_dispatch') {
     problems.push(`${where}: "on:" holds ${events === undefined ? 'no block of events' : events.join(', ') || 'nothing'} — only workflow_dispatch: a release is started by hand, by someone with write access`);
@@ -213,14 +213,14 @@ export function checkWorkflow(repository: string): string[] {
   if (/^\s*(?:- )?cache:|\bactions\/cache\b/m.test(code)) problems.push(`${where}: a cache — a store another workflow wrote could carry code into the job that holds the OIDC token`);
   // setup-node restores a pnpm store by itself when package.json names pnpm (`package-manager-cache` defaults to true), without any `cache:` key.
   for (const chunk of code.split(/^(?=\s*- )/m)) {
-    if (!/^\s*(?:- )?uses:\s*actions\/setup-node@/m.test(chunk)) continue;
+    if (!/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/setup-node@/m.test(chunk)) continue;
     const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(chunk)?.[2] ?? '';
     if (!/^\s*package-manager-cache:\s*false\s*$/m.test(withBlock)) problems.push(`${where}: an actions/setup-node step without "package-manager-cache: false" under "with:" — the action restores a package-manager cache by default`);
   }
   if (/^\s*defaults:/m.test(code) || /^\s*(?:- )?shell:/m.test(code)) problems.push(`${where}: "defaults:" or "shell:" — a step runs in the runner's own bash, with the flags every script here relies on`);
   if (/^\s*(?:if|continue-on-error):|^\s*- (?:if|continue-on-error):/m.test(code)) problems.push(`${where}: an "if:" or "continue-on-error:" — no step may be skipped or fail silently`);
-  for (const [, action] of code.matchAll(/\buses:\s*(\S+)/g)) {
-    if (!action!.startsWith('actions/') && !/@[0-9a-f]{40}$/.test(action!)) problems.push(`${where}: "${action}" is not pinned to a commit — an action outside actions/* is pinned by its full SHA`);
+  for (const [, action] of code.matchAll(/["']?\buses["']?\s*:\s*["']?([^\s"']+)/g)) {
+    if (!/@[0-9a-f]{40}$/.test(action!)) problems.push(`${where}: "${action}" is not pinned to a commit — every action is pinned by its full SHA, a moved tag must not change a job that holds a token`);
   }
   for (const script of runScripts(code)) {
     if (/(?<!\|)\|(?!\|)/.test(script.replace(/^\s*#.*$/gm, '')) && !/^\s*set -o pipefail\s*$/.test(script.trim().split('\n')[0] ?? '')) {
@@ -247,7 +247,7 @@ export function checkWorkflow(repository: string): string[] {
   const needs = (key: string) => `needs.${stagingName}.outputs.${key}`;
   /** `KEY: ${{ source }}` in a step's env. */
   const env = (step: string, key: string, source: string) => new RegExp(`^\\s*${key}:\\s*\\$\\{\\{\\s*${source.replace(/\./g, '\\.')}\\s*\\}\\}\\s*$`, 'm').test(step);
-  const checkoutOf = (step: string) => /\buses:\s*actions\/checkout\b/.test(step);
+  const checkoutOf = (step: string) => /["']?\buses["']?\s*:\s*actions\/checkout\b/.test(step);
 
   for (const [name, body] of jobs) {
     const stages = name === stagingName;
@@ -296,7 +296,7 @@ export function checkWorkflow(repository: string): string[] {
         for (const step of steps.slice(guard + 1)) {
           if (checkoutOf(step) || runScripts(step).some((script) => joined(script).split('\n').some((line) => MOVES_THE_TREE.test(line)))) {
             problems.push(`${where}: the job "${name}" checks out or moves the tree after the guard — the release commit stays the tree that is built, staged and tagged`);
-          } else if (/^\s*(?:- )?uses:/m.test(step)) {
+          } else if (/^\s*(?:- )?["']?uses["']?\s*:/m.test(step)) {
             problems.push(`${where}: the job "${name}" uses an action after the guard — only run steps: an action could switch the tree or run code of its own`);
           }
         }
@@ -323,7 +323,7 @@ export function checkWorkflow(repository: string): string[] {
       }
       for (const [index, step] of steps.entries()) {
         if (index === 0) continue;
-        const uses = /^\s*(?:- )?uses:\s*(\S+)/m.exec(step)?.[1];
+        const uses = /^\s*(?:- )?["']?uses["']?\s*:\s*(\S+)/m.exec(step)?.[1];
         if (uses !== undefined && (!uses.startsWith('actions/setup-node@') || /^\s*cache:/m.test(step))) {
           problems.push(`${where}: the job "${name}" uses ${uses} — besides the checkout only actions/setup-node (without a cache): this job holds the write token`);
         }
@@ -336,7 +336,7 @@ export function checkWorkflow(repository: string): string[] {
       }
       const tag = find(/(?<![\w-])git\s[^\n]*\btag\b/);
       const draft = find(/\bgh\s+release\s+create\b/);
-      if (tag >= 0 && draft >= 0 && (steps.length !== 4 || tag !== 2 || draft !== 3 || !/\buses:\s*actions\/setup-node@/.test(steps[1] ?? ''))) {
+      if (tag >= 0 && draft >= 0 && (steps.length !== 4 || tag !== 2 || draft !== 3 || !/["']?\buses["']?\s*:\s*actions\/setup-node@/.test(steps[1] ?? ''))) {
         problems.push(`${where}: the job "${name}" has exactly four steps — the checkout, actions/setup-node, the tag, the draft: it holds the write token and runs nothing else`);
       }
       if (tag < 0 || draft < 0 || draft < tag) problems.push(`${where}: the job "${name}" tags the release commit, then drafts the GitHub release (gh release create … --draft)`);
@@ -466,6 +466,18 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
 /** The label check's events: only the one that gives a fork's code no token, on every change of the commits or the labels. */
 const LABEL_EVENT_TYPES = ['opened', 'reopened', 'synchronize', 'labeled', 'unlabeled'];
 
+/** ci.yml: every action pinned by its full commit SHA, so a moved tag changes no job. */
+export function checkCiWorkflow(repository: string): string[] {
+  const file = join(repository, '.github/workflows/ci.yml');
+  if (!existsSync(file)) return ['.github/workflows/ci.yml is missing'];
+  const code = readFileSync(file, 'utf8').replace(/(^|\s)#.*$/gm, '$1');
+  const problems: string[] = [];
+  for (const [, action] of code.matchAll(/["']?\buses["']?\s*:\s*["']?([^\s"']+)/g)) {
+    if (!/@[0-9a-f]{40}$/.test(action!)) problems.push(`ci.yml: "${action}" is not pinned to a commit — every action is pinned by its full SHA`);
+  }
+  return problems;
+}
+
 /** The pull request label check: its shape (it runs untrusted code, so it holds no token) and the label list. */
 export function checkLabelWorkflow(repository: string): string[] {
   const where = 'pr-label.yml';
@@ -484,7 +496,7 @@ export function checkLabelWorkflow(repository: string): string[] {
   }
   if (!/^permissions:\s*\{\}\s*$/m.test(code)) problems.push(`${where}: the workflow's "permissions:" must be "{}" — the labels are in the event, the job needs no token`);
   if (/^[ \t]+permissions:/m.test(code)) problems.push(`${where}: a job asks for permissions — it needs none`);
-  if (/\buses:/.test(code)) problems.push(`${where}: a "uses:" step (a checkout or an action) — the check runs on untrusted pull requests and needs neither`);
+  if (/["']?\buses["']?\s*:/.test(code)) problems.push(`${where}: a "uses:" step (a checkout or an action) — the check runs on untrusted pull requests and needs neither`);
   if (/\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token)|GITHUB_TOKEN/.test(code)) problems.push(`${where}: a secret or the token — the check must hold none`);
   for (const script of runScripts(code)) {
     if (script.includes('${{')) problems.push(`${where}: an expression inside a run script ("${script.trim().split('\n')[0]}") — pass it through env:, a label name could inject commands`);
@@ -539,6 +551,7 @@ export function check(repository: string = root): string[] {
     ...checkVersion(repository, packages),
     ...checkChangelogs(repository, packages),
     ...checkWorkflow(repository),
+    ...checkCiWorkflow(repository),
     ...checkLabelWorkflow(repository),
     ...checkReleaseConfig(repository),
     ...checkTrust(repository),
