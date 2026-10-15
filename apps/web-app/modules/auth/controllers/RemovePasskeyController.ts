@@ -9,7 +9,7 @@ export const RemovePasskeyRequest = defineRequest({
   schema: r.object({ password: r.string().max(4096).default('') }),
 });
 
-/** Removes a passkey of the signed-in user. The last factor asks for the password and takes the recovery codes along. */
+/** Removes a passkey of the signed-in user. The password is asked for every passkey; the last factor takes the recovery codes along. */
 export class RemovePasskeyController extends Controller {
   static request = RemovePasskeyRequest;
 

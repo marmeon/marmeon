@@ -339,7 +339,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became.
       expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false')).toBe(3);
       // The passkey tests ran with the app's database (the software authenticator stands in for the browser), the mails' and the browser code's too.
-      expect(ran('passkeys', 'passkeys')).toBe(15);
+      expect(ran('passkeys', 'passkeys')).toBe(16);
       expect(ran('passkeys', 'the mails about passkeys')).toBe(8);
       expect(ran('passkeys', 'marmeon auth:reset-two-factor and passkeys')).toBe(2);
       expect(ran('passkeys', 'an account with the authenticator app and a passkey')).toBe(1);

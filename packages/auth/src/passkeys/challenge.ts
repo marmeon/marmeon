@@ -3,7 +3,7 @@ import { err, ok, type Result } from '@marmeon/core';
 import type { Session } from '@marmeon/session';
 
 /** What a challenge was issued for; it works for nothing else. */
-export type ChallengePurpose = 'register' | 'sign-in' | 'second-factor' | 'step-up';
+export type ChallengePurpose = 'register' | 'sign-in' | 'second-factor' | 'step-up' | 'confirm';
 
 /** How long the user has for one ceremony, in seconds. */
 export const CHALLENGE_SECONDS = 300;

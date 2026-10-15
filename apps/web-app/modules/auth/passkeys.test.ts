@@ -51,6 +51,29 @@ describe('passkeys', () => {
     await app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest).get('/users/me').assertAuthenticated(ada);
   });
 
+  it('a session that got in with a passkey alone still types the password to change the address, make a token or remove a passkey', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { authenticator } = await enrol(ada);
+    const options = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
+    const guest = options.cookie(SESSION)!;
+    const signedIn = await app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect('/users/me');
+    const as = () => app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest).expectingJson();
+    const token = { name: 'CI', abilities: ['users:read'] };
+
+    // Sudo mode is open (the passkey confirmed it), and the form still asks for the password.
+    await as().put('/settings/email', { json: { email: 'new@example.com' } }).assertStatus(422);
+    await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'wrong' } }).assertStatus(422);
+    await as().post('/settings/tokens', { json: token }).assertStatus(422);
+    await as().post('/settings/passkeys/1/remove', { json: {} }).assertStatus(422);
+    await app.assertDatabaseCount('passkeys', 1);
+    await app.assertDatabaseCount('personal_access_tokens', 0);
+
+    await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303);
+    await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk();
+    await as().post('/settings/passkeys/1/remove', { json: { password: 'password' } }).assertOk();
+    await app.assertDatabaseCount('passkeys', 0);
+  });
+
   it('after the password, a passkey finishes the sign-in', async () => {
     const ada = await app.factory(UserFactory).create();
     const { authenticator } = await enrol(ada);

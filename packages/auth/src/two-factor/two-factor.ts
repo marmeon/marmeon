@@ -189,8 +189,8 @@ export class TwoFactor {
   }
 
   /**
-   * Starts setting up an authenticator app: a new key, not yet in force. Needs a signed-in user who typed the password recently
-   * (`confirmedPassword()`); throws when an authenticator is already on (turn it off first), when no source of factors is bound
+   * Starts setting up an authenticator app: a new key, not yet in force. Needs a signed-in user with a recent confirmation
+   * (`confirmedPassword()`: a password or a passkey); throws when an authenticator is already on (turn it off first), when no source of factors is bound
    * (`TwoFactorState` is still the default that knows none, so the factor would never be asked for) and for an account without a
    * password (turning the factor on signs the other devices out, which takes the hash). Replaces an earlier unconfirmed key.
    */
@@ -296,7 +296,7 @@ export class TwoFactor {
     return ok({ recoveryCodes });
   }
 
-  /** New recovery codes, replacing all the old ones (spent or not); shown once. Needs a recently typed password and a factor. */
+  /** New recovery codes, replacing all the old ones (spent or not); shown once. Needs a recent confirmation (`confirmedPassword()`: a password or a passkey) and a factor. */
   async regenerateRecoveryCodes(): Promise<readonly string[]> {
     const user = await this.#requireRecentPassword('regenerateRecoveryCodes');
     const id = idOf(user);
@@ -430,7 +430,7 @@ export class TwoFactor {
 
   async #requireRecentPassword(method: string): Promise<AuthUser> {
     const user = await this.#requireUser(method);
-    if (!this.#auth.passwordRecentlyConfirmed()) throw new Error(`twoFactor.${method}() needs a recently typed password — put the route behind confirmedPassword().`);
+    if (!this.#auth.passwordRecentlyConfirmed()) throw new Error(`twoFactor.${method}() needs a recent confirmation (a password or a passkey) — put the route behind confirmedPassword().`);
     return user;
   }
 

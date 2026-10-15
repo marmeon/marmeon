@@ -91,7 +91,7 @@ describe('the devtools', () => {
     // An API token: created (its plain text shown once), then used.
     const login = await app.post('/login', { form: { email, password: newPassword } }).assertRedirect('/users/me');
     sessions.push(login.cookie('marmeon_session')!);
-    const created = await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).navigating().post('/settings/tokens', { json: { name: 'CLI', abilities: ['users:read'] } }).assertOk();
+    const created = await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).navigating().post('/settings/tokens', { json: { current_password: newPassword, name: 'CLI', abilities: ['users:read'] } }).assertOk();
     const apiToken = (created.page()!.props as { plainText: string }).plainText;
     await app.withHeaders({ authorization: `Bearer ${apiToken}` }).expectingJson().get('/api/users').assertOk();
     await app.devtools.settled();

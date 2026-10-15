@@ -84,7 +84,7 @@ export interface ConfirmedPasswordOptions<N extends string = string> {
 }
 
 /**
- * Sensitive pages ask for the password again — "sudo mode":
+ * Sensitive pages ask for the password (or a passkey) again — "sudo mode":
  * `Route.middleware(authenticate()).middleware(confirmedPassword())`. Without a recent confirmation,
  * JSON clients get 423, browsers the confirmation page (and come back afterwards).
  */

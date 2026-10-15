@@ -205,22 +205,20 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
                         void remove(passkey.id, removing.password);
                       }}
                     >
-                      {(lastFactor || passkey.suspended) && (
-                        <div className="field">
-                          <p className="hint">{lastFactor ? t('passkeys.last_factor_note') : t('passkeys.suspended_remove_note')}</p>
-                          <label htmlFor={`remove-password-${passkey.id}`}>{lastFactor ? t('passkeys.remove_password') : t('passkeys.suspended_remove_password')}</label>
-                          <input
-                            id={`remove-password-${passkey.id}`}
-                            name="password"
-                            type="password"
-                            autoComplete="current-password"
-                            autoFocus
-                            value={removing.password}
-                            onChange={(e) => setRemoving({ id: passkey.id, password: e.target.value })}
-                            aria-invalid={problemOf('remove', passkey.id) !== null}
-                          />
-                        </div>
-                      )}
+                      <div className="field">
+                        {(lastFactor || passkey.suspended) && <p className="hint">{lastFactor ? t('passkeys.last_factor_note') : t('passkeys.suspended_remove_note')}</p>}
+                        <label htmlFor={`remove-password-${passkey.id}`}>{passkey.suspended && !lastFactor ? t('passkeys.suspended_remove_password') : t('passkeys.remove_password')}</label>
+                        <input
+                          id={`remove-password-${passkey.id}`}
+                          name="password"
+                          type="password"
+                          autoComplete="current-password"
+                          autoFocus
+                          value={removing.password}
+                          onChange={(e) => setRemoving({ id: passkey.id, password: e.target.value })}
+                          aria-invalid={problemOf('remove', passkey.id) !== null}
+                        />
+                      </div>
                       <button type="submit" className="button-secondary" data-destructive="" data-size="small">
                         {t('passkeys.remove')}
                       </button>

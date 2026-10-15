@@ -1,5 +1,6 @@
-import { AuthConfig, type Authenticated } from '@marmeon/auth';
+import { Auth, AuthConfig, type Authenticated } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
+import { RateLimiter } from '@marmeon/cache';
 import { Clock } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
@@ -10,18 +11,19 @@ import { rules as r } from '@marmeon/validation';
 import { EMAIL_CHANGE_MINUTES, newEmailChangeToken } from '../email-change.ts';
 import { SendEmailChangeMailJob } from '../jobs/SendEmailChangeMailJob.ts';
 import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
+import { throttlePasswordChecks } from '../throttle.ts';
 import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
 export const UpdateEmailRequest = defineRequest({
   // Nothing here asks the database — whether an address has an account is never told by the form.
-  schema: r.object({ email: r.string().trim().lowercase().required().max(255).email() }),
-  messages: { 'email.required': 'auth.validation.email_any', 'email.email': 'auth.validation.email_invalid' },
+  schema: r.object({ email: r.string().trim().lowercase().required().max(255).email(), current_password: r.string().required().max(4096) }),
+  messages: { 'email.required': 'auth.validation.email_any', 'email.email': 'auth.validation.email_invalid', 'current_password.required': 'auth.validation.current_password_required' },
 });
 
 /**
  * A new address — on the security page, behind confirmedPassword() and confirmedSecondFactor() (the controller asks for the
- * factor itself too): a hijacked session must not take over the account by changing the address and then resetting the password. Private registration (the default): the change is pending — the
+ * factor itself too), and with the current password in the same form: a passkey alone can confirm sudo mode, and a hijacked session must not take over the account by changing the address and then resetting the password. Private registration (the default): the change is pending — the
  * new address waits beside the old one, and a link goes to it; the account's address changes only once that link is clicked
  * (signed in). A free address and one another account has get the same answer in the same time: this request does the same
  * either way — one write, one job. The worker decides: the link to a free address, a note to the owner of a taken one.
@@ -42,6 +44,8 @@ export class UpdateEmailController extends Controller {
   readonly #verification: VerificationMailer;
   readonly #mailer: Mailer;
   readonly #private: boolean;
+  readonly #auth: Auth;
+  readonly #limiter: RateLimiter;
 
   constructor(
     connections: Connections,
@@ -54,6 +58,8 @@ export class UpdateEmailController extends Controller {
     verification: VerificationMailer,
     mailer: Mailer,
     config: AuthConfig,
+    auth: Auth,
+    limiter: RateLimiter,
   ) {
     super();
     this.#connections = connections;
@@ -66,11 +72,15 @@ export class UpdateEmailController extends Controller {
     this.#verification = verification;
     this.#mailer = mailer;
     this.#private = config.privateRegistration;
+    this.#auth = auth;
+    this.#limiter = limiter;
   }
 
   async handle(ctx: ContextOf<typeof UpdateEmailRequest> & Authenticated) {
     // Also without the route's confirmedSecondFactor(): a route added by hand to this controller must not skip the factor.
     await this.#twoFactor.requireRecentProof('changeEmail');
+    // Typed now, whatever confirmed sudo mode: a session that got in by a passkey alone must not be able to move the account to another address.
+    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     const { email } = ctx.body;
     if (!this.#private) return this.#changeNow(ctx.user, email);
     // The account's own address again: a pending change is dropped.

@@ -64,7 +64,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const other = (await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard')).cookie(SESSION)!;
     await app.withCookie(SESSION, other).get('/dashboard').assertAuthenticated(ada);
     const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
-    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } });
+    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup');
     const setup = (await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
     const done = await app
@@ -411,8 +411,8 @@ describe('changing the factors of an account that has one', { timeout: 30_000 },
 
   it('keeps the address and the API tokens out of reach of such a session, too', async () => {
     await later(async (as) => {
-      await as().put('/settings/email', { form: { email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
-      await as().withHeaders({ accept: 'application/json' }).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await as().put('/settings/email', { form: { current_password: 'password', email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
+      await as().withHeaders({ accept: 'application/json' }).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
       await app.assertDatabaseCount('personal_access_tokens', 0);
     });
   });
@@ -421,7 +421,7 @@ describe('changing the factors of an account that has one', { timeout: 30_000 },
     await later(async (as, secret, cookie) => {
       const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(secret) } }).assertRedirect();
       await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
-      await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).put('/settings/email', { form: { email: 'new@example.com' } }).assertRedirect();
+      await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).put('/settings/email', { form: { current_password: 'password', email: 'new@example.com' } }).assertRedirect();
       await app.assertDatabaseHas('users', { pending_email: 'new@example.com' });
     });
   });

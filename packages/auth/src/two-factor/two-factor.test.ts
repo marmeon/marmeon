@@ -311,7 +311,7 @@ describe('TwoFactor: setting up', () => {
     const { b, secret } = await enable(booted);
     vi.useFakeTimers({ toFake: ['Date'], now: inSeconds(901) });
     for (const method of ['begin', 'setup', 'regenerate']) {
-      expect(await b.tf(method), method).toMatchObject({ thrown: expect.stringContaining('recently typed password') });
+      expect(await b.tf(method), method).toMatchObject({ thrown: expect.stringContaining('recent confirmation') });
     }
     expect(await b.tf('confirm-password', { password: 'secret' })).toEqual({ confirmed: true });
     expect(await b.tf('step-up', { code: twoFactorCode(secret) })).toEqual({ ok: true });
