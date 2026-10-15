@@ -454,6 +454,21 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.requests).toHaveLength(1);
     });
 
+    it('takes only the props of the group from a streamed block — never its component, URL or other props', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      win.handler = () => pageResponse(page('/users/1', { audit: ['log'] }));
+      const { navigator, visible } = boot(win, streamed());
+      await navigator.receiveStreamed('default', {
+        component: 'Admin',
+        url: '/admin',
+        props: { activity: ['signed in'], name: 'Mallory', audit: ['forged'] },
+      } as never);
+      await settle();
+      expect(visible().component).toBe(page('/users/1', {}).component);
+      expect(visible().url).toBe('/users/1');
+      expect(visible().props).toMatchObject({ name: 'Ada', activity: ['signed in'], audit: ['log'] });
+    });
+
     it('without streamedProps every group is asked for', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/users/1', {}));

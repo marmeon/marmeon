@@ -6,7 +6,7 @@ import type { DeferredResult, PageObject } from '../page.ts';
 import type { NavigatorCore } from './core.ts';
 import type { Visit } from './events.ts';
 import { land } from './land.ts';
-import { pick } from './merge.ts';
+import { MERGE_MARKS, pick } from './merge.ts';
 import { partialReloadHeaders } from './request.ts';
 
 type PropsCore = Pick<NavigatorCore, 'window' | 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'request' | 'send' | 'read' | 'draw' | 'paint' | 'setPage' | 'props'>;
@@ -69,7 +69,8 @@ export class PropLoader {
     const doc = this.#core.window.document;
     if (doc?.readyState === 'loading' && doc.addEventListener) await new Promise<void>((done) => doc.addEventListener!('DOMContentLoaded', done, { once: true }));
     if (key === undefined) return;
-    await land(this.#core, key, page, { ...page, ...streamed, deferredProps: undefined } as PageObject);
+    // Only the props of this group are taken: the block is data from the document, never the page's component, URL or other props.
+    await land(this.#core, key, page, { ...page, ...pick(streamed, MERGE_MARKS), props: pick(streamed.props, page.deferredProps?.[group] ?? []), deferredProps: undefined });
   }
 
   async #loadGroup(key: string, page: PageObject, props: readonly string[]): Promise<void> {

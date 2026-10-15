@@ -105,7 +105,9 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
   entry. The [styling](styling.md#no-style-attributes) page shows how.
 - **Escaping.** React escapes what pages render. HTML you write by hand goes through the `html` template of `@marmeon/core`, as
   the [responses](responses.md#html-you-write-yourself) page shows. Page data travels as JSON in an inert
-  `<script type="application/json">`.
+  `<script type="application/json">`. The browser reads an island's or a deferred group's streamed data only from such a script
+  with its own `id`, so sanitised user HTML that guesses an `id` cannot replace it, and a deferred block only fills the props of
+  its own group.
 - **Security headers.** A new app's `middleware/SecurityHeaders.ts` sends `nosniff`, a strict `Referrer-Policy` and
   `X-Frame-Options: DENY` on every response. Its switch for `Strict-Transport-Security` is off until you turn it on, once the site
   answers over HTTPS alone. The [Content Security Policy](csp.md#the-other-security-headers) page lists them.

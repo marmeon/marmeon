@@ -17,6 +17,9 @@ export function resetOf(spec: ReloadSpec): ResetProps {
   return spec.reset ?? true;
 }
 
+/** The keys with which a page says how its props merge. */
+export const MERGE_MARKS = ['mergeProps', 'deepMergeProps', 'matchPropsOn'] as const;
+
 /**
  * The page after a partial reload: the props it had, with the new ones — merged where the server marked them
  * (`mergeProps`: arrays appended, objects merged one level — a paginator's `data` appended —; `deepMergeProps`: all the way
@@ -39,7 +42,7 @@ export function mergePage(current: PageObject, partial: PageObject, reset: Reset
   if (deferredProps) page.deferredProps = deferredProps;
   else delete page.deferredProps;
   // The partial's merge marks for the props it brought, the page's for the rest (entries start with the prop's name).
-  for (const name of ['mergeProps', 'deepMergeProps', 'matchPropsOn'] as const) {
+  for (const name of MERGE_MARKS) {
     const marks = [...new Set([...(current[name] ?? []).filter((entry) => !arrived.includes(entry.split('.', 1)[0]!)), ...(partial[name] ?? [])])];
     if (marks.length > 0) page[name] = marks;
     else delete page[name];
