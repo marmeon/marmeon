@@ -138,6 +138,27 @@ describe('ctx.input()', () => {
     expect((await rejection(createRequestState(form(deep)).input())).status).toBe(400);
   });
 
+  it('numbers `a[]` after the highest index so far, explicit or implicit', async () => {
+    expect(await createRequestState(form('a[]=x&a[3]=y&a[]=z')).input()).toEqual({ a: { '0': 'x', '3': 'y', '4': 'z' } });
+    expect(await createRequestState(form('a[]=x&a[]=y&a[1]=z&a[]=w')).input()).toEqual({ a: ['x', 'z', 'w'] });
+    expect(await createRequestState(form('a[][x]=1&a[][y]=2&a[1][z]=3')).input()).toEqual({ a: [{ x: '1' }, { y: '2', z: '3' }] });
+    expect(await createRequestState(form('a[5][x]=1&a[][y]=2')).input()).toEqual({ a: { '5': { x: '1' }, '6': { y: '2' } } });
+  });
+
+  it('parses a huge list of `a[]` items in linear time — forms and multipart alike', async () => {
+    const count = 50_000;
+    const expected = Array.from({ length: count }, (_, index) => `v${index}`);
+    const multipart = new FormData();
+    for (const value of expected) multipart.append('a[]', value);
+
+    const started = performance.now();
+    const urlencoded = await createRequestState(form(expected.map((value) => `a[]=${value}`).join('&'))).input();
+    const multiparted = await createRequestState(post('/', multipart)).input();
+    expect(urlencoded).toEqual({ a: expected });
+    expect(multiparted).toEqual({ a: expected });
+    expect(performance.now() - started).toBeLessThan(3000);
+  });
+
   it('lets a later field replace an earlier one, whatever its shape', async () => {
     expect(await createRequestState(form('a=1&a[b]=2')).input()).toEqual({ a: { b: '2' } });
     expect(await createRequestState(form('a[b]=2&a=1')).input()).toEqual({ a: '1' });
