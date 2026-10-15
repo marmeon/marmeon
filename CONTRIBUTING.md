@@ -347,7 +347,7 @@ branch, the release commit (checked out, detached), one plain `x.y.z` version, t
 `v<version>` not yet tagged, the version on no package of npm, the release base, the release commit changing release files only
 and the dist-tag. Then `pnpm run ci --only build,pack:check,check-release`, and `scripts/release-pack.ts` packs every package
 (`pnpm pack`) and writes `SHA512SUMS`; the tarballs and `SHA512SUMS` leave the job as an artifact (kept for a day), the hash of
-`SHA512SUMS` as its output. The second job (`stage`, `id-token: write`) checks out nothing, installs nothing and runs no script
+`SHA512SUMS` as its output. The second job (`stage`, `id-token: write`, the only job in the `npm-release` environment) checks out nothing, installs nothing and runs no script
 of the repository or of a dependency, so the code that runs in the first job never meets the OIDC token. It downloads the artifact, checks `SHA512SUMS` against the output and every tarball
 against `SHA512SUMS`, and only then stages the tarballs `SHA512SUMS` names with `npm stage publish` (trusted publishing, OIDC,
 no token in the repository; provenance) and prints `SHA512SUMS`. The hashes show that the staged files are the ones the first job
@@ -366,7 +366,26 @@ build job.
 
 Anyone with write access can start the workflow; the guards are conveniences and `check-release`'s check of the workflow files
 is a review aid, not a barrier. The gate is the maintainer's two-factor approval on npm — nothing is public without it, and the
-trusted-publisher configuration allows staging only. A package's very first version has to be published by hand, before
+trusted-publisher configuration allows staging only, and only from the `npm-release` environment. npm accepts the OIDC token of
+a run in that environment only, so a workflow started on another branch cannot stage. Set it up as follows (npm >= 11.15, an
+`npm login` with 2FA, a maintainer's `gh`):
+
+1. Create the environment (Settings › Environments) with deployment branches "Selected branches and tags": branch rules `main`
+   and `*.x`, no tag rule, no secrets, no required reviewer — npm's 2FA approval is the gate. GitHub creates a referenced
+   environment that does not exist *without* a branch policy, so never let the first run create it.
+2. Verify the policy: `gh api repos/marmeon/marmeon/environments/npm-release --jq .deployment_branch_policy` must show
+   `custom_branch_policies: true`, and
+   `gh api repos/marmeon/marmeon/environments/npm-release/deployment-branch-policies --jq '.branch_policies[].name'` must list
+   exactly `main` and `*.x`.
+3. The "Protect Main" ruleset that covers `*.x` must include "Restrict creations", so only a maintainer can create a branch the
+   environment admits.
+4. Revoke each package's old trust: npm keeps one configuration per package, so `npm trust list <package>` and
+   `npm trust revoke --id <id> <package>`.
+5. Run `bash scripts/npm-trust.sh` (generated; passes `--environment npm-release`). It stops at the first package that still has
+   an old configuration.
+6. Verify: `npm trust list <package>` shows `environment: npm-release` for every package.
+
+A package's very first version has to be published by hand, before
 trusted publishing can be set up for it. The policies stay in place: the `LICENSE` holder, private reporting in `SECURITY.md`
 and the deprecation policy in the README.
 
