@@ -65,7 +65,7 @@ export class ClearClientHistory {
     }
 
     const url = new URL(ctx.request.url);
-    const redirect = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+    const redirect = response.status >= 300 && response.status < 400 ? loadable(response.headers.get('location'), ctx.request.url) : null;
     // An action's own URL is no page: without a redirect, the page it was sent from (this site's `Referer`), else the start.
     const location = redirect ?? (action ? refererPath(ctx.request) : localLocation(url.pathname, url.search));
     await response.body?.cancel();
@@ -75,6 +75,21 @@ export class ClearClientHistory {
     // sign-in of this request, say), the client may not postpone this one — `version` is the only cancelable reason.
     headers.set(RELOAD_HEADER, 'history');
     return ownResponse(new Response(null, { status: 409, headers }));
+  }
+}
+
+/**
+ * Where a redirect's `Location` leads, resolved against `base` as HTTP does: a path and query on this origin, the full URL for an
+ * http(s) address elsewhere — null for any other scheme, `javascript:` among them.
+ */
+function loadable(location: string | null, base: string): string | null {
+  if (location === null) return null;
+  try {
+    const url = new URL(location, base);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.origin === new URL(base).origin ? localLocation(url.pathname, url.search) : url.href;
+  } catch {
+    return null;
   }
 }
 

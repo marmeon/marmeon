@@ -163,7 +163,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const ended = await navigator.visit('/logout', { method: 'post' });
     expect(requests.at(-1)).toMatchObject({ method: 'POST', url: '/logout', headers: { 'x-xsrf-token': 'token-from-the-cookie' } });
     expect(ended).toBeUndefined();
-    expect(loads).toEqual(['/login']);
+    expect(loads).toEqual(['https://app.test/login']);
     expect(navigator.cachedPages).toBe(0);
     stop();
   });
@@ -508,10 +508,10 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     navigator.on('version', (event) => event.preventDefault());
     expect(await navigator.visit('/users/2')).toBeUndefined();
     expect(loads).toEqual([]);
-    expect(navigator.newVersion).toBe('/users/2');
+    expect(navigator.newVersion).toBe('https://app.test/users/2');
     expect(root.textContent).toContain('"user":"Ada"');
     navigator.reloadForNewVersion();
-    expect(loads).toEqual(['/users/2']);
+    expect(loads).toEqual(['https://app.test/users/2']);
     stop();
   });
 
@@ -724,7 +724,7 @@ describe('two tabs of one browser, each a plain-DOM adapter (tab sync)', () => {
 
     // A signs out: its 409 loads /login fully — a new document, which posts the new epoch when it starts.
     await a.navigator.visit('/logout', { method: 'post' });
-    expect(a.win.loads).toEqual(['assign /login']);
+    expect(a.win.loads).toEqual(['assign https://app.test/login']);
     a.load('/login');
     await settled();
 

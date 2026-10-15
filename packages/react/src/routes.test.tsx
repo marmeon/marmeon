@@ -130,6 +130,32 @@ describe('routes in the browser', () => {
     ]);
   });
 
+  it('renders a link that sends to a script address as a button that submits nothing, in a form without an action', async () => {
+    function Scripts() {
+      return (
+        <>
+          <Link href="javascript:alert(1)" method="post">
+            Script
+          </Link>
+          <Link href={' java\tscript:alert(1)'} method="delete">
+            Script with a tab
+          </Link>
+          <Link href="data:text/html,x" method="post">
+            Data
+          </Link>
+          <Link href="https://elsewhere.example/hook" method="post">
+            Elsewhere
+          </Link>
+        </>
+      );
+    }
+    const render = createSsrRenderer(resolveModulePages({ '/modules/people/views/Page.tsx': async () => ({ default: Scripts }) }), { routes });
+    const html = await new Response((await render({ component: 'people/Page', props: {}, url: '/' })).html).text();
+    const forms = html.match(/<form[^>]*>/g) ?? [];
+    expect(forms).toEqual(['<form class="marmeon-link" method="post">', '<form class="marmeon-link" method="post">', '<form class="marmeon-link" method="post">', '<form class="marmeon-link" action="https://elsewhere.example/hook" method="post">']);
+    expect(html.match(/<button[^>]*>/g)).toEqual(['<button type="button">', '<button type="button">', '<button type="button">', '<button type="submit">']);
+  });
+
   it('says what is missing: the manifest, or a route it does not carry', async () => {
     await expect(createSsrRenderer(resolve)({ component: 'people/Page', props: { id: 7 }, url: '/' })).rejects.toThrow(
       'the browser has no route manifest — pass the routes of virtual:marmeon/routes to createMarmeonApp({ routes })',

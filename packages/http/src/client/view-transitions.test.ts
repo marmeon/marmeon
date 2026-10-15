@@ -85,7 +85,7 @@ describe.each(PATHS)('view transitions on the %s path', (path) => {
       });
       navigator.start();
       await navigator.visit('/b', { viewTransition: true });
-      expect(win.loads).toEqual(['assign /b']);
+      expect(win.loads).toEqual(['assign https://app.test/b']);
     });
   });
 

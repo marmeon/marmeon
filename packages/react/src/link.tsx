@@ -253,6 +253,9 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   useEffect(() => () => clearTimeout(hover.current), []);
 
   if (method !== 'get') {
+    // A `javascript:` or `data:` address sends nothing — not with JavaScript (the visit refuses it), not without (a button that
+    // submits nothing, in a form without an action).
+    const loadable = isLoadable(href);
     const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
       onClick?.(event as MouseEvent<HTMLAnchorElement & HTMLButtonElement>);
       if (event.defaultPrevented) return;
@@ -264,7 +267,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     // Without JavaScript: a plain POST form — `_method` first (the server reads it at the start of the body only). A confirmation
     // needs the app: without it the button does nothing.
     return (
-      <form action={href} method="post" className="marmeon-link">
+      <form action={loadable ? href : undefined} method="post" className="marmeon-link">
         {method !== 'post' && <input type="hidden" name={FORM_METHOD_FIELD} value={method.toUpperCase()} />}
         {/* The page's token goes to this site only: never into a form that posts to another origin (a scheme, `//`, or what the URL parser reads as one). */}
         {page.csrf !== undefined && sameOrigin(href) && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
@@ -273,7 +276,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
           Object.entries(data).map(([name, value]) =>
             typeof value === 'string' || typeof value === 'number' ? <input key={name} type="hidden" name={name} value={value} /> : null,
           )}
-        <button type={confirm === undefined ? 'submit' : 'button'} onClick={handleClick} {...pending} {...handlers} {...(rest as ButtonAttributes)} />
+        <button type={confirm === undefined && loadable ? 'submit' : 'button'} onClick={handleClick} {...pending} {...handlers} {...(rest as ButtonAttributes)} />
       </form>
     );
   }
@@ -335,6 +338,16 @@ function sameOrigin(href: string): boolean {
       const url = new URL(href, `${protocol}//local.invalid`);
       return url.host === 'local.invalid' && url.protocol === protocol;
     });
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `href` is an http(s) address as the URL parser reads it (`javascript:`, `data:` … are not) — the check of a visit, quiet. */
+function isLoadable(href: string): boolean {
+  try {
+    const { protocol } = new URL(href, 'http://local.invalid');
+    return protocol === 'http:' || protocol === 'https:';
   } catch {
     return false;
   }

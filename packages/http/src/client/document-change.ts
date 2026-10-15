@@ -8,6 +8,7 @@ import type { NavigatorCore } from './core.ts';
 import type { VersionChange } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';
 import { notify } from './notify.ts';
+import { navigable } from './request.ts';
 
 /** What a new build asks by default when loading it would lose unsaved changes. */
 export const DEFAULT_NEW_VERSION_MESSAGE = 'A new version of this app is available. Load it now? Your unsaved changes will be lost.';
@@ -58,15 +59,22 @@ export class DocumentChange {
    * in `consented`) ask first. Postponed, the user's next visit loads fully. Resolves with whether the document is being left.
    */
   async change(response: Response, how: DocumentChangeHow, consented?: true | readonly NavigationGuard[]): Promise<boolean> {
-    const location = response.headers.get(LOCATION_HEADER)!;
     await response.body?.cancel();
+    // Only http(s) loads — whatever the header holds. A change that cannot name a page to load (signing in or out) still ends
+    // this document: the page on screen loads again. A new build waits for a page it can load.
+    const target = navigable(response.headers.get(LOCATION_HEADER)!, this.#core.window.location.href);
+    if (!target) {
+      if (response.headers.get(RELOAD_HEADER) === 'version') return false;
+      how = 'reload';
+    }
+    const href = target?.href ?? '';
     const go = () => {
       if (this.#core.left) return;
       this.#core.fire('unload');
       this.#core.leave();
       if (how === 'reload') this.#core.window.location.reload();
-      else if (how === 'replace') this.#core.window.location.replace(location);
-      else this.#core.window.location.assign(location);
+      else if (how === 'replace') this.#core.window.location.replace(href);
+      else this.#core.window.location.assign(href);
     };
     // Only the exact `version` reason may wait (RELOAD_HEADER) — anything else is signing in or out: the full load wins.
     if (response.headers.get(RELOAD_HEADER) !== 'version') {
@@ -79,7 +87,7 @@ export class DocumentChange {
     const unsaved = consented === true ? [] : this.#core.blocking(() => true, consented ?? []);
     let prevented = false;
     const event: VersionChange = {
-      location,
+      location: href,
       unsaved: unsaved.length > 0,
       preventDefault: () => void (prevented = true),
       get defaultPrevented() {
@@ -92,7 +100,7 @@ export class DocumentChange {
     const stay = prevented || (unsaved.length > 0 && !(await this.#core.ask({ kind: 'leave', message: unsaved[0]!.message ?? DEFAULT_NEW_VERSION_MESSAGE })));
     if (this.#core.left) return true;
     if (stay) {
-      this.#newVersion = location;
+      this.#newVersion = href;
       notify(this.#listeners);
       return false;
     }

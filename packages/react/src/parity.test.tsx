@@ -217,7 +217,7 @@ describe('useRemember and useForm({ remember })', () => {
     const kept = navigator!.use(remember).of(owner!.entry!);
     expect(kept.size).toBeGreaterThan(0);
     await act(async () => void (await navigator!.visit('/logout', { method: 'post' })));
-    expect(assign).toHaveBeenCalledWith('/login');
+    expect(assign).toHaveBeenCalledWith('https://app.test/login');
     expect(kept.size).toBe(0);
   });
 });
@@ -306,7 +306,7 @@ describe('a new build', () => {
     const stop = navigator!.on('version', (event) => event.preventDefault());
     await act(async () => void (await navigator!.reload({ only: ['name'], async: true })));
     stop();
-    expect($('new-version')!.textContent).toBe('/people');
+    expect($('new-version')!.textContent).toBe('https://app.test/people');
     expect(assign).not.toHaveBeenCalled();
   });
 });

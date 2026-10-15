@@ -117,7 +117,7 @@ describe('slots — what a feature keeps, emptied by the core', () => {
     entry.set('note', 'secret');
     win.handler = () => historyConflict();
     await navigator.visit('/logout', { method: 'post' });
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(document.size).toBe(0);
     expect(entry.size).toBe(0);
     expect(host.document(DRAFTS)).not.toBe(document);

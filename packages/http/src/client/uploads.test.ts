@@ -127,7 +127,7 @@ describe('uploads: a target from the form’s route, the bytes with progress, th
 
   it('a 409 at the target (signed out meanwhile): the document goes — the upload with it', async () => {
     const { win, sent, feature } = await start({ target: () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', [RELOAD_HEADER]: 'history' } }) });
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(sent).toEqual([]);
     expect(feature.size).toBe(0);
   });

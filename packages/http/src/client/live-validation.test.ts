@@ -90,7 +90,7 @@ describe('live validation in the core', () => {
     const { win, live } = setup();
     win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
     expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'cancelled' });
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
   });
 
   it('refuses another site (the XSRF token and the data stay here)', async () => {

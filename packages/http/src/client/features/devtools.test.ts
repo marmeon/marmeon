@@ -190,7 +190,7 @@ describe('the document is left: nothing of it stays — in no slot, not in the f
     const taken = [api.timeline, api.snapshots, api.hydration, api.cache] as const;
     await navigator.visit('/logout', { method: 'post' });
     await settle();
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(api.left).toBe(true);
     expect([api.timeline.length, api.snapshots.length, api.hydration.length, api.cache.size]).toEqual([0, 0, 0, 0]);
     expect([taken[0].length, taken[1].length, taken[2].length, taken[3].size]).toEqual([0, 0, 0, 0]);
