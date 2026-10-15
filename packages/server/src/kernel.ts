@@ -61,7 +61,7 @@ import {
 import { Hono } from 'hono';
 import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
-import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
+import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { checkHealthPaths, createHealthEndpoints } from './health.ts';
@@ -604,6 +604,8 @@ export function createHttpKernel(
     else if (live) response = await toLiveValidationResponse(response);
     // An action's redirect is reported, not followed — and its answer is never cached.
     else if (isActionRequest(request)) response = await toActionResponse(response);
+    // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
+    else if (request.headers.get(PAGE_HEADER) === 'true' || upload) response = await leaveForeignRedirect(response, request);
     // Cookies queued during the request reach the client whatever the outcome.
     const final = await withQueuedCookies(response, state.cookies);
 
