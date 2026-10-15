@@ -250,7 +250,8 @@ export class TwoFactor {
     const recoveryCodes = first ? generateRecoveryCodes() : null;
     // Before the factor is on, so that a failure after this point leaves the factor off and the other devices out — never the factor on
     // and an old session alive. A remember-me token made between here and the update is refused by its date (`enabledSince`).
-    await this.#auth[SIGN_OUT_OTHER_DEVICES](password);
+    // `false`: this device's remember-me cookie was a copy, and everything of the account is ended, this session too.
+    if (!(await this.#auth[SIGN_OUT_OTHER_DEVICES](password))) return err({ kind: 'signed-out' });
     const encrypted = await this.#encrypt(secret, id);
     const hashes = recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode));
     // The session is checked against the account in the transaction that stores the factor (with a session key, the account's row stays

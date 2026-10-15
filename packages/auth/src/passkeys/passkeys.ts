@@ -200,7 +200,8 @@ export class Passkeys implements SecondFactorPasskeys {
     const recoveryCodes = first ? generateRecoveryCodes() : null;
 
     // Before the factor exists, so that a failure after this point leaves it off and the other devices out — never the factor on and an old session alive.
-    if (first) await this.#auth[SIGN_OUT_OTHER_DEVICES](password!);
+    // `false`: this device's remember-me cookie was a copy, and everything of the account is ended, this session too.
+    if (first && !(await this.#auth[SIGN_OUT_OTHER_DEVICES](password!))) return err({ kind: 'signed-out' });
     const created = await this.#connections.transaction(async () => {
       // First, so the account's row is locked until the commit: a session that ended meanwhile stores no passkey.
       if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);

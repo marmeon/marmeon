@@ -633,6 +633,17 @@ describe('Passkeys: signing in without a password', () => {
     expect(await rows(booted, 'remember_tokens')).toHaveLength(0);
   });
 
+  it('registering the first passkey answers signed-out when this device\'s remember-me cookie turns out to be a copy', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login(ada.email, 'secret', true);
+    await booted.browser(new Map([['remember_web', b.jar.get('remember_web')!]])).pk('who'); // somebody else rotates the cookie
+    await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
+    expect(await b.pk('who')).toEqual({ id: null });
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+  });
+
   it('works with EdDSA keys and with a synchronised passkey that reports 0', async () => {
     const booted = await boot();
     const synced = device('EdDSA', true);

@@ -466,6 +466,23 @@ describe('a remember-me token is bound to the account state it was issued under'
     expect(reused, "the owner is told").toHaveLength(1);
   });
 
+  it.each([
+    ['logoutOtherDevices()', '/logout-others'],
+    ['updateSessionKey()', '/end-others'],
+  ])('%s keeps the owner\'s device when the cookie is only the validator that was just rotated (a lost response)', async (_name, route) => {
+    const world = await boot({ hold: 'create' });
+    await login(world.send);
+    const other = world.browser();
+    other.jar.set('remember_web', world.jar.get('remember_web')!);
+    expect((await other.send('/me')).status, 'a second request consumes the cookie and rotates it').toBe(200);
+
+    // Inside the grace window: the owner still presents the previous validator.
+    expect(await (await world.send(route, {})).json()).toEqual({ done: true });
+    expect((await world.send('/me')).status, 'the owner stays signed in').toBe(200);
+    expect(await world.tokenCount()).toBe(1);
+    expect(reused).toHaveLength(0);
+  });
+
   it('keeps working for an untouched account, and for the device that logoutOtherDevices() leaves signed in', async () => {
     const world = await boot({ hold: 'create' });
     await login(world.send);
