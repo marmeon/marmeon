@@ -14,8 +14,8 @@ export interface LiveHello {
 export interface LiveStreamRequest {
   readonly channels: readonly string[];
   readonly scope: string;
-  /** The scope of the account behind the stream, when a sign-in stands behind it. */
-  readonly account?: string | undefined;
+  /** The scopes of the account behind the stream, one per key of `APP_KEY` the process knows, when a sign-in stands behind it. */
+  readonly accounts?: readonly string[] | undefined;
   /** When the sign-in was asked about (ms): an end of the account that arrived after is not known to the answer. */
   readonly checkedAt?: number | undefined;
   readonly connection: string;
@@ -83,7 +83,7 @@ function seenIn(lastEventId: string | null | undefined): Map<string, number> {
 /** One open stream: a tab's, for its channels. Exported for the hub's tests only (not from the package). */
 export class OpenStream {
   readonly scope: string;
-  readonly account: string | undefined;
+  readonly accounts: readonly string[] | undefined;
   readonly connection: string;
   readonly channels: ReadonlySet<string>;
   readonly readable: ReadableStream<Uint8Array>;
@@ -98,7 +98,7 @@ export class OpenStream {
 
   constructor(request: LiveStreamRequest, onClose: () => void) {
     this.scope = request.scope;
-    this.account = request.account;
+    this.accounts = request.accounts;
     this.connection = request.connection;
     this.channels = new Set(request.channels);
     this.#stop = onClose;
@@ -283,7 +283,7 @@ export class LiveHub {
     const stream = new OpenStream(request, () => this.#forget(stream));
     this.#streams.add(stream);
     index(this.#sessions, stream.scope, stream);
-    if (stream.account !== undefined) index(this.#accounts, stream.account, stream);
+    for (const account of stream.accounts ?? []) index(this.#accounts, account, stream);
     for (const channel of stream.channels) index(this.#channels, channel, stream);
     try {
       await this.#listen();
@@ -295,8 +295,8 @@ export class LiveHub {
       }
       stream.hello(seqs, request.lastEventId, this.#options);
       // The sign-in was asked about before an end of this account arrived: the answer may be stale, so ask again after a pause.
-      if (stream.account !== undefined && request.checkedAt !== undefined) {
-        const ended = Math.max(this.#recentEnds.get(stream.account) ?? 0, this.#recentEnds.get('*') ?? 0);
+      if (stream.accounts !== undefined && request.checkedAt !== undefined) {
+        const ended = Math.max(this.#recentEnds.get('*') ?? 0, ...stream.accounts.map((account) => this.#recentEnds.get(account) ?? 0));
         if (ended >= request.checkedAt) stream.reconnect();
       }
     } catch (error) {
@@ -338,7 +338,7 @@ export class LiveHub {
   #forget(stream: OpenStream): void {
     this.#streams.delete(stream);
     unindex(this.#sessions, stream.scope, stream);
-    if (stream.account !== undefined) unindex(this.#accounts, stream.account, stream);
+    for (const account of stream.accounts ?? []) unindex(this.#accounts, account, stream);
     for (const channel of stream.channels) unindex(this.#channels, channel, stream);
   }
 
@@ -358,7 +358,8 @@ export class LiveHub {
       // A stream that ends leaves its set meanwhile — copied first. A session scope and an account scope never collide (keyed apart);
       // `'*'` is every account's streams, guests' stay.
       for (const stream of [...(this.#sessions.get(message.scope) ?? [])]) stream.end();
-      const accounts = message.scope === '*' ? [...this.#accounts.values()].flatMap((set) => [...set]) : [...(this.#accounts.get(message.scope) ?? [])];
+      // A stream stands under every key's scope, so `'*'` meets it once per scope: a Set keeps it to once.
+      const accounts = message.scope === '*' ? new Set([...this.#accounts.values()].flatMap((set) => [...set])) : [...(this.#accounts.get(message.scope) ?? [])];
       for (const stream of accounts) stream.reconnect();
       return;
     }

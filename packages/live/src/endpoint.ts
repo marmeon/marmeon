@@ -61,12 +61,12 @@ export class LiveStreamController {
     // After the tokens, so a forged request learns nothing of the sign-in; before the hub, so an ended one holds no place in it.
     // Before the sign-in is asked: an end that arrives after this moment is one the answer may not know of (the hub checks).
     const checkedAt = Date.now();
-    let account: string | undefined;
+    let accounts: string[] | undefined;
     if (this.#audience) {
       try {
         const who = await this.#audience.check();
         if (who.kind === 'ended') return ended();
-        if (who.kind === 'account') account = this.#tokens.accountScope(who.scope);
+        if (who.kind === 'account') accounts = this.#tokens.accountScopes(who.scope);
       } catch (error) {
         // The sign-in cannot be told (the database is down): no stream — the client tries again later, as for any 503.
         // Logged at most once a minute: every reconnecting tab would otherwise repeat it.
@@ -80,6 +80,6 @@ export class LiveStreamController {
       }
     }
     // The hub counts the streams of the process and of the session itself (503, 429) — atomically, in `open()`.
-    return this.#hub.open({ channels: [...channels], scope, account, checkedAt, connection, lastEventId: ctx.request.headers.get('last-event-id'), signal: ctx.request.signal });
+    return this.#hub.open({ channels: [...channels], scope, accounts, checkedAt, connection, lastEventId: ctx.request.headers.get('last-event-id'), signal: ctx.request.signal });
   }
 }
