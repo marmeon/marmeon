@@ -54,6 +54,8 @@ export interface PendingSecondFactor {
   readonly fingerprint: string;
   readonly remember: boolean;
   readonly via: LoginVia;
+  /** Unix seconds when the password was typed (`via` is `attempt`); a sign-in nobody typed a password for has none. */
+  readonly typedAt?: number;
   /** Unix seconds. */
   readonly until: number;
   readonly failures: number;
@@ -297,7 +299,11 @@ export class Auth {
     const found = await this.#users.findById(pending.id as never);
     if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return err({ kind: 'expired' });
     await (await this.#login(found, { remember: pending.remember }, pending.via)).announce();
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
+    // Only a typed password confirms, dated when it was typed. The sign-in starts then too, so the confirmation stays inside it (`passwordRecentlyConfirmed`).
+    if (pending.via === 'attempt' && typeof pending.typedAt === 'number') {
+      this.#session.put(AUTH_SESSION_KEYS.signedInAt, pending.typedAt);
+      this.#session.put(AUTH_SESSION_KEYS.confirmedAt, pending.typedAt);
+    }
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     return ok(found.user);
   }
@@ -375,7 +381,9 @@ export class Auth {
   /** Whether the password was typed within `seconds` (default `AUTH_PASSWORD_TIMEOUT`). */
   passwordRecentlyConfirmed(seconds = this.#config.passwordTimeout): boolean {
     const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
-    return typeof at === 'number' && this.#now() - at < seconds;
+    // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
+    const signedInAt = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.signedInAt) : undefined;
+    return typeof at === 'number' && typeof signedInAt === 'number' && at >= signedInAt && this.#now() - at < seconds;
   }
 
   /**
@@ -677,6 +685,8 @@ export class Auth {
     this.#session.regenerate();
     this.#session.forget(AUTH_SESSION_KEYS.pending);
     this.#session.forget(AUTH_SESSION_KEYS.twoFactorAt);
+    // A confirmation belongs to the account that was signed in when it was typed; whoever types now (`attempt()`, or the factor of an `attempt()`) sets it again.
+    this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
     this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
@@ -711,6 +721,7 @@ export class Auth {
       fingerprint: sessionFingerprint(credentials),
       remember,
       via,
+      ...(via === 'attempt' ? { typedAt: this.#now() } : {}),
       until: this.#now() + PENDING_SECONDS,
       failures: 0,
       factors,
