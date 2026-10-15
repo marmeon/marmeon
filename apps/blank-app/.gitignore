@@ -1,5 +1,8 @@
 node_modules/
 dist/
 .marmeon/
-.env
+# Every .env file holds the secrets of one machine (.env, .env.production, …); the example and the tests' file are shared.
+.env*
+!.env.example
+!.env.test
 # storage/: its .gitignore files keep the directories and ignore what the app writes there.

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -668,6 +668,22 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(marmeon(app, ['key:generate', '--force']).code).toBe(0);
     expect(/^APP_PREVIOUS_KEYS=(.*)$/m.exec(readFileSync(join(app, '.env'), 'utf8'))![1]).toBe(`${secondKey},${first}`);
     expect(marmeon(app, ['key:generate', '--show']).stdout).toMatch(/^base64:[A-Za-z0-9+/]{43}=\n$/);
+  });
+
+  it.skipIf(process.platform === 'win32')('creates .env readable by its owner only, and tightens an existing one that others could read', () => {
+    rmSync(join(app, '.env'), { force: true });
+    writeFileSync(join(app, '.env.example'), 'APP_KEY=\n');
+    chmodSync(join(app, '.env.example'), 0o644);
+    const created = marmeon(app, ['key:generate']);
+    expect(created.code).toBe(0);
+    expect(created.stdout).not.toContain('readable by its owner only');
+    expect(statSync(join(app, '.env')).mode & 0o777).toBe(0o600);
+
+    chmodSync(join(app, '.env'), 0o644);
+    const tightened = marmeon(app, ['key:generate', '--force']);
+    expect(tightened.code).toBe(0);
+    expect(tightened.stdout).toContain('Made .env readable by its owner only.');
+    expect(statSync(join(app, '.env')).mode & 0o777).toBe(0o600);
   });
 
   it('runs generators without a bootable app (no bootstrap, no .env)', () => {

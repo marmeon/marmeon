@@ -110,7 +110,7 @@ PORT=3000
 ```
 
 `APP_KEY` encrypts the session cookie and everything else the app encrypts or signs. The file is readable by its owner only,
-and git ignores it. `.env.example` lists the common settings with a comment and carries no key. `.env.test` is what the tests run
+and git ignores it, like every `.env*` file except `.env.example` and `.env.test`. `.env.example` lists the common settings with a comment and carries no key. `.env.test` is what the tests run
 with, and it has a test key of its own.
 
 `NODE_ENV=development` in `.env` makes every `marmeon` command on this machine run in development: the server, `migrate`, the

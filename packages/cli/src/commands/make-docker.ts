@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import type { CommandInput } from '../command.ts';
@@ -48,6 +49,15 @@ export class MakeDockerCommand {
       output.success(`Created ${file}`);
     }
     for (const note of app.notes) output.warn(note);
+    if (existsSync(join(root, '.env.production'))) {
+      const git = (...args: string[]) => spawnSync('git', args, { cwd: root, stdio: 'ignore' }).status;
+      // Exit 128 means no repository: nothing to leak into.
+      if (git('ls-files', '--error-unmatch', '.env.production') === 0) {
+        output.warn('.env.production is committed to git and holds secrets: run `git rm --cached .env.production`, and rotate what it contains if the repository was shared.');
+      } else if (git('check-ignore', '--quiet', '.env.production') === 1) {
+        output.warn('.env.production holds secrets and git does not ignore it: add `.env*`, `!.env.example` and `!.env.test` to .gitignore.');
+      }
+    }
     output.line();
     output.line('Build and run it:');
     output.line(style('dim', `  docker build -t ${app.docker.name} .`));
