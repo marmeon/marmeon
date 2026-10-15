@@ -63,7 +63,7 @@ export interface AccessTokenStore {
    * they expire, but stay listed until pruned. How many. Tokens without an expiry stay until revoked.
    */
   prune(graceSeconds?: number): Promise<number>;
-  /** Revokes the tokens of every user (`AccountSessions.endEveryone({ accessTokens: true })`) — how many. */
+  /** Revokes the tokens of every user (`AccountSessions.endEveryone()`, unless `accessTokens: false`) — how many. */
   revokeEveryone?(): Promise<number>;
 }
 export const AccessTokenStore = token<AccessTokenStore>('AccessTokenStore');

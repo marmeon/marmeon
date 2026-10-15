@@ -57,7 +57,7 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
       updateEverySessionKey: async (next: string) => ((key = next), { accounts: 1, sampleId: ada.id }),
     });
     const accounts = new AccountSessions(provider, remember, undefined, undefined, undefined, undefined, () => resets as never, undefined, undefined, endings);
-    await expect(accounts.endEveryone({ resetTokens: true })).rejects.toThrow(/table missing/);
+    await expect(accounts.endEveryone({ accessTokens: false })).rejects.toThrow(/table missing/);
     expect(heard.mock.calls).toEqual([['*']]);
   });
 
@@ -65,7 +65,7 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
     const { endings, heard } = endingsSpy();
     const provider = users({ findById: async () => ({ user: ada, passwordHash: null, sessionKey: 'cached old key' }) });
     const accounts = new AccountSessions(provider, remember, undefined, undefined, undefined, undefined, undefined, undefined, undefined, endings);
-    await expect(accounts.endEveryone()).rejects.toThrow(/cannot confirm the new key/);
+    await expect(accounts.endEveryone({ accessTokens: false, resetTokens: false })).rejects.toThrow(/cannot confirm the new key/);
     expect(heard.mock.calls).toEqual([['*']]);
   });
 
@@ -73,7 +73,7 @@ describe('the live streams hear that sign-ins ended — as soon as the keys are 
     const { endings, heard } = endingsSpy();
     const provider = users({ updateEverySessionKey: async () => Promise.reject(new Error('db down')) });
     const accounts = new AccountSessions(provider, remember, undefined, undefined, undefined, undefined, undefined, undefined, undefined, endings);
-    await expect(accounts.endEveryone()).rejects.toThrow(/db down/);
+    await expect(accounts.endEveryone({ accessTokens: false, resetTokens: false })).rejects.toThrow(/db down/);
     expect(heard).not.toHaveBeenCalled();
   });
 });

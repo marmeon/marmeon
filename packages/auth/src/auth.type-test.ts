@@ -74,3 +74,9 @@ export const wrongProvider: UserProvider = {
   // @ts-expect-error updatePasswordHash() answers a boolean or nothing
   updatePasswordHash: async (): Promise<string> => 'written',
 };
+
+export async function endEveryoneKnowsItsOptions() {
+  await accountSessions.endEveryone({ accessTokens: false, resetTokens: false });
+  // @ts-expect-error an unknown option is refused
+  await accountSessions.endEveryone({ passkeys: true });
+}

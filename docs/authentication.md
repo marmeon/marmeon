@@ -747,6 +747,10 @@ From code, such as a job or an admin controller, `AccountSessions.endEveryone()`
 const ended = await this.#accounts.endEveryone(); // { accounts, rememberTokens, resetTokens, accessTokens, signIns }
 ```
 
+It also revokes every API token and deletes every password-reset token, since a thief who held a session may have created either.
+`--keep-api-tokens` and `--keep-reset-tokens` (`accessTokens: false`, `resetTokens: false`) leave them, and the output names what was
+kept. The old `--api-tokens` and `--reset-tokens` are refused with a hint, and nothing is ended.
+
 The command takes no arguments (a mistyped `auth:end-sessions <email>` is refused, not widened), prints the environment it runs
 in, and logs the operator and the host. `--force` is required in every environment, since it cannot be undone.
 
@@ -756,16 +760,25 @@ in, and logs the operator and the host. `--force` is required in every environme
 | Pending second-factor steps, password and second-factor confirmations | With the session they live in. |
 | Remember-me tokens | All deleted. |
 | Sign-in rows | All deleted, with [sign-ins](#sign-ins) switched on. |
-| Password-reset tokens | Only with `--reset-tokens` (`resetTokens: true`). |
-| API tokens | Only with `--api-tokens` (`accessTokens: true`). |
+| Password-reset tokens | All deleted, unless `--keep-reset-tokens` (`resetTokens: false`). |
+| API tokens | All revoked, unless `--keep-api-tokens` (`accessTokens: false`). |
 | Open live streams | Closed at once, in every process; each browser that connects again is checked and, signed out, is told to stop. A guest's stream stays. See [real-time updates](realtime.md#following-a-channel). |
 
 Passwords stay, so change them where a hash may have leaked. Reset links are stored as hashes, but a link that was mailed before
-the leak works until it expires unless you pass `--reset-tokens`. After a leaked `APP_KEY` the command is the first step, not the
+the leak would work until it expires, which is why the command deletes them. After a leaked `APP_KEY` the command is the first step, not the
 whole answer: the leaked key can also forge cookies, signed URLs and live and upload tokens. Set a new `APP_KEY` and leave the leaked
 one out of `APP_PREVIOUS_KEYS` (the procedure of [rotating the key](encryption.md#rotating-the-key) without its first step). That stops
 the forgeries, but it signs everybody out, and it makes two-factor secrets (reset them with `auth:reset-two-factor`), queued encrypted jobs and
 sealed session data unreadable. Encrypted columns that were already copied stay exposed.
+
+The command does not touch what a thief with a live session may have added, and its output says so:
+
+| | After the command |
+| --- | --- |
+| Passkeys | Not touched. Check `PasskeyRegistered` events since the leak. |
+| Second factors (TOTP, recovery codes) | Not touched. Check `TwoFactorEnabled` and `RecoveryCodesGenerated`, and run `auth:reset-two-factor` for a suspect account. |
+| Passwords, e-mail addresses, pending e-mail changes | Not touched. Check for address changes since the leak, and change passwords where a hash may have leaked. |
+| Accounts of another user provider | Not ended: `AccountSessions` covers the accounts of the bound `UserProvider` only. End those yourself. |
 
 ### How it works
 
@@ -775,7 +788,7 @@ its driver. The fingerprint includes the account's id, so two accounts never sha
 statement locks the rows of the user table until it finishes, which is acceptable for an emergency.
 
 The order is fixed: the remember-me tokens first, so that no cookie signs in again once a later step fails; then the keys; then
-the reset tokens and the API tokens that were asked for, then the sign-in rows. The key is written to every row, so a second factor
+the reset tokens and the API tokens, unless kept, then the sign-in rows. The key is written to every row, so a second factor
 that is being stored at that moment is refused. The call throws, naming the remedy and before anything is deleted, when the
 `UserProvider` or a store it will use lacks its method, and inside a database transaction.
 
@@ -806,8 +819,11 @@ skipped. Return how many rows it wrote and the id of one account it wrote (`samp
 touch `updated_at`: no account changed.
 
 A custom `RememberTokenStore` needs `forgetEveryone()`, since the call always deletes the remember-me tokens. A custom
-`PasswordResetTokenStore` needs `forgetEveryone()` only for `--reset-tokens`, and a custom `AccessTokenStore` needs `revokeEveryone()`
-only for `--api-tokens`. Each deletes every row in one statement and returns how many.
+`PasswordResetTokenStore` needs `forgetEveryone()` and a custom `AccessTokenStore` needs `revokeEveryone()`, unless you pass
+`--keep-reset-tokens` or `--keep-api-tokens`; without the method the call refuses before it changes anything. Each deletes every row in
+one statement and returns how many.
+
+`AccountSessions` covers the accounts of the bound `UserProvider`; accounts in another table with their own provider are not ended.
 
 `auth:prune-tokens` deletes only what expired; it ends no valid sign-in.
 
