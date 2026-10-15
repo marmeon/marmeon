@@ -1,4 +1,4 @@
-import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
+import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutFailedPasskeySignIn } from './listeners/NotifyAboutFailedPasskeySignIn.ts';
@@ -8,6 +8,7 @@ import { NotifyAboutPasskeyRegistered } from './listeners/NotifyAboutPasskeyRegi
 import { NotifyAboutPasskeyRemoved } from './listeners/NotifyAboutPasskeyRemoved.ts';
 import { NotifyAboutPasskeysAfterReset } from './listeners/NotifyAboutPasskeysAfterReset.ts';
 import { NotifyAboutRecoveryCodeUsed } from './listeners/NotifyAboutRecoveryCodeUsed.ts';
+import { NotifyAboutRememberTokenReused } from './listeners/NotifyAboutRememberTokenReused.ts';
 import { NotifyAboutTwoFactorDisabled } from './listeners/NotifyAboutTwoFactorDisabled.ts';
 import { NotifyAboutTwoFactorEnabled } from './listeners/NotifyAboutTwoFactorEnabled.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
@@ -37,7 +38,8 @@ export default defineModule({
   providers: [AuthServiceProvider, PasskeyServiceProvider],
   // Queued listeners (static queue): a worker sends the verification mail once the registration committed, and the owner's mails
   // about the second factor: turned on or off, a recovery code used, and (at most once an hour) a wrong code after the right password —
-  // and about passkeys: added, removed, suspended as a possible clone, and (at most once an hour) a failed passkey sign-in.
+  // and about passkeys: added, removed, suspended as a possible clone, and (at most once an hour) a failed passkey sign-in —
+  // and about a copied "keep me signed in" cookie that was used.
   listeners: [
     listen(Registered, SendEmailVerification),
     listen(TwoFactorEnabled, NotifyAboutTwoFactorEnabled),
@@ -48,6 +50,7 @@ export default defineModule({
     listen(PasskeyRemoved, NotifyAboutPasskeyRemoved),
     listen(PasskeyCloneSuspected, NotifyAboutPasskeyCloneSuspected),
     listen(PasskeySignInFailed, NotifyAboutFailedPasskeySignIn),
+    listen(RememberTokenReused, NotifyAboutRememberTokenReused),
     // Not queued (the event cannot be): it queues the mail that lists the passkeys a password reset left standing.
     listen(PasswordReset, NotifyAboutPasskeysAfterReset),
   ],

@@ -375,6 +375,21 @@ const en = {
         outro: 'Change your password now: whoever tried it knows it. We send this mail at most once an hour.',
       },
     },
+    sign_in: {
+      remember_reused: {
+        subject: 'A “Keep me signed in” cookie of your account was used twice',
+        preview: 'Your sessions were ended as a precaution',
+        intro: 'a “Keep me signed in” cookie of your account was used again after it had been replaced, so it may have been copied.',
+        ended: 'All your sessions were ended, and “Keep me signed in” was turned off on all your devices.',
+        not_ended: '“Keep me signed in” was turned off on all your devices. Browsers that are signed in right now stay signed in until they sign out or their session runs out.',
+        from: ', from {ip}',
+        with: ', with {device}',
+        details: 'The second use was on {at}{from}{with}. That may have been your own browser, which still held the old cookie, or whoever holds a copy of it; we cannot tell which.',
+        device: '{browser} on {system}',
+        outro: 'Sign in again. If this was not you, or you share this computer, change your password now.',
+        outro_not_ended: 'If this was not you, or you share this computer, change your password now and sign out of every browser you do not know.',
+      },
+    },
     passkey: {
       added: {
         subject: 'A passkey was added',

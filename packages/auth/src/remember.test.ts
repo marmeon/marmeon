@@ -63,7 +63,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     const thief = await tokens.consume(stolen); // the thief uses the copied cookie first: rotated
     expect(thief.ok).toBe(true);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
-    expect(await tokens.consume(stolen)).toStrictEqual(err({ kind: 'stolen', userId: 1 })); // the owner comes back with the old one
+    expect(await tokens.consume(stolen)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true })); // the owner comes back with the old one
     expect((await rows()).map((row) => row.user_id)).toEqual([2]);
     expect(await tokens.consume(issued(thief)!)).toStrictEqual(err({ kind: 'invalid' })); // the thief is out too
   });
@@ -74,7 +74,24 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9000 });
     expect(await tokens.consume(cookie)).toMatchObject({ ok: true, value: { cookie: undefined } });
     vi.setSystemTime(Date.now() + 2000);
-    expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'stolen', userId: 1 }));
+    expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true }));
+  });
+
+  it('theft: a validator that was never issued revokes the tokens but is not reported as a reuse', async () => {
+    const cookie = await tokens.create(1, inAMonth());
+    await tokens.create(1, inAMonth());
+    expect(await tokens.consume(`${cookie.split('.')[0]}.${'x'.repeat(43)}`)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: false }));
+    expect(await rows()).toEqual([]);
+  });
+
+  it('theft: of parallel replays only one reports it', async () => {
+    const stolen = await tokens.create(1, inAMonth());
+    await tokens.consume(stolen);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    const results = await Promise.all([1, 2, 3, 4].map(() => tokens.consume(stolen)));
+    expect(results.filter((result) => !result.ok && result.error.kind === 'stolen')).toHaveLength(1);
+    expect(results.filter((result) => !result.ok && result.error.kind === 'invalid')).toHaveLength(3);
+    expect(await rows()).toEqual([]);
   });
 
   it('keeps the revocation of a theft and the removal of an expired token inside a transaction that returns the err', async () => {
@@ -83,7 +100,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     await tokens.consume(stolen);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     const theft = await connections.transaction(() => tokens.consume(stolen));
-    expect(theft).toStrictEqual(err({ kind: 'stolen', userId: 1 }));
+    expect(theft).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true }));
     expect(await rows()).toEqual([]);
     vi.useRealTimers();
     const expired = await tokens.create(2, new Date(Date.now() - 1000));

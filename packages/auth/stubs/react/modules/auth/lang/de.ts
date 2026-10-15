@@ -368,6 +368,21 @@ export default {
         outro: 'Ändere jetzt dein Passwort: Wer es versucht hat, kennt es. Diese Mail senden wir höchstens einmal pro Stunde.',
       },
     },
+    sign_in: {
+      remember_reused: {
+        subject: 'Ein „Angemeldet bleiben“-Cookie deines Kontos wurde zweimal benutzt',
+        preview: 'Deine Sitzungen wurden vorsorglich beendet',
+        intro: 'ein „Angemeldet bleiben“-Cookie deines Kontos wurde benutzt, nachdem es schon ersetzt worden war. Es wurde also womöglich kopiert.',
+        ended: 'Alle deine Sitzungen wurden beendet, und „Angemeldet bleiben“ wurde auf allen deinen Geräten aufgehoben.',
+        not_ended: '„Angemeldet bleiben“ wurde auf allen deinen Geräten aufgehoben. Browser, die gerade angemeldet sind, bleiben es, bis sie sich abmelden oder ihre Sitzung abläuft.',
+        from: ', von {ip}',
+        with: ', mit {device}',
+        details: 'Die zweite Benutzung war am {at}{from}{with}. Das kann dein eigener Browser gewesen sein, der noch das alte Cookie hatte, oder wer eine Kopie davon hält; wir können es nicht unterscheiden.',
+        device: '{browser} auf {system}',
+        outro: 'Melde dich neu an. Warst du das nicht, oder teilst du diesen Computer, ändere jetzt dein Passwort.',
+        outro_not_ended: 'Warst du das nicht, oder teilst du diesen Computer, ändere jetzt dein Passwort und melde dich in jedem Browser ab, den du nicht kennst.',
+      },
+    },
     passkey: {
       added: {
         subject: 'Ein Passkey wurde hinzugefügt',

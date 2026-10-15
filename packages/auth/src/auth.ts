@@ -5,7 +5,7 @@ import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
 import { AuthConfig } from './config.ts';
-import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, type LoginVia } from './events.ts';
+import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import type { PasswordCheckScope } from './password-throttle.ts';
@@ -823,19 +823,48 @@ export class Auth {
    * committed or rolled back: a rollback brings the deleted tokens back, and `end()` deletes them again. Never throws (a provider
    * without a session key, say): this request is a guest anyway, and the error reaches the log.
    */
-  async #endSessionsOfThief(userId: string | number): Promise<void> {
+  async #endSessionsOfThief(userId: string | number, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined }, announce: boolean): Promise<void> {
     const end = async () => {
+      let sessionsEnded = false;
       try {
-        await this.#accountSessions.end(userId as AuthUserId);
+        sessionsEnded = (await this.#accountSessions.end(userId as AuthUserId)).ok;
       } catch (error) {
         this.#logger.error('A rotated remember-me token was used again, but the sessions of the user could not be ended', {
           user: userId,
           error: error instanceof Error ? error.message : String(error),
         });
       }
+      let tokensGone = sessionsEnded;
+      if (!sessionsEnded) {
+        // After a rollback the tokens are back, and `end()` did not take them again: without this every replay would find them.
+        try {
+          await this.#remember.forgetUser(userId);
+          tokensGone = true;
+        } catch (error) {
+          this.#logger.error('A rotated remember-me token was used again, but the remember-me tokens of the user could not be deleted', {
+            user: userId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      // Announced only once the tokens are gone: a replay would find them and repeat the event.
+      if (announce && tokensGone) await this.#announceReuse(userId, { ...details, sessionsEnded });
     };
     await afterRollback(end);
     await afterCommit(end);
+  }
+
+  /** Dispatches `RememberTokenReused` for an account that still exists; a failing listener is logged, never thrown (the request is a guest anyway). */
+  async #announceReuse(userId: string | number, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly sessionsEnded: boolean }): Promise<void> {
+    try {
+      const found = await this.#users.findById(userId as never);
+      if (found) await this.#events.dispatch(new RememberTokenReused(found.user, details, new Date()));
+    } catch (error) {
+      this.#logger.error('A rotated remember-me token was used again, but the event could not be dispatched', {
+        user: userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
@@ -871,7 +900,7 @@ export class Auth {
           ip: this.#request.ip,
           userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
         });
-        await this.#endSessionsOfThief(result.error.userId);
+        await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) }, result.error.reused === true);
       }
       return undefined;
     }

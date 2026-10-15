@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import * as v from 'valibot';
 import { idOf, type AuthUser, type AuthUserId } from './user.ts';
 
@@ -305,6 +306,48 @@ export class PasskeyRemoved {
 
   constructor(user: AuthUser) {
     this.user = user;
+  }
+
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
+  }
+}
+
+/**
+ * A remember-me cookie that had already been rotated was presented again: two browsers held one cookie, so one was copied. Every
+ * remember-me token and session of the account is ended (`sessionsEnded` says whether that worked). Queueable: a queued listener gets
+ * `{ userId, at, ip, userAgent, sessionsEnded }` (`at` as an ISO-8601 string) and reads the account as it is when it runs. `ip` and
+ * `userAgent` belong to the request that presented the old value as the second one: the owner or whoever holds the copy (possibly the
+ * thief); a mail should say so. Null outside a request. `userAgent` is client-controlled text: show a parsed browser and system
+ * (`describeDevice`) in a mail, not the raw header. Carries no cookie value or token.
+ */
+export class RememberTokenReused {
+  static readonly event = 'auth.remember-token-reused';
+  static readonly schema = v.object({
+    userId,
+    at: instant,
+    ip: v.nullable(v.pipe(v.string(), v.ip())),
+    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+    sessionsEnded: v.boolean(),
+  });
+  readonly #event = true;
+  readonly user: AuthUser;
+  readonly at: Date;
+  /** The client's address of the request that presented the old cookie. */
+  readonly ip: string | null;
+  /** That request's `User-Agent` without control characters, cut to 512 characters. */
+  readonly userAgent: string | null;
+  /** Whether the account's sessions were ended. False when the provider could not (no session key); every remember-me token of the account is gone either way. */
+  readonly sessionsEnded: boolean;
+
+  constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly sessionsEnded: boolean }, at = new Date()) {
+    this.user = user;
+    this.at = at;
+    // Not an address (a pass-through proxy's text, a zone-scoped one): null, so the event always passes its schema when queued.
+    this.ip = details.ip !== undefined && isIP(details.ip) ? details.ip : null;
+    // oxlint-disable-next-line no-control-regex -- control characters are exactly what it removes
+    this.userAgent = details.userAgent === undefined ? null : details.userAgent.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').slice(0, MAX_USER_AGENT);
+    this.sessionsEnded = details.sessionsEnded;
   }
 
   get userId(): AuthUserId {

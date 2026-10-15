@@ -1,0 +1,86 @@
+import { createTestApp, type TestApp } from '@marmeon/testing';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from './factories/UserFactory.ts';
+import { SignInMail } from './mail/SignInMail.ts';
+import { SignInNotices } from './sign-in-notices.ts';
+import { UserRepository } from './UserRepository.ts';
+import type { User } from './users.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s.
+beforeAll(warmUp, WARM_UP_TIMEOUT);
+
+let app: TestApp;
+beforeEach(async () => {
+  app = await createTestApp(application, { database: 'refresh' });
+}, 30_000);
+
+const FIREFOX_ON_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Gecko/20100101 Firefox/130.0';
+
+/** The cookie of a "keep me signed in" sign-in, used once by the copy (which rotates it), so the original is now stale. */
+async function copiedCookie(user: User) {
+  const login = await app.post('/login', { form: { email: user.email, password: 'password', remember: 'on' } });
+  const cookie = login.cookie('remember_web')!;
+  await app.withCookie('remember_web', cookie).get('/dashboard').assertOk();
+  app.travel({ seconds: 61 }); // past the grace a second tab gets
+  return cookie;
+}
+
+const replay = (cookie: string) => app.withCookie('remember_web', cookie).withHeaders({ 'user-agent': FIREFOX_ON_MAC }).get('/dashboard');
+
+describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000 }, () => {
+  it('tells the owner once, with the parsed browser and what happened to the sessions, never the raw user agent', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await replay(await copiedCookie(ada));
+    await app.queue.work();
+
+    const mails = app.mail.queued(SignInMail);
+    expect(mails).toHaveLength(1);
+    const { subject, text, html } = mails[0]!.message;
+    expect(subject).toBe('A “Keep me signed in” cookie of your account was used twice');
+    expect(text).toContain('Firefox on macOS');
+    expect(text).toContain('All your sessions were ended');
+    expect(text).toContain('whoever holds a copy');
+    expect(text + html).not.toContain('Gecko/20100101');
+  });
+
+  it('is written in the language of the account', async () => {
+    const ada = await app.factory(UserFactory).create({ locale: 'de' });
+    await replay(await copiedCookie(ada));
+    await app.queue.work();
+    const mail = app.mail.queued(SignInMail).at(-1)!.message;
+    expect(mail.subject).toBe('Ein „Angemeldet bleiben“-Cookie deines Kontos wurde zweimal benutzt');
+    expect(mail.text).toContain('Firefox auf macOS');
+  });
+
+  it('says nothing for a cookie that was never issued, though the sign-ins end', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const cookie = await copiedCookie(ada);
+    // The right selector with a validator nobody was given: not a copy of anything that was handed out.
+    const forged = `${cookie.split('.')[0]}.${'x'.repeat(43)}`; // the test app hands cookies over decrypted
+    await replay(forged);
+    await app.queue.work();
+    expect(app.mail.queued(SignInMail)).toHaveLength(0);
+    await app.assertDatabaseCount('remember_tokens', 0);
+  });
+
+  it('says nothing when the account is gone by the time the worker runs', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await replay(await copiedCookie(ada));
+    await app.make(UserRepository).delete(ada.id);
+    await app.queue.work();
+    expect(app.mail.queued(SignInMail)).toHaveLength(0);
+  });
+
+  it('does not promise that sessions ended when they could not be, and leaves out what it does not know', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await app.make(SignInNotices).send(ada.id, { kind: 'remember_reused', at: new Date().toISOString(), ip: null, userAgent: null, sessionsEnded: false });
+    await app.queue.work();
+    const { text } = app.mail.queued(SignInMail).at(-1)!.message;
+    expect(text).toContain('stay signed in until they sign out or their session runs out');
+    expect(text).not.toContain('Sign in again');
+    expect(text).not.toContain('All your sessions were ended');
+    expect(text).not.toMatch(/ from | with /);
+  });
+});
