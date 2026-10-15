@@ -21,14 +21,6 @@ export interface RouteLookup {
 const PARAMETER = /\/:(\w+)(\{[^}]*\})?(\?)?/g;
 
 /**
- * A path (and query) derived from a request, as a `Location` that stays on this site: leading slashes and backslashes
- * collapse to one, since `//host` and `/\host` name another host to a browser.
- */
-export function localLocation(pathname: string, search = ''): string {
-  return pathname.replace(/^[/\\]+/, '/') + search;
-}
-
-/**
  * Fills a route pattern (`/users/:user/links/:link?`) with `params`. Parameters the path does not take
  * come back as `rest` — callers put them into the query.
  */
@@ -41,8 +33,8 @@ export function fillPath(name: string, pattern: string, params: Readonly<Record<
       if (optional) return '';
       throw new Error(`Missing required parameter [${key}] for route [${name}].`);
     }
-    // A browser resolves even `%2E%2E` as a dot segment, so no encoding keeps such a link on its route: it is refused.
-    if (value === '.' || value === '..') throw new Error(`Parameter [${key}] of route [${name}] cannot be [${value}]: a dot segment in a link leads to another route.`);
+    // A browser resolves even `%2E%2E` as a dot segment: no encoding keeps the link on its route.
+    if (value === '.' || value === '..') throw new Error(`Parameter [${key}] of route [${name}] cannot be [${value}]: a dot segment leads to another route.`);
     return `/${encodeURIComponent(String(value))}`;
   });
   const rest: Record<string, Param> = {};

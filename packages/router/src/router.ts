@@ -10,7 +10,8 @@ import { Route, type RegistrarAudit } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
-import { localLocation, toSearchParams, urlFor, type Query } from './url.ts';
+import { localLocation } from './local-location.ts';
+import { toSearchParams, urlFor, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
