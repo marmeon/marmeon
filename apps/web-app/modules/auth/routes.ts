@@ -13,6 +13,8 @@ import { LoginController } from './controllers/LoginController.ts';
 import { PasskeyChallengeController } from './controllers/PasskeyChallengeController.ts';
 import { PasskeyChallengeOptionsController } from './controllers/PasskeyChallengeOptionsController.ts';
 import { PasskeyRegistrationOptionsController } from './controllers/PasskeyRegistrationOptionsController.ts';
+import { PasskeyConfirmController } from './controllers/PasskeyConfirmController.ts';
+import { PasskeyConfirmOptionsController } from './controllers/PasskeyConfirmOptionsController.ts';
 import { PasskeyStepUpController } from './controllers/PasskeyStepUpController.ts';
 import { PasskeyStepUpOptionsController } from './controllers/PasskeyStepUpOptionsController.ts';
 import { PasskeySignInController } from './controllers/PasskeySignInController.ts';
@@ -94,7 +96,10 @@ export default defineRoutes((Route) => {
   const confirmed = account.middleware(ConfirmedAddress);
   confirmed.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
   confirmed.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
-  // "Sudo mode": the security page asks for the password again unless it was typed within 15 minutes.
+  // Confirming with a passkey: the options open a challenge per call, so they are limited per user.
+  confirmed.middleware(throttle('passkey-confirm-options')).post('/confirm-password/passkey/options', PasskeyConfirmOptionsController).name('auth.password.confirm.passkey.options');
+  confirmed.post('/confirm-password/passkey', PasskeyConfirmController).name('auth.password.confirm.passkey').block();
+  // "Sudo mode": the security page asks for the password again unless a password or a passkey confirmed it within 15 minutes.
   confirmed.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
   // A new hash in the database and its fingerprint in the session must stay a pair: one of these requests per session at a
   // time (block()) — two at once could leave the session with the other's fingerprint, and sign it out.

@@ -24,6 +24,8 @@ import type { MarkAllNotificationsReadController } from '../modules/notification
 import type { MarkNotificationReadController } from '../modules/notifications/controllers/MarkNotificationReadController.ts';
 import type { PasskeyChallengeController } from '../modules/auth/controllers/PasskeyChallengeController.ts';
 import type { PasskeyChallengeOptionsController } from '../modules/auth/controllers/PasskeyChallengeOptionsController.ts';
+import type { PasskeyConfirmController } from '../modules/auth/controllers/PasskeyConfirmController.ts';
+import type { PasskeyConfirmOptionsController } from '../modules/auth/controllers/PasskeyConfirmOptionsController.ts';
 import type { PasskeyRegistrationOptionsController } from '../modules/auth/controllers/PasskeyRegistrationOptionsController.ts';
 import type { PasskeySignInController } from '../modules/auth/controllers/PasskeySignInController.ts';
 import type { PasskeySignInOptionsController } from '../modules/auth/controllers/PasskeySignInOptionsController.ts';
@@ -92,6 +94,8 @@ declare module '@marmeon/router' {
     'auth.passkeys.store': { method: 'post'; path: '/settings/passkeys'; controller: typeof RegisterPasskeyController };
     'auth.passkeys.update': { method: 'put'; path: '/settings/passkeys/:passkey'; controller: typeof RenamePasskeyController };
     'auth.password.confirm': { method: 'get'; path: '/confirm-password'; controller: typeof ShowConfirmPasswordController };
+    'auth.password.confirm.passkey': { method: 'post'; path: '/confirm-password/passkey'; controller: typeof PasskeyConfirmController };
+    'auth.password.confirm.passkey.options': { method: 'post'; path: '/confirm-password/passkey/options'; controller: typeof PasskeyConfirmOptionsController };
     'auth.password.confirm.store': { method: 'post'; path: '/confirm-password'; controller: typeof ConfirmPasswordController };
     'auth.password.email': { method: 'post'; path: '/forgot-password'; controller: typeof SendPasswordResetLinkController };
     'auth.password.request': { method: 'get'; path: '/forgot-password'; controller: typeof ShowForgotPasswordController };

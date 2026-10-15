@@ -67,6 +67,7 @@ const en = {
     intro: 'This is a sensitive area. Please enter your password to continue.',
     password: 'Password',
     submit: 'Confirm',
+    passkey: 'Use a passkey instead',
   },
   verify: {
     title: 'Confirm your e-mail address',

@@ -61,6 +61,7 @@ export default {
     intro: 'Dies ist ein geschützter Bereich. Bitte gib zum Fortfahren dein Passwort ein.',
     password: 'Passwort',
     submit: 'Bestätigen',
+    passkey: 'Stattdessen einen Passkey verwenden',
   },
   verify: {
     title: 'E-Mail-Adresse bestätigen',
