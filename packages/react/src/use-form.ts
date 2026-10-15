@@ -1,4 +1,4 @@
-import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, resolveRoute, type FormLiveValidation, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
+import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, resolveRoute, type FormLiveValidation, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
@@ -28,13 +28,9 @@ export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends
 /** What a remembered form may not keep — in `remember.include`, the message for a password field. */
 export type PasswordNeverRemembered = 'password fields are never remembered — they stay in the field until the page is left';
 
-/** The fields of a form whose names look sensitive (a token, a secret, a card) — what `remember.include` may name. Never passwords. */
+/** The fields of a form whose names look sensitive (a token, a secret, a code, a card) — what `remember.include` may name. Never passwords. */
 type SensitiveFormField<F> = keyof {
-  [K in keyof F & string as Lowercase<K> extends `${string}password${string}`
-    ? never
-    : Lowercase<K> extends `${string}${'secret' | 'token' | 'card' | 'cvc'}${string}`
-      ? K
-      : never]: true;
+  [K in keyof F & string as LooksLikePassword<K> extends true ? never : LooksSensitive<K> extends true ? K : never]: true;
 } &
   string;
 
@@ -58,7 +54,7 @@ export interface FormOptions<F = Record<string, unknown>> {
   guard?: boolean | string;
   /**
    * Remember the input across Back/Forward, in memory only, per history entry — the key it is kept under (a form by
-   * controller needs one), or the options. Password-, token-, secret- and card-like fields and files are never kept
+   * controller needs one), or the options. Password-, token-, secret-, code- and card-like fields and files are never kept
    * (`include` lets the non-password ones in). See docs/forms.md#remembering-input.
    */
   remember?: string | RememberFormOptions<F>;

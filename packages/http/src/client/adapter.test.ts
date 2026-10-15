@@ -58,6 +58,10 @@ import {
 } from './index.ts';
 import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import { FakeChannels, FakeWindow } from './test-window.ts';
+import { loadSensitiveFields } from './remember.ts';
+
+// The rules that tell sensitive fields load on first use; these tests write and read at once.
+await loadSensitiveFields();
 
 /** The whole adapter: the hydration entry, rendering a page object, the progress bar. */
 async function createTextApp(rootId = 'app') {

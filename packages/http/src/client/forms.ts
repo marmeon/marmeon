@@ -169,3 +169,13 @@ export function restoreFormEntries(form: { readonly elements: ArrayLike<unknown>
     }
   }
 }
+
+/**
+ * What a form control says about itself, apart from its name: `'never'` for a password or a one-time code, `'named'` for a
+ * card detail (kept only when the form names the field), `undefined` for anything else.
+ */
+export function sensitiveControl(control: { readonly type: string; getAttribute(name: string): string | null }): 'never' | 'named' | undefined {
+  const autocomplete = control.getAttribute('autocomplete')?.toLowerCase() ?? '';
+  // `current-password`, `new-password`, `one-time-code`; the card details are `cc-number`, `cc-csc`, …
+  return control.type === 'password' || /one-time-code|-password/.test(autocomplete) ? 'never' : autocomplete.includes('cc-') ? 'named' : undefined;
+}

@@ -1,7 +1,9 @@
+import { REDACTED_KEYS } from '@marmeon/core';
 import { defineRoutes, Router, type HttpContext } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { Controller } from './controller.ts';
 import { INTENDED_KEY, isLocalPath, isRedirectResult, RedirectResult } from './redirect.ts';
+import { isSensitiveField } from './sensitive-fields.ts';
 import type { PageProps } from './view.ts';
 
 const router = new Router().load(
@@ -107,6 +109,41 @@ describe('RedirectResult', () => {
     };
     new RedirectResult('/').withInput(input).toResponse(request('POST'), router, flasher);
     expect(flashed._old_input).toEqual({ email: 'ada@example.com', nested: { name: 'n' } });
+  });
+
+  it('flashes no one-time code, token, recovery code or card detail — but a zip code', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const input = {
+      email: 'ada@example.com',
+      otp: '123456',
+      api_token: 'x',
+      code: '1',
+      recovery_code: 'r',
+      smsCode: 's',
+      card_number: '4242',
+      cvv: '1',
+      iban: 'DE00',
+      client_secret: 'c',
+      zip_code: '10115',
+      footprint: 'f',
+      rootPath: '/',
+      language_code: 'de',
+      promoCode: 'P',
+      recovery_codes: ['a'],
+      postalCode: '10115',
+      country_code: 'DE',
+      coupon_code: 'SAVE',
+      payment: { card_number: '4242', city: 'Berlin' },
+    };
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), router, flasher);
+    expect(flashed._old_input).toEqual({ email: 'ada@example.com', zip_code: '10115', footprint: 'f', rootPath: '/', language_code: 'de', promoCode: 'P', postalCode: '10115', country_code: 'DE', coupon_code: 'SAVE', payment: { city: 'Berlin' } });
+  });
+
+  it('hides every clearly secret name the log redactor hides — the two lists name the same terms', () => {
+    const secret = ['password', 'new_password', 'passcode', 'token', 'api_token', 'secret', 'client_secret', 'api_key', 'apiKey', 'signature'];
+    expect(secret.filter((name) => !REDACTED_KEYS.test(name))).toEqual([]);
+    expect(secret.filter((name) => !isSensitiveField(name))).toEqual([]);
   });
 
   it('is recognised by brand, not by class identity', () => {

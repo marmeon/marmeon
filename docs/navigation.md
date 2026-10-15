@@ -325,9 +325,10 @@ const [tab, setTab] = useRemember('note-tab', 'body');
 ```
 
 The value belongs to the history entry, in memory only. A reload, signing in or out, a new build and a language switch start
-over. A key named like a password is a compile error, and so is one named like a token, a secret or a card, unless you pass
-`{ sensitive: true }`. Inside a remembered value, fields named like a password, a token, a secret or a card are left out at any
-depth, and so are files. A form can remember its input the same way, which the [forms](forms.md#remembering-input) page shows.
+over. A key named like a password (`password`, `passcode`, `passphrase`) is a compile error, and so is one named like a token, a
+secret, a credential, an API or private key, a session id, a recovery or one-time code (`otp`, `code`, `sms_code`) or a card
+(`card_number`, `cvc`, `iban`), unless you pass `{ sensitive: true }`. Inside a remembered value, fields named so are left out
+at any depth, and so are files. `zip_code`, `language_code` and `promoCode` are ordinary names. A form can remember its input the same way, which the [forms](forms.md#remembering-input) page shows.
 
 ### The Navigation API and the fallback
 

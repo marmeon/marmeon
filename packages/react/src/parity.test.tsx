@@ -65,11 +65,15 @@ Edit.layout = Layout;
 function Tokens() {
   return (
     <>
-      <Form route="tokens.store" remember data-testid="token-form">
+      <Form route="tokens.store" remember={{ include: ['pin', 'plain'] as never }} data-testid="token-form">
         {(form) => (
           <>
             <input data-testid="token-name" {...(form as never as { field(name: string): object }).field('name')} defaultValue="" />
             <input data-testid="token-secret" name="secret" defaultValue="" />
+            <input data-testid="token-pin" type="password" name="pin" defaultValue="" />
+            <input data-testid="token-sms" autoComplete="one-time-code" name="plain" defaultValue="" />
+            <input data-testid="token-recovery" name="recovery_code" defaultValue="" />
+            <input data-testid="token-zip" name="zip_code" defaultValue="" />
             <input type="checkbox" data-testid="read" name="abilities[]" value="users:read" />
             <input type="checkbox" data-testid="write" name="abilities[]" value="users:write" />
             <small data-testid="token-error">{(form as never as { error(name: string): string | undefined }).error('name') ?? ''}</small>
@@ -243,7 +247,7 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     await click('read');
     await act(async () => ($('token-form') as HTMLFormElement).requestSubmit());
     expect($('token-form')!.hasAttribute('data-pending')).toBe(true);
-    expect(requests).toEqual([{ url: '/tokens', method: 'POST', body: { name: 'CI', secret: '', abilities: ['users:read'] } }]);
+    expect(requests).toEqual([{ url: '/tokens', method: 'POST', body: { name: 'CI', secret: '', pin: '', plain: '', recovery_code: '', zip_code: '', abilities: ['users:read'] } }]);
     await act(async () => open(json(page('Tokens', '/tokens', { errors: { name: ['Taken.'] } }))));
     await wait();
     expect($('token-error')!.textContent).toBe('Taken.');
@@ -265,6 +269,13 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     await mount(page('Tokens', '/tokens'));
     await type('token-name', 'Deploy');
     await type('token-secret', 's3cret');
+    await type('token-pin', '1234');
+    // A show-password toggle turns the field into plain text: it stays one that is never remembered.
+    ($('token-pin') as HTMLInputElement).type = 'text';
+    await type('token-pin', '12345');
+    await type('token-sms', '987654');
+    await type('token-recovery', 'abcd-efgh');
+    await type('token-zip', '10115');
     await click('write');
     await click('to-people');
     await wait();
@@ -273,6 +284,11 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     expect(($('write') as HTMLInputElement).checked).toBe(true);
     expect(($('read') as HTMLInputElement).checked).toBe(false);
     expect(($('token-secret') as HTMLInputElement).value).toBe('');
+    // By what the control is, not by its name — and `include` does not change that.
+    expect(($('token-pin') as HTMLInputElement).value).toBe('');
+    expect(($('token-sms') as HTMLInputElement).value).toBe('');
+    expect(($('token-recovery') as HTMLInputElement).value).toBe('');
+    expect(($('token-zip') as HTMLInputElement).value).toBe('10115');
     expect($('token-form')!.hasAttribute('data-dirty')).toBe(true);
   });
 });

@@ -4,11 +4,14 @@ import type { ConfirmRequest } from './confirm.ts';
 import { defaultFormEntries, fieldPath, formObject, restoreFormEntries } from './forms.ts';
 import { remember } from './features/remember.ts';
 import { OnceStore } from './once.ts';
-import { isSensitiveRememberField, rememberable } from './remember.ts';
+import { isSensitiveRememberField, loadSensitiveFields, rememberable } from './remember.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
 import { instant } from './features/instant.ts';
 import { guard } from './features/guard.ts';
+
+// The rules that tell sensitive fields load on first use; these tests write and read at once.
+await loadSensitiveFields();
 
 /** Remember state, once props, instant visits and the cancelable asset-version reload in the client core. */
 
@@ -116,6 +119,15 @@ describe('remembered state — in memory, per history entry', () => {
     expect(kept).toEqual({ name: 'Ada', account: { bio: 'Hi' }, card_number: '4242', links: [{ url: 'https://a.test' }] });
     expect(isSensitiveRememberField('payment.cvc')).toBe(true);
     expect(isSensitiveRememberField('links[0][url]')).toBe(false);
+  });
+
+  it('keeps no one-time or recovery code, but a postal code — and a name in `include` lets in all but passwords', () => {
+    const dropped = ['otp', 'totp_secret', 'user_otp', 'userOtp', 'otpCode', 'code', 'recovery_codes', 'backup_codes', 'smsCode', 'mfa_code', 'auth-code', 'two_factor_code', 'api_key', 'apiKey', 'private_key', 'signature', 'credentials', 'jwt', 'session_id', 'recovery', 'passcode', 'pass', 'card_number', 'cvv', 'cvc', 'iban', 'payment.otp', 'payment.code', 'dsn', 'app_key', 'appKey', 'encryption_key', 'auth'];
+    expect(dropped.filter((name) => !isSensitiveRememberField(name))).toEqual([]);
+    const kept = ['footprint', 'hotplate', 'rootPath', 'notPublished', 'language_code', 'currency_code', 'post_code', 'source_code', 'promoCode', 'zip_code', 'postalCode', 'country_code', 'coupon_code', 'barcode', 'passenger', 'name'];
+    expect(kept.filter((name) => isSensitiveRememberField(name))).toEqual([]);
+    expect(isSensitiveRememberField('otp', ['otp'])).toBe(false);
+    for (const name of ['new_password', 'passcode', 'passphrase', 'pass']) expect(isSensitiveRememberField(name, [name])).toBe(true);
   });
 });
 

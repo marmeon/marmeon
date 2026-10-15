@@ -1,30 +1,51 @@
 /**
  * Remembered state, UI-free: what a form or a component wants back when Back/Forward returns to its history entry. Kept in
  * memory only, per history entry, and gone with the entry and with the document — never in `history.state` or `sessionStorage`,
- * which browsers restore from disk, past a sign-out. Fields named like a token, a secret or a card are not kept unless a form
- * names them in `include`; passwords and files never, at any depth. See docs/navigation.md#remembered-state.
+ * which browsers restore from disk, past a sign-out. Fields named like a token, a secret, a credential, a one-time or recovery code or a card
+ * (the terms are in `sensitive-fields.ts`) are not kept unless a form names them in `include`; passwords and files never, at any depth. See docs/navigation.md#remembered-state.
  */
 
 import { slot } from './feature.ts';
 
-/** Field names whose values are never remembered — unless a form names them in `include` (passwords: never). */
+// The name rules are a module of their own, loaded when something is first remembered: a download that remembers nothing never
+// carries them. Until they are loaded nothing is kept (never a guess), so a write that comes first waits for them.
+let rules: typeof import('../sensitive-fields.ts') | undefined;
+let loading: Promise<void> | undefined;
+
+/** Loads the rules that tell sensitive fields; resolves once {@link isSensitiveRememberField} and {@link rememberable} can answer. */
+export function loadSensitiveFields(): Promise<void> {
+  return (loading ??= import('../sensitive-fields.ts').then(
+    (module) => void (rules = module),
+    (error: unknown) => {
+      loading = undefined;
+      throw error;
+    },
+  ));
+}
+
+/** @deprecated Matches a few plain names only — use {@link isSensitiveRememberField}, which also knows codes, keys and one-time passwords. */
 export const SENSITIVE_REMEMBER_FIELD = /password|secret|token|card|cvc/i;
 
-/** Field names whose values are never remembered, whatever a form asks for. */
+/** @deprecated Use {@link isSensitiveRememberField}, which says so for a password and for a path through one. */
 export const NEVER_REMEMBERED_FIELD = /password/i;
 
-/** Whether a field (a name or a path: `payment.card_number`) is left out of remembered state. */
+/**
+ * Whether a field (a name or a path: `payment.card_number`) is left out of remembered state — `include` lets in all but
+ * passwords. `true` for everything until {@link loadSensitiveFields} has resolved.
+ */
 export function isSensitiveRememberField(field: string, include: readonly string[] = []): boolean {
-  if (field.split(/[.[\]]+/).some((segment) => NEVER_REMEMBERED_FIELD.test(segment))) return true;
-  if (include.includes(field)) return false;
-  return field.split(/[.[\]]+/).some((segment) => segment !== '' && SENSITIVE_REMEMBER_FIELD.test(segment));
+  if (!rules) return true;
+  if (rules.isPasswordField(field)) return true;
+  return !include.includes(field) && rules.isSensitiveField(field);
 }
 
 /**
  * What may be remembered of `value`: a copy without sensitive fields (by name, at any depth — `include` lets some back in,
- * never a password) and without files, functions or anything else that is not plain data. `undefined` for nothing at all.
+ * never a password) and without files, functions or anything else that is not plain data. `undefined` for nothing at all
+ * — and until {@link loadSensitiveFields} has resolved.
  */
 export function rememberable(value: unknown, include: readonly string[] = []): unknown {
+  if (!rules) return undefined;
   const copy = (item: unknown, path: string): unknown => {
     if (item instanceof Blob || typeof item === 'function' || typeof item === 'symbol' || typeof item === 'bigint') return undefined;
     if (item instanceof Date) return new Date(item.getTime());
@@ -50,6 +71,10 @@ export function rememberable(value: unknown, include: readonly string[] = []): u
  */
 export class Remembered {
   readonly #values = new Map<string, unknown>();
+  // A write that waits for the rules holds a ticket: `set` and `delete` of its key, and `clear()`, take it back — what was
+  // forgotten, or replaced, does not come back when the rules arrive.
+  readonly #tickets = new Map<string, number>();
+  #epoch = 0;
 
   get size(): number {
     return this.#values.size;
@@ -64,19 +89,37 @@ export class Remembered {
     return this.#values.has(key) ? structuredClone(this.#values.get(key)) : undefined;
   }
 
-  /** Remembers `value` under `key` — a copy of what may be kept of it ({@link rememberable}). */
-  set(key: string, value: unknown, include: readonly string[] = []): void {
-    const kept = rememberable(value, include);
+  /**
+   * Remembers what may be kept of a value under `key` ({@link rememberable}) — the value, or a function that gives it. The
+   * first write of a document waits for the rules that tell sensitive fields (a chunk of their own); the function is called
+   * then, not now, and a later `set` or `delete` of the key, or `clear()`, cancels the wait. `field` names the key as a field
+   * of its own (`useRemember('password-tab')`): when it is sensitive, nothing is kept.
+   */
+  set(key: string, source: unknown, include: readonly string[] = [], field?: string): void {
+    const ticket = (this.#tickets.get(key) ?? 0) + 1;
+    this.#tickets.set(key, ticket);
+    if (!rules) {
+      const epoch = this.#epoch;
+      loadSensitiveFields().then(
+        () => this.#epoch === epoch && this.#tickets.get(key) === ticket && this.set(key, source, include, field),
+        () => {},
+      );
+      return;
+    }
+    const kept = field !== undefined && isSensitiveRememberField(field, include) ? undefined : rememberable(typeof source === 'function' ? source() : source, include);
     if (kept === undefined) this.#values.delete(key);
     else this.#values.set(key, kept);
   }
 
   delete(key: string): void {
+    this.#tickets.set(key, (this.#tickets.get(key) ?? 0) + 1);
     this.#values.delete(key);
   }
 
   /** Forgets everything (the document is left). */
   clear(): void {
+    this.#epoch++;
+    this.#tickets.clear();
     this.#values.clear();
   }
 
