@@ -116,12 +116,12 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       const { navigator } = boot(win, page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }));
       win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
       expect(await navigator.visit('/logout', { method: 'post' })).toBeUndefined();
-      expect(win.loads).toEqual(['assign /login']);
+      expect(win.loads).toEqual(['assign https://app.test/login']);
       expect(navigator.cachedPages).toBe(0);
 
       // The browser brings this document back from the back/forward cache: it reloads instead of showing it.
       win.dispatch('pageshow', { persisted: true });
-      expect(win.loads).toEqual(['assign /login', 'reload']);
+      expect(win.loads).toEqual(['assign https://app.test/login', 'reload']);
     });
 
     it('does not reload a document restored from the back/forward cache that was not left for a full load', () => {
@@ -815,7 +815,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       await navigator.use(prefetch).prefetch('/settings/security');
       expect(navigator.use(prefetch).size).toBe(1);
       await navigator.visit('/logout', { method });
-      expect(win.loads).toEqual(['assign /login']);
+      expect(win.loads).toEqual(['assign https://app.test/login']);
       expect(navigator.use(prefetch).size).toBe(0);
 
       // Should this document live on (the browser brings it back, a click before it unloads): the server is asked.

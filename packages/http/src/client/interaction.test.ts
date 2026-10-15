@@ -254,7 +254,7 @@ describe.each(PATHS)('the guard on the %s path', (path) => {
       // Signed out in another tab: the next request is a 409 — the document goes, unasked, and leaving is not stopped.
       win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
       await navigator.reload({ only: ['profile'] });
-      expect(win.loads).toEqual(['replace /login']);
+      expect(win.loads).toEqual(['replace https://app.test/login']);
       expect(asked).toEqual([]);
       expect(win.unload()).toBe(false);
     });

@@ -47,6 +47,28 @@ describe('ClientHistory / ClearClientHistory', () => {
     }
   });
 
+  it('does not send the client to a redirect it may not load: the requested page instead', async () => {
+    for (const target of ['javascript:alert(1)', ' JaVaScRiPt:alert(1)', 'data:text/html,x', 'java\tscript:x']) {
+      const history = new ClientHistory();
+      history.clear();
+      const response = await run(history, ctx('POST', '/a?tab=1', visit), new Response(null, { status: 303, headers: { location: target } }));
+      expect([response.status, response.headers.get(LOCATION_HEADER)]).toEqual([409, '/a?tab=1']);
+    }
+    const history = new ClientHistory();
+    history.clear();
+    expect((await run(history, ctx('POST', '/a', visit), new Response(null, { status: 303, headers: { location: 'https://idp.example/login' } }))).headers.get(LOCATION_HEADER)).toBe('https://idp.example/login');
+  });
+
+  it('resolves a relative redirect the way HTTP does: against the address that was requested', async () => {
+    const history = new ClientHistory();
+    history.clear();
+    const response = await run(history, ctx('POST', '/people/1/edit?x=1', visit), new Response(null, { status: 303, headers: { location: 'next?tab=2' } }));
+    expect(response.headers.get(LOCATION_HEADER)).toBe('/people/1/next?tab=2');
+    // A path that the URL parser normalises to a protocol-relative address stays on this site.
+    const dotted = await run(history, ctx('POST', '/a', visit), new Response(null, { status: 303, headers: { location: '/.//evil.example/x' } }));
+    expect(dotted.headers.get(LOCATION_HEADER)).toBe('/evil.example/x');
+  });
+
   it('keeps a plain browser request as it is — with Clear-Site-Data when asked for', async () => {
     const history = new ClientHistory();
     history.clear({ siteData: true });

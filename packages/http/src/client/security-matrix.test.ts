@@ -1,5 +1,5 @@
 import { readdirSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LAYER_BACKDROP, LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
@@ -25,6 +25,7 @@ import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
+import { visitUrlOf } from './links.ts';
 import { islands, type IslandsFeature } from './features/islands.ts';
 import { REMEMBERED } from './remember.ts';
 import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, type FakeEventSource } from './test-window.ts';
@@ -385,7 +386,7 @@ describe.each(PATHS)('%s path', (path) => {
       expect(xhr.aborted).toBe(false);
       tab.win.handler = () => conflict('history');
       await tab.navigator.visit('/users/3');
-      expect(tab.win.loads).toEqual(['assign /login']);
+      expect(tab.win.loads).toEqual(['assign https://app.test/login']);
       expect(xhr.aborted).toBe(true);
       expect(JSON.stringify(upload)).toBe('""'); // what a form would send now
       expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
@@ -396,7 +397,7 @@ describe.each(PATHS)('%s path', (path) => {
       expect(tab.stream.closed).toBe(false);
       tab.win.handler = () => conflict('history');
       await tab.navigator.reload({ async: true });
-      expect(tab.win.loads).toEqual(['replace /login']);
+      expect(tab.win.loads).toEqual(['replace https://app.test/login']);
       expect(tab.stream.closed).toBe(true);
       expect(await leftovers(tab.records.filter((record) => record.feature === 'live'), [tab.pageKey], [])).toEqual([]);
       // What still arrives on the closed stream, or a tab coming back, opens nothing and reloads nothing.
@@ -436,7 +437,7 @@ describe.each(PATHS)('%s path', (path) => {
         const tab = await stocked();
         tab.win.handler = () => conflict(reason);
         await tab.navigator.visit('/users/3');
-        expect(tab.win.loads).toEqual(['assign /login']);
+        expect(tab.win.loads).toEqual(['assign https://app.test/login']);
         const problems = await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2']);
         // The problems as the assertion's message (Vitest shortens the list it prints).
         expect(problems, problems.join('; ')).toEqual([]);
@@ -539,7 +540,7 @@ describe.each(PATHS)('%s path', (path) => {
    */
   describe('the security matrix — a layer answer while the layers’ code loads', () => {
     /** A stocked tab without the layers attached — and the server answering the edit link with a layer full of the canary. */
-    async function waiting() {
+    async function waiting(url = '/users/1/edit') {
       let release!: () => void;
       let fail!: () => void;
       const arrival = new Promise<void>((resolve, reject) => {
@@ -548,7 +549,7 @@ describe.each(PATHS)('%s path', (path) => {
       });
       const tab = await stocked({ lazyLayers: arrival });
       expect(tab.navigator.layers).toEqual([]);
-      const answer = { ...secretPage('/users/1/edit', 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada' };
+      const answer = { ...secretPage(url, 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada' };
       answer.props.roles = [CANARY];
       answer.flash = [{ id: 'saved', key: 'toast', data: CANARY } as unknown as FlashMessage];
       tab.win.handler = (url) => (new URL(url).pathname === '/users/1/edit' ? pageResponse(answer) : conflict('history'));
@@ -563,7 +564,7 @@ describe.each(PATHS)('%s path', (path) => {
     it('a 409 (signed out) while the code loads: once it arrives, nothing of the layer is shown or kept — in no feature, not in the core, not in history.state', async () => {
       const tab = await waiting();
       await tab.navigator.reload({ async: true });
-      expect(tab.win.loads).toEqual(['replace /login']);
+      expect(tab.win.loads).toEqual(['replace https://app.test/login']);
       tab.release();
       expect(await tab.opening).toBeUndefined();
       await settle();
@@ -574,18 +575,37 @@ describe.each(PATHS)('%s path', (path) => {
       expect(coreLeftovers(tab)).toEqual([]);
       expect(historyWithCanary(tab.win)).toEqual([]);
       expect(tab.win.entries).toHaveLength(1);
-      expect(tab.win.loads).toEqual(['replace /login']);
+      expect(tab.win.loads).toEqual(['replace https://app.test/login']);
     });
 
     it('the code cannot load: the browser loads the layer’s URL — and nothing of the signed-in tab survives here', async () => {
       const tab = await waiting();
       tab.fail();
       expect(await tab.opening).toBeUndefined();
-      expect(tab.win.loads).toEqual(['assign /users/1/edit']);
+      expect(tab.win.loads).toEqual(['assign https://app.test/users/1/edit']);
       expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
       expect(coreLeftovers(tab)).toEqual([]);
       expect(historyWithCanary(tab.win)).toEqual([]);
       expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
+    });
+
+    it('the code cannot load and the layer’s URL starts with two slashes: the browser loads that path of this site, never another host', async () => {
+      const tab = await waiting('//evil.example/x');
+      tab.fail();
+      expect(await tab.opening).toBeUndefined();
+      expect(tab.win.loads).toEqual([`assign ${ORIGIN}//evil.example/x`]);
+    });
+
+    it('the code cannot load and the layer’s URL is no http(s) address: the browser loads nothing', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const tab = await waiting('javascript:alert(1)');
+        tab.fail();
+        expect(await tab.opening).toBeUndefined();
+        expect(tab.win.loads).toEqual([]);
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 
@@ -615,7 +635,7 @@ describe.each(PATHS)('%s path', (path) => {
         expect(win.requests.at(-1)!.headers).toMatchObject({ [ONCE_HEADER]: 'locales' });
         win.handler = () => conflict(reason);
         await navigator.visit('/users/4');
-        expect(win.loads).toEqual(['assign /login']);
+        expect(win.loads).toEqual(['assign https://app.test/login']);
         expect(navigator.cachedPages).toBe(0);
         expect(historyWithCanary(win)).toEqual([]);
         // Nobody listened before the document was left: the message is gone, not waiting for the first listener.
@@ -646,7 +666,7 @@ describe.each(PATHS)('%s path', (path) => {
         await settle();
         expect(win.requests.at(-1)!.url).toBe(`${ORIGIN}/users/9`);
         await navigator.reload({ async: true });
-        expect(win.loads).toEqual(['replace /login']);
+        expect(win.loads).toEqual(['replace https://app.test/login']);
         // The protected page still arrives — after the document was left.
         answer(pageResponse({ ...secretPage('/users/9'), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada', flash: [toast('late')] }));
         expect(await under).toBeUndefined();
@@ -663,7 +683,7 @@ describe.each(PATHS)('%s path', (path) => {
         const heard: unknown[] = [];
         navigator.on('flash', (message) => heard.push(message));
         expect(heard).toEqual([]);
-        expect(win.loads).toEqual(['replace /login']);
+        expect(win.loads).toEqual(['replace https://app.test/login']);
       });
     }
 
@@ -868,10 +888,88 @@ describe.each(PATHS)('%s path — requests go to the origin that was checked', (
 
   it('a 409 to another host loads it fully — it is never a client visit', async () => {
     const { win, navigator } = odd();
-    win.handler = () => conflict('history', '//evil.example');
+    win.handler = () => conflict('history', 'https://evil.example/');
     await navigator.visit('/users/2');
-    expect(win.loads).toEqual(['assign //evil.example']);
+    expect(win.loads).toEqual(['assign https://evil.example/']);
     expect(win.requests).toHaveLength(1);
   });
-});
 
+  it('an answer that is no page and has no address of its own is loaded from this site, never as another host', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } });
+    await navigator.reload({ preserveUrl: true });
+    expect(win.loads).toEqual([`assign ${at(EVIL)}`]);
+  });
+
+  it('an action’s 409 that names a path of two slashes loads it from this site', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => conflict('history', '//evil.example/x');
+    await navigator.use(actions).run(at(EVIL), { data: {} });
+    expect(win.loads).toEqual([`assign ${at('//evil.example/x')}`]);
+  });
+
+  it('a 409 that names a path of two slashes loads it from this site, never as another host', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => conflict('history', '//evil.example/x');
+    await navigator.visit('/users/2');
+    expect(win.loads).toEqual([`assign ${at('//evil.example/x')}`]);
+  });
+
+  it.each(['/.//evil.example/x', '/a/..//evil.example/x', '/%2e//evil.example/x'])('a link to %s visits this site: a click never leaves it', async (href) => {
+    const { win, navigator } = odd();
+    const url = visitUrlOf({ button: 0, defaultPrevented: false, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false }, href, undefined, win.location);
+    expect(url).toBeDefined();
+    await navigator.visit(url!);
+    expect(win.loads).toEqual([]);
+    expect(win.requests.length).toBe(1);
+    expect(new URL(win.requests[0]!.url).origin).toBe(ORIGIN);
+  });
+
+  describe('only http and https are loaded', () => {
+    const REFUSED = ['javascript:alert(1)', ' javascript:alert(1)', 'java\tscript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,<script>alert(1)</script>', 'vbscript:x', 'blob:https://app.test/1', 'file:///etc/passwd'];
+    let errors: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => void (errors = vi.spyOn(console, 'error').mockImplementation(() => {})));
+    afterEach(() => errors.mockRestore());
+
+    it.each(REFUSED)('a visit to %j loads nothing and sends nothing', async (url) => {
+      const { win, navigator } = odd();
+      expect(await navigator.visit(url)).toBeUndefined();
+      expect(await navigator.visit(url, { method: 'post', data: {} })).toBeUndefined();
+      expect(win.loads).toEqual([]);
+      expect(win.requests).toEqual([]);
+      expect(String(errors.mock.calls[0]?.[0])).toContain('Navigation refused');
+    });
+
+    it('a visit to another site over https still loads it', async () => {
+      const { win, navigator } = odd();
+      await navigator.visit('https://other.example/page');
+      expect(win.loads).toEqual(['assign https://other.example/page']);
+    });
+
+    it.each(REFUSED)('a 409 that names %j loads no such address', async (url) => {
+      for (const reason of ['history', 'version'] as const) {
+        const { win, navigator } = odd();
+        win.handler = () => conflict(reason, url);
+        await navigator.visit('/users/2');
+        // Signing in or out still ends this document — the page on screen loads again; a new build waits for an address it can load.
+        expect(win.loads).toEqual(reason === 'history' ? ['reload'] : []);
+      }
+    });
+
+    it('a 409 on a replacing visit and on an action loads the page on screen again, no such address', async () => {
+      for (const send of [(tab: ReturnType<typeof odd>) => tab.navigator.visit('/users/2', { replace: true }), (tab: ReturnType<typeof odd>) => tab.navigator.use(actions).run('/users/2', { data: {} })]) {
+        const tab = odd();
+        tab.win.handler = () => conflict('history', 'javascript:alert(1)');
+        await send(tab);
+        expect(tab.win.loads).toEqual(['reload']);
+      }
+    });
+
+    it('a redirect an action reports is visited like any address: nothing for a script URL', async () => {
+      const { win, navigator } = odd();
+      win.handler = () => new Response(null, { status: 204, headers: { 'x-marmeon-redirect': 'data:text/html,x' } });
+      await navigator.use(actions).run('/users/2', { data: {}, onRedirect: 'visit' });
+      expect(win.loads).toEqual([]);
+    });
+  });
+});

@@ -217,7 +217,7 @@ describe('optimistic patches', () => {
     await settle();
     // Signing out: the document is left for /login.
     await navigator.visit('/logout', { method: 'post' });
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
     const renders = shown.length;
     answer.open(json({ deleted: 2 }));
     expect(await running).toEqual({ ok: false, kind: 'cancelled' });
@@ -235,7 +235,7 @@ describe('optimistic patches', () => {
     win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
     const { navigator } = boot(win, profile('/users/1', 1));
     expect(await withActions(navigator).action('/logout')).toEqual({ ok: false, kind: 'cancelled' });
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(navigator.cachedPages).toBe(0);
   });
 

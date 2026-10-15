@@ -30,7 +30,7 @@ import { ONCE } from './once.ts';
 import type { OptimisticUpdate } from './optimistic.ts';
 import { applyPatches, listOf, rollBack } from './patches.ts';
 import { RegionOwner } from './owner.ts';
-import { atOrigin, buildRequest, isForeign, partialReloadHeaders, untilAborted } from './request.ts';
+import { atOrigin, buildRequest, isForeign, navigable, partialReloadHeaders, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
 export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
@@ -657,7 +657,9 @@ export class Navigator {
     const { method = 'get', data, replace = false, preserveScroll = false, headers = {}, async: background = false, preserveUrl = false } = options;
     const preserveState = options.preserveState ?? method !== 'get';
 
-    const target = new URL(url, core.window.location.href);
+    // Nothing but http(s) is visited or loaded — a `javascript:` or `data:` address from a link, a redirect or app code does nothing.
+    const target = navigable(url, core.window.location.href);
+    if (!target) return undefined;
     const current = from ? from.layer.page : core.page;
     // A partial reload names the page (or layer) it reloads: the server sends only some props when it renders that one.
     const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? current.component : undefined;
@@ -1094,7 +1096,7 @@ export class Navigator {
     }
     if (!isPage) {
       // Not a page (e.g. a 401 JSON or a file download): let the browser handle it.
-      this.#away(response.url || new URL(visit.url, this.#core.window.location.href).href);
+      this.#away(response.url || visit.url);
       return undefined;
     }
     return this.#collect((await response.json()) as PageObject);
@@ -1257,9 +1259,11 @@ export class Navigator {
 
   /** Leaves the document (see {@link #leave}): the browser loads `url` — or, without one, the entry it is on. */
   #away(url?: string): void {
+    const target = url === undefined ? undefined : navigable(atOrigin(url, this.#core.window), this.#core.window.location.href);
+    if (url !== undefined && !target) return;
     this.#leave();
-    if (url === undefined) this.#core.window.location.reload();
-    else this.#core.window.location.assign(url);
+    if (!target) this.#core.window.location.reload();
+    else this.#core.window.location.assign(target.href);
   }
 
   /**

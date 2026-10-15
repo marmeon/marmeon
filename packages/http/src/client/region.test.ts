@@ -232,7 +232,7 @@ describe('Region — islands in the client core', () => {
     expect(region.snapshot.region).toBeUndefined();
     expect(keptRegions(navigator, owner()).size).toBe(0);
     expect(navigator.cachedPages).toBe(0);
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
   });
 
   it('reload({ query }) loads only that island with the new query — defaults left out of its URL, merged lists started over', async () => {

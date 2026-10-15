@@ -13,7 +13,8 @@ export interface LinkClick {
 }
 
 /**
- * The URL to visit client-side for a click on a link to `href` (path, query and fragment) — or undefined when the
+ * The URL to visit client-side for a click on a link to `href` (absolute, as the browser resolved it, so a path of dot segments
+ * and slashes stays on this site) — or undefined when the
  * browser handles the click itself: not a plain left click (a new tab, a download), another `target`, another site,
  * or a handler prevented it.
  */
@@ -23,7 +24,8 @@ export function visitUrlOf(click: LinkClick, href: string, target: string | null
   if (target && target !== '_self') return undefined;
   const url = new URL(href, location.href);
   if (url.origin !== location.origin) return undefined;
-  return url.pathname + url.search + url.hash;
+  // Absolute: the URL as the browser resolved it (`/.//host/x` stays on this site), never a bare path that starts with two slashes.
+  return url.href;
 }
 
 /** When a link fetches its page ahead: on `hover` (and when pressed — touch screens have no hover), or on `mount`. */

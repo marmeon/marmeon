@@ -23,6 +23,26 @@ export function isForeign({ url }: Response, { location }: OriginWindow): boolea
   return url !== '' && !url.startsWith(location.origin + '/');
 }
 
+/**
+ * The address the browser may be sent to for `url` — undefined for anything but `http:` and `https:`, as the URL parser reads it
+ * (it drops tabs and newlines and a leading space, and lowercases the scheme): `javascript:`, `data:`, `blob:`, `file:` and the
+ * like never reach `location`. Load the returned `href`, so the address that loads is the one that was checked, whatever
+ * `<base href>` says. A refusal says why in development.
+ */
+export function navigable(url: string, base: string): URL | undefined {
+  let target: URL | undefined;
+  try {
+    target = new URL(url, base);
+  } catch {
+    // Not a URL at all: refused below.
+  }
+  if (target?.protocol === 'http:' || target?.protocol === 'https:') return target;
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+    console.error(`[marmeon] Navigation refused: only http: and https: addresses are loaded, not ${target?.protocol ?? 'an invalid URL'}`);
+  }
+  return undefined;
+}
+
 /** The CSRF token the server put into the readable `XSRF-TOKEN` cookie. */
 export function xsrfToken(): string | undefined {
   if (typeof document === 'undefined') return undefined;

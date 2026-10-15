@@ -4,7 +4,7 @@
  */
 import type { ActionHost } from './action.ts';
 import type { FeatureHost } from './core.ts';
-import { atOrigin, buildRequest } from './request.ts';
+import { atOrigin, buildRequest, navigable } from './request.ts';
 
 type ActionsCore = Pick<FeatureHost, 'navigator' | 'window' | 'left' | 'leave' | 'flash' | 'fire'>;
 
@@ -20,8 +20,11 @@ export function actionHost(core: ActionsCore): ActionHost {
     // Features add their headers first (the tab's live connection, so its own writes do not hint it).
     fetch: (url, init) => (core.fire('send', init.headers as Record<string, string>), core.window.fetch(atOrigin(url, core.window), init)),
     leaveFor: (location) => {
+      const target = navigable(atOrigin(location, core.window), core.window.location.href);
       core.leave();
-      core.window.location.assign(location);
+      // An address that is no page to load still ends this document: signed out, nothing of it stays in memory.
+      if (target) core.window.location.assign(target.href);
+      else core.window.location.reload();
     },
     // A write changed what the server shows: pages fetched ahead are out of date.
     changed: () => core.fire('write'),

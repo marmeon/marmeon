@@ -71,7 +71,7 @@ describe('remembered state — in memory, per history entry', () => {
     second.set('q', 'ada');
     win.handler = () => historyConflict();
     await navigator.visit('/logout', { method: 'post' });
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(held.size).toBe(0);
     expect(second.size).toBe(0);
   });
@@ -285,10 +285,10 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     });
     win.handler = () => versionConflict('/people');
     expect(await navigator.visit('/people')).toBeUndefined();
-    expect(events).toEqual(['/people unsaved=false']);
+    expect(events).toEqual(['https://app.test/people unsaved=false']);
     expect(win.loads).toEqual([]);
     expect(navigator.page.url).toBe('/users/1');
-    expect(navigator.newVersion).toBe('/people');
+    expect(navigator.newVersion).toBe('https://app.test/people');
     // Background requests find out again — no new event, no load.
     await navigator.reload({ only: ['activity'], async: true });
     expect(events.length).toBe(1);
@@ -306,7 +306,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     win.handler = () => historyConflict('/login');
     await navigator.visit('/logout', { method: 'post' });
     expect(events).toEqual([]);
-    expect(win.loads).toEqual(['assign /login']);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
   });
 
   it('a 409 without a reason (an older server, a proxy) or with any other value is a document change too', async () => {
@@ -315,7 +315,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
       navigator.on('version', (event) => event.preventDefault());
       win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', ...(reason !== undefined ? { [RELOAD_HEADER]: reason } : {}) } });
       await navigator.visit('/people');
-      expect(win.loads).toEqual(['assign /login']);
+      expect(win.loads).toEqual(['assign https://app.test/login']);
     }
   });
 
@@ -328,8 +328,8 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
       win.handler = () => versionConflict('/users/1');
       await navigator.reload({ only: ['activity'], async: true });
       expect(asked.map((request) => request.message)).toEqual(['Unsaved changes — leave?']);
-      expect(win.loads).toEqual(answer ? ['replace /users/1'] : []);
-      expect(navigator.newVersion).toBe(answer ? undefined : '/users/1');
+      expect(win.loads).toEqual(answer ? ['replace https://app.test/users/1'] : []);
+      expect(navigator.newVersion).toBe(answer ? undefined : 'https://app.test/users/1');
     }
   });
 
@@ -340,7 +340,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     win.handler = () => versionConflict('/people');
     await navigator.visit('/people');
     expect(asked.length).toBe(1);
-    expect(win.loads).toEqual(['assign /people']);
+    expect(win.loads).toEqual(['assign https://app.test/people']);
   });
 
   it('signing out with unsaved changes never asks — the full load wins over the guard', async () => {
@@ -351,7 +351,7 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     win.handler = () => historyConflict('/login');
     await navigator.reload({ only: ['activity'], async: true });
     expect(asked).toEqual([]);
-    expect(win.loads).toEqual(['replace /login']);
+    expect(win.loads).toEqual(['replace https://app.test/login']);
     expect(win.unload()).toBe(false);
   });
 });

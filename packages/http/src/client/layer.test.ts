@@ -405,7 +405,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       const [open] = app.layers();
       await app.navigator.visit('/logout', { method: 'post' });
 
-      expect(win.loads).toEqual(['assign /login']);
+      expect(win.loads).toEqual(['assign https://app.test/login']);
       expect(open!.closed).toBe(true);
       expect(app.navigator.layers).toEqual([]);
       expect(app.navigator.cachedPages).toBe(0);
@@ -503,7 +503,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       await tick();
       code.fail();
       expect(await opening).toBeUndefined();
-      expect(win.loads).toEqual([`assign /users/1/edit`]);
+      expect(win.loads).toEqual([`assign https://app.test/users/1/edit`]);
       expect(app.shown).toEqual([]);
       expect(app.navigator.cachedPages).toBe(0);
       expect(win.entries.map((entry) => entry.state).join()).not.toContain('ada@example.com');
