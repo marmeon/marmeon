@@ -1,6 +1,8 @@
 // Type guarantees of `Auth.attempt()` and `Auth.login()` — checked by `tsc` (typecheck), never run.
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
+import type { PasswordHash } from './hashing.ts';
+import type { UserProvider } from './user.ts';
 
 declare const auth: Auth;
 declare const accountSessions: AccountSessions;
@@ -59,3 +61,16 @@ export async function everyoneEndedIsReadOnly() {
   ended.accounts = 1;
   return ended.rememberTokens + ended.signIns;
 }
+
+// A provider written before `expected` existed (it returns nothing) is still a provider; one that answers with something else is not.
+export const oldProvider: UserProvider = {
+  findById: async () => undefined,
+  findForLogin: async () => undefined,
+  updatePasswordHash: async (_id: unknown, _hash: PasswordHash): Promise<void> => {},
+};
+export const casProvider: UserProvider = { ...oldProvider, updatePasswordHash: async (_id, _hash, _expected?: PasswordHash): Promise<boolean> => true };
+export const wrongProvider: UserProvider = {
+  ...oldProvider,
+  // @ts-expect-error updatePasswordHash() answers a boolean or nothing
+  updatePasswordHash: async (): Promise<string> => 'written',
+};

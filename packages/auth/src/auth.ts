@@ -232,7 +232,7 @@ export class Auth {
    * session waits for the factor (`pendingSecondFactor()`), and an app that does not handle that case shows a failed sign-in at worst.
    * See `docs/errors.md#results`. There is one kind for an unknown identifier, a wrong password and an
    * account without a password alike — in the same time (`dummyVerify`), so neither the answer nor its duration
-   * tells which addresses have an account. Rehashes the password when the costs changed. Both `findForLogin()` and `findById()` must
+   * tells which addresses have an account. Rehashes the password when the costs changed — only over the hash it verified (see `UserProvider.updatePasswordHash()`); a reset that landed meanwhile makes it `invalid-credentials`. Both `findForLogin()` and `findById()` must
    * hand back `sessionKey` when the account has one; a provider that returns it from only one makes `attempt()` throw.
    */
   async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<Result<AuthUser, AttemptError>> {
@@ -488,9 +488,11 @@ export class Auth {
   /**
    * Signs out every other device: checks `password`, then hashes it
    * anew — a new salt, a new hash, so the other sessions' fingerprints stop matching — and drops the
-   * other devices' remember-me tokens. `false` for a wrong password, and when this device's remember-me cookie turns out to be a copy
-   * (its validator is stale: somebody else holds a newer one) — then every token and session of the account is ended, like at a copied
-   * cookie, and this device is signed out too. It does not throttle the password check: the caller must
+   * other devices' remember-me tokens. `false` for a wrong password; also when the password changed meanwhile (a reset landed after this
+   * request read the account: the hash is not written, and the reset has ended every sign-in, this one from its next request); and when
+   * this device's remember-me cookie turns out to be a copy (its validator is stale: somebody else holds a newer one) — then every
+   * token and session of the account is ended, like at a copied cookie, and this device is signed out too. It does not throttle the
+   * password check: the caller must
    * (`takePasswordCheck()`, as the starter kit's `throttlePasswordChecks()` does).
    */
   async logoutOtherDevices(password: string): Promise<boolean> {
@@ -501,7 +503,9 @@ export class Auth {
 
   /**
    * The signing out of `logoutOtherDevices()` for a caller that has just checked `password` itself: a new hash (the other sessions'
-   * fingerprints stop matching), the other devices' remember-me tokens gone, a new fingerprint for this session.
+   * fingerprints stop matching), the other devices' remember-me tokens gone, a new fingerprint for this session. `false`
+   * when the stored hash is no longer the one this request read: the hash is not written, the reset that changed it has ended every
+   * sign-in (this one from its next request), and the other devices' tokens are gone already.
    */
   async [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean> {
     const user = await this.#requireUser('logoutOtherDevices');
@@ -510,7 +514,10 @@ export class Auth {
     // Tokens before the hash (as `NewPassword` and `AccountSessions` do): a remember-me sign-in that is running must not read the new
     // hash and still find its token.
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
-    await this.#users.updatePasswordHash(idOf(user) as never, hash);
+    // Over the hash this request verified; an account without one has nothing to compare, so nothing is written.
+    if (verified.passwordHash === null) return false;
+    // `false`: the password changed meanwhile. The hash is not written; that change has ended every sign-in, this one from its next request.
+    if ((await this.#users.updatePasswordHash(idOf(user) as never, hash, verified.passwordHash)) === false) return false;
     this.#anchor({ ...verified, passwordHash: hash });
     if (!(await this.#rebindOwnToken())) return false; // this device's token stays, for the new state — unless it is a copy
     await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
@@ -707,7 +714,9 @@ export class Auth {
     }
     if (!this.#hasher.needsRehash(found.passwordHash)) return found;
     const passwordHash = await this.#hasher.make(password);
-    await this.#users.updatePasswordHash(idOf(found.user) as never, passwordHash);
+    // Only over the hash that was verified: a reset that landed during the slow check stays. The sign-in is then refused like a wrong
+    // password (without a `Failed` event); the next attempt checks the new state. `undefined` is a provider that writes blindly.
+    if ((await this.#users.updatePasswordHash(idOf(found.user) as never, passwordHash, found.passwordHash)) === false) return undefined;
     return { ...found, passwordHash };
   }
 

@@ -246,6 +246,21 @@ describe('the session key', { timeout: 30_000 }, () => {
     expect((await users.findById(ada.id))?.sessionKey).toBe('a-third-key-of-at-least-32-characters-x');
   });
 
+  it('compares and sets the password hash: with an expectation it writes only over the stored hash, and says whether it did', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const users = app.make(UserRepository);
+    const stored = async () => (await users.findForLogin(ada.email))?.passwordHash;
+    const h1 = (await stored())!;
+    expect(await users.updatePasswordHash(ada.id, 'h2' as never, 'h0' as never), 'a hash that is not stored').toBe(false);
+    expect(await stored()).toBe(h1);
+    expect(await users.updatePasswordHash(ada.id, 'h2' as never, h1)).toBe(true);
+    expect(await stored()).toBe('h2');
+    expect(await users.updatePasswordHash(ada.id, 'h3' as never, h1), 'h1 no longer matches').toBe(false);
+    expect(await stored()).toBe('h2');
+    expect(await users.updatePasswordHash(ada.id, 'h4' as never), 'without an expectation it writes regardless').toBe(true);
+    expect(await stored()).toBe('h4');
+  });
+
   it('is a secret column: not in a select-all result, handed back by the provider as sessionKey', async () => {
     const ada = await app.factory(UserFactory).create();
     const users = app.make(UserRepository);
