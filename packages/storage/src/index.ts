@@ -126,7 +126,7 @@ export class StorageServiceProvider implements ServiceProvider {
   #temporaryUrls: TemporaryUrls = NO_TEMPORARY_URLS;
   #manager: StorageManager | undefined;
   /** What uploads need from other packages — found while booting (http, database, encryption). */
-  #uploads: Omit<ConstructorParameters<typeof TemporaryUploads>[0], 'disk' | 'clock' | 'lifetime' | 'sendWithin'> | undefined;
+  #uploads: Omit<ConstructorParameters<typeof TemporaryUploads>[0], 'disk' | 'clock' | 'lifetime' | 'sendWithin' | 'maxOpen' | 'maxOpenBytes' | 'maxOpenTotalBytes'> | undefined;
 
   register(container: Container): void {
     container.singleton(StorageSetup, (c) => ({
@@ -163,6 +163,9 @@ export class StorageServiceProvider implements ServiceProvider {
         clock: c.make(Clock),
         lifetime: config.lifetime * 60_000,
         sendWithin: config.sendWithin * 60,
+        maxOpen: config.maxOpen,
+        maxOpenBytes: config.maxOpenBytes,
+        maxOpenTotalBytes: config.maxOpenTotalBytes,
       });
     });
   }
