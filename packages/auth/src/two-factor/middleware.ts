@@ -1,3 +1,4 @@
+import { Clock } from '@marmeon/core';
 import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { Session } from '@marmeon/session';
@@ -42,12 +43,14 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
     readonly #session: Session;
     readonly #router: Router;
     readonly #state: TwoFactorState;
+    readonly #clock: Clock;
 
-    constructor(auth: Auth, session: Session, router: Router, state: TwoFactorState) {
+    constructor(auth: Auth, session: Session, router: Router, state: TwoFactorState, clock: Clock) {
       this.#auth = auth;
       this.#session = session;
       this.#router = router;
       this.#state = state;
+      this.#clock = clock;
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
@@ -58,7 +61,7 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
         return this.#redirect(ctx, loginRoute);
       }
       if ((await this.#state.factors(idOf(user))).length === 0) return this.#refuse(ctx, 'two_factor_required', options.setup);
-      if (!secondFactorProvenWithin(this.#session, maxAge ?? TWO_FACTOR_MAX_AGE)) return this.#refuse(ctx, 'two_factor_unverified', options.verify);
+      if (!secondFactorProvenWithin(this.#session, maxAge ?? TWO_FACTOR_MAX_AGE, Math.floor(this.#clock.now() / 1000))) return this.#refuse(ctx, 'two_factor_unverified', options.verify);
       return next();
     }
 

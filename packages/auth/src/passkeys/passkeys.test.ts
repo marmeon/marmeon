@@ -1,5 +1,5 @@
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
-import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, listen, TestClock, type Container } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -194,6 +194,7 @@ const routes = openRoutes((Route) => {
   Route.get('/account/two-factor', Page).name('test.setup');
   Route.get('/account/verify', Page).name('test.verify');
   Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
+  Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 60 })).post('/area-fresh', Page);
   Route.post('/tf/challenge', ChallengeController);
 });
 
@@ -202,7 +203,7 @@ const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 const ORIGIN = 'http://localhost:3000';
 
-async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean; users?: MemoryUsers } = {}) {
+async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean; users?: MemoryUsers; clock?: TestClock } = {}) {
   const users = options.users ?? new MemoryUsers();
   const passkeys = options.passkeys !== false;
   const application = await createApplication({
@@ -220,6 +221,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
     ],
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
+      if (options.clock) container.instance(Clock, options.clock);
       container.instance(UserProvider, users as UserProvider);
       if (options.unboundState) container.singleton(TwoFactorState, NoTwoFactorState);
       else container.singleton(TwoFactorState, (c) => (passkeys ? combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore)) : combineFactors(c.make(TwoFactorStore))));
@@ -941,6 +943,21 @@ describe('Passkeys: as a step-up', () => {
     const again = await b.pk('step-up-options');
     expect(await b.pk('step-up', { passkey: authenticator.authenticate(again.value) })).toEqual({ ok: true });
     expect(await b.send('/area')).toEqual({ page: true });
+  });
+
+  it('writes the proof of a step-up on the app clock, so that travelling ages it', async () => {
+    const clock = new TestClock();
+    const booted = await boot({}, { clock });
+    const authenticator = device();
+    const b = await unproven(booted, authenticator);
+    clock.travel({ seconds: 61 });
+    const options = (await b.pk('step-up-options')).value;
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(options) })).toEqual({ ok: true });
+    expect(await b.send('/area-fresh')).toEqual({ page: true });
+    clock.travel({ seconds: 55 });
+    expect(await b.send('/area-fresh')).toEqual({ page: true });
+    clock.travel({ seconds: 10 });
+    expect(await b.send('/area-fresh')).toEqual({ error: 'two_factor_unverified' });
   });
 
   it('answers no-challenge for the options when the account has no passkey', async () => {

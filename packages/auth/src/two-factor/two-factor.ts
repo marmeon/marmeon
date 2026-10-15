@@ -176,7 +176,7 @@ export class TwoFactor {
     await this.#limiter.clear(minute);
     // The session gains a privilege it did not have: a new id, as at sign-in, so that an id known from before is worth nothing now.
     this.#session.regenerate();
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(Date.now() / 1000)); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now()); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
     return ok(undefined);
   }
 
@@ -289,7 +289,7 @@ export class TwoFactor {
       throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
     }
     // Only the first factor proves anything about this session: a further one, set up with just the password, must not stand for the one already there.
-    if (first) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(Date.now() / 1000));
+    if (first) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     await this.#limiter.clear(this.#codeKey('minute', id));
     await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
     if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));
@@ -354,6 +354,10 @@ export class TwoFactor {
     if (step === undefined) return false;
     // The step is used up atomically (and the secret re-encrypted with the current key) — a code works once, even in parallel.
     return this.#store.useStep(userId, step, await this.#encrypt(secret, userId));
+  }
+
+  #now(): number {
+    return Math.floor(this.#clock.now() / 1000);
   }
 
   // Per account only: a password reset, which whoever controls the mailbox can ask for, must not hand out fresh attempts.
@@ -432,7 +436,7 @@ export class TwoFactor {
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
   async #requireRecentSecondFactor(method: string, userId: string | number, call = `${method}()`): Promise<void> {
-    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE)) {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, this.#now())) {
       throw new Error(`twoFactor.${call} needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }
