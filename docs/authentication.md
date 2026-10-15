@@ -222,7 +222,10 @@ export class LoginController extends Controller {
 `attempt(identifier, password, { remember })` returns a [`Result`](errors.md#results): `ok` with the user, or an `err` of kind
 `invalid-credentials` or `two-factor-required`. An unknown address, a wrong password and an account without a password all give
 `invalid-credentials`, the same answer in the same time: for an unknown address, the hasher spends as long on a check that always
-fails. Neither the answer nor its duration tells a stranger which addresses have an account.
+fails. A failed attempt also waits until it has taken as long as a check over the slowest hash parameters this process has
+verified, so accounts with an older hash (after a change of driver or costs) are not told apart either, see
+[hashing](hashing.md#making-and-checking-hashes). Neither the answer nor its duration tells a stranger which addresses have an
+account.
 
 `two-factor-required` comes only after a correct password, for an account that set up a [second
 factor](two-factor-authentication.md). Nobody is signed in then: no `Login` event, no remember-me cookie, `auth.user()` is

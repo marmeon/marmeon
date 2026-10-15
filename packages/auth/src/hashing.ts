@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { token } from '@marmeon/core';
 
@@ -33,6 +34,14 @@ export interface Hasher {
    * the response time does not tell which addresses have an account.
    */
   dummyVerify(password: string): Promise<false>;
+  /**
+   * The time a failed sign-in is padded to, in milliseconds: the slowest of the fastest checks this process has seen for each
+   * set of hash parameters (driver and costs). So once a process has verified a hash of an older, slower set, a failure no
+   * longer answers faster than a check over it. Optional; without it nothing is padded. It cannot know a parameter set that
+   * this process has not verified yet (after a restart, or on another node), so a first failed sign-in over such a hash can still
+   * be told apart. Declaring the previous costs would close that gap.
+   */
+  failureFloorMs?(): number | Promise<number>;
 }
 export const Hasher = token<Hasher>('Hasher');
 
@@ -88,6 +97,12 @@ export const HASH_LIMITS = {
 const SALT_BYTES = 16;
 const HASH_BYTES = 32;
 const ARGON2_VERSION = 19;
+/** How many parameter sets {@link PasswordHasher.failureFloorMs} remembers. Stored hashes use the configured costs, so a handful is all there is. */
+const MAX_PARAMETER_SETS = 32;
+/** A newly seen parameter set is timed again in the background after each of these waits (ms), one hash per wait. */
+const REMEASURE_GAPS_MS: readonly number[] = [75, 1_000, 10_000, 60_000, 600_000];
+/** The runs that are made whatever they show. */
+const REMEASURE_MIN_RUNS = 2;
 
 export class HashError extends Error {
   override name = 'HashError';
@@ -104,6 +119,13 @@ export function argon2Available(): boolean {
   return typeof (crypto as { argon2?: unknown }).argon2 === 'function';
 }
 
+/** Seams of {@link PasswordHasher} for tests; not for apps. */
+export interface PasswordHasherInternals {
+  readonly isArgon2Available?: boolean;
+  readonly now?: () => number;
+  readonly remeasureGapsMs?: readonly number[];
+}
+
 /**
  * The built-in {@link Hasher}: argon2id (default) and scrypt from `node:crypto`, both computed
  * in libuv's thread pool — a login never blocks the event loop.
@@ -111,8 +133,21 @@ export function argon2Available(): boolean {
 export class PasswordHasher implements Hasher {
   readonly #options: HasherOptions;
   #dummy: Promise<PasswordHash> | undefined;
+  readonly #isArgon2Available: boolean;
+  readonly #now: () => number;
+  readonly #gapsMs: readonly number[];
+  readonly #configuredSet: string;
+  /** Sets whose first sample is being re-measured, or was: one re-measure per set. */
+  readonly #sighted = new Set<string>();
+  /** The fastest check seen per parameter set: queueing in the thread pool only ever adds time, so the minimum is the cost itself. */
+  readonly #minimums = new Map<string, number>();
 
-  constructor(options: HasherOptions = DEFAULT_HASHER_OPTIONS, isArgon2Available = argon2Available()) {
+  /**
+   * `internals` are seams for tests: whether argon2 is available, the clock in milliseconds, and the wait between the
+   * background re-measures of a parameter set (the wait before each). Apps pass nothing.
+   */
+  constructor(options: HasherOptions = DEFAULT_HASHER_OPTIONS, internals: PasswordHasherInternals = {}) {
+    const isArgon2Available = internals.isArgon2Available ?? argon2Available();
     if (options.driver === 'argon2id' && !isArgon2Available) {
       throw new HashError(
         `Password hashing with argon2id needs crypto.argon2 (Node ≥ 24.7 built with OpenSSL ≥ 3.2); this Node ${process.version} with OpenSSL ${process.versions.openssl} does not have it. ` +
@@ -121,6 +156,10 @@ export class PasswordHasher implements Hasher {
     }
     for (const problem of problems(options)) throw new HashError(`Invalid hashing configuration: ${problem}.`);
     this.#options = options;
+    this.#isArgon2Available = isArgon2Available;
+    this.#now = internals.now ?? (() => performance.now());
+    this.#gapsMs = internals.remeasureGapsMs ?? REMEASURE_GAPS_MS;
+    this.#configuredSet = setOf(this.#configured());
   }
 
   async make(password: string): Promise<PasswordHash> {
@@ -140,11 +179,76 @@ export class PasswordHasher implements Hasher {
     const bytes = encode(password);
     if (!bytes || bytes.byteLength > MAX_PASSWORD_BYTES) return false;
     const parsed = parse(hash);
-    if (!parsed || (parsed.id === 'argon2id' && !argon2Available())) return false;
+    // A broken hash answers in the time of a real check, not at once.
+    if (!parsed || (parsed.id === 'argon2id' && !this.#isArgon2Available)) return this.dummyVerify(password);
+    const started = this.#now();
     try {
       return crypto.timingSafeEqual(await derive(parsed, bytes, parsed.hash.byteLength), parsed.hash);
     } catch {
       return false;
+    } finally {
+      this.#record(parsed, this.#now() - started);
+    }
+  }
+
+  async failureFloorMs(): Promise<number> {
+    // The configured costs always count, even before any hash was checked.
+    if (!this.#minimums.has(this.#configuredSet)) await this.dummyVerify('');
+    return Math.max(0, ...this.#minimums.values());
+  }
+
+  #configured(): Parsed {
+    const salt = Buffer.alloc(0);
+    const hash = Buffer.alloc(0);
+    return this.#options.driver === 'argon2id' ? { id: 'argon2id', options: this.#options.argon2, salt, hash } : { id: 'scrypt', options: this.#options.scrypt, salt, hash };
+  }
+
+  /**
+   * Never evicts a set for age; beyond the cap, the cheapest other set makes room for a more expensive newcomer, and the configured
+   * set always stays. The first sample of any other set is re-measured in the background: a dormant set is rarely checked again,
+   * and a sample taken while the thread pool was busy would otherwise pad every failure until the next restart.
+   */
+  #record(parsed: Parsed, ms: number): void {
+    const set = setOf(parsed);
+    const known = this.#minimums.get(set);
+    if (known !== undefined) {
+      if (ms < known) this.#minimums.set(set, ms);
+      return;
+    }
+    if (this.#minimums.size >= MAX_PARAMETER_SETS) {
+      const others = [...this.#minimums].filter(([other]) => other !== this.#configuredSet);
+      const [cheapest, value] = others.reduce((low, entry) => (entry[1] < low[1] ? entry : low));
+      if (ms <= value && set !== this.#configuredSet) return;
+      this.#minimums.delete(cheapest);
+    }
+    this.#minimums.set(set, ms);
+    if (set !== this.#configuredSet && !this.#sighted.has(set)) {
+      this.#sighted.add(set);
+      void this.#remeasure(parsed, set);
+    }
+  }
+
+  /**
+   * Times a hash of the set's own parameters again and again, with growing gaps, and keeps the lowest time seen: a burst of work
+   * that lasts a few seconds can inflate the first runs, a later quiet moment shows the cost. Stops at the first run that is not
+   * lower than the minimum (after at least two runs), or after the last gap. Never throws.
+   */
+  async #remeasure(parsed: Parsed, set: string): Promise<void> {
+    try {
+      const salt = crypto.randomBytes(SALT_BYTES);
+      const password = crypto.randomBytes(18);
+      for (const [run, gap] of this.#gapsMs.entries()) {
+        await sleep(gap, undefined, { ref: false });
+        const started = this.#now();
+        await derive({ ...parsed, salt }, password, HASH_BYTES);
+        const took = this.#now() - started;
+        const known = this.#minimums.get(set);
+        if (known === undefined) return; // evicted meanwhile
+        if (took < known) this.#minimums.set(set, took);
+        else if (run >= REMEASURE_MIN_RUNS - 1) return;
+      }
+    } catch {
+      // The driver cannot make this hash: the observed minimum stays.
     }
   }
 
@@ -161,6 +265,11 @@ export class PasswordHasher implements Hasher {
     await this.verify(password, await this.#dummy);
     return false;
   }
+}
+
+/** The driver and costs of a hash — its PHC string without salt and hash. */
+function setOf(parsed: Parsed): string {
+  return format({ ...parsed, salt: Buffer.alloc(0), hash: Buffer.alloc(0) });
 }
 
 /** NFKC, as UTF-8 — or undefined for strings with lone surrogates. */

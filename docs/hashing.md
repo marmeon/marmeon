@@ -54,9 +54,20 @@ password even for a known address, so both take the same time, and keeps quiet a
 | `verify(password, hash)` | Whether the password matches, compared in constant time. A broken or tampered hash is `false`, never an error. |
 | `needsRehash(hash)` | Whether the hash was made by another driver or with other costs than the configured ones. |
 | `dummyVerify(password)` | Takes as long as a real check, and is always `false`. |
+| `failureFloorMs()` | The time a failed sign-in is padded to, in milliseconds (see below). Optional on a custom hasher; without it nothing is padded. |
 
 `dummyVerify()` is for the sign-in of an unknown address: without it, the quick answer would tell a stranger that the address has
 no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).
+
+A broken hash is checked like a good one: `verify()` spends the time of a real check on it, and so does an argon2id hash on a Node
+without argon2. After you change the driver or the costs, accounts that still hold an older, slower hash would take longer to
+fail than the others. So `Auth.attempt()` waits before it answers a failed sign-in until it has taken as long as
+`failureFloorMs()`: the slowest, over every set of hash parameters (driver and costs) this process has verified, of the fastest
+check seen for that set. The fastest check is the cost without the queueing of a busy thread pool, and no set is forgotten, so a
+burst of cheap failures cannot lower the wait. The first time the process sees another set, it times a hash of that set again in the background, after 75 ms, 1 s, 10 s, 1 min and 10 min, and keeps the lowest, so a sample taken in a busy moment does not stay. The configured costs always count. A success is never delayed, and the wait is a
+timer that costs no CPU. What the process cannot know is an old parameter set it has not verified yet, after a restart or on
+another node: the first failed sign-in over such a hash can still be told apart. Declaring the previous costs would close that
+gap; it is not built yet. Apps may see failed sign-ins take longer than before.
 
 A hash is a string in the PHC format, such as `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, with the type `PasswordHash`. The
 type keeps the two strings apart: `verify(hash, password)`, with the arguments swapped, does not compile. A hash read from the
