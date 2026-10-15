@@ -371,8 +371,10 @@ Everyone else goes to `auth.password.confirm`, and after the confirmation back t
 time.
 
 The confirmation page posts the password to `auth.confirmPassword(password)`, which checks it and notes the time. For a user
-without a password it takes as long and returns `false`. `attempt()` notes the time as well; `login()` does not, since nobody
-typed a password.
+without a password it takes as long and returns `false`. `attempt()` notes the time as well (for an account with a second
+factor, when the password was typed); `login()` does not, since nobody typed a password, and it forgets a confirmation noted
+before: the new sign-in starts outside sudo mode, even over the session of the same account, and proving a second factor
+afterwards does not change that.
 
 The starter kit allows five wrong passwords a minute per user across the confirmation, the password change and "sign out other
 devices". A stolen session must not become a way to guess the password.

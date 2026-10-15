@@ -961,6 +961,33 @@ describe('password changes and confirmation', () => {
     expect((await later.send('/sensitive', { headers: html })).status).toBe(200);
   });
 
+  it("does not carry a confirmation over to the next sign-in — login() over another account's session, and over its own", async () => {
+    const { add, browser } = await boot();
+    const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
+    await add(ada);
+    await add(bob);
+    for (const id of [2, 1]) {
+      const { send } = browser();
+      await login(send);
+      expect((await send('/sensitive')).status).toBe(200); // Ada typed her password
+      expect(await (await send(`/login-as/${id}`, { method: 'POST' })).json()).toEqual({ result: 'signed-in' });
+      expect((await send('/who')).status).toBe(200);
+      expect((await send('/sensitive')).status, `login(${id}) kept the confirmation`).toBe(423);
+    }
+  });
+
+  it('a password typed for the next sign-in confirms it again — attempt() as another account', async () => {
+    const { add, browser } = await boot();
+    const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
+    await add(ada);
+    await add(bob);
+    const { send } = browser();
+    await login(send);
+    await login(send, 'secret', bob.email);
+    expect(await (await send('/who')).json()).toMatchObject({ id: 2 });
+    expect((await send('/sensitive')).status).toBe(200);
+  });
+
   it('lets a confirmation expire', async () => {
     const { add, browser } = await boot();
     await add(ada);
@@ -1066,6 +1093,56 @@ describe('Auth with a second factor (pending state)', () => {
     expect(jar.has('remember_web')).toBe(false);
     expect(await (await send('/pending')).json()).toEqual({ pending: { factors: ['totp'] }, user: null });
     expect(await (await post(booted.browser().send, '/login-as/2')).json()).toEqual({ result: 'signed-in' });
+  });
+
+  it('the factor of a login() sign-in does not confirm the password — nobody typed one; the factor of an attempt() does', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const linked = booted.browser();
+    expect(await (await post(linked.send, '/login-as/1')).json()).toEqual({ result: 'two-factor-required' });
+    expect(await (await post(linked.send, '/complete-pending')).json()).toEqual({ ok: true, id: 1 });
+    expect((await linked.send('/me')).status).toBe(200);
+    expect((await linked.send('/sensitive')).status).toBe(423);
+    const typed = booted.browser();
+    await login(typed.send);
+    await post(typed.send, '/complete-pending');
+    expect((await typed.send('/sensitive')).status).toBe(200);
+  });
+
+  it('dates the confirmation of an attempt() sign-in when the password was typed, not when the factor was proven', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send } = booted.browser();
+    await login(send);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 240_000 }); // the factor, 4 minutes later
+    try {
+      await post(send, '/complete-pending');
+      expect((await send('/sensitive')).status).toBe(200);
+      expect((await send('/very-sensitive')).status).toBe(423); // 60 seconds from the typing, long gone
+      vi.setSystemTime(Date.now() + 660_000 + 1_000); // 15 minutes and a second after the typing
+      expect((await send('/sensitive')).status).toBe(423);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('counts a confirmation only inside the sign-in it belongs to — one older than the sign-in is not confirmed', async () => {
+    const booted = await boot();
+    await booted.add(ada);
+    const { send, cookie } = booted.browser();
+    await login(send);
+    expect((await send('/sensitive')).status).toBe(200);
+    const id = await booted.application.container.make(Encrypter).decrypt(decodeURIComponent(cookie().split('=')[1]!), 'cookie:marmeon_session');
+    const read = (await booted.store.read(sessionKey(id)))!;
+    const data = JSON.parse(read.data) as Record<string, number>;
+    data[AUTH_SESSION_KEYS.confirmedAt] = data[AUTH_SESSION_KEYS.signedInAt]! - 1;
+    await booted.store.write(sessionKey(id), JSON.stringify(data), { expectedVersion: read.version, lifetimeSeconds: 7200 });
+    expect((await send('/sensitive')).status).toBe(423);
+    delete data[AUTH_SESSION_KEYS.signedInAt];
+    data[AUTH_SESSION_KEYS.confirmedAt] = Math.floor(Date.now() / 1000) - 5;
+    const again = (await booted.store.read(sessionKey(id)))!;
+    await booted.store.write(sessionKey(id), JSON.stringify(data), { expectedVersion: again.version, lifetimeSeconds: 7200 });
+    expect((await send('/sensitive')).status).toBe(423); // a session without signedInAt gets one now, after the confirmation
   });
 
   it('invariant: a caller that ignores two-factor-required still has nobody signed in', async () => {
