@@ -138,8 +138,8 @@ beforeEach(() => {
     });
   }
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    requests.push({ url: String(input), method: init.method ?? 'GET', body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body });
-    return server(String(input), init);
+    requests.push({ url: String(input).replace(window.location.origin, ''), method: init.method ?? 'GET', body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body });
+    return server(String(input).replace(window.location.origin, ''), init);
   });
 });
 

@@ -4,7 +4,7 @@
  */
 import type { ActionHost } from './action.ts';
 import type { FeatureHost } from './core.ts';
-import { buildRequest } from './request.ts';
+import { atOrigin, buildRequest } from './request.ts';
 
 type ActionsCore = Pick<FeatureHost, 'navigator' | 'window' | 'left' | 'leave' | 'flash' | 'fire'>;
 
@@ -18,7 +18,7 @@ export function actionHost(core: ActionsCore): ActionHost {
       return core.window.location.href;
     },
     // Features add their headers first (the tab's live connection, so its own writes do not hint it).
-    fetch: (url, init) => (core.fire('send', init.headers as Record<string, string>), core.window.fetch(url, init)),
+    fetch: (url, init) => (core.fire('send', init.headers as Record<string, string>), core.window.fetch(atOrigin(url, core.window), init)),
     leaveFor: (location) => {
       core.leave();
       core.window.location.assign(location);

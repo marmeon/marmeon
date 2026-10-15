@@ -121,8 +121,8 @@ beforeEach(() => {
   requests = [];
   toasts.length = 0;
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    requests.push(`${init.method ?? 'GET'} ${String(input)}`);
-    return server(String(input), init);
+    requests.push(`${init.method ?? 'GET'} ${String(input).replace(window.location.origin, '')}`);
+    return server(String(input).replace(window.location.origin, ''), init);
   });
 });
 

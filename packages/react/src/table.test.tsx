@@ -180,7 +180,7 @@ beforeEach(() => {
   document.body.replaceChildren(container);
   requests = [];
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    const url = String(input);
+    const url = String(input).replace(window.location.origin, '');
     const body = typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
     const headers = { ...(init.headers as Record<string, string>) };
     requests.push({ method: init.method ?? 'GET', url, headers, body });

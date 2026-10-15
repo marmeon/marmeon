@@ -8,6 +8,7 @@ import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
 import { follow } from '../load-live.ts';
 import { REGIONS, type RegionOwner } from '../owner.ts';
+import { atOrigin } from '../request.ts';
 import { ownedRegion, type Region, type RegionInitial, type RegionResponse, type RegionTransport } from '../region.ts';
 
 type IslandsCore = Pick<FeatureHost, 'window' | 'left' | 'version' | 'documentChange'>;
@@ -21,7 +22,7 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
   if (core.left || signal.aborted) return { kind: 'cancelled' };
   let response: Response;
   try {
-    response = await core.window.fetch(url, {
+    response = await core.window.fetch(atOrigin(url, core.window), {
       method: 'GET',
       headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', ...(core.version ? { [VERSION_HEADER]: core.version } : {}), ...headers },
       signal,

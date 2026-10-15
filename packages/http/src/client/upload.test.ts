@@ -53,7 +53,7 @@ describe('uploads with progress load their code on first use', () => {
     expect(visible().url).toBe('/fast');
     // The next one goes over XHR.
     await navigator.visit('/a', { method: 'post', data: upload() });
-    expect(sent).toEqual(['xhr /a']);
+    expect(sent).toEqual(['xhr https://app.test/a']);
     expect(visible().props).toEqual({ uploaded: true });
   });
 

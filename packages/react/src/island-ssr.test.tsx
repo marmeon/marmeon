@@ -126,8 +126,8 @@ beforeEach(() => {
   requests = [];
   history.replaceState(null, '', '/dashboard');
   vi.spyOn(window, 'fetch').mockImplementation(async (input) => {
-    requests.push(String(input));
-    if (String(input).startsWith('/islands/stale')) {
+    requests.push(String(input).replace(window.location.origin, ''));
+    if (String(input).replace(window.location.origin, '').startsWith('/islands/stale')) {
       return new Response(JSON.stringify({ component: 'app/Members', props: { count: 3 }, url: '/islands/stale', version: null }), {
         headers: { 'x-marmeon': 'true', 'x-marmeon-region': 'island' },
       });

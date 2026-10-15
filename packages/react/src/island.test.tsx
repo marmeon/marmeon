@@ -90,8 +90,8 @@ beforeEach(() => {
   document.body.replaceChildren(container);
   requests = [];
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    requests.push({ url: String(input), headers: { ...(init.headers as Record<string, string>) } });
-    return server(String(input), init);
+    requests.push({ url: String(input).replace(window.location.origin, ''), headers: { ...(init.headers as Record<string, string>) } });
+    return server(String(input).replace(window.location.origin, ''), init);
   });
   server = (url) => {
     const { pathname, searchParams } = new URL(url, location.href);

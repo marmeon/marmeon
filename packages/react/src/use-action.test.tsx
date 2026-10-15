@@ -122,8 +122,8 @@ beforeEach(() => {
   document.body.replaceChildren(container);
   requests = [];
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    requests.push({ url: String(input), method: init.method ?? 'GET', headers: { ...(init.headers as Record<string, string>) } });
-    return server(String(input), init);
+    requests.push({ url: String(input).replace(window.location.origin, ''), method: init.method ?? 'GET', headers: { ...(init.headers as Record<string, string>) } });
+    return server(String(input).replace(window.location.origin, ''), init);
   });
 });
 

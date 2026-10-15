@@ -5,6 +5,24 @@
 import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from '../page.ts';
 import type { VisitMethod, VisitOptions } from './navigation.ts';
 
+/** What the client reads of its window to tell this site's origin. */
+export interface OriginWindow {
+  readonly location: { readonly origin: string };
+}
+
+/**
+ * The address for `path`, a path of this site (a full URL stays as it is): the origin in front, so a path that starts with two
+ * slashes (a page at `//host/x` is a path on this site) is never read as a protocol-relative URL of another host.
+ */
+export function atOrigin(path: string, { location }: OriginWindow): string {
+  return path.startsWith('/') ? location.origin + path : path;
+}
+
+/** Whether `response` came from another origin than the page's (a redirect followed to another host): it is never read as a page. */
+export function isForeign({ url }: Response, { location }: OriginWindow): boolean {
+  return url !== '' && !url.startsWith(location.origin + '/');
+}
+
 /** The CSRF token the server put into the readable `XSRF-TOKEN` cookie. */
 export function xsrfToken(): string | undefined {
   if (typeof document === 'undefined') return undefined;

@@ -71,6 +71,10 @@ Without JavaScript the browser posts the form, as it does for a [form](forms.md#
 travel as a hidden `_method` field, the page's CSRF token as `_token`, and the strings and numbers of `data` as hidden fields.
 The token goes only to this site: a link whose `href` the browser reads as another origin, such as one with a scheme or `//`, sends
 none.
+With JavaScript, every request of a visit, a reload, an action, an island or an upload's first step goes to this site's origin,
+even from a page whose path starts with two slashes. An answer that comes from another origin, such as a redirect followed to
+another site, is never read as a page: a visit, a reload or a layer loads that address in the browser, and a prefetch or a
+background reload drops it. An upload's target route must be on this site; its second step may go to a presigned URL elsewhere.
 Other values of `data` go along with JavaScript only. A link with `confirm` never sends without asking, so without JavaScript its
 button does nothing. With JavaScript the click sends the request once, as a visit, and the browser does not post the form as well.
 

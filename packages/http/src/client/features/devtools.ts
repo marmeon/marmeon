@@ -342,16 +342,18 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
     if (stopped) return sent;
     const method = (init.method ?? 'GET').toUpperCase();
     const headers = new Headers(init.headers);
-    const visit = visits().get(`${method} ${input}`);
-    if (visit) visits().delete(`${method} ${input}`);
-    const kind = visit ? undefined : requestKind(headers, pathOf(input, host.window.location.href));
+    // The core fetches `origin + path`; a visit is keyed by its path.
+    const path = pathOf(input, host.window.location.href);
+    const visit = visits().get(`${method} ${path}`);
+    if (visit) visits().delete(`${method} ${path}`);
+    const kind = visit ? undefined : requestKind(headers, path);
     if (!visit && !kind) return sent;
     const entry =
       visit ??
       add({
         kind: kind!,
         method,
-        url: pathOf(input, host.window.location.href),
+        url: path,
         ...(headers.has(PARTIAL_DATA_HEADER) ? { only: names(headers.get(PARTIAL_DATA_HEADER))! } : {}),
         ...(headers.has(PARTIAL_EXCEPT_HEADER) ? { except: names(headers.get(PARTIAL_EXCEPT_HEADER))! } : {}),
       });

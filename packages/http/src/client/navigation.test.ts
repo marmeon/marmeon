@@ -304,7 +304,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       await navigator.visit('/a', { method: 'post', data, onProgress: (progress) => void own.push(progress.percentage!) });
       expect(events).toEqual(['start post /a', 'progress 25', 'progress 100', 'success /a', 'finish /a']);
       expect(own).toEqual([25, 100]);
-      expect(sent[0]).toMatchObject({ method: 'POST', url: '/a', headers: { [PAGE_HEADER]: 'true' }, body: data });
+      expect(sent[0]).toMatchObject({ method: 'POST', url: `${ORIGIN}/a`, headers: { [PAGE_HEADER]: 'true' }, body: data });
       expect(visible().props).toEqual({ uploaded: true });
     });
 

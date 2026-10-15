@@ -4,6 +4,7 @@
  * page; Back/Forward brings them back from memory. What a layer showed lives in this tab's memory only: the layers on
  * screen in a slot of the document, each layer entry's place in the stack in a slot of the entry — both emptied by the core.
  */
+import { atOrigin } from '../request.ts';
 import { LAYER_BACKDROP, LAYER_CLOSE_HEADER, MAX_LAYER_DEPTH, REGION_HEADER, type FlashMessage, type LayerClose, type PageObject } from '../../page.ts';
 import { updatePage } from '../cache.ts';
 import type { FeatureHost, PlaceOptions } from '../core.ts';
@@ -200,6 +201,12 @@ export class LayerStack implements LayerHost {
     const from = this.find(layer);
     // A layer that left the screen visits nothing any more.
     return from ? this.#core.visit(from, url, options) : Promise.resolve(undefined);
+  }
+
+  /** `layer.reload()`: the layer's page again, as the layer's. */
+  layerReload(layer: Layer, options: Omit<VisitOptions, 'method'>): Promise<PageObject | undefined> {
+    const from = this.find(layer);
+    return from ? this.#core.visit(from, atOrigin(layer.page.url, this.#core.window), { replace: true, preserveScroll: true, preserveState: true, ...options }) : Promise.resolve(undefined);
   }
 
   /**
@@ -416,8 +423,8 @@ export class LayerStack implements LayerHost {
     if (reload !== true && reload.length === 0) return;
     const options: VisitOptions = { replace: true, preserveScroll: true, preserveState: true, async: true, ...(reload === true ? {} : { only: reload }) };
     const layers = [...this.controls];
-    await this.#core.visit(undefined, this.#core.page.url, options);
-    for (const control of layers) if (!control.layer.closed) await this.#core.visit(control, control.layer.page.url, options);
+    await this.#core.visit(undefined, atOrigin(this.#core.page.url, this.#core.window), options);
+    for (const control of layers) if (!control.layer.closed) await this.#core.visit(control, atOrigin(control.layer.page.url, this.#core.window), options);
   }
 
   /** Memory keeps a layer's page — and where it is in its stack, first (what is beneath it is used together with it). */
@@ -536,7 +543,7 @@ export class LayerStack implements LayerHost {
     if (keep === 0 && this.#core.page.component === LAYER_BACKDROP) {
       this.dismissFrom(0);
       // The layers' guards were asked already (or the server closed them).
-      await this.#core.navigator.visit(this.#core.page.url, { replace: true, ignoreGuards: true });
+      await this.#core.navigator.visit(atOrigin(this.#core.page.url, this.#core.window), { replace: true, ignoreGuards: true });
       return;
     }
     const position = this.#core.scroll.current();

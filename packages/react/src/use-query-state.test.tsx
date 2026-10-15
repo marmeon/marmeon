@@ -117,13 +117,13 @@ beforeEach(() => {
   gate = undefined;
   layerView = 'app/Find';
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    requests.push({ url: String(input), headers: { ...(init.headers as Record<string, string>) } });
-    if (new URL(String(input), location.href).pathname === '/people/find') {
-      if (String(input).includes('q=')) await gate;
-      const found = peoplePage(String(input).replace('/people/find', '/people'));
-      return new Response(JSON.stringify({ ...found, component: component(), url: String(input), layer: { key: 'app/Find', base: '/people' } }), { headers: { [PAGE_HEADER]: 'true' } });
+    requests.push({ url: String(input).replace(window.location.origin, ''), headers: { ...(init.headers as Record<string, string>) } });
+    if (new URL(String(input).replace(window.location.origin, ''), location.href).pathname === '/people/find') {
+      if (String(input).replace(window.location.origin, '').includes('q=')) await gate;
+      const found = peoplePage(String(input).replace(window.location.origin, '').replace('/people/find', '/people'));
+      return new Response(JSON.stringify({ ...found, component: component(), url: String(input).replace(window.location.origin, ''), layer: { key: 'app/Find', base: '/people' } }), { headers: { [PAGE_HEADER]: 'true' } });
     }
-    return new Response(JSON.stringify(peoplePage(String(input))), { headers: { [PAGE_HEADER]: 'true' } });
+    return new Response(JSON.stringify(peoplePage(String(input).replace(window.location.origin, ''))), { headers: { [PAGE_HEADER]: 'true' } });
   });
 });
 
