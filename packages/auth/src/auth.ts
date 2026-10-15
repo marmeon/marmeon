@@ -329,11 +329,18 @@ export class Auth {
    * password sign-in that waits for a factor is dropped. `expired` when the account is gone. The password was not typed, so the session
    * counts as a fresh confirmation instead: the passkey with user verification is the proof `confirmedPassword()` asks for.
    * Invariant: the caller has proven a passkey of exactly this account, with user verification, a challenge used once.
+   * `checkedAgainst` is the account as the caller read it before it verified the assertion: only that state is bound (see `#verified`).
+   * A fresh read that no longer fits it — a reset, a new key or an ending landed meanwhile — is `expired`, as at `attempt()`.
    */
-  async [SIGN_IN_VERIFIED](verifiedUserId: AuthUserId | string | number, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, { readonly kind: 'expired' }>> {
+  async [SIGN_IN_VERIFIED](
+    verifiedUserId: AuthUserId | string | number,
+    options: { readonly remember?: boolean } = {},
+    checkedAgainst?: Credentials,
+  ): Promise<Result<AuthUser, { readonly kind: 'expired' }>> {
     const found = await this.#users.findById(verifiedUserId as never);
     if (!found) return err({ kind: 'expired' });
-    await (await this.#login(found, { remember: options.remember === true }, 'passkey')).announce();
+    if (checkedAgainst !== undefined && !equal(sessionFingerprint(found), sessionFingerprint(checkedAgainst))) return err({ kind: 'expired' });
+    await (await this.#login(checkedAgainst ?? found, { remember: options.remember === true }, 'passkey')).announce();
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     return ok(found.user);
@@ -481,21 +488,22 @@ export class Auth {
   /**
    * Signs out every other device: checks `password`, then hashes it
    * anew — a new salt, a new hash, so the other sessions' fingerprints stop matching — and drops the
-   * other devices' remember-me tokens. `false` for a wrong password. It does not throttle the password check: the caller must
+   * other devices' remember-me tokens. `false` for a wrong password, and when this device's remember-me cookie turns out to be a copy
+   * (its validator is stale: somebody else holds a newer one) — then every token and session of the account is ended, like at a copied
+   * cookie, and this device is signed out too. It does not throttle the password check: the caller must
    * (`takePasswordCheck()`, as the starter kit's `throttlePasswordChecks()` does).
    */
   async logoutOtherDevices(password: string): Promise<boolean> {
     await this.#requireUser('logoutOtherDevices');
     if (!(await this.confirmPassword(password))) return false;
-    await this[SIGN_OUT_OTHER_DEVICES](password);
-    return true;
+    return this[SIGN_OUT_OTHER_DEVICES](password);
   }
 
   /**
    * The signing out of `logoutOtherDevices()` for a caller that has just checked `password` itself: a new hash (the other sessions'
    * fingerprints stop matching), the other devices' remember-me tokens gone, a new fingerprint for this session.
    */
-  async [SIGN_OUT_OTHER_DEVICES](password: string): Promise<void> {
+  async [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean> {
     const user = await this.#requireUser('logoutOtherDevices');
     const verified = this.#requireVerified();
     const hash = await this.#hasher.make(password);
@@ -504,9 +512,10 @@ export class Auth {
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
     await this.#users.updatePasswordHash(idOf(user) as never, hash);
     this.#anchor({ ...verified, passwordHash: hash });
-    await this.#rebindOwnToken(); // this device's token stays, for the new state
+    if (!(await this.#rebindOwnToken())) return false; // this device's token stays, for the new state — unless it is a copy
     await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
     await this.#announceEnded(idOf(user));
+    return true;
   }
 
   /**
@@ -528,7 +537,7 @@ export class Auth {
       return false;
     }
     this.#anchor({ ...verified, sessionKey: rotated.key });
-    await this.#rebindOwnToken(); // this device's token stays, for the new state
+    if (!(await this.#rebindOwnToken())) return false; // this device's token stays, for the new state — unless it is a copy
     await this.#endOtherSignIns(idOf(user), false); // after the key, see updatePassword()
     await this.#announceEnded(idOf(user));
     return true;
@@ -654,10 +663,30 @@ export class Auth {
     this.#verified = credentials;
   }
 
-  /** Stamps the remember-me token of this device with the state this request just wrote, so that it fits the account it stays for. */
-  async #rebindOwnToken(): Promise<void> {
+  /**
+   * Stamps the remember-me token of this device with the state this request just wrote, so that it fits the account it stays for.
+   * Invariant: only a cookie that carries the row's validator is kept. A stale validator means the token was rotated by somebody else
+   * (a copy): the theft path runs as at `consume()`, no token is kept and this device is signed out. `false` then.
+   */
+  async #rebindOwnToken(): Promise<boolean> {
     const cookie = this.#cookies.get(this.#config.rememberCookie);
-    if (cookie !== undefined) await this.#remember.rebind?.(idOf(this.#requireVerified().user), cookie, sessionFingerprint(this.#requireVerified()));
+    if (cookie === undefined || this.#remember.rebind === undefined) return true;
+    const verified = this.#requireVerified();
+    const result = await this.#remember.rebind(idOf(verified.user), cookie, sessionFingerprint(verified));
+    if (result.ok) return true;
+    if (result.error.kind === 'invalid') {
+      this.#cookies.delete(this.#config.rememberCookie); // no row to keep: the cookie is of no use
+      return true;
+    }
+    this.#logger.warn('A rotated remember-me token was presented again while signing out other devices: all remember-me tokens and sessions of the user are being ended', {
+      user: result.error.userId,
+      ip: this.#request.ip,
+      userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
+    });
+    this.#cookies.delete(this.#config.rememberCookie);
+    await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) }, result.error.reused === true);
+    await this.#end();
+    return false;
   }
 
   #requireVerified(): Credentials {

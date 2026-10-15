@@ -78,10 +78,11 @@ export interface RememberTokenStore {
   /** Drops the token of this cookie (sign-out on this device). */
   forget(cookie: string): Promise<void>;
   /**
-   * Replaces the fingerprint of the token of this cookie, if it belongs to `userId` — for the device that stays signed in when `auth.updateSessionKey()` or
+   * Replaces the fingerprint of the token of this cookie, if it belongs to `userId` and the cookie carries the row's current validator
+   * (or the previous one inside the grace window, as `consume()` accepts) — for the device that stays signed in when `auth.updateSessionKey()` or
    * `logoutOtherDevices()` changes the account on purpose. Optional: without it that device's cookie is refused later and the user signs in again.
    */
-  rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<void>;
+  rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
   /** Drops every token of the user — except the one of `except` (the current device). */
   forgetUser(userId: number | string, except?: string): Promise<void>;
   /**
@@ -177,10 +178,38 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     return row !== undefined;
   }
 
-  async rebind(userId: number | string, cookie: string, fingerprint: string): Promise<void> {
+  async rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>> {
     const parts = parse(cookie);
+    if (!parts) return err({ kind: 'invalid' });
+    const db = this.#db();
     // Scoped to the user: a cookie of another account's device is never re-stamped for this one.
-    if (parts) await this.#db().updateTable(REMEMBER_TABLE).set({ account_fingerprint: fingerprint }).where('selector', '=', parts.selector).where('user_id', '=', userId).execute();
+    const row = await db
+      .selectFrom(REMEMBER_TABLE)
+      .select((eb) => ['id', 'user_id', secret(eb, 'validator_hash'), secret(eb, 'previous_validator_hash'), 'rotated_at', 'expires_at'])
+      .where('selector', '=', parts.selector)
+      .where('user_id', '=', userId)
+      .executeTakeFirst();
+    if (!row || !(new Date(row.expires_at).getTime() > this.#clock.now())) return err({ kind: 'invalid' });
+    const presented = sha256(parts.validator);
+    const rotatedAt = row.rotated_at === null ? 0 : new Date(row.rotated_at).getTime();
+    const current = equal(presented, row.validator_hash);
+    const previous = row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash);
+    if (current || (previous && this.#clock.now() - rotatedAt < GRACE_MS)) {
+      // Only the row whose validator is still the one that was checked: a rotation in between leaves it unstamped (refused later).
+      const result = await db
+        .updateTable(REMEMBER_TABLE)
+        .set({ account_fingerprint: fingerprint })
+        .where('id', '=', row.id)
+        .where('user_id', '=', userId)
+        .where(sql<boolean>`${sql.ref('validator_hash')} = ${row.validator_hash}`)
+        .executeTakeFirst();
+      return result.numUpdatedRows > 0n ? ok() : err({ kind: 'invalid' });
+    }
+    // A validator that is neither current nor just rotated: someone else holds a newer cookie of this token — the copy `consume()` reports.
+    const removed = await db.deleteFrom(REMEMBER_TABLE).where('id', '=', row.id).executeTakeFirst();
+    if (removed.numDeletedRows === 0n) return commitAnyway(err({ kind: 'invalid' }));
+    await this.forgetUser(row.user_id);
+    return commitAnyway(err({ kind: 'stolen', userId: row.user_id, reused: previous }));
   }
 
   async forget(cookie: string): Promise<void> {

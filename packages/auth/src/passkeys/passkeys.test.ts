@@ -607,6 +607,32 @@ describe('Passkeys: signing in without a password', () => {
     expect(await b.pk('rename', { id: 1, name: 'x' })).toEqual({ renamed: true });
   });
 
+  it.each([
+    ['the account sessions were ended', (users: KeyedUsers) => void users.keys.set(1, 'e'.repeat(43))],
+    ['the password was reset', (users: KeyedUsers) => void (users.rows.get(1)!.hash = null)],
+  ])('signs nobody in when %s between the check of the assertion and the sign-in', async (_name, change) => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const authenticator = device();
+    await enrolled(booted, authenticator);
+    const b = booted.browser();
+    const options = await b.pk('sign-in-options');
+    const counter = PasskeyStore.prototype.updateCounter;
+    const spy = vi.spyOn(PasskeyStore.prototype, 'updateCounter').mockImplementation(async function (this: PasskeyStore, ...args) {
+      const written = await counter.apply(this, args);
+      change(users); // lands after the assertion was verified, before the sign-in binds
+      return written;
+    });
+    try {
+      expect(await b.pk('sign-in', { response: authenticator.authenticate(options), remember: true })).toMatchObject({ ok: false, kind: 'invalid' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await b.pk('who')).toEqual({ id: null });
+    expect(b.jar.has('remember_web')).toBe(false);
+    expect(await rows(booted, 'remember_tokens')).toHaveLength(0);
+  });
+
   it('works with EdDSA keys and with a synchronised passkey that reports 0', async () => {
     const booted = await boot();
     const synced = device('EdDSA', true);

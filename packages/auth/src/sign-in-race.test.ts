@@ -5,7 +5,7 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenStore, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenReused, RememberTokenStore, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
 import { REMEMBER_TABLE } from './remember.ts';
@@ -143,6 +143,12 @@ class RecordFailed {
     failed.push(event);
   }
 }
+const reused: RememberTokenReused[] = [];
+class RecordReused {
+  handle(event: RememberTokenReused) {
+    reused.push(event);
+  }
+}
 
 /**
  * `hold` is the point where a request stops until the test lets it go: after the hasher compared the password (`verify`), right before
@@ -151,6 +157,7 @@ class RecordFailed {
  */
 async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify' | 'create' | 'consume' }) {
   failed.length = 0;
+  reused.length = 0;
   const users = new Users();
   let hasher!: Hasher;
   let armed = options.hold === 'verify';
@@ -163,7 +170,7 @@ async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify
     discover: false,
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
-    modules: [defineModule({ name: 'sign-in-race-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(Failed, RecordFailed)] })],
+    modules: [defineModule({ name: 'sign-in-race-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(Failed, RecordFailed), listen(RememberTokenReused, RecordReused)] })],
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
@@ -434,6 +441,29 @@ describe('a remember-me token is bound to the account state it was issued under'
     later.jar.set('remember_web', device.jar.get('remember_web')!);
     expect((await later.send('/me')).status, 'the kept token no longer fits').toBe(401);
     expect(await world.tokenCount()).toBe(0);
+  });
+
+  it.each([
+    ['logoutOtherDevices()', '/logout-others'],
+    ['updateSessionKey()', '/end-others'],
+  ])('does not keep the token of a thief who rotated the owner\'s cookie: %s ends everything and reports the copy', async (_name, route) => {
+    const world = await boot({ hold: 'create' });
+    await login(world.send);
+    const owner = world.send;
+    const thief = world.browser();
+    thief.jar.set('remember_web', world.jar.get('remember_web')!);
+    expect((await thief.send('/me')).status, 'the copy signs in and rotates the cookie').toBe(200);
+    // The owner's cookie is the previous validator, and past the grace window.
+    await world.application.container.make(Connections).get<any>().updateTable(REMEMBER_TABLE).set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+
+    expect(await (await owner(route, {})).json()).toEqual({ done: false });
+    expect(await world.tokenCount(), 'no token is kept').toBe(0);
+    const later = world.browser();
+    later.jar.set('remember_web', thief.jar.get('remember_web')!);
+    expect((await later.send('/me')).status, "the thief's cookie").toBe(401);
+    expect((await thief.send('/me')).status, "the thief's session").toBe(401);
+    expect((await owner('/me')).status, "the owner's session ends too").toBe(401);
+    expect(reused, "the owner is told").toHaveLength(1);
   });
 
   it('keeps working for an untouched account, and for the device that logoutOtherDevices() leaves signed in', async () => {
