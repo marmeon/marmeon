@@ -12,7 +12,7 @@ import type { PageObject, RegionObject, RegionResult } from '../page.ts';
 import { mergePage, pick, resetOf, type ResetProps } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
-import { pageQuery, queryUrl } from './query-state.ts';
+import { pageQuery, queryUrl } from './query.ts';
 import type { RegionOwner } from './owner.ts';
 import { partialReloadHeaders } from './request.ts';
 

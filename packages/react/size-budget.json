@@ -12,8 +12,8 @@
   },
   "appsGzipKB": {
     "blank-app": { "limit": 13.99 },
-    "web-app": { "limit": 22.14 },
-    "website": { "limit": 16.60 }
+    "web-app": { "limit": 21.90 },
+    "website": { "limit": 16.18 }
   },
   "stillLeaking": {
     "core": [],

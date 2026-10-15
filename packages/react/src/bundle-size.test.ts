@@ -65,7 +65,7 @@ const FEATURES = {
   optimistic: { markers: ['http/client/features/optimistic'], use: inApp('useRouter'), lazy: true },
   // useForm(…, { validate }): on a form's first use, in a chunk of its own. useForm remembers (static).
   liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['guard', 'remember'], lazy: true },
-  queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
+  queryState: { markers: ['http/client/query-state', 'http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
   // The progress bar: opt-in, `createMarmeonApp({ progress: progressBar() })` — `aria-busy` (`http/client/busy`) is every app's.
