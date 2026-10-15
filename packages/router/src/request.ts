@@ -239,24 +239,31 @@ function segments(key: string): string[] {
   return [match[1]!, ...nested];
 }
 
+/** Per node, the next free index (highest numeric key + 1) — so `a[]` stays O(1) however many items came before. */
+const nextIndexes = new WeakMap<Node, number>();
+
+function put(node: Node, key: string, value: Node | string | File): void {
+  node[key] = value;
+  if (/^\d+$/.test(key)) nextIndexes.set(node, Math.max(nextIndexes.get(node) ?? 0, Number(key) + 1));
+}
+
 function assign(root: Node, path: string[], value: string | File): void {
   let node = root;
   for (let i = 0; i < path.length; i++) {
-    const key = path[i] === '' ? String(nextIndex(node)) : path[i]!;
+    const key = path[i] === '' ? String(nextIndexes.get(node) ?? 0) : path[i]!;
     if (key === '__proto__') return;
     if (i === path.length - 1) {
-      node[key] = value;
+      put(node, key, value);
       return;
     }
     const child = node[key];
-    node = node[key] = typeof child === 'object' && !(child instanceof File) ? child : Object.create(null);
+    if (typeof child === 'object' && !(child instanceof File)) node = child;
+    else {
+      const created: Node = Object.create(null);
+      put(node, key, created);
+      node = created;
+    }
   }
-}
-
-function nextIndex(node: Node): number {
-  let next = 0;
-  for (const key of Object.keys(node)) if (/^\d+$/.test(key)) next = Math.max(next, Number(key) + 1);
-  return next;
 }
 
 function finalize(node: Node | string | File): unknown {

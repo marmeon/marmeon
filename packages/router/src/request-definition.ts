@@ -475,7 +475,8 @@ export function queryInput(search: URLSearchParams): Record<string, string | str
   for (const [key, value] of search) {
     if (key === '__proto__') continue;
     const seen = input[key];
-    input[key] = seen === undefined ? value : Array.isArray(seen) ? [...seen, value] : [seen, value];
+    if (Array.isArray(seen)) seen.push(value);
+    else input[key] = seen === undefined ? value : [seen, value];
   }
   return input;
 }
