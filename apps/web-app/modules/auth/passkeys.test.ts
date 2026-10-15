@@ -65,13 +65,14 @@ describe('passkeys', () => {
     await as().put('/settings/email', { json: { email: 'new@example.com' } }).assertStatus(422);
     await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'wrong' } }).assertStatus(422);
     await as().post('/settings/tokens', { json: token }).assertStatus(422);
-    await as().post('/settings/passkeys/1/remove', { json: {} }).assertStatus(422);
+    const [{ id }] = (await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute()) as [{ id: number }];
+    await as().post(`/settings/passkeys/${id}/remove`, { json: {} }).assertStatus(422);
     await app.assertDatabaseCount('passkeys', 1);
     await app.assertDatabaseCount('personal_access_tokens', 0);
 
     await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303);
     await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk();
-    await as().post('/settings/passkeys/1/remove', { json: { password: 'password' } }).assertOk();
+    await as().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertOk();
     await app.assertDatabaseCount('passkeys', 0);
   });
 
