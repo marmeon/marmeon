@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { threadId } from 'node:worker_threads';
 import { gzipSync } from 'node:zlib';
@@ -129,23 +129,58 @@ export async function appBundle(code: string, { external = EXTERNAL, sourcemap =
 }
 
 /**
- * The client build of a real app (its own `vite.config.ts`), measured the same way — nothing is written. In the
- * monorepo the framework packages come from `dist/` too: a build never takes the `@marmeon/source` condition.
+ * The client build of a real app (its own `vite.config.ts`), measured the same way — of a copy ({@link appCopy}): nothing
+ * is written into the app. In the monorepo the framework packages come from `dist/` too: a build never takes the
+ * `@marmeon/source` condition.
  */
 export async function appClientBuild(root: string, { sourcemap = false }: Pick<BundleOptions, 'sourcemap'> = {}): Promise<AppBundle> {
-  writeBrowserRoutes(root);
-  // Before Vite resolves the config: an unset NODE_ENV becomes "development", and React's development build with it.
-  process.env.NODE_ENV = 'production';
-  return measure({ root, logLevel: 'silent', build: {} }, { sourcemap });
+  const copy = appCopy(root);
+  copies.set(copy, root);
+  try {
+    writeBrowserRoutes(copy);
+    // Before Vite resolves the config: an unset NODE_ENV becomes "development", and React's development build with it.
+    process.env.NODE_ENV = 'production';
+    return await measure({ root: copy, logLevel: 'silent', build: {} }, { sourcemap });
+  } finally {
+    rmSync(copy, { recursive: true, force: true });
+  }
 }
 
 /**
- * The browser's route manifest (`.marmeon/routes.json`) the build reads — `marmeon build` writes it first, a fresh
- * checkout (CI) has none: `marmeon route:types` writes it, in the app's committed test environment (no `.env` needed).
- * It also writes `bootstrap/routes.ts`, unchanged while `pnpm types:check` is green.
+ * The app copies built, each with the app it copies — module ids are reported as the app's own. Kept after the copy is
+ * gone: `attribution.marginalGzip` names modules when it is called.
+ */
+const copies = new Map<string, string>();
+
+/**
+ * A copy of the app, with the app's `node_modules` (a symlink) and without what the app generates: the build reads the
+ * route manifest, and the app's own may be stale (`.marmeon/` survives a change of branch) or rewritten right now by a test
+ * that boots the app — the copy gets its own, from the routes as they are.
+ */
+function appCopy(root: string): string {
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), `marmeon-app-${basename(root)}-`));
+  try {
+    cpSync(root, dir, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(root.length)) && !/[/\\]\.env$/.test(source) });
+    symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'), 'dir');
+    // The compiler options the transform reads: a relative `extends` (the monorepo's base config) still names the app's.
+    const tsconfig = join(dir, 'tsconfig.json');
+    try {
+      writeFileSync(tsconfig, readFileSync(tsconfig, 'utf8').replace(/("extends":\s*")(\.[^"]*)"/, (_, key: string, path: string) => `${key}${resolve(root, path).replaceAll('\\', '/')}"`));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    return dir;
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/**
+ * The browser's route manifest (`.marmeon/routes.json`) the build reads — what `marmeon build` writes first: `marmeon
+ * route:types`, in the app's committed test environment (no `.env` needed). It writes `bootstrap/routes.ts` too, in the copy.
  */
 function writeBrowserRoutes(root: string): void {
-  if (existsSync(join(root, '.marmeon/routes.json'))) return;
   const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...env } = process.env;
   const bin = join(PACKAGES, 'cli/bin/marmeon.js');
   const result = spawnSync(process.execPath, [bin, 'route:types'], { cwd: root, encoding: 'utf8', env: { ...env, NODE_ENV: 'test' } });
@@ -248,6 +283,7 @@ function moduleName(id: string): string {
   } catch {
     // virtual or gone: keep the id
   }
+  for (const [copy, app] of copies) if (real.startsWith(`${copy}/`)) real = join(app, real.slice(copy.length));
   const fromPackages = relative(PACKAGES, real).replaceAll('\\', '/');
   if (!fromPackages.startsWith('../')) return fromPackages;
   const nodeModules = real.lastIndexOf('/node_modules/');

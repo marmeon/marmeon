@@ -23,6 +23,15 @@ function marmeon(cwd: string, args: string[], env: Record<string, string> = {}) 
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
+/** A copy of the web app, with its `node_modules` (a symlink), for a command that writes into the app. */
+function webAppCopy(): string {
+  const app = realpathSync(tempDir('marmeon-web-app-'));
+  cpSync(webApp, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(webApp.length)) && !/[/\\]\.env$/.test(source) });
+  symlinkSync(join(webApp, 'node_modules'), join(app, 'node_modules'), 'dir');
+  mkdirSync(join(app, 'storage'));
+  return app;
+}
+
 // Each test runs the CLI as a child process: slow on a busy CI runner.
 describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   it('lists commands grouped by namespace', () => {
@@ -99,8 +108,8 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
     const key = generateKey(); // not .env.test's: that key is public and production refuses it
     const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: key, DEVTOOLS_ENABLED: 'false' };
-    // Development regenerates the table types (already committed, so unchanged).
-    const development = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
+    // Development regenerates the table types (already committed, so unchanged) — in a copy: other tests read the app's.
+    const development = marmeon(webAppCopy(), ['migrate'], { ...config, NODE_ENV: 'development' });
     expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
     expect(marmeon(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (APP_ENV=production)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
     // APP_ENV names the environment and protects or opens nothing: APP_ENV=local on production asks for --force; with it,
