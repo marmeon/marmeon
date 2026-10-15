@@ -1,8 +1,9 @@
 /**
  * `pnpm check-release` — the release rules, a part of `pnpm run ci`. Exit 1 names every broken rule: one version across the
  * published packages (and `workspace:*` between them), their changelogs (the top section is the version, the same in every package
- * after 0.1.2), `.github/workflows/release.yml` (read-only by default, `id-token: write` only in the
- * job that stages the packages, staged with pnpm after `pack:check`, never `npm publish`, a plain `pnpm publish` or an npm token; a
+ * after 0.1.2), `.github/workflows/release.yml` (read-only by default; the build job packs and hashes the tarballs after
+ * `pack:check` without an OIDC token; `id-token: write` only in the job that stages them, which checks out and installs nothing and
+ * verifies the hashes before `npm stage publish`; never `npm publish`, a plain `pnpm publish` or an npm token; a
  * GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free) and `.github/release.yml` (what the release rules
@@ -51,8 +52,6 @@ export function slug(heading: string): string {
     .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
     .replace(/\s/g, '-');
 }
-
-const readJson = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
 
 /** Up to this version the changelog sections were written per package and differ; from the next version on every package has the same one. */
 export const CHANGESETS_UNTIL = '0.1.2';
@@ -192,10 +191,13 @@ export function checkWorkflow(repository: string): string[] {
   const code = workflow.replace(/(^|\s)#.*$/gm, '$1'); // comments say what must not happen — read only the YAML
   const where = 'release.yml';
 
-  if (!/^permissions:\s*\n\s+contents:\s*read\s*$/m.test(code)) problems.push(`${where}: the workflow's default "permissions:" must be "contents: read" — each job asks for what it needs`);
-  if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @marmeon/source condition; pnpm stages the packages`);
+  // Exactly "contents: read": a scope added here (id-token: write) would reach every job, the build job that runs the repository's code too.
+  if (!/^permissions:[ \t]*\n[ \t]+contents:[ \t]*read[ \t]*\n(?=\S|$)/m.test(code)) problems.push(`${where}: the workflow's default "permissions:" must be exactly "contents: read" — each job asks for what it needs`);
+  if (/^env:/m.test(code)) problems.push(`${where}: an env: for the whole workflow — every job, the staging one too, would inherit it; set variables on the step that needs them`);
+  if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @marmeon/source condition; pnpm packs the packages and npm stages the tarballs`);
   if (/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|registry-url:/.test(code)) problems.push(`${where}: an npm token or registry-url — trusted publishing (OIDC) needs no token, and none may sit in the repository`);
-  if (/\bpnpm\s+(?:-r\s+|--recursive\s+)?publish\b/.test(code)) problems.push(`${where}: a plain "pnpm publish" — every release is staged (pnpm stage publish) and waits for a maintainer's 2FA approval`);
+  if (/\bpnpm\s+(?:-r\s+|--recursive\s+)?publish\b/.test(code)) problems.push(`${where}: a plain "pnpm publish" — every release is staged (npm stage publish) and waits for a maintainer's 2FA approval`);
+  if (/\bpnpm\s+(?:run\s+)?(?:-r\s+|--recursive\s+)?stage\b|\brelease:stage\b/.test(code)) problems.push(`${where}: pnpm stage or release:stage — pnpm would run in the job that holds the OIDC token; the tarballs the build job packed are staged with "npm stage publish"`);
   // A command may continue on the next line (`\`): join them before looking for the flag.
   const joined = (text: string) => text.replace(/\\\r?\n/g, ' ');
   for (const line of joined(code).split('\n')) {
@@ -238,19 +240,42 @@ export function checkWorkflow(repository: string): string[] {
   }
 
   const jobs = jobsOf(code);
-  const staging = [...jobs].filter(([, body]) => /release:stage|pnpm\s+stage\s+publish/.test(body));
-  if (staging.length !== 1) problems.push(`${where}: ${staging.length} jobs stage the packages (pnpm run release:stage) — exactly one`);
+  /** The jobs another job waits for: `needs: a`, `needs: [a, b]`. */
+  const needsOf = (body: string) =>
+    (/^\s+needs:\s*(.+?)\s*$/m.exec(body)?.[1] ?? '')
+      .replace(/[[\]]/g, '')
+      .split(',')
+      .map((job) => job.trim())
+      .filter((job) => job !== '');
+  const staging = [...jobs].filter(([, body]) => /\bnpm\s+stage\s+publish\b/.test(body));
+  if (staging.length !== 1) problems.push(`${where}: ${staging.length} jobs stage the packages (npm stage publish) — exactly one`);
   const stagingName = staging[0]?.[0];
-  const releasing = [...jobs].filter(([name, body]) => stagingName !== undefined && name !== stagingName && new RegExp(`^\\s+needs:\\s*\\[?\\s*${stagingName}\\s*\\]?\\s*$`, 'm').test(body));
+  const building = stagingName === undefined ? [] : needsOf(jobs.get(stagingName)!);
+  if (stagingName !== undefined && (building.length !== 1 || !jobs.has(building[0]!))) {
+    problems.push(`${where}: the staging job waits for ${building.length === 1 ? `"${building[0]}", which is no job` : `${building.length} jobs`} — for exactly one, the build job that packs and hashes the tarballs ("needs: build")`);
+  }
+  const buildName = building.length === 1 && jobs.has(building[0]!) ? building[0] : undefined;
+  const releasing = [...jobs].filter(([name, body]) => stagingName !== undefined && name !== stagingName && needsOf(body).includes(stagingName));
   if (releasing.length !== 1) problems.push(`${where}: ${releasing.length} jobs run after the staging job ("needs: ${stagingName}") — exactly one tags and drafts the release`);
   const releaseName = releasing[0]?.[0];
-  const needs = (key: string) => `needs.${stagingName}.outputs.${key}`;
+  if (releaseName !== undefined && buildName !== undefined && !needsOf(jobs.get(releaseName)!).includes(buildName)) {
+    problems.push(`${where}: the job "${releaseName}" waits for the build job too ("needs: [${buildName}, ${stagingName}]") — the commit, version and latest flag are its outputs`);
+  }
+  const needs = (key: string) => `needs.${buildName}.outputs.${key}`;
   /** `KEY: ${{ source }}` in a step's env. */
   const env = (step: string, key: string, source: string) => new RegExp(`^\\s*${key}:\\s*\\$\\{\\{\\s*${source.replace(/\./g, '\\.')}\\s*\\}\\}\\s*$`, 'm').test(step);
   const checkoutOf = (step: string) => /["']?\buses["']?\s*:\s*actions\/checkout\b/.test(step);
+  const usesOf = (step: string) => /^\s*(?:- )?["']?uses["']?\s*:\s*(\S+)/m.exec(step)?.[1];
+  /** The lines of a step's scripts, trimmed, without the empty ones. */
+  const linesOf = (step: string) => runScripts(step).join('\n').split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  /** The artifact the build job uploads and the staging job downloads: its name and where it lies. */
+  const ARTIFACT = { name: 'tarballs', path: '${{ runner.temp }}/tarballs' };
+  const artifactWith = (step: string) => new RegExp(`^\\s*name:\\s*${ARTIFACT.name}\\s*$`, 'm').test(step) && new RegExp(`^\\s*path:\\s*${ARTIFACT.path.replace(/[$.{}]/g, '\\$&')}\\s*$`, 'm').test(step);
 
   for (const [name, body] of jobs) {
+    if (!/^ {4}permissions:\s*$/m.test(body)) problems.push(`${where}: the job "${name}" has no "permissions:" block of its own — a job states what it needs, none inherits a scope`);
     const stages = name === stagingName;
+    const builds = name === buildName;
     const releases = name === releaseName;
     const oidc = /^\s+id-token:\s*write\s*$/m.test(body);
     if (stages && !oidc) problems.push(`${where}: the job "${name}" stages the packages without "id-token: write" — trusted publishing and provenance need the OIDC token`);
@@ -272,48 +297,112 @@ export function checkWorkflow(repository: string): string[] {
     }
     if (stages) {
       if (!/runs-on:\s*ubuntu-latest/.test(body)) problems.push(`${where}: the job "${name}" must run on a GitHub-hosted runner (ubuntu-latest) — trusted publishing needs one`);
-      for (const key of ['commit', 'version', 'latest']) {
-        if (!new RegExp(`^\\s+outputs:\\s*\\n(?:\\s+\\w[\\w-]*:.*\\n)*?\\s+${key}:\\s*\\$\\{\\{\\s*steps\\.guard\\.outputs\\.${key}\\s*\\}\\}\\s*$`, 'm').test(body)) {
-          problems.push(`${where}: the job "${name}" hands the guard's "${key}" on as an output (steps.guard.outputs.${key}) — the release job works on it`);
+      // The OIDC token meets no code of the repository or of its dependencies: nothing is checked out, installed or built here.
+      if (steps.some(checkoutOf)) problems.push(`${where}: the job "${name}" checks out the repository — it holds the OIDC token and stages the build job's tarballs, nothing else`);
+      for (const step of steps) {
+        const action = usesOf(step);
+        if (action !== undefined && !action.startsWith('actions/download-artifact@') && !action.startsWith('actions/setup-node@') && !checkoutOf(step)) {
+          problems.push(`${where}: the job "${name}" uses ${action} — besides the download of the artifact only actions/setup-node: this job holds the OIDC token`);
+        }
+        for (const script of runScripts(step)) {
+          if (/(?<![\w./$-])(?:pnpm|npx|yarn|corepack|bun|deno|node|git)\b|\bnpm\b(?!\s+stage\s+publish\b)/.test(joined(script).replace(/^\s*#.*$/gm, ''))) {
+            problems.push(`${where}: the job "${name}" runs "${script.trim().split('\n')[0]}" — it holds the OIDC token: no pnpm, node, git or install, only the hash checks and npm stage publish`);
+          }
         }
       }
+      const [download, setup, stage] = steps;
+      if (steps.length !== 3 || !usesOf(download ?? '')?.startsWith('actions/download-artifact@') || !usesOf(setup ?? '')?.startsWith('actions/setup-node@') || usesOf(stage ?? '') !== undefined || runScripts(stage ?? '').length !== 1) {
+        problems.push(`${where}: the job "${name}" has exactly three steps — the download of the artifact, actions/setup-node, the staging: it holds the OIDC token and runs nothing else`);
+      }
+      if (download !== undefined && !artifactWith(download)) problems.push(`${where}: the job "${name}" downloads the artifact "${ARTIFACT.name}" to ${ARTIFACT.path} — the one the build job uploads`);
+      const nodeVersion = /^\s*node-version:\s*(\S+)\s*$/m.exec(setup ?? '')?.[1];
+      const nvmrc = existsSync(join(repository, '.nvmrc')) ? readFileSync(join(repository, '.nvmrc'), 'utf8').trim() : undefined;
+      if (nodeVersion === undefined || (nvmrc !== undefined && nodeVersion !== nvmrc)) {
+        problems.push(`${where}: the job "${name}" sets up Node with "node-version: ${nvmrc ?? '<the version of .nvmrc>'}" — the job has no checkout to read .nvmrc from, so the version is written out and kept the Node that built the tarballs`);
+      }
+      const wanted = [
+        'set -o pipefail',
+        '[[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]]',
+        'mkdir "$RUNNER_TEMP/empty"',
+        'cd "$TARBALLS"',
+        "printf '%s  SHA512SUMS\\n' \"$SUMS\" | sha512sum --check --strict -",
+        'sha512sum --check --strict SHA512SUMS',
+        // Nothing but SHA512SUMS and the files it names, dotfiles and directories included: npm would read a planted .npmrc.
+        "expected=$( { echo ./SHA512SUMS; awk '{ print \"./\" $2 }' SHA512SUMS; } | sort )",
+        'found=$(find . -mindepth 1 | sort)',
+        'test "$expected" = "$found"',
+        'cat SHA512SUMS',
+        'cd "$RUNNER_TEMP/empty"',
+        'while read -r _ name; do',
+        'test "${name%-"$VERSION".tgz}" != "$name"',
+        'npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null',
+        'done < "$TARBALLS/SHA512SUMS"',
+      ];
+      if (stage !== undefined && linesOf(stage).join('\n') !== wanted.join('\n')) {
+        problems.push(`${where}: the job "${name}" stages with exactly ${wanted.map((line) => `\`${line}\``).join(', ')} — the hash of SHA512SUMS and of every tarball is checked before the first npm stage publish, and only the files SHA512SUMS names are staged with the build job's dist-tag`);
+      }
+      if (stage !== undefined && (!env(stage, 'SUMS', needs('sums')) || !env(stage, 'VERSION', needs('version')) || !env(stage, 'DIST_TAG', needs('dist-tag')) || !/^\s*TARBALLS:\s*\$\{\{\s*runner\.temp\s*\}\}\/tarballs\s*$/m.test(stage))) {
+        problems.push(`${where}: the job "${name}" takes SUMS, VERSION and DIST_TAG of the staging from the build job's outputs (${needs('sums')}, .version, .dist-tag)`);
+      }
+      // The environment of the one step that runs npm: these variables and no other (NODE_OPTIONS, a proxy or a registry would reach the token).
+      const envKeys = [...(/^(\s*)env:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(stage ?? '')?.[2] ?? '').matchAll(/^\s*([\w-]+):/gm)].map((match) => match[1]!).sort();
+      const allowed = ['DIST_TAG', 'NPM_CONFIG_GLOBALCONFIG', 'NPM_CONFIG_USERCONFIG', 'SUMS', 'TARBALLS', 'VERSION'];
+      if (stage !== undefined && (envKeys.join() !== allowed.join() || !/^\s*NPM_CONFIG_USERCONFIG:\s*\$\{\{\s*runner\.temp\s*\}\}\/no-userconfig\s*$/m.test(stage) || !/^\s*NPM_CONFIG_GLOBALCONFIG:\s*\$\{\{\s*runner\.temp\s*\}\}\/no-globalconfig\s*$/m.test(stage))) {
+        problems.push(`${where}: the job "${name}" stages with the env ${allowed.join(', ')} and no other (NPM_CONFIG_USERCONFIG and NPM_CONFIG_GLOBALCONFIG are two different files that do not exist, \${{ runner.temp }}/no-userconfig and /no-globalconfig; npm refuses one file for both) — npm reads its settings, a proxy and a registry among them, from the environment and from npmrc files`);
+      }
+      if ((body.match(/^\s*env:/gm) ?? []).length !== 1) problems.push(`${where}: the job "${name}" has an env: besides the one of the staging step — a job or other step could set NODE_OPTIONS or a proxy for npm`);
+    }
+    if (builds) {
+      for (const key of ['commit', 'version', 'latest', 'dist-tag']) {
+        if (!new RegExp(`^\\s+outputs:\\s*\\n(?:\\s+\\w[\\w-]*:.*\\n)*?\\s+${key}:\\s*\\$\\{\\{\\s*steps\\.guard\\.outputs\\.${key}\\s*\\}\\}\\s*$`, 'm').test(body)) {
+          problems.push(`${where}: the job "${name}" hands the guard's "${key}" on as an output (steps.guard.outputs.${key}) — the staging and the release job work on it`);
+        }
+      }
+      if (!new RegExp(`^\\s+outputs:\\s*\\n(?:\\s+\\w[\\w-]*:.*\\n)*?\\s+sums:\\s*\\$\\{\\{\\s*steps\\.pack\\.outputs\\.sums\\s*\\}\\}\\s*$`, 'm').test(body)) {
+        problems.push(`${where}: the job "${name}" hands the hash of SHA512SUMS on as the output "sums" (steps.pack.outputs.sums) — the staging job checks the tarballs against it`);
+      }
       const guard = steps.findIndex((step) => runScripts(step).some((script) => script.trim() === 'node scripts/release-guard.ts') && /^\s*(?:- )?id:\s*guard\s*$/m.test(step));
-      const [install, check, stage] = [/\bpnpm\s+install\b/, /pnpm run ci --only [\w:,-]*pack:check/, /release:stage|pnpm\s+stage\s+publish/].map(find) as [number, number, number];
+      const [install, check, pack] = [/\bpnpm\s+install\b/, /pnpm run ci --only [\w:,-]*pack:check/, /\bnode scripts\/release-pack\.ts\b/].map(find) as [number, number, number];
       if (guard < 0) {
         problems.push(`${where}: the job "${name}" has no step "node scripts/release-guard.ts" with the id "guard" — it picks the release commit and refuses a version that is tagged or on npm`);
       } else {
-        const order = [['pnpm install', install], ['pack:check', check], ['staging', stage]] as const;
+        const order = [['pnpm install', install], ['pack:check', check], ['packing', pack]] as const;
         let before = guard;
         let from = 'the guard';
         for (const [what, index] of order) {
-          if (index < 0 || index < before) problems.push(`${where}: the job "${name}" ${what} must come after ${from} — in this order: guard, install, pack:check, staging`);
+          if (index < 0 || index < before) problems.push(`${where}: the job "${name}" ${what} must come after ${from} — in this order: guard, install, pack:check, packing`);
           before = Math.max(before, index);
           from = what;
         }
         if (steps.slice(0, guard).some((step) => runScripts(step).length > 0)) {
           problems.push(`${where}: the job "${name}" runs a script before the guard — the guard comes first (only actions before it): scripts of the branch would run unchecked`);
         }
-        for (const step of steps.slice(guard + 1)) {
+        for (const [index, step] of steps.slice(guard + 1).entries()) {
+          const last = guard + 1 + index === steps.length - 1;
+          const action = usesOf(step);
           if (checkoutOf(step) || runScripts(step).some((script) => joined(script).split('\n').some((line) => MOVES_THE_TREE.test(line)))) {
-            problems.push(`${where}: the job "${name}" checks out or moves the tree after the guard — the release commit stays the tree that is built, staged and tagged`);
-          } else if (/^\s*(?:- )?["']?uses["']?\s*:/m.test(step)) {
-            problems.push(`${where}: the job "${name}" uses an action after the guard — only run steps: an action could switch the tree or run code of its own`);
+            problems.push(`${where}: the job "${name}" checks out or moves the tree after the guard — the release commit stays the tree that is built, packed and tagged`);
+          } else if (action !== undefined && !(last && action.startsWith('actions/upload-artifact@'))) {
+            problems.push(`${where}: the job "${name}" uses an action after the guard — only run steps, and the upload of the artifact as the last step: an action could switch the tree or run code of its own`);
           }
         }
         const checkout = steps.slice(0, guard).find(checkoutOf);
         if (!checkout || !/^\s*fetch-depth:\s*0\s*$/m.test(checkout)) problems.push(`${where}: the job "${name}" checks out with "fetch-depth: 0" before the guard — the guard needs the history to find the release commit`);
-        const stageStep = steps[stage] ?? '';
-        const lines = runScripts(stageStep).join('\n').split('\n').map((line) => line.trim()).filter((line) => line !== '');
-        const wanted = ['test "$(git rev-parse HEAD)" = "$COMMIT"', 'status=$(git status --porcelain)', 'test -z "$status"', 'pnpm run release:stage --no-git-checks --tag "$DIST_TAG"'];
-        if (stage >= 0 && lines.join('\n') !== wanted.join('\n')) {
-          problems.push(`${where}: the job "${name}" stages with exactly ${wanted.map((line) => `\`${line}\``).join(', ')} — the tree is still the release commit and clean, and the dist-tag is the guard's: else a late fix of an older line becomes npm's latest`);
+        const packStep = steps[pack] ?? '';
+        const wanted = ['test "$(git rev-parse HEAD)" = "$COMMIT"', 'status=$(git status --porcelain)', 'test -z "$status"', 'node scripts/release-pack.ts "$RUNNER_TEMP/tarballs"'];
+        if (pack >= 0 && linesOf(packStep).join('\n') !== wanted.join('\n')) {
+          problems.push(`${where}: the job "${name}" packs with exactly ${wanted.map((line) => `\`${line}\``).join(', ')} — the tree is still the release commit and clean`);
         }
-        if (stage >= 0 && (!env(stageStep, 'DIST_TAG', 'steps.guard.outputs.dist-tag') || !env(stageStep, 'COMMIT', 'steps.guard.outputs.commit'))) {
-          problems.push(`${where}: the job "${name}" takes DIST_TAG and COMMIT of the staging from the guard's output (steps.guard.outputs.dist-tag, .commit)`);
+        if (pack >= 0 && (!/^\s*(?:- )?id:\s*pack\s*$/m.test(packStep) || !env(packStep, 'COMMIT', 'steps.guard.outputs.commit'))) {
+          problems.push(`${where}: the job "${name}" packs in the step with the id "pack" and takes COMMIT of it from the guard's output (steps.guard.outputs.commit)`);
+        }
+        const upload = steps.at(-1) ?? '';
+        if (!usesOf(upload)?.startsWith('actions/upload-artifact@') || !artifactWith(upload) || !/^\s*retention-days:\s*1\s*$/m.test(upload)) {
+          problems.push(`${where}: the job "${name}" ends by uploading the artifact "${ARTIFACT.name}" from ${ARTIFACT.path} with "retention-days: 1" — the staging job downloads it`);
         }
       }
-      if (!/pnpm run ci --only [\w:,-]*pack:check/.test(joined(body))) problems.push(`${where}: the job "${name}" runs pack:check before it stages the packages`);
-      if (!/pnpm run ci --only [\w:,-]*\bcheck-release\b/.test(joined(body))) problems.push(`${where}: the job "${name}" runs check-release before it stages the packages — the checks of the workflow and the version run on the release commit`);
+      if (!/pnpm run ci --only [\w:,-]*pack:check/.test(joined(body))) problems.push(`${where}: the job "${name}" runs pack:check before the tarballs are packed for staging`);
+      if (!/pnpm run ci --only [\w:,-]*\bcheck-release\b/.test(joined(body))) problems.push(`${where}: the job "${name}" runs check-release before the tarballs are packed for staging — the checks of the workflow and the version run on the release commit`);
     }
     if (releases) {
       if (!/^\s+contents:\s*write\s*$/m.test(body)) problems.push(`${where}: the job "${name}" needs "contents: write" for the tag and the draft`);
@@ -345,7 +434,7 @@ export function checkWorkflow(repository: string): string[] {
       if (tag >= 0) {
         if (!/^\s*test "\$\(git rev-parse HEAD\)" = "\$COMMIT"\s*$/m.test(tagLines)) problems.push(`${where}: the job "${name}" asserts that HEAD is "$COMMIT" before it tags`);
         if (!/\btag\b[^\n]*"\$COMMIT"/.test(tagLines) || !env(tagStep, 'COMMIT', needs('commit')) || !env(tagStep, 'VERSION', needs('version'))) {
-          problems.push(`${where}: the job "${name}" tags "$COMMIT" from the staging job's output (${needs('commit')}) — the release commit, not whatever the branch head is`);
+          problems.push(`${where}: the job "${name}" tags "$COMMIT" from the build job's output (${needs('commit')}) — the release commit, not whatever the branch head is`);
         }
         if (!/^\s*existing=\$\(git ls-remote origin "refs\/tags\/v\$VERSION\^\{\}" \| cut -f1\)\s*$/m.test(tagLines) || !/^\s*elif \[ "\$existing" = "\$COMMIT" \]; then\s*$/m.test(tagLines) || !/^\s*exit 1\s*$/m.test(tagLines)) {
           problems.push(`${where}: the job "${name}" looks for a tag that exists (git ls-remote origin "refs/tags/v$VERSION^{}") and skips tagging only when it is "$COMMIT" — a re-run after a failed draft must not push again, and another commit's tag must fail`);
@@ -357,7 +446,7 @@ export function checkWorkflow(repository: string): string[] {
       if (draft >= 0) {
         if (!/\s--verify-tag(?=\s|$)/.test(draftLine) || /\s--target\b/.test(draftLine)) problems.push(`${where}: the job "${name}" drafts with --verify-tag and without --target — the draft belongs to the tag on the release commit`);
         if (!/\s--latest="\$LATEST"/.test(draftLine) || !env(draftStep, 'LATEST', needs('latest'))) {
-          problems.push(`${where}: the job "${name}" drafts with --latest="$LATEST" from the staging job's output (${needs('latest')}) — a late fix of an older line is not the latest release`);
+          problems.push(`${where}: the job "${name}" drafts with --latest="$LATEST" from the build job's output (${needs('latest')}) — a late fix of an older line is not the latest release`);
         }
         if (!DRAFT.test(draftLine)) problems.push(`${where}: the job "${name}" drafts the GitHub release (gh release create … --draft)`);
       }
@@ -369,10 +458,6 @@ export function checkWorkflow(repository: string): string[] {
     }
   }
   if (releaseName === undefined && /github\.token/.test(code)) problems.push(`${where}: github.token without a release job — only the tag and draft steps after the staging get it`);
-  const manifest = readJson<{ scripts?: Record<string, string> }>(join(repository, 'package.json'));
-  const stageScript = manifest.scripts?.['release:stage'] ?? '';
-  if (!/^pnpm stage publish (?:-r|--recursive)\b/.test(stageScript)) problems.push(`package.json: "release:stage" is "${stageScript}" — pnpm stage publish -r (staged, with pnpm)`);
-  if (/--tag\b/.test(stageScript)) problems.push(`package.json: "release:stage" sets --tag — the workflow passes the guard's dist-tag, and a second one would override it`);
   return problems;
 }
 

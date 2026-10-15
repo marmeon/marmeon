@@ -336,18 +336,33 @@ These are the maintainer's gates:
 
 1. Merge the release pull request.
 2. Start the *Release* workflow ("Run workflow") on `main`, or on the maintenance branch for a late fix of an older line.
-3. Approve the staged versions on npmjs.com with two-factor authentication.
-4. Publish the draft GitHub Release.
+3. Rebuild the release commit and compare its tarballs with the staged ones (below).
+4. Approve the staged versions on npmjs.com with two-factor authentication.
+5. Publish the draft GitHub Release.
 
 The run releases the **release commit** — the last commit of the branch that changed a package's `CHANGELOG.md` or
-`.github/release-base` — not the branch head, so whatever merged after it goes into the next release. The first job (`stage`,
-`id-token: write`, no write access to the repository) runs `scripts/release-guard.ts` before anything is installed: the
+`.github/release-base` — not the branch head, so whatever merged after it goes into the next release. The first job (`build`,
+`contents: read`, **no** OIDC token) runs `scripts/release-guard.ts` before anything is installed: the
 branch, the release commit (checked out, detached), one plain `x.y.z` version, the same changelog section in every package,
 `v<version>` not yet tagged, the version on no package of npm, the release base, the release commit changing release files only
-and the dist-tag. Then `pnpm run ci --only
-build,pack:check,check-release` and `pnpm stage publish -r` with trusted publishing (OIDC, no token in the repository) and
-provenance. The second job (`release`, `contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
+and the dist-tag. Then `pnpm run ci --only build,pack:check,check-release`, and `scripts/release-pack.ts` packs every package
+(`pnpm pack`) and writes `SHA512SUMS`; the tarballs and `SHA512SUMS` leave the job as an artifact (kept for a day), the hash of
+`SHA512SUMS` as its output. The second job (`stage`, `id-token: write`) checks out nothing, installs nothing and runs no script
+of the repository or of a dependency, so the code that runs in the first job never meets the OIDC token. It downloads the artifact, checks `SHA512SUMS` against the output and every tarball
+against `SHA512SUMS`, and only then stages the tarballs `SHA512SUMS` names with `npm stage publish` (trusted publishing, OIDC,
+no token in the repository; provenance) and prints `SHA512SUMS`. The hashes show that the staged files are the ones the first job
+packed, not that the first job packed what the release commit builds — step 3 closes that gap. The third job (`release`,
+`contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
 release, none per package) and drafts the GitHub Release with the version's changelog section as its notes.
+
+**Before approving (required):** the builds are reproducible, so a rebuild of the release commit must give the very tarballs npm
+holds. The run's log has the commit's SHA; on a clean checkout of it (`git switch --detach <commit>`) run
+`pnpm install --frozen-lockfile && pnpm run clean && pnpm build && node scripts/release-pack.ts "$(mktemp -d)/tarballs"`. Then, for
+every staged package, fetch what npm holds with `npm stage download <stage-id>` (`npm stage list` shows the ids) and compare
+`shasum -a 512` of the downloaded file with the rebuilt tarball of the same name. The log's `SHA512SUMS` (printed by the *stage*
+job) is only a pointer to the right files: the log shows what the job checked, npm holds what will go live. Any difference — or a
+staged package you cannot account for — means: do not approve. Reject the staged versions (`npm stage reject`) and look into the
+build job.
 
 Anyone with write access can start the workflow; the guards are conveniences and `check-release`'s check of the workflow files
 is a review aid, not a barrier. The gate is the maintainer's two-factor approval on npm — nothing is public without it, and the
@@ -368,12 +383,14 @@ and the deprecation policy in the README.
 
 ### When a run fails
 
-- **The guard or a check before staging is red:** nothing was staged. Merge the fix through a pull request, run
+- **The guard, a check or the packing in the `build` job is red:** nothing was staged. Merge the fix through a pull request, run
   `pnpm release:prepare` again (any merge moves the release base), merge that release pull request and start the workflow again.
-- **The "stage the packages" step is red:** treat it as possibly partly staged. Never re-run it: reject whatever was staged on
-  npmjs.com and release the next patch.
+- **A hash check of the `stage` job is red** (before its first `npm stage publish`; the log says which line failed): nothing was
+  staged, but the artifact is not what the `build` job hashed — do not re-run, look into the run, and start a new one.
+- **The "stage the tarballs" step is red after a hash check passed:** treat it as possibly partly staged. Never re-run it:
+  reject whatever was staged on npmjs.com and release the next patch.
 - **The tag step or the draft step failed after staging:** use **"Re-run failed jobs"** on the run. It repeats only the `release`
-  job with the `stage` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
+  job with the `build` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
   draft is created. **Never "Re-run all jobs"**, and never start a new run after one that staged: a staged version is invisible
   to `npm view`, so the guards cannot see it.
 - **If the re-run does not help,** or the workflow file itself was wrong (a re-run executes the same file again), approve on npmjs.com first, then tag and draft by hand (the release commit's SHA is in the
@@ -405,9 +422,10 @@ releases below `latest`, and a version equal to `latest` is refused. An app on a
 
 ### The tarballs
 
-- Packages are packed and published with **pnpm** only — `npm pack` and `npm publish` ignore `publishConfig.exports` and would
+- Packages are packed with **pnpm** only — `npm pack` and `npm publish` of a directory ignore `publishConfig.exports` and would
   ship the `@marmeon/source` condition, TypeScript sources Node does not strip under `node_modules` (`pnpm pack:check` proves the
-  tarballs).
+  tarballs). A release stages the finished tarballs as files (`npm stage publish ./<name>.tgz`, from `scripts/release-pack.ts`
+  and its `SHA512SUMS`), never a package directory.
 - **`pnpm pack:check`** holds each tarball to these rules: no tests, type tests, `__fixtures__`, `test-helpers` or build info
   (`stubs/` and `template/` ship whole — generators and create-marmeon copy them into apps, tests included); no `dist/` file
   without its source in `src/` (a leftover of an earlier build) and every source map's sources in the tarball; `LICENSE` byte

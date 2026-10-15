@@ -330,7 +330,8 @@ describe('check', () => {
 describe('checkWorkflow — the release run', () => {
   const real = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
   const draft = /gh release create .*--draft.*/.exec(real)![0];
-  /** Where the release job starts: everything before it is the workflow's top and the staging job. */
+  /** Where the staging job and the release job start: before them is the workflow's top and the build job. */
+  const cutStage = real.indexOf('\n  stage:\n');
   const cut = real.indexOf('\n  release:\n');
 
   /** A repository with this release.yml and the real package.json (or this one). */
@@ -343,8 +344,8 @@ describe('checkWorkflow — the release run', () => {
   }
 
   /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
-  function mutated(from: string | RegExp, to: string, part: 'file' | 'stage' | 'release' = 'file'): string {
-    const [start, end] = part === 'file' ? [0, real.length] : part === 'stage' ? [0, cut] : [cut, real.length];
+  function mutated(from: string | RegExp, to: string, part: 'file' | 'build' | 'stage' | 'release' = 'file'): string {
+    const [start, end] = part === 'file' ? [0, real.length] : part === 'build' ? [0, cutStage] : part === 'stage' ? [cutStage, cut] : [cut, real.length];
     const result = real.slice(0, start) + real.slice(start, end).replace(from, to) + real.slice(end);
     expect(result, `the mutation of ${String(from)} changed nothing`).not.toBe(real);
     return result;
@@ -355,12 +356,14 @@ describe('checkWorkflow — the release run', () => {
   const step = (first: string) => {
     const start = real.indexOf(first);
     expect(start, `no step starts with ${first}`).toBeGreaterThanOrEqual(0);
-    const to = [real.indexOf('\n      # ', start + 1), real.indexOf('\n      - ', start + 1), real.indexOf('\n\n  release:', start + 1)].filter((index) => index > 0).sort((a, b) => a - b)[0] ?? real.length;
+    const to = [real.indexOf('\n      # ', start + 1), real.indexOf('\n      - ', start + 1), real.indexOf('\n\n  stage:', start + 1), real.indexOf('\n\n  release:', start + 1)].filter((index) => index > 0).sort((a, b) => a - b)[0] ?? real.length;
     return real.slice(start, to + 1);
   };
   const guardStep = '      - id: guard\n        run: node scripts/release-guard.ts\n';
   const installStep = '      - run: pnpm install --frozen-lockfile\n';
-  const stagingStep = step('      - name: stage the packages');
+  const packStep = step('      - id: pack');
+  const uploadStep = step('      - uses: actions/upload-artifact');
+  const stagingStep = step('      - name: stage the tarballs');
   const tagStep = step('      - name: tag the release commit');
   const draftStep = step('      - name: draft the GitHub release');
 
@@ -411,7 +414,7 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(' --verify-tag', ''))).toContain('drafts with --verify-tag and without --target');
       expect(problemsOf(mutated(' --verify-tag', ' --verify-tag --target main'))).toContain('drafts with --verify-tag and without --target');
       expect(problemsOf(mutated(' --latest="$LATEST"', ''))).toContain('--latest="$LATEST"');
-      expect(problemsOf(mutated('LATEST: ${{ needs.stage.outputs.latest }}', 'LATEST: true'))).toContain('--latest="$LATEST"');
+      expect(problemsOf(mutated('LATEST: ${{ needs.build.outputs.latest }}', 'LATEST: true'))).toContain('--latest="$LATEST"');
     });
   });
 
@@ -424,7 +427,7 @@ describe('checkWorkflow — the release run', () => {
     });
 
     it('refuses a secret anywhere', () => {
-      expect(problemsOf(mutated('LATEST: ${{ needs.stage.outputs.latest }}', 'LATEST: ${{ needs.stage.outputs.latest }}\n          X: ${{ secrets.NPM_TOKEN }}'))).toContain('a secret');
+      expect(problemsOf(mutated('LATEST: ${{ needs.build.outputs.latest }}', 'LATEST: ${{ needs.build.outputs.latest }}\n          X: ${{ secrets.NPM_TOKEN }}'))).toContain('a secret');
       expect(problemsOf(mutated('GH_TOKEN: ${{ github.token }}', 'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}'))).toContain('a secret');
     });
 
@@ -452,20 +455,21 @@ describe('checkWorkflow — the release run', () => {
     });
 
     it('refuses a cache in either job', () => {
-      expect(problemsOf(mutated('node-version-file: .nvmrc', 'node-version-file: .nvmrc\n          cache: pnpm', 'stage'))).toContain('a cache');
+      expect(problemsOf(mutated('node-version-file: .nvmrc', 'node-version-file: .nvmrc\n          cache: pnpm', 'build'))).toContain('a cache');
+      expect(problemsOf(mutated('node-version: 26.10.0', 'node-version: 26.10.0\n          cache: npm', 'stage'))).toContain('a cache');
       expect(problemsOf(mutated('node-version-file: .nvmrc', 'node-version-file: .nvmrc\n          cache: pnpm', 'release'))).toContain('a cache');
       expect(problemsOf(mutated(installStep, `      - uses: actions/cache@v4\n${installStep}`))).toContain('a cache');
     });
 
     it('refuses a setup-node step that does not turn its implicit cache off', () => {
-      const off = 'node-version-file: .nvmrc\n          package-manager-cache: false';
-      for (const part of ['stage', 'release'] as const) {
-        expect(problemsOf(mutated(off, 'node-version-file: .nvmrc', part))).toContain('without "package-manager-cache: false"');
-        expect(problemsOf(mutated(off, 'node-version-file: .nvmrc\n          package-manager-cache: true', part))).toContain('without "package-manager-cache: false"');
+      for (const [part, version] of [['build', 'node-version-file: .nvmrc'], ['stage', 'node-version: 26.10.0'], ['release', 'node-version-file: .nvmrc']] as const) {
+        const off = `${version}\n          package-manager-cache: false`;
+        expect(problemsOf(mutated(off, version, part))).toContain('without "package-manager-cache: false"');
+        expect(problemsOf(mutated(off, `${version}\n          package-manager-cache: true`, part))).toContain('without "package-manager-cache: false"');
       }
       const setup = '      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        with:\n          node-version-file: .nvmrc\n          package-manager-cache: false # the action\'s default restores a pnpm store by itself\n';
       const named = '      - name: node\n        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        with:\n          node-version-file: .nvmrc\n';
-      expect(problemsOf(mutated(setup, named, 'stage'))).toContain('without "package-manager-cache: false"');
+      expect(problemsOf(mutated(setup, named, 'build'))).toContain('without "package-manager-cache: false"');
       expect(problemsOf(mutated(setup, named.replace('with:', 'env:\n          package-manager-cache: false\n        with:'), 'release'))).toContain('without "package-manager-cache: false"');
       expect(problemsOf(mutated(setup, named + '          package-manager-cache: false\n', 'release'))).not.toContain('package-manager-cache');
       expect(problemsOf(real)).not.toContain('package-manager-cache');
@@ -482,6 +486,8 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(/actions\/checkout@[0-9a-f]{40}/, 'actions/checkout@v5'))).toContain('"actions/checkout@v5" is not pinned to a commit');
       expect(problemsOf(mutated(/actions\/setup-node@[0-9a-f]{40}/, 'actions/setup-node@v5', 'release'))).toContain('"actions/setup-node@v5" is not pinned to a commit');
       expect(problemsOf(mutated(/actions\/setup-node@[0-9a-f]{40}/, 'actions/setup-node@' + 'a'.repeat(39), 'stage'))).toContain('is not pinned to a commit');
+      expect(problemsOf(mutated(/actions\/upload-artifact@[0-9a-f]{40}/, 'actions/upload-artifact@v7'))).toContain('"actions/upload-artifact@v7" is not pinned to a commit');
+      expect(problemsOf(mutated(/actions\/download-artifact@[0-9a-f]{40}/, 'actions/download-artifact@v8'))).toContain('"actions/download-artifact@v8" is not pinned to a commit');
     });
 
     it.each([['a quoted key', '"uses":'], ['a space before the colon', 'uses :'], ['single quotes', "'uses':"]])('sees a uses key written with %s', (_form, key) => {
@@ -511,35 +517,50 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated('      id-token: write', '', 'stage'))).toContain('without "id-token: write"');
     });
 
-    it('keeps the default read-only', () => {
+    it('gives the OIDC token to the staging job only — not to the build job, which runs the repository’s code', () => {
+      const withToken = mutated('    permissions:\n      contents: read\n    outputs:', '    permissions:\n      contents: read\n      id-token: write\n    outputs:', 'build');
+      expect(problemsOf(withToken)).toContain('the job "build" has "id-token: write" but stages nothing');
+    });
+
+    it('keeps the default exactly contents: read — no further scope for every job', () => {
       expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: write\n'))).toContain('default "permissions:"');
+      expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n  id-token: write\n'))).toContain('default "permissions:"');
+      expect(problemsOf(mutated('permissions:\n  contents: read\n', 'permissions:\n  id-token: write\n  contents: read\n'))).toContain('default "permissions:"');
     });
 
-    it('wants the job after the staging to depend on it', () => {
-      expect(problemsOf(mutated('    needs: stage\n', ''))).toContain('0 jobs run after the staging job');
-      expect(problemsOf(mutated('    needs: stage\n', ''))).toContain('github.token without a release job');
+    it('wants a permissions: block on every job — the split cannot be undone by a default that grants id-token', () => {
+      const own = '    permissions:\n      contents: read\n    outputs:';
+      const undone = mutated(own, '    outputs:', 'build').replace('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n  id-token: write\n');
+      expect(problemsOf(undone)).toContain('the job "build" has no "permissions:" block');
+      expect(problemsOf(undone)).toContain('default "permissions:"');
+      expect(problemsOf(mutated('    permissions:\n      contents: write # the tag and the draft GitHub Release\n', '', 'release'))).toContain('the job "release" has no "permissions:" block');
     });
 
-    it('wants exactly one staging job, on a GitHub-hosted runner, after pack:check, with the script of pnpm stage publish', () => {
-      expect(problemsOf(`${real}\n  again:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm run release:stage\n`)).toContain('2 jobs stage the packages');
+    it('wants the job after the staging to depend on it, and on the build job', () => {
+      expect(problemsOf(mutated('    needs: [build, stage]\n', ''))).toContain('0 jobs run after the staging job');
+      expect(problemsOf(mutated('    needs: [build, stage]\n', ''))).toContain('github.token without a release job');
+      expect(problemsOf(mutated('    needs: [build, stage]\n', '    needs: stage\n'))).toContain('the job "release" waits for the build job too');
+    });
+
+    it('wants the staging job to wait for exactly the build job', () => {
+      expect(problemsOf(mutated('    needs: build\n', '', 'stage'))).toContain('the staging job waits for 0 jobs');
+      expect(problemsOf(mutated('    needs: build\n', '    needs: [build, release]\n', 'stage'))).toContain('the staging job waits for 2 jobs');
+    });
+
+    it('wants exactly one staging job, on a GitHub-hosted runner, and the build to run pack:check and check-release', () => {
+      expect(problemsOf(`${real}\n  again:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm stage publish ./x.tgz\n`)).toContain('2 jobs stage the packages');
       expect(problemsOf(mutated('    runs-on: ubuntu-latest\n', '    runs-on: self-hosted\n', 'stage'))).toContain('must run on a GitHub-hosted runner');
-      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-release', 'pnpm run ci --only build'))).toContain('runs pack:check before it stages');
-      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-release', 'pnpm run ci --only build,pack:check'))).toContain('runs check-release before it stages');
-      const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
-      manifest.scripts['release:stage'] = 'pnpm publish -r';
-      expect(checkWorkflow(repositoryWithWorkflow(real, JSON.stringify(manifest))).join('\n')).toContain('"release:stage" is');
+      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-release', 'pnpm run ci --only build'))).toContain('runs pack:check before the tarballs are packed');
+      expect(problemsOf(mutated('pnpm run ci --only build,pack:check,check-release', 'pnpm run ci --only build,pack:check'))).toContain('runs check-release before the tarballs are packed');
     });
 
-    it('refuses npm publish, a plain pnpm publish and a token', () => {
-      expect(problemsOf(mutated('pnpm run release:stage', 'npm publish && pnpm run release:stage'))).toContain('"npm publish"');
-      expect(problemsOf(mutated('pnpm run release:stage', 'pnpm publish -r && pnpm run release:stage'))).toContain('a plain "pnpm publish"');
+    it('refuses npm publish, a plain pnpm publish, pnpm stage and a token', () => {
+      const cd = 'cd "$TARBALLS"';
+      expect(problemsOf(mutated(cd, `npm publish && ${cd}`, 'stage'))).toContain('"npm publish"');
+      expect(problemsOf(mutated(cd, `pnpm publish -r && ${cd}`, 'stage'))).toContain('a plain "pnpm publish"');
+      expect(problemsOf(mutated(installStep, `      - run: pnpm run release:stage\n${installStep}`))).toContain('pnpm stage or release:stage');
+      expect(problemsOf(mutated(installStep, `      - run: pnpm stage publish -r\n${installStep}`))).toContain('pnpm stage or release:stage');
       expect(problemsOf(mutated('node-version-file: .nvmrc', 'node-version-file: .nvmrc\n          registry-url: https://registry.npmjs.org'))).toContain('registry-url');
-    });
-
-    it('refuses a dist-tag in the release:stage script — it would override the guard’s', () => {
-      const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
-      manifest.scripts['release:stage'] += ' --tag next';
-      expect(checkWorkflow(repositoryWithWorkflow(real, JSON.stringify(manifest))).join('\n')).toContain('"release:stage" sets --tag');
     });
 
     it('refuses an if: or continue-on-error: on a step or on a job', () => {
@@ -550,12 +571,12 @@ describe('checkWorkflow — the release run', () => {
     });
 
     it('wants every checkout without persisted credentials', () => {
-      expect(problemsOf(mutated(/ {10}persist-credentials: false.*\n/, '', 'stage'))).toContain('the job "stage" checks out without "persist-credentials: false"');
+      expect(problemsOf(mutated(/ {10}persist-credentials: false.*\n/, '', 'build'))).toContain('the job "build" checks out without "persist-credentials: false"');
       expect(problemsOf(mutated(/ {10}persist-credentials: false.*\n/, '', 'release'))).toContain('the job "release" checks out without "persist-credentials: false"');
     });
   });
 
-  describe('the staging job: the guard and the release commit', () => {
+  describe('the build job: the guard and the release commit', () => {
     it('wants the guard step', () => {
       expect(problemsOf(mutated(guardStep, ''))).toContain('has no step "node scripts/release-guard.ts" with the id "guard"');
       expect(problemsOf(mutated(guardStep, '      - run: node scripts/release-guard.ts\n'))).toContain('has no step "node scripts/release-guard.ts" with the id "guard"');
@@ -570,14 +591,14 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(`${mutated(guardStep, '')}\n  other:\n    runs-on: ubuntu-latest\n    steps:\n${guardStep}`)).toContain('has no step "node scripts/release-guard.ts"');
     });
 
-    it('wants the guard before the install, the checks and the staging', () => {
+    it('wants the guard before the install, the checks and the packing', () => {
       expect(problemsOf(mutated(guardStep, '').replace(installStep, `${installStep}${guardStep}`))).toContain('pnpm install must come after the guard');
-      expect(problemsOf(mutated(guardStep, '').replace(stagingStep, `${stagingStep}${guardStep}`))).toContain('pnpm install must come after the guard');
+      expect(problemsOf(mutated(guardStep, '').replace(packStep, `${packStep}${guardStep}`))).toContain('pnpm install must come after the guard');
     });
 
-    it('wants staging after pack:check', () => {
+    it('wants packing after pack:check', () => {
       const check = step('      - run: pnpm run ci --only');
-      expect(problemsOf(real.replace(check, '').replace(stagingStep, `${stagingStep}${check}`))).toContain('staging must come after pack:check');
+      expect(problemsOf(real.replace(check, '').replace(packStep, `${packStep}${check}`))).toContain('packing must come after pack:check');
       expect(problemsOf(real.replace(check, ''))).toContain('pack:check must come after pnpm install');
     });
 
@@ -603,30 +624,163 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(/ {10}fetch-depth: 0.*\n/, '          fetch-depth: 1\n'))).toContain('"fetch-depth: 0"');
     });
 
-    it('wants the staging step exactly: HEAD is the release commit, the tree is clean, the guard’s dist-tag', () => {
-      const wanted = 'stages with exactly';
-      expect(problemsOf(mutated('          test "$(git rev-parse HEAD)" = "$COMMIT"\n', '', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated('          status=$(git status --porcelain)\n', '', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated('          test -z "$status"\n', '', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated('          test -z "$status"\n', '          test -z "$(git status --porcelain)"\n', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated(' --tag "$DIST_TAG"', '', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated(' --no-git-checks', ' --no-git-checks --force', 'stage'))).toContain(wanted);
-      expect(problemsOf(mutated('DIST_TAG: ${{ steps.guard.outputs.dist-tag }}', 'DIST_TAG: latest'))).toContain('takes DIST_TAG and COMMIT');
-      expect(problemsOf(mutated('COMMIT: ${{ steps.guard.outputs.commit }}', 'COMMIT: ${{ github.sha }}'))).toContain('takes DIST_TAG and COMMIT');
+    it('wants the packing step exactly: HEAD is the release commit, the tree is clean, the tarballs go to one directory', () => {
+      const wanted = 'packs with exactly';
+      expect(problemsOf(mutated('          test "$(git rev-parse HEAD)" = "$COMMIT"\n', '', 'build'))).toContain(wanted);
+      expect(problemsOf(mutated('          status=$(git status --porcelain)\n', '', 'build'))).toContain(wanted);
+      expect(problemsOf(mutated('          test -z "$status"\n', '', 'build'))).toContain(wanted);
+      expect(problemsOf(mutated('          test -z "$status"\n', '          test -z "$(git status --porcelain)"\n', 'build'))).toContain(wanted);
+      expect(problemsOf(mutated('node scripts/release-pack.ts "$RUNNER_TEMP/tarballs"', 'node scripts/release-pack.ts "$RUNNER_TEMP/other"', 'build'))).toContain(wanted);
+      expect(problemsOf(mutated('COMMIT: ${{ steps.guard.outputs.commit }}', 'COMMIT: ${{ github.sha }}'))).toContain('takes COMMIT of it from the guard');
+      expect(problemsOf(mutated('      - id: pack\n', '      - id: other\n'))).toContain('packs in the step with the id "pack"');
     });
 
-    it('wants the guard’s commit, version and latest as outputs', () => {
-      for (const key of ['commit', 'version', 'latest']) {
-        expect(problemsOf(mutated(`      ${key}: \${{ steps.guard.outputs.${key} }}\n`, '', 'stage')), key).toContain(`hands the guard's "${key}" on`);
+    it('wants the packing after the install, the checks and the guard, and no packing at all is a problem', () => {
+      expect(problemsOf(mutated(packStep, ''))).toContain('packing must come after pack:check');
+    });
+
+    it('wants the guard’s commit, version, latest and dist-tag and the pack step’s sums as outputs', () => {
+      for (const key of ['commit', 'version', 'latest', 'dist-tag']) {
+        expect(problemsOf(mutated(`      ${key}: \${{ steps.guard.outputs.${key} }}\n`, '', 'build')), key).toContain(`hands the guard's "${key}" on`);
       }
+      expect(problemsOf(mutated('      sums: ${{ steps.pack.outputs.sums }}\n', '', 'build'))).toContain('hands the hash of SHA512SUMS on as the output "sums"');
+    });
+
+    it('ends by uploading the artifact, pinned, for a day, and nothing else uses an action after the guard', () => {
+      const wanted = 'ends by uploading the artifact';
+      expect(problemsOf(mutated(uploadStep, ''))).toContain(wanted);
+      expect(problemsOf(mutated('          name: tarballs\n          path: ${{ runner.temp }}/tarballs\n          retention-days: 1', '          name: other\n          path: ${{ runner.temp }}/tarballs\n          retention-days: 1', 'build'))).toContain(wanted);
+      expect(problemsOf(mutated('retention-days: 1', 'retention-days: 90'))).toContain(wanted);
+      expect(problemsOf(mutated(uploadStep, `${uploadStep}      - run: echo hi\n`))).toContain(wanted);
+      expect(problemsOf(mutated(uploadStep, `${uploadStep}      - uses: actions/upload-artifact@${'a'.repeat(40)}\n`))).toContain('uses an action after the guard');
+      expect(problemsOf(mutated(installStep, `      - uses: actions/upload-artifact@${'a'.repeat(40)}\n${installStep}`))).toContain('uses an action after the guard');
+    });
+  });
+
+  describe('the staging job: the only one with the OIDC token', () => {
+    const wanted = 'stages with exactly';
+
+    it('has no checkout, because the repository’s code would run next to the token', () => {
+      const checkout = '      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n        with:\n          persist-credentials: false\n';
+      const first = '      - uses: actions/download-artifact';
+      expect(problemsOf(mutated(first, `${checkout}${first}`, 'stage'))).toContain('the job "stage" checks out the repository');
+      expect(problemsOf(mutated(first, `${checkout}${first}`, 'stage'))).toContain('has exactly three steps');
+    });
+
+    it('installs and runs nothing of the repository: no pnpm, node, git, npm install or other npm command', () => {
+      const cd = 'cd "$TARBALLS"';
+      for (const command of ['pnpm install --frozen-lockfile', 'pnpm run build', 'npm ci', 'npm install', 'npm run build', 'npm exec x', 'npx x', 'yarn', 'corepack enable', 'node scripts/other.ts', 'git status', 'bun x']) {
+        expect(problemsOf(mutated(cd, `${command}\n          ${cd}`, 'stage')), command).toContain('it holds the OIDC token: no pnpm, node, git or install');
+      }
+      expect(problemsOf(mutated(cd, `# ${'pnpm install'}\n          ${cd}`, 'stage'))).not.toContain('no pnpm, node, git or install');
+    });
+
+    it('uses no action but the download of the artifact and setup-node', () => {
+      const first = '      - uses: actions/download-artifact';
+      expect(problemsOf(mutated(first, `      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0\n${first}`, 'stage'))).toContain('the job "stage" uses pnpm/action-setup@');
+      expect(problemsOf(mutated(first, `      - uses: actions/cache@${'a'.repeat(40)}\n${first}`, 'stage'))).toContain('the job "stage" uses actions/cache@');
+    });
+
+    it('has exactly three steps: the download, setup-node, the staging', () => {
+      expect(problemsOf(mutated(stagingStep, `${stagingStep}      - run: echo hi\n`, 'stage'))).toContain('has exactly three steps');
+      expect(problemsOf(mutated('          node-version: 26.10.0\n', '', 'stage'))).toContain('sets up Node with');
+      expect(problemsOf(mutated(stagingStep, '', 'stage'))).toContain('0 jobs stage the packages');
+    });
+
+    it('downloads the artifact the build job uploads', () => {
+      const wantedDownload = 'downloads the artifact "tarballs"';
+      expect(problemsOf(mutated('          name: tarballs\n', '          name: other\n', 'stage'))).toContain(wantedDownload);
+      expect(problemsOf(mutated('          path: ${{ runner.temp }}/tarballs\n', '          path: ${{ runner.temp }}/elsewhere\n', 'stage'))).toContain(wantedDownload);
+    });
+
+    it('sets up the Node of .nvmrc — there is no checkout to read the file from', () => {
+      const version = readFileSync(join(root, '.nvmrc'), 'utf8').trim();
+      expect(real).toContain(`node-version: ${version}`);
+      const repository = repositoryWithWorkflow(real);
+      writeFileSync(join(repository, '.nvmrc'), '99.0.0\n');
+      expect(checkWorkflow(repository).join('\n')).toContain('sets up Node with "node-version: 99.0.0"');
+      writeFileSync(join(repository, '.nvmrc'), `${version}\n`);
+      expect(checkWorkflow(repository)).toEqual([]);
+      expect(problemsOf(mutated('          node-version: 26.10.0\n', '          node-version-file: .nvmrc\n', 'stage'))).toContain('sets up Node with');
+    });
+
+    it('checks the hash of SHA512SUMS and of every tarball before the first npm stage publish, and stages the files SHA512SUMS names', () => {
+      const hashCheck = '          printf \'%s  SHA512SUMS\\n\' "$SUMS" | sha512sum --check --strict -\n';
+      expect(real).toContain(hashCheck);
+      expect(problemsOf(mutated(hashCheck, '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(hashCheck, hashCheck.replace('--strict ', ''), 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('          sha512sum --check --strict SHA512SUMS\n', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(hashCheck, '', 'stage'))).toContain('before the first npm stage publish');
+      expect(problemsOf(mutated('          set -o pipefail\n', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('          done < "$TARBALLS/SHA512SUMS"\n', '          done < /dev/null\n', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('          cat SHA512SUMS\n', '', 'stage'))).toContain(wanted);
+    });
+
+    it('refuses any file in the artifact besides SHA512SUMS and the tarballs it names — npm would read a planted .npmrc', () => {
+      for (const line of ['          expected=', '          found=', '          test "$expected" = "$found"']) {
+        const start = real.indexOf(line);
+        expect(start, line).toBeGreaterThan(0);
+        const text = real.slice(start, real.indexOf('\n', start) + 1);
+        expect(problemsOf(mutated(text, '', 'stage')), line).toContain(wanted);
+      }
+      expect(problemsOf(mutated('find . -mindepth 1', 'find . -mindepth 1 -not -name ".*"', 'stage'))).toContain(wanted);
+    });
+
+    it('runs npm in an empty directory, on tarballs named by absolute path, without an npmrc of the user or the machine', () => {
+      expect(problemsOf(mutated('          cd "$RUNNER_TEMP/empty"\n', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('"$TARBALLS/$name" --provenance', '"./$name" --provenance', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/no-userconfig', 'NPM_CONFIG_USERCONFIG: /tmp/npmrc', 'stage'))).toContain('stages with the env');
+      // npm exits 1 when both name /dev/null ("double-loading config").
+      expect(problemsOf(mutated('NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/no-userconfig', 'NPM_CONFIG_USERCONFIG: /dev/null', 'stage'))).toContain('stages with the env');
+      expect(problemsOf(mutated('NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/no-globalconfig', 'NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/no-userconfig', 'stage'))).toContain('stages with the env');
+      expect(problemsOf(mutated(/ {10}NPM_CONFIG_GLOBALCONFIG: .*\n/, '', 'stage'))).toContain('stages with the env');
+    });
+
+    it('starts npm with the two config files of the workflow (the same file for both makes npm exit 1)', () => {
+      const dir = tempDir('marmeon-check-release-');
+      const env = { ...process.env, NPM_CONFIG_USERCONFIG: join(dir, 'no-userconfig'), NPM_CONFIG_GLOBALCONFIG: join(dir, 'no-globalconfig') };
+      expect(spawnSync('npm', ['--version'], { env, encoding: 'utf8' }).status).toBe(0);
+      const same = { ...env, NPM_CONFIG_USERCONFIG: '/dev/null', NPM_CONFIG_GLOBALCONFIG: '/dev/null' };
+      expect(spawnSync('npm', ['--version'], { env: same, encoding: 'utf8' }).status).not.toBe(0);
+    });
+
+    it('validates the dist-tag before any npm call and passes it as --tag="$DIST_TAG"', () => {
+      expect(problemsOf(mutated('          [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]]\n', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('^latest(-[0-9]+(\\.[0-9]+)?)?$', '^.*$', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('--tag="$DIST_TAG"', '--tag "$DIST_TAG"', 'stage'))).toContain(wanted);
+    });
+
+    it('allows the step no other variable, and no env on the job, the workflow or another step', () => {
+      const takes = 'stages with the env';
+      expect(problemsOf(mutated('          SUMS: ${{', '          NODE_OPTIONS: --require /tmp/x.js\n          SUMS: ${{', 'stage'))).toContain(takes);
+      expect(problemsOf(mutated('          NPM_CONFIG_USERCONFIG', '          NPM_CONFIG_REGISTRY: https://example.com\n          NPM_CONFIG_USERCONFIG', 'stage'))).toContain(takes);
+      expect(problemsOf(mutated('    timeout-minutes: 15\n', '    timeout-minutes: 15\n    env:\n      NODE_OPTIONS: --require /tmp/x.js\n', 'stage'))).toContain('has an env: besides');
+      expect(problemsOf(mutated('          package-manager-cache: false # the action\'s default restores a pnpm store by itself\n', '          package-manager-cache: false\n        env:\n          HTTPS_PROXY: http://example.com\n', 'stage'))).toContain('has an env: besides');
+      expect(problemsOf(mutated('\njobs:\n', '\nenv:\n  NODE_OPTIONS: --require /tmp/x.js\n\njobs:\n'))).toContain('an env: for the whole workflow');
+    });
+
+    it('stages every tarball with provenance, the public access and the guard’s dist-tag, and only one of the version', () => {
+      expect(problemsOf(mutated(' --provenance', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' --tag="$DIST_TAG"', '', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated(' --tag="$DIST_TAG"', ' --tag=latest', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('"$TARBALLS/$name"', '"$TARBALLS"/*.tgz', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('          test "${name%-"$VERSION".tgz}" != "$name"\n', '', 'stage'))).toContain(wanted);
+    });
+
+    it('takes the hash, the version and the dist-tag from the build job’s outputs', () => {
+      const takes = 'takes SUMS, VERSION and DIST_TAG of the staging from the build job';
+      expect(problemsOf(mutated('SUMS: ${{ needs.build.outputs.sums }}', 'SUMS: ${{ needs.build.outputs.version }}', 'stage'))).toContain(takes);
+      expect(problemsOf(mutated('VERSION: ${{ needs.build.outputs.version }}', 'VERSION: 1.0.0', 'stage'))).toContain(takes);
+      expect(problemsOf(mutated('DIST_TAG: ${{ needs.build.outputs.dist-tag }}', 'DIST_TAG: latest', 'stage'))).toContain(takes);
+      expect(problemsOf(mutated('TARBALLS: ${{ runner.temp }}/tarballs', 'TARBALLS: /tmp', 'stage'))).toContain(takes);
     });
   });
 
   describe('the release job', () => {
     it('starts with the release commit’s checkout', () => {
-      expect(problemsOf(mutated('          ref: ${{ needs.stage.outputs.commit }}\n', '', 'release'))).toContain('starts by checking out the release commit');
-      expect(problemsOf(mutated('ref: ${{ needs.stage.outputs.commit }}', 'ref: main', 'release'))).toContain('starts by checking out the release commit');
-      expect(problemsOf(mutated('ref: ${{ needs.stage.outputs.commit }}', 'ref: ${{ github.sha }}', 'release'))).toContain('starts by checking out the release commit');
+      expect(problemsOf(mutated('          ref: ${{ needs.build.outputs.commit }}\n', '', 'release'))).toContain('starts by checking out the release commit');
+      expect(problemsOf(mutated('ref: ${{ needs.build.outputs.commit }}', 'ref: main', 'release'))).toContain('starts by checking out the release commit');
+      expect(problemsOf(mutated('ref: ${{ needs.build.outputs.commit }}', 'ref: ${{ github.sha }}', 'release'))).toContain('starts by checking out the release commit');
     });
 
     it('installs nothing and uses nothing but actions/* — setup-node without a cache', () => {
@@ -653,7 +807,7 @@ describe('checkWorkflow — the release run', () => {
     it('wants the tag step to assert HEAD, tag "$COMMIT" from the staging job and mask the encoded token', () => {
       expect(problemsOf(mutated('          test "$(git rev-parse HEAD)" = "$COMMIT"\n', '', 'release'))).toContain('asserts that HEAD is "$COMMIT"');
       expect(problemsOf(mutated('"v$VERSION" -m "v$VERSION" "$COMMIT"', '"v$VERSION" -m "v$VERSION"'))).toContain('tags "$COMMIT"');
-      expect(problemsOf(mutated('COMMIT: ${{ needs.stage.outputs.commit }}', 'COMMIT: ${{ github.sha }}', 'release'))).toContain('tags "$COMMIT"');
+      expect(problemsOf(mutated('COMMIT: ${{ needs.build.outputs.commit }}', 'COMMIT: ${{ github.sha }}', 'release'))).toContain('tags "$COMMIT"');
       expect(problemsOf(mutated('          echo "::add-mask::$encoded"\n', ''))).toContain('masks the encoded token');
     });
 
