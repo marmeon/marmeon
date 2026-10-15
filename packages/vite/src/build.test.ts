@@ -66,7 +66,7 @@ function app({ vite = true, plugin = true, typescript, files = {} }: { vite?: bo
 
 /** `marmeon build` as an app runs it: a fresh process, no test environment. */
 function build(root: string, ...args: string[]): { code: number | null; out: string } {
-  const env: Record<string, string | undefined> = { ...process.env };
+  const env: Record<string, string | undefined> = { ...process.env, VITE_FROM_PROCESS: 'process-secret-value' };
   for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV' || key === 'NODE_OPTIONS') delete env[key];
   const result = spawnSync(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), 'build', ...args], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
   return { code: result.status, out: `${result.stdout}${result.stderr}` };
@@ -116,6 +116,34 @@ describe('marmeon build with the marmeon() plugin', () => {
       env: { PATH: process.env.PATH },
     });
     expect(ssr.stdout.trim()).toBe('from-dist');
+  }, 60_000);
+
+  it('keeps .env files and VITE_ variables out of the client bundle — unless the app asks with viteEnv', () => {
+    const files = (viteEnv: boolean): Record<string, string> => ({
+      '.env': 'VITE_SECRET=file-secret-value\n',
+      'bootstrap/client.ts': [
+        "import pages from 'virtual:marmeon/pages';",
+        'document.title = `${import.meta.env.VITE_SECRET} ${import.meta.env.VITE_FROM_PROCESS} mode:${import.meta.env.MODE}:end`;',
+        'for (const load of Object.values(pages)) void load();',
+      ].join('\n'),
+      'vite.config.ts': [
+        "import { marmeon } from '@marmeon/vite';",
+        `export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts', viteEnv: ${viteEnv} })] };`,
+      ].join('\n'),
+    });
+
+    const closed = app({ files: files(false) });
+    expect(build(closed).code).toBe(0);
+    const closedClient = bundle(join(closed, 'dist/client'));
+    expect(closedClient).not.toContain('file-secret-value');
+    expect(closedClient).not.toContain('process-secret-value');
+    expect(closedClient).toContain('mode:production:end'); // MODE stays
+
+    const open = app({ files: files(true) });
+    expect(build(open).code).toBe(0);
+    const openClient = bundle(join(open, 'dist/client'));
+    expect(openClient).toContain('file-secret-value');
+    expect(openClient).toContain('process-secret-value');
   }, 60_000);
 
   it('loads the first page in two chunks — third-party code (vendor) and the rest (index) — and keeps what loads later out of them', () => {
