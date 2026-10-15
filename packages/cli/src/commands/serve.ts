@@ -5,7 +5,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
 import { Application, CLUSTER_WORKER, environment, Logger } from '@marmeon/core';
-import { refuseUndecidedRoutes, heldOnLoopback, ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
+import { refuseUndecidedRoutes, heldOnLoopback, shadowedLocalhost, ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
 import { RouteAccessError } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
@@ -184,6 +184,8 @@ export class ServeCommand {
       const { port, host } = this.#app.container.make(ServerConfig);
       const beside = await heldOnLoopback(port, host);
       if (beside) logger.warn(beside);
+      const shadow = await shadowedLocalhost(port, host);
+      if (shadow) logger.warn(shadow);
     }
     logger.info(`Starting ${count} worker${count === 1 ? '' : 's'} (node:cluster, primary ${process.pid})`);
     for (let n = 0; n < count; n++) fork();

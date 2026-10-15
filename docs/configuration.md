@@ -378,7 +378,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `APP_KEY` | none, required | The key that encrypts cookies and signs URLs: `base64:` and 32 random bytes. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys, comma-separated. What they encrypted or signed stays valid. |
 | `PORT` | `3000` | The port the server listens on. `0` takes a free one. |
-| `HOST` | every interface | The interface the server listens on. |
+| `HOST` | `127.0.0.1` | The interface the server listens on. `0.0.0.0` for other machines. |
 | `LOG_LEVEL` | `info` | The lowest level that is logged, or `silent`. |
 | `DB_CONNECTION` | `sqlite` | `sqlite` or `pgsql`. |
 | `DB_DATABASE` | `storage/database.sqlite` | The SQLite file, or the name of the Postgres database (`marmeon` by default). |

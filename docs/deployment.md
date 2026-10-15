@@ -200,7 +200,7 @@ The settings a server needs, beyond those of each feature:
 | `APP_KEY` | none | The key from `marmeon key:generate --show`. The same on every instance, and a secret. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys while you rotate, comma-separated. |
 | `APP_URL` | none | `https://…`. Cookies get `Secure` from it unless `SESSION_SECURE_COOKIE` says otherwise, and a protected app on `http://` warns at every start. Browsers ignore the `Clear-Site-Data` of a sign-out outside secure contexts (HTTPS, `http://localhost`), so a server on plain HTTP leaves the browser's storage in place after a sign-out. |
-| `HOST` | every interface | `0.0.0.0` in a container, `127.0.0.1` behind a proxy on the same machine. |
+| `HOST` | `127.0.0.1` | `0.0.0.0` in a container or where another machine reaches the app; the default behind a proxy on the same machine. |
 | `PORT` | `3000` | `0` takes a free port, and the start line names it. |
 | `TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |
 | `SHUTDOWN_DELAY` | `0` | Seconds of requests after `SIGTERM`, at most 300. About 5 behind a load balancer that learns from its probes. |
@@ -211,13 +211,14 @@ The settings a server needs, beyond those of each feature:
 
 ### `HOST`
 
-Without `HOST`, the server listens on every interface. In a container that is what the image's `HOST=0.0.0.0` says anyway. On a
-machine of its own behind a proxy there, set `HOST=127.0.0.1`, so nothing but the proxy reaches the app.
+Without `HOST`, the server listens on `127.0.0.1`: this machine only. The generated image sets `HOST=0.0.0.0`. A platform that
+runs `marmeon start` without the generated image (a buildpack), or a load balancer on another host, needs `HOST=0.0.0.0`; the
+failure is a refused connection or a failing health check. Behind a proxy on the same machine the default is what you want.
 
 There is a second reason to set it. macOS and some other systems let a server on every interface start beside another program
 that already holds the same port on `127.0.0.1` alone. Both run, and requests to `127.0.0.1` reach the other program. The start
 checks for this and warns, beginning with `Another program holds 127.0.0.1:3000`. The check runs only when the server listens
-on every interface: no `HOST`, `0.0.0.0` or `::`. With `HOST=127.0.0.1`, a port another program holds stops the start instead.
+on every interface: `0.0.0.0` or `::`. On `127.0.0.1`, the default, a port another program holds there stops the start instead. A program on `::` or `::1` with the same port does not: the start then warns, beginning with `Another program holds [::1]:3000`, and names `127.0.0.1` in the start line, because `localhost` may reach that program.
 
 ### Rotating `APP_KEY`
 
@@ -429,7 +430,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - `APP_KEY` set, and the same on every instance. `APP_URL` starts with `https://`.
 - `marmeon migrate --force` once per deployment, for example in a one-off container.
 - The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `TRUSTED_PROXIES` names it.
-- `HOST` set. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
+- `HOST=0.0.0.0` where another machine reaches the app directly. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
 - `MAIL_MAILER=smtp`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
 - A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.

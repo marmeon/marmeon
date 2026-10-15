@@ -1,7 +1,7 @@
 import cluster from 'node:cluster';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
-import { heldOnLoopback } from './loopback.ts';
+import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
@@ -745,9 +745,13 @@ async function regionResultOf(response: Response): Promise<RegionResult> {
   return { status: 'exception', failure: { status: response.status, ...(message === undefined ? {} : { message }) } };
 }
 
-/** The host of the start line: `localhost` for every interface, else the one listened on (an IPv6 address in brackets). */
-function shownHost(host: string | undefined): string {
-  if (host === undefined || host === '0.0.0.0' || host === '::') return 'localhost';
+/**
+ * The host of the start line: `localhost` for every interface and for 127.0.0.1 (the address `APP_URL`, its mail links, the
+ * session cookie and passkeys use; `localhost` reaches 127.0.0.1), else the one listened on (an IPv6 address in brackets).
+ * Not when another program holds the same port on `::1` (`shadowed`): `localhost` may reach it, so 127.0.0.1 is named.
+ */
+function shownHost(host: string | undefined, shadowed: boolean): string {
+  if (host === undefined || (host === '127.0.0.1' && !shadowed) || host === '0.0.0.0' || host === '::') return 'localhost';
   return host.includes(':') ? `[${host}]` : host;
 }
 
@@ -762,7 +766,7 @@ export interface ServeOptions {
   ssrEntry?: string;
   /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
-  /** The interface to listen on. Defaults to `ServerConfig.host` (env `HOST`); unset: every interface. */
+  /** The interface to listen on. Defaults to `ServerConfig.host` (env `HOST`, default 127.0.0.1). */
   host?: string;
   /**
    * `development` runs Vite's dev server in front of the app (source modules, HMR, `/__open-in-editor`); `production` serves
@@ -810,7 +814,7 @@ export async function startServer({
   app,
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
-  host = app.container.has(ServerConfig) ? app.container.make(ServerConfig).host : undefined,
+  host = app.container.has(ServerConfig) ? app.container.make(ServerConfig).host : '127.0.0.1',
   mode: chosenMode,
   drainTimeoutMs = 8_000,
   shutdownDelayMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).shutdownDelayMs : 0,
@@ -894,6 +898,9 @@ export async function startServer({
   // Every interface beside a program on 127.0.0.1 (macOS): said before listening — a cluster's primary said it for its workers.
   const beside = cluster.isWorker ? undefined : await heldOnLoopback(port, host);
   if (beside) app.container.make(Logger).warn(beside);
+  // 127.0.0.1 beside a program on `::`/`::1`: `localhost` may reach that program — said before listening (a worker only names 127.0.0.1).
+  const shadow = await shadowedLocalhost(port, host);
+  if (shadow && !cluster.isWorker) app.container.make(Logger).warn(shadow);
 
   return new Promise((resolve, reject) => {
     // A port that is taken (EADDRINUSE) or not allowed (EACCES): the start fails with Node's error — not an uncaught exception,
@@ -911,7 +918,7 @@ export async function startServer({
       const named = app.container.has(EnvironmentConfig) ? app.container.make(EnvironmentConfig).app : undefined;
       app.container
         .make(Logger)
-        .info(`Marmeon in ${environment.describe(process.env, named)} on http://${shownHost(host)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
+        .info(`Marmeon in ${environment.describe(process.env, named)} on http://${shownHost(host, shadow !== undefined)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
       resolve({ server, port: listening, close });
     });
   });

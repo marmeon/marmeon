@@ -113,7 +113,7 @@ async function startServer(app: string, env: Record<string, string>): Promise<st
   child.stderr!.on('data', (chunk) => (output += chunk));
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    const port = /on http:\/\/127\.0\.0\.1:(\d+)/.exec(output)?.[1];
+    const port = /on http:\/\/localhost:(\d+)/.exec(output)?.[1];
     if (port) return `http://127.0.0.1:${port}`;
     if (child.exitCode !== null) throw new ProbeError(`marmeon start exited with ${child.exitCode}:\n${output}`);
     await sleep(100);

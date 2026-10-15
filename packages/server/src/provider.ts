@@ -16,10 +16,10 @@ export const ServerConfig = defineConfig('server', {
     /** The port to listen on; `0` asks the system for a free one (the start line names the port it got). */
     PORT: env.integer().min(0).max(65_535).default(3000),
     /**
-     * The interface the server listens on: unset — every interface (Node's default), `127.0.0.1` — this machine only
-     * (behind a proxy on the same host), `0.0.0.0` — every IPv4 interface (a container).
+     * The interface the server listens on: default `127.0.0.1`, this machine only (`marmeon dev`, behind a proxy on the same
+     * host); `0.0.0.0` or `::`: every interface (a container, a PaaS, a phone testing `marmeon dev`).
      */
-    HOST: env.string().optional(),
+    HOST: env.string().default('127.0.0.1'),
     /** Largest accepted request body: bytes, or with a unit — `512k`, `8m`, `1g`. */
     MAX_BODY_SIZE: env.string().regex(/^\d+[kmg]?$/i, 'Expected bytes or a size like 512k, 8m or 1g').default('8m'),
     /**
@@ -68,7 +68,7 @@ export const ServerConfig = defineConfig('server', {
   }),
   resolve: (e) => ({
     port: e.PORT,
-    /** The interface to listen on; undefined: every interface. */
+    /** The interface to listen on (env `HOST`, default 127.0.0.1). */
     host: e.HOST,
     maxBodySize: bytes(e.MAX_BODY_SIZE),
     assetVersion: e.ASSET_VERSION,
