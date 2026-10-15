@@ -137,6 +137,8 @@ export interface FeatureHost {
   read(response: Response, options: ReadOptions, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined>;
   /** A page object fetched in the background, silently — undefined for anything else. A 409 still changes the document. */
   fetchPage(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<PageObject | undefined>;
+  /** Whether a response came from another origin than the page's: nothing of it is read as a page. */
+  foreign(response: Response): boolean;
   /** Fires the flash messages that arrived (each once). */
   flushFlash(): void;
   /** What a feature has under way changed (`pending` hook): who follows `navigator.visiting` and `isPending` reads again. */

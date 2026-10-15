@@ -188,7 +188,7 @@ A redirect answers a `GET` with 302 and every other method with 303, so the brow
 > [!WARNING]
 > Never pass a URL from the request, such as a `?next=` parameter, to `this.redirect(url)`. Anyone could send a link that leads
 > through your app to a site of theirs. Check such a value with `isLocalPath()` of `@marmeon/http` first, which accepts only a
-> path of this site.
+> path of this site. A path that dot segments turn into `//host`, such as `/a/..//host`, is refused as well.
 
 ### Flash data and flash messages
 

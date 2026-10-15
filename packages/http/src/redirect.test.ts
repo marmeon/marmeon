@@ -85,6 +85,10 @@ describe('RedirectResult', () => {
       expect(new RedirectResult('/home').intended().toResponse(request(), router, flasher).headers.get('location')).toBe('/home');
     }
     expect(isLocalPath('/users/1?q=a//b')).toBe(true);
+    expect(isLocalPath('/a/..//evil.example')).toBe(false);
+    expect(isLocalPath('/a/%2e%2e//evil.example')).toBe(false);
+    expect(isLocalPath('/.//evil.example')).toBe(false);
+    expect(isLocalPath('/a/../b')).toBe(true);
   });
 
   it('never flashes a field with "password" in its name, files or the CSRF token', () => {

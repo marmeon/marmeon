@@ -43,7 +43,7 @@ export const PREFETCHED = slot(
   },
 );
 
-type PrefetchCore = Pick<FeatureHost, 'navigator' | 'window' | 'page' | 'left' | 'once' | 'send' | 'document'>;
+type PrefetchCore = Pick<FeatureHost, 'navigator' | 'window' | 'page' | 'left' | 'once' | 'send' | 'foreign' | 'document'>;
 
 /** The prefetched pages of one navigator, by URL. */
 export class Prefetches {
@@ -128,6 +128,11 @@ export class Prefetches {
     try {
       const headers: Record<string, string> = layer ? { [PURPOSE_HEADER]: 'prefetch', [REGION_HEADER]: 'layer' } : { [PURPOSE_HEADER]: 'prefetch' };
       const response = await this.#core.send(url, { method: 'get', headers, signal });
+      // A redirect led to another site: nothing of it is a page of this one.
+      if (this.#core.foreign(response)) {
+        await response.body?.cancel();
+        return undefined;
+      }
       // 409 (a new build, signing in or out), 5xx, a 4xx page, not a page: the visit asks again and handles it. Flash
       // messages wait for the page: the prefetch took none — the visit asks, and its answer brings them.
       if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true' || response.headers.get(FLASH_WAITING_HEADER) === 'true') {

@@ -186,7 +186,9 @@ export function isLocalPath(value: unknown): value is string {
   // oxlint-disable-next-line no-control-regex -- control characters are exactly what it refuses
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u001f]/.test(value)) return false;
   try {
-    return new URL(value, 'http://local.invalid').host === 'local.invalid';
+    // Dot segments are resolved away (`/a/..//evil.example` is `//evil.example`): what is left must not start with two slashes.
+    const resolved = new URL(value, 'http://local.invalid');
+    return resolved.host === 'local.invalid' && !resolved.pathname.startsWith('//');
   } catch {
     return false;
   }

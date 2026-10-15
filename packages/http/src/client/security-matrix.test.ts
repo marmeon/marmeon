@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
+import { LAYER_BACKDROP, LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
 import { actions, type ActionsFeature } from './features/actions.ts';
@@ -705,6 +705,169 @@ describe.each(PATHS)('%s path', (path) => {
         expect(Object.keys(JSON.parse(state) as object).every((field) => ['component', 'url', 'key', 'index', 'scroll', 'scrollRegions'].includes(field))).toBe(true);
       }
     });
+  });
+});
+
+describe.each(PATHS)('%s path — requests go to the origin that was checked', (path) => {
+  beforeEach(() => void (FakeWindow.path = path));
+  afterEach(() => void (FakeWindow.path = 'navigation'));
+
+  const EVIL = '//evil.example/x';
+  const at = (path: string) => `${ORIGIN}${path}`;
+
+  /** A tab whose page is a path that starts with two slashes — a path on this site, and a host to a careless `fetch`. */
+  function odd() {
+    const win = new FakeWindow(at(EVIL));
+    win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Show'));
+    const tab = boot(win, page(EVIL, {}, 'pages/Show'), { features: [] });
+    return { win, ...tab };
+  }
+
+  it('a reload, a partial reload and a form write fetch this site, never the host the path names', async () => {
+    // One tab each: the fake window, like a browser, moves nowhere the first answer's entry could not.
+    const sent: string[] = [];
+    for (const send of [(tab: ReturnType<typeof odd>) => tab.navigator.reload({ preserveUrl: true }), (tab: ReturnType<typeof odd>) => tab.navigator.reload({ only: ['a'], preserveUrl: true }), (tab: ReturnType<typeof odd>) => tab.navigator.visit(at(EVIL), { method: 'post', data: {}, preserveUrl: true })]) {
+      const tab = odd();
+      await send(tab);
+      sent.push(tab.win.requests[0]!.url);
+    }
+    expect(sent).toEqual([at(EVIL), at(EVIL), at(EVIL)]);
+  });
+
+  it('an action and a prefetch fetch this site as well', async () => {
+    const { win, navigator } = odd();
+    await navigator.use(actions).run(at(EVIL), { data: {} });
+    await navigator.use(prefetch).prefetch(at(EVIL), { layer: true });
+    expect(win.requests.length).toBeGreaterThan(1);
+    expect(win.requests.map((request) => request.url).every((url) => url === at(EVIL))).toBe(true);
+  });
+
+  /** The answer a redirect to another site gives: a page, from a URL that is not this site's. */
+  const foreign = () => {
+    const response = pageResponse(page('/stolen', { a: 'stolen' }, 'pages/Show'));
+    Object.defineProperty(response, 'url', { value: 'https://evil.example/phish' });
+    return response;
+  };
+
+  it('a visit answered from another site is never read as a page: the browser loads it', async () => {
+    const { win, navigator, shown } = odd();
+    win.handler = foreign;
+    expect(await navigator.visit('/users/2')).toBeUndefined();
+    expect(win.loads).toEqual(['assign https://evil.example/phish']);
+    expect(shown.map((shownPage) => shownPage.url)).not.toContain('/stolen');
+  });
+
+  it('a prefetch answered from another site is dropped — and one from this site is kept', async () => {
+    const { win, navigator } = odd();
+    const prefetches = navigator.use(prefetch);
+    await prefetches.prefetch('/users/3');
+    expect(prefetches.size).toBe(1);
+    const other = odd();
+    other.win.handler = foreign;
+    const dropped = other.navigator.use(prefetch);
+    await dropped.prefetch('/users/3');
+    expect(dropped.size).toBe(0);
+    expect(other.win.loads).toEqual([]);
+    expect(win.loads).toEqual([]);
+  });
+
+  it('a revalidation after an action, answered from another site, changes nothing on the page', async () => {
+    const { win, navigator } = odd();
+    const target = navigator.use(optimistic).target(navigator.use(defineFeature('probe', (given: FeatureHost) => given)).key!);
+    win.handler = (_url, init) => (init.method === 'POST' ? new Response(null, { status: 204 }) : foreign());
+    await navigator.use(actions).run(at(EVIL), { data: {}, reload: { target, spec: { only: ['a'] } } });
+    expect(navigator.page.props).toEqual({});
+    expect(win.loads).toEqual([]);
+  });
+
+  it('a layer reloads from this site, and what another site answers is not read as the layer', async () => {
+    const { win, navigator } = odd();
+    navigator.use(layers);
+    win.handler = (url) => pageResponse({ ...page(new URL(url).pathname, {}, 'users/Edit'), layer: { key: 'edit', base: '/users/1' } });
+    await navigator.visit(at('//evil.example/edit'), { layer: true });
+    const layer = navigator.layers[0]!;
+    expect(layer.page.url).toBe('//evil.example/edit');
+    win.requests.length = 0;
+    await layer.reload();
+    expect(win.requests.map((request) => request.url)).toEqual([at('//evil.example/edit')]);
+  });
+
+  it('a layer reload answered from another site is not read as the layer: the browser loads it', async () => {
+    const { win, navigator } = odd();
+    navigator.use(layers);
+    win.handler = (url) => pageResponse({ ...page(new URL(url).pathname, {}, 'users/Edit'), layer: { key: 'edit', base: '/users/1' } });
+    await navigator.visit('/users/1/edit', { layer: true });
+    win.handler = foreign;
+    await navigator.layers[0]!.reload();
+    expect(win.loads).toEqual(['assign https://evil.example/phish']);
+    expect(navigator.page.props).not.toHaveProperty('a', 'stolen');
+  });
+
+  it('closing a layer reloads the page from this site', async () => {
+    const { win, navigator } = odd();
+    navigator.use(layers);
+    win.handler = (url) => pageResponse(new URL(url).pathname === '/users/1/edit' ? { ...page('/users/1/edit', {}, 'users/Edit'), layer: { key: 'edit', base: EVIL } } : page(new URL(url).pathname, {}, 'pages/Show'));
+    await navigator.visit('/users/1/edit', { layer: true });
+    win.requests.length = 0;
+    await navigator.layers[0]!.close({ reload: true });
+    expect(win.requests.length).toBeGreaterThan(0);
+    expect(win.requests.map((request) => request.url).every((url) => url === at(EVIL))).toBe(true);
+  });
+
+  it('closing the top layer reloads the layer beneath from this site as well', async () => {
+    const { win, navigator } = odd();
+    navigator.use(layers);
+    win.handler = (url) => {
+      const { pathname } = new URL(url);
+      const key = pathname === '/b' ? 'b' : 'a';
+      return pageResponse(pathname === EVIL ? page(pathname, {}, 'pages/Show') : { ...page(pathname, {}, 'users/Edit'), layer: { key, base: EVIL } });
+    };
+    await navigator.visit(at('//evil.example/a'), { layer: true });
+    await navigator.layers[0]!.visit('/b', { layer: true });
+    expect(navigator.layers).toHaveLength(2);
+    win.requests.length = 0;
+    await navigator.layers[1]!.close({ reload: true });
+    expect(win.requests.map((request) => request.url)).toContain(at('//evil.example/a'));
+    expect(win.requests.map((request) => request.url).every((url) => url.startsWith(`${ORIGIN}//evil.example/`))).toBe(true);
+  });
+
+  it('closing a deep-linked layer over a backdrop visits the page from this site', async () => {
+    const win = new FakeWindow(at('/b'));
+    win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Show'));
+    const { navigator } = boot(win, { ...page(EVIL, {}, LAYER_BACKDROP), layers: [{ ...page('/b', {}, 'users/Edit'), layer: { key: 'b', base: EVIL } }] }, { features: [layers] });
+    expect(navigator.layers).toHaveLength(1);
+    await navigator.layers[0]!.close();
+    expect(win.requests.map((request) => request.url)).toEqual([at(EVIL)]);
+  });
+
+  it('an island loads from this site', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => islandResponse({ component: 'app/Members', props: {}, url: EVIL, version: null } as RegionObject);
+    await navigator.use(islands).region(at(EVIL)).load();
+    expect(win.requests.map((request) => request.url)).toEqual([at(EVIL)]);
+  });
+
+  it('an upload asks its own route at this site — and refuses a route on another', async () => {
+    const { win, navigator } = odd();
+    const uploading = navigator.use(uploads);
+    const file = new File(['png'], 'me.png', { type: 'image/png' });
+    uploading.start({ method: 'put', url: at(EVIL), field: 'avatar', file, onChange: () => {} });
+    await settle();
+    expect(win.requests.map((request) => request.url)).toEqual([at(EVIL)]);
+    win.requests.length = 0;
+    const states: (Upload | null)[] = [];
+    uploading.start({ method: 'put', url: 'https://evil.example/avatar', field: 'avatar', file, onChange: (upload) => states.push(upload) });
+    await settle();
+    expect(win.requests).toEqual([]);
+    expect(states.at(-1)?.status).toBe('failed');
+  });
+
+  it('a 409 to another host loads it fully — it is never a client visit', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => conflict('history', '//evil.example');
+    await navigator.visit('/users/2');
+    expect(win.loads).toEqual(['assign //evil.example']);
+    expect(win.requests).toHaveLength(1);
   });
 });
 

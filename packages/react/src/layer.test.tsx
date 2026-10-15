@@ -138,8 +138,8 @@ beforeEach(() => {
   document.body.removeAttribute('style');
   requests = [];
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
-    requests.push({ url: String(input), method: init.method ?? 'GET', headers: { ...(init.headers as Record<string, string>) } });
-    return server(String(input), init);
+    requests.push({ url: String(input).replace(window.location.origin, ''), method: init.method ?? 'GET', headers: { ...(init.headers as Record<string, string>) } });
+    return server(String(input).replace(window.location.origin, ''), init);
   });
   server = (url, init) => {
     const { pathname } = new URL(url, location.href);

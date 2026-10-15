@@ -21,6 +21,7 @@ export interface LayerCloseOptions {
 /** What a layer asks of the stack it is in (its visits, closing) — the layers feature implements it. */
 export interface LayerHost {
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined>;
+  layerReload(layer: Layer, options: Omit<VisitOptions, 'method'>): Promise<PageObject | undefined>;
   closeLayer(layer: Layer, close: LayerClose): Promise<void>;
   /** Reloads the layer's props in the background for an action, dropping `drop` as they land — whether they landed. */
   reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean>;
@@ -161,7 +162,7 @@ export class Layer {
 
   /** The layer again from the server — `reload({ only: ['profile'] })`: some props. Keeps its state and its entry. */
   reload(options: Omit<VisitOptions, 'method'> = {}): Promise<PageObject | undefined> {
-    return this.visit(this.#page.url, { replace: true, preserveScroll: true, preserveState: true, ...options });
+    return this.#host.layerReload(this, options);
   }
 
   /**

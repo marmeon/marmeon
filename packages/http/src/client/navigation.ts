@@ -30,7 +30,7 @@ import { ONCE } from './once.ts';
 import type { OptimisticUpdate } from './optimistic.ts';
 import { applyPatches, listOf, rollBack } from './patches.ts';
 import { RegionOwner } from './owner.ts';
-import { buildRequest, partialReloadHeaders, untilAborted } from './request.ts';
+import { atOrigin, buildRequest, isForeign, partialReloadHeaders, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
 export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
@@ -397,6 +397,7 @@ export class Navigator {
       send: (url, init, onProgress) => this.#send(url, init, onProgress),
       read: (response, readOptions, visit, callbacks) => this.#read(response, readOptions, visit, callbacks),
       fetchPage: (url, headers, signal) => this.#fetchPage(url, headers, signal),
+      foreign: (response) => isForeign(response, this.#core.window),
       flushFlash: () => this.#flushFlash(),
       pendingChanged: () => notify(this.#visitingListeners),
       visit: (from, url, visitOptions) => this.#visit(from, url, visitOptions),
@@ -596,7 +597,7 @@ export class Navigator {
    */
   reload(options: Omit<VisitOptions, 'method'> = {}): Promise<PageObject | undefined> {
     // The page's URL — not the window's: under a layer, the window shows the layer's.
-    return this.visit(this.#core.page.url, { replace: true, preserveScroll: true, preserveState: true, ...options });
+    return this.visit(atOrigin(this.#core.page.url, this.#core.window), { replace: true, preserveScroll: true, preserveState: true, ...options });
   }
 
   /** Where a postponed new build loads — undefined while none is waiting. For "a new version is available". */
@@ -1072,6 +1073,12 @@ export class Navigator {
    * (409, a response that is not a page), or the server failed (5xx, reported as an `error` when `failed`).
    */
   async #read(response: Response, { replace, failed, consented }: ReadOptions, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined> {
+    if (isForeign(response, this.#core.window)) {
+      // A redirect led to another site: nothing of it is read as a page — the browser follows it with a full load.
+      await response.body?.cancel();
+      this.#away(response.url);
+      return undefined;
+    }
     if (response.status === 409 && response.headers.has(LOCATION_HEADER)) {
       // A new build, or signing in or out: load the page fully. The pages in memory go with this document.
       await this.#core.documentChange.change(response, replace ? 'replace' : 'assign', consented);
@@ -1106,10 +1113,12 @@ export class Navigator {
       signal,
     };
     const Xhr = this.#core.window.XMLHttpRequest;
+    // Always at this origin: a path of `//host/x` would be another host's.
+    const target = atOrigin(url, this.#core.window);
     if (body instanceof FormData && onProgress && Xhr) {
-      return import('./upload.ts').then(({ sendWithProgress }) => sendWithProgress(Xhr, url, init, onProgress), () => this.#core.window.fetch(url, init));
+      return import('./upload.ts').then(({ sendWithProgress }) => sendWithProgress(Xhr, target, init, onProgress), () => this.#core.window.fetch(target, init));
     }
-    return this.#core.window.fetch(url, init);
+    return this.#core.window.fetch(target, init);
   }
 
   /**
@@ -1123,7 +1132,7 @@ export class Navigator {
     const combined = AbortSignal.any([signal, controller.signal]);
     try {
       const response = await this.#send(url, { method: 'get', headers, signal: combined });
-      if (this.#core.left || combined.aborted) {
+      if (this.#core.left || combined.aborted || isForeign(response, this.#core.window)) {
         await response.body?.cancel();
         return undefined;
       }

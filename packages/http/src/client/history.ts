@@ -6,6 +6,7 @@
  */
 import type { PageObject } from '../page.ts';
 import type { NavigatorWindow } from './navigation.ts';
+import { atOrigin } from './request.ts';
 import type { Scroll, ScrollPosition } from './scroll.ts';
 
 /**
@@ -124,6 +125,8 @@ export class HistoryWriter {
    */
   commit: Commit = (state, url, how) => {
     const { navigation, location, history } = this.#window;
+    // At this origin: an entry for a page at `//host/x` must not read as another host's address.
+    url = atOrigin(url, this.#window);
     if (!navigation) history[how === 'push' ? 'pushState' : 'replaceState'](state, '', url);
     else if (how === 'replace' && new URL(url, location.href).href === location.href) navigation.updateCurrentEntry({ state });
     else navigation.navigate(url, { state, history: how, info: OWN });

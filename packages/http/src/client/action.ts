@@ -172,7 +172,7 @@ export class Actions {
     const { method = 'post', data, headers = {}, name, key, signal, onRedirect } = options;
     if (this.#host.left || signal?.aborted) return CANCELLED;
     const target = new URL(url, this.#host.href);
-    // The XSRF token goes with a write: never to another site.
+    // The XSRF token goes with a write: never to another site — and the request is sent to this origin, whatever the path starts with.
     if (target.origin !== new URL(this.#host.href).origin) throw new Error(`An action goes to this site, not to ${target.origin} (${url}).`);
     // Asked first: a no sends nothing — no request, no patch, no listing.
     if (options.confirm !== undefined && !(await this.#host.confirm(options.confirm))) return CANCELLED;

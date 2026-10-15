@@ -11,7 +11,7 @@
 import { LOCATION_HEADER, type Upload } from '../../page.ts';
 import { UPLOAD_HEADER } from '../../upload-header.ts';
 import { defineFeature, slot } from '../feature.ts';
-import { xsrfToken } from '../request.ts';
+import { atOrigin, xsrfToken } from '../request.ts';
 import { sendWithProgress } from '../upload.ts';
 
 /** One upload under way — or done, its token kept until the document is left or the upload is cancelled. */
@@ -143,7 +143,10 @@ export const uploads = defineFeature('uploads', (host): UploadsFeature => {
       };
       try {
         // 1. The target, from the form's own route (its middleware and authorize decide).
-        const target = await host.window.fetch(url, {
+        // The form's own route: a path of this site, fetched at this origin.
+        const own = new URL(url, href);
+        if (own.origin !== host.window.location.origin) return fail(`An upload goes to this site, not to ${own.origin}.`);
+        const target = await host.window.fetch(atOrigin(own.pathname + own.search, host.window), {
           method: method.toUpperCase(),
           headers: { ...ownHeaders(), [UPLOAD_HEADER]: field, accept: 'application/json', 'content-type': 'application/json' },
           body: JSON.stringify({ name: file.name, size: file.size, type: file.type }),
