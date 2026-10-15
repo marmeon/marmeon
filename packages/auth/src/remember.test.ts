@@ -94,6 +94,20 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(await rows()).toEqual([]);
   });
 
+  it('theft: a failure while the tokens are revoked deletes nothing, and the next replay reports it again', async () => {
+    const copied = await tokens.create(1, inAMonth());
+    const other = await tokens.create(1, inAMonth());
+    await tokens.consume(copied);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    let armed = true;
+    const flaky = new DatabaseRememberTokens(failingOnce(connections, () => armed, () => (armed = false)), new SystemClock());
+    await expect(flaky.consume(copied)).rejects.toThrow('connection lost');
+    expect(await rows()).toHaveLength(2);
+    expect(await flaky.consume(copied)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true }));
+    expect(await rows()).toEqual([]);
+    expect(await tokens.exists(other)).toBe(false);
+  });
+
   it('keeps the revocation of a theft and the removal of an expired token inside a transaction that returns the err', async () => {
     const stolen = await tokens.create(1, inAMonth());
     await tokens.create(1, inAMonth());
@@ -178,3 +192,37 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect((await tokens.consume(laptop)).ok).toBe(true);
   });
 });
+
+/** Connections whose first delete that names `user_id` throws, once `armed()` says so: the statement that revokes a whole account. */
+function failingOnce(connections: Connections, armed: () => boolean, disarm: () => void): Connections {
+  const wrap = (builder: any): any =>
+    new Proxy(builder, {
+      get(target, property) {
+        const value = target[property];
+        if (typeof value !== 'function') return value;
+        if (property === 'execute' || property === 'executeTakeFirst') {
+          return (...args: unknown[]) => {
+            if (armed() && String(target.compile().sql).includes('"user_id"')) {
+              disarm();
+              throw new Error('connection lost');
+            }
+            return value.apply(target, args);
+          };
+        }
+        return (...args: unknown[]) => {
+          const result = value.apply(target, args);
+          return result !== null && typeof result === 'object' && 'compile' in result ? wrap(result) : result;
+        };
+      },
+    });
+  return new Proxy(connections, {
+    get(target, property) {
+      const value = (target as any)[property];
+      if (property !== 'get') return typeof value === 'function' ? value.bind(target) : value;
+      return (...args: unknown[]) => {
+        const db = value.apply(target, args);
+        return new Proxy(db, { get: (inner, name) => (name === 'deleteFrom' ? (...a: unknown[]) => wrap(inner.deleteFrom(...a)) : typeof inner[name] === 'function' ? inner[name].bind(inner) : inner[name]) });
+      };
+    },
+  });
+}
