@@ -1,6 +1,7 @@
 import { Clock, defineConfig, env, EventDispatcher, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import { UserSessions } from '@marmeon/session';
+import { LiveAudience } from '@marmeon/http';
+import { Session, SessionEndings, UserSessions } from '@marmeon/session';
 import { MiddlewarePriority, Router } from '@marmeon/router';
 import { AccountSessions } from './account-sessions.ts';
 import { Auth } from './auth.ts';
@@ -8,6 +9,7 @@ import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
+import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { NewPassword } from './new-password.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
@@ -108,6 +110,8 @@ export class AuthServiceProvider implements ServiceProvider {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.scoped(Auth);
+    // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
+    container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));
     // Policies are built in the request's scope: they may depend on anything a controller can.
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
     // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
@@ -120,9 +124,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
-    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), c.make(SignInTracker)));
+    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), c.make(SignInTracker), container.has(SessionEndings) ? c.make(SessionEndings) : undefined));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker), c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger)));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker), c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger), container.has(SessionEndings) ? c.make(SessionEndings) : undefined));
     // Sign-ins are opt-in: without `container.singleton(SignInStore, DatabaseSignIns)` (and its table) `Auth` tracks none.
     container.singleton(SignInTracker, (c) => new SignInTracker(container.has(SignInStore) ? () => c.make(SignInStore) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.

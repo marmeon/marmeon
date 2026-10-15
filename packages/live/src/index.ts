@@ -1,7 +1,7 @@
 import cluster from 'node:cluster';
 import { Application, CLUSTER_WORKER, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
-import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
+import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveAudience, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { FRAMEWORK_ROUTES } from '@marmeon/http/internal';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
@@ -107,8 +107,8 @@ export class LiveServiceProvider implements ServiceProvider {
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
-      const { heartbeat, retry, maxStreams, maxStreamsPerSession } = c.make(LiveConfig);
-      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
+      const { heartbeat, retry, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
+      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession, maxStreamSeconds }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request.
@@ -119,7 +119,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
       return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application), redactor: c.make(Redactor) });
     });
-    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c)));
+    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor)));
   }
 
   async boot(app: Application): Promise<void> {
@@ -165,6 +165,22 @@ export class LiveServiceProvider implements ServiceProvider {
           await container.make(LiveBackend).end(scope);
         } catch (error) {
           logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
+        }
+      });
+    }
+
+    // Sign-ins of an account ended (`AccountSessions`, a new password, an ended sign-in): its streams close, in every process. The browsers
+    // still signed in connect again and are checked; the others are told `end`. The backend carries the keyed scope, never the account's own.
+    if (session && container.has(session.SessionEndings)) {
+      const logger = container.make(Logger).child({ channel: 'live' });
+      const redactor = container.make(Redactor);
+      container.make(session.SessionEndings).listenAccounts(async (scope) => {
+        try {
+          // One message per key (`APP_KEY` and the previous ones): a process still filing under another key of a rollout hears it too.
+          const scopes = scope === '*' ? ['*'] : container.make(LiveTokens).accountScopes(scope);
+          for (const keyed of scopes) await container.make(LiveBackend).end(keyed);
+        } catch (error) {
+          logger.error('The streams of an account could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
         }
       });
     }

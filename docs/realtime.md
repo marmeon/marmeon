@@ -161,6 +161,20 @@ with `Retry-After: 5` meanwhile, and tabs that connect again later catch up.
   `api` group, cannot sign a channel and throws.
 - **Signing in or out ends the streams** of the old session, in every process. The tab does not connect again, and the next page
   it asks for shows the new session.
+- **A stream checks its sign-in** when it opens, which includes every reconnect, if `@marmeon/auth` is installed. A browser whose
+  sign-in ended elsewhere (signed out by `AccountSessions.end()`, a new password, an ended sign-in) gets an `end` event instead of
+  a stream and does not connect again until the next page it loads, even though its session may still be in the store. A guest's stream is unchanged. An app with its own authentication binds its own `LiveAudience`.
+- **Ending an account's sign-ins closes its open streams** at once, in every process: `AccountSessions.end()`, a new password (a
+  change or a reset by link), signing out the other devices, `updateSessionKey()`, ending a sign-in from the list, a copied
+  remember-me cookie that was used, deleting the account (`UserSessions.end()`); `endEveryone()` closes every account's. The streams close without `end`
+  and ask their browsers to connect again after one to ten seconds; each browser is then checked as above, so the ones still signed in
+  keep their stream (the device that changed the password included) and the others get `end`. A guest's stream is never closed this way.
+  Streams are filed under a scope keyed from `APP_KEY`, so what the live backend carries (Redis included) names no account to
+  someone who only reads it. The backend itself is trusted: whoever can publish to it can close streams. Every stream also closes after
+  `LIVE_MAX_STREAM_SECONDS` (15 minutes) and is checked again, which bounds every ending that was not announced. With
+  `LIVE_DRIVER=memory` a command in the console reaches no running server: its streams close at the latest by then.
+  The announcement is internal to `@marmeon/auth` and `@marmeon/session`: an app with its own `LiveAudience` gets the streams'
+  lifetime and the check at every connection, not the immediate close.
 - **Read-only.** The stream at `GET /_marmeon/live` never writes the session, sets no cookie and takes no flash message.
 
 > [!NOTE]
@@ -203,6 +217,7 @@ screen.
 | `LIVE_RETRY` | `3000` | Milliseconds before a browser opens a broken stream again, from 100 to 600000. |
 | `LIVE_MAX_STREAMS` | `1000` | Open streams per process. Beyond it, `503` with `Retry-After: 10`. |
 | `LIVE_MAX_STREAMS_PER_SESSION` | `16` | Open streams of one session per process. Beyond it, `429` with `Retry-After: 30` and a warning in the log. |
+| `LIVE_MAX_STREAM_SECONDS` | `900` | How long a stream lives at most, from 30 to 86400. It then closes (up to a quarter earlier, by chance) and its browser connects again and is checked. |
 | `LIVE_MAX_CHANNELS` | `20` | Channels per stream, at most 200. Beyond it, `400`. |
 
 The app fails at the start without an `APP_KEY`, with `LIVE_DRIVER=redis` but no `@marmeon/redis`, with a Redis client that does

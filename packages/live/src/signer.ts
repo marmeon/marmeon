@@ -6,6 +6,9 @@ export function liveKeys(key: Uint8Array, previousKeys: readonly Uint8Array[] = 
   return [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:live', 32)));
 }
 
+/** Account scopes start with this (a session scope never holds a colon): the hub tells the two apart without a field on the message. */
+export const ACCOUNT_PREFIX = 'a:';
+const accountDigest = (key: Uint8Array, unkeyed: string) => ACCOUNT_PREFIX + createHmac('sha256', key).update(`marmeon:live-account\n${unkeyed}`).digest('base64url');
 const digest = (key: Uint8Array, scope: string, channel: string) => createHmac('sha256', key).update(`${scope}\n${channel}`).digest('base64url');
 
 /**
@@ -19,6 +22,20 @@ export class LiveTokens {
   constructor(keys: readonly Uint8Array[]) {
     if (keys.length === 0) throw new Error('Live tokens need a key (APP_KEY).');
     this.#keys = keys;
+  }
+
+  /**
+   * The scope under which the streams of an account are filed and closed — and the only form that crosses the live backend: an
+   * HMAC of the account's unkeyed scope, so what the backend carries (Redis messages, its logs) names no account to someone who
+   * only reads it. The backend itself is trusted: whoever can publish to it can close every account's streams (`'*'`) or replay a scope.
+   */
+  accountScope(unkeyed: string): string {
+    return accountDigest(this.#keys[0]!, unkeyed);
+  }
+
+  /** The scope under every key (the current one first): an end is published under each, so a rollout of `APP_KEY` misses no process. */
+  accountScopes(unkeyed: string): string[] {
+    return this.#keys.map((key) => accountDigest(key, unkeyed));
   }
 
   /** The token of `channel` for the session `scope`. */

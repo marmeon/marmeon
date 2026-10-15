@@ -9,6 +9,14 @@ export function sessionScope(id: string): string {
   return hash('sha256', `marmeon-once-scope:${id}`, 'base64url').slice(0, 22);
 }
 
+/**
+ * The scope of an account: a hash of its id under a prefix of its own, so it never equals a {@link sessionScope}. It outlives every
+ * sign-in of the account; it is an unkeyed hash and stays on the server. The live package files the account's streams under it.
+ */
+export function accountScope(userId: string | number): string {
+  return hash('sha256', `marmeon-account-scope:${userId}`, 'base64url').slice(0, 22);
+}
+
 /** Told the scope of a session that ended. */
 export type SessionEndedListener = (scope: string) => void | Promise<void>;
 
@@ -19,11 +27,31 @@ export type SessionEndedListener = (scope: string) => void | Promise<void>;
  */
 export class SessionEndings {
   readonly #listeners = new Set<SessionEndedListener>();
+  readonly #accountListeners = new Set<SessionEndedListener>();
 
   /** Listens; returns the function that stops it. */
   listen(listener: SessionEndedListener): () => void {
     this.#listeners.add(listener);
     return () => void this.#listeners.delete(listener);
+  }
+
+  /**
+   * Listens for the sign-ins of an account that ended: the scope of the account ({@link accountScope}), or `'*'` for every
+   * account. The live package closes the streams of that account, in every process. Returns the function that stops it.
+   */
+  listenAccounts(listener: SessionEndedListener): () => void {
+    this.#accountListeners.add(listener);
+    return () => void this.#accountListeners.delete(listener);
+  }
+
+  /** @internal — `AccountSessions`, `Auth`: the sign-ins of the account behind `scope` ended; a listener that fails does not stop the others. */
+  async endAccount(scope: string): Promise<void> {
+    await Promise.allSettled([...this.#accountListeners].map(async (listener) => listener(scope)));
+  }
+
+  /** @internal — `AccountSessions.endEveryone()`: the sign-ins of every account ended. */
+  async endEverySession(): Promise<void> {
+    await this.endAccount('*');
   }
 
   /** @internal — `StartSession`, after it saved a session whose old id is gone. A listener that fails does not stop the others. */

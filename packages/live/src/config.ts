@@ -12,6 +12,7 @@ export const LiveConfig = defineConfig('live', {
     LIVE_RETRY: env.integer().min(100).max(600_000).default(3000),
     LIVE_MAX_STREAMS: env.integer().min(1).default(1000),
     LIVE_MAX_STREAMS_PER_SESSION: env.integer().min(1).default(16),
+    LIVE_MAX_STREAM_SECONDS: env.integer().min(30).max(86_400).default(900),
     LIVE_MAX_CHANNELS: env.integer().min(1).max(200).default(20),
   }),
   resolve: (e) => ({
@@ -21,6 +22,7 @@ export const LiveConfig = defineConfig('live', {
     retry: e.LIVE_RETRY,
     maxStreams: e.LIVE_MAX_STREAMS,
     maxStreamsPerSession: e.LIVE_MAX_STREAMS_PER_SESSION,
+    maxStreamSeconds: e.LIVE_MAX_STREAM_SECONDS,
     maxChannels: e.LIVE_MAX_CHANNELS,
   }),
 });

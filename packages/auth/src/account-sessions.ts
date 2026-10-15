@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { type Clock, err, type EventDispatcher, inTransaction, type Logger, ok, type Result } from '@marmeon/core';
-import type { UserSessions } from '@marmeon/session';
+import { accountScope, type SessionEndings, type UserSessions } from '@marmeon/session';
 import { EverySessionEnded } from './events.ts';
 import type { PasswordResetTokenStore } from './password-reset.ts';
 import type { RememberTokenStore } from './remember.ts';
 import { SignInTracker } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
-import { UserProvider, type AuthUserId } from './user.ts';
+import { idOf, UserProvider, type AuthUserId } from './user.ts';
 
 /** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
 export function claimRefused(caller: string): Error {
@@ -65,6 +65,9 @@ export async function rotateSessionKey(
   return { kind: 'rotated', key };
 }
 
+/** The key of `AccountSessions`' announcement that sign-ins ended — for `Auth`, not re-exported from the package. */
+export const ANNOUNCE_ENDED = Symbol('announceEnded');
+
 /** What `AccountSessions.end()` did right away. */
 export interface EndedSessions {
   /** How many sessions the store deleted at once (only the `database` driver can); the others end at their next request. */
@@ -99,6 +102,7 @@ export class AccountSessions {
   readonly #resets: (() => PasswordResetTokenStore) | undefined;
   readonly #access: (() => AccessTokenStore) | undefined;
   readonly #logger: Logger | undefined;
+  readonly #endings: SessionEndings | undefined;
 
   /** Built by the container. Built by hand without the reset-token store, `endEveryone({ resetTokens: true })` refuses. */
   constructor(
@@ -111,6 +115,7 @@ export class AccountSessions {
     resets?: () => PasswordResetTokenStore,
     access?: () => AccessTokenStore,
     logger?: Logger,
+    endings?: SessionEndings,
   ) {
     this.#users = users;
     this.#remember = remember;
@@ -121,6 +126,19 @@ export class AccountSessions {
     this.#resets = resets;
     this.#access = access;
     this.#logger = logger;
+    this.#endings = endings;
+  }
+
+  /**
+   * Tells the live streams of the account that its sign-ins ended (they close, and the browsers still signed in connect again).
+   * Tidying up after the real effect: a failure is logged, never thrown. Internal, like the sign-out of other devices: `Auth` calls it.
+   */
+  async [ANNOUNCE_ENDED](userId: string | number): Promise<void> {
+    try {
+      await this.#endings?.endAccount(accountScope(userId));
+    } catch (error) {
+      this.#logger?.error('The live streams of an account could not be told its sign-ins ended', { error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   /**
@@ -141,7 +159,8 @@ export class AccountSessions {
     }
     const id = userId as string | number;
     if (id === '' || (typeof id === 'number' && !Number.isSafeInteger(id))) return err({ kind: 'missing' });
-    if ((await this.#users.findById(id as never)) === undefined) return err({ kind: 'missing' });
+    const found = await this.#users.findById(id as never);
+    if (found === undefined) return err({ kind: 'missing' });
     // The order is the invariant: tokens first, so that when a later step fails no remember-me cookie signs in again (and a
     // sign-in that is running finds its token gone); then the key, which ends the sessions of every driver; the store last, as a
     // tidy-up that frees the rows at once.
@@ -152,10 +171,15 @@ export class AccountSessions {
       if ((await this.#users.findById(id as never)) === undefined) return err({ kind: 'missing' });
       throw new Error('AccountSessions.end(): UserProvider.updateSessionKey(id, key, undefined) answered false for an account that exists — it must write regardless of the stored key.');
     }
-    const removed = (await this.#sessions?.end(id)) ?? 0;
-    // The list of sign-ins goes with them (the key already ended every session; this only keeps rows from being listed as live).
-    if (this.#signIns.enabled) await this.#signIns.endAll(id);
-    return ok({ removed });
+    // The key is rotated: every session is over, and the open streams close, whatever the tidying up below does.
+    try {
+      const removed = (await this.#sessions?.end(id)) ?? 0;
+      // The list of sign-ins goes with them (the key already ended every session; this only keeps rows from being listed as live).
+      if (this.#signIns.enabled) await this.#signIns.endAll(id);
+      return ok({ removed });
+    } finally {
+      await this[ANNOUNCE_ENDED](idOf(found.user)); // the account's own id, not the one the caller wrote
+    }
   }
 
   /**
@@ -219,43 +243,56 @@ export class AccountSessions {
     };
     const rememberTokens = (done.rememberTokens = await step('remember-me tokens', () => this.#remember.forgetEveryone!()));
     const key = randomBytes(32).toString('base64url');
-    const accounts = await step('session keys', async () => {
-      const written: unknown = await users.updateEverySessionKey!(key);
-      keys = 'unconfirmed';
-      const count = (written as { accounts?: unknown } | null | undefined)?.accounts;
-      if (typeof count !== 'number') {
-        throw new Error('UserProvider.updateEverySessionKey(key) must return { accounts, sampleId }: how many accounts it wrote, as a number.');
-      }
-      const sampleId = (written as { sampleId?: unknown }).sampleId;
-      if (sampleId === undefined) {
-        if (count > 0) {
-          throw new Error('UserProvider.updateEverySessionKey(key) must return the id of one account it wrote (sampleId), so that the new key can be read back.');
-        }
-      } else {
-        const credentials = await users.findById(sampleId as never);
-        if (credentials?.sessionKey !== key) {
-          throw new Error(
-            'cannot confirm the new key: UserProvider.updateEverySessionKey(key) wrote, but findById(sampleId) ' +
-              (credentials === undefined ? 'finds no account' : 'does not hand the new key back as sessionKey (is it cached, or not returned?)') +
-              ' — every session may still be live. findById() must return the session_key column as sessionKey, read after the write.',
-          );
-        }
-      }
-      keys = 'rotated';
-      return count;
-    });
-    done.accounts = accounts;
-    const resetTokens = (done.resetTokens = resets ? await step('password-reset tokens', () => resets.forgetEveryone!()) : 0);
-    const accessTokens = (done.accessTokens = access ? await step('API tokens', () => access.revokeEveryone!()) : 0);
-    const signIns = (done.signIns = this.#signIns.enabled ? await step('sign-in rows', () => this.#signIns.endEveryone()) : 0);
-    const ended: EveryoneEnded = { accounts, rememberTokens, resetTokens, accessTokens, signIns };
-    this.#logger?.warn('Ended every session of every account', { ...ended });
-    // The work is done: a listener that fails must not make the caller run it again.
+    // 'unconfirmed' too: the keys may have been written, and a stream that stays open is the worse mistake.
+    const rotated = () => keys !== 'not-rotated';
     try {
-      await this.#events?.dispatch(new EverySessionEnded(new Date(this.#clock?.now() ?? Date.now()), ended));
-    } catch (error) {
-      this.#logger?.error('A listener of EverySessionEnded failed', { error: error instanceof Error ? error.message : String(error) });
+      const accounts = await step('session keys', async () => {
+        const written: unknown = await users.updateEverySessionKey!(key);
+        keys = 'unconfirmed';
+        const count = (written as { accounts?: unknown } | null | undefined)?.accounts;
+        if (typeof count !== 'number') {
+          throw new Error('UserProvider.updateEverySessionKey(key) must return { accounts, sampleId }: how many accounts it wrote, as a number.');
+        }
+        const sampleId = (written as { sampleId?: unknown }).sampleId;
+        if (sampleId === undefined) {
+          if (count > 0) {
+            throw new Error('UserProvider.updateEverySessionKey(key) must return the id of one account it wrote (sampleId), so that the new key can be read back.');
+          }
+        } else {
+          const credentials = await users.findById(sampleId as never);
+          if (credentials?.sessionKey !== key) {
+            throw new Error(
+              'cannot confirm the new key: UserProvider.updateEverySessionKey(key) wrote, but findById(sampleId) ' +
+                (credentials === undefined ? 'finds no account' : 'does not hand the new key back as sessionKey (is it cached, or not returned?)') +
+                ' — every session may still be live. findById() must return the session_key column as sessionKey, read after the write.',
+            );
+          }
+        }
+        keys = 'rotated';
+        return count;
+      });
+      done.accounts = accounts;
+      const resetTokens = (done.resetTokens = resets ? await step('password-reset tokens', () => resets.forgetEveryone!()) : 0);
+      const accessTokens = (done.accessTokens = access ? await step('API tokens', () => access.revokeEveryone!()) : 0);
+      const signIns = (done.signIns = this.#signIns.enabled ? await step('sign-in rows', () => this.#signIns.endEveryone()) : 0);
+      const ended: EveryoneEnded = { accounts, rememberTokens, resetTokens, accessTokens, signIns };
+      this.#logger?.warn('Ended every session of every account', { ...ended });
+      // The work is done: a listener that fails must not make the caller run it again.
+      try {
+        await this.#events?.dispatch(new EverySessionEnded(new Date(this.#clock?.now() ?? Date.now()), ended));
+      } catch (error) {
+        this.#logger?.error('A listener of EverySessionEnded failed', { error: error instanceof Error ? error.message : String(error) });
+      }
+      return ended;
+    } finally {
+      // As soon as the keys are rotated every session is over, whatever a later step does: the open streams close either way.
+      if (rotated()) {
+        try {
+          await this.#endings?.endEverySession();
+        } catch (error) {
+          this.#logger?.error('The live streams could not be told every sign-in ended', { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
     }
-    return ended;
   }
 }

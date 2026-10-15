@@ -3,7 +3,7 @@ import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, ty
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
-import { AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
+import { ANNOUNCE_ENDED, AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -448,7 +448,9 @@ export class Auth {
     this.#requireSignInStore('endSignIn');
     if (!this.passwordRecentlyConfirmed()) throw new Error('auth.endSignIn() needs a recent confirmation (a password or a passkey) — put the route behind confirmedPassword().');
     if (id === this.#ownSignIn()?.id) return err({ kind: 'current' });
-    return (await this.#signIns.end(idOf(user), id)) ? ok(undefined) : err({ kind: 'missing' });
+    if (!(await this.#signIns.end(idOf(user), id))) return err({ kind: 'missing' });
+    await this.#announceEnded(idOf(user));
+    return ok(undefined);
   }
 
   /**
@@ -466,6 +468,7 @@ export class Auth {
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     await this.#endOtherSignIns(idOf(user), true); // after the hash: the hash is what ends the other sessions, the rows only leave the list
     await this.#events.dispatch(new PasswordChanged(user, revoked));
+    await this.#announceEnded(idOf(user)); // last: this tab's new session is saved by the time its stream connects again
   }
 
   /**
@@ -495,6 +498,7 @@ export class Auth {
     await this.#users.updatePasswordHash(idOf(user) as never, hash);
     this.#anchor({ ...verified, passwordHash: hash });
     await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
+    await this.#announceEnded(idOf(user));
   }
 
   /**
@@ -517,6 +521,7 @@ export class Auth {
     }
     this.#anchor({ ...verified, sessionKey: rotated.key });
     await this.#endOtherSignIns(idOf(user), false); // after the key, see updatePassword()
+    await this.#announceEnded(idOf(user));
     return true;
   }
 
@@ -556,6 +561,15 @@ export class Auth {
   async #fits(verified: Credentials): Promise<boolean> {
     const found = await this.#users.findById(idOf(verified.user) as never);
     return found !== undefined && equal(sessionFingerprint(found), sessionFingerprint(verified));
+  }
+
+  /**
+   * Tells the live streams of the account that some of its sign-ins ended: they close and the browsers still signed in connect again
+   * (this one included — it is checked and stays). After the commit of the request's transaction, so a reconnecting stream cannot read
+   * the old hash; a failure is logged by `AccountSessions`, never thrown.
+   */
+  async #announceEnded(userId: string | number): Promise<void> {
+    await afterCommit(() => this.#accountSessions[ANNOUNCE_ENDED](userId));
   }
 
   /**
