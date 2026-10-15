@@ -10,6 +10,7 @@ import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './h
 import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { NewPassword } from './new-password.ts';
+import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { SignInStore, SignInTracker } from './sign-ins.ts';
@@ -42,6 +43,7 @@ export type { RememberedDevice, RememberTokenError, RememberTokenTable } from '.
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
+export { EndAllSessionsCommand } from './end-all-sessions.ts';
 export { PruneTokensCommand } from './prune-tokens.ts';
 export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
@@ -100,7 +102,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand];
+  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
