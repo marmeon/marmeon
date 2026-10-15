@@ -149,6 +149,32 @@ export class PasswordReset {
   }
 }
 
+/**
+ * Every session of every account was ended at once (`AccountSessions.endEveryone()`). Queueable: `{ at, accounts, rememberTokens,
+ * resetTokens, accessTokens, signIns }` (`at` as an ISO-8601 string) — how many accounts got a new session key, and how many
+ * remember-me tokens, password-reset tokens, API tokens (0 unless asked for) and sign-in rows were deleted.
+ */
+export class EverySessionEnded {
+  static readonly event = 'auth.every-session-ended';
+  static readonly schema = v.object({ at: instant, accounts: v.number(), rememberTokens: v.number(), resetTokens: v.number(), accessTokens: v.number(), signIns: v.number() });
+  readonly #event = true;
+  readonly at: Date;
+  readonly accounts: number;
+  readonly rememberTokens: number;
+  readonly resetTokens: number;
+  readonly accessTokens: number;
+  readonly signIns: number;
+
+  constructor(at: Date, counts: { readonly accounts: number; readonly rememberTokens: number; readonly resetTokens: number; readonly accessTokens: number; readonly signIns: number }) {
+    this.at = at;
+    this.accounts = counts.accounts;
+    this.rememberTokens = counts.rememberTokens;
+    this.resetTokens = counts.resetTokens;
+    this.accessTokens = counts.accessTokens;
+    this.signIns = counts.signIns;
+  }
+}
+
 /** A second factor was turned on for the account (`TwoFactor.confirm()`). Queueable: `{ userId, factor }`. */
 export class TwoFactorEnabled {
   static readonly event = 'auth.two-factor-enabled';

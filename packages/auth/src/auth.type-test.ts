@@ -1,7 +1,9 @@
 // Type guarantees of `Auth.attempt()` and `Auth.login()` — checked by `tsc` (typecheck), never run.
+import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
 
 declare const auth: Auth;
+declare const accountSessions: AccountSessions;
 
 export async function exhaustive() {
   const result = await auth.attempt('ada@example.com', 'secret');
@@ -49,4 +51,11 @@ export async function signInsAreReadOnly() {
     return kind;
   }
   return undefined;
+}
+
+export async function everyoneEndedIsReadOnly() {
+  const ended = await accountSessions.endEveryone();
+  // @ts-expect-error what endEveryone() did is read-only
+  ended.accounts = 1;
+  return ended.rememberTokens + ended.signIns;
 }

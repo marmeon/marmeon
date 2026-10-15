@@ -64,6 +64,16 @@ export interface UserProvider<U = AuthUser> {
    * Optional — needed only by apps that end the other sessions of an account without changing its password.
    */
   updateSessionKey?(id: U extends { readonly id: infer Id } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
+  /**
+   * Writes `key` into the session key of **every** account in **one** statement (`UPDATE users SET session_key = ?`), whatever the
+   * stored keys are, and returns how many rows it wrote. `AccountSessions.endEveryone()` calls it with one fresh key for all
+   * accounts: the fingerprint includes the account's id, so two accounts never share one. `findById()` must hand the new key back
+   * at once (read-after-write; no cache). Answer with how many rows you wrote and the id of one account you wrote (`sampleId`,
+   * required when `accounts > 0`; an empty table has none to give): `AccountSessions` reads it back and throws unless its `sessionKey` is `key`, since otherwise
+   * every session would stay live. The UPDATE must have no `WHERE` clause (no tenant or soft-delete scope) — a sample cannot
+   * detect a scoped one. Optional — needed only by apps that end every session at once.
+   */
+  updateEverySessionKey?(key: string): Promise<{ readonly accounts: number; readonly sampleId: (U extends { readonly id: infer Id } ? Id : never) | undefined }>;
 }
 // Annotated: the declaration then names `UserProvider` instead of spelling out the app's user type.
 export const UserProvider: Token<UserProvider> = token<UserProvider>('UserProvider');

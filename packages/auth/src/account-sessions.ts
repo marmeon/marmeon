@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import { err, inTransaction, ok, type Result } from '@marmeon/core';
+import { type Clock, err, type EventDispatcher, inTransaction, type Logger, ok, type Result } from '@marmeon/core';
 import type { UserSessions } from '@marmeon/session';
+import { EverySessionEnded } from './events.ts';
+import type { PasswordResetTokenStore } from './password-reset.ts';
 import type { RememberTokenStore } from './remember.ts';
 import { SignInTracker } from './sign-ins.ts';
+import type { AccessTokenStore } from './tokens.ts';
 import { UserProvider, type AuthUserId } from './user.ts';
 
 /** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
@@ -68,6 +71,20 @@ export interface EndedSessions {
   readonly removed: number;
 }
 
+/** What `AccountSessions.endEveryone()` did. */
+export interface EveryoneEnded {
+  /** How many accounts got a new session key. */
+  readonly accounts: number;
+  /** How many remember-me tokens it deleted. */
+  readonly rememberTokens: number;
+  /** How many password-reset tokens it deleted. */
+  readonly resetTokens: number;
+  /** How many API tokens it revoked (0 unless asked for). */
+  readonly accessTokens: number;
+  /** How many sign-in rows it deleted (0 without sign-ins). */
+  readonly signIns: number;
+}
+
 /**
  * Ends every session and every remember-me cookie of one account, such as after an incident or an operator's reset. Inject it into
  * a command, a job or an admin controller. With sign-ins switched on, their rows go too. See `docs/authentication.md#ending-every-session-of-a-user`.
@@ -77,12 +94,33 @@ export class AccountSessions {
   readonly #remember: RememberTokenStore;
   readonly #sessions: UserSessions | undefined;
   readonly #signIns: SignInTracker;
+  readonly #events: EventDispatcher | undefined;
+  readonly #clock: Clock | undefined;
+  readonly #resets: (() => PasswordResetTokenStore) | undefined;
+  readonly #access: (() => AccessTokenStore) | undefined;
+  readonly #logger: Logger | undefined;
 
-  constructor(users: UserProvider, remember: RememberTokenStore, sessions: UserSessions | undefined, signIns: SignInTracker = new SignInTracker(undefined)) {
+  /** Built by the container. Built by hand without the reset-token store, `endEveryone({ resetTokens: true })` refuses. */
+  constructor(
+    users: UserProvider,
+    remember: RememberTokenStore,
+    sessions: UserSessions | undefined,
+    signIns: SignInTracker = new SignInTracker(undefined),
+    events?: EventDispatcher,
+    clock?: Clock,
+    resets?: () => PasswordResetTokenStore,
+    access?: () => AccessTokenStore,
+    logger?: Logger,
+  ) {
     this.#users = users;
     this.#remember = remember;
     this.#sessions = sessions;
     this.#signIns = signIns;
+    this.#events = events;
+    this.#clock = clock;
+    this.#resets = resets;
+    this.#access = access;
+    this.#logger = logger;
   }
 
   /**
@@ -118,5 +156,106 @@ export class AccountSessions {
     // The list of sign-ins goes with them (the key already ended every session; this only keeps rows from being listed as live).
     if (this.#signIns.enabled) await this.#signIns.endAll(id);
     return ok({ removed });
+  }
+
+  /**
+   * Ends every session of every account at once, such as after a leak: deletes every remember-me token, writes one fresh session
+   * key into every account in a single statement, then deletes the sign-in rows. Only the remember-me tokens go before the keys; the
+   * rest follows them, so a store that fails never keeps a session alive. With `resetTokens: true` it also deletes every
+   * password-reset token, with `accessTokens: true` it revokes every API token; both stay otherwise. Each session of every driver and
+   * instance ends at its next request. Throws, naming the remedy and before anything is deleted, when the `UserProvider` has no
+   * `updateEverySessionKey()` or a store it will use lacks its optional `forgetEveryone()`/`revokeEveryone()`; throws when the
+   * provider's `sampleId` account cannot be read back with the new key (a missing `sampleId` is an error too); throws inside a
+   * database transaction, as `end()` does. A later failure leaves the earlier steps done (the error says which); calling again is safe. See
+   * `docs/authentication.md#ending-every-session-of-every-account`.
+   */
+  async endEveryone(options: { readonly accessTokens?: boolean; readonly resetTokens?: boolean } = {}): Promise<EveryoneEnded> {
+    if (inTransaction()) {
+      throw new Error('AccountSessions.endEveryone() must run outside a database transaction: each step commits on its own, and a rollback would bring the deleted remember-me tokens back.');
+    }
+    const users = this.#users;
+    if (typeof users.updateEverySessionKey !== 'function') {
+      throw new Error(
+        'AccountSessions.endEveryone() needs UserProvider.updateEverySessionKey(key): write the key into the session_key column of every account ' +
+          'with one UPDATE, and hand it back as sessionKey from findById() and findForLogin().',
+      );
+    }
+    // Every store this call will use is checked now: a store written before these methods existed must refuse before anything is deleted.
+    const refuse = (store: string, method: string) =>
+      new Error(`AccountSessions.endEveryone() needs ${store}.${method}() — delete every row of the store in one statement. Nothing was changed.`);
+    if (typeof this.#remember.forgetEveryone !== 'function') throw refuse('RememberTokenStore', 'forgetEveryone');
+    const revokeResets = options.resetTokens === true;
+    if (revokeResets && this.#resets === undefined) throw new Error('AccountSessions.endEveryone({ resetTokens: true }) needs the PasswordResetTokenStore, which the container passes in.');
+    const resets = revokeResets ? this.#resets?.() : undefined;
+    if (revokeResets && typeof resets?.forgetEveryone !== 'function') throw refuse('PasswordResetTokenStore', 'forgetEveryone');
+    const revokeAccess = options.accessTokens === true;
+    const access = revokeAccess ? this.#access?.() : undefined;
+    if (revokeAccess && typeof access?.revokeEveryone !== 'function') throw refuse('AccessTokenStore', 'revokeEveryone');
+    // The order is the invariant. Only the remember-me tokens go before the keys: no remember-me cookie may sign in again once a later
+    // step fails (and a remember-me sign-in that is running finds its token gone). Then the keys, which end the sessions of every
+    // driver and, by writing every account's row, hold back a second factor that is being stored (`CLAIM_ACCOUNT`) and end a waiting
+    // second-factor step. Everything else follows the keys, so a store that cannot be emptied (a missing table) never keeps a session
+    // alive. A step that fails leaves the ones before it done, and a second call finishes.
+    const done: Record<string, number> = {};
+    const later = [...(resets ? ['resetTokens'] : []), ...(access ? ['accessTokens'] : []), ...(this.#signIns.enabled ? ['signIns'] : [])];
+    let keys: 'not-rotated' | 'unconfirmed' | 'rotated' = 'not-rotated';
+    const step = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
+      try {
+        return await run();
+      } catch (error) {
+        const state = Object.keys(done).length === 0 ? 'nothing was changed yet' : `done: ${Object.entries(done).map(([key, count]) => `${key} ${count}`).join(', ')}`;
+        const missing = later.filter((key) => !(key in done)).join(', ');
+        const keysState =
+          keys === 'rotated'
+            ? `every session is already ended; still missing: ${missing}`
+            : keys === 'unconfirmed'
+              ? 'the keys were written but could not be confirmed'
+              : 'the keys are NOT rotated, so every session is still live';
+        const cause = error instanceof Error ? error.message : String(error);
+        const message = `AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}): ${cause} — ${keys === 'unconfirmed' ? 'fix the UserProvider, then run it again' : 'run it again'}.`;
+        this.#logger?.error(message, { step: name, done, error: error instanceof Error ? error.message : String(error) });
+        throw new Error(message, { cause: error });
+      }
+    };
+    const rememberTokens = (done.rememberTokens = await step('remember-me tokens', () => this.#remember.forgetEveryone!()));
+    const key = randomBytes(32).toString('base64url');
+    const accounts = await step('session keys', async () => {
+      const written: unknown = await users.updateEverySessionKey!(key);
+      keys = 'unconfirmed';
+      const count = (written as { accounts?: unknown } | null | undefined)?.accounts;
+      if (typeof count !== 'number') {
+        throw new Error('UserProvider.updateEverySessionKey(key) must return { accounts, sampleId }: how many accounts it wrote, as a number.');
+      }
+      const sampleId = (written as { sampleId?: unknown }).sampleId;
+      if (sampleId === undefined) {
+        if (count > 0) {
+          throw new Error('UserProvider.updateEverySessionKey(key) must return the id of one account it wrote (sampleId), so that the new key can be read back.');
+        }
+      } else {
+        const credentials = await users.findById(sampleId as never);
+        if (credentials?.sessionKey !== key) {
+          throw new Error(
+            'cannot confirm the new key: UserProvider.updateEverySessionKey(key) wrote, but findById(sampleId) ' +
+              (credentials === undefined ? 'finds no account' : 'does not hand the new key back as sessionKey (is it cached, or not returned?)') +
+              ' — every session may still be live. findById() must return the session_key column as sessionKey, read after the write.',
+          );
+        }
+      }
+      keys = 'rotated';
+      return count;
+    });
+    done.accounts = accounts;
+    const resetTokens = (done.resetTokens = resets ? await step('password-reset tokens', () => resets.forgetEveryone!()) : 0);
+    const accessTokens = (done.accessTokens = access ? await step('API tokens', () => access.revokeEveryone!()) : 0);
+    const signIns = (done.signIns = this.#signIns.enabled ? await step('sign-in rows', () => this.#signIns.endEveryone()) : 0);
+    const ended: EveryoneEnded = { accounts, rememberTokens, resetTokens, accessTokens, signIns };
+    this.#logger?.warn('Ended every session of every account', { ...ended });
+    // The work is done: a listener that fails must not make the caller run it again.
+    try {
+      await this.#events?.dispatch(new EverySessionEnded(new Date(this.#clock?.now() ?? Date.now()), ended));
+    } catch (error) {
+      this.#logger?.error('A listener of EverySessionEnded failed', { error: error instanceof Error ? error.message : String(error) });
+    }
+    return ended;
   }
 }

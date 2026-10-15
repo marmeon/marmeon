@@ -9,7 +9,7 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
+import { AccountSessions, authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
 import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
@@ -57,6 +57,10 @@ class KeyedUsers extends MemoryUsers {
     if (expected !== undefined && (this.keys.get(Number(id)) ?? null) !== expected) return false;
     this.keys.set(Number(id), key);
     return true;
+  }
+  async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number }> {
+    for (const id of this.rows.keys()) this.keys.set(id, key);
+    return { accounts: this.rows.size, sampleId: 1 };
   }
 }
 
@@ -798,6 +802,17 @@ describe('TwoFactor: signing in', () => {
     expect((await booted.store.find(1))?.lastUsedStep).toBe(stepAfterEnable); // the code sent above was not used
   });
 
+  it('AccountSessions.endEveryone() ends a waiting sign-in: the code is expired and nothing is used up', async () => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const { secret: key, recoveryCodes } = await enable(booted);
+    const b = await waiting(booted);
+    await booted.application.container.make(AccountSessions).endEveryone();
+    expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toEqual({ ok: false, kind: 'expired' });
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(await booted.store.remainingRecoveryCodes(1)).toBe(recoveryCodes.length);
+  });
+
   it('a factor turned off on another device while a sign-in waits: neither the code nor a recovery code from before works, and nobody is signed in', async () => {
     const booted = await boot();
     const { b: device, secret: key, recoveryCodes } = await enable(booted);
@@ -1324,6 +1339,19 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     await b.login();
     const setup = await b.tf('begin');
     interleave(users, () => void users.keys.set(1, 'ended-elsewhere'));
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
+    expect(await booted.store.factors(1)).toEqual([]);
+    expect(await b.tf('who')).toEqual({ id: null });
+  });
+
+  it('stores nothing when every session was ended meanwhile (AccountSessions.endEveryone())', async () => {
+    const users = new KeyedUsers();
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const accounts = booted.application.container.make(AccountSessions);
+    interleave(users, async () => void (await accounts.endEveryone()));
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
     expect(await booted.store.factors(1)).toEqual([]);
     expect(await b.tf('who')).toEqual({ id: null });

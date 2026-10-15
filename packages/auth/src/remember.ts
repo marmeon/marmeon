@@ -75,6 +75,8 @@ export interface RememberTokenStore {
    * raised one would revive. `0` deletes every token. How many.
    */
   prune(maxAgeDays: number): Promise<number>;
+  /** Deletes every token, whatever its age or expiry (`AccountSessions.endEveryone()`, which refuses a store without it). How many. */
+  forgetEveryone?(): Promise<number>;
 }
 export const RememberTokenStore = token<RememberTokenStore>('RememberTokenStore');
 
@@ -169,6 +171,10 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     const keep = except === undefined ? undefined : parse(except);
     if (keep) query = query.where('selector', '!=', keep.selector);
     await query.execute();
+  }
+
+  async forgetEveryone(): Promise<number> {
+    return Number((await this.#db().deleteFrom(REMEMBER_TABLE).executeTakeFirst()).numDeletedRows);
   }
 
   async prune(maxAgeDays: number): Promise<number> {

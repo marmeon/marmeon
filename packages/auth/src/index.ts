@@ -1,4 +1,4 @@
-import { defineConfig, env, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Clock, defineConfig, env, EventDispatcher, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { UserSessions } from '@marmeon/session';
 import { MiddlewarePriority, Router } from '@marmeon/router';
@@ -10,6 +10,7 @@ import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './h
 import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { NewPassword } from './new-password.ts';
+import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { SignInStore, SignInTracker } from './sign-ins.ts';
@@ -21,12 +22,13 @@ import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 
 export { AccountSessions } from './account-sessions.ts';
+export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
 export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
-export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
+export { EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
 export type { LoginVia } from './events.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export type { PasswordResetTokenTable } from './password-reset.ts';
@@ -41,6 +43,7 @@ export type { RememberedDevice, RememberTokenError, RememberTokenTable } from '.
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
+export { EndAllSessionsCommand } from './end-all-sessions.ts';
 export { PruneTokensCommand } from './prune-tokens.ts';
 export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
@@ -99,7 +102,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand];
+  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
@@ -119,7 +122,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
     container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), c.make(SignInTracker)));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker)));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker), c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger)));
     // Sign-ins are opt-in: without `container.singleton(SignInStore, DatabaseSignIns)` (and its table) `Auth` tracks none.
     container.singleton(SignInTracker, (c) => new SignInTracker(container.has(SignInStore) ? () => c.make(SignInStore) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.

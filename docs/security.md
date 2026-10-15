@@ -93,7 +93,7 @@ The [CSRF protection](csrf.md) page explains every stage.
 `APP_KEY` encrypts cookies, encrypted jobs and sealed sessions, and the keys that sign URLs, live channels and uploads are derived
 from it. Anyone who has it can read and forge all of them. Generate it once per environment with `marmeon key:generate`, keep it
 out of the repository and out of the image, and rotate it with `APP_PREVIOUS_KEYS`, so that old cookies and signed links stay valid
-until they expire. The [encryption](encryption.md#rotating-the-key) page explains the key and its rotation.
+until they expire. The [encryption](encryption.md#rotating-the-key) page explains the key and its rotation. After a leak the procedure differs: do not keep the leaked key, see [ending every session of every account](authentication.md#ending-every-session-of-every-account).
 
 ## Pages and scripts
 
@@ -243,6 +243,8 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   `auth:prune-tokens` scheduled ([sign-ins](authentication.md#sign-ins)). The starter kit does this.
 - After an incident, `AccountSessions` ends every session and remember-me cookie of an account
   ([ending every session of a user](authentication.md#ending-every-session-of-a-user)).
+  After a leak, `marmeon auth:end-all-sessions --force` ends every session of every account
+  ([ending every session of every account](authentication.md#ending-every-session-of-every-account)).
 - `verified()` after `authenticate()` on every route of your own that signed-in users reach.
 - Every route of your own has a decision that you chose: a policy for a record, `everyone` only when anyone the middleware lets
   through may call it. `marmeon route:list` shows the `ACCESS` of each route.

@@ -661,6 +661,86 @@ table, and removes them. The other drivers cannot tell whose a session is, so `e
 that does no harm, since its sessions end at their next request. For a user who still exists, a new fingerprint ends the other
 sessions with every driver: a new password, `logoutOtherDevices(password)` or `updateSessionKey()`. `UserSessions.end(id)` ends every session of a user at once, the current one included, and only with the `database` driver.
 
+## Ending every session of every account
+
+After a leak, such as a copy of the database, a leaked `APP_KEY`, a compromised admin account or cookies stolen in bulk, every
+sign-in that exists must end at once. An operator runs one command, and every app has it:
+
+```sh
+marmeon auth:end-all-sessions --force
+```
+
+From code, such as a job or an admin controller, `AccountSessions.endEveryone()` does the same. Guard the route as you would
+[`end()`](#ending-every-session-of-a-user):
+
+```ts
+const ended = await this.#accounts.endEveryone(); // { accounts, rememberTokens, resetTokens, accessTokens, signIns }
+```
+
+The command takes no arguments (a mistyped `auth:end-sessions <email>` is refused, not widened), prints the environment it runs
+in, and logs the operator and the host. `--force` is required in every environment, since it cannot be undone.
+
+| | Ended |
+| --- | --- |
+| Sessions of every driver, on every instance | At their next request. No restart or deploy is needed. |
+| Pending second-factor steps, password and second-factor confirmations | With the session they live in. |
+| Remember-me tokens | All deleted. |
+| Sign-in rows | All deleted, with [sign-ins](#sign-ins) switched on. |
+| Password-reset tokens | Only with `--reset-tokens` (`resetTokens: true`). |
+| API tokens | Only with `--api-tokens` (`accessTokens: true`). |
+| Open live streams | Not closed: a tab keeps its stream, and reconnects, until its next page request ends the session. See [real-time updates](realtime.md#following-a-channel). |
+
+Passwords stay, so change them where a hash may have leaked. Reset links are stored as hashes, but a link that was mailed before
+the leak works until it expires unless you pass `--reset-tokens`. After a leaked `APP_KEY` the command is the first step, not the
+whole answer: the leaked key can also forge cookies, signed URLs and live and upload tokens. Set a new `APP_KEY` and leave the leaked
+one out of `APP_PREVIOUS_KEYS` (the procedure of [rotating the key](encryption.md#rotating-the-key) without its first step). That stops
+the forgeries, but it signs everybody out, and it makes two-factor secrets (reset them with `auth:reset-two-factor`), queued encrypted jobs and
+sealed session data unreadable. Encrypted columns that were already copied stay exposed.
+
+### How it works
+
+The fingerprint of a session includes the account's session key, and every request compares it with `findById()`. The call writes
+one fresh random key into every account with a single `UPDATE`, so every session stops matching at its next request, whatever
+its driver. The fingerprint includes the account's id, so two accounts never share one though the key is the same. The
+statement locks the rows of the user table until it finishes, which is acceptable for an emergency.
+
+The order is fixed: the remember-me tokens first, so that no cookie signs in again once a later step fails; then the keys; then
+the reset tokens and the API tokens that were asked for, then the sign-in rows. The key is written to every row, so a second factor
+that is being stored at that moment is refused. The call throws, naming the remedy and before anything is deleted, when the
+`UserProvider` or a store it will use lacks its method, and inside a database transaction.
+
+A step that fails stops the call. The message, printed by the command with exit code 1 and logged, names the step, what was
+already done, and whether the keys are rotated: if they are, every session is ended and only the clean-up remains. Run it
+again: each step deletes or overwrites everything, so a second run is safe and finishes the rest. If the keys were written but the read-back
+could not confirm them, the message says "fix the UserProvider, then run it again": a plain rerun fails the same way, so fix `findById()` first.
+
+After the write, `AccountSessions` reads one account back with `findById()` and throws unless its `sessionKey` is the new key.
+`findById()` must therefore return the `session_key` column as `sessionKey` straight from the database, with no cache and no lagging
+replica. A cache would fail the read-back; a cache or replica that only some lookups hit slips past it and leaves those sessions live.
+
+### For your own user provider
+
+The starter kit's `UserRepository` implements `updateEverySessionKey()`. A provider of your own needs it too:
+
+```ts
+async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
+  const result = await this.db.updateTable('users').set({ session_key: key }).executeTakeFirst(); // one UPDATE, no WHERE
+  const accounts = Number(result.numUpdatedRows);
+  const sample = accounts > 0 ? await this.db.selectFrom('users').select('id').where(sql<boolean>`session_key = ${key}`).limit(1).executeTakeFirst() : undefined;
+  return { accounts, sampleId: sample?.id };
+}
+```
+
+It is one statement and has no `WHERE`: no tenant or soft-delete scope, since a sample cannot reveal an account the statement
+skipped. Return how many rows it wrote and the id of one account it wrote (`sampleId`, which an empty table cannot give). Do not
+touch `updated_at`: no account changed.
+
+A custom `RememberTokenStore` needs `forgetEveryone()`, since the call always deletes the remember-me tokens. A custom
+`PasswordResetTokenStore` needs `forgetEveryone()` only for `--reset-tokens`, and a custom `AccessTokenStore` needs `revokeEveryone()`
+only for `--api-tokens`. Each deletes every row in one statement and returns how many.
+
+`auth:prune-tokens` deletes only what expired; it ends no valid sign-in.
+
 ## Sign-ins
 
 By default the framework knows only sessions, and a session does not say whose it is on which browser. Sign-in tracking is opt-in:
@@ -834,6 +914,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
+| `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | `at`, `accounts`, `rememberTokens`, `resetTokens`, `accessTokens`, `signIns` (the counts), see [ending every session of every account](#ending-every-session-of-every-account) |
 | `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
 | `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |
 

@@ -37,6 +37,8 @@ export interface PasswordResetTokenStore {
   forget(email: string): Promise<void>;
   /** Deletes every token older than `maxAgeSeconds` — expired ones nobody used (`marmeon auth:prune-tokens`). How many. */
   prune(maxAgeSeconds: number): Promise<number>;
+  /** Deletes every token, valid or not (`AccountSessions.endEveryone()`): a link that was mailed before a leak must not work after it. How many. */
+  forgetEveryone?(): Promise<number>;
 }
 export const PasswordResetTokenStore = token<PasswordResetTokenStore>('PasswordResetTokenStore');
 
@@ -82,6 +84,10 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
 
   async forget(email: string): Promise<void> {
     await this.#db().deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
+  }
+
+  async forgetEveryone(): Promise<number> {
+    return Number((await this.#db().deleteFrom(PASSWORD_RESET_TABLE).executeTakeFirst()).numDeletedRows);
   }
 
   async prune(maxAgeSeconds: number): Promise<number> {

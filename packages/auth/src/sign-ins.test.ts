@@ -54,6 +54,15 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
     expect((await signIns.list(2, WINDOW)).map((record) => record.id)).toEqual([theirs]);
   });
 
+  it('endEveryone deletes the rows of every user, dead or alive, and counts them', async () => {
+    await signIns.create({ userId: 1, userAgent: undefined });
+    await signIns.create({ userId: 2, userAgent: undefined });
+    await signIns.create({ userId: 2, userAgent: undefined, remember: { selector: SELECTOR, until: inAMonth() } });
+    expect(await signIns.endEveryone()).toBe(3);
+    expect(await rows()).toEqual([]);
+    expect(await signIns.endEveryone()).toBe(0);
+  });
+
   it('endAll keeps exactly the exception', async () => {
     const keep = await signIns.create({ userId: 1, userAgent: undefined });
     await signIns.create({ userId: 1, userAgent: undefined });
