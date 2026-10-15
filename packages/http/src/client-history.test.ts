@@ -33,6 +33,20 @@ describe('ClientHistory / ClearClientHistory', () => {
     expect([response.status, response.headers.get(LOCATION_HEADER), response.headers.get(PAGE_HEADER)]).toEqual([409, '/a?tab=1', null]);
   });
 
+  it('never reloads to another host: the requested path and the referring page lose their leading slashes', async () => {
+    const history = new ClientHistory();
+    history.clear();
+    const page = Response.json({ component: 'x', props: {}, url: '/a' }, { headers: { [PAGE_HEADER]: 'true' } });
+    const reloaded = await run(history, ctx('GET', '//evil.example/x?bad=1', visit), page);
+    expect(reloaded.headers.get(LOCATION_HEADER)).toBe('/evil.example/x?bad=1');
+
+    const action = { ...visit, 'x-marmeon-action': 'true' };
+    for (const referer of ['http://app.test//evil.example', 'http://app.test/\\evil.example', 'http://app.test\\\\evil.example', 'http://app.test/\t/evil.example', 'http://app.test///evil.example']) {
+      const response = await run(history, ctx('POST', '/logout', { ...action, referer }), new Response(null, { status: 200 }));
+      expect(response.headers.get(LOCATION_HEADER), referer).toBe('/evil.example');
+    }
+  });
+
   it('keeps a plain browser request as it is — with Clear-Site-Data when asked for', async () => {
     const history = new ClientHistory();
     history.clear({ siteData: true });

@@ -1,3 +1,4 @@
+import { localLocation } from '@marmeon/router/internal';
 import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
 import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './page.ts';
 
@@ -66,7 +67,7 @@ export class ClearClientHistory {
     const url = new URL(ctx.request.url);
     const redirect = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
     // An action's own URL is no page: without a redirect, the page it was sent from (this site's `Referer`), else the start.
-    const location = redirect ?? (action ? refererPath(ctx.request) : url.pathname + url.search);
+    const location = redirect ?? (action ? refererPath(ctx.request) : localLocation(url.pathname, url.search));
     await response.body?.cancel();
     for (const name of DROPPED) headers.delete(name);
     headers.set(LOCATION_HEADER, location);
@@ -83,7 +84,7 @@ function refererPath(request: Request): string {
   if (!referer) return '/';
   try {
     const from = new URL(referer);
-    return from.origin === new URL(request.url).origin ? from.pathname + from.search : '/';
+    return from.origin === new URL(request.url).origin ? localLocation(from.pathname, from.search) : '/';
   } catch {
     return '/';
   }

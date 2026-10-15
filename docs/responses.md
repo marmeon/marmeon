@@ -182,7 +182,7 @@ export class StoreNoteController extends Controller {
 A redirect answers a `GET` with 302 and every other method with 303, so the browser follows a form's `PUT` or `DELETE` with a
 `GET`. `.status(301)` sets another status, and `.header(name, value)` adds a header.
 
-`back()` takes only a `Referer` of this host, and `intended()` only a path of this site, so neither can lead to another site.
+`back()` takes only a `Referer` of this host, and `intended()` only a path of this site, so neither can lead to another site. A referring page whose path starts with several slashes or backslashes (`https://app//evil.example`) is sent to `/evil.example` on this site, never to the host that a browser would read out of `//evil.example`.
 `this.redirect(url)` goes wherever you say.
 
 > [!WARNING]

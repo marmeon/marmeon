@@ -5,3 +5,4 @@
  */
 export { isEveryone } from './access.ts';
 export { FRAMEWORK_ROUTES } from './router.ts';
+export { localLocation } from './url.ts';
