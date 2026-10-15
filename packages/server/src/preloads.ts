@@ -29,8 +29,8 @@ export interface Preload {
 export interface AssetPreloads {
   /** The entry's own chunks — which `index.html` already names. */
   readonly initial: readonly Preload[];
-  /** The page's chunk, the chunks it imports, its layers' and tab sync; without what `initial` has. */
-  forPage(page: Pick<PageObject, 'component' | 'layers'>): readonly Preload[];
+  /** The page's chunk, the chunks it imports, its layers' and tab sync — and the loading of deferred props, when it has some; without what `initial` has. */
+  forPage(page: Pick<PageObject, 'component' | 'layers' | 'deferredProps' | 'streamedProps'>): readonly Preload[];
 }
 
 /**
@@ -38,6 +38,9 @@ export interface AssetPreloads {
  * left out on purpose: it loads only without the Navigation API.
  */
 const TAB_SYNC = /(?:^|\/)(?:@marmeon|packages)\/http\/dist\/client\/features\/tab-sync\.js$/;
+
+/** The chunk that asks for a page's deferred groups: the core fetches it when a page that carries some arrives, so the document names it early. */
+const PROP_LOADER = /(?:^|\/)(?:@marmeon|packages)\/http\/dist\/client\/prop-loader\.js$/;
 
 /** Whether `/${file}` parses to that very path on the page's origin — no other host, no dot segments, no query or fragment, no escapes that change it. */
 function staysOnOrigin(file: string): boolean {
@@ -94,12 +97,15 @@ export function assetPreloads(manifest: ViteManifest): AssetPreloads {
   const tabSync = Object.keys(manifest).find((key) => TAB_SYNC.test(key));
   const boot = tabSync === undefined ? [] : withoutInitial([...closure(manifest, [tabSync])]);
 
+  const propLoader = Object.keys(manifest).find((key) => PROP_LOADER.test(key));
+  const deferred = propLoader === undefined ? [] : withoutInitial([...closure(manifest, [propLoader])]);
+
   return {
     initial,
     forPage(page) {
       const seen = new Set<string>();
       const result: Preload[] = [];
-      for (const preload of [...(pages.get(page.component) ?? []), ...(page.layers ?? []).flatMap((layer) => pages.get(layer.component) ?? []), ...boot]) {
+      for (const preload of [...(pages.get(page.component) ?? []), ...(page.layers ?? []).flatMap((layer) => pages.get(layer.component) ?? []), ...boot, ...(page.deferredProps || page.streamedProps ? deferred : [])]) {
         if (seen.has(preload.href)) continue;
         seen.add(preload.href);
         result.push(preload);

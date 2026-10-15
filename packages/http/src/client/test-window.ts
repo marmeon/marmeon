@@ -11,6 +11,8 @@ import { defineFeature, type Feature } from './feature.ts';
 import { historyFallback } from './features/history-fallback.ts';
 import type { NavigateEvent, NavigationEntry, NavigationLike } from './history.ts';
 import type { KeptRegion } from './region.ts';
+// The chunk deferred props load from, already in the module cache: a test waits a tick for it, not for a cold import.
+import './prop-loader.ts';
 
 export const ORIGIN = 'https://app.test';
 

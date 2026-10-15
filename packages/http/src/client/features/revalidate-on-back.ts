@@ -7,6 +7,7 @@ import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
 import type { Layer } from '../layer.ts';
 import type { ReloadSpec } from '../optimistic.ts';
+import type { RevalidateCore } from '../revalidate.ts';
 
 /** What a view reloads when Back/Forward shows it from memory: all its props (`true`), some, or none (`false`). */
 export type RevalidateOnBack = boolean | readonly string[];
@@ -14,7 +15,7 @@ export type RevalidateOnBack = boolean | readonly string[];
 /** What the adapter reads from a view (`Show.revalidateOnBack`) — see `NavigatorOptions.revalidateOnBack`. */
 export type DeclaredRevalidation = (component: string) => RevalidateOnBack | undefined | Promise<RevalidateOnBack | undefined>;
 
-type BackCore = Pick<FeatureHost, 'key' | 'left' | 'props'>;
+type BackCore = Pick<FeatureHost, 'key' | 'left' | 'props'> & RevalidateCore;
 
 /** The reloads of one navigator when Back/Forward shows a page, a layer or an island from memory. */
 export class BackRevalidation {
@@ -30,7 +31,9 @@ export class BackRevalidation {
   async page(key: string, page: PageObject): Promise<void> {
     const spec = await this.#declared(page.component);
     if (!spec || this.#core.key !== key || this.#core.left) return;
-    await this.#core.props.revalidate(key, spec, new AbortController().signal);
+    // In a chunk of its own, loaded by the first reload; a chunk that cannot load reloads nothing (what is shown stays).
+    const module = await import('../revalidate.ts').catch(() => undefined);
+    await module?.revalidate(this.#core, key, spec, new AbortController().signal);
   }
 
   /** Back/Forward showed a layer from memory: what its view declares reloads in the background. */

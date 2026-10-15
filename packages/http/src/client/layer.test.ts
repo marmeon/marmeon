@@ -88,9 +88,9 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = (url) => (url.endsWith('/edit') ? pageResponse(layer('/users/1/edit')) : pageResponse({ ...page('/users/1', { activity: ['signed in'] }, 'users/Show') }));
       const app = boot(win, { ...page('/users/1', { name: 'Ada' }, 'users/Show'), deferredProps: { default: ['activity'] } });
-      await settle();
+      // The loading code is a chunk of its own: the group lands once it is there.
+      await vi.waitFor(() => expect(app.navigator.page.props).toMatchObject({ activity: ['signed in'] }));
       const base = app.navigator.page;
-      expect(base.props).toMatchObject({ activity: ['signed in'] });
       const requests = win.requests.length;
       const renders = app.shown.length;
       await app.navigator.visit('/users/1/edit', { layer: true });

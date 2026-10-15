@@ -5,15 +5,15 @@
   ],
   "gzipKB": {
     "core": { "limit": 11.57 },
-    "emptyApp": { "limit": 13.72 },
-    "minimalApp": { "limit": 18.26 },
+    "emptyApp": { "limit": 13.44 },
+    "minimalApp": { "limit": 18.16 },
     "everything": { "limit": 31.62, "ceiling": true },
-    "table": { "limit": 17.06 }
+    "table": { "limit": 16.82 }
   },
   "appsGzipKB": {
-    "blank-app": { "limit": 14.26 },
+    "blank-app": { "limit": 13.99 },
     "web-app": { "limit": 22.14 },
-    "website": { "limit": 16.90 }
+    "website": { "limit": 16.60 }
   },
   "stillLeaking": {
     "core": [],

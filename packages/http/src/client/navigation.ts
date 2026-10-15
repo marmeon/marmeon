@@ -1162,6 +1162,8 @@ export class Navigator {
     // It follows live channels: the core attaches the live feature — server-driven, like the layers; once there, it
     // follows the screen itself. A chunk that cannot load: no hints (the page works without them).
     if (page.live) import('./features/live.ts').then((module) => this.use(module.live), () => {});
+    // Not set yet while the navigator is made: the loader looks at its first page itself.
+    this.#core.props?.expect(page);
     const { page: rest, flash } = takeFlash(page);
     if (flash.length > 0) this.#core.inbox.push(...flash);
     // Once props: kept when they came, put back when the server skipped them (they are held).

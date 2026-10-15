@@ -315,7 +315,7 @@ export class LayerStack implements LayerHost {
     });
   }
 
-  /** A layer's props again from the server, in the background (as `PropLoader.revalidate` does for a page's) — replacing merged props. */
+  /** A layer's props again from the server, in the background (as `revalidate()` in `revalidate.ts` does for a page's) — replacing merged props. */
   async revalidate(control: LayerControl, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
     const base = control.layer.page;
     if (control.layer.closed || this.#core.left) return false;
