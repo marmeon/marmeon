@@ -505,7 +505,7 @@ export class Auth {
    * The signing out of `logoutOtherDevices()` for a caller that has just checked `password` itself: a new hash (the other sessions'
    * fingerprints stop matching), the other devices' remember-me tokens gone, a new fingerprint for this session. `false`
    * when the stored hash is no longer the one this request read: the hash is not written, the reset that changed it has ended every
-   * sign-in (this one from its next request), and the other devices' tokens are gone already.
+   * sign-in (this one from its next request), and the other devices' tokens are gone already. Also `false` when this device's remember-me cookie is a stale copy (see `#rebindOwnToken()`).
    */
   async [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean> {
     const user = await this.#requireUser('logoutOtherDevices');
