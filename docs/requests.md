@@ -53,8 +53,9 @@ export class ImportNotesController extends Controller {
 ```
 
 It reads JSON objects, `application/x-www-form-urlencoded` and `multipart/form-data` alike. Form fields nest by brackets, as in
-`notes[0][title]`, `tags[]` and `user[name]`. An object whose keys are exactly `0` to `n-1` becomes a list, a field named
-`__proto__` is dropped, and a later field of the same name wins. Bodies of other types, such as `text/plain`, give `{}`.
+`notes[0][title]`, `tags[]` and `user[name]`. An object whose keys are exactly `0` to `n-1` becomes a list, and a later field of the
+same name wins. A key named `__proto__` is dropped at any depth, in JSON bodies as in form fields. A JSON body nested deeper than
+256 levels is answered with `400`. Bodies of other types, such as `text/plain`, give `{}`.
 
 The input is the body and only the body. The query string never goes into it, so no link can fill in a field of a form. A `GET`
 or `HEAD` request has the input `{}`. The parsed body is kept, so call `ctx.input()` as often as you like, but do not read
