@@ -55,6 +55,8 @@ docker compose up -d   # Postgres, Redis and S3 for test:pgsql, test:redis and t
 pnpm dev               # the web app (apps/web-app) on http://localhost:3000 — first its .env and database (apps/web-app/README.md)
 ```
 
+`pnpm-workspace.yaml` holds the install policy: a release younger than three days is not installed, a package whose trust evidence got weaker is refused, and no dependency runs an install script. The compose services listen on `127.0.0.1` only.
+
 ## Before you open a pull request
 
 ```sh

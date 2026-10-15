@@ -9,7 +9,7 @@ services:
     image: postgres:18-alpine
     container_name: marmeon-pgsql
     ports:
-      - '55432:5432'
+      - '127.0.0.1:55432:5432'
     environment:
       POSTGRES_USER: marmeon
       POSTGRES_PASSWORD: secret
@@ -26,7 +26,7 @@ services:
     image: redis:8-alpine
     container_name: marmeon-redis
     ports:
-      - '56379:6379'
+      - '127.0.0.1:56379:6379'
     # Test data is disposable: no snapshots, no append-only file.
     command: ['redis-server', '--save', '', '--appendonly', 'no']
     healthcheck:
@@ -42,7 +42,7 @@ services:
     image: chrislusf/seaweedfs:4.48
     container_name: marmeon-s3
     ports:
-      - '56333:8333'
+      - '127.0.0.1:56333:8333'
     command: ['mini', '-dir=/data', '-s3.config=/etc/seaweedfs/s3.json', '-admin.ui=false', '-webdav=false']
     configs:
       - source: s3-identities
