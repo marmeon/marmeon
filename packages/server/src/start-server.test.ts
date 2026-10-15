@@ -80,7 +80,7 @@ describe('startServer', () => {
   describe('a program holding the port on 127.0.0.1', () => {
     /** A decoy: another program on 127.0.0.1 only, at a port the system picked. */
     const decoy = async (): Promise<{ program: NetServer; port: number }> => {
-      const program = createNetServer((socket) => socket.end('HTTP/1.1 501 Not Implemented\r\ncontent-length: 0\r\n\r\n'));
+      const program = createNetServer((socket) => socket.on('error', () => {}).end('HTTP/1.1 501 Not Implemented\r\ncontent-length: 0\r\n\r\n'));
       await new Promise<void>((resolve) => program.listen(0, '127.0.0.1', resolve));
       return { program, port: (program.address() as AddressInfo).port };
     };
@@ -96,8 +96,8 @@ describe('startServer', () => {
       return { app, warned };
     };
 
-    it('on every interface (no HOST, `::`, `0.0.0.0`) the start says so — requests to 127.0.0.1 would reach that program', async () => {
-      for (const host of [undefined, '::', '0.0.0.0']) {
+    it('on every interface (`::`, `0.0.0.0`) the start says so — requests to 127.0.0.1 would reach that program', async () => {
+      for (const host of ['::', '0.0.0.0']) {
         const { program, port } = await decoy();
         const { app, warned } = await boot();
         try {
@@ -113,6 +113,62 @@ describe('startServer', () => {
           await app.shutdown();
         }
       }
+    });
+
+    it('without HOST the server listens on 127.0.0.1 only, says so as localhost, and a taken port fails the start without a warning', async () => {
+      const { program, port } = await decoy();
+      const { app, warned } = await boot();
+      const lines: string[] = [];
+      vi.spyOn(app.container.make(Logger), 'info').mockImplementation((message: unknown) => void lines.push(String(message)));
+      try {
+        await expect(startServer({ app, ssrEntry: 'ssr.ts', port, mode: 'development' })).rejects.toMatchObject({ code: 'EADDRINUSE' });
+        expect(warned).toEqual([]);
+        const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+        try {
+          const address = running.server.address() as AddressInfo;
+          expect(address.address).toBe('127.0.0.1');
+          expect(lines.find((line) => line.startsWith('Marmeon in'))).toContain(`on http://localhost:${address.port}`);
+        } finally {
+          await running.close();
+        }
+      } finally {
+        program.close();
+        await app.shutdown();
+      }
+    });
+
+    describe.each(['::', '::1'])('a program on %s at the same port', (where) => {
+      /** Another program on an IPv6 address; `undefined` when this machine has no IPv6 loopback. */
+      const v6Decoy = async (): Promise<{ program: NetServer; port: number } | undefined> => {
+        const program = createNetServer((socket) => socket.on('error', () => {}).end('HTTP/1.1 501 Not Implemented\r\ncontent-length: 0\r\n\r\n'));
+        const listening = await new Promise<boolean>((resolve) => {
+          program.once('error', () => resolve(false));
+          program.listen(0, where, () => resolve(true));
+        });
+        return listening ? { program, port: (program.address() as AddressInfo).port } : undefined;
+      };
+
+      it('with no HOST the start warns and names 127.0.0.1 — `localhost` may reach the other program', async (ctx) => {
+        const decoyed = await v6Decoy();
+        if (!decoyed) return ctx.skip(); // no IPv6 loopback here
+        const { program, port } = decoyed;
+        const { app, warned } = await boot();
+        const lines: string[] = [];
+        vi.spyOn(app.container.make(Logger), 'info').mockImplementation((message: unknown) => void lines.push(String(message)));
+        try {
+          // macOS lets the server listen beside it; elsewhere the port is taken and the start fails — after the same warning.
+          const running = await startServer({ app, ssrEntry: 'ssr.ts', port, mode: 'development' }).catch((error: NodeJS.ErrnoException) => {
+            expect(error.code).toBe('EADDRINUSE');
+            return undefined;
+          });
+          await running?.close();
+          expect(warned.join('\n')).toContain(`Another program holds [::1]:${port}`);
+          if (running) expect(lines.find((line) => line.startsWith('Marmeon in'))).toContain(`on http://127.0.0.1:${port} `);
+        } finally {
+          program.close();
+          await app.shutdown();
+        }
+      });
     });
 
     it('says nothing when the port is free there — and a chosen interface that is taken fails the start with Node\'s error', async () => {

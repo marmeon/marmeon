@@ -101,10 +101,10 @@ describe('TRUSTED_PROXIES', async () => {
     expect((await ask('172.18.0.2', {})).ip).toBe('172.18.0.2');
   });
 
-  it('the server config: HOST is where it listens (unset: every interface)', async () => {
-    expect(application.container.make(ServerConfig).host).toBeUndefined();
-    const local = await createApplication({ root: import.meta.dirname, discover: false, env: { APP_KEY: generateKey(), HOST: '127.0.0.1' }, providers: [ServerServiceProvider] });
-    expect(local.container.make(ServerConfig).host).toBe('127.0.0.1');
+  it('the server config: HOST is where it listens (default: this machine only)', async () => {
+    expect(application.container.make(ServerConfig).host).toBe('127.0.0.1');
+    const open = await createApplication({ root: import.meta.dirname, discover: false, env: { APP_KEY: generateKey(), HOST: '0.0.0.0' }, providers: [ServerServiceProvider] });
+    expect(open.container.make(ServerConfig).host).toBe('0.0.0.0');
   });
 });
 
@@ -310,7 +310,7 @@ describe('startServer and HOST', () => {
       const address = running.server.address() as AddressInfo;
       expect(address.address).toBe('127.0.0.1');
       expect((await fetch(`http://127.0.0.1:${address.port}/up`)).status).toBe(200);
-      expect(lines.find((line) => line.startsWith('Marmeon in'))).toContain(`on http://127.0.0.1:${address.port}`);
+      expect(lines.find((line) => line.startsWith('Marmeon in'))).toContain(`on http://localhost:${address.port}`);
     } finally {
       await running.close();
       await app.shutdown();

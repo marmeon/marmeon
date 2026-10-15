@@ -804,10 +804,10 @@ describe('marmeon start', { timeout: 30_000 }, () => {
 
   /**
    * `marmeon start` until `servers` servers listen, on the address the requests go to: `HOST=127.0.0.1`. On every interface
-   * (`::`, no HOST) macOS lets the server — even with the port the system picked for it (`PORT=0`) — listen beside another program
+   * (`::`) macOS lets the server — even with the port the system picked for it (`PORT=0`) — listen beside another program
    * that holds the same port on 127.0.0.1 only; a request to 127.0.0.1 then reaches that
-   * program (a 404, a 501 from `/up`). Bound to 127.0.0.1 the start fails instead (EADDRINUSE). The requests go to `base`: the
-   * address and port the start line names.
+   * program (a 404, a 501 from `/up`). Bound to 127.0.0.1 the start fails instead (EADDRINUSE). The requests go to `base`: that address and the
+   * port the start line names.
    */
   async function start(env: Record<string, string>, args: string[] = [], servers = 1) {
     const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
@@ -816,8 +816,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
     const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
-    const listening = () => [...output.matchAll(/ on http:\/\/([^\s/]+):(\d+) /g)].map((match) => ({ host: match[1]!, port: Number(match[2]) }));
-    const ports = () => listening().map(({ port }) => port);
+    const ports = () => [...output.matchAll(/ on http:\/\/[^\s/]+:(\d+) /g)].map((match) => Number(match[1]));
     const deadline = Date.now() + 20_000;
     while (ports().length < servers) {
       if (child.exitCode !== null || Date.now() > deadline) {
@@ -829,8 +828,8 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     }
     // The workers of a cluster share the one port the primary got.
     expect(new Set(ports()).size).toBe(1);
-    const { host, port } = listening()[0]!;
-    return { child, port, base: `http://${host}:${port}`, exited, output: () => output };
+    const port = ports()[0]!;
+    return { child, port, base: `http://127.0.0.1:${port}`, exited, output: () => output };
   }
 
   it('is one process, runs a staging server as production named by APP_ENV — JSON logs with appEnv — and drains on SIGTERM', async () => {
@@ -840,7 +839,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
       expect(spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout).toBe('');
       expect((await fetch(`${server.base}/up`)).status).toBe(200);
       const line = server.output().split('\n').find((entry) => entry.includes('Marmeon in'))!;
-      expect(JSON.parse(line).msg).toMatch(new RegExp(`^Marmeon in production \\(APP_ENV=staging\\) on http://127.0.0.1:${server.port} \\(the build; `));
+      expect(JSON.parse(line).msg).toMatch(new RegExp(`^Marmeon in production \\(APP_ENV=staging\\) on http://localhost:${server.port} \\(the build; `));
       expect(JSON.parse(line).appEnv, 'the JSON log entry names the environment').toBe('staging');
     } finally {
       server.child.kill('SIGTERM');
@@ -880,7 +879,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
       }
       child.kill('SIGTERM');
       expect(await exited).toEqual({ code: 0, signal: null });
-      expect(output).toMatch(/ on http:\/\/127\.0\.0\.1:\d+ /);
+      expect(output).toMatch(/ on http:\/\/localhost:\d+ /);
       expect(output).toContain('SIGTERM received, shutting down');
     } finally {
       writeFileSync(ssr, original);
@@ -1045,7 +1044,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
       const server = await start({ NODE_ENV: 'production' });
       server.child.kill('SIGTERM');
       expect(await server.exited).toBe(0);
-      expect(server.output()).toContain(`Marmeon in production (APP_ENV=staging) on http://127.0.0.1:${server.port}`);
+      expect(server.output()).toContain(`Marmeon in production (APP_ENV=staging) on http://localhost:${server.port}`);
       expect(server.output()).not.toContain('comes from .env');
     } finally {
       rmSync(join(app, '.env'));
@@ -1056,7 +1055,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     const server = await start({});
     server.child.kill('SIGTERM');
     expect(await server.exited).toBe(0);
-    expect(server.output()).toContain('Marmeon in production (APP_ENV=production) on http://127.0.0.1:');
+    expect(server.output()).toContain('Marmeon in production (APP_ENV=production) on http://localhost:');
   }, 30_000);
 
   it('does not start with any other NODE_ENV — the start error names the way: NODE_ENV=production and APP_ENV', () => {
@@ -1106,7 +1105,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     try {
       const server = await start({ NODE_ENV: 'production', APP_ENV: 'staging' });
       try {
-        expect(server.output()).toContain(`Marmeon in production (APP_ENV=staging) on http://127.0.0.1:${server.port}`);
+        expect(server.output()).toContain(`Marmeon in production (APP_ENV=staging) on http://localhost:${server.port}`);
         const response = await fetch(`${server.base}/late-error`, { headers: { accept: 'text/html' } });
         const html = await response.text();
         expect(response.status, server.output()).toBe(200);
