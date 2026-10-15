@@ -1,11 +1,13 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { link, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { SystemClock, withFileGuard, type Clock } from '@marmeon/core';
 import { SESSION_KEY, type SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Stored {
+  /** A digest of the other fields, first in the line — absent in files written before it existed, which are read unchecked. */
+  check?: string;
   expires: number;
   version: number;
   data: string;
@@ -21,8 +23,9 @@ const GUARD_TIMEOUT_MS = 10_000;
  * hard-linked into place, so it never replaces a session. Writing back compares the version under a per-session guard
  * (`<key>.guard`, `open(…, 'wx')`, granted to one process at a time) and overwrites through a handle opened before the check:
  * a session deleted before the `open` fails it (ENOENT), one deleted after takes the write with it — nothing brings a destroyed
- * session back, and `destroy` needs no guard. The record is ONE line of JSON: an in-place write never truncates, and a reader
- * that meets a torn line reads again.
+ * session back, and `destroy` needs no guard. The record is ONE line of JSON: an in-place write never truncates. A reader that
+ * meets a torn line — or one whose `check` does not match its fields (new head, old tail: still valid JSON) — reads once more
+ * under the guard, which every writer holds for its whole write: that read sees a whole record or one broken for good (as long as the writer finishes within `STALE_GUARD_MS`).
  */
 export class FileSessionStore implements SessionStore {
   readonly #directory: string;
@@ -36,19 +39,23 @@ export class FileSessionStore implements SessionStore {
 
   async read(key: string): Promise<StoredSession | undefined> {
     const file = this.#path(key);
-    for (let attempt = 0; ; attempt++) {
-      let text: string;
-      try {
-        text = await readFile(file, 'utf8');
-      } catch {
-        return undefined; // missing: a new session starts
-      }
-      const stored = parse(text);
-      if (stored) return stored.expires > this.#clock.now() ? { data: stored.data, version: stored.version } : undefined;
-      // Torn by a write in progress — or broken for good, then a new session starts.
-      if (attempt === 3) return undefined;
-      await sleep(2 ** attempt);
+    let text: string;
+    try {
+      text = await readFile(file, 'utf8');
+    } catch {
+      return undefined; // missing: a new session starts
     }
+    let stored = parse(text);
+    if (!stored) {
+      // Torn by a write in progress — or broken for good, then a new session starts. Never guess: wait for the writer.
+      try {
+        stored = await this.#guarded(file, async () => parse(await readFile(file, 'utf8')));
+      } catch (error) {
+        if ((error as { code?: unknown }).code === 'ENOENT') return undefined; // destroyed meanwhile
+        throw error;
+      }
+    }
+    return stored && stored.expires > this.#clock.now() ? { data: stored.data, version: stored.version } : undefined;
   }
 
   async write(key: string, data: string, { expectedVersion, lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult> {
@@ -123,7 +130,8 @@ export class FileSessionStore implements SessionStore {
 
   #record(data: string, version: number, lifetimeSeconds: number): string {
     // JSON.stringify never writes a raw line break: the record is exactly the first line.
-    return `${JSON.stringify({ expires: this.#clock.now() + lifetimeSeconds * 1000, version, data } satisfies Stored)}\n`;
+    const expires = this.#clock.now() + lifetimeSeconds * 1000;
+    return `${JSON.stringify({ check: digest(expires, version, data), expires, version, data } satisfies Stored)}\n`;
   }
 
   #path(key: string): string {
@@ -132,12 +140,16 @@ export class FileSessionStore implements SessionStore {
   }
 }
 
-/** The record in the first line — undefined when it is torn or broken. */
+function digest(expires: number, version: number, data: string): string {
+  return createHash('sha256').update(`${expires}\n${version}\n${data}`).digest('hex').slice(0, 32);
+}
+
+/** The record in the first line — undefined when it is torn, mixed from two writes (the `check` fails) or broken. */
 function parse(text: string): Stored | undefined {
   const end = text.indexOf('\n');
   try {
     const stored = JSON.parse(end === -1 ? text : text.slice(0, end)) as Stored;
-    return typeof stored?.expires === 'number' && typeof stored.version === 'number' && typeof stored.data === 'string' ? stored : undefined;
+    return typeof stored?.expires === 'number' && typeof stored.version === 'number' && typeof stored.data === 'string' && (stored.check === undefined || stored.check === digest(stored.expires, stored.version, stored.data)) ? stored : undefined;
   } catch {
     return undefined;
   }
