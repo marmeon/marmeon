@@ -85,7 +85,11 @@ export class Failed {
   }
 }
 
-/** Too many failed sign-ins from one identifier and address — dispatched by the app's login throttle. */
+/**
+ * Too many failed sign-ins from one identifier and address — dispatched by the app's login throttle. The starter kit also dispatches it
+ * once per window when an account passes its daily ceiling of password sign-ins; then `ip` is only the request that tipped it over, not
+ * the source of the guesses, so a listener that blocks addresses must not act on it.
+ */
 export class Lockout {
   readonly #event = true;
   readonly identifier: string;

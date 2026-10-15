@@ -6,6 +6,7 @@ import { NotifyAboutRememberTokenReused } from './listeners/NotifyAboutRememberT
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { QueueWelcomeMail } from './listeners/QueueWelcomeMail.ts';
 import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
+import { SendLockoutMailJob } from './jobs/SendLockoutMailJob.ts';
 import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
@@ -39,7 +40,7 @@ export default defineModule({
   // Queued work of this module — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   // SendAccountExistsMailJob: private registration — the note to an account's owner that someone signed up with its address;
   // SendEmailChangeMailJob: the link to a new address, or the note to the owner of a taken one.
-  jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob],
+  jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob, SendLockoutMailJob],
   migrations: new URL('./migrations/', import.meta.url),
   // Other modules may read and join `users` — writing goes through the UserRepository.
   exposes: ['users'],

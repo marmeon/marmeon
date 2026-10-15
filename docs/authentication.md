@@ -221,6 +221,11 @@ sign-ins and validation failures included, so a CGNAT, a school or an office beh
 in `modules/auth/AuthServiceProvider.ts`. The
 [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
+The starter kit counts one more thing: the password sign-ins to one account from every client together, 100 a day. The 101st gets
+"Too many failed sign-ins for this account. Reset your password or sign in with a passkey." even with the right password, for an address
+without an account as for one with. A sign-in that succeeds and a completed password reset start the count over; a passkey sign-in is not
+affected. The owner gets a mail once. See [the starter kit](starter-kit.md#guesses-against-one-account).
+
 `login(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or
 `'two-factor-required'` for an account with a second factor: that account is not signed in, exactly as with `attempt()`. A
 registration signs in a new account, which has no second factor, so its result needs no handling there. Both methods do the same
@@ -915,7 +920,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Login` | `attempt()`, `login()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `login`, `remember` or `passkey`), `ip`, `userAgent` |
 | `Logout` | `logout()` | `user` |
 | `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
-| `Lockout` | The starter kit's login throttle turns an attempt away | `identifier`, `ip` |
+| `Lockout` | The starter kit's login throttle turns an attempt away, or an account takes no more password sign-ins for the day (once) | `identifier`, `ip` |
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |

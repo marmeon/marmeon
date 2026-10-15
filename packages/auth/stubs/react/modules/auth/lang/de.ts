@@ -16,6 +16,7 @@ export default {
     register: 'Konto anlegen',
     failed: 'Diese Zugangsdaten passen zu keinem Konto.',
     throttled: 'Zu viele Anmeldeversuche. Bitte in {seconds, plural, one {# Sekunde} other {# Sekunden}} noch einmal versuchen.',
+    locked: 'Zu viele fehlgeschlagene Anmeldungen für dieses Konto. Setze dein Passwort zurück oder melde dich mit einem Passkey an.',
   },
   register: {
     title: 'Konto anlegen',
@@ -367,6 +368,15 @@ export default {
         intro: 'jemand hat das richtige Passwort deines Kontos eingegeben, aber nicht den Code ({at}{from}). Niemand ist hineingekommen.',
         outro: 'Ändere jetzt dein Passwort: Wer es versucht hat, kennt es. Diese Mail senden wir höchstens einmal pro Stunde.',
       },
+    },
+    // Das Konto nimmt nach 100 fehlgeschlagenen Anmeldungen an einem Tag keine Passwörter mehr an.
+    lockout: {
+      subject: 'Dein Konto nimmt keine Passwörter mehr an',
+      preview: 'Zu viele fehlgeschlagene Anmeldungen an einem Tag',
+      intro: 'bei deinem Konto sind innerhalb eines Tages 100 Anmeldungen fehlgeschlagen, deshalb nimmt es vorerst keine Passwörter mehr an. Wähle ein neues Passwort, um wieder hineinzukommen:',
+      button: 'Passwort zurücksetzen',
+      passkey: 'Hast du einen Passkey, funktioniert er weiterhin:',
+      outro: 'Waren die Versuche nicht deine, rät jemand dein Passwort: Wähle ein langes, das niemand erraten kann. Waren sie deine, beendet ein Zurücksetzen die Pause.',
     },
     sign_in: {
       remember_reused: {

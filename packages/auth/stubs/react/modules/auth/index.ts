@@ -13,6 +13,7 @@ import { NotifyAboutTwoFactorDisabled } from './listeners/NotifyAboutTwoFactorDi
 import { NotifyAboutTwoFactorEnabled } from './listeners/NotifyAboutTwoFactorEnabled.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
+import { SendLockoutMailJob } from './jobs/SendLockoutMailJob.ts';
 import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
@@ -57,7 +58,7 @@ export default defineModule({
   // Queued work — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   // Private registration: the note to an account's owner that someone signed up with its address; the link to a new
   // address, or the note to the owner of a taken one.
-  jobs: [SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob],
+  jobs: [SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob, SendLockoutMailJob],
   migrations: new URL('./migrations/', import.meta.url),
   // Other modules may read and join `users` — writing goes through the UserRepository.
   exposes: ['users'],
