@@ -5,6 +5,10 @@
  * **Why a host check:** DNS rebinding — a page on `evil.example` re-pointed at 127.0.0.1 reaches the developer's server with
  * `Host: evil.example` and reads every answer as same-origin. Vite's `server.allowedHosts` covers only its own server and is
  * skipped under HTTPS, and an app's routes must not rely on what runs in front of them.
+ *
+ * **Why a peer check:** a client on the same network can send any `Host`, `Host: localhost` included. The server kernel marks
+ * a request whose connection is not from this machine ({@link markRemotePeer}) and the guard refuses it. See
+ * docs/routing.md#development-only-routes.
  */
 
 /** The loopback names — development routes always answer them. */
@@ -72,6 +76,39 @@ export function forbiddenDevHost(): Response {
   );
 }
 
+// One set per process, not per copy of this module: the server kernel may carry its own copy of @marmeon/core, and a set it
+// marks in must be the one an app's `devOnly()` reads — otherwise a second copy fails open. Fixed on `globalThis`, so it
+// cannot be swapped for an empty one. A request that is copied is a new object and not marked.
+const PEERS = Symbol.for('marmeon.dev.remotePeers');
+const shared = globalThis as { [PEERS]?: WeakSet<Request> };
+if (!Object.hasOwn(shared, PEERS)) Object.defineProperty(shared, PEERS, { value: new WeakSet<Request>() });
+const remotePeers = shared[PEERS] as WeakSet<Request>;
+
+/**
+ * Records that `request` came over a connection that is not from this machine, so {@link devOnly} refuses it.
+ * There is deliberately no way to unmark: a caller can only make a request stricter.
+ *
+ * @internal For the server kernel.
+ */
+export function markRemotePeer(request: Request): void {
+  remotePeers.add(request);
+}
+
+/** Whether `request` was marked by {@link markRemotePeer}. Unmarked means in-process, or not served by the Marmeon kernel. */
+export function fromRemotePeer(request: Request): boolean {
+  return remotePeers.has(request);
+}
+
+/** The answer for a request from a peer development routes do not answer. */
+export function forbiddenDevPeer(): Response {
+  return devSecured(
+    new Response('Development routes answer only connections from this machine. Open this page on the machine that runs the server.\n', {
+      status: 403,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    }),
+  );
+}
+
 /** Whether development routes answer at all: `NODE_ENV` is `development` (or `test`) — asked positively, per request. */
 export function devEnvironment(env: { readonly NODE_ENV?: string | undefined } = process.env): boolean {
   return env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
@@ -85,7 +122,7 @@ export function notInDevelopment(): Response {
 /**
  * Wraps a development route's handler — or a middleware's `handle` (its `next` comes through): outside development (`NODE_ENV`
  * neither `development` nor `test` — production, none, a value the start check let through) a 404, fail-closed; a request for a host outside `hosts`
- * gets 403; in both cases the handler never runs. Every answer gets {@link devSecured}'s headers (`no-store`, CORP/COOP
+ * gets 403, and so does a request the kernel marked as from another machine ({@link markRemotePeer}); in each case the handler never runs. Every answer gets {@link devSecured}'s headers (`no-store`, CORP/COOP
  * `same-origin`, `nosniff`, no CORS).
  *
  * ```ts
@@ -99,6 +136,7 @@ export function devOnly<TArgs extends readonly [{ readonly request: Request }, .
 ): (...args: TArgs) => Promise<Response> {
   return async (...args) => {
     if (!devEnvironment()) return notInDevelopment();
+    if (fromRemotePeer(args[0].request)) return forbiddenDevPeer();
     return hostAllowed(args[0].request, hosts) ? devSecured(await handler(...args)) : forbiddenDevHost();
   };
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { devHosts, devOnly, devSecured, hostAllowed, LOOPBACK_HOSTS } from './dev.ts';
+import { devHosts, devOnly, devSecured, fromRemotePeer, hostAllowed, LOOPBACK_HOSTS, markRemotePeer } from './dev.ts';
 
 const request = (host: string | undefined, url = 'http://localhost/_marmeon/mail') => new Request(url, host === undefined ? {} : { headers: { host } });
 
@@ -61,6 +61,83 @@ describe('the guard of every development route', () => {
     expect(answered.headers.get('cache-control')).toBe('no-store');
     expect((await guard({ request: request('evil.example') }, page)).status).toBe(403);
     expect(devSecured(new Response('x', { status: 404 })).status).toBe(404);
+  });
+
+  describe('a request from another machine', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const marked = () => {
+      const req = request('localhost');
+      markRemotePeer(req);
+      return req;
+    };
+
+    it('gets 403 with the peer text and the dev headers; the handler never runs; the same request unmarked gets 200', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      let ran = 0;
+      const handler = devOnly(devHosts(undefined), () => {
+        ran++;
+        return new Response('mail');
+      });
+      const refused = await handler({ request: marked() });
+      expect(refused.status).toBe(403);
+      expect(await refused.text()).toBe('Development routes answer only connections from this machine. Open this page on the machine that runs the server.\n');
+      expect(ran).toBe(0);
+      expect(refused.headers.get('cache-control')).toBe('no-store');
+      expect([...refused.headers.keys()].filter((name) => name.startsWith('access-control-'))).toEqual([]);
+
+      expect((await handler({ request: request('localhost') })).status).toBe(200);
+      expect(ran).toBe(1);
+    });
+
+    it('under NODE_ENV=production is a 404 — the environment is asked first', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      const handler = devOnly(devHosts(undefined), () => new Response('mail'));
+      expect((await handler({ request: marked() })).status).toBe(404);
+    });
+
+    it('is refused for its peer before its host is looked at', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      const req = request('evil.example');
+      markRemotePeer(req);
+      const refused = await devOnly(devHosts(undefined), () => new Response('mail'))({ request: req });
+      expect(refused.status).toBe(403);
+      expect(await refused.text()).toMatch(/^Development routes answer only connections from this machine/);
+    });
+
+    it('is refused by a second copy of the module too', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      const specifier = './dev.ts?copy'; // a query makes a second instance of the module
+      const copy = (await import(specifier)) as typeof import('./dev.ts');
+      expect(copy.markRemotePeer).not.toBe(markRemotePeer);
+      const req = request('localhost');
+      copy.markRemotePeer(req);
+      expect(fromRemotePeer(req)).toBe(true);
+      expect((await devOnly(devHosts(undefined), () => new Response('mail'))({ request: req })).status).toBe(403);
+      const other = request('localhost');
+      markRemotePeer(other);
+      expect(copy.fromRemotePeer(other)).toBe(true);
+    });
+
+    it('is not marked in a copy', () => {
+      const req = marked();
+      expect(fromRemotePeer(req)).toBe(true);
+      expect(fromRemotePeer(new Request(req.url, req))).toBe(false);
+    });
+
+    it('as a middleware never reaches `next`', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      let reached = 0;
+      const guard = devOnly(devHosts(undefined), (_ctx: { request: Request }, next: () => Promise<Response>) => next());
+      const response = await guard({ request: marked() }, () => {
+        reached++;
+        return Promise.resolve(new Response('page'));
+      });
+      expect(response.status).toBe(403);
+      expect(reached).toBe(0);
+    });
   });
 
   describe('outside development: a 404, whatever the host (fail-closed) — APP_URL\'s host is public on a server', () => {
