@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { RateLimiter } from '@marmeon/cache';
-import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, listen, TestClock, type Container } from '@marmeon/core';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon/database';
 import { AesGcmEncrypter, Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -184,7 +184,7 @@ const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState; users?: MemoryUsers } = {}) {
+async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState; users?: MemoryUsers; clock?: TestClock } = {}) {
   const users = options.users ?? new MemoryUsers();
   const appKey = env.APP_KEY ?? generateKey();
   const application = await createApplication({
@@ -202,6 +202,7 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
     ],
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
+      if (options.clock) container.instance(Clock, options.clock);
       container.instance(UserProvider, users as UserProvider);
       if (options.state === undefined) container.bind(TwoFactorState, TwoFactorStore);
       else if (options.state !== 'unbound') container.instance(TwoFactorState, options.state);
@@ -1138,6 +1139,20 @@ describe('twoFactor() middleware', () => {
     expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
   });
 
+  it('writes the proof of a step-up on the app clock, so that travelling ages it', async () => {
+    const clock = new TestClock();
+    const booted = await boot({}, { clock });
+    const { b, secret: key } = await enable(booted);
+    clock.travel({ seconds: 61 });
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
+    expect(await b.tf('step-up', { code: twoFactorCode(key, new Date(clock.now())) })).toEqual({ ok: true });
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
+    clock.travel({ seconds: 55 });
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 200 });
+    clock.travel({ seconds: 10 });
+    expect(await b.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
+  });
+
   it('an area without maxAge keeps the proof for 24 hours, then asks again', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
     const booted = await boot({ SESSION_LIFETIME: '20160', AUTH_SESSION_MAX_HOURS: '720' });
@@ -1236,6 +1251,14 @@ describe('twoFactor() middleware', () => {
     await addFactorQuietly(booted);
     expect(await authenticatedSession(booted.application.container, ada)).toHaveProperty('_auth_two_factor_at');
     expect(await authenticatedSession(booted.application.container, bob)).not.toHaveProperty('_auth_two_factor_at');
+  });
+
+  it('dates the proof of actingAs() on the app clock', async () => {
+    const clock = new TestClock();
+    clock.freeze(Date.parse('2020-01-01T00:00:00Z'));
+    const booted = await boot({}, { clock });
+    await addFactorQuietly(booted);
+    expect(await authenticatedSession(booted.application.container, ada)).toHaveProperty('_auth_two_factor_at', Date.parse('2020-01-01T00:00:00Z') / 1000);
   });
 
   it('takes only a positive maxAge', () => {

@@ -1,3 +1,4 @@
+import { Clock } from '@marmeon/core';
 import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { Session } from '@marmeon/session';
@@ -28,12 +29,14 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
     readonly #session: Session;
     readonly #router: Router;
     readonly #state: TwoFactorState;
+    readonly #clock: Clock;
 
-    constructor(auth: Auth, session: Session, router: Router, state: TwoFactorState) {
+    constructor(auth: Auth, session: Session, router: Router, state: TwoFactorState, clock: Clock) {
       this.#auth = auth;
       this.#session = session;
       this.#router = router;
       this.#state = state;
+      this.#clock = clock;
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
@@ -44,7 +47,7 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
         return this.#redirect(ctx, 'auth.login');
       }
       if ((await this.#state.factors(idOf(user))).length === 0) return next();
-      if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE)) return next();
+      if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, Math.floor(this.#clock.now() / 1000))) return next();
       if (ctx.expectsJson()) return Response.json({ error: 'two_factor_unverified' }, { status: 403, headers: VARY });
       return this.#redirect(ctx, options.verify);
     }

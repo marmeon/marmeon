@@ -64,6 +64,8 @@ Everything that reads the time through the app's `Clock` follows the test clock:
 - the session's lifetime and its expiry on the server;
 - signed URLs and temporary links to files;
 - password reset tokens, remember-me tokens and API tokens;
+- the sign-in: its absolute lifetime, the window of a password confirmation (`confirmedPassword()`), the proof of a second
+  factor (`twoFactor()`, `confirmedSecondFactor()`) and the cap of a remember-me cookie (`AUTH_REMEMBER_DAYS`), and how long a started second-factor step stays open;
 - the delays and backoffs of queued jobs, which `app.queue.work()` runs once they are due;
 - the scheduler, through `app.schedule`;
 - the cached answer of the readiness check.

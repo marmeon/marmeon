@@ -1,5 +1,5 @@
 import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
-import { afterCommit, afterRollback, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
+import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
@@ -171,6 +171,7 @@ export class Auth {
   readonly #twoFactor: TwoFactorState;
   readonly #accountSessions: AccountSessions;
   readonly #signIns: SignInTracker;
+  readonly #clock: Clock;
   #user: Promise<AuthUser | undefined> | undefined;
   /**
    * The credentials this request checked its session against (`#resolve`) or signed in with (`#login`).
@@ -196,6 +197,7 @@ export class Auth {
     twoFactor: TwoFactorState,
     accountSessions: AccountSessions,
     signIns: SignInTracker,
+    clock: Clock,
   ) {
     this.#session = session;
     this.#users = users;
@@ -212,6 +214,7 @@ export class Auth {
     this.#twoFactor = twoFactor;
     this.#accountSessions = accountSessions;
     this.#signIns = signIns;
+    this.#clock = clock;
   }
 
   /**
@@ -230,7 +233,7 @@ export class Auth {
     // The one fork for every password sign-in: an account with a factor is never signed in here, whatever the caller does with the err.
     const factors = await this.#passwordSignIn(current, options, 'attempt');
     if (factors.length > 0) return err({ kind: 'two-factor-required', factors });
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now()); // the password was just typed
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now()); // the password was just typed
     return ok(credentials.user);
   }
 
@@ -294,8 +297,8 @@ export class Auth {
     const found = await this.#users.findById(pending.id as never);
     if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return err({ kind: 'expired' });
     await (await this.#login(found, { remember: pending.remember }, pending.via)).announce();
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     return ok(found.user);
   }
 
@@ -310,7 +313,7 @@ export class Auth {
     if (!found) return err({ kind: 'expired' });
     this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
     await (await this.#login(found, { remember: options.remember === true }, 'passkey')).announce();
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now());
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     return ok(found.user);
   }
 
@@ -365,14 +368,14 @@ export class Auth {
   async confirmPassword(password: string): Promise<boolean> {
     const credentials = await this.#current();
     const ok = credentials?.passwordHash ? await this.#hasher.verify(password, credentials.passwordHash) : await this.#hasher.dummyVerify(password);
-    if (ok) this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
+    if (ok) this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     return ok;
   }
 
   /** Whether the password was typed within `seconds` (default `AUTH_PASSWORD_TIMEOUT`). */
   passwordRecentlyConfirmed(seconds = this.#config.passwordTimeout): boolean {
     const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
-    return typeof at === 'number' && now() - at < seconds;
+    return typeof at === 'number' && this.#now() - at < seconds;
   }
 
   /**
@@ -425,7 +428,7 @@ export class Auth {
     const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(user), hash, 'change');
     this.#cookies.delete(this.#config.rememberCookie);
     this.#anchor({ ...verified, passwordHash: hash });
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now());
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     await this.#endOtherSignIns(idOf(user), true); // after the hash: the hash is what ends the other sessions, the rows only leave the list
     await this.#events.dispatch(new PasswordChanged(user, revoked));
   }
@@ -657,7 +660,7 @@ export class Auth {
     }
     // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
     if (remember && !viaRemember && this.#config.remember) {
-      expiresAt = new Date(Date.now() + this.#config.rememberDays * 86_400_000);
+      expiresAt = new Date(this.#clock.now() + this.#config.rememberDays * 86_400_000);
       token = await this.#remember.create(idOf(user), expiresAt);
     }
     let signIn: string | undefined;
@@ -676,7 +679,7 @@ export class Auth {
     this.#session.forget(AUTH_SESSION_KEYS.twoFactorAt);
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
-    this.#session.put(AUTH_SESSION_KEYS.signedInAt, now());
+    this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
     if (viaRemember) this.#session.put(AUTH_SESSION_KEYS.viaRemember, true);
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
     if (viaRemember && rememberUntil !== undefined) this.#session.put(AUTH_SESSION_KEYS.rememberUntil, rememberUntil);
@@ -689,7 +692,7 @@ export class Auth {
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
     if (previous && previous.id !== signIn) await this.#endSignIn(previous); // a sign-in over a sign-in leaves no orphan
-    const at = new Date();
+    const at = new Date(this.#clock.now());
     return { token, signIn, announce: () => this.#events.dispatch(new Login(user, token !== undefined || viaRemember, at, { via, ip, userAgent })) };
   }
 
@@ -708,7 +711,7 @@ export class Auth {
       fingerprint: sessionFingerprint(credentials),
       remember,
       via,
-      until: now() + PENDING_SECONDS,
+      until: this.#now() + PENDING_SECONDS,
       failures: 0,
       factors,
     });
@@ -724,7 +727,7 @@ export class Auth {
   #pending(): PendingSecondFactor | undefined {
     if (!this.#session.started) return undefined;
     const pending = this.#session.get(AUTH_SESSION_KEYS.pending);
-    if (typeof pending !== 'object' || pending === null || typeof pending.until !== 'number' || pending.until <= now()) return undefined;
+    if (typeof pending !== 'object' || pending === null || typeof pending.until !== 'number' || pending.until <= this.#now()) return undefined;
     if (!Array.isArray(pending.factors) || typeof pending.fingerprint !== 'string') return undefined;
     return pending;
   }
@@ -750,7 +753,7 @@ export class Auth {
       return this.#fromRememberCookie();
     }
     // A session from before the lifetime was kept: its clock starts now, so a deploy signs nobody out.
-    if (signedInAt === undefined && !this.#session.readOnly) this.#session.put(AUTH_SESSION_KEYS.signedInAt, now());
+    if (signedInAt === undefined && !this.#session.readOnly) this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
     if (this.#signIns.enabled) {
       // Invariant: the row in the store is the authority over a sign-in. A session whose row is gone — ended from another device, by
       // the user's list or by `prune` — is over, whatever the session driver still holds; its remember-me cookie hangs on the same row.
@@ -798,7 +801,7 @@ export class Auth {
    * differ), its remember-me token over, or any of those times unreadable. A missing sign-in time is no end (see the caller).
    */
   #lifetimeOver(signedInAt: unknown): boolean {
-    const at = now();
+    const at = this.#now();
     if (signedInAt !== undefined) {
       if (typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || signedInAt > at + CLOCK_SKEW_SECONDS || at - signedInAt >= this.#config.sessionMaxSeconds) return true;
     }
@@ -844,7 +847,7 @@ export class Auth {
     const since = await this.#twoFactor.enabledSince(device.userId);
     const madeAt = device.createdAt?.getTime();
     const cap = Number.isFinite(madeAt) ? madeAt! + this.#config.rememberDays * 86_400_000 : Number.NaN;
-    const expired = !(cap > Date.now()) || !Number.isFinite(device.expiresAt.getTime());
+    const expired = !(cap > this.#clock.now()) || !Number.isFinite(device.expiresAt.getTime());
     const refused = expired || (since !== undefined && !(madeAt! > since.getTime()));
     if (refused) {
       await this.#remember.forget(device.cookie ?? cookie);
@@ -904,9 +907,13 @@ export class Auth {
 
   #setCookie(value: string, expiresAt: Date): void {
     const { secure, sameSite } = this.#sessionConfig;
-    const left = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+    const left = Math.floor((expiresAt.getTime() - this.#clock.now()) / 1000);
     const maxAge = Number.isFinite(left) ? Math.max(0, left) : 0;
     this.#cookies.set(this.#config.rememberCookie, value, { httpOnly: true, secure, sameSite, maxAge });
+  }
+
+  #now(): number {
+    return Math.floor(this.#clock.now() / 1000);
   }
 
   async #current(): Promise<Credentials | undefined> {
@@ -925,10 +932,6 @@ export class Auth {
     if (!user) throw new Error(`auth.${method}() needs a signed-in user — put the route behind authenticate().`);
     return user;
   }
-}
-
-function now(): number {
-  return Math.floor(Date.now() / 1000);
 }
 
 function equal(a: string, b: string): boolean {
