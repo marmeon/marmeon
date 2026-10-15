@@ -617,7 +617,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
   it('shares link and form behaviour: which clicks visit, the first error per field', () => {
     const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, defaultPrevented: false };
     const location = { href: 'https://app.test/users/1', origin: 'https://app.test' };
-    expect(visitUrlOf(click, '/users/2?tab=links#top', undefined, location)).toBe('/users/2?tab=links#top');
+    expect(visitUrlOf(click, '/users/2?tab=links#top', undefined, location)).toBe('https://app.test/users/2?tab=links#top');
     expect(visitUrlOf({ ...click, metaKey: true }, '/users/2', undefined, location)).toBeUndefined(); // a new tab
     expect(visitUrlOf(click, '/users/2', '_blank', location)).toBeUndefined();
     expect(visitUrlOf(click, 'https://example.com/', undefined, location)).toBeUndefined();

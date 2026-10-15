@@ -25,6 +25,7 @@ import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
+import { visitUrlOf } from './links.ts';
 import { islands, type IslandsFeature } from './features/islands.ts';
 import { REMEMBERED } from './remember.ts';
 import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, type FakeEventSource } from './test-window.ts';
@@ -584,6 +585,13 @@ describe.each(PATHS)('%s path', (path) => {
       expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
     });
 
+    it('the code cannot load and the layer’s URL starts with two slashes: the browser loads that path of this site, never another host', async () => {
+      const tab = await waiting('//evil.example/x');
+      tab.fail();
+      expect(await tab.opening).toBeUndefined();
+      expect(tab.win.loads).toEqual([`assign ${ORIGIN}//evil.example/x`]);
+    });
+
     it('the code cannot load and the layer’s URL is no http(s) address: the browser loads nothing', async () => {
       const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
       try {
@@ -876,10 +884,27 @@ describe.each(PATHS)('%s path — requests go to the origin that was checked', (
 
   it('a 409 to another host loads it fully — it is never a client visit', async () => {
     const { win, navigator } = odd();
-    win.handler = () => conflict('history', '//evil.example');
+    win.handler = () => conflict('history', 'https://evil.example/');
     await navigator.visit('/users/2');
     expect(win.loads).toEqual(['assign https://evil.example/']);
     expect(win.requests).toHaveLength(1);
+  });
+
+  it('a 409 that names a path of two slashes loads it from this site, never as another host', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => conflict('history', '//evil.example/x');
+    await navigator.visit('/users/2');
+    expect(win.loads).toEqual([`assign ${at('//evil.example/x')}`]);
+  });
+
+  it.each(['/.//evil.example/x', '/a/..//evil.example/x', '/%2e//evil.example/x'])('a link to %s visits this site: a click never leaves it', async (href) => {
+    const { win, navigator } = odd();
+    const url = visitUrlOf({ button: 0, defaultPrevented: false, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false }, href, undefined, win.location);
+    expect(url).toBeDefined();
+    await navigator.visit(url!);
+    expect(win.loads).toEqual([]);
+    expect(win.requests.length).toBe(1);
+    expect(new URL(win.requests[0]!.url).origin).toBe(ORIGIN);
   });
 
   describe('only http and https are loaded', () => {

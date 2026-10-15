@@ -8,7 +8,7 @@ import type { NavigatorCore } from './core.ts';
 import type { VersionChange } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';
 import { notify } from './notify.ts';
-import { navigable } from './request.ts';
+import { atOrigin, navigable } from './request.ts';
 
 /** What a new build asks by default when loading it would lose unsaved changes. */
 export const DEFAULT_NEW_VERSION_MESSAGE = 'A new version of this app is available. Load it now? Your unsaved changes will be lost.';
@@ -62,7 +62,7 @@ export class DocumentChange {
     await response.body?.cancel();
     // Only http(s) loads — whatever the header holds. A change that cannot name a page to load (signing in or out) still ends
     // this document: the page on screen loads again. A new build waits for a page it can load.
-    const target = navigable(response.headers.get(LOCATION_HEADER)!, this.#core.window.location.href);
+    const target = navigable(atOrigin(response.headers.get(LOCATION_HEADER)!, this.#core.window), this.#core.window.location.href);
     if (!target) {
       if (response.headers.get(RELOAD_HEADER) === 'version') return false;
       how = 'reload';

@@ -1259,7 +1259,7 @@ export class Navigator {
 
   /** Leaves the document (see {@link #leave}): the browser loads `url` — or, without one, the entry it is on. */
   #away(url?: string): void {
-    const target = url === undefined ? undefined : navigable(url, this.#core.window.location.href);
+    const target = url === undefined ? undefined : navigable(atOrigin(url, this.#core.window), this.#core.window.location.href);
     if (url !== undefined && !target) return;
     this.#leave();
     if (!target) this.#core.window.location.reload();

@@ -23,7 +23,8 @@ export function visitUrlOf(click: LinkClick, href: string, target: string | null
   if (target && target !== '_self') return undefined;
   const url = new URL(href, location.href);
   if (url.origin !== location.origin) return undefined;
-  return url.pathname + url.search + url.hash;
+  // Absolute: the URL as the browser resolved it (`/.//host/x` stays on this site), never a bare path that starts with two slashes.
+  return url.href;
 }
 
 /** When a link fetches its page ahead: on `hover` (and when pressed — touch screens have no hover), or on `mount`. */

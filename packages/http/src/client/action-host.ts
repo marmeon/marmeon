@@ -20,7 +20,7 @@ export function actionHost(core: ActionsCore): ActionHost {
     // Features add their headers first (the tab's live connection, so its own writes do not hint it).
     fetch: (url, init) => (core.fire('send', init.headers as Record<string, string>), core.window.fetch(atOrigin(url, core.window), init)),
     leaveFor: (location) => {
-      const target = navigable(location, core.window.location.href);
+      const target = navigable(atOrigin(location, core.window), core.window.location.href);
       core.leave();
       // An address that is no page to load still ends this document: signed out, nothing of it stays in memory.
       if (target) core.window.location.assign(target.href);
