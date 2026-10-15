@@ -519,6 +519,7 @@ export function createHttpKernel(
   const handle = async (
     request: Request,
     remote: string | undefined,
+    socketServed: boolean,
     run: (scope: Container, state: RequestState, onTerminable: OnTerminable) => Promise<Response>,
     parent?: IslandParent,
   ) => {
@@ -528,8 +529,8 @@ export function createHttpKernel(
     addresses.set(request, ip);
     // Development routes answer this machine only. Both the socket's peer and, behind a trusted proxy, the client it names
     // count: a proxy on this machine must not make a network client local, and `TRUSTED_PROXIES=*` must not let a client
-    // write itself local. An in-process request has no peer; an island or a layer's base is from where its page is.
-    if (parent ? fromRemotePeer(parent.request) : remote !== undefined && !(isLoopbackAddress(remote) && (ip === undefined || isLoopbackAddress(ip)))) markRemotePeer(request);
+    // write itself local. A socket whose peer cannot be read (already destroyed) is not local either. An in-process request has no socket; an island or a layer's base is from where its page is.
+    if (parent ? fromRemotePeer(parent.request) : socketServed && !(remote !== undefined && isLoopbackAddress(remote) && (ip === undefined || isLoopbackAddress(ip)))) markRemotePeer(request);
     // The response's CSP nonce: made only when a document needs it — the same for the header, React and the template.
     const nonce = new RequestNonce();
     scope.instance(RequestNonce, nonce);
@@ -661,7 +662,7 @@ export function createHttpKernel(
     app.on([...route.methods], route.path, (c) => {
       matched.set(c.req.raw, route);
       if (debug) parameters.set(c.req.raw, c.req.param());
-      return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
+      return handle(c.req.raw, remoteAddress(c.env), socketServed(c.env), (scope, state, onTerminable) =>
         router.dispatch(
           route,
           { request: c.req.raw, params: c.req.param() },
@@ -680,7 +681,7 @@ export function createHttpKernel(
 
   // Unknown paths still pass the global middleware, then end in the exception handler's 404.
   app.notFound((c) =>
-    handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
+    handle(c.req.raw, remoteAddress(c.env), socketServed(c.env), (scope, state, onTerminable) =>
       router.dispatchNotFound(c.req.raw, {
         resolve: (Class) => scope.make(Class),
         state,
@@ -754,6 +755,11 @@ async function regionResultOf(response: Response): Promise<RegionResult> {
 function shownHost(host: string | undefined): string {
   if (host === undefined || host === '0.0.0.0' || host === '::') return 'localhost';
   return host.includes(':') ? `[${host}]` : host;
+}
+
+/** Whether a request came in over a socket (the Node server) — not in-process, as in a test or an island. */
+function socketServed(env: unknown): boolean {
+  return (env as { incoming?: unknown } | undefined)?.incoming !== undefined;
 }
 
 /** The peer address from @hono/node-server's bindings; undefined for in-process requests (tests). */

@@ -1,5 +1,5 @@
 import { createApplication, defineConfig, defineModule, env, type ConfigOf } from '@marmeon/core';
-import { devHosts, devOnly } from '@marmeon/core/dev';
+import { devHosts, devOnly, markRemotePeer } from '@marmeon/core/dev';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import type { EmptyObject, HttpContext, Next } from '@marmeon/router';
@@ -83,11 +83,17 @@ describe('the peer of a development route', () => {
       ],
     });
     const app = createHttpKernel(application);
-    const get = async (path: string, from?: string, headers: Record<string, string> = {}) => {
-      const response = await app.request(path, { headers: { host: 'localhost:3960', ...headers } }, from === undefined ? undefined : peer(from));
+    const asIsland = async (marked: boolean) => {
+      const page = new Request('http://localhost:3960/');
+      if (marked) markRemotePeer(page);
+      const parent = { request: page, scope: application.container.createScope(), requestId: undefined };
+      return (await app.request('/_playground', { headers: { host: 'localhost:3960' } }, { parent })).status;
+    };
+    const get = async (path: string, from?: string, headers: Record<string, string> = {}, env: object | undefined = from === undefined ? undefined : peer(from)) => {
+      const response = await app.request(path, { headers: { host: 'localhost:3960', ...headers } }, env);
       return { status: response.status, text: await response.text() };
     };
-    return { get, ran: () => ran };
+    return { get, asIsland, ran: () => ran };
   };
 
   it.each(['127.0.0.1', '127.8.9.10', '::1', '::ffff:127.0.0.1'])('answers a loopback peer: %s', async (from) => {
@@ -107,6 +113,18 @@ describe('the peer of a development route', () => {
     const { get } = await boot();
     expect((await get('/_playground')).status).toBe(200);
     expect(await get('/open', '192.168.1.20')).toEqual({ status: 200, text: 'open' });
+  });
+
+  it('refuses a socket whose peer cannot be read (a destroyed connection) instead of taking it for in-process', async () => {
+    const { get } = await boot();
+    const response = await get('/_playground', undefined, {}, { incoming: { socket: {} } });
+    expect(response.status).toBe(403);
+  });
+
+  it("an island or a layer's base is from where its page is", async () => {
+    const { asIsland } = await boot();
+    expect(await asIsland(true)).toBe(403);
+    expect(await asIsland(false)).toBe(200);
   });
 
   it('behind a trusted proxy on this machine, the client it names counts too', async () => {
