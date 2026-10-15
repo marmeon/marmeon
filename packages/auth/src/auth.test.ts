@@ -5,6 +5,7 @@ import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, HttpServiceP
 import { rules as r } from '@marmeon/validation';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
+import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   AccessTokenStore,
@@ -21,6 +22,7 @@ import {
   Hasher,
   Login,
   Logout,
+  RememberTokenReused,
   PasswordHasher,
   UserProvider,
   type Authenticated,
@@ -273,7 +275,7 @@ const routes = openRoutes((Route) => {
 
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]> } = {}) {
+async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: RememberTokenStore) => RememberTokenStore['consume'] } = {}) {
   const users = options.users ?? new MemoryUsers();
   const application = await createApplication({
     root: import.meta.dirname,
@@ -285,13 +287,17 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
         name: 'auth-test',
         routes,
         migrations: new URL('./__fixtures__/migrations/', import.meta.url),
-        listeners: [listen(Login, RecordEvent), listen(Logout, RecordEvent), listen(Failed, RecordEvent), listen(PasswordChanged, RecordEvent)],
+        listeners: [listen(Login, RecordEvent), listen(Logout, RecordEvent), listen(Failed, RecordEvent), listen(PasswordChanged, RecordEvent), listen(RememberTokenReused, RecordEvent)],
       }),
     ],
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
       if (options.logger) container.instance(Logger, options.logger);
+      if (options.consume) {
+        const real = container.make(RememberTokenStore);
+        container.instance(RememberTokenStore, { ...real, create: (...a) => real.create(...a), exists: (c) => real.exists(c), forget: (c) => real.forget(c), forgetUser: (...a) => real.forgetUser(...a), prune: (n) => real.prune(n), consume: options.consume(real) });
+      }
       if (options.factors) container.instance(TwoFactorState, { factors: async (id) => options.factors!.get(Number(id)) ?? [], enabledSince: async () => undefined });
     },
   });
@@ -831,6 +837,150 @@ describe('remember me', () => {
     expect(theft).toHaveLength(1);
     expect(theft[0]!.context).toMatchObject({ user: 1, ip: '198.51.100.7', userAgent: `Firefox/${'x'.repeat(600)}`.slice(0, 512) });
     expect(JSON.stringify(warnings)).not.toContain(copied);
+  });
+
+  describe('RememberTokenReused', () => {
+    /** A copied cookie, presented once by the thief and once more after the grace period; returns what the second request dispatched. */
+    async function reuse(options: Parameters<typeof boot>[0] = {}, path = '/who', afterFirstUse?: (users: MemoryUsers) => void) {
+      const { add, browser, kernel, users } = await boot(options);
+      await add(ada);
+      const owner = browser();
+      await rememberLogin(owner.send);
+      const copied = owner.jar.get('remember_web')!;
+      expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
+      afterFirstUse?.(users);
+      events.length = 0;
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+      try {
+        await kernel.request(
+          path,
+          { headers: { cookie: `remember_web=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
+          { incoming: { socket: { remoteAddress: '198.51.100.7' } } },
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+      return { copied, reused: events.filter((event): event is RememberTokenReused => event instanceof RememberTokenReused) };
+    }
+
+    it('is dispatched once, with the address and the capped browser of the second request and no cookie', async () => {
+      const { copied, reused } = await reuse();
+      expect(reused).toHaveLength(1);
+      expect(reused[0]).toMatchObject({ userId: 1, ip: '198.51.100.7', userAgent: `Firefox/${'x'.repeat(600)}`.slice(0, 512), sessionsEnded: true });
+      expect(reused[0]!.at).toBeInstanceOf(Date);
+      expect(JSON.stringify(reused[0])).not.toContain(copied);
+      expect(JSON.stringify(reused[0])).not.toContain(copied.split('.')[0]!);
+      expect(v.parse(RememberTokenReused.schema, reused[0])).toEqual({
+        userId: 1,
+        at: reused[0]!.at.toISOString(),
+        ip: '198.51.100.7',
+        userAgent: `Firefox/${'x'.repeat(600)}`.slice(0, 512),
+        sessionsEnded: true,
+      });
+    });
+
+    it('drops control characters from the browser it carries', () => {
+      const event = new RememberTokenReused(ada, { userAgent: 'Fire\r\nfox\u0000/1\u009f', sessionsEnded: true });
+      expect(event.userAgent).toBe('Firefox/1');
+    });
+
+    it('carries no address that is not one, and still parses', () => {
+      const event = new RememberTokenReused(ada, { ip: 'unknown, 10.0.0.1', sessionsEnded: true });
+      expect(event.ip).toBeNull();
+      expect(v.parse(RememberTokenReused.schema, event).ip).toBeNull();
+      expect(new RememberTokenReused(ada, { ip: '2001:db8::1', sessionsEnded: true }).ip).toBe('2001:db8::1');
+    });
+
+    it('is not dispatched when the store reports a mismatch that was no reuse, though the sessions still end', async () => {
+      const { add, browser } = await boot({
+        consume: (real) => async () => {
+          await real.forgetUser(1);
+          return err({ kind: 'stolen', userId: 1, reused: false });
+        },
+      });
+      await add(ada);
+      const owner = browser();
+      await rememberLogin(owner.send);
+      expect(await (await owner.send('/who')).json()).toMatchObject({ id: 1 });
+      events.length = 0;
+      const fresh = browser(new Map([['remember_web', owner.jar.get('remember_web')!]]));
+      expect(await (await fresh.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(events.some((event) => event instanceof RememberTokenReused)).toBe(false);
+      expect(await (await owner.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    });
+
+    it('is dispatched once for parallel replays', async () => {
+      const { add, browser, kernel } = await boot();
+      await add(ada);
+      const owner = browser();
+      await rememberLogin(owner.send);
+      const copied = owner.jar.get('remember_web')!;
+      await browser(new Map([['remember_web', copied]])).send('/who');
+      events.length = 0;
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+      try {
+        await Promise.all([1, 2, 3, 4].map(() => kernel.request('/who', { headers: { cookie: `remember_web=${copied}`, accept: 'application/json' } })));
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(events.filter((event) => event instanceof RememberTokenReused)).toHaveLength(1);
+    });
+
+    it('announces once and deletes the tokens when a rollback brought them back and the provider cannot end sessions', async () => {
+      const users = Object.assign(new MemoryUsers(), { updateSessionKey: undefined }) as unknown as MemoryUsers;
+      const { add, browser, kernel } = await boot({ users });
+      await add(ada);
+      const owner = browser();
+      await rememberLogin(owner.send);
+      const copied = owner.jar.get('remember_web')!;
+      await browser(new Map([['remember_web', copied]])).send('/who');
+      events.length = 0;
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+      try {
+        for (let replay = 0; replay < 2; replay++) {
+          await kernel.request('/who-in-failing-transaction', { headers: { cookie: `remember_web=${copied}`, accept: 'application/json' } });
+        }
+        expect(events.filter((event) => event instanceof RememberTokenReused)).toHaveLength(1);
+        expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(events.filter((event) => event instanceof RememberTokenReused)).toHaveLength(1);
+    });
+
+    it('is dispatched once when the request ran in a transaction that rolls back', async () => {
+      const { reused } = await reuse({}, '/who-in-failing-transaction');
+      expect(reused).toHaveLength(1);
+      expect(reused[0]!.sessionsEnded).toBe(true);
+    });
+
+    it('is dispatched once when the request ran in a transaction that commits', async () => {
+      const { reused } = await reuse({}, '/who-in-transaction');
+      expect(reused).toHaveLength(1);
+    });
+
+    it('says the sessions were not ended when the provider cannot end them', async () => {
+      const { reused } = await reuse({ users: Object.assign(new MemoryUsers(), { updateSessionKey: undefined }) as unknown as MemoryUsers });
+      expect(reused).toHaveLength(1);
+      expect(reused[0]!.sessionsEnded).toBe(false);
+    });
+
+    it('is not dispatched for an account that is gone', async () => {
+      const { reused } = await reuse({}, '/who', (users) => users.rows.delete(1));
+      expect(reused).toEqual([]);
+    });
+
+    it('is not dispatched inside the grace period', async () => {
+      const { add, browser } = await boot();
+      await add(ada);
+      const owner = browser();
+      await rememberLogin(owner.send);
+      const old = owner.jar.get('remember_web')!;
+      await browser(new Map([['remember_web', old]])).send('/who');
+      events.length = 0;
+      await browser(new Map([['remember_web', old]])).send('/who');
+      expect(events.some((event) => event instanceof RememberTokenReused)).toBe(false);
+    });
   });
 
   it('logs, and does not throw, when the sessions of a thief cannot be ended', async () => {

@@ -40,7 +40,14 @@ export interface RememberedDevice {
  * `stolen` means an old validator came back after rotation: the cookie was copied, and every token of the user is gone now.
  * `Auth` then ends the user's sessions too (`AccountSessions.end()`), the one the copy already signed in included.
  */
-export type RememberTokenError = { readonly kind: 'invalid' } | { readonly kind: 'stolen'; readonly userId: number | string };
+export type RememberTokenError =
+  | { readonly kind: 'invalid' }
+  | {
+      readonly kind: 'stolen';
+      readonly userId: number | string;
+      /** The presented validator was the one just replaced by a rotation (a genuinely copied cookie), not any other mismatch. A store that leaves it out announces nothing. */
+      readonly reused?: boolean;
+    };
 
 /**
  * Remember-me tokens, one per device: `<selector>.<validator>` in the cookie, the selector in
@@ -135,10 +142,14 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     if (row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash) && this.#clock.now() - rotatedAt < GRACE_MS) {
       return ok({ userId: row.user_id, cookie: undefined, expiresAt, createdAt: new Date(row.created_at) }); // the other tab's response carries the new cookie
     }
-    // A validator that is neither current nor just rotated: someone else used this cookie first.
+    // A validator that is neither current nor just rotated: someone else used this cookie first. Only the request whose delete
+    // removes the token reports it; parallel replays find it gone and are plain invalid ones, so the owner is told once.
+    const removed = await db.deleteFrom(REMEMBER_TABLE).where('id', '=', row.id).executeTakeFirst();
+    if (removed.numDeletedRows === 0n) return commitAnyway(err({ kind: 'invalid' }));
     await this.forgetUser(row.user_id);
+    const reused = row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash);
     // The revocation must survive an ambient transaction that would roll back on an err.
-    return commitAnyway(err({ kind: 'stolen', userId: row.user_id }));
+    return commitAnyway(err({ kind: 'stolen', userId: row.user_id, reused }));
   }
 
   async exists(cookie: string): Promise<boolean> {
