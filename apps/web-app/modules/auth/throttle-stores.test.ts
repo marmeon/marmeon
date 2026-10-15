@@ -1,8 +1,12 @@
 import { RedisConnections } from '@marmeon/redis';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+// The first test would pay for the worker's database, the app's modules and the first password hash inside its 5 s.
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 /** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
