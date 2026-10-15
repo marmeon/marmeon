@@ -1004,10 +1004,13 @@ describe('Passkeys: confirming sudo mode', () => {
     const booted = await boot();
     const authenticator = device();
     const b = await unconfirmed(booted, authenticator);
+    events.length = 0;
     const stepUp = (await b.pk('step-up-options')).value;
     expect(await b.pk('confirm', { response: authenticator.authenticate(stepUp) })).toMatchObject({ ok: false, kind: 'invalid' });
     const signIn = await b.pk('sign-in-options');
     expect(await b.pk('confirm', { response: authenticator.authenticate(signIn) })).toMatchObject({ ok: false, kind: 'invalid' });
+    // The owner's own correct passkey met a challenge of another purpose: no wrong answer, so no event.
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toEqual([]);
     // The other way round: a confirm challenge serves neither a step-up nor a passwordless sign-in.
     const confirm = (await b.pk('confirm-options')).value;
     expect(await b.pk('step-up', { passkey: authenticator.authenticate(confirm) })).toMatchObject({ ok: false });
@@ -1079,7 +1082,7 @@ describe('Passkeys: confirming sudo mode', () => {
     expect(await b.send('/sudo')).toEqual({ page: true });
   });
 
-  it('tells the owner of a wrong answer through TwoFactorChallengeFailed (during confirm), not of a missing challenge', async () => {
+  it('tells the owner of a wrong answer to the open challenge through TwoFactorChallengeFailed (during confirm), not of a missing or replaced challenge', async () => {
     const booted = await boot();
     const authenticator = device();
     const b = await unconfirmed(booted, authenticator);
@@ -1092,6 +1095,84 @@ describe('Passkeys: confirming sudo mode', () => {
     expect(failed).toHaveLength(1);
     expect(failed[0]).toMatchObject({ during: 'confirm', user: { id: ada.id } });
     expect(JSON.stringify(failed[0])).not.toContain('unknown');
+  });
+
+  it('does not tell the owner when a newer challenge replaced the one the browser signed', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    const options = (await b.pk('confirm-options')).value;
+    events.length = 0;
+    await b.pk('step-up-options'); // a second tab replaces the open challenge
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toEqual([]);
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+  });
+
+  it('does not tell the owner when a second confirmOptions() replaced the challenge, and the newer one still works', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    const first = (await b.pk('confirm-options')).value;
+    const second = (await b.pk('confirm-options')).value;
+    events.length = 0;
+    expect(await b.pk('confirm', { response: authenticator.authenticate(first) })).toMatchObject({ ok: false, kind: 'expired' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toEqual([]);
+    // The stale answer used the open challenge up; the page asks again and the new options work.
+    const again = (await b.pk('confirm-options')).value;
+    expect(second.challenge).not.toBe(again.challenge);
+    expect(await b.pk('confirm', { response: authenticator.authenticate(again) })).toEqual({ ok: true });
+  });
+
+  it('still judges an answer whose clientDataJSON cannot be read: invalid, and the owner is told once', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    const options = (await b.pk('confirm-options')).value;
+    const response = authenticator.authenticate(options);
+    response.response.clientDataJSON = 'not-json';
+    events.length = 0;
+    expect(await b.pk('confirm', { response })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toMatchObject([{ during: 'confirm' }]);
+  });
+
+  it('tells the owner once when a passkey of another account answers a valid challenge', async () => {
+    const booted = await boot();
+    const mine = device();
+    const theirs = device();
+    const b = await unconfirmed(booted, mine);
+    await enrolled(booted, theirs, bob.email);
+    const options = (await b.pk('confirm-options')).value;
+    events.length = 0;
+    expect(await b.pk('confirm', { response: theirs.authenticate({ ...options, allowCredentials: [] }) })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toMatchObject([{ during: 'confirm' }]);
+  });
+
+  it('refuses a response without user verification, and tells the owner once', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    const options = (await b.pk('confirm-options')).value;
+    events.length = 0;
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options, { userVerified: false }) })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toMatchObject([{ during: 'confirm' }]);
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+  });
+
+  it('dates a failed passwordless sign-in on the app clock', async () => {
+    const clock = new TestClock();
+    const booted = await boot({}, { clock });
+    const authenticator = device();
+    await enrolled(booted, authenticator);
+    const b = booted.browser();
+    clock.travel({ hours: 3 });
+    const from = clock.now();
+    events.length = 0;
+    await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options'), { badSignature: true }) });
+    const failed = events.filter((event): event is PasskeySignInFailed => event instanceof PasskeySignInFailed);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.at.getTime()).toBeGreaterThanOrEqual(from);
+    expect(failed[0]?.at.getTime()).toBeLessThanOrEqual(clock.now());
   });
 
   it('does not let a passkey alone persist: adding or removing a passkey still asks for the password in the same form', async () => {
@@ -1603,7 +1684,11 @@ describe('Passkeys: the events', () => {
     expect(await validate(PasskeyRemoved, { userId: {} })).toBeUndefined();
     expect(await validate(PasskeyCloneSuspected, new PasskeyCloneSuspected(ada, 7))).toEqual({ userId: 1, passkeyId: 7 });
     expect(await validate(PasskeyCloneSuspected, { userId: 1, passkeyId: 'seven' })).toBeUndefined();
-    expect(await validate(PasskeySignInFailed, new PasskeySignInFailed(ada, { ip: '203.0.113.9', userAgent: 'x'.repeat(600) }))).toEqual({ userId: 1, ip: '203.0.113.9', userAgent: 'x'.repeat(600).slice(0, 512) });
+    expect(await validate(PasskeySignInFailed, new PasskeySignInFailed(ada, { ip: '203.0.113.9', userAgent: 'x'.repeat(600) }))).toMatchObject({ userId: 1, ip: '203.0.113.9', userAgent: 'x'.repeat(600).slice(0, 512) });
     expect(await validate(PasskeySignInFailed, { userId: 1, ip: 7, userAgent: null })).toBeUndefined();
+    // Queued before `at` existed: accepted, dated when it is read.
+    expect(await validate(PasskeySignInFailed, { userId: 1, ip: null, userAgent: null })).toMatchObject({ userId: 1, at: expect.any(String) });
+    const at = new Date('2030-01-02T03:04:05.000Z');
+    expect(await validate(PasskeySignInFailed, new PasskeySignInFailed(ada, {}, at))).toMatchObject({ at: at.toISOString() });
   });
 });

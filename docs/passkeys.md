@@ -186,8 +186,8 @@ The challenge has its own purpose, `confirm`: one issued for a sign-in or a step
 session before the response is looked at, so a response works once. The passkey must belong to the signed-in account and not be suspended, and
 user verification is required. On success the session gets a new id, `confirmedPassword()` lets it through for `AUTH_PASSWORD_TIMEOUT`
 seconds, and it counts as having proven a second factor. `confirm()` returns `err` for a response that fails, with the kinds of
-[a sign-in](#passwordless-sign-in) and `throttled` (ten a minute for the account, a success clears the count); a wrong answer fires `TwoFactorChallengeFailed` with `during: 'confirm'`, a challenge that is
-missing, used or expired does not. `confirmOptions()` answers `no-challenge` when the account has no usable passkey; it only opens a challenge and has no throttle of its own: give its route a limit.
+[a sign-in](#passwordless-sign-in) and `throttled` (ten a minute for the account, a success clears the count); a wrong answer to the open challenge fires `TwoFactorChallengeFailed` with `during: 'confirm'`. A challenge that is
+missing, used, expired or opened for another purpose does not, and neither does an answer signed for a challenge that a newer `confirmOptions()` replaced (a second tab, a double click): that is `expired`, and it uses the newer challenge up too, so the user starts again with new options. `confirmOptions()` answers `no-challenge` when the account has no usable passkey; it only opens a challenge and has no throttle of its own: give its route a limit.
 
 A passkey that can confirm sudo mode alone must not open every door. Actions that would let a holder of the session stay in the account
 ask for the password in the same form, and `remove()` does so for every passkey, as `register()` does; so do `TwoFactor.regenerateRecoveryCodes(password)`, the e-mail change and a new API token in the starter kit. An empty password counts as none and uses up no try.
@@ -296,7 +296,7 @@ removes the passkeys together with the authenticator and the recovery codes.
 | `PasskeyRegistered` | `register()` added a passkey | `user`, `name` |
 | `PasskeyRemoved` | `remove()` removed one | `user` |
 | `PasskeyCloneSuspected` | A sign-in was refused for its sign count, and the passkey suspended | `user`, `passkeyId` |
-| `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `ip`, `userAgent` |
+| `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `at`, `ip`, `userAgent` |
 | `Login` | A passwordless sign-in | `via: 'passkey'` |
 | `TwoFactorChallengeFailed` | A wrong passkey after the password, at a step-up, or when confirming sudo mode | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`, `step-up` or `confirm`) |
 
