@@ -4,11 +4,12 @@
  * `useQueryState` renders `value(page)` and calls `set()`. The browser never parses a URL: what it shows is what the
  * server parsed, or what is being typed into it right now.
  *
- * The state (`QueryState`) is a feature (`features/query-state.ts`): in an app only when it uses it (`useQueryState`); the
- * helpers here are what links and islands need of a page's query too.
+ * The state (`QueryState`) is a feature (`features/query-state.ts`): in an app only when it uses it (`useQueryState`) — so its
+ * code is a module of its own, apart from the helpers links and islands need of a page's query (`query.ts`).
  */
-import { matchesPath, toSearchParams, type PageObject, type Query } from '../page.ts';
+import { matchesPath, toSearchParams, type PageObject } from '../page.ts';
 import type { Navigator, VisitOptions } from './navigation.ts';
+import { pageQuery, queryUrl, withoutDefaults } from './query.ts';
 
 /** What query state follows and visits: the navigator (the page on screen), or a layer. */
 export type QueryStateTarget = Pick<Navigator, 'page' | 'visit'> & { subscribe(listener: () => void): () => void };
@@ -33,39 +34,6 @@ export interface QueryStateOptions {
 
 /** A change of the query: some fields (`undefined` takes one back to its default), or a function of the current state. */
 export type QueryUpdate<Q> = { readonly [K in keyof Q]?: Q[K] | undefined } | ((current: Q) => { readonly [K in keyof Q]?: Q[K] | undefined });
-
-/** The page's query with its defaults filled in — what its controller saw as `ctx.query`. */
-export function pageQuery(page: Pick<PageObject, 'query' | 'queryDefaults'>): Record<string, unknown> {
-  return { ...page.queryDefaults, ...page.query };
-}
-
-/** `values` without the fields that are just their default (and without `undefined`) — what a URL needs to carry. */
-export function withoutDefaults(values: Readonly<Record<string, unknown>>, defaults: Readonly<Record<string, unknown>> = {}): Query {
-  const query: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values)) {
-    if (value === undefined || value === null) continue;
-    if (Object.hasOwn(defaults, key) && JSON.stringify(value) === JSON.stringify(defaults[key])) continue;
-    query[key] = value;
-  }
-  return query as Query;
-}
-
-/** The URL of the page on screen with `values` as its query (defaults left out; values as `String()`, lists as repeated keys). */
-export function queryUrl(page: Pick<PageObject, 'url' | 'queryDefaults'>, values: Readonly<Record<string, unknown>>): string {
-  const pathname = new URL(page.url, 'http://marmeon.invalid').pathname;
-  const search = toSearchParams(withoutDefaults(values, page.queryDefaults)).toString();
-  return search ? `${pathname}?${search}` : pathname;
-}
-
-/**
- * The query of a link to `url` (built without a query): for the page on screen — the same path — without the fields
- * that are just its defaults (`<Link query={{ ...query, sort: '-name' }}>` writes no `q=`); for any other page as given.
- */
-export function linkQuery(page: Pick<PageObject, 'url' | 'queryDefaults'>, url: string, query: Query): Query {
-  if (!page.queryDefaults) return query;
-  const base = 'http://marmeon.invalid';
-  return new URL(url, base).pathname === new URL(page.url, base).pathname ? withoutDefaults(query, page.queryDefaults) : query;
-}
 
 /**
  * Whether the page on screen is one of route `name` (pattern `path`) with a query schema — query state belongs to its
