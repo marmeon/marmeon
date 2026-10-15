@@ -17,6 +17,7 @@ const manifest: ViteManifest = {
   'modules/site/views/Docs.tsx': { file: 'assets/Docs-a.js', isDynamicEntry: true, imports: ['_vendor', '_CodeBlock'] },
   'node_modules/x/modules/a/views/B.tsx': { file: 'assets/B-a.js', isDynamicEntry: true },
   '../../packages/http/dist/client/features/tab-sync.js': { file: 'assets/tab-sync-a.js', isDynamicEntry: true, imports: ['_vendor'] },
+  '../../packages/http/dist/client/prop-loader.js': { file: 'assets/prop-loader-a.js', isDynamicEntry: true, imports: ['_vendor'] },
   '../../packages/http/dist/client/features/history-fallback.js': { file: 'assets/history-fallback-a.js', isDynamicEntry: true },
 };
 
@@ -51,6 +52,16 @@ describe('assetPreloads', () => {
     delete rest['../../packages/http/dist/client/features/tab-sync.js'];
     expect(hrefs(assetPreloads(rest).forPage({ component: 'site/Docs' }))).toEqual(['/assets/Docs-a.js', '/assets/CodeBlock-a.js', '/assets/CopyButton-a.js']);
     expect(hrefs(assetPreloads(manifest).forPage({ component: 'site/Docs' }))).not.toContain('/assets/history-fallback-a.js');
+  });
+
+  it('adds the loading of deferred props for a page that has deferred or streamed groups — and only for one', () => {
+    const preloads = assetPreloads(manifest);
+    expect(hrefs(preloads.forPage({ component: 'site/Docs' }))).not.toContain('/assets/prop-loader-a.js');
+    expect(hrefs(preloads.forPage({ component: 'site/Docs', deferredProps: { default: ['stats'] } }))).toContain('/assets/prop-loader-a.js');
+    expect(hrefs(preloads.forPage({ component: 'site/Docs', streamedProps: ['default'] }))).toContain('/assets/prop-loader-a.js');
+    const rest = { ...manifest };
+    delete rest['../../packages/http/dist/client/prop-loader.js'];
+    expect(hrefs(assetPreloads(rest).forPage({ component: 'site/Docs', deferredProps: { default: ['stats'] } }))).not.toContain('/assets/prop-loader-a.js');
   });
 
   it('makes pages only of the app’s own views', () => {

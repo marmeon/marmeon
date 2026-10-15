@@ -8,6 +8,7 @@ import { updatePage } from '../cache.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { PatchQueue, Revalidations, type PatchTarget } from '../optimistic.ts';
+import { revalidate, type RevalidateCore } from '../revalidate.ts';
 
 /** The optimistic patches of one history entry's page, and the reloads actions start for it. */
 interface EntryPatches {
@@ -32,7 +33,7 @@ export const PATCHES = slot(
   },
 );
 
-type PatchesCore = Pick<FeatureHost, 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'draw' | 'setPage' | 'props' | 'document'>;
+type PatchesCore = Pick<FeatureHost, 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'draw' | 'setPage' | 'props' | 'document'> & RevalidateCore;
 
 /** The patches of one navigator's history entries, by key. */
 export class PagePatches {
@@ -89,7 +90,7 @@ export class PagePatches {
         revalidations.run(
           spec,
           ids,
-          (united, all, signal) => this.#core.props.revalidate(key, united, signal, () => this.drop(key, all)),
+          (united, all, signal) => revalidate(this.#core, key, united, signal, () => this.drop(key, all)),
           (all) => target.settle(all, true),
         ),
     };

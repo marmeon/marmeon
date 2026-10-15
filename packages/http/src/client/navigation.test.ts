@@ -440,6 +440,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       win.readyState = 'loading';
       win.handler = () => pageResponse(page('/users/1', { audit: ['log'] }));
       const { navigator, visible } = boot(win, streamed());
+      await settle(); // the loading code is a chunk of its own
       // Only the group that is not streamed is asked for.
       expect(win.requests.map((request) => request.headers['x-marmeon-partial-data'])).toEqual(['audit']);
       const landing = navigator.receiveStreamed('default', { props: { activity: ['signed in'] } });
@@ -453,11 +454,12 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.requests).toHaveLength(1);
     });
 
-    it('without streamedProps every group is asked for', () => {
+    it('without streamedProps every group is asked for', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       win.handler = () => pageResponse(page('/users/1', {}));
       const { streamedProps: _streamed, ...withoutStreaming } = streamed();
       boot(win, withoutStreaming);
+      await settle();
       expect(win.requests.map((request) => request.headers['x-marmeon-partial-data']).sort()).toEqual(['activity', 'audit']);
     });
 
@@ -549,6 +551,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       navigator.on('success', () => events.push('success'));
       navigator.on('finish', (visit) => events.push(`finish${visit.async ? ' async' : ''}`));
       navigator.start();
+      await settle(); // the loading code is a chunk of its own
 
       // The server-rendered page is on screen, without `activity`; the request for it is out.
       expect(shown).toEqual([]);
@@ -574,6 +577,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
         return pageResponse(page('/users/1', asked === 'audit' ? { audit: ['log'] } : { activity: ['a'], teams: ['t'] }));
       };
       const { navigator, visible } = boot(win, { ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity', 'teams'], slow: ['audit'] } });
+      await settle();
       expect(win.requests.map((request) => request.headers['x-marmeon-partial-data'])).toEqual(['activity,teams', 'audit']);
       await settle();
       expect(visible().props).toEqual({ name: 'Ada', activity: ['a'], teams: ['t'] });
@@ -622,6 +626,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
         return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: `${ORIGIN}/login` } });
       };
       const { navigator, shown } = boot(win, { ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
+      await settle(); // the loading code is a chunk of its own: the group's request is out
       await navigator.visit('/logout', { method: 'post' });
       expect(win.loads).toEqual([`assign ${ORIGIN}/login`]);
       expect(signal?.aborted).toBe(true);

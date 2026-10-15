@@ -74,6 +74,8 @@ const FEATURES = {
   prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link'), lazy: true },
   // Any view of resolveModulePages may declare it: the resolver brings it, <MarmeonApp> attaches it.
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
+  // The background reload of a page (an action's patches, Back/Forward): a chunk of its own, loaded by the first reload.
+  revalidation: { markers: ['http/client/revalidate'], use: inApp('resolveModulePages'), brings: ['revalidateOnBack'], lazy: true },
   // useBlocker, useForm({ guard }), <Form guard>: static (a guard loaded later could not stop what came first). Asking — a
   // visit's, an action's `confirm`, the guard's question — is the core's (`http/client/confirm`).
   guard: { markers: ['http/client/features/guard'], use: inApp('useBlocker') },
@@ -87,6 +89,9 @@ const FEATURES = {
   // Server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
   // asks for the waiting updates (`useLiveUpdates`) loads it too. The stream, sequences and hints: its document slot only.
   live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
+  // Deferred props: the core loads the code that asks for the groups when a page that carries some arrives — a chunk of its
+  // own whatever the app imports, never in a first download of an app without them.
+  deferredProps: { markers: ['http/client/prop-loader'], use: inApp(), lazy: true },
   // The client hook API: a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
   hooks: { markers: ['http/client/features/hooks'], use: { base: 'emptyApp' as const, entry: `${appEntry()}import { hooks } from '@marmeon/http/client';\nglobalThis.__hooks = hooks;\n` } },
   // Tab sync: a default feature of `createMarmeonApp` — loaded with the first page, before hydrating, in a chunk of
@@ -123,7 +128,7 @@ type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features no app carries unless it uses them. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack', 'viewTransitions', 'failures'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'revalidation', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'deferredProps', 'hooks', 'table', 'tanstack', 'viewTransitions', 'failures'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -236,6 +241,13 @@ describe('an app holds only the features it uses (leak test)', () => {
     expect(featuresIn(built, true)).toContain('live');
   });
 
+  // Deferred props load their loader when a page carries groups: a chunk of its own, never in a first download, always there to load.
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the loading of deferred props is a chunk of its own in %s — loaded on demand', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built)).not.toContain('deferredProps');
+    expect(featuresIn(built, true)).toContain('deferredProps');
+  });
+
   // Every app of createMarmeonApp loads tab sync — in a chunk of its own, never in a first download; the core alone
   // carries none of it, not even lazily.
   it.each(['emptyApp', 'minimalApp', 'everything'] as const)('tab sync is a chunk of its own in %s — loaded by createMarmeonApp', (name) => {
@@ -282,6 +294,12 @@ describe('an app holds only the features it uses (leak test)', () => {
   it('the page’s optimistic patches are a chunk of their own in everything — loaded with the first router.optimistic()', () => {
     expect(featuresIn(bundle('everything'))).not.toContain('optimistic');
     expect(featuresIn(bundle('everything'), true)).toContain('optimistic');
+  });
+
+  // revalidateOnBack is in everything, and so is its reload — in a chunk of its own, never in the first download.
+  it('the background reload is a chunk of its own in everything', () => {
+    expect(featuresIn(bundle('everything'))).not.toContain('revalidation');
+    expect(featuresIn(bundle('everything'), true)).toContain('revalidation');
   });
 
   it('the core alone carries no tab sync — not in its first download, not in a chunk', () => {
