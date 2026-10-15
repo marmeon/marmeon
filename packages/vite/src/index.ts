@@ -21,6 +21,26 @@ export const SOURCE_CONDITION = '@marmeon/source';
 /** The name of the main plugin; the server finds the entries through its `api`. */
 export const PLUGIN_NAME = 'marmeon';
 
+/** Vite's default `server.fs.deny`. A list of its own replaces this one rather than extending it, so ours has to repeat it. */
+const VITE_DEFAULT_DENY = ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**'];
+
+/** What the dev server must never serve, even to a client that reaches it over the network: storage, databases, build output. */
+function privateFiles(root: string): string[] {
+  let real = root;
+  try {
+    real = realpathSync(root);
+  } catch {
+    // A root that does not exist yet has nothing to resolve.
+  }
+  // `resolve.preserveSymlinks` keeps the path as written, otherwise Vite sees the real one.
+  const bases = [...new Set([resolve(root), real])].map((dir) => dir.replaceAll('\\', '/').replace(/[[\]{}()*?!+@]/g, '\\$&'));
+  return [
+    ...VITE_DEFAULT_DENY,
+    ...bases.flatMap((base) => [`${base}/storage/**`, `${base}/dist/**`, `${base}/.marmeon/**`]),
+    ...['sqlite', 'sqlite3', 'db', 'db3'].flatMap((extension) => [`**/*.${extension}`, `**/*.${extension}-*`]),
+  ];
+}
+
 export interface MarmeonEntries {
   /** Browser entry, relative to the app root. Default `bootstrap/client.tsx`. */
   client: string;
@@ -117,6 +137,9 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
         // each re-bundling reloads the page (a 504 "Outdated Optimize Dep").
         result.optimizeDeps = { entries: [entries.client, ...[pages].flat()], include: installedModules(root, PREBUNDLED) };
       }
+      // An app's own `server.fs.deny` is extended by this list, not replaced (Vite concatenates arrays). A pattern
+      // with a slash is matched against the absolute path, so the app's directories carry the root.
+      if (command === 'serve' && !options.test) result.server = { fs: { deny: privateFiles(root) } };
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild
           ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }

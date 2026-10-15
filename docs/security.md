@@ -52,6 +52,9 @@ with `Host: evil.example`, and reads the answers as if they were its own: record
   `vite.config.ts`, and not with `allowedHosts: true`. Then the guard alone protects the devtools and the mail previews, while
   Vite's own paths, such as source modules, and the development error page have no host check. Use either setting only on a
   network you trust, and keep `allowedHosts` a list. The [asset bundling](vite.md#the-dev-server) page covers Vite's settings.
+- Vite's file serving has its own list of refused paths. With `marmeon dev`, it covers `storage/`, `dist/`, `.marmeon/` and
+  database files (`*.sqlite`, `*.sqlite3`, `*.db`, `*.db3` and their companions) on top of Vite's own, so an app that listens beyond localhost, with
+  `HOST=0.0.0.0`, does not hand out its database, private uploads or build output. Your own `server.fs.deny` entries are added.
 - A development route of your own takes the same guard. Outside `development` and `test` it answers 404 by itself, asked on every
   request: a route registered on a server by mistake stays shut. The [routing](routing.md#development-only-routes) page shows how.
 - `*.localhost` names pass Vite, since they are loopback by definition, but not the guard, unless `APP_URL` names one.

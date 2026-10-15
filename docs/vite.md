@@ -55,6 +55,11 @@ Before you change `server` in `vite.config.ts`, know what the app relies on:
   only on a network you trust, because then any page the browser visits can reach the dev server under a name of its own. The
   framework's own development routes keep their own check either way.
 - **Other origins.** The server answers no other origin, so a page on another site cannot read the app's development answers.
+- **Files Vite will not serve.** Beyond Vite's own list (`.env` files, keys and certificates, `.git`), the dev server refuses
+  `storage/`, `dist/` and `.marmeon/` of the app root, and every database file (`*.sqlite`, `*.sqlite3`, `*.db`, `*.db3` and their `-wal`/`-shm` companions), with a 403, even to
+  a client on the network. A page that loads a file from `storage/` through Vite stops working: serve it with a route. An entry
+  of your own in `server.fs.deny` is added to the list. A symlink elsewhere in the app that points into `storage/` is still
+  served, so do not create one. Tests and builds are unchanged.
 - **Styles and the policy.** The `<style>` elements Vite adds in development carry the response's CSP nonce. A
   Content-Security-Policy with `styleSrc: ["'self'", NONCE]` therefore holds in development too. The
   [styling](styling.md#a-strict-policy-for-styles) page explains the policy.
