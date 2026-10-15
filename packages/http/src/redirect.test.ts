@@ -42,6 +42,16 @@ describe('RedirectResult', () => {
     expect(back()).toBe('/dashboard');
   });
 
+  it('never turns the referring page into a location on another host', () => {
+    const back = (referer: string) => new RedirectResult().back('/dashboard').toResponse(request('POST', { referer }), router).headers.get('location');
+    for (const referer of ['https://app.test//evil.example', 'http://app.test/\\evil.example', 'http://app.test\\\\evil.example', 'http://app.test/\t/evil.example']) {
+      expect(back(referer), referer).toBe('/evil.example');
+    }
+    expect(back('http://app.test///evil.example/x?a=1')).toBe('/evil.example/x?a=1');
+    expect(back('http://app.test//%2f/evil.example')).toBe('/%2f/evil.example');
+    expect(back('http://app.test/%2f/evil.example')).toBe('/%2f/evil.example');
+  });
+
   it('carries extra headers and fails loudly without a target', () => {
     expect(new RedirectResult('/').header('x-reason', 'moved').toResponse(request(), router).headers.get('x-reason')).toBe('moved');
     expect(() => new RedirectResult().toResponse(request(), router)).toThrow('redirect() needs a target');

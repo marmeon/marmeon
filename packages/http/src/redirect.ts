@@ -1,4 +1,5 @@
 import { token } from '@marmeon/core';
+import { localLocation } from '@marmeon/router/internal';
 import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@marmeon/router';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
@@ -231,7 +232,7 @@ function previousUrl(request: Request): string | undefined {
   try {
     const previous = new URL(referer);
     if (previous.host !== new URL(request.url).host) return undefined;
-    return previous.pathname + previous.search;
+    return localLocation(previous.pathname, previous.search);
   } catch {
     return undefined;
   }

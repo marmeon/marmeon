@@ -152,6 +152,14 @@ describe('query schema', () => {
       expect((await dispatch('GET', '/members?sort=name&q=ada')).status).toBe(200);
     });
 
+    it('redirects a canonical query to this site even when the request path begins with several slashes', async () => {
+      const route = router.routes.find((r) => r.path === '/members')!;
+      for (const path of ['//evil.example/x', '///evil.example/x', '/\\evil.example/x', '/\\/evil.example/x']) {
+        const response = await router.dispatch(route, { request: new Request(`http://app.test${path}?sort=nope&q=ada&bad=1`), params: {} });
+        expect(response.headers.get('location'), path).toBe('/evil.example/x?q=ada');
+      }
+    });
+
     it('parses the query of other methods too — and falls back there, never redirecting', async () => {
       const response = await dispatch('POST', '/people?sort=bad&page=4');
       expect(response.status).toBe(200);

@@ -8,6 +8,13 @@ describe('fillPath / urlFor', () => {
   ]);
   const lookup = { findByName: (name: string) => routes.get(name) };
 
+  it('refuses `.` and `..` as parameter values, since a link ending in one resolves to another route', () => {
+    expect(() => fillPath('posts.show', '/posts/:slug', { slug: '..' })).toThrow('Parameter [slug] of route [posts.show] cannot be [..]');
+    expect(() => fillPath('posts.show', '/posts/:slug', { slug: '.' })).toThrow('cannot be [.]');
+    expect(() => urlFor({ findByName: () => ({ path: '/posts/:slug' }) }, 'posts.show', { slug: '..' })).toThrow('cannot be [..]');
+    for (const slug of ['...', '.a', 'a.', 'a..b']) expect(fillPath('posts.show', '/posts/:slug', { slug }).path).toBe(`/posts/${slug}`);
+  });
+
   it('fills required, constrained and optional parameters and returns the rest', () => {
     expect(fillPath('teams.show', '/teams/:team{[a-z]+}/:tab?', { team: 'core' })).toEqual({ path: '/teams/core', rest: {} });
     expect(fillPath('teams.show', '/teams/:team{[a-z]+}/:tab?', { team: 'core', tab: 'members', page: 2 })).toEqual({

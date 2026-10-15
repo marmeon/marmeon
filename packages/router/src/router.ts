@@ -10,6 +10,7 @@ import { Route, type RegistrarAudit } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
+import { localLocation } from './local-location.ts';
 import { toSearchParams, urlFor, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
@@ -393,7 +394,7 @@ export class Router {
 function canonicalRedirect(request: Request, canonical: Readonly<Record<string, unknown>>): Response {
   const search = toSearchParams(canonical as Query).toString();
   const { pathname } = new URL(request.url);
-  return new Response(null, { status: 302, headers: { location: search ? `${pathname}?${search}` : pathname } });
+  return new Response(null, { status: 302, headers: { location: localLocation(pathname, search ? `?${search}` : '') } });
 }
 
 /** Resolves the route's bound parameters in order — a scoped one within its already resolved parent. */

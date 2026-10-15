@@ -30,7 +30,7 @@ In the browser, `<Link route="notes.show" params={{ note: 7 }}>` and `useRoute()
 `router.url(name, params, query)` fills the route's path with `params` and appends `query`. Inside a controller, a redirect takes
 the same arguments: `this.redirect().route('notes.show', { note: id })`.
 
-- **Parameters** fill the path's `:name` segments, percent-encoded. A parameter the path does not take goes into the query
+- **Parameters** fill the path's `:name` segments, percent-encoded. The values `.` and `..` are refused with an error: a browser resolves even their encoded forms as dot segments, so the link would lead to another route; validate a value a user chooses, such as a slug, when it is stored, because linking to `.` or `..` throws. A parameter the path does not take goes into the query
   string.
 - **The query** is the third argument: `{ tab: 'history', page: 2 }` becomes `?tab=history&page=2`. `null` and `undefined` are
   left out, and a list repeats its key: `{ tag: ['a', 'b'] }` becomes `?tag=a&tag=b`.

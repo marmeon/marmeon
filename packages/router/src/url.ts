@@ -33,6 +33,8 @@ export function fillPath(name: string, pattern: string, params: Readonly<Record<
       if (optional) return '';
       throw new Error(`Missing required parameter [${key}] for route [${name}].`);
     }
+    // A browser resolves even `%2E%2E` as a dot segment: no encoding keeps the link on its route.
+    if (value === '.' || value === '..') throw new Error(`Parameter [${key}] of route [${name}] cannot be [${value}]: a dot segment leads to another route.`);
     return `/${encodeURIComponent(String(value))}`;
   });
   const rest: Record<string, Param> = {};
