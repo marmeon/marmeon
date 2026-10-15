@@ -232,13 +232,20 @@ export class Auth {
    * session waits for the factor (`pendingSecondFactor()`), and an app that does not handle that case shows a failed sign-in at worst.
    * See `docs/errors.md#results`. There is one kind for an unknown identifier, a wrong password and an
    * account without a password alike — in the same time (`dummyVerify`), so neither the answer nor its duration
-   * tells which addresses have an account. Rehashes the password when the costs changed.
+   * tells which addresses have an account. Rehashes the password when the costs changed. Both `findForLogin()` and `findById()` must
+   * hand back `sessionKey` when the account has one; a provider that returns it from only one makes `attempt()` throw.
    */
   async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<Result<AuthUser, AttemptError>> {
     const credentials = await this.#check(identifier, password);
     if (!credentials) return err({ kind: 'invalid-credentials' });
     // The fingerprint from the account as findById() sees it — what every later request compares with (the session key included).
     const current = await this.#credentials(credentials.user);
+    // Only what was verified is bound (see `#verified`). A reset, a password change or an ending that committed during the slow
+    // check changed the account since; the request cannot tell that from a wrong password, and a new attempt checks the new state.
+    if (!(await this.#sameAccount(identifier, credentials, current))) {
+      await this.#events.dispatch(new Failed(identifier, credentials.user));
+      return err({ kind: 'invalid-credentials' });
+    }
     // The one fork for every password sign-in: an account with a factor is never signed in here, whatever the caller does with the err.
     const factors = await this.#passwordSignIn(current, options, 'attempt');
     if (factors.length > 0) return err({ kind: 'two-factor-required', factors });
@@ -497,6 +504,7 @@ export class Auth {
     await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
     await this.#users.updatePasswordHash(idOf(user) as never, hash);
     this.#anchor({ ...verified, passwordHash: hash });
+    await this.#rebindOwnToken(); // this device's token stays, for the new state
     await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
     await this.#announceEnded(idOf(user));
   }
@@ -520,6 +528,7 @@ export class Auth {
       return false;
     }
     this.#anchor({ ...verified, sessionKey: rotated.key });
+    await this.#rebindOwnToken(); // this device's token stays, for the new state
     await this.#endOtherSignIns(idOf(user), false); // after the key, see updatePassword()
     await this.#announceEnded(idOf(user));
     return true;
@@ -556,6 +565,25 @@ export class Auth {
     if (await this.#fits(this.#requireVerified())) return true;
     await this.#end();
     return false;
+  }
+
+  /**
+   * Whether the account is still what `findForLogin()` verified: `false` for a real change (hash or key) during the check. Throws when
+   * the provider hands the session key back from only one of `findForLogin()` and `findById()` — that is the provider's contract, not a race.
+   */
+  async #sameAccount(identifier: string, credentials: Credentials, current: Credentials): Promise<boolean> {
+    const contract = (missing: string, has: string) =>
+      new Error(
+        `auth: ${this.#users.constructor.name}.${missing}() returned no sessionKey, but ${has}() returns one for this account. ` +
+          'Hand the stored key back from both methods (see docs/authentication.md#the-user-type-and-where-users-come-from).',
+      );
+    if (credentials.sessionKey != null && current.sessionKey === undefined) throw contract('findById', 'findForLogin');
+    if (credentials.sessionKey === undefined && current.sessionKey != null) {
+      // A key that appeared during the check is a race (a mismatch); a provider that still omits it on a second read breaks its contract.
+      const again = await this.#users.findForLogin(identifier);
+      if (again !== undefined && again.sessionKey === undefined) throw contract('findForLogin', 'findById');
+    }
+    return equal(sessionFingerprint(current), sessionFingerprint(credentials));
   }
 
   async #fits(verified: Credentials): Promise<boolean> {
@@ -624,6 +652,12 @@ export class Auth {
   #anchor(credentials: Credentials): void {
     this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(credentials));
     this.#verified = credentials;
+  }
+
+  /** Stamps the remember-me token of this device with the state this request just wrote, so that it fits the account it stays for. */
+  async #rebindOwnToken(): Promise<void> {
+    const cookie = this.#cookies.get(this.#config.rememberCookie);
+    if (cookie !== undefined) await this.#remember.rebind?.(idOf(this.#requireVerified().user), cookie, sessionFingerprint(this.#requireVerified()));
   }
 
   #requireVerified(): Credentials {
@@ -711,7 +745,9 @@ export class Auth {
     // The app may have turned remember-me off while a form still sends the value: the sign-in stands, without a token.
     if (remember && !viaRemember && this.#config.remember) {
       expiresAt = new Date(this.#clock.now() + this.#config.rememberDays * 86_400_000);
-      token = await this.#remember.create(idOf(user), expiresAt);
+      // Stamped with the fingerprint that was verified, never a fresh read: if the account changed since, the token no longer fits it
+      // and `#fromRememberCookie` refuses it at its first use.
+      token = await this.#remember.create(idOf(user), expiresAt, sessionFingerprint(credentials));
     }
     let signIn: string | undefined;
     if (this.#signIns.enabled) {
@@ -926,6 +962,15 @@ export class Auth {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
+    // Invariant: a token signs in only the account state it was issued under (the fingerprint sessions are bound to as well). A token
+    // made before a reset, a new password or an ending, or one without a fingerprint, is refused whatever the order of those writes was;
+    // it is never re-bound to the account's present key.
+    if (device.fingerprint == null || !equal(device.fingerprint, sessionFingerprint(found))) {
+      await this.#remember.forget(device.cookie ?? cookie);
+      await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
+      this.#cookies.delete(this.#config.rememberCookie);
+      return undefined;
+    }
     // Refused: a token made before the account's second factor existed (it proved none; a sign-in racing the activation can make one),
     // one past `AUTH_REMEMBER_DAYS` from its creation (also when issued under a longer setting), and any with an unreadable time
     // (an Invalid Date compares false with everything) — never taken as "after" or "not yet over".
@@ -940,9 +985,7 @@ export class Auth {
       this.#cookies.delete(this.#config.rememberCookie);
       return undefined;
     }
-    // `AccountSessions.end()` deletes the tokens before it replaces the key, so a sign-in whose `findById()` already saw the new key
-    // finds its token gone here, and one that saw the old key cannot outlive the key's replacement: it fails this check or, if it passed,
-    // the next request's fingerprint check ends the session (the rule at `#verified`).
+    // A token that `AccountSessions.end()` deleted meanwhile is gone here (the fingerprint above covers the key it replaced).
     if (!(await this.#remember.exists(device.cookie ?? cookie))) {
       await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
       this.#cookies.delete(this.#config.rememberCookie);

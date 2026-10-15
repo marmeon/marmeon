@@ -21,12 +21,12 @@ describe('the schedule', () => {
     app.freeze(Date.parse('2026-10-04T12:00:00Z'));
     // Yesterday: tokens that expire long before tonight.
     await app.make(PasswordResetTokenStore).create(ada!.email, 0);
-    await app.make(RememberTokenStore).create(ada!.id, new Date(app.clock.now() + 3_600_000));
+    await app.make(RememberTokenStore).create(ada!.id, new Date(app.clock.now() + 3_600_000), 'fingerprint');
     const expired = await app.make(AccessTokenStore).create(ada!.id, 'one hour', { expiresIn: '1h' });
     // Tonight, shortly before the prune: valid ones.
     app.travelTo(Date.parse('2026-10-05T00:50:00Z'));
     await app.make(PasswordResetTokenStore).create(alan!.email, 0);
-    await app.make(RememberTokenStore).create(alan!.id, new Date(app.clock.now() + 30 * 86_400_000));
+    await app.make(RememberTokenStore).create(alan!.id, new Date(app.clock.now() + 30 * 86_400_000), 'fingerprint');
     const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { expiresIn: '365d' });
 
     // (The data exports are cleared every ten minutes.)

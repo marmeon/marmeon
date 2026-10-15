@@ -43,7 +43,7 @@ describe('auth:end-all-sessions', () => {
     const remember = new DatabaseRememberTokens(connections, clock);
     const resets = new DatabasePasswordResetTokens(connections, clock);
     const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock);
-    await remember.create(1, new Date(clock.now() + 3_600_000));
+    await remember.create(1, new Date(clock.now() + 3_600_000), 'fingerprint');
     await resets.create('ada@example.com', 0);
     const token = await access.create(1, 'ci');
     const accounts = new AccountSessions(users, remember, undefined, undefined, undefined, clock, () => resets, () => access);

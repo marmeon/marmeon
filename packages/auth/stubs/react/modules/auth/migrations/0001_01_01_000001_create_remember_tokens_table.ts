@@ -12,6 +12,7 @@ export default defineMigration({
       table.timestamp('rotated_at').nullable();
       table.timestamp('last_used_at').nullable();
       table.timestamp('expires_at');
+      table.string('account_fingerprint', 64).nullable();
       table.timestamps();
     }),
   down: (schema) => schema.drop('remember_tokens'),

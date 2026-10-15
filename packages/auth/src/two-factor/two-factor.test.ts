@@ -11,6 +11,7 @@ import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/sessio
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountSessions, authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
+import { sessionFingerprint } from '../auth.ts';
 import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
@@ -405,7 +406,7 @@ describe('TwoFactor: setting up', () => {
       const confirm = booted.store.confirm.bind(booted.store);
       let raced: string | undefined;
       vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000));
+        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), sessionFingerprint((await booted.users.findById(1))!));
         await new Promise((resolve) => setTimeout(resolve, 10));
         return confirm(...args);
       });
@@ -426,7 +427,7 @@ describe('TwoFactor: setting up', () => {
     const confirm = booted.store.confirm.bind(booted.store);
     let raced: string | undefined;
     vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000));
+      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), sessionFingerprint((await booted.users.findById(1))!));
       return confirm(...args); // the clock is frozen: created_at and confirmed_at are the same instant
     });
     expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);

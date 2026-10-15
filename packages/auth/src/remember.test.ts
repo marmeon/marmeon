@@ -21,7 +21,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   afterEach(() => vi.useRealTimers());
 
   it('exists() finds a token by its selector, and says false for a deleted token and a malformed cookie', async () => {
-    const cookie = await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
     expect(await tokens.exists(cookie)).toBe(true);
     expect(await tokens.exists(`${cookie.split('.')[0]}.${'x'.repeat(43)}`), 'the validator is not checked').toBe(true);
     expect(await tokens.exists('garbage')).toBe(false);
@@ -31,7 +31,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('hands out selector.validator and stores only the selector and a hash of the validator', async () => {
-    const cookie = await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
     expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
     const [selector, validator] = cookie.split('.') as [string, string];
     const [row] = await rows();
@@ -40,14 +40,27 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
     expect(JSON.stringify(await connections.get<any>().selectFrom(REMEMBER_TABLE).selectAll().execute())).not.toContain(validator);
   });
 
+  it('stores the fingerprint it was made with, keeps it over a rotation and replaces it with rebind()', async () => {
+    const cookie = await tokens.create(1, inAMonth(), 'first-fingerprint');
+    const first = await tokens.consume(cookie);
+    expect(first.ok && first.value.fingerprint).toBe('first-fingerprint');
+    await tokens.rebind(1, issued(first)!, 'second-fingerprint');
+    await tokens.rebind(2, issued(first)!, 'foreign-fingerprint'); // another user's id: not re-stamped
+    const second = await tokens.consume(issued(first)!);
+    expect(second.ok && second.value.fingerprint).toBe('second-fingerprint');
+    await connections.get<any>().updateTable(REMEMBER_TABLE).set({ account_fingerprint: null }).execute();
+    const bare = await tokens.consume(issued(second)!);
+    expect(bare.ok && bare.value.fingerprint).toBeUndefined();
+  });
+
   it('consume keeps createdAt over a rotation', async () => {
-    const first = await tokens.consume(await tokens.create(1, inAMonth()));
+    const first = await tokens.consume(await tokens.create(1, inAMonth(), 'fp'));
     const second = await tokens.consume(issued(first)!);
     expect(first.ok && second.ok && second.value.createdAt).toEqual(first.ok && first.value.createdAt);
   });
 
   it('accepts a valid cookie and rotates the validator — the selector stays', async () => {
-    const cookie = await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
     const result = await tokens.consume(cookie);
     expect(result.ok && result.value).toMatchObject({ userId: 1, cookie: expect.stringMatching(/^[\w-]{22}\.[\w-]{43}$/) });
     const rotated = issued(result)!;
@@ -57,9 +70,9 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('theft: an old validator after the grace period drops every token of the user', async () => {
-    const stolen = await tokens.create(1, inAMonth());
-    await tokens.create(1, inAMonth()); // another device of the same user
-    await tokens.create(2, inAMonth()); // someone else
+    const stolen = await tokens.create(1, inAMonth(), 'fp');
+    await tokens.create(1, inAMonth(), 'fp'); // another device of the same user
+    await tokens.create(2, inAMonth(), 'fp'); // someone else
     const thief = await tokens.consume(stolen); // the thief uses the copied cookie first: rotated
     expect(thief.ok).toBe(true);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
@@ -69,7 +82,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('takes the previous validator for 9 seconds after the rotation, and for a theft after 11', async () => {
-    const cookie = await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
     await tokens.consume(cookie);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9000 });
     expect(await tokens.consume(cookie)).toMatchObject({ ok: true, value: { cookie: undefined } });
@@ -78,14 +91,14 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('theft: a validator that was never issued revokes the tokens, with only the `reused` flag false (the owner is still told)', async () => {
-    const cookie = await tokens.create(1, inAMonth());
-    await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
+    await tokens.create(1, inAMonth(), 'fp');
     expect(await tokens.consume(`${cookie.split('.')[0]}.${'x'.repeat(43)}`)).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: false }));
     expect(await rows()).toEqual([]);
   });
 
   it('theft: of parallel replays only one reports it', async () => {
-    const stolen = await tokens.create(1, inAMonth());
+    const stolen = await tokens.create(1, inAMonth(), 'fp');
     await tokens.consume(stolen);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     const results = await Promise.all([1, 2, 3, 4].map(() => tokens.consume(stolen)));
@@ -109,15 +122,15 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('keeps the revocation of a theft and the removal of an expired token inside a transaction that returns the err', async () => {
-    const stolen = await tokens.create(1, inAMonth());
-    await tokens.create(1, inAMonth());
+    const stolen = await tokens.create(1, inAMonth(), 'fp');
+    await tokens.create(1, inAMonth(), 'fp');
     await tokens.consume(stolen);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     const theft = await connections.transaction(() => tokens.consume(stolen));
     expect(theft).toStrictEqual(err({ kind: 'stolen', userId: 1, reused: true }));
     expect(await rows()).toEqual([]);
     vi.useRealTimers();
-    const expired = await tokens.create(2, new Date(Date.now() - 1000));
+    const expired = await tokens.create(2, new Date(Date.now() - 1000), 'fp');
     expect(await connections.transaction(() => tokens.consume(expired))).toStrictEqual(err({ kind: 'invalid' }));
     expect(await rows()).toEqual([]);
   });
@@ -136,7 +149,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('accepts the previous validator within the grace period — two tabs at once are no theft', async () => {
-    const cookie = await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
     const [first, second] = await Promise.all([tokens.consume(cookie), tokens.consume(cookie)]);
     expect([first!.ok, second!.ok]).toEqual([true, true]);
     expect([first!, second!].map(issued).filter(Boolean).length).toBeLessThanOrEqual(1); // at most one rotation won
@@ -145,17 +158,17 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('refuses expired tokens and removes them', async () => {
-    const cookie = await tokens.create(1, new Date(Date.now() - 1000));
+    const cookie = await tokens.create(1, new Date(Date.now() - 1000), 'fp');
     expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await rows()).toEqual([]);
   });
 
   it('prune deletes expired tokens and tokens older than the given days — all of them with 0', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() - 20 * 86_400_000 });
-    await tokens.create(1, inAMonth()); // made 20 days ago, still valid by its row
+    await tokens.create(1, inAMonth(), 'fp'); // made 20 days ago, still valid by its row
     vi.setSystemTime(Date.now() + 20 * 86_400_000);
-    await tokens.create(2, inAMonth());
-    await tokens.create(3, new Date(Date.now() - 1000)); // expired
+    await tokens.create(2, inAMonth(), 'fp');
+    await tokens.create(3, new Date(Date.now() - 1000), 'fp'); // expired
     expect(await tokens.prune(30)).toBe(1); // only the expired one
     expect(await tokens.prune(10)).toBe(1); // the 20-day-old one: older than the lowered setting
     expect((await rows()).map((row) => Number(row.user_id))).toEqual([2]);
@@ -164,7 +177,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it.runIf(driver === 'sqlite')('refuses a token with an unreadable expiry and removes it', async () => {
-    const cookie = await tokens.create(1, inAMonth());
+    const cookie = await tokens.create(1, inAMonth(), 'fp');
     await connections.get<any>().updateTable(REMEMBER_TABLE).set({ expires_at: 'not a date' }).execute();
     expect(await tokens.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await rows()).toEqual([]);
@@ -182,9 +195,9 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('forgets one device, or every device of a user but the current one', async () => {
-    const laptop = await tokens.create(1, inAMonth());
-    const phone = await tokens.create(1, inAMonth());
-    const tablet = await tokens.create(1, inAMonth());
+    const laptop = await tokens.create(1, inAMonth(), 'fp');
+    const phone = await tokens.create(1, inAMonth(), 'fp');
+    const tablet = await tokens.create(1, inAMonth(), 'fp');
     await tokens.forget(tablet);
     expect(await tokens.consume(tablet)).toStrictEqual(err({ kind: 'invalid' }));
     await tokens.forgetUser(1, laptop);

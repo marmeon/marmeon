@@ -47,9 +47,9 @@ export interface Credentials<U = AuthUser> {
  * `container.bind(UserProvider, UserRepository)`. The hash travels next to the user, never inside it.
  */
 export interface UserProvider<U = AuthUser> {
-  /** The user and their current hash (the session checks it on every request). */
+  /** The user and their current hash (the session checks it on every request). Returns `sessionKey` when the account has one — also `findForLogin()` must, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
   findById(id: U extends { readonly id: infer Id } ? Id : never): Promise<Credentials<U> | undefined>;
-  /** By what people type to sign in — usually the e-mail, already normalized by the request schema. */
+  /** By what people type to sign in — usually the e-mail, already normalized by the request schema. Returns `sessionKey` when the account has one, as `findById()` does, or `attempt()` throws. */
   findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
   /** Stores a new hash (rehash on login, password change, reset). */
   updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash): Promise<void>;

@@ -103,8 +103,12 @@ class LoginController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { email, password } = (await ctx.input()) as { email: string; password: string };
-    const signedIn = await this.#auth.attempt(email, password);
-    return { user: signedIn.ok ? signedIn.value.id : null };
+    try {
+      const signedIn = await this.#auth.attempt(email, password);
+      return { user: signedIn.ok ? signedIn.value.id : null };
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
   }
 }
 
@@ -310,7 +314,7 @@ describe.each(drivers)('auth.updateSessionKey() with SESSION_DRIVER=$name', (dri
 });
 
 describe('a password sign-in after a new session key', () => {
-  it('stamps the fingerprint from findById(), as login() does — a provider that leaves the key out of findForLogin() keeps its sign-ins', async () => {
+  it('fails loudly when findForLogin() leaves out the key that findById() returns — a provider contract violation, not a failed login', async () => {
     class KeylessLogin extends KeyedUsers {
       override async findForLogin(email: string): Promise<Credentials | undefined> {
         const found = await super.findForLogin(email);
@@ -318,6 +322,44 @@ describe('a password sign-in after a new session key', () => {
       }
     }
     const users = new KeylessLogin();
+    const { browser, hasher } = await boot(drivers[0]!, users);
+    users.rows.set(4, { user: { id: 4, name: 'Ada', email: 'ada@example.com' }, hash: await hasher.make('secret'), key: 'a-rotated-key' });
+    const laptop = browser();
+    const body = await (await laptop.send('/login', { method: 'POST', json: { email: 'ada@example.com', password: 'secret' } })).json();
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/KeylessLogin\.findForLogin\(\) returned no sessionKey/) });
+    expect((await laptop.send('/me')).status).toBe(401);
+  });
+
+  it('fails loudly too when findById() leaves out the key that findForLogin() returns', async () => {
+    class KeylessById extends KeyedUsers {
+      override async findById(id: number): Promise<Credentials | undefined> {
+        const found = await super.findById(id);
+        return found && { user: found.user, passwordHash: found.passwordHash };
+      }
+    }
+    const users = new KeylessById();
+    const { browser, hasher } = await boot(drivers[0]!, users);
+    users.rows.set(4, { user: { id: 4, name: 'Ada', email: 'ada@example.com' }, hash: await hasher.make('secret'), key: 'a-rotated-key' });
+    const body = await (await browser().send('/login', { method: 'POST', json: { email: 'ada@example.com', password: 'secret' } })).json();
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/KeylessById\.findById\(\) returned no sessionKey/) });
+  });
+
+  it('treats a key that shows up on the second read as a change during the check, not as a broken provider', async () => {
+    class LateKey extends KeyedUsers {
+      reads = 0;
+      override async findForLogin(email: string): Promise<Credentials | undefined> {
+        const found = await super.findForLogin(email);
+        return found && (this.reads++ === 0 ? { user: found.user, passwordHash: found.passwordHash } : found);
+      }
+    }
+    const users = new LateKey();
+    const { browser, hasher } = await boot(drivers[0]!, users);
+    users.rows.set(4, { user: { id: 4, name: 'Ada', email: 'ada@example.com' }, hash: await hasher.make('secret'), key: 'a-rotated-key' });
+    expect(await (await browser().send('/login', { method: 'POST', json: { email: 'ada@example.com', password: 'secret' } })).json()).toEqual({ user: null });
+  });
+
+  it('signs in with a provider that hands the key back from findForLogin()', async () => {
+    const users = new KeyedUsers();
     const { browser, hasher } = await boot(drivers[0]!, users);
     users.rows.set(4, { user: { id: 4, name: 'Ada', email: 'ada@example.com' }, hash: await hasher.make('secret'), key: 'a-rotated-key' });
     const laptop = browser();
