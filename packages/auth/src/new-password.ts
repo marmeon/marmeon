@@ -20,7 +20,7 @@ import type { AuthUser, UserProvider } from './user.ts';
  * A reset of an account whose address is not confirmed (`email_verified_at` is `null`: never confirmed, or cleared by a change of address
  * that was not confirmed yet) also removes every passkey, the authenticator and the recovery codes and revokes every API token, whatever
  * the setting: whoever registered the address first may have attached a way in of their own, and the reset is the owner proving the
- * mailbox. The factors are read again afterwards; one that survived is logged as an error. See `docs/passwords.md`.
+ * mailbox. The factors are read again afterwards; one that survived is logged as an error. See `docs/passwords.md#resetting-the-password`.
  */
 export class NewPassword {
   readonly #tokens: () => AccessTokenStore;
