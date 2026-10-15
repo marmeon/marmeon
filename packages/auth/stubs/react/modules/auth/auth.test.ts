@@ -1,5 +1,4 @@
 import { AccessTokenStore, Auth, authenticate } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
 import { defineModule } from '@marmeon/core';
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import type { SharedProps } from '@marmeon/http/page';
@@ -220,8 +219,11 @@ describe('password checks of a signed-in user', () => {
   it('stop at twenty an hour, though a right password clears the minute', async () => {
     const ada = await app.factory(UserFactory).create();
     const session = continuing(await app.post('/login', credentials(ada)));
-    const limiter = app.container.make(RateLimiter);
-    for (let attempt = 0; attempt < 20; attempt++) await limiter.hit(`password-check-hour:${ada.id}`, 3600);
+    // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
+    for (let round = 0; round < 4; round++) {
+      for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
+      await session.post('/confirm-password', { form: { password: 'password' } });
+    }
     await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid({ password: /^Too many attempts/ });
   });
 });

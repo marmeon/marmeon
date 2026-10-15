@@ -66,7 +66,7 @@ export class CreateAccessTokenController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
     return this.view('auth/NewAccessToken', { name: ctx.body.name, plainText: plainText as string }).layer(LAYER);
   }

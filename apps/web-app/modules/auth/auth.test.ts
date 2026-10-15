@@ -5,7 +5,6 @@ import { Connections } from '@marmeon/database';
 import { Database, secret } from '@marmeon/database';
 import { MailFake, Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
 import { createHttpKernel } from '@marmeon/server';
-import { RateLimiter } from '@marmeon/cache';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { UserFactory } from './factories/UserFactory.ts';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -500,8 +499,11 @@ describe('security settings', () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
-    const limiter = app.container.make(RateLimiter);
-    for (let attempt = 0; attempt < 20; attempt++) await limiter.hit(`password-check-hour:${ada.id}`, 3600);
+    // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
+    for (let round = 0; round < 4; round++) {
+      for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
+      await session.post('/confirm-password', { form: { password: 'password' } });
+    }
     await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
   });
 

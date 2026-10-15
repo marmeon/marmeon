@@ -80,7 +80,7 @@ export class UpdateEmailController extends Controller {
     // Also without the route's confirmedSecondFactor(): a route added by hand to this controller must not skip the factor.
     await this.#twoFactor.requireRecentProof('changeEmail');
     // Typed now, whatever confirmed sudo mode: a session that got in by a passkey alone must not be able to move the account to another address.
-    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     const { email } = ctx.body;
     if (!this.#private) return this.#changeNow(ctx.user, email);
     // The account's own address again: a pending change is dropped.

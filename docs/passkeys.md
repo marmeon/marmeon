@@ -190,7 +190,7 @@ seconds, and it counts as having proven a second factor. `confirm()` returns `er
 missing, used or expired does not. `confirmOptions()` answers `no-challenge` when the account has no usable passkey; it only opens a challenge and has no throttle of its own: give its route a limit.
 
 A passkey that can confirm sudo mode alone must not open every door. Actions that would let a holder of the session stay in the account
-ask for the password in the same form, and `remove()` does so for every passkey, as `register()` does.
+ask for the password in the same form, and `remove()` does so for every passkey, as `register()` does; so do `TwoFactor.regenerateRecoveryCodes(password)`, the e-mail change and a new API token in the starter kit. An empty password counts as none and uses up no try.
 
 ## Managing passkeys
 
@@ -217,8 +217,8 @@ device changed the password, `AccountSessions.end()` ran), nothing is stored and
 Both the registration and the list are behind `confirmedPassword()` ("sudo mode"), and **`register()` asks for the password again in the
 same form for every passkey, not only the first**. A passkey outlives a password change and a password reset, and it works without the password.
 Someone who held a stolen session inside the sudo window could otherwise add one and keep a way in that survives the owner's recovery.
-Typing the password costs the owner a second; the check is counted per account, five a minute and twenty an hour, in the same limiter as
-`remove()`, so it is no oracle for guessing the password. The example app's `throttlePasswordChecks()` helper is for the password forms
+Typing the password costs the owner a second; the check is counted per sign-in (five a minute and twenty an hour) and, for a sign-in that did not begin with a typed
+password, per account (twenty an hour), in the same limiter as `remove()`, so it is no oracle for guessing the password and a passkey-only session cannot lock out the owner who signed in with it ([how](authentication.md#sudo-mode)). The example app's `throttlePasswordChecks()` helper is for the password forms
 of your own; `Passkeys` throttles its checks itself.
 
 The first passkey also signs out every other device (sessions and remember-me tokens, a second time after the insert), shows the

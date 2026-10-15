@@ -25,7 +25,7 @@ export class ConfirmPasswordController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof ConfirmPasswordRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'password', () => this.#auth.confirmPassword(ctx.body.password));
+    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'password', () => this.#auth.confirmPassword(ctx.body.password));
     return this.redirect().intended().route('auth.security');
   }
 }

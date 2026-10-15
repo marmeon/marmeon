@@ -12,6 +12,7 @@ import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, Two
 import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
+import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict, type SecondFactor } from './state.ts';
@@ -43,7 +44,7 @@ export type ConfirmError =
   | { readonly kind: 'not-started' }
   | { readonly kind: 'invalid-password' }
   | { readonly kind: 'invalid-code' }
-  | { readonly kind: 'throttled'; readonly retryAfter: number }
+  | { readonly kind: 'throttled'; readonly retryAfter: number; readonly account?: true }
   /** The session ended while the factor was being set up (another device changed the password, `AccountSessions.end()`): nothing was stored. */
   | { readonly kind: 'signed-out' };
 
@@ -224,7 +225,7 @@ export class TwoFactor {
    * and so do its remember-me tokens — each session of the account has then proven a second factor. API tokens are not touched.
    * `recoveryCodes` are the account's new codes, shown now and never again, when this is its first factor, else `null`.
    *
-   * Order: the throttle counts, the password is checked, the code is checked without writing, the other devices are signed out, and
+   * Order: the password check counts and the password is checked, the code budget counts, the code is checked without writing, the other devices are signed out, and
    * only then the step is stored and the factor switched on.
    */
   async confirm(code: string, password: string): Promise<Result<{ recoveryCodes: readonly string[] | null }, ConfirmError>> {
@@ -232,9 +233,14 @@ export class TwoFactor {
     const id = idOf(user);
     const row = await this.#store.find(id);
     if (row === undefined || row.confirmed) return err({ kind: 'not-started' });
+    // The password first, under its own windows: only whoever knows it spends the account's budget of codes.
+    const scope = this.#auth.passwordCheckScope();
+    const held = await takePasswordCheck(this.#limiter, scope, id);
+    if (held !== undefined) return err(held);
+    if (!(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
+    await clearPasswordCheck(this.#limiter, scope);
     const wait = await this.#throttleCodes(id);
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
-    if (!(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
 
     const secret = await this.#decrypt(row.encryptedSecret, id);
     const step = secret === undefined ? undefined : verifyTotp(secret, code, new Date(this.#clock.now()));
@@ -296,21 +302,32 @@ export class TwoFactor {
     return ok({ recoveryCodes });
   }
 
-  /** New recovery codes, replacing all the old ones (spent or not); shown once. Needs a recent confirmation (`confirmedPassword()`: a password or a passkey) and a factor. */
-  async regenerateRecoveryCodes(): Promise<readonly string[]> {
+  /**
+   * New recovery codes, replacing all the old ones (spent or not); shown once. Needs a recent confirmation (`confirmedPassword()`: a
+   * password or a passkey), a factor, and the password again in the same form — a passkey alone must not be able to void the owner's
+   * codes. The check is counted per sign-in and account (see `takePasswordCheck()`). `invalid-password` and `throttled` change nothing.
+   */
+  async regenerateRecoveryCodes(password: string): Promise<Result<readonly string[], { readonly kind: 'invalid-password' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('regenerateRecoveryCodes');
     const id = idOf(user);
     if ((await this.#state.factors(id)).length === 0) throw new Error('twoFactor.regenerateRecoveryCodes() needs a second factor: recovery codes belong to one.');
     await this.#requireRecentSecondFactor('regenerateRecoveryCodes', id);
+    // An empty password is none: nothing is counted, there is nothing to guess.
+    if (password === '') return err({ kind: 'invalid-password' });
+    const scope = this.#auth.passwordCheckScope();
+    const held = await takePasswordCheck(this.#limiter, scope, id);
+    if (held !== undefined) return err(held);
+    if (!(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
+    await clearPasswordCheck(this.#limiter, scope);
     const codes = generateRecoveryCodes();
     await this.#store.replaceRecoveryCodes(id, codes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode)));
     await this.#events.dispatch(new RecoveryCodesGenerated(user));
-    return codes;
+    return ok(codes);
   }
 
   /**
-   * Turns the authenticator off — only with the account's password typed now. `false` means a wrong password and nothing changed (the
-   * caller throttles password checks); with the right one it is `true`, also when only an unfinished setup existed (that is removed).
+   * Turns the authenticator off — only with the account's password typed now. `false` means a wrong password and nothing changed (it
+   * does not throttle the check: the caller must, with `takePasswordCheck()`); with the right one it is `true`, also when only an unfinished setup existed (that is removed).
    * The recovery codes go with the last factor.
    */
   async disable(password: string): Promise<boolean> {

@@ -45,6 +45,8 @@ export { PruneTokensCommand } from './prune-tokens.ts';
 export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
 export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
+export { clearPasswordCheck, takePasswordCheck } from './password-throttle.ts';
+export type { PasswordCheckScope, PasswordThrottled } from './password-throttle.ts';
 export { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
 export type { SignIn, SignInRecord, SignInsTable, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';

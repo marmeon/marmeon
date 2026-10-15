@@ -9,6 +9,7 @@ import { claimRefused } from '../account-sessions.ts';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
 import { AuthConfig } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
+import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
@@ -28,12 +29,6 @@ import {
   type PublicKeyCredentialRequestOptionsJSON,
   type RegistrationResponseJSON,
 } from './webauthn.ts';
-
-/** Password checks per account, shared by `register()` and `remove()`: five a minute and twenty an hour; a success clears the minute. */
-const PASSWORD_WINDOWS = [
-  { name: 'minute', attempts: 5, seconds: 60 },
-  { name: 'hour', attempts: 20, seconds: 3600 },
-] as const;
 
 /**
  * Failed passwordless attempts per address and minute. Only failures count (behind one shared address many people sign in, and an
@@ -60,7 +55,7 @@ export type RegisterError =
   | { readonly kind: 'expired' }
   | { readonly kind: 'invalid' }
   | { readonly kind: 'invalid-password' }
-  | { readonly kind: 'throttled'; readonly retryAfter: number }
+  | PasswordThrottled
   | { readonly kind: 'limit' }
   | { readonly kind: 'duplicate' }
   /** The session ended while the passkey was being added (another device changed the password, `AccountSessions.end()`): nothing was stored. */
@@ -383,7 +378,7 @@ export class Passkeys implements SecondFactorPasskeys {
    * with it, as with `TwoFactor.disable()`. The store decides inside its transaction, so parallel removals cannot both pass. The
    * password is checked under the per-account throttle of `register()` (five a minute, twenty an hour).
    */
-  async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
+  async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('remove');
     const userId = idOf(user);
     await this.#requireRecentSecondFactor('remove', userId);
@@ -403,7 +398,7 @@ export class Passkeys implements SecondFactorPasskeys {
    * Lets a suspended passkey sign in again — the password typed now, under the throttle of `register()`. `not-found` when the account has
    * no suspended passkey with this id. Suspending is the answer to a sign count that went backwards (a possible clone): the owner decides.
    */
-  async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
+  async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('release');
     const userId = idOf(user);
     await this.#requireRecentSecondFactor('release', userId);
@@ -413,16 +408,13 @@ export class Passkeys implements SecondFactorPasskeys {
     return (await this.#store.release(userId, id)) ? ok() : err({ kind: 'not-found' });
   }
 
-  /** The password of the signed-in user, typed now: counted per account before it is checked, the minute cleared by a success. */
-  async #checkPassword(userId: number | string, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
-    const waits: number[] = [];
-    for (const window of PASSWORD_WINDOWS) {
-      const key = `passkey-password-${window.name}:${userId}`;
-      if (!(await this.#limiter.attempt(key, window.attempts, window.seconds))) waits.push(await this.#limiter.availableIn(key));
-    }
-    if (waits.length > 0) return err({ kind: 'throttled', retryAfter: Math.max(1, ...waits) });
+  /** The password of the signed-in user, typed now: counted before it is checked (see `takePasswordCheck()`), the sign-in's minute cleared by a success. */
+  async #checkPassword(userId: number | string, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | PasswordThrottled>> {
+    const scope = this.#auth.passwordCheckScope();
+    const wait = await takePasswordCheck(this.#limiter, scope, userId);
+    if (wait !== undefined) return err(wait);
     if (password === undefined || !(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
-    await this.#limiter.clear(`passkey-password-minute:${userId}`);
+    await clearPasswordCheck(this.#limiter, scope);
     return ok();
   }
 

@@ -64,7 +64,7 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 
 A signed-in user who opens a guest page goes to `/dashboard`. The security page changes the password and the e-mail address,
 signs out the other devices, and lists the browsers the account is signed in on, each with a button to end it ([sign-ins](authentication.md#sign-ins)). The two-factor page sets up an authenticator app and shows the recovery codes once; the
-challenge page asks for the code, a passkey or a recovery code after the password. The passkeys page adds, renames and removes passkeys, and the login page offers "Sign in with a passkey". The tokens page creates and revokes API tokens. A passkey alone can confirm sudo mode, so the forms that change the e-mail address, create an API token and turn on an authenticator app ask for the current password too, as the passkeys and password forms do ([sudo mode](authentication.md#sudo-mode)). `/` belongs to the home module, so the auth
+challenge page asks for the code, a passkey or a recovery code after the password. The passkeys page adds, renames and removes passkeys, and the login page offers "Sign in with a passkey". The tokens page creates and revokes API tokens. A passkey alone can confirm sudo mode, so the forms that change the e-mail address, create an API token, turn on an authenticator app and make new recovery codes ask for the current password too, as the passkeys and password forms do ([sudo mode](authentication.md#sudo-mode)). `/` belongs to the home module, so the auth
 module leaves it free.
 
 The routes are an ordinary route file, so you change a path, add a page or remove one in `modules/auth/routes.ts`. The
@@ -152,7 +152,7 @@ pages and listeners that use it.
 The login page has a button "Sign in with a passkey" (and the browser's autofill in the e-mail field offers them too), but only after the
 page has loaded and only in a browser that has passkeys: without JavaScript there is the password form alone. A passkey signs in without a
 password and without a second step. On `/settings/passkeys` a user adds a passkey with a name and **their password, for every passkey**
-(a passkey outlives a password change, so a stolen session must not be able to add one), renames it, and removes it, which asks for the password for every passkey. The first passkey
+(a passkey outlives a password change, so a stolen session must not be able to add one), renames it, and removes it, which asks for the password for every passkey and, since that password was just typed, signs out the other devices. The first passkey
 turns on two-factor authentication: it signs out the other devices and shows ten recovery codes once, and from then on a sign-in with the
 password asks for a passkey, a code or a recovery code on `/two-factor-challenge`. Removing the last factor takes
 the recovery codes with it. A passkey whose counter went backwards, which suggests a copy, is suspended and shown with a form to release it.

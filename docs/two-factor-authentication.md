@@ -191,8 +191,8 @@ API tokens: the codes then never sit in the session, they are gone from the tab'
 asks the URL with a `GET` that must not show them. Do not redirect with them in a flash message. The database keeps only their hashes.
 
 `challenge({ recoveryCode })` accepts a code typed in lower case or with spaces. A spent code is refused. `status()` returns
-`recoveryCodesLeft`, and the example app asks for new ones when three or fewer remain. `regenerateRecoveryCodes()` makes ten new
-codes in place of all the old ones, spent or not; it needs a recent confirmation (password or passkey, `confirmedPassword()`) within 15 minutes by default, like `begin()`.
+`recoveryCodesLeft`, and the example app asks for new ones when three or fewer remain. `regenerateRecoveryCodes(password)` makes ten new
+codes in place of all the old ones, spent or not; it needs a recent confirmation (password or passkey, `confirmedPassword()`) within 15 minutes by default, like `begin()`, and the password typed now, since a passkey alone can confirm sudo mode and must not void the owner's codes. An empty password counts as none and uses up no try. It returns a `Result`: `invalid-password` and `throttled` (counted per sign-in and account, [see](authentication.md#sudo-mode)) change nothing.
 
 Recovery codes belong to the account, not to the authenticator app: they stay when another factor is added and go with the last
 one. They work even when the secret of the authenticator can no longer be decrypted.
@@ -231,7 +231,7 @@ removes the authenticator, and the recovery codes with the last factor, and retu
 caller; the example app uses the same limiter as for its other password checks.
 
 ```ts title="modules/auth/controllers/DisableTwoFactorController.ts"
-await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'password', () => this.#twoFactor.disable(ctx.body.password));
+await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'password', () => this.#twoFactor.disable(ctx.body.password));
 ```
 
 ## What it protects against, and what not

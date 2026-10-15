@@ -125,7 +125,7 @@ class TwoFactorController extends Controller {
         case 'status':
           return await this.#twoFactor.status();
         case 'regenerate':
-          return { codes: await this.#twoFactor.regenerateRecoveryCodes() };
+          return await this.#twoFactor.regenerateRecoveryCodes(body.password ?? 'secret').then((done) => (done.ok ? { codes: done.value } : { codes: null, ...done.error }));
         case 'disable':
           return { disabled: await this.#twoFactor.disable(body.password) };
         case 'recent-proof':
@@ -304,6 +304,17 @@ describe('TwoFactor: setting up', () => {
     const [row] = await booted.connections.get<{ [TWO_FACTOR_TABLE]: TwoFactorTable }>().selectFrom(TWO_FACTOR_TABLE).select((eb) => [secret(eb, 'secret')]).execute();
     expect(row!.secret).not.toContain(key);
     expect(await booted.application.container.make(Encrypter).decrypt(row!.secret, 'marmeon-auth:two-factor:1')).toBe(key);
+  });
+
+  it('asks for the password again to make new recovery codes: a wrong or empty one changes nothing, and tries are counted', async () => {
+    const booted = await boot();
+    const { b } = await enable(booted);
+    const before = await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute();
+    expect(await b.tf('regenerate', { password: '' })).toMatchObject({ codes: null, kind: 'invalid-password' });
+    for (let attempt = 0; attempt < 5; attempt++) expect(await b.tf('regenerate', { password: 'wrong' })).toMatchObject({ codes: null, kind: 'invalid-password' });
+    expect(await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute()).toEqual(before);
+    expect(await b.tf('regenerate', { password: 'secret' })).toMatchObject({ codes: null, kind: 'throttled', retryAfter: expect.any(Number) });
+    expect(await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute()).toEqual(before);
   });
 
   it('needs a recently typed password to begin, to show the key again and to make new recovery codes', async () => {

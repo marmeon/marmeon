@@ -161,7 +161,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
   it('makes new recovery codes in place of the old ones', async () => {
     const ada = await app.factory(UserFactory).create();
     const { cookie, recoveryCodes } = await enable(ada);
-    const again = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/recovery-codes').assertLayer('auth/RecoveryCodes');
+    const again = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertLayer('auth/RecoveryCodes');
     const fresh = again.page()!.props.codes as string[];
     expect(fresh).toHaveLength(10);
     expect(fresh).not.toContain(recoveryCodes[0]);
@@ -174,7 +174,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
   it('makes no recovery codes for an account without a factor', async () => {
     const ada = await app.factory(UserFactory).create();
     const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
-    await app.withCookie(SESSION, cookie).post('/settings/two-factor/recovery-codes').assertRedirect('/settings/two-factor');
+    await app.withCookie(SESSION, cookie).post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertRedirect('/settings/two-factor');
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
   });
 

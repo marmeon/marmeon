@@ -27,6 +27,7 @@ import {
   TwoFactorStore,
   UserProvider,
   softAuthenticator,
+  twoFactorCode,
   type Credentials,
   type PasswordHash,
 } from '../index.ts';
@@ -151,6 +152,17 @@ class PasskeyController extends Controller {
           return result(await this.#passkeys.confirm(body.response));
         case 'confirmed':
           return { confirmed: this.#auth.passwordRecentlyConfirmed(), proof: this.#session.get('_auth_two_factor_at') ?? null };
+        case 'tf-begin':
+          return { secret: (await this.#twoFactor.begin()).secret };
+        case 'tf-confirm':
+          return await this.#twoFactor.confirm(body.code, body.password).then((done) => (done.ok ? { ok: true } : { ok: false, ...done.error }));
+        case 'scope':
+          return this.#auth.passwordCheckScope();
+        case 'login-as':
+          await this.#auth.login(body.id === bob.id ? bob : ada);
+          return { signedIn: true };
+        case 'regenerate':
+          return await this.#twoFactor.regenerateRecoveryCodes(body.password ?? '').then((done) => (done.ok ? { ok: true, codes: done.value } : { ok: false, ...done.error }));
         case 'set-confirmed':
           this.#session.put('_auth_confirmed_at', body.value);
           return { set: true };
@@ -1118,6 +1130,100 @@ describe('Passkeys: confirming sudo mode', () => {
     const response = authenticator.authenticate(options);
     const answers = await Promise.all([1, 2, 3].map(() => b.pk('confirm', { response })));
     expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
+  });
+});
+
+describe('Passkeys: password checks of a passkey-only session', () => {
+  /** A fresh browser of `email`'s account that signed in with the passkey alone: nobody typed a password in it. */
+  async function passkeyOnly(booted: Booted, authenticator: Device) {
+    const b = booted.browser();
+    const options = await b.pk('sign-in-options');
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(options) })).toMatchObject({ ok: true });
+    expect(await b.pk('scope')).toMatchObject({ typed: false });
+    return b;
+  }
+  const wrong = (b: Browser, id = 1) => b.pk('remove', { id, password: 'wrong' });
+
+  it('lets the owner, who typed the password to sign in, still remove the passkey after a passkey-only session used up the account', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    expect(await owner.pk('scope')).toMatchObject({ typed: true });
+    // Four sessions with five wrong passwords each fill the account's twenty an hour; each is stopped by its own minute first.
+    for (let session = 0; session < 4; session++) {
+      const attacker = await passkeyOnly(booted, authenticator);
+      for (let attempt = 0; attempt < 5; attempt++) expect(await wrong(attacker)).toEqual({ ok: false, kind: 'invalid-password' });
+      const held = await wrong(attacker);
+      expect(held).toMatchObject({ ok: false, kind: 'throttled' });
+      expect(held).not.toHaveProperty('account');
+    }
+    // A fifth has a fresh session budget, yet the account is used up for passkey-only sessions (the cap is shared).
+    // … and says so: the way out is to sign in again with the password, not to wait.
+    expect(await wrong(await passkeyOnly(booted, authenticator))).toMatchObject({ ok: false, kind: 'throttled', account: true });
+    // The owner's session began with the typed password: the account's cap does not apply to it.
+    expect(await owner.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
+  });
+
+  it('keeps the owner\'s own windows: five wrong passwords in a signed-in-by-password session stop that session', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    for (let attempt = 0; attempt < 5; attempt++) expect(await wrong(b)).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: false, kind: 'throttled' });
+  });
+
+  it('marks a sign-in as typed only when it began with the password: not a passkey, not login(), and a new sign-in has a new key', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    const typed = await b.pk('scope');
+    expect(typed).toMatchObject({ typed: true, session: expect.any(String) });
+    await b.pk('login-as', { id: bob.id });
+    const replaced = await b.pk('scope');
+    expect(replaced).toMatchObject({ typed: false });
+    expect(replaced.session).not.toBe(typed.session);
+    const viaPasskey = await passkeyOnly(booted, authenticator);
+    expect((await viaPasskey.pk('scope')).session).not.toBe(typed.session);
+  });
+
+  it('keeps the sign-in\'s key when the session id changes within it', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    await b.pk('forget-confirmed');
+    const before = await b.pk('scope');
+    const cookie = b.jar.get('marmeon_session');
+    const options = (await b.pk('confirm-options')).value;
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toEqual({ ok: true });
+    expect(b.jar.get('marmeon_session')).not.toBe(cookie);
+    expect(await b.pk('scope')).toEqual(before);
+  });
+
+  it('does not let a passkey-only session burn the code budget of the owner\'s setup by guessing passwords in confirm()', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const attacker = await passkeyOnly(booted, authenticator);
+    await attacker.pk('tf-begin');
+    for (let attempt = 0; attempt < 5; attempt++) expect(await attacker.pk('tf-confirm', { code: '000000', password: 'wrong' })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await attacker.pk('tf-confirm', { code: '000000', password: 'wrong' })).toMatchObject({ ok: false, kind: 'throttled' });
+    // The owner sets up their own authenticator: the guesses spent no code budget of the account.
+    const { secret } = await owner.pk('tf-begin');
+    expect(await owner.pk('tf-confirm', { code: twoFactorCode(secret), password: 'secret' })).toEqual({ ok: true });
+  });
+
+  it('asks a passkey-only session for the password to make new recovery codes, and the owner\'s codes stay when it is wrong', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const codesBefore = await rows(booted, RECOVERY_CODES_TABLE);
+    const attacker = await passkeyOnly(booted, authenticator);
+    expect(await attacker.pk('regenerate')).toMatchObject({ ok: false, kind: 'invalid-password' });
+    // The empty form field counts no try: five wrong passwords are still answered as wrong, the sixth is held up.
+    for (let attempt = 0; attempt < 5; attempt++) expect(await attacker.pk('regenerate', { password: 'wrong' })).toMatchObject({ ok: false, kind: 'invalid-password' });
+    expect(await attacker.pk('regenerate', { password: 'wrong' })).toMatchObject({ ok: false, kind: 'throttled' });
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).toEqual(codesBefore);
+    expect(await owner.pk('regenerate', { password: 'secret' })).toMatchObject({ ok: true, codes: expect.any(Array) });
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).not.toEqual(codesBefore);
   });
 });
 

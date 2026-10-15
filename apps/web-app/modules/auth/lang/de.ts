@@ -267,6 +267,7 @@ export default {
     token_name: 'Gib dem Token einen Namen.',
     token_abilities: 'Wähle, was das Token darf.',
     throttled: 'Zu viele Versuche. Bitte in {seconds, plural, one {# Sekunde} other {# Sekunden}} noch einmal versuchen.',
+    throttled_account: 'Melde dich noch einmal mit deinem Passwort an, um fortzufahren.',
   },
   mail: {
     hello: 'Hallo {name},',

@@ -288,6 +288,7 @@ const en = {
     token_name: 'Name the token.',
     token_abilities: 'Pick what the token may do.',
     throttled: 'Too many attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
+    throttled_account: 'Sign in again with your password to continue.',
   },
   mail: {
     app: 'Marmeon',

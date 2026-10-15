@@ -381,14 +381,18 @@ second factor afterwards does not change that. A confirmation counts only inside
 A confirmation is enough to reach a page, but not for every action. What lets whoever holds the session stay in the account after the
 owner has recovered it asks for the **current password in the same form**, whatever confirmed sudo mode, such as: changing the e-mail
 address, creating an API token, registering, releasing or removing a passkey, turning two-factor authentication on or off
-(`TwoFactor.confirm(code, password)`, `disable(password)`) and changing the password. A passkey alone can confirm sudo mode, so without that second question a hijacked session could add a way in that
+(`TwoFactor.confirm(code, password)`, `disable(password)`; `confirm()` checks the password before the code, so only whoever knows it spends the code budget), making new recovery codes (`regenerateRecoveryCodes(password)`) and changing the password. A passkey alone can confirm sudo mode, so without that second question a hijacked session could add a way in that
 survives the owner's recovery.
 
 An account with neither a password nor a passkey, such as one created by a sign-in link or by an OAuth provider your app wrote, has
 no way to confirm sudo mode yet: `confirmedPassword()` never lets it through.
 
-The starter kit allows five wrong passwords a minute and twenty an hour per user, across the confirmation, the password change, "sign out other
-devices", turning two-factor authentication off, the e-mail change and a new API token; a right password clears the minute. A stolen session must not become a way to guess the password.
+The password checks are counted for each sign-in (five a minute and twenty an hour, a right password clears the minute) and, for a sign-in that did not begin
+with a typed password, also for the account (twenty an hour across all such sign-ins). The starter kit does so for the confirmation, the password change, "sign out other
+devices", turning two-factor authentication off, the e-mail change and a new API token; `Passkeys` and `regenerateRecoveryCodes()` do it themselves. A stolen session must not become a way to guess the password, and a passkey-only session
+that uses up the account's count must not lock out the owner, who typed the password to sign in: the account's count never applies to a sign-in made by `attempt()`.
+When the account's count is what holds a check up, `takePasswordCheck()` answers `throttled` with `account: true`, and the starter kit then says "Sign in again with your password to continue" instead of a wait. `auth.passwordCheckScope()` says whose checks these are (the sign-in's own random key, which a new session id within the sign-in keeps, and whether it began with a typed
+password); `takePasswordCheck(limiter, scope, userId)` counts one and returns the seconds to wait, and `clearPasswordCheck()` clears the minute after a right password.
 
 ## Changing the password
 
@@ -427,14 +431,14 @@ export class UpdatePasswordController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof UpdatePasswordRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     await this.#auth.updatePassword(ctx.body.password);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });
   }
 }
 ```
 
-`throttlePasswordChecks()` in `modules/auth/throttle.ts` counts the try before the check, five a minute and twenty an hour per user, and
+`throttlePasswordChecks()` in `modules/auth/throttle.ts` counts the try before the check, per sign-in and per account as above, and
 throws a field error for a wrong password. Never check a signed-in user's password without such a limit. The handler's
 `& Authenticated` types the context: `ctx.user` is there because the route sits behind `authenticate()`. The
 [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
