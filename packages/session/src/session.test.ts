@@ -383,7 +383,10 @@ describe('session stores', () => {
     const last = await store.read(key);
     expect(records).toContain(last!.data);
     expect(last!.version).toBe(61);
-  });
+    // Sixty writers racing over one record lose some sixty races, about 300 reads of up to 500 KB (the writers', the readers' and the
+    // guarded check in each write): the time is the work itself, no waiting on anything — a quarter second alone, over 5 s on a busy
+    // machine. A writer stuck behind the guard fails at the store's GUARD_TIMEOUT_MS (10 s), which is the real bound; this timeout is only room.
+  }, 30_000);
 
   it('file: refuses keys that are not session keys (SHA-256 hex) — a raw session id included', async () => {
     await expect(new FileSessionStore(directory()).destroy('../escape')).rejects.toThrow('Invalid session key');

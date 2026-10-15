@@ -1,7 +1,7 @@
 import { Logger, type LogContext } from '@marmeon/core';
 import { createTestApp } from '@marmeon/testing';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { LabConfig } from './config.ts';
 import type { SendDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
@@ -19,6 +19,17 @@ async function lab() {
 }
 
 const page = { headers: { accept: 'text/html' } };
+
+// The first server render of a process pays for starting Vite, transforming React and the app's views, and loading the
+// modules — seconds on a loaded machine, more than a test's 5 s. A hook has its own time; afterwards each test pays for its own work.
+beforeAll(async () => {
+  const { app } = await lab();
+  try {
+    await app.get('/lab/client-only', page).assertOk();
+  } finally {
+    await app.close();
+  }
+}, 60_000);
 
 describe('the SSR lab', () => {
   it('a page that reads `window` while rendering still works: sent without markup for the browser to render, the error logged', async () => {
