@@ -52,8 +52,9 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 | `/two-factor-challenge` | `auth.two-factor.challenge` | guests whose password was right and who have a second factor |
 | `/forgot-password`, `/reset-password` | `auth.password.request`, `auth.password.reset` | guests |
 | `/dashboard` | `dashboard` | signed in, with a confirmed address |
-| `/confirm-password` | `auth.password.confirm` | signed in, with a confirmed address |
-| `/settings/security` | `auth.security` | the same, and the password typed within 15 minutes by default |
+| `/confirm-password` | `auth.password.confirm` | signed in, with a confirmed address; asks for the password, and offers "Use a passkey instead" to an account with a usable passkey |
+| `/confirm-password/passkey/options`, `/confirm-password/passkey` | `auth.password.confirm.passkey.options`, `auth.password.confirm.passkey` | the same; `POST`, the options limited to ten a minute per user |
+| `/settings/security` | `auth.security` | the same, and a recent confirmation (password or passkey) within 15 minutes by default |
 | `/settings/sign-ins/:signIn/end` | `auth.sign-ins.destroy` | the same as the security page; `POST`, ends one other sign-in |
 | `/settings/two-factor` | `auth.two-factor` | the same |
 | `/settings/two-factor/verify` | `auth.two-factor.verify` | signed in, with a confirmed address; for `twoFactor()` |
@@ -63,7 +64,7 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 
 A signed-in user who opens a guest page goes to `/dashboard`. The security page changes the password and the e-mail address,
 signs out the other devices, and lists the browsers the account is signed in on, each with a button to end it ([sign-ins](authentication.md#sign-ins)). The two-factor page sets up an authenticator app and shows the recovery codes once; the
-challenge page asks for the code, a passkey or a recovery code after the password. The passkeys page adds, renames and removes passkeys, and the login page offers "Sign in with a passkey". The tokens page creates and revokes API tokens. `/` belongs to the home module, so the auth
+challenge page asks for the code, a passkey or a recovery code after the password. The passkeys page adds, renames and removes passkeys, and the login page offers "Sign in with a passkey". The tokens page creates and revokes API tokens. A passkey alone can confirm sudo mode, so the forms that change the e-mail address, create an API token and turn on an authenticator app ask for the current password too, as the passkeys and password forms do ([sudo mode](authentication.md#sudo-mode)). `/` belongs to the home module, so the auth
 module leaves it free.
 
 The routes are an ordinary route file, so you change a path, add a page or remove one in `modules/auth/routes.ts`. The
@@ -126,7 +127,7 @@ replace the `@import` and `--font-text`, and remove the dependency. The mono fon
 Each user decides for their own account. On `/settings/two-factor` they scan a QR code with an authenticator app, type the first
 code and their password, and get ten recovery codes in a layer, shown once. Turning it on signs out their other devices and lists
 their API tokens, which keep working. From then on a sign-in with the right password waits on `/two-factor-challenge` for a code
-or a recovery code. The settings page and new recovery codes sit behind sudo mode, which asks for the password again after 15 minutes by default ([how long](authentication.md#how-long-a-sign-in-lasts)); turning it off always asks for it.
+or a recovery code. The settings page and new recovery codes sit behind sudo mode, which asks for a confirmation (the password or a passkey) again after 15 minutes by default ([how long](authentication.md#how-long-a-sign-in-lasts)); turning it off always asks for it.
 
 The owner gets a mail when the factor is turned on or off, when a recovery code signed in (with the number left), and when a
 wrong code followed the right password ("someone knows your password", at most once an hour for each account). They are queued
@@ -151,9 +152,9 @@ pages and listeners that use it.
 The login page has a button "Sign in with a passkey" (and the browser's autofill in the e-mail field offers them too), but only after the
 page has loaded and only in a browser that has passkeys: without JavaScript there is the password form alone. A passkey signs in without a
 password and without a second step. On `/settings/passkeys` a user adds a passkey with a name and **their password, for every passkey**
-(a passkey outlives a password change, so a stolen session must not be able to add one), renames it, and removes it. The first passkey
+(a passkey outlives a password change, so a stolen session must not be able to add one), renames it, and removes it, which asks for the password for every passkey. The first passkey
 turns on two-factor authentication: it signs out the other devices and shows ten recovery codes once, and from then on a sign-in with the
-password asks for a passkey, a code or a recovery code on `/two-factor-challenge`. Removing the last factor asks for the password and takes
+password asks for a passkey, a code or a recovery code on `/two-factor-challenge`. Removing the last factor takes
 the recovery codes with it. A passkey whose counter went backwards, which suggests a copy, is suspended and shown with a form to release it.
 
 The owner gets a mail when a passkey is added, removed or suspended, and when a failed passkey sign-in tried one of theirs (at most once an

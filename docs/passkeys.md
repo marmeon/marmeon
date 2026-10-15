@@ -125,7 +125,7 @@ account's user handle. The user is the passkey's own account. It returns the use
 | `throttled` | Sixty failed tries a minute from one address. `retryAfter` is in seconds. Only failures count, so many people may sign in from behind one address, and garbage sent from an address cannot lock the owner out. |
 
 The `Login` event says `via: 'passkey'`. A listener that switches over `event.via` exhaustively must handle the new value. The new-sign-in notice of the example app (`apps/web-app`) covers passkeys too: with no password typed, it is the owner's only hint. The session counts as
-having passed a second factor, and the password is not in the recent-password window: routes behind `confirmedPassword()` still ask for it.
+having passed a second factor and as freshly [confirmed for sudo mode](authentication.md#sudo-mode): the passkey, proven with user verification just now, is what `confirmedPassword()` asks for.
 
 On the login page, show the passkey button after hydration and only where `PublicKeyCredential` exists, so that without JavaScript there is
 just the password form. Put `autocomplete="username webauthn"` on the e-mail field and start the request with `mediation: 'conditional'`
@@ -169,6 +169,29 @@ wrong answer (a bad signature, an unknown, foreign or suspended passkey), not fo
 The check is throttled per account by the generous counter of the recovery codes, before the response is looked at. `stepUpOptions()`
 only opens a challenge and has no throttle of its own: give its route a limit, as the example app does (ten a minute per user).
 
+## Confirming sudo mode
+
+A user with a passkey confirms [sudo mode](authentication.md#sudo-mode) with it instead of typing the password. `confirmOptions()` opens a
+challenge bound to the signed-in account and to this purpose, and allows only the account's passkeys that are not suspended;
+`confirm()` takes the answer:
+
+```ts title="modules/auth/controllers/PasskeyConfirmController.ts"
+const done = await this.#passkeys.confirm(ctx.body.response);
+if (done.ok) return this.redirect().intended().route('auth.security');
+if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, 429);
+return this.json({ error: this.#translator.get('auth.passkeys.failed') }, 422);
+```
+
+The challenge has its own purpose, `confirm`: one issued for a sign-in or a step-up does not serve here, and the reverse. It leaves the
+session before the response is looked at, so a response works once. The passkey must belong to the signed-in account and not be suspended, and
+user verification is required. On success the session gets a new id, `confirmedPassword()` lets it through for `AUTH_PASSWORD_TIMEOUT`
+seconds, and it counts as having proven a second factor. `confirm()` returns `err` for a response that fails, with the kinds of
+[a sign-in](#passwordless-sign-in) and `throttled` (ten a minute for the account, a success clears the count); a wrong answer fires `TwoFactorChallengeFailed` with `during: 'confirm'`, a challenge that is
+missing, used or expired does not. `confirmOptions()` answers `no-challenge` when the account has no usable passkey; it only opens a challenge and has no throttle of its own: give its route a limit.
+
+A passkey that can confirm sudo mode alone must not open every door. Actions that would let a holder of the session stay in the account
+ask for the password in the same form, and `remove()` does so for every passkey, as `register()` does.
+
 ## Managing passkeys
 
 `Passkeys` offers what a settings page needs:
@@ -176,10 +199,11 @@ only opens a challenge and has no throttle of its own: give its route a limit, a
 | Method | Does |
 | --- | --- |
 | `list()` | The signed-in user's passkeys: `id`, `name`, `createdAt`, `lastUsedAt`, `suspended`, `synced`. |
-| `registrationOptions()` | The options for `navigator.credentials.create()`. Needs the password typed within 15 minutes by default. |
+| `registrationOptions()` | The options for `navigator.credentials.create()`. Needs a recent confirmation (a password or a passkey, `confirmedPassword()`) within 15 minutes by default. |
 | `register(response, name, password)` | Adds the passkey. Resolves with `recoveryCodes` (the first factor) or `null`. |
 | `rename(id, name)` | Renames; `false` for an empty or too long name or one that is not the user's. |
-| `remove(id, password?)` | Removes. The account's last factor, and a suspended passkey, need `password`; the recovery codes go with the last factor. |
+| `confirmOptions()`, `confirm(response)` | Confirm [sudo mode](#confirming-sudo-mode) with a passkey. |
+| `remove(id, password?)` | Removes. Every passkey needs `password`; the recovery codes go with the last factor. |
 | `release(id, password)` | Lets a suspended passkey sign in again, with the password typed now. |
 
 On an account that already has a factor, `registrationOptions()`, `register()`, `remove()` and `release()` also throw unless this
@@ -274,7 +298,7 @@ removes the passkeys together with the authenticator and the recovery codes.
 | `PasskeyCloneSuspected` | A sign-in was refused for its sign count, and the passkey suspended | `user`, `passkeyId` |
 | `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `ip`, `userAgent` |
 | `Login` | A passwordless sign-in | `via: 'passkey'` |
-| `TwoFactorChallengeFailed` | A wrong passkey after the password, or at a step-up | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in` or `step-up`) |
+| `TwoFactorChallengeFailed` | A wrong passkey after the password, at a step-up, or when confirming sudo mode | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`, `step-up` or `confirm`) |
 
 The first passkey also dispatches `TwoFactorEnabled` and `RecoveryCodesGenerated`, and removing the last factor `TwoFactorDisabled`. All of
 them can be [queued](events.md#queued-listeners). Send the owner a mail on `PasskeyRegistered`, `PasskeyRemoved`,

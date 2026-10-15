@@ -111,7 +111,7 @@ The package brings four middleware for the routes of the `web` group:
 | `authenticate()` | A signed-in user, as `ctx.user`. | A browser goes to the login page, a JSON client gets 401. |
 | `guest(home)` | Guests. For the login and registration pages. | A redirect to `home`, `/` by default. |
 | `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
-| `confirmedPassword()` | A user who typed the password within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
+| `confirmedPassword()` | A user who typed the password or proved a passkey within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
 | `confirmedSecondFactor({ verify })` | A user whose account has no second factor, or whose session proved one within 15 minutes by default ([how long](#how-long-a-sign-in-lasts)). After `confirmedPassword()`, on routes that change factors, the e-mail address or API tokens. | A browser goes to `verify`, a JSON client gets 403. See [changing the factors](two-factor-authentication.md#changing-the-factors). |
 | `twoFactor({ setup, verify, maxAge? })` | A user whose session proved a second factor. After `authenticate()`; never installed by the framework. | A browser goes to `setup` or `verify`, a JSON client gets 403. See [requiring it](two-factor-authentication.md#requiring-it). |
 
@@ -277,7 +277,7 @@ Every lifetime of a sign-in is listed here. The list of [sign-ins](#sign-ins) le
 | `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
 | `twoFactor()` `maxAge` | 24 hours | The proof of a [second factor](two-factor-authentication.md#requiring-it); then the user is asked for it again. | AAL2 holds only on routes behind `twoFactor()`. |
 | `FACTOR_CHANGE_MAX_AGE` | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
-| `AUTH_PASSWORD_TIMEOUT` | 15 minutes | The password confirmation of [sudo mode](#sudo-mode). | The password only; no second factor. |
+| `AUTH_PASSWORD_TIMEOUT` | 15 minutes | The password or passkey confirmation of [sudo mode](#sudo-mode). | The password or a passkey; only a passkey also counts as a second factor. |
 
 `SESSION_LIFETIME` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
 is the longest a sign-in lasts, however active the user is: a session signed in by password or passkey ends that many hours
@@ -339,9 +339,9 @@ To keep the tokens somewhere else than the table, bind your own `RememberTokenSt
 
 ## Sudo mode
 
-Some pages ask for the password again even though the user is signed in, such as the page with the API tokens.
-`confirmedPassword()` lets a user through who typed the password within the last `AUTH_PASSWORD_TIMEOUT` seconds, 15 minutes by
-default:
+Some pages ask for a confirmation again even though the user is signed in, such as the page with the API tokens.
+`confirmedPassword()` lets a user through who typed the password, or proved a [passkey](passkeys.md#confirming-sudo-mode) with user
+verification, within the last `AUTH_PASSWORD_TIMEOUT` seconds, 15 minutes by default:
 
 ```ts title="modules/auth/routes.ts"
 import { authenticate, confirmedPassword } from '@marmeon/auth';
@@ -371,13 +371,24 @@ Everyone else goes to `auth.password.confirm`, and after the confirmation back t
 time.
 
 The confirmation page posts the password to `auth.confirmPassword(password)`, which checks it and notes the time. For a user
-without a password it takes as long and returns `false`. `attempt()` notes the time as well (for an account with a second
-factor, when the password was typed); `login()` does not, since nobody typed a password, and it forgets a confirmation noted
-before: the new sign-in starts outside sudo mode, even over the session of the same account, and proving a second factor
-afterwards does not change that.
+without a password it takes as long and returns `false`. A user with a passkey can confirm with it instead:
+[`passkeys.confirm()`](passkeys.md#confirming-sudo-mode) notes the time the same way, and a [passwordless sign-in](passkeys.md#passwordless-sign-in)
+counts as a fresh confirmation, since the passkey was proven just now. `attempt()` notes the time as well (for an account with a
+second factor, dated when the password was typed, not when the factor was proven); `login()` does not, since nobody proved anything, and it forgets a
+confirmation noted before: the new sign-in starts outside sudo mode, even over the session of the same account, and proving a
+second factor afterwards does not change that. A confirmation counts only inside the sign-in it was given for.
 
-The starter kit allows five wrong passwords a minute per user across the confirmation, the password change and "sign out other
-devices". A stolen session must not become a way to guess the password.
+A confirmation is enough to reach a page, but not for every action. What lets whoever holds the session stay in the account after the
+owner has recovered it asks for the **current password in the same form**, whatever confirmed sudo mode, such as: changing the e-mail
+address, creating an API token, registering, releasing or removing a passkey, turning two-factor authentication on or off
+(`TwoFactor.confirm(code, password)`, `disable(password)`) and changing the password. A passkey alone can confirm sudo mode, so without that second question a hijacked session could add a way in that
+survives the owner's recovery.
+
+An account with neither a password nor a passkey, such as one created by a sign-in link or by an OAuth provider your app wrote, has
+no way to confirm sudo mode yet: `confirmedPassword()` never lets it through.
+
+The starter kit allows five wrong passwords a minute and twenty an hour per user, across the confirmation, the password change, "sign out other
+devices", turning two-factor authentication off, the e-mail change and a new API token; a right password clears the minute. A stolen session must not become a way to guess the password.
 
 ## Changing the password
 
@@ -423,7 +434,7 @@ export class UpdatePasswordController extends Controller {
 }
 ```
 
-`throttlePasswordChecks()` in `modules/auth/throttle.ts` counts the try before the check, at most five a minute per user, and
+`throttlePasswordChecks()` in `modules/auth/throttle.ts` counts the try before the check, five a minute and twenty an hour per user, and
 throws a field error for a wrong password. Never check a signed-in user's password without such a limit. The handler's
 `& Authenticated` types the context: `ctx.user` is there because the route sits behind `authenticate()`. The
 [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
@@ -700,8 +711,8 @@ The list leaves out a sign-in whose session is over: one that has been idle long
 
 `auth.endSignIn(id)` signs the user out of one of them. It returns a `Result`: `missing` for an id that is unknown, malformed or
 another user's (the same answer for all three), and `current` for the browser that asks, which signs out with `logout()`. The route
-must be behind [`confirmedPassword()`](#sudo-mode): without a recently typed password `endSignIn()` throws, because a stolen session
-cookie must not be able to sign its owner out everywhere else. A passkey-only account has no password to type, so it cannot end a
+must be behind [`confirmedPassword()`](#sudo-mode): without a recent confirmation (a password or a passkey) `endSignIn()` throws, because a stolen session
+cookie must not be able to sign its owner out everywhere else. An account with neither a password nor a passkey cannot end a
 sign-in yet.
 
 ```ts title="modules/auth/controllers/EndSignInController.ts"
@@ -792,7 +803,7 @@ it('signs the other browser out', async () => {
 });
 ```
 
-To test the controller itself, confirm the password in the test first (the session needs a recently typed password); `POST /confirm-password`
+To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
 does that in the starter kit.
 
 ## Signed-in pages are never cached
@@ -856,7 +867,7 @@ listeners.
 | `AUTH_SESSION_MAX_HOURS` | `24` | The longest a sign-in lasts in hours, however active: 1 to 720. A valid remember-me cookie signs in again. See [how long a sign-in lasts](#how-long-a-sign-in-lasts). |
 | `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in: 0 to 30. `0` turns remember me off: no cookie signs in. |
 | `AUTH_REMEMBER_COOKIE` | `remember_web` | The name of the remember-me cookie: letters, digits, `_` and `-`. |
-| `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password counts for `confirmedPassword()`. |
+| `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
 | `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
 | `AUTH_RESET_THROTTLE` | `60` | Seconds before another reset link goes to the same address. |
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |

@@ -104,7 +104,7 @@ import { TwoFactor } from '@marmeon/auth/two-factor';
 const setup = await this.#twoFactor.begin(); // { secret, uri, qr }
 ```
 
-`begin()` needs a signed-in user who typed the password within 15 minutes by default (the [`confirmedPassword()`](authentication.md#sudo-mode)
+`begin()` needs a signed-in user with a recent confirmation (password or passkey) within 15 minutes by default (the [`confirmedPassword()`](authentication.md#sudo-mode)
 middleware) and returns a new key: `secret` to type in, `uri` for the `otpauth://` link and `qr`, the QR code as `{ size, path }`.
 Render it as an SVG with a quiet zone of white around the modules, because scanners need one and a dark theme would take it away:
 
@@ -192,7 +192,7 @@ asks the URL with a `GET` that must not show them. Do not redirect with them in 
 
 `challenge({ recoveryCode })` accepts a code typed in lower case or with spaces. A spent code is refused. `status()` returns
 `recoveryCodesLeft`, and the example app asks for new ones when three or fewer remain. `regenerateRecoveryCodes()` makes ten new
-codes in place of all the old ones, spent or not; it needs the password typed within 15 minutes by default, like `begin()`.
+codes in place of all the old ones, spent or not; it needs a recent confirmation (password or passkey, `confirmedPassword()`) within 15 minutes by default, like `begin()`.
 
 Recovery codes belong to the account, not to the authenticator app: they stay when another factor is added and go with the last
 one. They work even when the secret of the authenticator can no longer be decrypted.
@@ -342,10 +342,10 @@ The kit's listeners send the owner a mail on `TwoFactorEnabled`, `TwoFactorDisab
 | `TwoFactorDisabled` | `disable()` or the operator's reset | `user`, `via` (`user` or `operator`) |
 | `RecoveryCodesGenerated` | The first factor, or `regenerateRecoveryCodes()` | `user` |
 | `RecoveryCodeUsed` | A recovery code signed in or stepped up | `user`, `remaining` |
-| `TwoFactorChallengeFailed` | A wrong factor (code, recovery code or passkey) after a right password (`during: 'sign-in'`), or a wrong code or passkey from a signed-in session at `stepUp()` (`during: 'step-up'`) | `user`, `at`, `ip`, `userAgent`, `during` |
+| `TwoFactorChallengeFailed` | A wrong factor (code, recovery code or passkey) after a right password (`during: 'sign-in'`), or a wrong code or passkey from a signed-in session at `stepUp()` (`during: 'step-up'`), or a wrong passkey at `passkeys.confirm()` (`during: 'confirm'`) | `user`, `at`, `ip`, `userAgent`, `during` |
 
 All of them can be [queued](events.md#queued-listeners); a queued listener gets `userId` and the other fields as JSON. Send the
-owner a mail on `TwoFactorChallengeFailed` ("someone knew your password" for `during: 'sign-in'`, "a code was guessed in your session" for `'step-up'`), on `TwoFactorDisabled` and on `RecoveryCodeUsed`.
+owner a mail on `TwoFactorChallengeFailed` ("someone knew your password" for `during: 'sign-in'`, "a code was guessed in your session" for `'step-up'`, "a wrong passkey in your session" for `'confirm'`; the starter kit mails only `'sign-in'`, its `NotifyAboutFailedTwoFactor` ignores the others), on `TwoFactorDisabled` and on `RecoveryCodeUsed`.
 
 ## Testing
 
