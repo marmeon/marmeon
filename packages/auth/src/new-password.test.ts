@@ -1,6 +1,7 @@
 import type { EventDispatcher, Logger } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
+import { PasswordBroker } from './password-reset.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
@@ -130,6 +131,35 @@ describe('NewPassword after a reset it leaves alone', () => {
     const { newPassword, users, remember } = setup({ state });
     await newPassword.store(users, remember, 1, hash, 'change', { id: 1, email_verified_at: null } as never);
     expect(state.removed).toBe(0);
+  });
+});
+
+describe('NewPassword for an address that was confirmed once', () => {
+  it('keeps the factors and tokens when a change of address cleared email_verified_at', async () => {
+    const state = source(['passkey', 'totp']);
+    const { reset, events, revokedCount } = setup({ state });
+    await reset({ id: 1, email_verified_at: null, first_verified_at: '2026-01-01T00:00:00Z' });
+    expect(state.removed).toBe(0);
+    expect(revokedCount()).toBe(0);
+    expect(events).toEqual([]);
+  });
+
+  it('treats a null first_verified_at as never confirmed', async () => {
+    const state = source(['totp']);
+    const { reset } = setup({ state });
+    await reset({ id: 1, email_verified_at: null, first_verified_at: null });
+    expect(state.removed).toBe(1);
+  });
+});
+
+describe('a TwoFactorState without removeAll', () => {
+  it('refuses the reset before the token is spent', async () => {
+    const old = { factors: async () => [], enabledSince: async () => undefined } as unknown as TwoFactorState;
+    const { newPassword } = setup({ state: old });
+    let consumed = 0;
+    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
+    await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow('removeAll');
+    expect(consumed).toBe(0);
   });
 });
 

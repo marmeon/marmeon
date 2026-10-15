@@ -108,4 +108,17 @@ describe('the reset of an account whose address was never confirmed', { timeout:
     await app.assertDatabaseCount('two_factor_authentications', 1);
     await app.assertDatabaseCount('personal_access_tokens', 1);
   });
+
+  it('keeps the factors of an account that was confirmed once and then changed its address', async () => {
+    const owner = await app.factory(UserFactory).create();
+    await holdingEverything(owner);
+    // The address changed and is not confirmed yet (`first_verified_at` stays): a reset must not wipe what the owner set up.
+    await app.make(Connections).get<any>().updateTable('users').set({ email_verified_at: null }).where('id', '=', owner.id).execute();
+
+    await reset(owner);
+
+    await app.assertDatabaseCount('passkeys', 1);
+    await app.assertDatabaseCount('two_factor_authentications', 1);
+    await app.assertDatabaseCount('personal_access_tokens', 1);
+  });
 });

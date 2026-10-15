@@ -17,8 +17,8 @@ import type { AuthUser, UserProvider } from './user.ts';
  * leaves a token behind, and a failed revocation keeps the old password. The token store and the connections are looked up
  * only then: an app that keeps its tokens is not asked for them.
  *
- * A reset of an account whose address is not confirmed (`email_verified_at` is `null`: never confirmed, or cleared by a change of address
- * that was not confirmed yet) also removes every passkey, the authenticator and the recovery codes and revokes every API token, whatever
+ * A reset of an account whose address was never confirmed (`email_verified_at` is `null` and so is `first_verified_at`, the mark an
+ * address once confirmed leaves behind; a user without that property counts by `email_verified_at` alone) also removes every passkey, the authenticator and the recovery codes and revokes every API token, whatever
  * the setting: whoever registered the address first may have attached a way in of their own, and the reset is the owner proving the
  * mailbox. The factors are read again afterwards; one that survived is logged as an error. See `docs/passwords.md#resetting-the-password`.
  */
@@ -57,7 +57,7 @@ export class NewPassword {
    * bound, that is logged once.
    */
   async store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser): Promise<number> {
-    const unconfirmed = via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === null;
+    const unconfirmed = via === 'reset' && user !== undefined && neverConfirmed(user);
     if (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === undefined) this.#warnVerificationUnknown();
     const removed: { passkeys: boolean; factors: boolean } = { passkeys: false, factors: false };
     const write = async (revoke: boolean): Promise<number> => {
@@ -105,10 +105,27 @@ export class NewPassword {
     return revoked;
   }
 
+  /**
+   * Throws, before a reset token is spent, when the bound `TwoFactorState` cannot remove its factors (an older source without `removeAll()`):
+   * the reset of an account with an unconfirmed address would otherwise fail after the token is used up, and the owner could never reset.
+   */
+  assertReady(): void {
+    const state = this.#factors?.().state;
+    if (state && typeof state.removeAll !== 'function') {
+      throw new TypeError('The bound TwoFactorState has no removeAll(userId): a password reset could not remove the factors of an account with an unconfirmed address. Implement removeAll() in your source (docs/two-factor-authentication.md#setting-up).');
+    }
+  }
+
   /** A user without `email_verified_at` is never treated as unconfirmed — which with factors bound means the rule is off, and the app should know. */
   #warnVerificationUnknown(): void {
     if (this.#warnedUnknownVerification || !this.#factors || this.#factors().state instanceof NoTwoFactorState) return;
     this.#warnedUnknownVerification = true;
     this.#logger.warn('The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
   }
+}
+
+/** Whether the address of `user` never was confirmed — not once before a later change of address cleared `email_verified_at`. */
+function neverConfirmed(user: AuthUser): boolean {
+  const { email_verified_at: confirmed, first_verified_at: first } = user as { email_verified_at?: unknown; first_verified_at?: unknown };
+  return confirmed === null && (first === null || first === undefined);
 }
