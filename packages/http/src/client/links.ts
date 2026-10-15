@@ -13,7 +13,8 @@ export interface LinkClick {
 }
 
 /**
- * The URL to visit client-side for a click on a link to `href` (path, query and fragment) — or undefined when the
+ * The URL to visit client-side for a click on a link to `href` (absolute, as the browser resolved it, so a path of dot segments
+ * and slashes stays on this site) — or undefined when the
  * browser handles the click itself: not a plain left click (a new tab, a download), another `target`, another site,
  * or a handler prevented it.
  */

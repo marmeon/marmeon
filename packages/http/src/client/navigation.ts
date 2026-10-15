@@ -1096,7 +1096,7 @@ export class Navigator {
     }
     if (!isPage) {
       // Not a page (e.g. a 401 JSON or a file download): let the browser handle it.
-      this.#away(response.url || new URL(visit.url, this.#core.window.location.href).href);
+      this.#away(response.url || visit.url);
       return undefined;
     }
     return this.#collect((await response.json()) as PageObject);

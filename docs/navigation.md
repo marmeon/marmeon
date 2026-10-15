@@ -161,7 +161,7 @@ development the console says which scheme was refused. A `409` from signing in o
 document: the page on screen loads again, so nothing of the signed-in user stays in memory. A link that sends to such an address
 renders a button that submits nothing, in a form without an `action`. A GET `<Link>` renders the `href` you give it as an
 anchor, and the browser decides what a click does there (React neutralises `javascript:` URLs, and browsers block top-level `data:`
-navigation), so check an address a user wrote before you pass it on. Another `https:` site is loaded.
+navigation), so check an address a user wrote before you pass it on. A location that starts with `/` is a path of this site, even `//host/x`, so another host needs a full URL. Another `https:` site is loaded.
 
 With the controller's type, `useRouter<SearchNotesController>()` checks the prop names of `only`, `except` and `reset`. A visit
 also takes the callbacks `onStart`, `onProgress`, `onSuccess`, `onError`, `onException`, `onCancel` and `onFinish` for itself.

@@ -890,6 +890,20 @@ describe.each(PATHS)('%s path — requests go to the origin that was checked', (
     expect(win.requests).toHaveLength(1);
   });
 
+  it('an answer that is no page and has no address of its own is loaded from this site, never as another host', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } });
+    await navigator.reload({ preserveUrl: true });
+    expect(win.loads).toEqual([`assign ${at(EVIL)}`]);
+  });
+
+  it('an action’s 409 that names a path of two slashes loads it from this site', async () => {
+    const { win, navigator } = odd();
+    win.handler = () => conflict('history', '//evil.example/x');
+    await navigator.use(actions).run(at(EVIL), { data: {} });
+    expect(win.loads).toEqual([`assign ${at('//evil.example/x')}`]);
+  });
+
   it('a 409 that names a path of two slashes loads it from this site, never as another host', async () => {
     const { win, navigator } = odd();
     win.handler = () => conflict('history', '//evil.example/x');
