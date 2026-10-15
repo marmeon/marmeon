@@ -261,14 +261,20 @@ filled in yet, and so are errors of the body as a whole.
 
 ```ts
 slug: r.string().trim().required().unique(NoteRepository, 'slug', { ignore: (ctx) => ctx.params.note.id, where: (query, ctx) => query.where('user_id', '=', ctx.user.id) }),
-folder_id: r.integer().exists(FolderRepository, 'id'),
+folder_id: r.integer().exists(FolderRepository, 'id', { where: (query, ctx) => query.where('user_id', '=', ctx.user.id) }),
+tags: r.array(r.integer().exists(TagRepository, 'id', { where: (query, ctx) => query.where('user_id', '=', ctx.user.id) })).max(10),
 ```
 
 - **`unique(Repository, column, { ignore?, ignoreColumn?, where?, message? })`** passes when no row of the repository's table holds
   the value yet. `ignore` leaves out the row being edited, by `ignoreColumn`, `id` by default. `where` narrows the rows that count,
   say to one user's. Soft-deleted rows count, since the unique index holds them too.
-- **`exists(Repository, column, { where?, message? })`** passes when a row holds the value. Soft-deleted rows do not count.
+- **`exists(Repository, column, { where?, message? })`** passes when a row holds the value. Soft-deleted rows do not count. It checks
+  that the row exists, not that it belongs to the user: scope it with `where`, as above, or one user can point a record at another's.
 - `column` is typed from the repository's rows.
+- **In a list, the size comes first.** `r.array(…).min()`, `.max()` and `.between()` (and `r.list()`'s) check the number of items before
+  the first item is looked at, so a list that is too long is refused without one query. The items of a list whose rules are
+  asynchronous, database rules and `async` `custom()` rules, are checked eight at a time per list, not all at once. Without a `max()`, a list
+  is as long as the request body allows: give such a list one.
 - **The repository comes from the request.** The router hands every schema the request's scope, so the rule needs no factory.
   Outside a request, in a configuration or a job's payload, a database rule says so instead of guessing.
 
