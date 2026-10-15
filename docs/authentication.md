@@ -323,8 +323,9 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 - **A copied cookie ends every remember-me token and every session of the user.** An old validator that comes back later means two
   browsers hold the same cookie, and the one that used it first already has a session. All of the user's remember-me tokens are
   deleted, every session ends at its next request (see [ending every session of a user](#ending-every-session-of-a-user)), and
-  the app logs a warning with the address and the browser of the request that presented the old cookie. The request that presented the old cookie is a guest. If the `UserProvider` cannot store a session
-  key, ending the sessions fails: that is logged as an error, and only the tokens are gone.
+  the app logs a warning with the address and the browser of the request that presented the old cookie, and dispatches
+  [`RememberTokenReused`](#events) so the app can tell the owner. The request that presented the old cookie is a guest. If the `UserProvider` cannot store a session
+  key, ending the sessions fails: that is logged as an error, the event says `sessionsEnded: false`, and only the tokens are gone.
   A false alarm, such as a lost response after a rotation or a browser that restores an old cookie, signs the user out on every
   device.
 - **A sign-in without "remember me" drops the cookie the browser already carried.** One token per device: the sign-in deletes the token
@@ -335,7 +336,7 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
-To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(maxAgeDays)` must delete the tokens that expired and those made `maxAgeDays` days ago or earlier (every token with `0`).
+To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(maxAgeDays)` must delete the tokens that expired and those made `maxAgeDays` days ago or earlier (every token with `0`). When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's tokens; `reused: true` means the presented validator was the one just replaced by a rotation, and only then does the package dispatch `RememberTokenReused`. A store that leaves `reused` out sends no event. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`.
 
 ## Sudo mode
 
@@ -816,11 +817,13 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
+| `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
 | `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |
 
 `Failed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
 it tells whether the address has an account. The `ip` and `userAgent` of `Login` are the request's, the address resolved through
 `TRUSTED_PROXIES` like `ctx.ip`, unless the call to `attempt()` or `login()` passed others. Outside a request they are `null`.
+`RememberTokenReused` is dispatched once for each copied cookie, after the user's remember-me tokens were deleted and their sessions ended (or could not be, see `sessionsEnded`), and only for an account that still exists. Its `ip` and `userAgent` belong to the request that presented the old cookie as the second one: the owner's own browser or whoever holds the copy, possibly the thief, so a mail should say so. `ip` is `null` when it is not an address, `userAgent` has its control characters removed and is cut to 512 characters, and `sessionsEnded` is `false` when the `UserProvider` could not end the sessions (the tokens are gone either way). The event never carries the cookie or a token. The `userAgent` is text the client chose: show a parsed browser and system (`describeDevice()`) in a mail, not the raw header. A queued listener gets `{ userId, at, ip, userAgent, sessionsEnded }`, with `at` as an ISO 8601 string. The starter kit mails the owner.
 `Lockout` and `Registered` are dispatched by your app's code, the starter kit's controllers, not by the package.
 
 A listener reacts to a sign-in without the auth module knowing about it:

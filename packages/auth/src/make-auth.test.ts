@@ -343,6 +343,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(ran('passkeys', 'the mails about passkeys')).toBe(8);
       expect(ran('passkeys', 'marmeon auth:reset-two-factor and passkeys')).toBe(2);
       expect(ran('passkeys', 'an account with the authenticator app and a passkey')).toBe(1);
+      expect(ran('remember-theft', 'the mail about a copied "keep me signed in" cookie')).toBe(5);
       expect(ran('sign-ins', 'the sign-ins on the security page')).toBe(8);
       expect(ran('end-sessions', 'marmeon auth:end-sessions')).toBe(3);
       expect(ran('passkeys-browser', 'the base64url converters of the browser code')).toBe(3);

@@ -197,12 +197,13 @@ describe('mails without a request', () => {
     await (await createTestApp(application)).get('/_marmeon/mail').assertNotFound();
     const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development' } });
     const index = await app.get('/_marmeon/mail').assertOk();
-    for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail', 'auth/ConfirmNewEmailMail', 'auth/EmailInUseMail']) {
+    for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail', 'auth/ConfirmNewEmailMail', 'auth/EmailInUseMail', 'auth/SignInMail']) {
       expect(index.body).toContain(`/_marmeon/mail/${name}`);
     }
     // The change of address (private registration): the link to the new address, the note to the owner of a taken one.
     expect((await app.get('/_marmeon/mail/auth/ConfirmNewEmailMail?locale=de').assertOk()).body).toContain('<th>Subject</th><td>Bestätige deine neue E-Mail-Adresse</td>');
     expect((await app.get('/_marmeon/mail/auth/EmailInUseMail').assertOk()).body).toContain('<th>Subject</th><td>Someone wanted to use your e-mail address</td>');
+    expect((await app.get('/_marmeon/mail/auth/SignInMail').assertOk()).body).toContain('A “Keep me signed in” cookie of your account was used twice');
     const preview = await app.get('/_marmeon/mail/auth/VerifyEmailMail?locale=de').assertOk();
     expect(preview.body).toContain('<th>Subject</th><td>Bestätige deine E-Mail-Adresse</td>');
     expect(preview.body).toContain('Ada Lovelace');
