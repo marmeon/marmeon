@@ -60,7 +60,7 @@ export default defineRoutes((Route) => {
   // signed-in people away. A route you add needs its own decision.
   const guests = Route.middleware(guest('/dashboard')).authorize(everyone);
   guests.get('/login', ShowLoginController).name('auth.login');
-  guests.post('/login', LoginController).name('auth.login.store');
+  guests.middleware(throttle('login-client')).post('/login', LoginController).name('auth.login.store');
   // The second step of signing in: a correct password waits here for the code (a guest still — nobody is signed in yet). One
   // request per session at a time (block()): two codes at once could not both be counted.
   guests.get('/two-factor-challenge', ShowTwoFactorChallengeController).name('auth.two-factor.challenge');

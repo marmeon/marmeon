@@ -265,7 +265,7 @@ plus `TwoFactorStore.removeAll(userId)`, and the events dispatched by the comman
 `make:auth` writes the passkeys into a new app (the [starter kit](starter-kit.md#passkeys)): the migration of the `passkeys` table
 (`foreignId('user_id').constrained().cascadeOnDelete()`, with `suspended_at`), the binding
 `combineFactors(TwoFactorStore, PasskeyStore)` and `PasskeyServiceProvider` in the module, the controllers and routes, the limits of the
-options requests (`passkey-options`, 30 a minute for each address; `passkey-challenge-options`, 10), the mails and the pages, in both languages:
+options requests (`passkey-options`, 30 a minute for each client; `passkey-challenge-options`, 10), the mails and the pages, in both languages:
 
 | Page | What it does |
 | --- | --- |

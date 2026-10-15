@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { Limit, RateLimiter } from '@marmeon/cache';
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import { Router } from '@marmeon/router';
 import { DocsConfig } from '../../config/docs.ts';
@@ -30,7 +30,7 @@ export class DocsServiceProvider implements ServiceProvider {
     await app.container.make(DocsRepository).load();
 
     const config = app.container.make(DocsConfig);
-    app.container.make(RateLimiter).for('docs.search', (ctx) => Limit.perMinute(config.searchPerMinute).by(ctx.ip ?? ''));
+    app.container.make(RateLimiter).for('docs.search', (ctx) => Limit.perMinute(config.searchPerMinute).by(clientKey(ctx.ip)));
   }
 
   shutdown(app: Application): void {

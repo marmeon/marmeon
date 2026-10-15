@@ -10,14 +10,14 @@ so every new app has them.
 You define a named limiter once, in a service provider's `boot()`, and put it on routes with `throttle()`:
 
 ```ts title="modules/auth/AuthServiceProvider.ts"
-import { Limit, RateLimiter } from '@marmeon/cache';
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, ServiceProvider } from '@marmeon/core';
 
 export class AuthServiceProvider implements ServiceProvider {
   boot(app: Application): void {
     const limiter = app.container.make(RateLimiter);
-    limiter.for('register', (ctx) => Limit.perMinute(10).by(ctx.ip ?? 'unknown'));
-    limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(ctx.ip ?? 'unknown'));
+    limiter.for('register', (ctx) => Limit.perMinute(10).by(clientKey(ctx.ip)));
+    limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)));
   }
 }
 ```
@@ -32,7 +32,7 @@ export default defineRoutes((Route) => {
 });
 ```
 
-The eleventh registration from one address within a minute gets a `429 Too Many Requests` instead of an account. The starter
+The eleventh registration from one client within a minute gets a `429 Too Many Requests` instead of an account. The starter
 kit limits registrations, reset links, a new confirmation mail and the change of an address this way.
 
 ## Defining limiters
@@ -52,13 +52,13 @@ promise of either:
 of limits counts each one on its own, and the first one that is used up refuses the request:
 
 ```ts title="modules/members/MembersServiceProvider.ts"
-import { Limit, RateLimiter } from '@marmeon/cache';
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, ServiceProvider } from '@marmeon/core';
 
 export class MembersServiceProvider implements ServiceProvider {
   boot(app: Application): void {
     app.container.make(RateLimiter).for('members-table', (ctx) => {
-      const key = String(ctx.user?.id ?? ctx.ip);
+      const key = String(ctx.user?.id ?? clientKey(ctx.ip));
       return [Limit.perMinute(60).by(key), Limit.perDay(1000).by(key)];
     });
   }
@@ -75,6 +75,21 @@ is `undefined`, so the type says it may be missing. Without `@marmeon/auth` the 
 `ctx.ip` is the client's address. Behind a proxy it is the client's only when the proxy is in `TRUSTED_PROXIES`; otherwise every
 visitor has the proxy's address and shares its limit. The [requests](requests.md#the-clients-address) page explains how the
 address is found.
+
+### Keys and the client's address
+
+Key a limit on `clientKey(ctx.ip)`, not on `ctx.ip` itself. An IPv4 address is its own key. A household or office with IPv6 gets a
+whole /64 block (2⁶⁴ addresses) and picks a new address inside it for every request, so a limit keyed on the full address
+never fills; `clientKey()` returns the /64 (`2001:db8:1:2::/64`) for every address in the block, however it is written
+(compressed, with leading zeros, with a zone id). An IPv4-mapped (`::ffff:203.0.113.9`) or NAT64 (`64:ff9b::/96`) address counts as its
+IPv4 address, and a port or brackets that a proxy adds (`203.0.113.9:443`, `[2001:db8::1]:443`) are dropped. A request without an
+address has the key `unknown`. Text that is not an address at all keeps a key of its own (`raw:…`), so one odd client never takes
+everyone's budget, and logs a warning once: check what your proxy sends in `X-Forwarded-For`. `ctx.ip` itself stays the full address, for logs and the
+sign-in list.
+
+A client can not choose its own key: `X-Forwarded-For` only counts when the peer is in `TRUSTED_PROXIES`, and the key is made from the
+address the server found. Keying on the /64 means that everyone behind one IPv6 connection share a limit, like everyone behind one IPv4
+address does.
 
 ## Applying limits to routes
 
@@ -128,12 +143,12 @@ it. Live validations have a limit of their own instead, in the global middleware
 limiter named `live-validation` replaces it:
 
 ```ts title="modules/system/SystemServiceProvider.ts"
-import { Limit, RateLimiter } from '@marmeon/cache';
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, ServiceProvider } from '@marmeon/core';
 
 export class SystemServiceProvider implements ServiceProvider {
   boot(app: Application): void {
-    app.container.make(RateLimiter).for('live-validation', (ctx) => Limit.perMinute(60).by(ctx.ip ?? 'unknown'));
+    app.container.make(RateLimiter).for('live-validation', (ctx) => Limit.perMinute(60).by(clientKey(ctx.ip)));
   }
 }
 ```
@@ -148,7 +163,7 @@ count in the controller:
 
 ```ts title="modules/auth/controllers/LoginController.ts"
 import { Auth } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
+import { clientKey, RateLimiter } from '@marmeon/cache';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 
@@ -170,7 +185,7 @@ export class LoginController extends Controller {
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password } = ctx.body;
-    const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
+    const key = `login:${email}|${clientKey(ctx.ip)}`;
     if (!(await this.#limiter.attempt(key, 5, 60))) {
       const seconds = await this.#limiter.availableIn(key);
       throw new ValidationError({ email: [`Too many attempts. Try again in ${seconds} seconds.`] }, { email });

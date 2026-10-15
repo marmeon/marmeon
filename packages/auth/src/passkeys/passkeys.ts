@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { RateLimiter } from '@marmeon/cache';
+import { clientKey, RateLimiter } from '@marmeon/cache';
 import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { RequestInfo } from '@marmeon/http';
@@ -488,7 +488,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   #signInKey(): string {
-    return `passkey-sign-in:${this.#request.ip ?? 'unknown'}`;
+    return `passkey-sign-in:${clientKey(this.#request.ip)}`;
   }
 
   #now(): number {
