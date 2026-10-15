@@ -81,6 +81,8 @@ export interface SignInStore {
   end(userId: number | string, id: string): Promise<boolean>;
   /** Deletes every sign-in of the user, except `except`; how many. */
   endAll(userId: number | string, except?: string): Promise<number>;
+  /** Deletes every sign-in of every user; how many. */
+  endEveryone(): Promise<number>;
   /** Deletes exactly the rows `list` does not show, of every user; how many. */
   prune(window: SignInWindow): Promise<number>;
 }
@@ -201,6 +203,10 @@ export class DatabaseSignIns implements SignInStore {
     return Number((await query.executeTakeFirst()).numDeletedRows);
   }
 
+  async endEveryone(): Promise<number> {
+    return Number((await this.#db().deleteFrom(SIGN_INS_TABLE).executeTakeFirst()).numDeletedRows);
+  }
+
   async prune(window: SignInWindow): Promise<number> {
     const now = this.#clock.now();
     const result = await this.#db()
@@ -277,6 +283,10 @@ export class SignInTracker {
 
   endAll(userId: number | string, except?: string): Promise<number> {
     return this.#need().endAll(userId, except);
+  }
+
+  endEveryone(): Promise<number> {
+    return this.#need().endEveryone();
   }
 
   prune(window: SignInWindow): Promise<number> {

@@ -63,6 +63,8 @@ export interface AccessTokenStore {
    * they expire, but stay listed until pruned. How many. Tokens without an expiry stay until revoked.
    */
   prune(graceSeconds?: number): Promise<number>;
+  /** Revokes the tokens of every user (`AccountSessions.endEveryone({ accessTokens: true })`) — how many. */
+  revokeEveryone?(): Promise<number>;
 }
 export const AccessTokenStore = token<AccessTokenStore>('AccessTokenStore');
 
@@ -159,6 +161,10 @@ export class DatabaseAccessTokens implements AccessTokenStore {
   async revokeAll(userId: number | string): Promise<number> {
     const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('user_id', '=', userId).executeTakeFirst();
     return Number(result.numDeletedRows);
+  }
+
+  async revokeEveryone(): Promise<number> {
+    return Number((await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).executeTakeFirst()).numDeletedRows);
   }
 
   async prune(graceSeconds = 0): Promise<number> {
