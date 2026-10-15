@@ -33,8 +33,8 @@ The rule asks for development, not for "anything but production": a server whose
 instead of being ignored. With `NODE_ENV=test` it has no effect, and the start logs a warning.
 
 > [!WARNING]
-> A developer's `.env` with `NODE_ENV=development` copied to a server would turn the devtools on there. `marmeon start` warns
-> loudly when `development` comes from a `.env`. Keep the package a dev dependency: a production install without dev
+> A developer's `.env` with `NODE_ENV=development` copied to a server would turn the devtools on there. `marmeon start` refuses
+> to run when `development` comes from a `.env`. Keep the package a dev dependency: a production install without dev
 > dependencies does not even have it.
 
 The commands `devtools:clear` and `devtools:prune` exist wherever the package is installed. They only remove files: in

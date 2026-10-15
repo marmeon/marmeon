@@ -101,7 +101,8 @@ answer 404.
 The `marmeon` command decides `NODE_ENV` once, before it loads anything of the app:
 
 1. The process's own `NODE_ENV` wins.
-2. Otherwise the one in `.env`. A new app's `.env` says `development`, so every command on your machine runs in development.
+2. Otherwise the one in `.env`. A new app's `.env` says `development`, so the commands on your machine run in
+   development — except `marmeon start`, which refuses a `development` or `test` that comes from `.env` alone.
 3. Otherwise the command's own default: `marmeon start` and `marmeon build` use `production`, `marmeon dev` uses `development`.
    Every other command runs without one, which is production.
 
@@ -114,9 +115,11 @@ in it is ignored, with a warning. The value is written into `process.env.NODE_EN
 production as well.
 
 The start line says where the value came from, for example `development (APP_ENV=local, NODE_ENV from .env)`. A `.env` copied to a
-server would turn the development tools on there. `marmeon start`, `queue:work` and `schedule:work` still run in that case, but
-each logs a loud warning that begins with `NODE_ENV=development comes from .env, not from the environment`. On a server, set
-`NODE_ENV` in the real environment.
+server would turn the development tools on there, so `marmeon start` refuses it: with `NODE_ENV=development` or `NODE_ENV=test`
+from `.env` alone it prints `marmeon start runs in production`, loads nothing of the app and exits with 1. Run `marmeon dev`,
+set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the real environment to start the development
+stack on purpose. `queue:work` and `schedule:work` still run in that case, but each logs a loud warning that begins with `NODE_ENV=development comes from .env,
+not from the environment`. On a server, set `NODE_ENV` in the real environment.
 
 ### Staging
 

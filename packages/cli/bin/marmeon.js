@@ -66,8 +66,8 @@ function compileCache() {
  */
 async function runHere(args, launch) {
   const { buildEnvironment, DOTENV_MARKER, environment, resolveEnvironment } = await import('@marmeon/core/environment');
-  // `start` is production unless the environment or .env says development; `dev` is development (development-only
-  // tools check for `NODE_ENV=development`, never for "not production").
+  // `start` is production unless the process environment says development (a .env's is refused below); `dev` is development
+  // (development-only tools check for `NODE_ENV=development`, never for "not production").
   // `build` builds for production without one (Vite would read a NODE_ENV of the .env files itself).
   const fallback = launch === 'start' || launch === 'build' ? 'production' : launch === 'dev' ? 'development' : undefined;
   let resolved;
@@ -81,6 +81,19 @@ async function runHere(args, launch) {
     return;
   }
   for (const warning of resolved.warnings) process.stderr.write(`⚠ ${warning}\n`);
+  // A developer's .env on a server must never start the development stack: the server (`start`, `serve`) runs as development or
+  // test only when the process environment says so — `marmeon dev` alone takes it from .env. Nothing of the app is loaded.
+  const fromDotEnv = resolved.source === '.env' && (environment.isDevelopment() || process.env.NODE_ENV === 'test');
+  if (args[0] === 'serve' && launch !== 'dev' && fromDotEnv) {
+    const name = process.env.NODE_ENV;
+    const way =
+      name === 'development'
+        ? 'run `marmeon dev`, set NODE_ENV=production to try the build, or set NODE_ENV=development in the environment to start it on purpose'
+        : 'run `marmeon dev`, or set NODE_ENV=production to try the build';
+    process.stderr.write(`✗ marmeon ${launch ?? 'serve'} runs in production. NODE_ENV=${name} comes from .env only — ${way}.\n`);
+    process.exitCode = 1;
+    return;
+  }
   if (launch === 'build') {
     // What the build bakes into dist/client: production unless the environment says development — never a NODE_ENV=development
     // of .env, never test.

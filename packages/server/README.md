@@ -14,7 +14,7 @@ has `vite` and `@marmeon/vite` as dev dependencies; `marmeon start` serves the b
 
 ```sh
 pnpm marmeon build    # injection lists, route types, type check, the browser's files and the server rendering
-pnpm marmeon start    # serves the build: NODE_ENV=production unless the environment or .env says otherwise
+pnpm marmeon start    # serves the build: NODE_ENV=production unless the environment says otherwise (a .env's development or test is refused)
 NODE_ENV=production APP_ENV=staging pnpm marmeon start   # a staging server: production, named staging
 ```
 

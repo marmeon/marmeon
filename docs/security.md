@@ -30,9 +30,9 @@ server with `NODE_ENV=production` is protected, and its development routes answe
 its visitors with a message or a stack.
 
 A forgotten variable therefore never shows your source code to a visitor. Set `NODE_ENV` in the server's real environment, and
-never deploy a developer's `.env`: `marmeon start`, `queue:work` and `schedule:work` warn loudly when `development` comes from a
-`.env`, and the start line says `development (APP_ENV=local, NODE_ENV from .env)`. The
-[configuration](configuration.md#the-environment-node_env) page explains where `NODE_ENV` comes from.
+never deploy a developer's `.env`: `marmeon start` refuses to run when `development` comes from a
+`.env`, `queue:work` and `schedule:work` warn loudly, and the start line says `development (APP_ENV=local, NODE_ENV from .env)`.
+The [configuration](configuration.md#the-environment-node_env) page explains where `NODE_ENV` comes from.
 
 Code that runs in the browser and in server rendering checks for development positively, as `development` or `test`, never as
 "not production". Without a value, an error in the browser shows only its short code, such as `[marmeon:R2] users/Show`, no
