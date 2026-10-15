@@ -1,6 +1,7 @@
 import { outsideTransaction, Redactor, type Logger } from '@marmeon/core';
 import type { LiveHint } from '@marmeon/http';
 import type { LiveBackend, LiveMessage } from './backend.ts';
+import { ACCOUNT_PREFIX } from './signer.ts';
 
 /** What `hello` says when a stream opens: the current sequence of each channel — and, after a reconnect, those it missed. */
 export interface LiveHello {
@@ -15,6 +16,8 @@ export interface LiveStreamRequest {
   readonly scope: string;
   /** The scope of the account behind the stream, when a sign-in stands behind it. */
   readonly account?: string | undefined;
+  /** When the sign-in was asked about (ms): an end of the account that arrived after is not known to the answer. */
+  readonly checkedAt?: number | undefined;
   readonly connection: string;
   /** The `Last-Event-ID` of a reconnect — the sequences the stream had seen. */
   readonly lastEventId?: string | null | undefined;
@@ -34,10 +37,22 @@ export interface LiveHubOptions {
    * cookie) cannot take every stream of the process (`maxStreams`) from everyone else.
    */
   readonly maxStreamsPerSession?: number | undefined;
+  /**
+   * Seconds a stream lives at most (default 900, `LIVE_MAX_STREAM_SECONDS`), with up to a quarter less by chance: then it closes and
+   * its browser connects again and is checked. Bounds every ending nobody announced (a sign-in's maximum lifetime, an idle session,
+   * a message that was missed).
+   */
+  readonly maxStreamSeconds?: number | undefined;
 }
 
 /** The streams one session may hold in a process when nothing says otherwise (`LIVE_MAX_STREAMS_PER_SESSION`). */
 export const MAX_STREAMS_PER_SESSION = 16;
+
+/** Ends of accounts the hub remembers at most (a flood of messages cannot grow it without bound). */
+const MAX_REMEMBERED_ENDS = 100_000;
+
+/** How long a stream lives when nothing says otherwise (`LIVE_MAX_STREAM_SECONDS`). */
+export const MAX_STREAM_SECONDS = 900;
 
 /** The headers of a live stream: an event stream, never cached, transformed or buffered on its way (nginx: X-Accel-Buffering). */
 export const STREAM_HEADERS: Readonly<Record<string, string>> = {
@@ -78,6 +93,7 @@ export class OpenStream {
   #waiting: Extract<LiveMessage, { kind: 'refresh' }>[] | undefined = [];
   #heartbeat: ReturnType<typeof setInterval> | undefined;
   #closed = false;
+  #lifetime: ReturnType<typeof setTimeout> | undefined;
   readonly #stop: () => void;
 
   constructor(request: LiveStreamRequest, onClose: () => void) {
@@ -102,7 +118,7 @@ export class OpenStream {
   }
 
   /** Opens with `retry:` and `hello` (the channels' sequences), then the hints that came meanwhile; heartbeats from now on. */
-  hello(seqs: readonly number[], lastEventId: string | null | undefined, { retry, heartbeat }: Pick<LiveHubOptions, 'retry' | 'heartbeat'>): void {
+  hello(seqs: readonly number[], lastEventId: string | null | undefined, { retry, heartbeat, maxStreamSeconds = MAX_STREAM_SECONDS }: Pick<LiveHubOptions, 'retry' | 'heartbeat' | 'maxStreamSeconds'>): void {
     // Closed while `hello` was prepared (the tab went away, the server closes): no heartbeat for a stream nobody reads.
     if (this.#closed) return;
     const channels = [...this.channels];
@@ -117,6 +133,10 @@ export class OpenStream {
     // A comment line now and then: proxies and load balancers close connections that stay silent.
     this.#heartbeat = setInterval(() => outsideTransaction(() => this.#write(': heartbeat\n\n')), heartbeat * 1000);
     this.#heartbeat.unref?.();
+    // A stream does not live for ever: it closes after a while (a little earlier by chance, so the tabs of one deploy do not return
+    // together) and its browser is checked again.
+    this.#lifetime = setTimeout(() => this.reconnect(), maxStreamSeconds * 1000 * (0.75 + Math.random() * 0.25));
+    this.#lifetime.unref?.();
   }
 
   /** A hint on one of its channels — never data. The connection that caused it gets it with nothing to reload. */
@@ -131,6 +151,13 @@ export class OpenStream {
     this.#write(event('refresh', hint, eventId(this.#seqs)));
   }
 
+  /** The account's sign-ins changed: the stream closes without `end`, and the browser connects again after a random pause — and is checked. */
+  reconnect(): void {
+    if (this.#closed) return;
+    this.#write(`retry: ${1000 + Math.floor(Math.random() * 9000)}\n\n`);
+    this.close();
+  }
+
   /** The session ended: the browser is told not to reconnect, and the stream closes. */
   end(): void {
     if (this.#closed) return;
@@ -142,6 +169,7 @@ export class OpenStream {
     if (this.#closed) return;
     this.#closed = true;
     clearInterval(this.#heartbeat);
+    clearTimeout(this.#lifetime);
     this.#waiting = undefined;
     try {
       this.#controller.close();
@@ -196,6 +224,10 @@ export class LiveHub {
   readonly #streams = new Set<OpenStream>();
   readonly #channels = new Map<string, Set<OpenStream>>();
   readonly #sessions = new Map<string, Set<OpenStream>>();
+  /** Keyed account scope (or `'*'`) → when its sign-ins last ended: a stream opened on an answer from before it is closed again. */
+  readonly #recentEnds = new Map<string, number>();
+  /** Keyed account scope → its streams (those opened by a signed-in browser). */
+  readonly #accounts = new Map<string, Set<OpenStream>>();
   #listening: Promise<unknown> | undefined;
   #closed = false;
 
@@ -251,6 +283,7 @@ export class LiveHub {
     const stream = new OpenStream(request, () => this.#forget(stream));
     this.#streams.add(stream);
     index(this.#sessions, stream.scope, stream);
+    if (stream.account !== undefined) index(this.#accounts, stream.account, stream);
     for (const channel of stream.channels) index(this.#channels, channel, stream);
     try {
       await this.#listen();
@@ -261,6 +294,11 @@ export class LiveHub {
         return refuse(503, 'The server is closing.', '1');
       }
       stream.hello(seqs, request.lastEventId, this.#options);
+      // The sign-in was asked about before an end of this account arrived: the answer may be stale, so ask again after a pause.
+      if (stream.account !== undefined && request.checkedAt !== undefined) {
+        const ended = Math.max(this.#recentEnds.get(stream.account) ?? 0, this.#recentEnds.get('*') ?? 0);
+        if (ended >= request.checkedAt) stream.reconnect();
+      }
     } catch (error) {
       stream.close();
       this.#logger.error('A live stream could not start (the live backend failed)', { exception: this.#redactor.text(String(error)) });
@@ -281,9 +319,26 @@ export class LiveHub {
     await this.#backend.close();
   }
 
+  /** The number of ends remembered, for tests. */
+  get endsRemembered(): number {
+    return this.#recentEnds.size;
+  }
+
+  /** Only account ends (and `'*'`) matter to a stream that is opening. The map stays in time order: the oldest entries are first, and are all that pruning looks at. */
+  #rememberEnd(scope: string): void {
+    const now = Date.now();
+    this.#recentEnds.delete(scope);
+    this.#recentEnds.set(scope, now);
+    for (const [oldest, at] of this.#recentEnds) {
+      if (now - at <= 60_000 && this.#recentEnds.size <= MAX_REMEMBERED_ENDS) break;
+      this.#recentEnds.delete(oldest);
+    }
+  }
+
   #forget(stream: OpenStream): void {
     this.#streams.delete(stream);
     unindex(this.#sessions, stream.scope, stream);
+    if (stream.account !== undefined) unindex(this.#accounts, stream.account, stream);
     for (const channel of stream.channels) unindex(this.#channels, channel, stream);
   }
 
@@ -298,12 +353,16 @@ export class LiveHub {
   }
 
   #deliver(message: LiveMessage): void {
-    const streams = message.kind === 'end' ? this.#sessions.get(message.scope) : this.#channels.get(message.channel);
-    if (!streams) return;
-    // A stream that ends (or breaks while written to) leaves the set meanwhile — a Set goes on with the next one.
-    for (const stream of streams) {
-      if (message.kind === 'end') stream.end();
-      else stream.hint(message);
+    if (message.kind === 'end') {
+      if (message.scope === '*' || message.scope.startsWith(ACCOUNT_PREFIX)) this.#rememberEnd(message.scope);
+      // A stream that ends leaves its set meanwhile — copied first. A session scope and an account scope never collide (keyed apart);
+      // `'*'` is every account's streams, guests' stay.
+      for (const stream of [...(this.#sessions.get(message.scope) ?? [])]) stream.end();
+      const accounts = message.scope === '*' ? [...this.#accounts.values()].flatMap((set) => [...set]) : [...(this.#accounts.get(message.scope) ?? [])];
+      for (const stream of accounts) stream.reconnect();
+      return;
     }
+    // A stream that breaks while written to leaves the set meanwhile — a Set goes on with the next one.
+    for (const stream of this.#channels.get(message.channel) ?? []) stream.hint(message);
   }
 }

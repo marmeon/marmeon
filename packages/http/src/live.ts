@@ -13,7 +13,8 @@ import type { LiveSubscription, SharedProps } from './page.ts';
  * per request by `@marmeon/auth`; without it a stream is only its session's. `ended`: the session names a sign-in that is over
  * (signed out elsewhere, a new password, an ended sign-in) — the stream is told so and the browser does not reconnect. A guest is `guest`; a
  * sign-in that stands is `account`, with the scope of that account (a hash of its id, never the id). An app with its own authentication
- * binds its own audience.
+ * binds its own audience: it gets the check at every connection and the streams' maximum lifetime, but not the immediate
+ * closing when an account's sign-ins end, which `@marmeon/auth` and `@marmeon/session` announce internally.
  */
 export interface LiveAudience {
   check(): Promise<{ readonly kind: 'guest' } | { readonly kind: 'ended' } | { readonly kind: 'account'; readonly scope: string }>;

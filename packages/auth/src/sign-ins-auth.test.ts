@@ -3,8 +3,8 @@ import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/databas
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
-import { describe, expect, it } from 'vitest';
+import { accountScope, CsrfProtection, Session, SessionEndings, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
+import { describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
@@ -121,9 +121,30 @@ class ListController extends Route {
     return (await this.auth.signIns()).map((signIn) => ({ ...signIn, signedInAt: undefined, lastSeenAt: undefined, createdAt: undefined }));
   }
 }
-/** Runs one `Auth` method named by the path and reports what it answered, or what it threw. */
+/** Thrown to roll a transaction back after the action ran in it. */
+class RolledBack {
+  readonly answer: Record<string, unknown>;
+  constructor(answer: Record<string, unknown>) {
+    this.answer = answer;
+  }
+}
+let connectionsOfTest: Connections;
+
+/** Runs one `Auth` method named by the path and reports what it answered, or what it threw — in a transaction that rolls back, with `x-rollback`. */
 class ActController extends Route {
   async handle(ctx: HttpContext) {
+    if (ctx.request.headers.get('x-rollback') !== 'yes') return this.#act(ctx);
+    try {
+      return await connectionsOfTest.transaction(async () => {
+        throw new RolledBack(await this.#act(ctx));
+      });
+    } catch (error) {
+      if (error instanceof RolledBack) return error.answer;
+      throw error;
+    }
+  }
+
+  async #act(ctx: HttpContext): Promise<Record<string, unknown>> {
     const [action, id] = [ctx.request.headers.get('x-action'), ctx.request.headers.get('x-id') ?? ''];
     try {
       switch (action) {
@@ -187,6 +208,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
   users.hash = await application.container.make(Hasher).make('secret');
   const kernel = createHttpKernel(application);
   const store = application.container.make(SessionStore);
+  connectionsOfTest = application.container.make(Connections);
   const db = application.container.make(Connections).get<any>();
   const rows = () => db.selectFrom(SIGN_INS_TABLE).selectAll().execute() as Promise<{ id: string; user_agent: string | null; remember_selector: string | null; last_seen_at: string | Date }[]>;
   const tokens = async () => (await db.selectFrom('remember_tokens').selectAll().execute()).length as number;
@@ -203,7 +225,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
       }
       return response;
     };
-    const act = async (action: string, id = '') => (await send('/act', { headers: { 'x-action': action, 'x-id': id } })).json() as Promise<Record<string, unknown>>;
+    const act = async (action: string, id = '', rollback = false) => (await send('/act', { headers: { 'x-action': action, 'x-id': id, ...(rollback ? { 'x-rollback': 'yes' } : {}) } })).json() as Promise<Record<string, unknown>>;
     const list = async () => (await send('/list')).json() as Promise<{ id: string; current: boolean; remembered: boolean; userAgent: string | undefined; device: { browser: string | undefined; system: string | undefined } }[]>;
     const who = async () => (await send('/who')).json() as Promise<{ id: number | null; viaRemember: boolean }>;
     const sessionKeyOf = async () => sessionKey(await application.container.make(Encrypter).decrypt(decodeURIComponent(jar.get('marmeon_session')!), 'cookie:marmeon_session'));
@@ -455,6 +477,43 @@ describe('sign-ins tracked by Auth', () => {
     expect(await rows()).toHaveLength(1);
     expect(await tokens()).toBe(0);
     expect(await b.who()).toMatchObject({ id: null });
+  });
+
+  describe('the live streams of the account are told', () => {
+    async function twoBrowsers() {
+      const booted = await boot();
+      const heard = vi.fn();
+      booted.application.container.make(SessionEndings).listenAccounts(heard);
+      const laptop = booted.browser();
+      const phone = booted.browser();
+      await login(laptop);
+      await login(phone);
+      await laptop.act('confirm');
+      return { ...booted, heard, laptop, phone };
+    }
+
+    it('after the commit — an ended sign-in, a new password, signing out the other devices, a new session key — once each', async () => {
+      const { heard, laptop, phone } = await twoBrowsers();
+      const [other] = (await laptop.list()).filter((entry) => !entry.current);
+      await laptop.act('end', other!.id);
+      expect(heard.mock.calls).toEqual([[accountScope(1)]]);
+      await laptop.act('others');
+      await laptop.act('key');
+      await laptop.act('password');
+      expect(heard).toHaveBeenCalledTimes(4);
+      expect(await phone.who()).toMatchObject({ id: null });
+    });
+
+    it('not when the transaction around the change rolls back — the change never happened', async () => {
+      const { heard, laptop, users } = await twoBrowsers();
+      const [other] = (await laptop.list()).filter((entry) => !entry.current);
+      const hash = users.hash;
+      for (const [action, id] of [['end', other!.id], ['password', ''], ['others', ''], ['key', '']] as const) {
+        users.hash = hash;
+        await laptop.act(action, id, true);
+      }
+      expect(heard).not.toHaveBeenCalled();
+    });
   });
 
   describe('listing and ending sign-ins', () => {

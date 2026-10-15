@@ -34,8 +34,8 @@ function hubOf(backend: LiveBackend = new MemoryLiveBackend(), options: Partial<
   return hub;
 }
 
-async function open(hub: LiveHub, channels: string[], { scope = ADA, connection = 'tab-a-0001', lastEventId }: { scope?: string; connection?: string; lastEventId?: string } = {}) {
-  const reader = new LiveStreamReader(await hub.open({ channels, scope, connection, lastEventId }));
+async function open(hub: LiveHub, channels: string[], { scope = ADA, connection = 'tab-a-0001', lastEventId, account }: { scope?: string; connection?: string; lastEventId?: string; account?: string } = {}) {
+  const reader = new LiveStreamReader(await hub.open({ channels, scope, connection, lastEventId, account }));
   cleanups.push(() => reader.close());
   cleanups.push(() => void everyHint.push(...reader.hints));
   return reader;
@@ -367,6 +367,116 @@ describe('the stream — hints, never data', () => {
     expect(hub.size).toBe(1);
   });
 
+  it('the sign-ins of an account ended: its streams close without `end` and with a pause to reconnect after — other accounts, guests and the sessions stay', async () => {
+    const backend = new MemoryLiveBackend();
+    const hub = hubOf(backend);
+    const adaA = await open(hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a1', account: 'a:ada' });
+    const adaB = await open(hub, ['users.1'], { connection: 'tab-b-0001', scope: 'session-a2', account: 'a:ada' });
+    const grace = await open(hub, ['users.1'], { connection: 'tab-g-0001', scope: 'session-g', account: 'a:grace' });
+    const guest = await open(hub, ['users.1'], { connection: 'tab-x-0001', scope: 'session-x' });
+    await Promise.all([adaA.hello(), adaB.hello(), grace.hello(), guest.hello()]);
+    // The name of a session is no name of an account, and a guess is no name of either.
+    await backend.end('session-g-but-not');
+    await backend.end('a:ada');
+    await Promise.all([adaA.closed, adaB.closed]);
+    for (const reader of [adaA, adaB]) {
+      expect(reader.events.map((each) => each.event)).toEqual(['hello']);
+      expect(reader.retry).toBeGreaterThanOrEqual(1000);
+      expect(reader.retry).toBeLessThanOrEqual(10_000);
+    }
+    expect(hub.size).toBe(2);
+    await backend.refresh('users.1', null, undefined);
+    await Promise.all([grace.waitFor(1), guest.waitFor(1)]);
+  });
+
+  it('every account ended (\'*\'): every account\'s streams close, a guest\'s stays', async () => {
+    const backend = new MemoryLiveBackend();
+    const hub = hubOf(backend);
+    const ada = await open(hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a', account: 'a:ada' });
+    const grace = await open(hub, ['users.1'], { connection: 'tab-g-0001', scope: 'session-g', account: 'a:grace' });
+    const guest = await open(hub, ['users.1'], { connection: 'tab-x-0001', scope: 'session-x' });
+    await Promise.all([ada.hello(), grace.hello(), guest.hello()]);
+    await backend.end('*');
+    await Promise.all([ada.closed, grace.closed]);
+    expect(hub.size).toBe(1);
+    await backend.refresh('users.1', null, undefined);
+    await guest.waitFor(1);
+  });
+
+  it('a stream lives at most LIVE_MAX_STREAM_SECONDS (a quarter less at most): it closes without `end` and its browser connects again', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const hub = hubOf(new MemoryLiveBackend(), { maxStreamSeconds: 100 });
+      const reader = await open(hub, ['users.1'], { account: 'a:ada' });
+      await reader.hello();
+      await vi.advanceTimersByTimeAsync(74_000);
+      expect(hub.size).toBe(1); // never before three quarters
+      await vi.advanceTimersByTimeAsync(27_000);
+      await reader.closed;
+      expect(reader.events.map((each) => each.event)).toEqual(['hello']);
+      expect(hub.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('an end of the account that arrived after its sign-in was asked about: the stream, opened on that answer, closes again at once', async () => {
+    const backend = new MemoryLiveBackend();
+    const hub = hubOf(backend);
+    await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
+    const checkedAt = Date.now();
+    await backend.end('a:ada');
+    const stale = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-a', account: 'a:ada', checkedAt, connection: 'tab-s-0001' }));
+    cleanups.push(() => stale.close());
+    await stale.closed;
+    expect(stale.events.map((each) => each.event)).toEqual(['hello']);
+    // Asked after the end: it stands.
+    const later = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', account: 'a:ada', checkedAt: Date.now() + 1, connection: 'tab-t-0001' }));
+    cleanups.push(() => later.close());
+    await later.hello();
+    // `*` counts as well.
+    await backend.end('*');
+    const star = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-c', account: 'a:eve', checkedAt: Date.now() - 5, connection: 'tab-u-0001' }));
+    cleanups.push(() => star.close());
+    await star.closed;
+  });
+
+  it('remembers only the ends of accounts (and `*`), forgets them after a minute, and keeps them in time order', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2031-01-01T00:00:00Z'));
+      const backend = new MemoryLiveBackend();
+      const hub = hubOf(backend);
+      await (await open(hub, ['users.1'], { account: 'a:other' })).hello();
+      for (let i = 0; i < 50; i++) await backend.end(`session-${i}`);
+      expect(hub.endsRemembered).toBe(0);
+      await backend.end('a:ada');
+      await backend.end('a:grace');
+      await backend.end('a:ada'); // again: moves to the end, still two entries
+      expect(hub.endsRemembered).toBe(2);
+      vi.setSystemTime(new Date('2031-01-01T00:01:30Z'));
+      await backend.end('a:eve');
+      expect(hub.endsRemembered).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('LiveTokens names the account under every key, the current one first', () => {
+    const both = new LiveTokens(liveKeys(new Uint8Array(32).fill(2), [new Uint8Array(32).fill(1)]));
+    const old = new LiveTokens(liveKeys(new Uint8Array(32).fill(1)));
+    expect(both.accountScopes('abc')).toEqual([both.accountScope('abc'), old.accountScope('abc')]);
+  });
+
+  it('the account scope that crosses the backend is keyed: it is not the unkeyed one, and another key makes another', () => {
+    const one = new LiveTokens(liveKeys(new Uint8Array(32).fill(1)));
+    const two = new LiveTokens(liveKeys(new Uint8Array(32).fill(2)));
+    expect(one.accountScope('abc')).not.toBe('abc');
+    expect(one.accountScope('abc')).toBe(one.accountScope('abc'));
+    expect(one.accountScope('abc')).not.toBe(two.accountScope('abc'));
+    expect(one.accountScope('abc')).not.toBe(one.accountScope('abd'));
+  });
+
   it('the server closing ends every stream (without `end`: the browser reconnects to the next server)', async () => {
     const closing = new AbortController();
     const hub = hubOf(new MemoryLiveBackend(), {}, closing.signal);
@@ -658,5 +768,23 @@ describe.runIf(REDIS_URL)('the redis backend — every process hears every hint'
     await one.backend.end(ADA);
     await reader.closed;
     expect(reader.events.at(-1)?.event).toBe('end');
+  });
+
+  it('an account that ended in one process closes its streams in the other — and `*` every account\'s, not a guest\'s', async () => {
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const one = processOf(prefix);
+    const two = processOf(prefix);
+    const ada = await open(two.hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a', account: 'a:ada' });
+    const grace = await open(two.hub, ['users.1'], { connection: 'tab-g-0001', scope: 'session-g', account: 'a:grace' });
+    const guest = await open(two.hub, ['users.1'], { connection: 'tab-x-0001', scope: 'session-x' });
+    await Promise.all([ada.hello(), grace.hello(), guest.hello()]);
+    await one.backend.end('a:ada');
+    await ada.closed;
+    expect(ada.events.map((each) => each.event)).toEqual(['hello']);
+    await one.backend.end('*');
+    await grace.closed;
+    expect(two.hub.size).toBe(1);
+    await one.backend.refresh('users.1', null, undefined);
+    await guest.waitFor(1);
   });
 });

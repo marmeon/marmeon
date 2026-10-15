@@ -107,8 +107,8 @@ export class LiveServiceProvider implements ServiceProvider {
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
-      const { heartbeat, retry, maxStreams, maxStreamsPerSession } = c.make(LiveConfig);
-      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
+      const { heartbeat, retry, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
+      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession, maxStreamSeconds }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request.
@@ -165,6 +165,22 @@ export class LiveServiceProvider implements ServiceProvider {
           await container.make(LiveBackend).end(scope);
         } catch (error) {
           logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
+        }
+      });
+    }
+
+    // Sign-ins of an account ended (`AccountSessions`, a new password, an ended sign-in): its streams close, in every process. The browsers
+    // still signed in connect again and are checked; the others are told `end`. The backend carries the keyed scope, never the account's own.
+    if (session && container.has(session.SessionEndings)) {
+      const logger = container.make(Logger).child({ channel: 'live' });
+      const redactor = container.make(Redactor);
+      container.make(session.SessionEndings).listenAccounts(async (scope) => {
+        try {
+          // One message per key (`APP_KEY` and the previous ones): a process still filing under another key of a rollout hears it too.
+          const scopes = scope === '*' ? ['*'] : container.make(LiveTokens).accountScopes(scope);
+          for (const keyed of scopes) await container.make(LiveBackend).end(keyed);
+        } catch (error) {
+          logger.error('The streams of an account could not be closed (the live backend failed)', { exception: redactor.text(String(error)) });
         }
       });
     }

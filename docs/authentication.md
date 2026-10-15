@@ -567,7 +567,7 @@ A session signs in with a fingerprint of the account, its id, password hash and 
 the account as it is now. When the password or the session key changes anywhere, every other session stops matching and ends at
 its next request. When the user is deleted, the lookup
 finds nobody, and the session ends the same way. A request that only reads, such as an island, treats such a session as a guest
-and leaves the ending to the next page request.
+and leaves the ending to the next page request. The account's open live streams close at once and their browsers are checked when they connect again ([real-time updates](realtime.md#following-a-channel)).
 
 `AccountSessions` of `@marmeon/auth` ends every session of an account, and every remember-me cookie with them. Use it after an
 incident, from a command, a job or an admin controller. Put the route behind `authenticate()` and decide who may call it with `authorize(can(…))`, such as with a policy of your own:
@@ -688,7 +688,7 @@ in, and logs the operator and the host. `--force` is required in every environme
 | Sign-in rows | All deleted, with [sign-ins](#sign-ins) switched on. |
 | Password-reset tokens | Only with `--reset-tokens` (`resetTokens: true`). |
 | API tokens | Only with `--api-tokens` (`accessTokens: true`). |
-| Open live streams | Not closed: a tab keeps its stream, and reconnects, until its next page request ends the session. See [real-time updates](realtime.md#following-a-channel). |
+| Open live streams | Closed at once, in every process; each browser that connects again is checked and, signed out, is told to stop. A guest's stream stays. See [real-time updates](realtime.md#following-a-channel). |
 
 Passwords stay, so change them where a hash may have leaked. Reset links are stored as hashes, but a link that was mailed before
 the leak works until it expires unless you pass `--reset-tokens`. After a leaked `APP_KEY` the command is the first step, not the
@@ -836,6 +836,7 @@ been signed out already:
 - A new password with `updatePassword()`, `logoutOtherDevices()` and `updateSessionKey()` end the rows of every other device and keep the
   current one. This happens after the new hash or key is stored; a failure is logged, and the sessions are over by their fingerprint anyway.
 - A password reset ends every row of the user, since it has no session of its own to keep.
+- Each of these also closes the account's open live streams, after the commit of the request's transaction.
 - [`AccountSessions.end()`](#ending-every-session-of-a-user) ends every row of the user.
 - A copied remember-me cookie ends every row of the user, as it ends all their sessions. A token refused for its age (`AUTH_REMEMBER_DAYS`) or for predating the second factor, and one that is already deleted, take their row with them. A token past its end is only rejected and leaves its row, which `prune` removes; a row ended from the list ends its token on its next use.
 

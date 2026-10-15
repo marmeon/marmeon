@@ -1,3 +1,5 @@
+import { afterCommit } from '@marmeon/core';
+import { accountScope, type SessionEndings } from './ended.ts';
 import type { SessionStore } from './store.ts';
 
 /**
@@ -13,10 +15,12 @@ import type { SessionStore } from './store.ts';
  */
 export class UserSessions {
   readonly #store: () => SessionStore;
+  readonly #endings: SessionEndings | undefined;
 
-  /** `store`: the app's session store. */
-  constructor(store: () => SessionStore) {
+  /** `store`: the app's session store. `endings`: told that the account's sign-ins ended, so its open live streams close. */
+  constructor(store: () => SessionStore, endings?: SessionEndings) {
     this.#store = store;
+    this.#endings = endings;
   }
 
   /** Whether `end()` can find and delete a user's sessions: only the `database` driver can. */
@@ -27,6 +31,12 @@ export class UserSessions {
   /** Ends every session of the user `id` the store can find — how many (0 when it cannot: file, Redis, memory). */
   async end(id: string | number): Promise<number> {
     const store = this.#store();
-    return store.destroyUser ? store.destroyUser(String(id)) : 0;
+    try {
+      return store.destroyUser ? await store.destroyUser(String(id)) : 0;
+    } finally {
+      // Whatever the store managed, the account's open live streams close and their browsers are checked again (a deleted account's are refused).
+      // After the commit when called inside a transaction (account deletion): a stream that connects again must find the account gone.
+      await afterCommit(() => this.#endings?.endAccount(accountScope(id)));
+    }
   }
 }

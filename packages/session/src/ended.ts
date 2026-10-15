@@ -27,11 +27,31 @@ export type SessionEndedListener = (scope: string) => void | Promise<void>;
  */
 export class SessionEndings {
   readonly #listeners = new Set<SessionEndedListener>();
+  readonly #accountListeners = new Set<SessionEndedListener>();
 
   /** Listens; returns the function that stops it. */
   listen(listener: SessionEndedListener): () => void {
     this.#listeners.add(listener);
     return () => void this.#listeners.delete(listener);
+  }
+
+  /**
+   * Listens for the sign-ins of an account that ended: the scope of the account ({@link accountScope}), or `'*'` for every
+   * account. The live package closes the streams of that account, in every process. Returns the function that stops it.
+   */
+  listenAccounts(listener: SessionEndedListener): () => void {
+    this.#accountListeners.add(listener);
+    return () => void this.#accountListeners.delete(listener);
+  }
+
+  /** @internal — `AccountSessions`, `Auth`: the sign-ins of the account behind `scope` ended; a listener that fails does not stop the others. */
+  async endAccount(scope: string): Promise<void> {
+    await Promise.allSettled([...this.#accountListeners].map(async (listener) => listener(scope)));
+  }
+
+  /** @internal — `AccountSessions.endEveryone()`: the sign-ins of every account ended. */
+  async endEverySession(): Promise<void> {
+    await this.endAccount('*');
   }
 
   /** @internal — `StartSession`, after it saved a session whose old id is gone. A listener that fails does not stop the others. */

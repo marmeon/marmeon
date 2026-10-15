@@ -207,7 +207,9 @@ hint can never show what the user may not see. A subscription is signed for its 
 token answers 403. Limits keep one user from exhausting a process: at most 16 streams per session
 (`LIVE_MAX_STREAMS_PER_SESSION`, beyond it 429 and a warning in the log), 1000 per process (`LIVE_MAX_STREAMS`, beyond it 503) and
 20 channels per stream. The limit per session counts by session, not by address; a flood of fresh sessions meets the limit per
-process, so limit connections at the proxy as well. The [real-time updates](realtime.md#limits) page explains them.
+process, so limit connections at the proxy as well. The [real-time updates](realtime.md#limits) page explains them. A stream checks its
+sign-in whenever it opens, and ending an account's sign-ins (a new password, `AccountSessions`, an ended sign-in) closes its open
+streams at once; a stream also closes after `LIVE_MAX_STREAM_SECONDS` (15 minutes) and is checked again.
 
 ## Logs and recordings
 

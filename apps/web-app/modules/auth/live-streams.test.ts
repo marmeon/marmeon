@@ -3,7 +3,9 @@ import { SESSION_USER_KEY, SessionCodec, sessionKey, SessionStore } from '@marme
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { AccountDeletion } from './AccountDeletion.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
 beforeAll(warmUp, WARM_UP_TIMEOUT);
@@ -96,5 +98,127 @@ describe('a live stream and the sign-in behind it', () => {
     const mine = await browser(changed.cookie('marmeon_session')!).live(await followed(changed.cookie('marmeon_session')!, ada.public_id));
     await mine.hello();
     expect(mine.events.map((each) => each.event)).toEqual(['hello']);
+  });
+});
+
+describe('a live stream that is open when its account\'s sign-ins end', () => {
+  const signIn = (email: string, userAgent: string) => app.post('/login', { form: { email, password: 'password' }, headers: { 'user-agent': userAgent } });
+  const browser = (session: string) => app.withCookie('marmeon_session', session);
+  const followed = async (session: string, publicId: string) => (await browser(session).navigating().get(`/users/${publicId}`).assertOk()).page()!.live!;
+  const eventsOf = (stream: { events: readonly { event: string }[] }) => stream.events.map((each) => each.event);
+
+  async function twoAccounts() {
+    const ada = await app.factory(UserFactory).create();
+    const bob = await app.factory(UserFactory).create();
+    const laptop = (await signIn(ada.email, FIREFOX)).cookie('marmeon_session')!;
+    const phone = (await signIn(ada.email, SAFARI)).cookie('marmeon_session')!;
+    const bobs = (await signIn(bob.email, FIREFOX)).cookie('marmeon_session')!;
+    const open = async (session: string, user: { public_id: string }, connection: string) => {
+      const stream = await browser(session).live(await followed(session, user.public_id), { connection });
+      await stream.hello();
+      return stream;
+    };
+    return { ada, bob, laptop, phone, bobs, open };
+  }
+
+  it('AccountSessions.end() closes every stream of the account at once — without `end`; another account\'s stream stays', async () => {
+    const { ada, bob, laptop, phone, bobs, open } = await twoAccounts();
+    const [onLaptop, onPhone, onBob] = [await open(laptop, ada, 'tab-l-0001'), await open(phone, ada, 'tab-p-0001'), await open(bobs, bob, 'tab-b-0001')];
+    expect((await app.make(AccountSessions).end(ada.id as never)).ok).toBe(true);
+    await Promise.all([onLaptop.closed, onPhone.closed]);
+    expect(eventsOf(onLaptop)).toEqual(['hello']);
+    expect(eventsOf(onPhone)).toEqual(['hello']);
+    const state = await Promise.race([onBob.closed.then(() => 'closed'), new Promise((resolve) => setTimeout(() => resolve('open'), 100))]);
+    expect(state).toBe('open');
+  });
+
+  it('a new password closes the streams of every device; the one that changed it connects again and stays, the others are told `end`', async () => {
+    const { ada, laptop, phone, open } = await twoAccounts();
+    const channels = await followed(phone, ada.public_id);
+    const onLaptop = await open(laptop, ada, 'tab-l-0001');
+    const onPhone = await open(phone, ada, 'tab-p-0001');
+    const changed = await browser(laptop).put('/settings/password', { form: { current_password: 'password', password: 'a new password', password_confirmation: 'a new password' } });
+    changed.assertRedirect();
+    await Promise.all([onLaptop.closed, onPhone.closed]);
+    expect(eventsOf(onLaptop)).toEqual(['hello']);
+    expect(eventsOf(onPhone)).toEqual(['hello']);
+
+    const mine = await browser(changed.cookie('marmeon_session')!).live(await followed(changed.cookie('marmeon_session')!, ada.public_id), { connection: 'tab-l-0002' });
+    await mine.hello();
+    const theirs = await browser(phone).live(channels, { connection: 'tab-p-0002' });
+    await theirs.closed;
+    expect(eventsOf(theirs)).toEqual(['end']);
+  });
+
+  it('ending a sign-in from the list closes the account\'s streams; the ended browser is told `end` when it connects again', async () => {
+    const { ada, laptop, phone, open } = await twoAccounts();
+    const channels = await followed(phone, ada.public_id);
+    const onPhone = await open(phone, ada, 'tab-p-0001');
+    const listed = (await browser(laptop).navigating().get('/settings/security', { headers: { 'user-agent': FIREFOX } })).page()!.props.signIns as readonly { id: string; current: boolean }[];
+    const confirmed = await browser(laptop).post('/confirm-password', { form: { password: 'password' } });
+    await browser(confirmed.cookie('marmeon_session') ?? laptop).post(`/settings/sign-ins/${listed.find((entry) => !entry.current)!.id}/end`).assertRedirect('/settings/security');
+    await onPhone.closed;
+    expect(eventsOf(onPhone)).toEqual(['hello']);
+    const again = await browser(phone).live(channels, { connection: 'tab-p-0002' });
+    await again.closed;
+    expect(eventsOf(again)).toEqual(['end']);
+  });
+
+  it('a password reset by link closes the account\'s streams; the signed-out browser is told `end` when it connects again', async () => {
+    const { ada, bob, phone, bobs, open } = await twoAccounts();
+    const channels = await followed(phone, ada.public_id);
+    const onPhone = await open(phone, ada, 'tab-p-0001');
+    const onBob = await open(bobs, bob, 'tab-b-0001');
+    await app.post('/forgot-password', { form: { email: ada.email }, headers: { referer: 'http://localhost/forgot-password' } });
+    await app.queue.work();
+    const [sent] = app.mail.queued(ResetPasswordMail).slice(-1);
+    const link = new URL(/https?:\/\/\S+\/reset-password\?\S+(?=\))/.exec(sent!.message.text)![0]);
+    const cookie = (await app.get(link.pathname + link.search).assertRedirect('/reset-password')).cookie('password_reset')!;
+    const password = 'brand new password';
+    await app.withCookie('password_reset', cookie).post('/reset-password', { form: { password, password_confirmation: password }, headers: { referer: 'http://localhost/reset-password' } }).assertRedirect('/login');
+
+    await onPhone.closed;
+    expect(eventsOf(onPhone)).toEqual(['hello']);
+    const again = await browser(phone).live(channels, { connection: 'tab-p-0002' });
+    await again.closed;
+    expect(eventsOf(again)).toEqual(['end']);
+    const state = await Promise.race([onBob.closed.then(() => 'closed'), new Promise((resolve) => setTimeout(() => resolve('open'), 100))]);
+    expect(state).toBe('open');
+  });
+
+  it('signing out the other devices closes the account\'s streams; the phone is told `end`, this laptop connects again and stays', async () => {
+    const { ada, laptop, phone, open } = await twoAccounts();
+    const phoneChannels = await followed(phone, ada.public_id);
+    const onPhone = await open(phone, ada, 'tab-p-0001');
+    const onLaptop = await open(laptop, ada, 'tab-l-0001');
+    await browser(laptop).post('/settings/devices/logout', { form: { password: 'password' } }).assertRedirect('/settings/security');
+    await Promise.all([onPhone.closed, onLaptop.closed]);
+    expect(eventsOf(onPhone)).toEqual(['hello']);
+    const again = await browser(phone).live(phoneChannels, { connection: 'tab-p-0002' });
+    await again.closed;
+    expect(eventsOf(again)).toEqual(['end']);
+    const mine = await browser(laptop).live(await followed(laptop, ada.public_id), { connection: 'tab-l-0002' });
+    await mine.hello();
+  });
+
+  it('deleting the account closes its streams, and the browser is refused when it connects again', async () => {
+    const { ada, phone, open } = await twoAccounts();
+    const channels = await followed(phone, ada.public_id);
+    const onPhone = await open(phone, ada, 'tab-p-0001');
+    await app.make(AccountDeletion).delete([ada.id]);
+    await onPhone.closed;
+    expect(eventsOf(onPhone)).toEqual(['hello']);
+    const again = await browser(phone).live(channels, { connection: 'tab-p-0002' });
+    await again.closed;
+    expect(eventsOf(again)).toEqual(['end']);
+  });
+
+  it('endEveryone() closes the streams of every account', async () => {
+    const { ada, bob, laptop, bobs, open } = await twoAccounts();
+    const [onAda, onBob] = [await open(laptop, ada, 'tab-l-0001'), await open(bobs, bob, 'tab-b-0001')];
+    await app.make(AccountSessions).endEveryone();
+    await Promise.all([onAda.closed, onBob.closed]);
+    expect(eventsOf(onAda)).toEqual(['hello']);
+    expect(eventsOf(onBob)).toEqual(['hello']);
   });
 });

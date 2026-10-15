@@ -51,7 +51,7 @@ export class SessionServiceProvider implements ServiceProvider {
     container.singleton(SessionCodec, (c) => (config.encrypt ? new EncryptedSessionCodec(c.make(Encrypter)) : plainSessionCodec));
     container.singleton(SessionStore, (c) => storeFor(config, c));
     // A user's sessions as a whole (a deleted account's) — the shared store's.
-    container.singleton(UserSessions, (c) => new UserSessions(() => c.make(SessionStore)));
+    container.singleton(UserSessions, (c) => new UserSessions(() => c.make(SessionStore), c.make(SessionEndings)));
   }
 
   async boot(app: Application): Promise<void> {

@@ -1,5 +1,6 @@
-import type { Logger } from '@marmeon/core';
+import { afterCommit, type Logger } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
+import { accountScope, type SessionEndings } from '@marmeon/session';
 import type { AuthConfig } from './config.ts';
 import type { PasswordHash } from './hashing.ts';
 import type { RememberTokenStore } from './remember.ts';
@@ -20,8 +21,10 @@ export class NewPassword {
   readonly #config: AuthConfig;
   readonly #logger: Logger;
   readonly #signIns: SignInTracker;
+  readonly #endings: SessionEndings | undefined;
 
-  constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: SignInTracker = new SignInTracker(undefined)) {
+  constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: SignInTracker = new SignInTracker(undefined), endings?: SessionEndings) {
+    this.#endings = endings;
     this.#tokens = tokens;
     this.#connections = connections;
     this.#config = config;
@@ -43,9 +46,19 @@ export class NewPassword {
       if (via === 'reset' && this.#signIns.enabled) await this.#signIns.endAll(id);
       return revoked;
     };
-    if (!this.#config.revokeTokensOnPasswordChange) return write(false);
-    const revoked = await this.#connections().transaction(() => write(true));
-    this.#logger.info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
+    const revoked = this.#config.revokeTokensOnPasswordChange ? await this.#connections().transaction(() => write(true)) : await write(false);
+    if (this.#config.revokeTokensOnPasswordChange) this.#logger.info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
+    // A reset ends every sign-in: the live streams of the account close once it committed (a change is announced by `Auth`, which
+    // keeps its own session). Clean-up after the real effect: a failure is logged, never thrown.
+    if (via === 'reset') {
+      await afterCommit(async () => {
+        try {
+          await this.#endings?.endAccount(accountScope(id));
+        } catch (error) {
+          this.#logger.error('The live streams of an account could not be told its sign-ins ended', { error: error instanceof Error ? error.message : String(error) });
+        }
+      });
+    }
     return revoked;
   }
 }
