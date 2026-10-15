@@ -136,7 +136,7 @@ describe('confirmedSecondFactor()', () => {
   });
 
   it('sends a session with an old, missing or broken proof to verify', async () => {
-    for (const proof of [NOW - 901, NOW - 25 * 3600, undefined, 'yesterday', NOW + 60]) {
+    for (const proof of [NOW - 901, NOW - 25 * 3600, undefined, 'yesterday', NOW + 61]) {
       const { call, signIn } = await boot();
       await signIn(proof, ['totp']);
       const answer = await call('/factors?tab=1');

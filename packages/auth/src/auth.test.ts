@@ -1285,7 +1285,7 @@ describe('Auth with a second factor (pending state)', () => {
     const id = await booted.application.container.make(Encrypter).decrypt(decodeURIComponent(cookie().split('=')[1]!), 'cookie:marmeon_session');
     const read = (await booted.store.read(sessionKey(id)))!;
     const data = JSON.parse(read.data) as Record<string, number>;
-    data[AUTH_SESSION_KEYS.confirmedAt] = data[AUTH_SESSION_KEYS.signedInAt]! - 1;
+    data[AUTH_SESSION_KEYS.confirmedAt] = data[AUTH_SESSION_KEYS.signedInAt]! - 120;
     await booted.store.write(sessionKey(id), JSON.stringify(data), { expectedVersion: read.version, lifetimeSeconds: 7200 });
     expect((await send('/sensitive')).status).toBe(423);
     delete data[AUTH_SESSION_KEYS.signedInAt];

@@ -221,6 +221,8 @@ const factors = sudo.middleware(confirmedSecondFactor({ verify: 'auth.two-factor
 factors.post('/settings/two-factor/disable', DisableTwoFactorController).name('auth.two-factor.disable');
 ```
 
+`twoFactor()`, `confirmedSecondFactor()` and `requireRecentProof()` accept a proof dated up to 60 seconds ahead of the server's clock, so servers whose clocks differ a little agree ([sudo mode](authentication.md#sudo-mode)); anything further ahead counts as not proven.
+
 JSON clients get `403 {"error":"two_factor_unverified"}`. Unlike `twoFactor()`, it lets an account without a factor through, so the
 setup page stays reachable. An app with its own routes for these methods has to put them behind it; without it the methods throw.
 
