@@ -49,9 +49,17 @@ export function ssrResolvers(
  * renders must be what the server did. `undefined` when there is none (the part was rendered in the browser).
  */
 export function streamedText(id: string): string | undefined {
-  if (typeof document === 'undefined') return undefined;
-  const text = document.getElementById(id)?.textContent;
-  return text === null || text === undefined || text === '' ? undefined : text;
+  // Only script elements are looked at (by `id` or `name`), and sanitised user HTML cannot contain any.
+  return globalThis.document?.scripts.namedItem(id)?.textContent || undefined;
+}
+
+/** The parsed `text` of {@link streamedText} — `null` for none, or for what is not JSON. */
+export function streamedJson<T>(text: string | undefined): T | null {
+  try {
+    return JSON.parse(text ?? 'null') as T | null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -98,13 +106,7 @@ function ServerGroup({ id, result }: { id: string; result: Promise<DeferredResul
 function BrowserGroup({ id, group, navigator }: { id: string; group: string; navigator: () => Navigator | null }) {
   const [text] = useState(() => streamedText(id));
   useEffect(() => {
-    let data: DeferredResult | null = null;
-    try {
-      data = text === undefined ? null : (JSON.parse(text) as DeferredResult | null);
-    } catch {
-      data = null;
-    }
-    void navigator()?.receiveStreamed(group, data);
+    void navigator()?.receiveStreamed(group, streamedJson<DeferredResult>(text));
   }, [group, navigator, text]);
   return <DataScript id={id} json={text ?? 'null'} />;
 }

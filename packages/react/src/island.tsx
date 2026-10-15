@@ -44,7 +44,7 @@ import {
 import { RegionOwnerContext, useRouterContext, type CheckedPatch } from './app.tsx';
 import { ErrorBoundary } from './fallbacks.tsx';
 import { IslandHeadContext } from './head.tsx';
-import { DataScript, SsrContext, streamedText, type SsrResolvers } from './streamed.tsx';
+import { DataScript, SsrContext, streamedJson, streamedText, type SsrResolvers } from './streamed.tsx';
 import type { ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
 import { viewOf } from './views.ts';
@@ -188,7 +188,7 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
   // One region per URL and history entry: the entry's memory has it after Back/Forward.
   const region = useMemo(() => {
     if (!navigator || !owner) return null;
-    const result = text === undefined ? undefined : parseResult(text);
+    const result = parseResult(text);
     // The islands feature attaches with the first island — in the browser only (BrowserIsland never renders on the server).
     return navigator.use(islands).region(url, { owner, initial: result && regionInitial(result) });
   }, [navigator, owner, url, text]);
@@ -246,13 +246,9 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
   );
 }
 
-function parseResult(text: string): RegionResult | undefined {
-  try {
-    const result = JSON.parse(text) as RegionResult | null;
-    return result && typeof result === 'object' && typeof result.status === 'string' ? result : undefined;
-  } catch {
-    return undefined;
-  }
+function parseResult(text: string | undefined): RegionResult | undefined {
+  const result = streamedJson<RegionResult>(text);
+  return typeof result?.status === 'string' ? result : undefined;
 }
 
 type ContentProps = IslandElementProps & { snapshot: RegionSnapshot; value: IslandValue | null; frameRef?: RefObject<HTMLElement | null> };
