@@ -1473,15 +1473,17 @@ describe('Passkeys: changing the factors of an account that has one', () => {
   });
 
   it('allows all of it once a factor was proven lately, and the boundary is fifteen minutes', async () => {
-    const booted = await boot();
+    const clock = new TestClock();
+    clock.freeze(); // the proof is stamped in whole seconds: a tick between stamping and checking would move the boundary
+    const booted = await boot({}, { clock });
     const authenticator = device();
     const { b } = await enrolled(booted, authenticator);
     await b.pk('forget-proof');
     expect(await b.pk('step-up', { passkey: authenticator.authenticate((await b.pk('step-up-options')).value) })).toEqual({ ok: true });
     expect(await addPasskey(b, device('EdDSA'), 'Phone')).toMatchObject({ ok: true });
-    await b.pk('set-proof', { value: Math.floor(Date.now() / 1000) - 900 });
+    await b.pk('set-proof', { value: Math.floor(clock.now() / 1000) - 900 });
     expect(await b.pk('remove', { id: 2, password: 'secret' })).toMatchObject({ ok: true });
-    await b.pk('set-proof', { value: Math.floor(Date.now() / 1000) - 901 });
+    await b.pk('set-proof', { value: Math.floor(clock.now() / 1000) - 901 });
     expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject(needsProof);
   });
 
