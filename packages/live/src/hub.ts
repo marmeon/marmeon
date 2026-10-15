@@ -13,6 +13,8 @@ export interface LiveHello {
 export interface LiveStreamRequest {
   readonly channels: readonly string[];
   readonly scope: string;
+  /** The scope of the account behind the stream, when a sign-in stands behind it. */
+  readonly account?: string | undefined;
   readonly connection: string;
   /** The `Last-Event-ID` of a reconnect — the sequences the stream had seen. */
   readonly lastEventId?: string | null | undefined;
@@ -49,6 +51,9 @@ const encoder = new TextEncoder();
 /** An event of the stream: `event:`, `id:`, `data:` (one line — JSON) and the blank line that ends it. */
 const event = (name: string, data: unknown, id?: string) => `event: ${name}\n${id === undefined ? '' : `id: ${id}\n`}data: ${JSON.stringify(data)}\n\n`;
 
+/** The frame that tells a tab its sign-in is over: it stops and does not connect again. */
+export const END_FRAME = event('end', {});
+
 /** The sequences a stream saw, as its event id: `users.7=4&dashboard.sign-ins=12` — what the browser sends back as `Last-Event-ID`. */
 const eventId = (seqs: ReadonlyMap<string, number>) => new URLSearchParams([...seqs].map(([channel, seq]) => [channel, String(seq)])).toString();
 
@@ -63,6 +68,7 @@ function seenIn(lastEventId: string | null | undefined): Map<string, number> {
 /** One open stream: a tab's, for its channels. Exported for the hub's tests only (not from the package). */
 export class OpenStream {
   readonly scope: string;
+  readonly account: string | undefined;
   readonly connection: string;
   readonly channels: ReadonlySet<string>;
   readonly readable: ReadableStream<Uint8Array>;
@@ -76,6 +82,7 @@ export class OpenStream {
 
   constructor(request: LiveStreamRequest, onClose: () => void) {
     this.scope = request.scope;
+    this.account = request.account;
     this.connection = request.connection;
     this.channels = new Set(request.channels);
     this.#stop = onClose;

@@ -5,7 +5,7 @@ export { MakeSessionTableCommand } from './commands/make-session-table.ts';
 export { PruneSessionsCommand } from './commands/prune-sessions.ts';
 export { SessionServiceProvider, SessionSetupError, sessionTableConnection } from './provider.ts';
 export { Session } from './session.ts';
-export { sessionScope, SessionEndings } from './ended.ts';
+export { accountScope, sessionScope, SessionEndings } from './ended.ts';
 export type { SessionEndedListener } from './ended.ts';
 export type { SessionData } from './session.ts';
 export { ShareErrorsFromSession } from './share-errors.ts';

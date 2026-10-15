@@ -9,6 +9,14 @@ export function sessionScope(id: string): string {
   return hash('sha256', `marmeon-once-scope:${id}`, 'base64url').slice(0, 22);
 }
 
+/**
+ * The scope of an account: a hash of its id under a prefix of its own, so it never equals a {@link sessionScope}. It outlives every
+ * sign-in of the account; it is an unkeyed hash and stays on the server. The live package files the account's streams under it.
+ */
+export function accountScope(userId: string | number): string {
+  return hash('sha256', `marmeon-account-scope:${userId}`, 'base64url').slice(0, 22);
+}
+
 /** Told the scope of a session that ended. */
 export type SessionEndedListener = (scope: string) => void | Promise<void>;
 

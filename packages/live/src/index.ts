@@ -1,7 +1,7 @@
 import cluster from 'node:cluster';
 import { Application, CLUSTER_WORKER, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
-import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
+import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveAudience, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { FRAMEWORK_ROUTES } from '@marmeon/http/internal';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
@@ -119,7 +119,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
       return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application), redactor: c.make(Redactor) });
     });
-    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c)));
+    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor)));
   }
 
   async boot(app: Application): Promise<void> {

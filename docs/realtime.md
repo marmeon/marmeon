@@ -161,6 +161,10 @@ with `Retry-After: 5` meanwhile, and tabs that connect again later catch up.
   `api` group, cannot sign a channel and throws.
 - **Signing in or out ends the streams** of the old session, in every process. The tab does not connect again, and the next page
   it asks for shows the new session.
+- **A stream checks its sign-in** when it opens, which includes every reconnect, if `@marmeon/auth` is installed. A browser whose
+  sign-in ended elsewhere (signed out by `AccountSessions.end()`, a new password, an ended sign-in) gets an `end` event instead of
+  a stream and does not connect again until the next page it loads, even though its session may still be in the store. A guest's stream is unchanged. An app with its own authentication binds its own `LiveAudience`. A stream
+  that is already open is not closed by this; it ends with its next connection.
 - **Read-only.** The stream at `GET /_marmeon/live` never writes the session, sets no cookie and takes no flash message.
 
 > [!NOTE]

@@ -117,6 +117,49 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     expect((await new LiveStreamController(hub, tokens, 2, () => undefined).handle(request(`connection=tab-a-0001&${pair('a')}`))).status).toBe(401);
   });
 
+  it('asks the audience after the tokens: an ended sign-in gets `end` and no place in the hub; an open one a stream', async () => {
+    const hub = hubOf();
+    const ended = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => ({ kind: 'ended' }) });
+    const response = await ended.handle(request(`connection=tab-a-0001&${pair('users.1')}`));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('event: end\ndata: {}\n\n');
+    expect(hub.size).toBe(0);
+    // A forged token is refused before the audience is asked: it learns nothing of the sign-in.
+    const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
+    expect((await ended.handle(request(`connection=tab-a-0001&${forged}`))).status).toBe(403);
+
+    for (const [connection, who] of [['tab-b-0001', { kind: 'guest' }], ['tab-c-0001', { kind: 'account', scope: 'acct-1' }]] as const) {
+      const open = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => who });
+      const stream = new LiveStreamReader(await open.handle(request(`connection=${connection}&${pair('users.1')}`)));
+      cleanups.push(() => stream.close());
+      await stream.hello();
+    }
+    expect(hub.size).toBe(2);
+  });
+
+  it('refuses with 503 when the audience cannot tell (the database is down), and opens nothing', async () => {
+    const hub = hubOf();
+    const error = vi.fn();
+    const logger = { error } as unknown as Logger;
+    const failing = () => new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => Promise.reject(new Error('down')) }, logger);
+    // The log line is throttled per process: move the clock past any earlier test's line.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+      const response = await failing().handle(request(`connection=tab-a-0001&${pair('users.1')}`));
+      expect([response.status, response.headers.get('content-type'), response.headers.get('retry-after')]).toEqual([503, 'text/plain; charset=utf-8', '5']);
+      // Another request (a new controller, as every request builds one) within the minute: refused, not logged again.
+      expect((await failing().handle(request(`connection=tab-b-0001&${pair('users.1')}`))).status).toBe(503);
+      expect(error).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(new Date('2030-01-01T00:01:01Z'));
+      await failing().handle(request(`connection=tab-c-0001&${pair('users.1')}`));
+      expect(error).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(hub.size).toBe(0);
+  });
+
   it('holds at most LIVE_MAX_STREAMS streams per process — beyond, 503 with Retry-After until one closes', async () => {
     const hub = hubOf(new MemoryLiveBackend(), { maxStreams: 1 });
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA);

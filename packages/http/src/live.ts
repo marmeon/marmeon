@@ -8,6 +8,19 @@ import { token } from '@marmeon/core';
 import type { JoinNames } from '@marmeon/router';
 import type { LiveSubscription, SharedProps } from './page.ts';
 
+/**
+ * Who is behind a stream, asked when a stream opens and again whenever its browser reconnects. Bound
+ * per request by `@marmeon/auth`; without it a stream is only its session's. `ended`: the session names a sign-in that is over
+ * (signed out elsewhere, a new password, an ended sign-in) — the stream is told so and the browser does not reconnect. A guest is `guest`; a
+ * sign-in that stands is `account`, with the scope of that account (a hash of its id, never the id). An app with its own authentication
+ * binds its own audience.
+ */
+export interface LiveAudience {
+  check(): Promise<{ readonly kind: 'guest' } | { readonly kind: 'ended' } | { readonly kind: 'account'; readonly scope: string }>;
+}
+
+export const LiveAudience = token<LiveAudience>('LiveAudience');
+
 /** What a channel's name may hold: letters, digits, `_`, `-`, `.` and `:` — `users.7`, `dashboard.sign-ins`, `team:4.tasks`. */
 export const LIVE_CHANNEL = /^[\w.:-]{1,200}$/;
 

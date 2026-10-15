@@ -73,7 +73,7 @@ export type { CheckViewName, DeferredResult, ErrorPageProps, InstantProps, Layer
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, staticView, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoute, BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
-export { addLive, carryLive, checkedChannel, isLiveChannel, LIVE_CHANNEL, LiveSigner, liveOf, signedLive, withLiveMethod } from './live.ts';
+export { addLive, carryLive, checkedChannel, isLiveChannel, LIVE_CHANNEL, LiveAudience, LiveSigner, liveOf, signedLive, withLiveMethod } from './live.ts';
 export type { LiveDeclaration, LiveMethod, LiveOnly, PagePropNames } from './live.ts';
 export { IncomingRequest, ServerClosing } from './server-closing.ts';
 export { NO_REQUEST_INFO, RequestInfo } from './request-info.ts';
