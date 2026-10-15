@@ -111,10 +111,16 @@ export function isConnectionDefinition(value: unknown): value is ConnectionDefin
   return typeof (value as Partial<ConnectionDefinition> | undefined)?.connection === 'string';
 }
 
-/** For messages and `db:show`: where a connection points, with the password masked. */
+const SHOWN_PARAMETERS = new Set(['host', 'port', 'sslmode', 'application_name']);
+
+/** For messages and `db:show`: where a connection points — host, port and database, the user, the password masked, of the query string only `host`, `port`, `sslmode` and `application_name`. */
 export function describeConnection(options: ConnectionOptions): string {
   if (options.driver === 'sqlite') return `sqlite ${options.database}`;
   const url = new URL(options.url);
   if (url.password) url.password = '***';
+  // The query string may carry the password again (`?password=…`) or a key path: only the parameters that say where the
+  // server is stay (a socket connection is `?host=/var/run/postgresql`).
+  for (const name of [...url.searchParams.keys()]) if (!SHOWN_PARAMETERS.has(name.toLowerCase())) url.searchParams.delete(name);
+  url.hash = '';
   return `pgsql ${url.href}`;
 }

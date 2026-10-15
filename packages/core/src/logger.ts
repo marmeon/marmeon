@@ -68,6 +68,21 @@ export function logContextSourcesOf(app: Application | undefined): LogContextSou
 }
 
 /**
+ * `line` with every control, format and line-separator character written out (`\n`, `\r`, `\u001b`), so a decoded newline in a
+ * message cannot start a line of its own. Use it in an app's own logger that writes lines.
+ */
+function codePointOf(char: string): string {
+  const code = char.codePointAt(0)!;
+  return code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, '0')}`;
+}
+
+export function escapeControls(line: string): string {
+  return line.replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (char) =>
+    char === '\n' ? '\\n' : char === '\r' ? '\\r' : codePointOf(char),
+  );
+}
+
+/**
  * Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included.
  * With an `app`, entries also go to the `log` channel while something listens, and are redacted by the app's
  * `Redactor` (the names its packages add count too).
@@ -102,7 +117,7 @@ export class ConsoleLogger implements Logger {
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
     const data = this.#redactor.log({ ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context });
-    const line = `[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`;
+    const line = escapeControls(`[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`);
     (level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }
 }

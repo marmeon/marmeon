@@ -2,6 +2,7 @@ import { Writable } from 'node:stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { ConsoleLogger, createApplication, describeError, LogContextSources, Redactor, redactText, runWithJob, runWithRequest, runWithTask } from '@marmeon/core';
 import { channels, type LogMessage } from '@marmeon/core/diagnostics';
+import pinoPretty from 'pino-pretty';
 import { describe, expect, it } from 'vitest';
 import { createPinoLogger, LogConfig } from './index.ts';
 
@@ -109,6 +110,41 @@ describe('@marmeon/log', () => {
       console.log = original;
     }
     expect(printed).toEqual(['[info] Console {"trace_id":"abc"}']);
+  });
+
+  it('writes a line break in the message or the context as \\n — the console fallback cannot be made to print a line of its own', () => {
+    const printed: string[] = [];
+    const original = console.log;
+    console.log = (line: string) => void printed.push(line);
+    try {
+      new ConsoleLogger().info('GET /users/7\n[warn] FAKE ERROR\r\u001b[31m\u2028\u202e', { path: 'a\nb', c1: '\u0085x\u2028y' });
+    } finally {
+      console.log = original;
+    }
+    expect(printed).toHaveLength(1);
+    expect(printed[0]).toBe('[info] GET /users/7\\n[warn] FAKE ERROR\\r\\u001b[31m\\u2028\\u202e {"path":"a\\nb","c1":"\\u0085x\\u2028y"}');
+  });
+
+  it('escapes a line break in the message of a pretty logger — it cannot forge a line in the terminal', () => {
+    const lines: string[] = [];
+    const destination = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(String(chunk));
+        done();
+      },
+    });
+    const logger = createPinoLogger({ level: 'info', format: 'pretty' }, pinoPretty({ colorize: false, sync: true, destination }));
+    const failure = new Error('boom\nWARN: forged\u001b[31m');
+    logger.error('Failed', { err: failure });
+    const text = lines.join('');
+    expect(text).not.toContain('\u001b');
+    expect(text).not.toMatch(/^WARN: forged/m);
+    expect(text).toContain('boom\\nWARN: forged\\u001b[31m');
+    expect(text).toMatch(/\n\s+at /);
+    lines.length = 0;
+    logger.info('GET /users/7\nWARN: Login failed for admin\u001b[31m');
+    expect(lines.join('').trimEnd().split('\n')).toHaveLength(1);
+    expect(lines.join('')).toContain('GET /users/7\\nWARN: Login failed for admin\\u001b[31m');
   });
 
   it('writes a key of the log context once when a child logger is bound with it too (the scheduler’s task)', () => {
