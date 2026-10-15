@@ -175,7 +175,9 @@ binding in `AuthServiceProvider.ts`, and the routes, pages, listeners and import
 The registration never tells anyone whether an address already has an account. A new address and a known one get the same
 answer in the same time: a redirect to `/register/sent`, which asks the person to check their inbox. The owner of a known address
 gets a mail instead of the confirmation link: someone tried to sign up with it, and here is how to sign in or reset the password.
-This keeps a stranger from testing a list of addresses against your users.
+This keeps a stranger from testing a list of addresses against your users. The mail to a known address goes out at most once an
+hour (the job counts attempts per hashed address in the rate limiter's cache), so sign-ups with a stranger's address cannot flood
+its owner's inbox; the person who signed up sees the same answer whether the mail was sent or not.
 
 Three more rules follow from it:
 
