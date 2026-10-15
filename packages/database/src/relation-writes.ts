@@ -2,6 +2,7 @@ import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
 import type { Relation } from './introspection.ts';
 import type { SchemaMetadata } from './metadata.ts';
 import type { Exact } from './repository.ts';
+import { fold } from './secret-guard.ts';
 import { softDeleteFilter } from './schema-resolver.ts';
 import type { Relations } from './types.ts';
 
@@ -141,8 +142,12 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     return ids.filter((id) => linkedNow.has(same(id)));
   };
 
-  const insert = async (db: Kysely<any>, relation: Relation, key: unknown, method: Method, values: object): Promise<unknown> => {
-    if (Object.hasOwn(values, relation.foreignKey)) {
+  const insert = async (db: Kysely<any>, relation: Relation, key: unknown, method: Method, values: object, metadata: SchemaMetadata): Promise<unknown> => {
+    // SQLite reads `POST_ID` as `post_id` and keeps the first of two values for one column — the caller's. Postgres tells them apart,
+    // so a spelling the table has as a column of its own is left alone.
+    const columns = metadata.kinds.get(relation.table);
+    const foreign = fold(relation.foreignKey);
+    if (Object.keys(values).some((name) => name === relation.foreignKey || (fold(name) === foreign && !columns?.has(name)))) {
       throw new TypeError(`${label}.${method}() sets ${relation.table}.${relation.foreignKey} itself — leave it out of the values.`);
     }
     // `returningAll()` is spelled out without the secret columns by the connection, like every select of all columns.
@@ -186,14 +191,14 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
         only?.length === 0 ? { value: 0 } : undefined,
       );
     },
-    create: (values) => write('create', (db, relation, key) => insert(db, relation, key, 'create', values)),
+    create: (values) => write('create', (db, relation, key, metadata) => insert(db, relation, key, 'create', values, metadata)),
     createMany: (values) =>
       write(
         'createMany',
-        async (db, relation, key) => {
+        async (db, relation, key, metadata) => {
           const rows: unknown[] = [];
           // One insert per row: the rows come back in the order they were given (a multi-row RETURNING has no order on SQLite).
-          for (const item of values) rows.push(await insert(db, relation, key, 'createMany', item));
+          for (const item of values) rows.push(await insert(db, relation, key, 'createMany', item, metadata));
           return rows;
         },
         values.length === 0 ? { value: [] } : undefined,

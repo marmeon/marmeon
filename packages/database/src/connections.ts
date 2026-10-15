@@ -12,6 +12,7 @@ import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure
 import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
+import { fold } from './secret-guard.ts';
 import { SchemaResolver } from './schema-resolver.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
@@ -307,9 +308,11 @@ export function touchesSecrets(query: CompiledQuery, secrets: ReadonlyMap<string
   if (!secrets || secrets.size === 0) return false;
   let raw = false;
   let touches = false;
+  // SQLite reads `Users` as `users`; a name in another case counts, since the flag errs towards hiding the parameters.
+  const folded = new Set([...secrets.keys()].map(fold));
   visit(query.query, (node) => {
     if (node.kind === 'RawNode') raw = true;
-    else if (TableNode.is(node) && secrets.has(node.table.identifier.name)) touches = true;
+    else if (TableNode.is(node) && folded.has(fold(node.table.identifier.name))) touches = true;
   });
   if (touches) return true;
   if (!raw) return false;

@@ -376,6 +376,12 @@ A secret column is written like any other, but:
 - names count without regard to case, as SQLite reads them: `TOKEN` is the secret column `token`. Two names of a query that
   differ only in case — an alias `K` inside a query on `k`, a common table expression `USERS` — are refused, since Postgres tells
   them apart;
+- the value of a `set()` (an update's, an upsert's `doUpdateSet`, a merge's) and the values of an insert are read like a selection,
+  so `set((eb) => ({ name: eb.ref('password') }))` is refused: the copy would sit in a readable column. A value may carry a secret
+  when a secret column receives it, even one read from another table. `excluded` in an upsert is the row that was to be inserted and
+  carries the table's secret columns, so `doUpdateSet({ email: eb.ref('excluded.password') })` is refused too. Rows an insert copies from a
+  select may carry a column read with `secret()` only into a secret column. Statements on a table with secret columns are marked
+  for observability whatever the case of its name, since SQLite reads `Users` as `users`;
 - a subquery that selects it in a `where()` is refused too, although its value stays in the database. Filter on a key instead:
   `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`.
 

@@ -698,6 +698,29 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       await expect(db.selectFrom('api_keys').selectAll('users' as never).execute()).rejects.toThrow('This query selects all columns of "users", which is no table, subquery or alias of its own.');
     });
 
+    it('are refused in the value of a set — an update, an upsert, an insert from a select — unless a secret column receives it', async () => {
+      queries.length = 0;
+      // The copy would sit in a readable column, and a select-all would hand it out.
+      await expect(db.updateTable('api_keys').set((eb) => ({ name: eb.ref('token') })).execute()).rejects.toThrow(unasked('api_keys.token'));
+      await expect(db.updateTable('api_keys').set((eb) => ({ name: eb.ref('TOKEN' as never) })).execute()).rejects.toThrow(unasked('api_keys.TOKEN'));
+      await expect(db.updateTable('api_keys').set((eb) => ({ name: sql`${eb.ref('api_keys.token')} || 'x'` })).execute()).rejects.toThrow(unasked('api_keys.token'));
+      await expect(
+        db
+          .insertInto('api_keys')
+          .values({ user_id: ids.ada, name: 'x', token: 'y' })
+          .onConflict((conflict) => conflict.column('id').doUpdateSet((eb) => ({ name: eb.ref('api_keys.token') })))
+          .execute(),
+      ).rejects.toThrow(unasked('api_keys.token'));
+      await expect(db.insertInto('api_keys').values((eb) => ({ user_id: ids.ada, name: eb.ref('api_keys.token'), token: 'y' })).execute()).rejects.toThrow(unasked('api_keys.token'));
+      const from = () => db.selectFrom('api_keys').select((eb) => secret(eb, 'token'));
+      await expect(db.insertInto('users').columns(['name']).expression(from()).execute()).rejects.toThrow(unasked('token of a subquery, copied into name'));
+      expect(queries).toEqual([]);
+      // Into a secret column it stays secret.
+      const copied = await db.insertInto('api_keys').columns(['user_id', 'name', 'token']).expression(db.selectFrom('api_keys').select((eb) => ['user_id', 'name', secret(eb, 'token')])).returning('id').execute();
+      expect(copied.length).toBeGreaterThan(0);
+      await db.deleteFrom('api_keys').where('id', 'in', copied.map((key) => key.id)).execute();
+    });
+
     it('get the same verdict on the first query of a process and later — secret() in a builder of the connection used as a subquery', async () => {
       const fresh = new Connections({ connections: { default: options }, root: '/', logger: silent });
       try {
