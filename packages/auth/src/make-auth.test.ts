@@ -346,6 +346,8 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(ran('remember-theft', 'the mail about a copied "keep me signed in" cookie')).toBe(5);
       expect(ran('sign-ins', 'the sign-ins on the security page')).toBe(8);
       expect(ran('end-sessions', 'marmeon auth:end-sessions')).toBe(3);
+      expect(ran('end-all-sessions', 'UserRepository.updateEverySessionKey()')).toBe(3);
+      expect(ran('end-all-sessions', "AccountSessions.endEveryone() with the app's repository")).toBe(1);
       expect(ran('passkeys-browser', 'the base64url converters of the browser code')).toBe(3);
       expect(tests.code).toBe(0);
 

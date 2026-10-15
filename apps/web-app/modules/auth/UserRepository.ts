@@ -198,6 +198,27 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return result.numUpdatedRows > 0n;
   }
 
+  /**
+   * The provider half of ending every session of every account: writes `key` into every account in one `UPDATE` without a `WHERE`
+   * clause, and answers how many rows it wrote and one account it wrote (`sampleId`), which `AccountSessions` reads back. Call
+   * `AccountSessions.endEveryone()` instead: it also drops the remember-me tokens and the sign-in rows.
+   */
+  async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
+    if (key.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as AccountSessions.endEveryone() does.');
+    // No `updated_at`: the accounts themselves did not change, only the end of their sessions.
+    const result = await this.db.updateTable('users').set({ session_key: key }).executeTakeFirst();
+    const accounts = Number(result.numUpdatedRows);
+    if (accounts === 0) return { accounts, sampleId: undefined };
+    // Chosen by the new key, so an account created after the UPDATE cannot be the sample (it would not hold the key).
+    const sample = await this.db
+      .selectFrom('users')
+      .select('id')
+      .where(sql<boolean>`session_key = ${key}`)
+      .limit(1)
+      .executeTakeFirst();
+    return { accounts, sampleId: sample?.id };
+  }
+
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
     const row = await query
       .selectAll()
