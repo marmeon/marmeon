@@ -232,7 +232,7 @@ describe('the in-page bar on a plain-DOM adapter', () => {
     bar.show('visits');
     await navigator.visit('/logout', { method: 'post' });
     await flush();
-    expect(loads).toEqual(['/login']);
+    expect(loads).toEqual(['https://app.test/login']);
     for (const tab of ['visits', 'page', 'layers', 'optimistic', 'server', 'ssr'] as const) {
       bar.show(tab);
       expect(text(), tab).not.toContain(CANARY);
