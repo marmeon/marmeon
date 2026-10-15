@@ -37,6 +37,7 @@ import {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   regionOf,
+  UPLOAD_HEADER,
   propOrigins,
   resolvePageProps,
   ResponseLifecycle,
@@ -640,6 +641,35 @@ export async function toActionResponse(response: Response): Promise<Response> {
     return ownResponse(new Response(null, { status: 204, headers }));
   }
   return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
+}
+
+/**
+ * A page request (or an upload's target request) answered with a redirect to another origin becomes `409` with `x-marmeon-location`, the client's full load.
+ * The client's `fetch` would follow the redirect and send its `x-xsrf-token` header on to that origin. "Another" is measured
+ * against the origin the request came to (after `TRUSTED_PROXIES`); a protocol-relative `//host` is another origin. Same-origin
+ * redirects, and anything but http(s), pass as they are.
+ */
+export async function leaveForeignRedirect(response: Response, request: Request): Promise<Response> {
+  const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+  if (location === null) return response;
+  let target: URL;
+  try {
+    target = new URL(location, request.url);
+  } catch {
+    return response;
+  }
+  if ((target.protocol !== 'http:' && target.protocol !== 'https:') || target.origin === new URL(request.url).origin) return response;
+  await response.body?.cancel();
+  const headers = new Headers(response.headers);
+  for (const name of ['location', 'content-type', 'content-length', PAGE_HEADER]) headers.delete(name);
+  headers.set(LOCATION_HEADER, target.href);
+  // The answer depends on the request kind: a shared cache must not hand this 409 to a plain load.
+  headers.set('cache-control', 'no-store');
+  const vary = new Set((headers.get('vary') ?? '').split(',').map((name) => name.trim()).filter(Boolean));
+  const known = new Set([...vary].map((name) => name.toLowerCase()));
+  for (const name of [PAGE_HEADER, UPLOAD_HEADER]) if (!known.has(name)) vary.add(name);
+  headers.set('vary', [...vary].join(', '));
+  return ownResponse(new Response(null, { status: 409, headers }));
 }
 
 /**

@@ -1,6 +1,6 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@marmeon/core';
-import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@marmeon/http';
+import { abort, AfterResponse, Controller, HttpServiceProvider, LOCATION_HEADER, PAGE_HEADER, SharedData, UPLOAD_HEADER, view, type HttpContext, type Next } from '@marmeon/http';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -304,6 +304,69 @@ describe('createHttpKernel — requests & responses', async () => {
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('/drafts/7');
     expect(response.headers.getSetCookie()).toEqual([expect.stringMatching(/^draft=[\w-]+; Path=\/; HttpOnly; SameSite=Lax$/)]); // encrypted (web group)
+  });
+
+  describe('a redirect to another origin', () => {
+    class LeaveController extends Controller {
+      handle(ctx: HttpContext) {
+        const params = new URL(ctx.request.url).searchParams;
+        if (!ctx.request.headers.has(UPLOAD_HEADER)) ctx.cookies.set('seen', '1'); // an upload request is read-only
+        return this.redirect(params.get('to') ?? '/', params.has('status') ? (Number(params.get('status')) as 307) : undefined);
+      }
+    }
+    const leaving = openRoutes((Route) => {
+      Route.post('/leave', LeaveController);
+      Route.get('/leave', LeaveController);
+    });
+    const leavingKernel = (async () => {
+      const application = await createApplication({
+        root: import.meta.dirname,
+        discover: false,
+        env: { APP_KEY: generateKey() },
+        providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+        modules: [defineModule({ name: 'leaving', routes: leaving })],
+      });
+      return createHttpKernel(application);
+    })();
+    const post = async (to: string, headers: Record<string, string> = {}, extra = '') =>
+      (await leavingKernel).request(`/leave?to=${encodeURIComponent(to)}${extra}`, { method: 'POST', body: new URLSearchParams({ a: '1' }), headers });
+    const visit = { [PAGE_HEADER]: 'true' };
+
+    it.each(['https://other.example/x', '//other.example/x', 'http://localhost.evil.example/'])('%s: a page request gets 409 and x-marmeon-location, no Location', async (to) => {
+      const response = await post(to, visit);
+      expect(response.status).toBe(409);
+      expect(response.headers.get(LOCATION_HEADER)).toBe(new URL(to, 'http://localhost/').href);
+      expect(response.headers.get('location')).toBeNull();
+    });
+
+    it('also converts the redirect of an upload target request, and of a GET visit, 307 and 308, another port or scheme', async () => {
+      const upload = await post('https://other.example/x', { [UPLOAD_HEADER]: 'avatar' });
+      expect([upload.status, upload.headers.get(LOCATION_HEADER), upload.headers.get('location')]).toEqual([409, 'https://other.example/x', null]);
+      for (const status of ['307', '308']) expect((await post('https://other.example/', visit, `&status=${status}`)).status).toBe(409);
+      for (const to of ['http://localhost:8080/', 'https://localhost/']) expect((await post(to, visit)).headers.get(LOCATION_HEADER)).toBe(to);
+      const get = await (await leavingKernel).request(`/leave?to=${encodeURIComponent('https://other.example/')}`, { headers: visit });
+      expect([get.status, get.headers.get('location')]).toEqual([409, null]);
+    });
+
+    it('the 409 is never cached, varies on the request kind and keeps the cookies', async () => {
+      const response = await post('https://other.example/x', visit);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(response.headers.get('vary')?.toLowerCase()).toContain(PAGE_HEADER);
+      expect(response.headers.get('vary')?.toLowerCase()).toContain(UPLOAD_HEADER);
+      expect(response.headers.getSetCookie()).toEqual([expect.stringMatching(/^seen=/)]);
+    });
+
+    it('keeps a same-origin redirect of a page request as it is', async () => {
+      for (const to of ['/home', 'http://localhost/home']) {
+        const response = await post(to, visit);
+        expect([response.status, response.headers.get('location'), response.headers.get(LOCATION_HEADER)]).toEqual([303, to, null]);
+      }
+    });
+
+    it('keeps the redirect of a full browser request, foreign or not', async () => {
+      const response = await post('https://other.example/x');
+      expect([response.status, response.headers.get('location')]).toEqual([303, 'https://other.example/x']);
+    });
   });
 
   it('adds queued cookies to error responses too', async () => {

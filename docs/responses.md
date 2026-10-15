@@ -185,6 +185,12 @@ A redirect answers a `GET` with 302 and every other method with 303, so the brow
 `back()` takes only a `Referer` of this host, and `intended()` only a path of this site, so neither can lead to another site. A referring page whose path starts with several slashes or backslashes (`https://app//evil.example`) is sent to `/evil.example` on this site, never to the host that a browser would read out of `//evil.example`.
 `this.redirect(url)` goes wherever you say.
 
+A client-side visit, form submission or upload request that is answered with a redirect to another origin (`this.redirect('https://other.example')`)
+does not follow it: the server answers `409` with `x-marmeon-location` instead, and the browser leaves the app with a full page
+load. The visit's `fetch` would otherwise send its `x-xsrf-token` header on to that origin. "Another origin" is measured against
+the origin the request came to, so `//other.example` counts too. Redirects within the app, and the redirects of plain browser
+requests, are unchanged.
+
 > [!WARNING]
 > Never pass a URL from the request, such as a `?next=` parameter, to `this.redirect(url)`. Anyone could send a link that leads
 > through your app to a site of theirs. Check such a value with `isLocalPath()` of `@marmeon/http` first, which accepts only a
