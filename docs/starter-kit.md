@@ -247,6 +247,9 @@ prints how many stored sessions it deleted at once; the others end at their next
 it first when it may be known. `--force` is required in every environment, an unknown address fails with exit code 1, and an error
 of the call is shown, not hidden.
 
+After a leak, `marmeon auth:end-all-sessions --force` ends the sessions of every account at once. The module's `UserRepository` has
+the `updateEverySessionKey()` it needs; see [ending every session of every account](authentication.md#ending-every-session-of-every-account).
+
 ## Mail, the queue and the scheduler
 
 Every mail of the module goes through the queue, on its `mail` queue. A new app has the queue's table and `marmeon dev` starts a

@@ -116,6 +116,8 @@ An app whose `web` group has no `Encrypter` does not start: the error says to re
 
 ## Rotating the key
 
+After a leak the procedure differs: the leaked key must not stay in `APP_PREVIOUS_KEYS`, see [ending every session of every account](authentication.md#ending-every-session-of-every-account).
+
 `encrypt()` always uses `APP_KEY`. `decrypt()` tries `APP_KEY` first and then each key of `APP_PREVIOUS_KEYS` in order. The keys
 derived for signatures accept the previous keys too. So a rotation keeps everything valid that the old key made:
 
