@@ -10,7 +10,7 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
   const t = useTranslation('auth');
   // Leaving with a changed address or typed passwords asks first (the navigation guard); the address — never a password —
   // is still there after Back/Forward (remembered in memory).
-  const emailForm = useForm('auth.email.update', {}, { email }, { guard: t('security.unsaved'), remember: true });
+  const emailForm = useForm('auth.email.update', {}, { email, current_password: '' }, { guard: t('security.unsaved'), remember: true });
   const passwordForm = useForm('auth.password.update', {}, { current_password: '', password: '', password_confirmation: '' }, { guard: t('security.unsaved') });
   const devicesForm = useForm('auth.devices.logout', { password: '' });
 
@@ -30,7 +30,7 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
             event.preventDefault();
             // Private registration: the address stays the current one until the link is clicked — the field shows it again
             // (the request waits below). Otherwise the new address is the account's: it stays in the field.
-            void emailForm.submit({ onSuccess: () => (emailChangeWaits ? emailForm.reset() : undefined) });
+            void emailForm.submit({ onSuccess: () => (emailChangeWaits ? emailForm.reset() : undefined), onFinish: () => emailForm.set('current_password', '') });
           }}
         >
           <div className="field">
@@ -38,6 +38,18 @@ export default function Security({ viaRemember, email, emailChangeWaits, pending
             <input id="email" type="email" autoComplete="email" value={emailForm.data.email} onChange={(e) => emailForm.set('email', e.target.value)} aria-invalid={!!emailForm.errors.email} />
             {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
             {auth?.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
+          </div>
+          <div className="field">
+            <label htmlFor="email-current-password">{t('security.current_password')}</label>
+            <input
+              id="email-current-password"
+              type="password"
+              autoComplete="current-password"
+              value={emailForm.data.current_password}
+              onChange={(e) => emailForm.set('current_password', e.target.value)}
+              aria-invalid={!!emailForm.errors.current_password}
+            />
+            {emailForm.errors.current_password && <small role="alert"> {emailForm.errors.current_password}</small>}
           </div>
           {pendingEmail && (
             <p role="status" className="notice">

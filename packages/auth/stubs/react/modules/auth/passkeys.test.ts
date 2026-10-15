@@ -1,4 +1,5 @@
 import { softAuthenticator, twoFactorCode } from '@marmeon/auth';
+import { RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,6 +60,68 @@ describe('passkeys', { timeout: 30_000 }, () => {
     const { guest, answer } = await signInWith(authenticator);
     const signedIn = await answer.assertRedirect('/dashboard');
     await app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest).get('/dashboard').assertAuthenticated(ada);
+  });
+
+  it('a session that got in with a passkey alone still types the password to change the address, make a token or remove a passkey', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { authenticator } = await enrol(ada);
+    const options = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
+    const guest = options.cookie(SESSION)!;
+    const signedIn = await app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect('/dashboard');
+    const as = () => app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest).expectingJson();
+    const token = { name: 'CI', abilities: ['users:read'] };
+
+    // Sudo mode is open (the passkey confirmed it), and the form still asks for the password.
+    await as().put('/settings/email', { json: { email: 'new@example.com' } }).assertStatus(422);
+    await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'wrong' } }).assertStatus(422);
+    await as().post('/settings/tokens', { json: token }).assertStatus(422);
+    const id = await passkeyIdOf();
+    await as().post(`/settings/passkeys/${id}/remove`, { json: {} }).assertStatus(422);
+    await app.assertDatabaseCount('passkeys', 1);
+    await app.assertDatabaseCount('personal_access_tokens', 0);
+
+    await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303);
+    await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk();
+    await as().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertOk();
+    await app.assertDatabaseCount('passkeys', 0);
+  });
+
+  it('a session that got in with a passkey alone types the password to make new recovery codes — the owner\'s codes stay otherwise', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { authenticator } = await enrol(ada);
+    const options = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
+    const guest = options.cookie(SESSION)!;
+    const signedIn = await app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect();
+    const as = () => app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest);
+    const codes = await app.make(Connections).get<any>().selectFrom('two_factor_recovery_codes').select('id').execute();
+
+    await as().expectingJson().post('/settings/two-factor/recovery-codes', { json: {} }).assertStatus(422);
+    await as().expectingJson().post('/settings/two-factor/recovery-codes', { json: { password: 'wrong' } }).assertStatus(422);
+    expect(await app.make(Connections).get<any>().selectFrom('two_factor_recovery_codes').select('id').execute()).toEqual(codes);
+    await as().layering().post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertLayer('auth/RecoveryCodes');
+    expect(await app.make(Connections).get<any>().selectFrom('two_factor_recovery_codes').select('id').execute()).not.toEqual(codes);
+  });
+
+  it('removing a passkey signs out the other devices, and an account whose passkey-only count is used up tells to sign in with the password', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, authenticator } = await enrol(ada);
+    const options = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
+    const guest = options.cookie(SESSION)!;
+    const other = await app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect();
+    const otherCookie = other.cookie(SESSION) ?? guest;
+    await app.withCookie(SESSION, otherCookie).get('/dashboard').assertAuthenticated(ada);
+
+    // The account's count for sessions that did not begin with the password is used up: that session is told how to go on.
+    const limiter = app.make(RateLimiter);
+    for (let attempt = 0; attempt < 20; attempt++) await limiter.hit(`password-check-hour:account:${ada.id}`, 3600);
+    const id = (await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute() as [{ id: number }])[0].id;
+    const held = await app.withCookie(SESSION, otherCookie).expectingJson().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertStatus(429);
+    expect(held.json()).toEqual({ field: 'password', error: 'Sign in again with your password to continue.' });
+    await app.withCookie(SESSION, otherCookie).get('/dashboard').assertAuthenticated(ada);
+
+    // The owner typed the password to sign in: removing the passkey works, and the other device is out.
+    await app.withCookie(SESSION, cookie).expectingJson().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertOk();
+    await app.withCookie(SESSION, otherCookie).get('/dashboard').assertGuest();
   });
 
   it('after the password, a passkey finishes the sign-in', async () => {
@@ -131,12 +194,93 @@ describe('passkeys', { timeout: 30_000 }, () => {
     await as().post('/settings/two-factor/verify/passkey', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect('/dashboard');
   });
 
+  it('confirms sudo mode with a passkey, and goes back to the page that asked', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, authenticator } = await enrol(ada);
+    // Half an hour on: the password confirmation of the sign-in is over.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
+    try {
+      const as = (value = cookie) => app.withCookie(SESSION, value);
+      await as().get('/settings/passkeys', { headers: { accept: 'text/html' } }).assertRedirect('/confirm-password');
+      await as().navigating().get('/confirm-password').assertPage('auth/ConfirmPassword', { passkey: true });
+      const options = await as().post('/confirm-password/passkey/options', { json: {} }).assertOk();
+      const done = await as().post('/confirm-password/passkey', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect('/settings/passkeys');
+      await as(done.cookie(SESSION) ?? cookie).navigating().get('/settings/passkeys').assertPage('auth/Passkeys', { passkeys: [{ name: 'Laptop' }] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses a wrong, a replayed and a made-up passkey answer for the confirmation, and opens nothing', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, authenticator } = await enrol(ada);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
+    try {
+      let current = cookie;
+      const as = () => app.withCookie(SESSION, current);
+      const ask = async () => (await as().post('/confirm-password/passkey/options', { json: {} }).assertOk()).json() as never;
+      const submit = (response: unknown) => as().post('/confirm-password/passkey', { json: { response }, headers: json });
+
+      const wrong = await submit(authenticator.authenticate(await ask(), { origin: 'https://evil.example' })).assertStatus(422);
+      expect(wrong.json()).toEqual({ error: 'That passkey did not work.' });
+      // Without a challenge: an answer to options that were spent, and one made up.
+      const spent = await ask();
+      // Nothing asked for the confirmation here, so it ends at the security page.
+      current = (await submit(authenticator.authenticate(spent)).assertRedirect('/settings/security')).cookie(SESSION) ?? current;
+      await submit(authenticator.authenticate(spent)).assertStatus(422);
+      await submit({ id: 'nothing' }).assertStatus(422);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the confirmation closed after a passkey answer that failed', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie, authenticator } = await enrol(ada);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
+    try {
+      const as = () => app.withCookie(SESSION, cookie);
+      const options = await as().post('/confirm-password/passkey/options', { json: {} }).assertOk();
+      await as().post('/confirm-password/passkey', { json: { response: authenticator.authenticate(options.json() as never, { origin: 'https://evil.example' }) }, headers: json }).assertStatus(422);
+      await as().get('/settings/passkeys', { headers: { accept: 'text/html' } }).assertRedirect('/confirm-password');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('throttles the options of the passkey confirmation per user', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const { cookie } = await enrol(ada);
+    const as = () => app.withCookie(SESSION, cookie);
+    for (let call = 0; call < 10; call++) await as().post('/confirm-password/passkey/options', { json: {} }).assertOk();
+    await as().post('/confirm-password/passkey/options', { json: {}, headers: json }).assertStatus(429);
+    // The limit is Ada's: another account asks on.
+    const bob = await app.factory(UserFactory).create();
+    const { cookie: bobs } = await enrol(bob);
+    await app.withCookie(SESSION, bobs).post('/confirm-password/passkey/options', { json: {} }).assertOk();
+  });
+
+  it('answers a passkey confirmation from another site with 403, and one without the browser\'s word or a token with 419', async () => {
+    await app.close(); // one database app per test
+    app = await createTestApp(application, { csrf: true, database: 'refresh' });
+    const ada = await app.factory(UserFactory).create();
+    const body = { json: { response: {} } };
+    await app.actingAs(ada).post('/confirm-password/passkey', { ...body, headers: { 'sec-fetch-site': 'cross-site' } }).assertStatus(403);
+    await app.actingAs(ada).post('/confirm-password/passkey', body).assertStatus(419);
+  });
+
+  it('offers no passkey on the confirmation page to an account without one, and gives it no options', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await app.actingAs(ada).navigating().get('/confirm-password').assertPage('auth/ConfirmPassword', { passkey: false });
+    await app.actingAs(ada).post('/confirm-password/passkey/options', { json: {}, headers: json }).assertStatus(422);
+  });
+
   it('shows an account with only passkeys its recovery codes, and makes new ones', async () => {
     const ada = await app.factory(UserFactory).create();
     const { cookie } = await enrol(ada);
     const as = () => app.withCookie(SESSION, cookie);
     await as().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: false, secured: true, recoveryCodesLeft: 10 });
-    const made = await as().layering().post('/settings/two-factor/recovery-codes').assertLayer('auth/RecoveryCodes');
+    const made = await as().layering().post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertLayer('auth/RecoveryCodes');
     expect(made.page()!.props.codes).toHaveLength(10);
   });
 

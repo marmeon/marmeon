@@ -37,7 +37,7 @@ export class RegisterPasskeyController extends Controller {
       case 'invalid-password':
         return this.json({ field: 'password', error: this.#translator.get('auth.validation.password_incorrect') }, 422);
       case 'throttled':
-        return this.json({ field: 'password', error: this.#translator.get('auth.validation.throttled', { seconds: done.error.retryAfter }) }, 429);
+        return this.json({ field: 'password', error: done.error.account ? this.#translator.get('auth.validation.throttled_account') : this.#translator.get('auth.validation.throttled', { seconds: done.error.retryAfter }) }, 429);
       case 'signed-out':
         // The session ended meanwhile and nothing was stored: the page's next request lands on the sign-in.
         return this.json({ error: this.#translator.get('auth.passkeys.register_failed') }, 401);

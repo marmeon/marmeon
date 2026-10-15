@@ -84,7 +84,7 @@ describe('creating an API token is a layer shown once', () => {
     form.assertPage('auth/AccessTokens');
     expect(form.layers().map((layer) => layer.component)).toEqual(['auth/CreateAccessToken']);
 
-    const created = await session.layering().post('/settings/tokens', { json: { name: 'CLI', abilities: ['users:read'] } }).assertLayer('auth/NewAccessToken');
+    const created = await session.layering().post('/settings/tokens', { json: { current_password: 'password', name: 'CLI', abilities: ['users:read'] } }).assertLayer('auth/NewAccessToken');
     const plainText = (created.page()!.props as { plainText: string }).plainText;
     // Its URL asked again (a reload, Forward after it was forgotten) is the list — the plain text is gone for good.
     const again = await session.navigating().get(created.page()!.url).assertPage('auth/AccessTokens');

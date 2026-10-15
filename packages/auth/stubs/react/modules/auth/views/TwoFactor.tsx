@@ -11,6 +11,7 @@ export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCo
   const t = useTranslation('auth');
   const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
   const disableForm = useForm('auth.two-factor.disable', { password: '' });
+  const codesForm = useForm('auth.two-factor.codes', {}, { password: '' });
 
   return (
     <main className="stack stack-loose">
@@ -103,9 +104,32 @@ export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCo
                 {t('two_factor.recovery_low')}
               </p>
             )}
-            <Link route="auth.two-factor.codes" className="button-secondary">
-              {t('two_factor.regenerate')}
-            </Link>
+            <form
+              method="post"
+              action={route('auth.two-factor.codes')}
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void codesForm.submit({ onFinish: () => codesForm.reset() });
+              }}
+            >
+              <div className="field">
+                <label htmlFor="codes-password">{t('two_factor.disable_password')}</label>
+                <input
+                  id="codes-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={codesForm.data.password}
+                  onChange={(e) => codesForm.set('password', e.target.value)}
+                  aria-invalid={!!codesForm.errors.password}
+                />
+                {codesForm.errors.password && <small role="alert"> {codesForm.errors.password}</small>}
+              </div>
+              <button type="submit" className="button-secondary" disabled={codesForm.processing}>
+                {t('two_factor.regenerate')}
+              </button>
+            </form>
             {!enabled && (
               <p>
                 {t('two_factor.passkeys_note')} <Link route="auth.passkeys">{t('two_factor.passkeys_link')}</Link>

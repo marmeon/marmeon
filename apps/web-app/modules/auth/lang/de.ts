@@ -61,6 +61,7 @@ export default {
     intro: 'Dies ist ein geschützter Bereich. Bitte gib zum Fortfahren dein Passwort ein.',
     password: 'Passwort',
     submit: 'Bestätigen',
+    passkey: 'Stattdessen einen Passkey verwenden',
   },
   verify: {
     title: 'E-Mail-Adresse bestätigen',
@@ -159,7 +160,7 @@ export default {
     suspended: 'Gesperrt: Der Zähler ging rückwärts, der Passkey wurde womöglich kopiert. Er kann sich erst wieder anmelden, wenn du ihn freigibst.',
     release: 'Freigeben',
     suspended_remove_note: 'Ein gesperrter Passkey wird nur mit deinem Passwort entfernt.',
-    suspended_remove_password: 'Passwort (zum Entfernen des gesperrten Passkeys)',
+    suspended_remove_password: 'Passwort (zum Entfernen des Passkeys)',
     release_password: 'Passwort (zum Freigeben oder Entfernen)',
     limit: 'Du hast die höchste Anzahl an Passkeys, die ein Konto haben kann. Entferne zuerst einen.',
     or_recovery: 'Kein Passkey zur Hand? Gib einen Wiederherstellungscode ein.',
@@ -238,6 +239,7 @@ export default {
     create: 'Token erstellen',
     name: 'Name',
     name_placeholder: 'z. B. Backup-Skript',
+    current_password: 'Dein Passwort (zum Erstellen eines Tokens)',
     may: 'Darf',
     submit: 'Token erstellen',
     done: 'Fertig — ich habe es kopiert',
@@ -265,6 +267,7 @@ export default {
     token_name: 'Gib dem Token einen Namen.',
     token_abilities: 'Wähle, was das Token darf.',
     throttled: 'Zu viele Versuche. Bitte in {seconds, plural, one {# Sekunde} other {# Sekunden}} noch einmal versuchen.',
+    throttled_account: 'Melde dich noch einmal mit deinem Passwort an, um fortzufahren.',
   },
   mail: {
     hello: 'Hallo {name},',

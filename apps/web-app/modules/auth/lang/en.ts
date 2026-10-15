@@ -61,6 +61,7 @@ const en = {
     intro: 'This is a sensitive area. Please enter your password to continue.',
     password: 'Password',
     submit: 'Confirm',
+    passkey: 'Use a passkey instead',
   },
   verify: {
     title: 'Confirm your e-mail address',
@@ -159,7 +160,7 @@ const en = {
     suspended: 'Suspended: its counter went backwards, so it may have been copied. It cannot sign in until you release it.',
     release: 'Release',
     suspended_remove_note: 'A suspended passkey is removed with your password.',
-    suspended_remove_password: 'Password (to remove the suspended passkey)',
+    suspended_remove_password: 'Password (to remove the passkey)',
     release_password: 'Password (to release or remove it)',
     limit: 'You have the most passkeys an account can hold. Remove one first.',
     or_recovery: 'No passkey at hand? Enter a recovery code.',
@@ -238,6 +239,7 @@ const en = {
     create: 'Create a token',
     name: 'Name',
     name_placeholder: 'e.g. Backup script',
+    current_password: 'Your password (to create a token)',
     may: 'May',
     submit: 'Create token',
     done: 'Done — I copied it',
@@ -265,6 +267,7 @@ const en = {
     token_name: 'Name the token.',
     token_abilities: 'Pick what the token may do.',
     throttled: 'Too many attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
+    throttled_account: 'Sign in again with your password to continue.',
   },
   mail: {
     hello: 'Hello {name},',

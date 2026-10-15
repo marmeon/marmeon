@@ -357,7 +357,7 @@ async function createTokenThenSignOut() {
   await tab.visit('/settings/tokens');
   // The form is a layer over the list; its answer — the plain text — replaces it, shown once.
   await tab.visit('/settings/tokens/create', { layer: true });
-  await tab.layerVisit('/settings/tokens', { method: 'post', data: { name: 'Backup script', abilities: ['users:read'] } });
+  await tab.layerVisit('/settings/tokens', { method: 'post', data: { current_password: 'password', name: 'Backup script', abilities: ['users:read'] } });
   expect(tab.layers.map((layer) => layer.component)).toEqual(['auth/NewAccessToken']);
   const plainText = tab.layers[0]!.props.plainText as string;
   expect(plainText).toMatch(/^marmeon_\d+\|/);

@@ -169,21 +169,23 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
                     void remove(passkey.id, removing.password);
                   }}
                 >
-                  {(lastFactor || passkey.suspended) && (
-                    <p>
-                      <small>{lastFactor ? t('passkeys.last_factor_note') : t('passkeys.suspended_remove_note')}</small>
-                      <br />
-                      <label htmlFor={`remove-password-${passkey.id}`}>{lastFactor ? t('passkeys.remove_password') : t('passkeys.suspended_remove_password')}</label>{' '}
-                      <input
-                        id={`remove-password-${passkey.id}`}
-                        type="password"
-                        autoComplete="current-password"
-                        value={removing.password}
-                        onChange={(e) => setRemoving({ id: passkey.id, password: e.target.value })}
-                        aria-invalid={error?.target?.form === 'remove' && error.target.id === passkey.id}
-                      />
-                    </p>
-                  )}
+                  <p>
+                    {(lastFactor || passkey.suspended) && (
+                      <>
+                        <small>{lastFactor ? t('passkeys.last_factor_note') : t('passkeys.suspended_remove_note')}</small>
+                        <br />
+                      </>
+                    )}
+                    <label htmlFor={`remove-password-${passkey.id}`}>{passkey.suspended && !lastFactor ? t('passkeys.suspended_remove_password') : t('passkeys.remove_password')}</label>{' '}
+                    <input
+                      id={`remove-password-${passkey.id}`}
+                      type="password"
+                      autoComplete="current-password"
+                      value={removing.password}
+                      onChange={(e) => setRemoving({ id: passkey.id, password: e.target.value })}
+                      aria-invalid={error?.target?.form === 'remove' && error.target.id === passkey.id}
+                    />
+                  </p>
                   <button type="submit">{t('passkeys.remove')}</button>
                   {error?.target?.form === 'remove' && error.target.id === passkey.id && <small role="alert"> {error.message}</small>}
                 </form>

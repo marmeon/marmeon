@@ -8,7 +8,8 @@ import { Session } from '@marmeon/session';
 import { claimRefused } from '../account-sessions.ts';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
 import { AuthConfig } from '../config.ts';
-import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
+import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
+import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
@@ -29,17 +30,13 @@ import {
   type RegistrationResponseJSON,
 } from './webauthn.ts';
 
-/** Password checks per account, shared by `register()` and `remove()`: five a minute and twenty an hour; a success clears the minute. */
-const PASSWORD_WINDOWS = [
-  { name: 'minute', attempts: 5, seconds: 60 },
-  { name: 'hour', attempts: 20, seconds: 3600 },
-] as const;
-
 /**
  * Failed passwordless attempts per address and minute. Only failures count (behind one shared address many people sign in, and an
  * attacker must not be able to lock the owner out by sending garbage). A bad response cannot be guessed, so this limits load, not guessing.
  */
 const SIGN_IN_WINDOW = { attempts: 60, seconds: 60 } as const;
+/** Passkey confirmations of sudo mode per account and minute; a response cannot be guessed, so this limits load and a signed-in thief's tries. */
+const CONFIRM_WINDOW = { attempts: 10, seconds: 60 } as const;
 const MAX_NAME_LENGTH = 100;
 /** Passkeys per account: more is no use, and every one adds to what `excludeCredentials` and the list carry. */
 const MAX_PASSKEYS = 20;
@@ -58,7 +55,7 @@ export type RegisterError =
   | { readonly kind: 'expired' }
   | { readonly kind: 'invalid' }
   | { readonly kind: 'invalid-password' }
-  | { readonly kind: 'throttled'; readonly retryAfter: number }
+  | PasswordThrottled
   | { readonly kind: 'limit' }
   | { readonly kind: 'duplicate' }
   /** The session ended while the passkey was being added (another device changed the password, `AccountSessions.end()`): nothing was stored. */
@@ -77,7 +74,7 @@ export interface PasskeySummary {
 }
 
 /**
- * Passkeys for the current request: register them, sign in without a password, and prove one as the second factor of a sign-in or again in a signed-in session. See
+ * Passkeys for the current request: register them, sign in without a password, prove one as the second factor of a sign-in or again in a signed-in session, and confirm sudo mode with one. See
  * `docs/passkeys.md#managing-passkeys`.
  *
  * Invariants: a challenge works once and only for its purpose (it leaves the session before anything is checked); user verification is
@@ -142,7 +139,7 @@ export class Passkeys implements SecondFactorPasskeys {
   // -- Registration ----------------------------------------------------------------------------------------------------------
 
   /**
-   * The options for `navigator.credentials.create()`. Needs a signed-in user who typed the password recently (`confirmedPassword()`);
+   * The options for `navigator.credentials.create()`. Needs a signed-in user with a recent confirmation (`confirmedPassword()`: a password or a passkey);
    * opens the one challenge of this session, for registering. The user handle in the options is kept with the challenge, and
    * `register()` stores the passkey with that very handle.
    */
@@ -169,7 +166,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /**
-   * Adds the passkey the browser made. Needs a signed-in user who typed the password recently, and the password again in the same form —
+   * Adds the passkey the browser made. Needs a signed-in user with a recent confirmation (`confirmedPassword()`: a password or a passkey), and the password again in the same form —
    * for every passkey, not only the first: a passkey outlives a password change, so a stolen session in the sudo window must not be able to add one.
    * The password check is throttled per account (five a minute, twenty an hour). When it is the account's first factor, the other
    * devices are signed out — sessions and remember-me tokens, a second time after the insert, as `TwoFactor.confirm()` does — and the
@@ -309,6 +306,47 @@ export class Passkeys implements SecondFactorPasskeys {
     return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
   }
 
+  /**
+   * The options for confirming sudo mode with a passkey, for `confirm()`: only the signed-in account's own passkeys are allowed, and the
+   * challenge is bound to that account and to this purpose. Needs a signed-in user. `no-challenge` when the account has no usable
+   * passkey. The route that serves it needs its own limit — it opens a challenge per call.
+   */
+  async confirmOptions(): Promise<Result<PublicKeyCredentialRequestOptionsJSON, { readonly kind: 'no-challenge' }>> {
+    const user = await this.#requireUser('confirmOptions');
+    const id = idOf(user);
+    const allow = (await this.#store.forUser(id)).filter((passkey) => passkey.suspendedAt === null).map((passkey) => ({ credentialId: passkey.credentialId, transports: passkey.transports }));
+    if (allow.length === 0) return err({ kind: 'no-challenge' });
+    const { bytes } = issueChallenge(this.#session, 'confirm', this.#now(), id);
+    return ok(await authenticationOptions({ rpId: this.#config.relyingParty().rpId, challenge: bytes, allow }));
+  }
+
+  /**
+   * Confirms sudo mode (`confirmedPassword()`) with a passkey of the signed-in account from `confirmOptions()`, like a typed password
+   * would: the verified response (user verification required) is the proof, the challenge works once. The session gets a new id and
+   * counts as having proven a second factor. A wrong answer fires `TwoFactorChallengeFailed` with `during: 'confirm'`. Throttled per account (ten a minute). Needs a signed-in user.
+   */
+  async confirm(response: AuthenticationResponseJSON): Promise<Result<void, PasskeyError>> {
+    const user = await this.#requireUser('confirm');
+    const id = idOf(user);
+    const key = `passkey-confirm:${id}`;
+    if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfter: Math.max(1, await this.#limiter.availableIn(key)) });
+    const checked = await this.#check(response, 'confirm', id);
+    if (!checked.ok) {
+      // An answer that was given and failed, not a missing, used or expired challenge: the owner may want to know. The client learns nothing more.
+      if (checked.error.kind === 'invalid' || checked.error.kind === 'clone-suspected') {
+        await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }));
+      }
+      return err(checked.error);
+    }
+    await this.#limiter.clear(key);
+    // The session gains a privilege it did not have: a new id, as at sign-in and in a step-up.
+    this.#session.regenerate();
+    const now = this.#now();
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now);
+    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now);
+    return ok();
+  }
+
   /** @internal What `TwoFactor.challenge({ passkey })` and `stepUp({ passkey })` call, after they have found the account and counted the attempt. */
   async [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
     // No challenge to answer (a timeout, a double submit) is `stale`; only an answer that was given and failed is `wrong`.
@@ -325,7 +363,7 @@ export class Passkeys implements SecondFactorPasskeys {
     return (await this.#store.forUser(idOf(user))).map((passkey) => ({ id: passkey.id, name: passkey.name, createdAt: passkey.createdAt, lastUsedAt: passkey.lastUsedAt, suspended: passkey.suspendedAt !== null, synced: passkey.backedUp }));
   }
 
-  /** Renames a passkey of the signed-in user (a recently typed password); `false` for an empty or too long name, or one that is not theirs. */
+  /** Renames a passkey of the signed-in user (a recent confirmation: `confirmedPassword()`); `false` for an empty or too long name, or one that is not theirs. */
   async rename(id: number, name: string): Promise<boolean> {
     const user = await this.#requireRecentPassword('rename');
     const clean = name.replace(/[\p{Cc}\p{Cf}]/gu, '').trim();
@@ -334,25 +372,22 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /**
-   * Removes a passkey of the signed-in user (a recently typed password). When it is the account's last factor — no other passkey, no
-   * authenticator app — `password` is required, typed now, and the recovery codes go with it, as with `TwoFactor.disable()`. The store
-   * decides inside its transaction, so parallel removals cannot both pass. A password given is checked under the per-account throttle
-   * of `register()` (five a minute, twenty an hour).
+   * Removes a passkey of the signed-in user (a recent confirmation: `confirmedPassword()`) and asks for the password again in the same
+   * form, for every passkey: a passkey alone can confirm sudo mode, and taking the other passkeys away is how a holder of one session
+   * would lock the owner out. When it is the account's last factor — no other passkey, no authenticator app — the recovery codes go
+   * with it, as with `TwoFactor.disable()`. The store decides inside its transaction, so parallel removals cannot both pass. The
+   * password is checked under the per-account throttle of `register()` (five a minute, twenty an hour).
    */
-  async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
+  async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('remove');
     const userId = idOf(user);
     await this.#requireRecentSecondFactor('remove', userId);
-    let lastFactorAllowed = false;
-    if (password !== undefined) {
-      const checked = await this.#checkPassword(userId, password);
-      if (checked.ok) lastFactorAllowed = true;
-      else if (checked.error.kind === 'throttled') return err(checked.error);
-    }
-    // A suspended passkey (a possible clone) goes only with the password: whoever holds the session must not tidy the evidence away.
-    const target = (await this.#store.forUser(userId)).find((passkey) => passkey.id === id);
-    if (target?.suspendedAt != null && !lastFactorAllowed) return err({ kind: 'invalid-password' });
-    const removed = await this.#store.remove(userId, id, { lastFactorAllowed });
+    // Without a password (an empty form field is none) nothing is counted: there is nothing to guess.
+    if (password === undefined || password === '') return err({ kind: 'invalid-password' });
+    const checked = await this.#checkPassword(userId, password);
+    if (!checked.ok) return err(checked.error);
+    // Typed now, so the last factor may go too — and a suspended passkey (a possible clone) goes only this way.
+    const removed = await this.#store.remove(userId, id, { lastFactorAllowed: true });
     if (!removed.ok) return err(removed.error.kind === 'last-factor' ? { kind: 'invalid-password' } : { kind: 'not-found' });
     await this.#events.dispatch(new PasskeyRemoved(user));
     if (removed.value.lastFactor) await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
@@ -363,7 +398,7 @@ export class Passkeys implements SecondFactorPasskeys {
    * Lets a suspended passkey sign in again — the password typed now, under the throttle of `register()`. `not-found` when the account has
    * no suspended passkey with this id. Suspending is the answer to a sign count that went backwards (a possible clone): the owner decides.
    */
-  async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
+  async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('release');
     const userId = idOf(user);
     await this.#requireRecentSecondFactor('release', userId);
@@ -373,16 +408,13 @@ export class Passkeys implements SecondFactorPasskeys {
     return (await this.#store.release(userId, id)) ? ok() : err({ kind: 'not-found' });
   }
 
-  /** The password of the signed-in user, typed now: counted per account before it is checked, the minute cleared by a success. */
-  async #checkPassword(userId: number | string, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'throttled'; readonly retryAfter: number }>> {
-    const waits: number[] = [];
-    for (const window of PASSWORD_WINDOWS) {
-      const key = `passkey-password-${window.name}:${userId}`;
-      if (!(await this.#limiter.attempt(key, window.attempts, window.seconds))) waits.push(await this.#limiter.availableIn(key));
-    }
-    if (waits.length > 0) return err({ kind: 'throttled', retryAfter: Math.max(1, ...waits) });
+  /** The password of the signed-in user, typed now: counted before it is checked (see `takePasswordCheck()`), the sign-in's minute cleared by a success. */
+  async #checkPassword(userId: number | string, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | PasswordThrottled>> {
+    const scope = this.#auth.passwordCheckScope();
+    const wait = await takePasswordCheck(this.#limiter, scope, userId);
+    if (wait !== undefined) return err(wait);
     if (password === undefined || !(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
-    await this.#limiter.clear(`passkey-password-minute:${userId}`);
+    await clearPasswordCheck(this.#limiter, scope);
     return ok();
   }
 
@@ -471,7 +503,7 @@ export class Passkeys implements SecondFactorPasskeys {
 
   async #requireRecentPassword(method: string): Promise<AuthUser> {
     const user = await this.#requireUser(method);
-    if (!this.#auth.passwordRecentlyConfirmed()) throw new Error(`passkeys.${method}() needs a recently typed password — put the route behind confirmedPassword().`);
+    if (!this.#auth.passwordRecentlyConfirmed()) throw new Error(`passkeys.${method}() needs a recent confirmation (a password or a passkey) — put the route behind confirmedPassword().`);
     return user;
   }
 

@@ -1,4 +1,4 @@
-import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
+import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
@@ -8,6 +8,7 @@ import { AuthConfig } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
+import type { PasswordCheckScope } from './password-throttle.ts';
 import { RememberTokenStore, selectorOf } from './remember.ts';
 import { describeDevice } from './device.ts';
 import { SignInTracker, type SignIn } from './sign-ins.ts';
@@ -36,6 +37,10 @@ export const AUTH_SESSION_KEYS = {
   twoFactorAt: '_auth_two_factor_at',
   /** The sign-in's row in `SignInStore` — its end ends the session. Only with a bound `SignInStore`. */
   signIn: '_auth_sign_in',
+  /** A random key of this sign-in (new at every sign-in): what its password checks are counted under, whatever the session id. */
+  throttleKey: '_auth_throttle_key',
+  /** Set when the sign-in began with a typed password (`attempt()`, including its second factor), never by a passkey or `login()`. */
+  typedPassword: '_auth_typed_password',
 } as const;
 
 /** How far ahead of this server's clock another server's sign-in time may lie, in seconds. */
@@ -116,6 +121,8 @@ declare module '@marmeon/session' {
     _auth_pending: PendingSecondFactor;
     _auth_two_factor_at: number;
     _auth_sign_in: string;
+    _auth_throttle_key: string;
+    _auth_typed_password: boolean;
   }
 }
 
@@ -236,6 +243,7 @@ export class Auth {
     const factors = await this.#passwordSignIn(current, options, 'attempt');
     if (factors.length > 0) return err({ kind: 'two-factor-required', factors });
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now()); // the password was just typed
+    this.#session.put(AUTH_SESSION_KEYS.typedPassword, true);
     return ok(credentials.user);
   }
 
@@ -303,6 +311,7 @@ export class Auth {
     if (pending.via === 'attempt' && typeof pending.typedAt === 'number') {
       this.#session.put(AUTH_SESSION_KEYS.signedInAt, pending.typedAt);
       this.#session.put(AUTH_SESSION_KEYS.confirmedAt, pending.typedAt);
+      this.#session.put(AUTH_SESSION_KEYS.typedPassword, true);
     }
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     return ok(found.user);
@@ -311,14 +320,14 @@ export class Auth {
   /**
    * Signs in `verifiedUserId`, whose passkey was just checked for a passwordless sign-in. New session id and CSRF token as at any sign-in; a
    * password sign-in that waits for a factor is dropped. `expired` when the account is gone. The password was not typed, so the session
-   * is not in the recent-password window (`confirmedPassword()` routes still ask for it).
+   * counts as a fresh confirmation instead: the passkey with user verification is the proof `confirmedPassword()` asks for.
    * Invariant: the caller has proven a passkey of exactly this account, with user verification, a challenge used once.
    */
   async [SIGN_IN_VERIFIED](verifiedUserId: AuthUserId | string | number, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, { readonly kind: 'expired' }>> {
     const found = await this.#users.findById(verifiedUserId as never);
     if (!found) return err({ kind: 'expired' });
-    this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
     await (await this.#login(found, { remember: options.remember === true }, 'passkey')).announce();
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
     return ok(found.user);
   }
@@ -378,12 +387,30 @@ export class Auth {
     return ok;
   }
 
-  /** Whether the password was typed within `seconds` (default `AUTH_PASSWORD_TIMEOUT`). */
+  /**
+   * Whose password checks these are, for `takePasswordCheck()`: this sign-in's own key, and whether it began with a typed password.
+   * A session without a key gets one now; on a read-only request it is counted under the session id, with the account's cap.
+   * Throws without a started session: a password check needs a signed-in user.
+   */
+  passwordCheckScope(): PasswordCheckScope {
+    if (!this.#session.started) throw new Error('auth.passwordCheckScope() needs a started session — a password check belongs to a signed-in user.');
+    let key = this.#session.get(AUTH_SESSION_KEYS.throttleKey);
+    if (typeof key !== 'string') {
+      if (this.#session.readOnly) return { session: this.#session.id, typed: false };
+      key = randomBytes(16).toString('base64url');
+      this.#session.put(AUTH_SESSION_KEYS.throttleKey, key);
+    }
+    return { session: key, typed: this.#session.get(AUTH_SESSION_KEYS.typedPassword) === true };
+  }
+
+  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `seconds` (default `AUTH_PASSWORD_TIMEOUT`). */
   passwordRecentlyConfirmed(seconds = this.#config.passwordTimeout): boolean {
     const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
     const signedInAt = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.signedInAt) : undefined;
-    return typeof at === 'number' && typeof signedInAt === 'number' && at >= signedInAt && this.#now() - at < seconds;
+    const current = this.#now();
+    // A time in the future is no confirmation (a clock that moved back, a value that did not come from here).
+    return typeof at === 'number' && Number.isFinite(at) && at <= current && typeof signedInAt === 'number' && at >= signedInAt && current - at < seconds;
   }
 
   /**
@@ -413,13 +440,13 @@ export class Auth {
    * Signs the user out of one of the browsers listed by `signIns()`: from its next request on, that browser is a guest, and its
    * remember-me cookie signs nobody in again. Only the user's own sign-ins can be ended — an id of anybody else's is `missing`, like
    * an unknown or malformed one. `current`: that is this browser's — end it with `logout()`. Throws without a bound `SignInStore`,
-   * and without a recently typed password (put the route behind `confirmedPassword()`): a stolen session cookie must not be able to
+   * and without a recent confirmation, a password or a passkey (put the route behind `confirmedPassword()`): a stolen session cookie must not be able to
    * sign its owner out everywhere else.
    */
   async endSignIn(id: string): Promise<Result<void, { readonly kind: 'missing' } | { readonly kind: 'current' }>> {
     const user = await this.#requireUser('endSignIn');
     this.#requireSignInStore('endSignIn');
-    if (!this.passwordRecentlyConfirmed()) throw new Error('auth.endSignIn() needs a recently typed password — put the route behind confirmedPassword().');
+    if (!this.passwordRecentlyConfirmed()) throw new Error('auth.endSignIn() needs a recent confirmation (a password or a passkey) — put the route behind confirmedPassword().');
     if (id === this.#ownSignIn()?.id) return err({ kind: 'current' });
     return (await this.#signIns.end(idOf(user), id)) ? ok(undefined) : err({ kind: 'missing' });
   }
@@ -444,7 +471,8 @@ export class Auth {
   /**
    * Signs out every other device: checks `password`, then hashes it
    * anew — a new salt, a new hash, so the other sessions' fingerprints stop matching — and drops the
-   * other devices' remember-me tokens. `false` for a wrong password.
+   * other devices' remember-me tokens. `false` for a wrong password. It does not throttle the password check: the caller must
+   * (`takePasswordCheck()`, as the starter kit's `throttlePasswordChecks()` does).
    */
   async logoutOtherDevices(password: string): Promise<boolean> {
     await this.#requireUser('logoutOtherDevices');
@@ -632,7 +660,7 @@ export class Auth {
       return after;
     } catch (error) {
       // Fail closed: an error here (the second read of the factors, the removal of the token) must not leave the sign-in standing.
-      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn);
+      this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn, AUTH_SESSION_KEYS.throttleKey, AUTH_SESSION_KEYS.typedPassword);
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
       this.#cookies.delete(this.#config.rememberCookie);
@@ -687,6 +715,9 @@ export class Auth {
     this.#session.forget(AUTH_SESSION_KEYS.twoFactorAt);
     // A confirmation belongs to the account that was signed in when it was typed; whoever types now (`attempt()`, or the factor of an `attempt()`) sets it again.
     this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
+    // A new sign-in counts its password checks anew, and has typed no password until `attempt()` says so.
+    this.#session.forget(AUTH_SESSION_KEYS.typedPassword);
+    this.#session.put(AUTH_SESSION_KEYS.throttleKey, randomBytes(16).toString('base64url'));
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
     this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
@@ -713,7 +744,7 @@ export class Auth {
   async #hold(credentials: Credentials, factors: readonly SecondFactor[], { remember = false }: LoginOptions, via: LoginVia): Promise<void> {
     const previous = this.#ownSignIn();
     this.#session.regenerate();
-    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn] as const) {
+    for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn, AUTH_SESSION_KEYS.throttleKey, AUTH_SESSION_KEYS.typedPassword] as const) {
       this.#session.forget(key);
     }
     this.#session.put(AUTH_SESSION_KEYS.pending, {

@@ -121,7 +121,7 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
 - **Passwords** are hashed with Argon2id, within bounds that a planted hash cannot exceed. The [hashing](hashing.md) page explains
   the drivers and costs.
 - **Rate limits.** The starter kit limits the sign-in per address and client together, the registration per client, reset mails
-  per client and per address, and a signed-in user's password checks per user: the confirmation, the password change and "sign
+  per client and per address, and a signed-in user's password checks per sign-in, and per account for a sign-in that did not begin with a typed password: the confirmation, the password change and "sign
   out other devices". The password change and "sign out other devices" run one at a time per session. The
   [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 - **A sign-in tells nothing.** An unknown address and a wrong password get the same answer in the same time. The

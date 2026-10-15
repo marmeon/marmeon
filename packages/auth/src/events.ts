@@ -219,7 +219,7 @@ export class RecoveryCodeUsed {
 }
 
 /**
- * A wrong second factor, after the right password (`during: 'sign-in'`) or from a session that is already signed in (`during: 'step-up'`) —
+ * A wrong second factor, after the right password (`during: 'sign-in'`) or from a session that is already signed in (`during: 'step-up'`) or a wrong passkey where sudo mode is confirmed with one (`during: 'confirm'`) —
  * for "was this you?" mails and audit logs. Queueable: `{ userId, at, ip, userAgent, during }` (`at` as an ISO-8601 string).
  */
 export class TwoFactorChallengeFailed {
@@ -229,16 +229,16 @@ export class TwoFactorChallengeFailed {
     at: instant,
     ip: v.nullable(v.string()),
     userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
-    during: v.picklist(['sign-in', 'step-up']),
+    during: v.picklist(['sign-in', 'step-up', 'confirm']),
   });
   readonly #event = true;
   readonly user: AuthUser;
   readonly at: Date;
-  readonly during: 'sign-in' | 'step-up';
+  readonly during: 'sign-in' | 'step-up' | 'confirm';
   readonly ip: string | null;
   readonly userAgent: string | null;
 
-  constructor(user: AuthUser, at = new Date(), details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly during?: 'sign-in' | 'step-up' } = {}) {
+  constructor(user: AuthUser, at = new Date(), details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly during?: 'sign-in' | 'step-up' | 'confirm' } = {}) {
     this.user = user;
     this.at = at;
     this.during = details.during ?? 'sign-in';

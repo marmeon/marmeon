@@ -57,7 +57,7 @@ describe('two-factor authentication', () => {
     const other = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
     await app.withCookie(SESSION, other).get('/users/me').assertAuthenticated(ada);
     const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
-    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } });
+    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup');
     const setup = (await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
     const done = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
@@ -141,7 +141,7 @@ describe('two-factor authentication', () => {
   it('makes new recovery codes in place of the old ones', async () => {
     const ada = await app.factory(UserFactory).create();
     const { cookie, recoveryCodes } = await enable(ada);
-    const again = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/recovery-codes').assertLayer('auth/RecoveryCodes');
+    const again = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertLayer('auth/RecoveryCodes');
     const fresh = again.page()!.props.codes as string[];
     expect(fresh).toHaveLength(10);
     expect(fresh).not.toContain(recoveryCodes[0]);
@@ -154,7 +154,7 @@ describe('two-factor authentication', () => {
   it('makes no recovery codes for an account without a factor', async () => {
     const ada = await app.factory(UserFactory).create();
     const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
-    await app.withCookie(SESSION, cookie).post('/settings/two-factor/recovery-codes').assertRedirect('/settings/two-factor');
+    await app.withCookie(SESSION, cookie).post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertRedirect('/settings/two-factor');
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
   });
 
@@ -222,8 +222,8 @@ describe('two-factor authentication', () => {
 
     it('keeps the address and the API tokens out of reach of such a session, too', async () => {
       const { ada, as } = await passwordOnly();
-      await as().put('/settings/email', { form: { email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
-      await as().withHeaders(asJson).post('/settings/tokens', { form: { name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
+      await as().put('/settings/email', { form: { current_password: 'password', email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
+      await as().withHeaders(asJson).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
       await app.assertDatabaseCount('personal_access_tokens', 0);
       await app.assertDatabaseMissing('users', { id: ada.id, email: 'thief@example.com' });
     });
@@ -238,7 +238,7 @@ describe('two-factor authentication', () => {
     it('lets the same session change the address once it proved the factor', async () => {
       const { ada, as } = await passwordOnly();
       const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(KEY) } }).assertRedirect();
-      await app.withCookie(SESSION, done.cookie(SESSION)!).put('/settings/email', { form: { email: 'new@example.com' } }).assertRedirect();
+      await app.withCookie(SESSION, done.cookie(SESSION)!).put('/settings/email', { form: { current_password: 'password', email: 'new@example.com' } }).assertRedirect();
       await app.assertDatabaseHas('users', { id: ada.id, pending_email: 'new@example.com' });
     });
   });

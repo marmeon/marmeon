@@ -31,6 +31,8 @@ export class AuthServiceProvider implements ServiceProvider {
     limiter.for('passkey-options', (ctx) => Limit.perMinute(30).by(ctx.ip ?? 'unknown'));
     // The options of the passkey step after a password: asked once per sign-in, so a tighter limit of its own.
     limiter.for('passkey-challenge-options', (ctx) => Limit.perMinute(10).by(ctx.ip ?? 'unknown'));
+    // The options of a passkey confirmation of sudo mode: per user (the route is behind authenticate()), asked once per confirmation.
+    limiter.for('passkey-confirm-options', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? ctx.ip)));
     // The options of a passkey step-up in a signed-in session: per user (the route is behind authenticate()), asked once per proof.
     limiter.for('passkey-step-up-options', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? ctx.ip)));
     // Resending the verification mail: per signed-in user (the route is behind authenticate()).

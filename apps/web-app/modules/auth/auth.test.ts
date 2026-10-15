@@ -495,6 +495,18 @@ describe('security settings', () => {
     await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
   });
 
+  it('also stops a slow guesser: twenty checks an hour, though the minute is cleared by a right password', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const login = await app.post('/login', credentialsOf(ada));
+    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
+    for (let round = 0; round < 4; round++) {
+      for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
+      await session.post('/confirm-password', { form: { password: 'password' } });
+    }
+    await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
+  });
+
   it('throttles password checks of a signed-in user — a stolen session is no guessing oracle', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
@@ -746,12 +758,12 @@ describe('e-mail verification', () => {
   it('changing the address needs a confirmed address and the password again — then it is pending (email-change.test.ts)', async () => {
     await register('kj@example.com');
     const kj = await userBy('kj@example.com');
-    await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertForbidden(); // unconfirmed
+    await app.actingAs(kj).expectingJson().put('/settings/email', { json: { current_password: 'password', email: 'katherine@nasa.example' } }).assertForbidden(); // unconfirmed
     await app.actingAs(kj).get(verificationLink('kj@example.com')).assertRedirect('/users/me'); // confirmed: the app opens
-    await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
+    await app.actingAs(kj).expectingJson().put('/settings/email', { json: { current_password: 'password', email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
     const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
-    await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.' });
+    await session.put('/settings/email', { form: { current_password: 'orbital mechanics', email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.' });
     expect(await userBy('kj@example.com')).toMatchObject({ id: kj.id, pending_email: 'katherine@nasa.example' });
   });
 });
@@ -762,7 +774,7 @@ describe('API tokens', () => {
     return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
   };
   const createToken = async (user: User, abilities: string[] = ['users:read']) => {
-    const page = await (await sudo(user)).navigating().post('/settings/tokens', { json: { name: 'CLI', abilities } }).assertOk();
+    const page = await (await sudo(user)).navigating().post('/settings/tokens', { json: { current_password: 'password', name: 'CLI', abilities } }).assertOk();
     return (page.page()!.props as { plainText: string }).plainText;
   };
   const api = (token?: string) => app.withHeaders(token === undefined ? {} : { authorization: `Bearer ${token}` }).expectingJson();
@@ -773,7 +785,7 @@ describe('API tokens', () => {
     // The form: a layer over the list, its base the list (for a deep link).
     await session.layer('auth.tokens.create').assertOk().assertLayer('auth/CreateAccessToken');
     // Its answer, sent as the layer's request: the same layer key (it replaces the form), shown once — a POST answered it.
-    const created = await session.layering().post('/settings/tokens', { json: { name: 'Backup script', abilities: ['users:read'] } }).assertOk().assertLayer('auth/NewAccessToken');
+    const created = await session.layering().post('/settings/tokens', { json: { current_password: 'password', name: 'Backup script', abilities: ['users:read'] } }).assertOk().assertLayer('auth/NewAccessToken');
     expect(created.page()!.layer).toEqual({ key: 'tokens.create', base: '/settings/tokens', once: true });
     const plainText = (created.page()!.props as { plainText: string }).plainText;
     expect(plainText).toMatch(/^marmeon_\d+\|[A-Za-z0-9]{40}[0-9a-f]{8}$/);
@@ -791,7 +803,7 @@ describe('API tokens', () => {
     const session = await sudo(ada);
     await session
       .layering()
-      .post('/settings/tokens', { json: { name: '', abilities: [] }, headers: { referer: 'http://localhost/settings/tokens/create' } })
+      .post('/settings/tokens', { json: { current_password: 'password', name: '', abilities: [] }, headers: { referer: 'http://localhost/settings/tokens/create' } })
       .assertRedirect('/settings/tokens/create');
   });
 

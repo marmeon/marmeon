@@ -10,7 +10,7 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
   const t = useTranslation('auth');
   // In UTC: the server and the browser render the same text (no time zone of either side).
   const at = (iso: string) => t.format.date(iso, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
-  const form = useForm('auth.tokens.store', { name: '', abilities: [] });
+  const form = useForm('auth.tokens.store', { name: '', current_password: '', abilities: [] });
   const selected = [form.data.abilities ?? []].flat();
 
   return (
@@ -82,7 +82,7 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void form.submit({ onSuccess: () => form.reset() });
+            void form.submit({ onSuccess: () => form.reset(), onFinish: () => form.set('current_password', '') });
           }}
         >
           <div className="field">
@@ -106,6 +106,18 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
             ))}
             {form.errors.abilities && <small role="alert">{form.errors.abilities}</small>}
           </fieldset>
+          <div className="field">
+            <label htmlFor="token-current-password">{t('tokens.current_password')}</label>
+            <input
+              id="token-current-password"
+              type="password"
+              autoComplete="current-password"
+              value={form.data.current_password}
+              onChange={(e) => form.set('current_password', e.target.value)}
+              aria-invalid={!!form.errors.current_password}
+            />
+            {form.errors.current_password && <small role="alert"> {form.errors.current_password}</small>}
+          </div>
           <button type="submit" className="button" disabled={form.processing}>
             {t('tokens.submit')}
           </button>

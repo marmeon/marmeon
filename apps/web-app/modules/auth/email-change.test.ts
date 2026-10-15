@@ -1,3 +1,4 @@
+import { Auth } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Limit, RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
@@ -36,7 +37,7 @@ const signIn = async (user: User): Promise<Session> => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
   return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 };
-const change = (session: Session, email: string) => session.put('/settings/email', { form: { email }, headers: { referer: 'http://localhost/settings/security' } });
+const change = (session: Session, email: string) => session.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } });
 const reload = (user: User) => app.make(UserRepository).find(user.id) as Promise<User>;
 /** The link in the last queued mail of a class (to `address`) — path and query. */
 const linkIn = <M extends Mailable>(Mail: abstract new (...args: any[]) => M, address?: string) => {
@@ -89,7 +90,7 @@ describe('changing the address (private registration)', () => {
      * the flash message's id (random for every message) put aside.
      */
     const outcome = async (client: Session, email: string) => {
-      const response = answer(await client.put('/settings/email', { form: { email }, headers: { referer: 'http://localhost/settings/security' } }));
+      const response = answer(await client.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } }));
       const page = answer(await session.navigating().get('/settings/security'));
       return { response, page: { ...page, body: page.body.replaceAll(email, '<typed>').replace(/"id":"[0-9a-f-]{36}","key"/g, '"id":"…","key"') } };
     };
@@ -320,9 +321,10 @@ describe('the change of address asks for a recent factor itself', () => {
   const controllerAsking = (check: () => Promise<void>) => {
     const scope = app.container.createScope();
     scope.instance(TwoFactor, { requireRecentProof: check } as unknown as TwoFactor);
+    scope.instance(Auth, { confirmPassword: async (password: string) => password === 'password', passwordCheckScope: () => ({ session: 'test', typed: true }) } as unknown as Auth);
     return scope.make(UpdateEmailController);
   };
-  const handle = (controller: UpdateEmailController, user: User, email: string) => controller.handle({ body: { email }, user } as never);
+  const handle = (controller: UpdateEmailController, user: User, email: string) => controller.handle({ body: { email, current_password: 'password' }, user } as never);
 
   it('throws before anything is stored when the session has no recent factor — even on a route without confirmedSecondFactor()', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });

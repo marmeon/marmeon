@@ -11,6 +11,7 @@ export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCo
   const t = useTranslation('auth');
   const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
   const disableForm = useForm('auth.two-factor.disable', { password: '' });
+  const codesForm = useForm('auth.two-factor.codes', {}, { password: '' });
 
   return (
     <main>
@@ -92,9 +93,33 @@ export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCo
                 <small>{t('two_factor.recovery_low')}</small>
               </p>
             )}
-            <p>
-              <Link route="auth.two-factor.codes">{t('two_factor.regenerate')}</Link>
-            </p>
+            <form
+              method="post"
+              action={route('auth.two-factor.codes')}
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void codesForm.submit({ onFinish: () => codesForm.reset() });
+              }}
+            >
+              <p>
+                <label htmlFor="codes-password">{t('two_factor.disable_password')}</label>
+                <br />
+                <input
+                  id="codes-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={codesForm.data.password}
+                  onChange={(e) => codesForm.set('password', e.target.value)}
+                  aria-invalid={!!codesForm.errors.password}
+                />
+                {codesForm.errors.password && <small role="alert"> {codesForm.errors.password}</small>}
+              </p>
+              <button type="submit" disabled={codesForm.processing}>
+                {t('two_factor.regenerate')}
+              </button>
+            </form>
 
             {!enabled && (
               <p>

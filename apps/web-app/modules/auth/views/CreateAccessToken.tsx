@@ -49,6 +49,23 @@ export default function CreateAccessToken({ abilities }: Props) {
               {form.error('abilities[]') && <small role="alert">{form.error('abilities[]')}</small>}
             </fieldset>
             <p>
+              <label htmlFor={`${id}-password`}>{t('tokens.current_password')}</label>
+              <br />
+              <input
+                id={`${id}-password`}
+                type="password"
+                autoComplete="current-password"
+                {...form.field('current_password')}
+                aria-describedby={form.error('current_password') ? `${id}-password-error` : undefined}
+              />
+              {form.error('current_password') && (
+                <small id={`${id}-password-error`} role="alert">
+                  {' '}
+                  {form.error('current_password')}
+                </small>
+              )}
+            </p>
+            <p>
               <button type="submit" disabled={form.processing}>
                 {t('tokens.submit')}
               </button>{' '}

@@ -97,7 +97,7 @@ describe('pruning accounts whose address was never confirmed — the default', {
   it('keeps a confirmed account with a pending change of address — that change is no unconfirmed account', async () => {
     const kj = await made(30, true, { email: 'kj@example.com' });
     const session = await signIn(kj);
-    await session.put('/settings/email', { form: { email: 'new@example.com' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
+    await session.put('/settings/email', { form: { current_password: 'password', email: 'new@example.com' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
     await pruneIn(1);
     expect(await app.make(UserRepository).find(kj.id)).toMatchObject({ email: 'kj@example.com', pending_email: 'new@example.com' });
   });
@@ -165,7 +165,7 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
     await session.get(link.pathname + link.search).assertRedirect('/dashboard');
     // Changing the address asks for the password (sudo mode) — a sign-up signed in without typing it again.
     await session.post('/confirm-password', { form: { password: 'orbital mechanics' } }).assertRedirect();
-    await session.put('/settings/email', { form: { email: 'katherine@nasa.example' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
+    await session.put('/settings/email', { form: { current_password: 'orbital mechanics', email: 'katherine@nasa.example' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
     const kj = await app.make(UserRepository).findByEmail('katherine@nasa.example');
     if (!kj) throw new Error('the address did not change');
     expect(kj).toMatchObject({ email_verified_at: null });

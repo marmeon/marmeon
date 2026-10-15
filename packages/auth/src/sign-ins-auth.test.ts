@@ -513,7 +513,7 @@ describe('sign-ins tracked by Auth', () => {
       await login(phone);
       await laptop.edit((data) => delete data[AUTH_SESSION_KEYS.confirmedAt]);
       const other = (await laptop.list()).find((signIn) => !signIn.current)!;
-      expect(await laptop.act('end', other.id)).toEqual({ threw: expect.stringContaining('recently typed password') });
+      expect(await laptop.act('end', other.id)).toEqual({ threw: expect.stringContaining('recent confirmation') });
       expect(await rows()).toHaveLength(2);
       expect(await phone.who()).toMatchObject({ id: 1 });
     });

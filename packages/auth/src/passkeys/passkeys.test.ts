@@ -11,6 +11,7 @@ import {
   Auth,
   authenticate,
   AuthServiceProvider,
+  confirmedPassword,
   combineFactors,
   Hasher,
   Login,
@@ -26,6 +27,7 @@ import {
   TwoFactorStore,
   UserProvider,
   softAuthenticator,
+  twoFactorCode,
   type Credentials,
   type PasswordHash,
 } from '../index.ts';
@@ -144,6 +146,29 @@ class PasskeyController extends Controller {
           const done = await this.#twoFactor.stepUp(body as never);
           return done.ok ? { ok: true } : { ok: false, ...done.error };
         }
+        case 'confirm-options':
+          return result(await this.#passkeys.confirmOptions());
+        case 'confirm':
+          return result(await this.#passkeys.confirm(body.response));
+        case 'confirmed':
+          return { confirmed: this.#auth.passwordRecentlyConfirmed(), proof: this.#session.get('_auth_two_factor_at') ?? null };
+        case 'tf-begin':
+          return { secret: (await this.#twoFactor.begin()).secret };
+        case 'tf-confirm':
+          return await this.#twoFactor.confirm(body.code, body.password).then((done) => (done.ok ? { ok: true } : { ok: false, ...done.error }));
+        case 'scope':
+          return this.#auth.passwordCheckScope();
+        case 'login-as':
+          await this.#auth.login(body.id === bob.id ? bob : ada);
+          return { signedIn: true };
+        case 'regenerate':
+          return await this.#twoFactor.regenerateRecoveryCodes(body.password ?? '').then((done) => (done.ok ? { ok: true, codes: done.value } : { ok: false, ...done.error }));
+        case 'set-confirmed':
+          this.#session.put('_auth_confirmed_at', body.value);
+          return { set: true };
+        case 'forget-confirmed':
+          this.#session.forget('_auth_confirmed_at');
+          return { forgotten: true };
         case 'set-proof':
           this.#session.put('_auth_two_factor_at', body.value ?? Math.floor(Date.now() / 1000));
           return { set: true };
@@ -195,6 +220,7 @@ const routes = openRoutes((Route) => {
   Route.get('/account/verify', Page).name('test.verify');
   Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
   Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 60 })).post('/area-fresh', Page);
+  Route.middleware(authenticate()).middleware(confirmedPassword()).post('/sudo', Page);
   Route.post('/tf/challenge', ChallengeController);
 });
 
@@ -573,7 +599,8 @@ describe('Passkeys: signing in without a password', () => {
     expect(await b.pk('who')).toEqual({ id: 1 });
     const login = events.find((event): event is Login => event instanceof Login);
     expect(login?.via).toBe('passkey');
-    expect(await b.pk('rename', { id: 1, name: 'x' })).toMatchObject({ thrown: expect.stringContaining('recently typed password') });
+    // The passkey with user verification is the confirmation `confirmedPassword()` asks for.
+    expect(await b.pk('rename', { id: 1, name: 'x' })).toEqual({ renamed: true });
   });
 
   it('works with EdDSA keys and with a synchronised passkey that reports 0', async () => {
@@ -856,7 +883,7 @@ describe('Passkeys: as the second factor', () => {
     const b = await waiting(booted);
     const options = await b.pk('challenge-options');
     const response = authenticator.authenticate(options.value);
-    expect(await owner.pk('remove', { id: 1 })).toMatchObject({ ok: true });
+    expect(await owner.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
     expect(await b.pk('challenge', { passkey: response })).toMatchObject({ ok: false, kind: 'invalid-code' });
     expect(await b.pk('who')).toEqual({ id: null });
   });
@@ -913,6 +940,290 @@ describe('Passkeys: as the second factor', () => {
     await booted.application.container.make(TwoFactorStore).confirm(1, 5, 'enc', null);
     expect(await b.login()).toMatchObject({ error: { kind: 'two-factor-required', factors: ['totp'] } });
     expect(await b.send('/tf/challenge', { passkey: { id: 'x' } })).toMatchObject({ ok: false, kind: 'invalid-code' });
+  });
+});
+
+describe('Passkeys: confirming sudo mode', () => {
+  /** A signed-in browser of an account with this passkey, whose password confirmation has run out. */
+  async function unconfirmed(booted: Booted, authenticator: Device = device(), email = ada.email) {
+    const { b } = await enrolled(booted, authenticator, email);
+    await b.pk('forget-confirmed');
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+    return b;
+  }
+
+  it('confirms with a passkey of the account: a new session id, the confirmation and the factor proof set', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    await b.pk('forget-proof');
+    const before = b.jar.get('marmeon_session');
+    const options = await b.pk('confirm-options');
+    expect(options).toMatchObject({ ok: true, value: { userVerification: 'required' } });
+    expect(options.value.allowCredentials).toHaveLength(1);
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options.value) })).toEqual({ ok: true });
+    expect(b.jar.get('marmeon_session')).not.toBe(before);
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: true, proof: expect.any(Number) });
+    expect(await b.pk('who')).toEqual({ id: ada.id });
+  });
+
+  it('answers no-challenge for the options when the account has no passkey, and needs a signed-in user', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    expect(await b.pk('confirm-options')).toMatchObject({ thrown: expect.stringContaining('signed-in user') });
+    expect(await b.pk('confirm', { response: { id: 'x' } })).toMatchObject({ thrown: expect.stringContaining('signed-in user') });
+    await b.login(bob.email);
+    expect(await b.pk('confirm-options')).toEqual({ ok: false, kind: 'no-challenge' });
+    expect(await b.pk('confirm', { response: { id: 'x' } })).toMatchObject({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('refuses a passkey of another account, and the session stays unconfirmed', async () => {
+    const booted = await boot();
+    const mine = device();
+    const theirs = device();
+    const b = await unconfirmed(booted, mine);
+    await enrolled(booted, theirs, bob.email);
+    const options = (await b.pk('confirm-options')).value;
+    // Without the allow list, so that the other account's authenticator answers.
+    expect(await b.pk('confirm', { response: theirs.authenticate({ ...options, allowCredentials: [] }) })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+  });
+
+  it('refuses a suspended passkey', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    const options = (await b.pk('confirm-options')).value;
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+    expect(await b.pk('confirm-options')).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('keeps the purposes apart: a step-up, second-factor or sign-in challenge does not confirm', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    const stepUp = (await b.pk('step-up-options')).value;
+    expect(await b.pk('confirm', { response: authenticator.authenticate(stepUp) })).toMatchObject({ ok: false, kind: 'invalid' });
+    const signIn = await b.pk('sign-in-options');
+    expect(await b.pk('confirm', { response: authenticator.authenticate(signIn) })).toMatchObject({ ok: false, kind: 'invalid' });
+    // The other way round: a confirm challenge serves neither a step-up nor a passwordless sign-in.
+    const confirm = (await b.pk('confirm-options')).value;
+    expect(await b.pk('step-up', { passkey: authenticator.authenticate(confirm) })).toMatchObject({ ok: false });
+    const again = (await b.pk('confirm-options')).value;
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(again) })).toMatchObject({ ok: false });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+  });
+
+  it('works once: the same answer a second time is refused, and confirming again needs a new challenge', async () => {
+    const booted = await boot();
+    const authenticator = device('ES256', true); // a synchronised passkey has counter 0 and could be replayed without the challenge check
+    const b = await unconfirmed(booted, authenticator);
+    const options = (await b.pk('confirm-options')).value;
+    const response = authenticator.authenticate(options);
+    expect(await b.pk('confirm', { response })).toEqual({ ok: true });
+    await b.pk('forget-confirmed');
+    expect(await b.pk('confirm', { response })).toMatchObject({ ok: false, kind: 'no-challenge' });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+  });
+
+  it('refuses a challenge that ran out', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    try {
+      const booted = await boot();
+      const authenticator = device();
+      const b = await unconfirmed(booted, authenticator);
+      const options = (await b.pk('confirm-options')).value;
+      vi.setSystemTime(Date.now() + (CHALLENGE_SECONDS + 1) * 1000);
+      expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'expired' });
+      expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses an answer that is not a valid assertion and leaves the session unconfirmed', async () => {
+    const booted = await boot();
+    const b = await unconfirmed(booted);
+    await b.pk('confirm-options');
+    expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'invalid' });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+  });
+
+  it('throttles per account: the eleventh attempt in a minute waits', async () => {
+    const booted = await boot();
+    const b = await unconfirmed(booted);
+    for (let attempt = 0; attempt < 10; attempt++) expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'no-challenge' });
+    expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
+  });
+
+  it('counts a passwordless sign-in as a fresh confirmation', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    await enrolled(booted, authenticator);
+    const b = booted.browser();
+    const options = await b.pk('sign-in-options');
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(options) })).toMatchObject({ ok: true });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: true });
+    expect(await b.send('/sudo')).toEqual({ page: true });
+  });
+
+  it('keeps a route behind confirmedPassword() closed until the passkey confirmed, and opens it after', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    expect(await b.send('/sudo')).not.toEqual({ page: true });
+    const options = (await b.pk('confirm-options')).value;
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toEqual({ ok: true });
+    expect(await b.send('/sudo')).toEqual({ page: true });
+  });
+
+  it('tells the owner of a wrong answer through TwoFactorChallengeFailed (during confirm), not of a missing challenge', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const b = await unconfirmed(booted, authenticator);
+    events.length = 0;
+    expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'no-challenge' });
+    expect(events.filter((event) => event instanceof TwoFactorChallengeFailed)).toEqual([]);
+    await b.pk('confirm-options');
+    expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'invalid' });
+    const failed = events.filter((event): event is TwoFactorChallengeFailed => event instanceof TwoFactorChallengeFailed);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ during: 'confirm', user: { id: ada.id } });
+    expect(JSON.stringify(failed[0])).not.toContain('unknown');
+  });
+
+  it('does not let a passkey alone persist: adding or removing a passkey still asks for the password in the same form', async () => {
+    const booted = await boot();
+    const first = device();
+    const { b } = await enrolled(booted, first);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    await b.pk('forget-confirmed');
+    const options = (await b.pk('confirm-options')).value;
+    expect(await b.pk('confirm', { response: first.authenticate(options) })).toEqual({ ok: true });
+    // Adding: the password is part of the form.
+    expect(await addPasskey(b, device('ES256'), 'Tablet', null)).toEqual({ ok: false, kind: 'invalid-password' });
+    // Removing one that is not the last factor, the last factor, and a suspended one.
+    expect(await b.pk('remove', { id: 2 })).toEqual({ ok: false, kind: 'invalid-password' });
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 2).execute();
+    expect(await b.pk('remove', { id: 2 })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 1 })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(2);
+    expect(await b.pk('remove', { id: 2, password: 'secret' })).toMatchObject({ ok: true });
+  });
+
+  it('does not take a confirmation time in the future for a confirmation', async () => {
+    const booted = await boot();
+    const b = await unconfirmed(booted);
+    await b.pk('set-confirmed', { value: Math.floor(Date.now() / 1000) + 3600 });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
+    await b.pk('set-confirmed', { value: Math.floor(Date.now() / 1000) });
+    expect(await b.pk('confirmed')).toMatchObject({ confirmed: true });
+  });
+
+  it('lets only one of several parallel answers to one challenge confirm', async () => {
+    const booted = await boot();
+    const authenticator = device('ES256', true); // counter 0: nothing but the challenge stops a replay
+    const b = await unconfirmed(booted, authenticator);
+    const options = (await b.pk('confirm-options')).value;
+    const response = authenticator.authenticate(options);
+    const answers = await Promise.all([1, 2, 3].map(() => b.pk('confirm', { response })));
+    expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
+  });
+});
+
+describe('Passkeys: password checks of a passkey-only session', () => {
+  /** A fresh browser of `email`'s account that signed in with the passkey alone: nobody typed a password in it. */
+  async function passkeyOnly(booted: Booted, authenticator: Device) {
+    const b = booted.browser();
+    const options = await b.pk('sign-in-options');
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(options) })).toMatchObject({ ok: true });
+    expect(await b.pk('scope')).toMatchObject({ typed: false });
+    return b;
+  }
+  const wrong = (b: Browser, id = 1) => b.pk('remove', { id, password: 'wrong' });
+
+  it('lets the owner, who typed the password to sign in, still remove the passkey after a passkey-only session used up the account', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    expect(await owner.pk('scope')).toMatchObject({ typed: true });
+    // Four sessions with five wrong passwords each fill the account's twenty an hour; each is stopped by its own minute first.
+    for (let session = 0; session < 4; session++) {
+      const attacker = await passkeyOnly(booted, authenticator);
+      for (let attempt = 0; attempt < 5; attempt++) expect(await wrong(attacker)).toEqual({ ok: false, kind: 'invalid-password' });
+      const held = await wrong(attacker);
+      expect(held).toMatchObject({ ok: false, kind: 'throttled' });
+      expect(held).not.toHaveProperty('account');
+    }
+    // A fifth has a fresh session budget, yet the account is used up for passkey-only sessions (the cap is shared).
+    // … and says so: the way out is to sign in again with the password, not to wait.
+    expect(await wrong(await passkeyOnly(booted, authenticator))).toMatchObject({ ok: false, kind: 'throttled', account: true });
+    // The owner's session began with the typed password: the account's cap does not apply to it.
+    expect(await owner.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
+  });
+
+  it('keeps the owner\'s own windows: five wrong passwords in a signed-in-by-password session stop that session', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    for (let attempt = 0; attempt < 5; attempt++) expect(await wrong(b)).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: false, kind: 'throttled' });
+  });
+
+  it('marks a sign-in as typed only when it began with the password: not a passkey, not login(), and a new sign-in has a new key', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    const typed = await b.pk('scope');
+    expect(typed).toMatchObject({ typed: true, session: expect.any(String) });
+    await b.pk('login-as', { id: bob.id });
+    const replaced = await b.pk('scope');
+    expect(replaced).toMatchObject({ typed: false });
+    expect(replaced.session).not.toBe(typed.session);
+    const viaPasskey = await passkeyOnly(booted, authenticator);
+    expect((await viaPasskey.pk('scope')).session).not.toBe(typed.session);
+  });
+
+  it('keeps the sign-in\'s key when the session id changes within it', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    await b.pk('forget-confirmed');
+    const before = await b.pk('scope');
+    const cookie = b.jar.get('marmeon_session');
+    const options = (await b.pk('confirm-options')).value;
+    expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toEqual({ ok: true });
+    expect(b.jar.get('marmeon_session')).not.toBe(cookie);
+    expect(await b.pk('scope')).toEqual(before);
+  });
+
+  it('does not let a passkey-only session burn the code budget of the owner\'s setup by guessing passwords in confirm()', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const attacker = await passkeyOnly(booted, authenticator);
+    await attacker.pk('tf-begin');
+    for (let attempt = 0; attempt < 5; attempt++) expect(await attacker.pk('tf-confirm', { code: '000000', password: 'wrong' })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await attacker.pk('tf-confirm', { code: '000000', password: 'wrong' })).toMatchObject({ ok: false, kind: 'throttled' });
+    // The owner sets up their own authenticator: the guesses spent no code budget of the account.
+    const { secret } = await owner.pk('tf-begin');
+    expect(await owner.pk('tf-confirm', { code: twoFactorCode(secret), password: 'secret' })).toEqual({ ok: true });
+  });
+
+  it('asks a passkey-only session for the password to make new recovery codes, and the owner\'s codes stay when it is wrong', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const codesBefore = await rows(booted, RECOVERY_CODES_TABLE);
+    const attacker = await passkeyOnly(booted, authenticator);
+    expect(await attacker.pk('regenerate')).toMatchObject({ ok: false, kind: 'invalid-password' });
+    // The empty form field counts no try: five wrong passwords are still answered as wrong, the sixth is held up.
+    for (let attempt = 0; attempt < 5; attempt++) expect(await attacker.pk('regenerate', { password: 'wrong' })).toMatchObject({ ok: false, kind: 'invalid-password' });
+    expect(await attacker.pk('regenerate', { password: 'wrong' })).toMatchObject({ ok: false, kind: 'throttled' });
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).toEqual(codesBefore);
+    expect(await owner.pk('regenerate', { password: 'secret' })).toMatchObject({ ok: true, codes: expect.any(Array) });
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).not.toEqual(codesBefore);
   });
 });
 
@@ -1078,7 +1389,7 @@ describe('Passkeys: as a step-up', () => {
     expect(await b.pk('step-up', { passkey: authenticator.authenticate(options, { userVerified: false }) })).toMatchObject({ ok: false, kind: 'invalid-code' });
     const response = authenticator.authenticate((await b.pk('step-up-options')).value);
     await b.pk('set-proof');
-    expect(await b.pk('remove', { id: 1 })).toMatchObject({ ok: true });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
     await b.pk('forget-proof');
     expect(await b.pk('step-up', { passkey: response })).toMatchObject({ ok: false, kind: 'invalid-code' });
     expect(await b.send('/area')).toEqual({ error: 'two_factor_unverified' });
@@ -1169,7 +1480,7 @@ describe('Passkeys: changing the factors of an account that has one', () => {
     expect(await b.pk('step-up', { passkey: authenticator.authenticate((await b.pk('step-up-options')).value) })).toEqual({ ok: true });
     expect(await addPasskey(b, device('EdDSA'), 'Phone')).toMatchObject({ ok: true });
     await b.pk('set-proof', { value: Math.floor(Date.now() / 1000) - 900 });
-    expect(await b.pk('remove', { id: 2 })).toMatchObject({ ok: true });
+    expect(await b.pk('remove', { id: 2, password: 'secret' })).toMatchObject({ ok: true });
     await b.pk('set-proof', { value: Math.floor(Date.now() / 1000) - 901 });
     expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject(needsProof);
   });
@@ -1226,24 +1537,31 @@ describe('Passkeys: managing', () => {
     expect(await booted.browser().login()).toEqual({ signedIn: true });
   });
 
-  it('removes a passkey without a password while another factor remains, and keeps the recovery codes', async () => {
+  it('removes a passkey while another factor remains, and keeps the recovery codes', async () => {
     const booted = await boot();
     const { b } = await enrolled(booted);
     await addPasskey(b, device('EdDSA'), 'Phone');
-    expect(await b.pk('remove', { id: 1 })).toMatchObject({ ok: true });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
     expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(10);
-    expect(await b.pk('remove', { id: 99 })).toEqual({ ok: false, kind: 'not-found' });
+    expect(await b.pk('remove', { id: 99, password: 'secret' })).toEqual({ ok: false, kind: 'not-found' });
   });
 
-  it('two parallel removals of the last two passkeys without a password leave one', async () => {
+  it('two parallel removals of the last two passkeys, with the password, leave no factor and no recovery codes behind', async () => {
     const booted = await boot();
     const { b } = await enrolled(booted);
     await addPasskey(b, device('EdDSA'), 'Phone');
-    const answers = await Promise.all([b.pk('remove', { id: 1 }), b.pk('remove', { id: 2 })]);
-    expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
-    expect(answers.find((answer) => !answer.ok)).toEqual({ ok: false, kind: 'invalid-password' });
-    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(1);
-    expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(10);
+    const answers = await Promise.all([b.pk('remove', { id: 1, password: 'secret' }), b.pk('remove', { id: 2, password: 'secret' })]);
+    expect(answers.filter((answer) => answer.ok)).toHaveLength(2);
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+    expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(0);
+  });
+
+  it('takes an empty password for none: nothing is counted against the throttle', async () => {
+    const booted = await boot();
+    const { b } = await enrolled(booted);
+    for (let i = 0; i < 12; i++) expect(await b.pk('remove', { id: 1, password: '' })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 1 })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
   });
 
   it('throttles the password of remove() with the one of register()', async () => {
@@ -1253,13 +1571,13 @@ describe('Passkeys: managing', () => {
     expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: false, kind: 'throttled' });
   });
 
-  it('a TOTP factor beside the last passkey makes removing it free of the password', async () => {
+  it('a TOTP factor beside the last passkey keeps the recovery codes when the passkey goes', async () => {
     const booted = await boot();
     const { b } = await enrolled(booted);
     const store = booted.application.container.make(TwoFactorStore);
     await store.startSetup(1, 'enc');
     await store.confirm(1, 5, 'enc', null);
-    expect(await b.pk('remove', { id: 1 })).toMatchObject({ ok: true });
+    expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
     expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(10);
   });
 });

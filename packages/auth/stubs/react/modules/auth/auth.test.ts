@@ -215,11 +215,24 @@ describe('the session key', { timeout: 30_000 }, () => {
   });
 });
 
+describe('password checks of a signed-in user', () => {
+  it('stop at twenty an hour, though a right password clears the minute', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const session = continuing(await app.post('/login', credentials(ada)));
+    // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
+    for (let round = 0; round < 4; round++) {
+      for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
+      await session.post('/confirm-password', { form: { password: 'password' } });
+    }
+    await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid({ password: /^Too many attempts/ });
+  });
+});
+
 describe('API tokens', { timeout: 30_000 }, () => {
   it('creates a token shown once; the API takes it until it is revoked', async () => {
     const ada = await app.factory(UserFactory).create();
     const sudo = continuing(await app.post('/login', credentials(ada)));
-    const page = await sudo.navigating().post('/settings/tokens', { json: { name: 'CLI', abilities: ['users:read'] } }).assertOk();
+    const page = await sudo.navigating().post('/settings/tokens', { json: { current_password: 'password', name: 'CLI', abilities: ['users:read'] } }).assertOk();
     const plainText = (page.page()!.props as { plainText: string }).plainText;
     const api = (token: string) => app.withHeaders({ authorization: `Bearer ${token}` }).expectingJson();
 
