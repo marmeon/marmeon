@@ -42,7 +42,7 @@ development warning appears, and an error page rendered on the server carries no
 
 The devtools at `/_marmeon/devtools` and the mail previews at `/_marmeon/mail` exist only with `NODE_ENV=development`. They sit
 behind one host guard, `devOnly()` of `@marmeon/core/dev`: it answers `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL`,
-and gives every other `Host` a 403 before the handler runs. Every answer is `no-store` and `nosniff`, carries no CORS header, and
+and gives every other `Host`, and every connection that does not come from this machine, a 403 before the handler runs. Every answer is `no-store` and `nosniff`, carries no CORS header, and
 is shared with no other origin, neither as a resource nor as a window.
 
 The attack it stops is DNS rebinding. A page on `evil.example` points its own name at `127.0.0.1`, reaches the developer's server

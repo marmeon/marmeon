@@ -1,11 +1,14 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { get as httpGet } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { createServer as createNetServer, type AddressInfo, type Server as NetServer } from 'node:net';
 import { dirname, join } from 'node:path';
+import { devHosts, devOnly } from '@marmeon/core/dev';
 import { createApplication, defineModule, Logger } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
-import { RouteAccessError } from '@marmeon/router';
+import { everyone, RouteAccessError } from '@marmeon/router';
 import { describe, expect, it, vi } from 'vitest';
 import { startServer } from './kernel.ts';
 import { createViteDevRenderer } from './vite.ts';
@@ -75,6 +78,60 @@ describe('startServer', () => {
       await running.close();
       await app.shutdown();
     }
+  });
+
+  describe('a development route in development (through the Vite middleware)', () => {
+    const lan = Object.values(networkInterfaces())
+      .flat()
+      .find((address) => address?.family === 'IPv4' && !address.internal)?.address;
+
+    const boot = async () => {
+      const app = await createApplication({
+        root,
+        discover: false,
+        env: { APP_KEY: generateKey(), PORT: '1' },
+        providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+        modules: [
+          defineModule({
+            name: 'playground',
+            routes: defineRoutes((Route) => Route.authorize(everyone).get('/_playground', devOnly(devHosts(undefined), () => new Response('ok')))),
+          }),
+        ],
+      });
+      const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '0.0.0.0', port: 0, mode: 'development' });
+      return { app, running, port: (running.server.address() as AddressInfo).port };
+    };
+    const status = (host: string, port: number) =>
+      new Promise<number>((resolve, reject) => {
+        httpGet({ host, port, path: '/_playground', headers: { host: 'localhost' } }, (response) => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        }).on('error', reject);
+      });
+
+    it('answers the loopback peer — the socket peer arrives through Vite\'s middleware (no fail-closed)', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      const { app, running, port } = await boot();
+      try {
+        expect(await status('127.0.0.1', port)).toBe(200);
+      } finally {
+        await running.close();
+        await app.shutdown();
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it.skipIf(!lan)('refuses a peer on the network, although it sends Host: localhost — no fail-open', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      const { app, running, port } = await boot();
+      try {
+        expect(await status(lan as string, port)).toBe(403);
+      } finally {
+        await running.close();
+        await app.shutdown();
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   describe('a program holding the port on 127.0.0.1', () => {

@@ -25,7 +25,7 @@ What the starter kit has, and a little more — each part tested here:
 - **Headers:** `middleware/SecurityHeaders.ts` (`nosniff`, a referrer policy, `X-Frame-Options`, an HSTS switch) and
   `contentSecurityPolicy({ styleSrc: ["'self'", NONCE], frameAncestors: ["'none'"] })` — a nonce per document, no inline
   style (`pnpm csp:probe` counts 0 violations) — in `bootstrap/app.ts`.
-- **More defaults:** development routes answer 404 outside development and 403 to a foreign host (`devOnly()`); `NODE_ENV` is
+- **More defaults:** development routes answer 404 outside development and 403 to a foreign host or another machine (`devOnly()`); `NODE_ENV` is
   asked positively; accounts that never confirmed an address go after 7 days, with their avatar, data export and
   notifications; the CSRF token is drawn on demand; validation never answers "taken" live; the lab
   (`/lab/validation`) shows the rules, `when`, an async check, `exists` and `failOnDuplicate()` after a race.

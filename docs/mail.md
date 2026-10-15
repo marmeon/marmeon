@@ -244,7 +244,7 @@ A preview builds its mail from sample data: `make()` of a factory, never `create
 exported classes in `modules/<module>/mail/*.ts`.
 
 The previews exist only with `NODE_ENV=development`, the rule of every development tool. They answer only `localhost`,
-`127.0.0.1`, `[::1]` and the host of `APP_URL`, so a page on another site cannot reach them through DNS rebinding. The mail's HTML
+`127.0.0.1`, `[::1]` and the host of `APP_URL`, so a page on another site cannot reach them through DNS rebinding, and only from the machine that runs the server. The mail's HTML
 is shown in a sandboxed frame, and no script of a template runs. The [devtools](devtools.md) link to them.
 
 ## Observation

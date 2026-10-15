@@ -179,9 +179,9 @@ to the entry.
 ### How the pages are protected
 
 - **Development only.** The routes exist only where the devtools run. Elsewhere they are not registered.
-- **Local hosts only.** A request whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or the host of `APP_URL` gets `403`. This
-  stops DNS rebinding: a page on another site that points its own name at your machine cannot read the devtools. The
-  [security](security.md#development-routes) page explains the guard all development routes share.
+- **This machine, local hosts only.** A request whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or the host of `APP_URL`, or
+  that comes from another machine, gets `403`. The host check stops DNS rebinding: a page on another site that points its own name at your machine
+  cannot read the devtools. The [security](security.md#development-routes) page explains the guard all development routes share.
 - **Read only.** Every route answers `GET` only, and none changes anything.
 - **No session, no cookies.** The routes belong to no middleware group.
 - **Strict headers.** Every answer is `no-store` and `nosniff`, has a strict `Content-Security-Policy` of its own that only this

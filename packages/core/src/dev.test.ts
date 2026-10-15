@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { devHosts, devOnly, devSecured, fromRemotePeer, hostAllowed, LOOPBACK_HOSTS, markRemotePeer } from './dev.ts';
 
@@ -119,6 +121,15 @@ describe('the guard of every development route', () => {
       const other = request('localhost');
       markRemotePeer(other);
       expect(copy.fromRemotePeer(other)).toBe(true);
+    });
+
+    it('stops the import when something that is no WeakSet already sits on the shared key', () => {
+      // The key cannot be unset in this process once the module defined it, so a fresh process plants the fake.
+      const dev = fileURLToPath(new URL('./dev.ts', import.meta.url));
+      const script = `globalThis[Symbol.for('marmeon.dev.remotePeers')] = { has: () => false, add() {} };
+        try { await import(${JSON.stringify(dev)}); console.log('imported'); } catch (e) { console.log('threw: ' + e.message); }`;
+      const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+      expect(out).toMatch(/^threw: .*is not a WeakSet/);
     });
 
     it('is not marked in a copy', () => {

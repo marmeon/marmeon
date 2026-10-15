@@ -37,6 +37,12 @@ export function proxyMatcher(entries: readonly string[]): (address: string) => b
   };
 }
 
+/**
+ * Whether an address is this machine's: `127.0.0.0/8`, `::1` and their IPv4-mapped forms (`::ffff:127.0.0.1`). Anything else,
+ * a value that is no IP address included, is not (fail-closed).
+ */
+export const isLoopbackAddress: (address: string) => boolean = proxyMatcher(['127.0.0.0/8', '::1']);
+
 /** A host as `X-Forwarded-Host` may name it: a name or an address, with an optional port — nothing else reaches the URL. */
 const HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*|\[[0-9a-f:.]+\])(?::\d{1,5})?$/i;
 

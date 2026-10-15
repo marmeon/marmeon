@@ -78,11 +78,14 @@ export function forbiddenDevHost(): Response {
 
 // One set per process, not per copy of this module: the server kernel may carry its own copy of @marmeon/core, and a set it
 // marks in must be the one an app's `devOnly()` reads — otherwise a second copy fails open. Fixed on `globalThis`, so it
-// cannot be swapped for an empty one. A request that is copied is a new object and not marked.
+// cannot be swapped for an empty one; a value already there that is not a WeakSet stops the import. A request that is copied
+// is a new object and not marked.
 const PEERS = Symbol.for('marmeon.dev.remotePeers');
-const shared = globalThis as { [PEERS]?: WeakSet<Request> };
+const shared = globalThis as { [PEERS]?: unknown };
 if (!Object.hasOwn(shared, PEERS)) Object.defineProperty(shared, PEERS, { value: new WeakSet<Request>() });
-const remotePeers = shared[PEERS] as WeakSet<Request>;
+const found = shared[PEERS];
+if (!(found instanceof WeakSet)) throw new Error('marmeon.dev.remotePeers on globalThis is not a WeakSet; refusing to guard development routes with it.');
+const remotePeers: WeakSet<Request> = found;
 
 /**
  * Records that `request` came over a connection that is not from this machine, so {@link devOnly} refuses it.

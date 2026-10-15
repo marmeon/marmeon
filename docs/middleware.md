@@ -330,7 +330,7 @@ The [authentication](authentication.md), [API tokens](api-tokens.md), [rate limi
 [URL generation](urls.md) and [responses](responses.md#headers) pages explain them in detail.
 
 `devOnly(hosts, handler)` of `@marmeon/core/dev` is no middleware of its own: it wraps a middleware's `handle` or a route's
-closure, and answers only with `NODE_ENV` `development` or `test`, and only for the hosts in `hosts`. `devHosts()` builds that set
+closure, and answers only with `NODE_ENV` `development` or `test`, only for the hosts in `hosts`, and only for connections from this machine. `devHosts()` builds that set
 with the loopback names. The routing page covers [development-only routes](routing.md#development-only-routes).
 
 ## Testing

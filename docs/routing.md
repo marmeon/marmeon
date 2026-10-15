@@ -703,6 +703,11 @@ origin.
 The host check stops DNS rebinding. A page on another site can point its own domain at `127.0.0.1` and then read your
 development server as if it were its own. A request for a host the guard does not know never reaches the handler.
 
+The guard also answers only connections from this machine. A client on the same network can send `Host: localhost` to your
+laptop, so the server marks a request whose connection comes from another address and the guard gives it a 403. Behind a trusted
+proxy (`TRUSTED_PROXIES`), both the proxy's address and the client it names must be loopback, so a proxy on this machine does not
+make a client on the network local. A request made in-process, as in a test, has no connection and passes.
+
 > [!NOTE]
 > Apart from `NODE_ENV`, values from `.env` reach the app's configuration, not `process.env`. A guard built in a route file from
 > `process.env.APP_URL` misses an `APP_URL` of `.env` and answers the loopback names alone.

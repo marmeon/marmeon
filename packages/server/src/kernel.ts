@@ -5,6 +5,7 @@ import { heldOnLoopback } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { fromRemotePeer, markRemotePeer } from '@marmeon/core/dev';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
@@ -66,7 +67,7 @@ import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { checkHealthPaths, createHealthEndpoints } from './health.ts';
 import { ServerConfig } from './provider.ts';
-import { forwardedRequest, proxyMatcher } from './proxies.ts';
+import { forwardedRequest, isLoopbackAddress, proxyMatcher } from './proxies.ts';
 import { serveAssets } from './assets.ts';
 import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
@@ -525,6 +526,10 @@ export function createHttpKernel(
     // An island resolved in-process is from where its page's request is from.
     const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), forwardedTrust);
     addresses.set(request, ip);
+    // Development routes answer this machine only. Both the socket's peer and, behind a trusted proxy, the client it names
+    // count: a proxy on this machine must not make a network client local, and `TRUSTED_PROXIES=*` must not let a client
+    // write itself local. An in-process request has no peer; an island or a layer's base is from where its page is.
+    if (parent ? fromRemotePeer(parent.request) : remote !== undefined && !(isLoopbackAddress(remote) && (ip === undefined || isLoopbackAddress(ip)))) markRemotePeer(request);
     // The response's CSP nonce: made only when a document needs it — the same for the header, React and the template.
     const nonce = new RequestNonce();
     scope.instance(RequestNonce, nonce);
