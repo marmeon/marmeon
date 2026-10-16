@@ -309,37 +309,37 @@ describe('AccountSessions.endEveryone()', () => {
     expect(await without.accounts.endEveryone()).toMatchObject({ signIns: 0 });
   });
 
-  it('keeps API tokens unless asked, and revokes every one of them when asked', async () => {
+  it('revokes every API token by default, and keeps them when asked', async () => {
     const { accounts, container } = await boot(memory, new Users());
     const tokens = container.make(AccessTokenStore);
     const first = await tokens.create(1, 'ci');
     const second = await tokens.create(2, 'cli');
 
-    expect(await accounts.endEveryone()).toMatchObject({ accessTokens: 0 });
-    expect(await tokens.find(first.plainText), 'kept by default').toBeDefined();
+    expect(await accounts.endEveryone({ accessTokens: false })).toMatchObject({ accessTokens: 0 });
+    expect(await tokens.find(first.plainText), 'kept when asked').toBeDefined();
 
-    expect(await accounts.endEveryone({ accessTokens: true })).toMatchObject({ accessTokens: 2 });
+    expect(await accounts.endEveryone()).toMatchObject({ accessTokens: 2 });
     expect(await tokens.find(first.plainText)).toBeUndefined();
     expect(await tokens.find(second.plainText)).toBeUndefined();
     expect(events.at(-1)).toMatchObject({ accessTokens: 2 });
   });
 
-  it('keeps password-reset tokens unless asked, and deletes every one when asked: a link mailed before does not work after', async () => {
+  it('keeps password-reset tokens when asked', async () => {
     const { accounts, container } = await boot(memory, new Users());
     const resets = container.make(PasswordResetTokenStore);
     const kept = await resets.create(ada.email, 0);
-    expect(await accounts.endEveryone()).toMatchObject({ resetTokens: 0 });
-    expect((await resets.consume(ada.email, kept.ok ? kept.value : '', 3600)).ok, 'kept by default').toBe(true);
+    expect(await accounts.endEveryone({ resetTokens: false })).toMatchObject({ resetTokens: 0 });
+    expect((await resets.consume(ada.email, kept.ok ? kept.value : '', 3600)).ok, 'kept when asked').toBe(true);
   });
 
-  it('deletes every password-reset token when asked', async () => {
+  it('deletes every password-reset token by default: a link mailed before does not work after', async () => {
     const { accounts, container } = await boot(memory, new Users());
     const resets = container.make(PasswordResetTokenStore);
     const made = await resets.create(ada.email, 0);
     await resets.create(bob.email, 0);
     expect(made.ok).toBe(true);
 
-    expect(await accounts.endEveryone({ resetTokens: true })).toMatchObject({ resetTokens: 2 });
+    expect(await accounts.endEveryone()).toMatchObject({ resetTokens: 2 });
     expect((await resets.consume(ada.email, made.ok ? made.value : '', 3600)).ok).toBe(false);
   });
 
@@ -364,13 +364,13 @@ describe('AccountSessions.endEveryone()', () => {
       },
     });
     await browser().send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone({ resetTokens: true })).rejects.toThrow(/PasswordResetTokenStore\.forgetEveryone\(\).*Nothing was changed/s);
+    await expect(accounts.endEveryone()).rejects.toThrow(/PasswordResetTokenStore\.forgetEveryone\(\).*--keep-reset-tokens.*Nothing was changed/s);
     expect(await count(REMEMBER_TABLE), 'the tokens stay').toBe(1);
     expect([...users.rows.values()].map((row) => row.key)).toEqual([null, null, null]);
-    expect(await accounts.endEveryone(), 'not asked: the store is not needed').toMatchObject({ accounts: 3 });
+    expect(await accounts.endEveryone({ resetTokens: false }), 'kept: the store is not needed').toMatchObject({ accounts: 3 });
   });
 
-  it('refuses an API-token store without revokeEveryone() only when asked to revoke API tokens', async () => {
+  it('refuses an API-token store without revokeEveryone() unless the API tokens are kept', async () => {
     const users = new Users();
     const { browser, accounts, count } = await boot(memory, users, {
       override: (c) => {
@@ -379,9 +379,9 @@ describe('AccountSessions.endEveryone()', () => {
       },
     });
     await browser().send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone({ accessTokens: true })).rejects.toThrow(/AccessTokenStore\.revokeEveryone\(\).*Nothing was changed/s);
+    await expect(accounts.endEveryone()).rejects.toThrow(/AccessTokenStore\.revokeEveryone\(\).*--keep-api-tokens.*Nothing was changed/s);
     expect(await count(REMEMBER_TABLE)).toBe(1);
-    expect(await accounts.endEveryone(), 'not asked: the store is not needed').toMatchObject({ accounts: 3 });
+    expect(await accounts.endEveryone({ accessTokens: false }), 'kept: the store is not needed').toMatchObject({ accounts: 3 });
   });
 
   it('fails closed when the sample account cannot be read back', async () => {
@@ -438,6 +438,23 @@ describe('AccountSessions.endEveryone()', () => {
     await expect(accounts.endEveryone({ resetTokens: true })).rejects.toThrow(/failed at "password-reset tokens".*rememberTokens 1, accounts 3.*every session is already ended; still missing: resetTokens/s);
     expect(await count(REMEMBER_TABLE)).toBe(0);
     expect((await laptop.send('/me')).status, 'the keys did their work').toBe(401);
+  });
+
+  it('a reset or API token step that fails names the way to keep those tokens', async () => {
+    const reset = await boot(memory, new Users(), {
+      override: (c) => {
+        const real = c.make(PasswordResetTokenStore);
+        c.instance(PasswordResetTokenStore, { ...real, create: (...a: [never, never]) => real.create(...a), consume: (...a: [never, never, never]) => real.consume(...a), forget: (e: never) => real.forget(e), prune: (g: never) => real.prune(g), forgetEveryone: async () => Promise.reject(new Error('no table')) } as never);
+      },
+    });
+    await expect(reset.accounts.endEveryone()).rejects.toThrow(/failed at "password-reset tokens".*--keep-reset-tokens/s);
+    const api = await boot(memory, new Users(), {
+      override: (c) => {
+        const real = c.make(AccessTokenStore);
+        c.instance(AccessTokenStore, { create: (...a: [never, never]) => real.create(...a), find: (t: never) => real.find(t), touch: (t: never) => real.touch(t), list: (i: never) => real.list(i), revoke: (u: never, i: never) => real.revoke(u, i), revokeAll: (i: never) => real.revokeAll(i), prune: (g: never) => real.prune(g), revokeEveryone: async () => Promise.reject(new Error('no table')) } as never);
+      },
+    });
+    await expect(api.accounts.endEveryone()).rejects.toThrow(/failed at "API tokens".*--keep-api-tokens/s);
   });
 
   it('a failure before the keys are written says they are NOT rotated, and a second call finishes', async () => {

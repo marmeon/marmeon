@@ -61,23 +61,51 @@ describe('auth:end-all-sessions', () => {
     expect(await run({})).toBe(1);
     expect(lines[0]).toBe(`Environment: ${environment.describe()}`);
     expect(lines[1]).toContain('pass --force');
-    for (const word of ['remember-me', '--api-tokens', '--reset-tokens']) expect(lines[1]).toContain(word);
+    for (const word of ['remember-me', '--keep-api-tokens', '--keep-reset-tokens', 'Passkeys']) expect(lines[1]).toContain(word);
     expect(users.key).toBeNull();
     expect(await rows(REMEMBER_TABLE)).toBe(1);
   });
 
-  it('ends every session with --force, keeps the API and reset tokens, and prints the counts', async () => {
+  it('ends every session with --force, revokes the API and reset tokens, and says what it did not touch', async () => {
     const { users, run, lines, rows, access, token, info } = await setup();
     expect(await run({ force: true })).toBe(0);
     expect(users.key).toMatch(/^[\w-]{43}$/);
     expect(await rows(REMEMBER_TABLE)).toBe(0);
-    expect(await rows(PASSWORD_RESET_TABLE)).toBe(1);
-    expect(await access.find(token.plainText)).toBeDefined();
+    expect(await rows(PASSWORD_RESET_TABLE)).toBe(0);
+    expect(await access.find(token.plainText)).toBeUndefined();
     expect(lines).toEqual([
       `Environment: ${environment.describe()}`,
-      `Ended every session of 1 account: 1 remember-me token and 0 sign-ins deleted. Sessions of every driver end at their next request (environment: ${environment.describe()}).`,
+      `Ended every session of 1 account: 1 remember-me token and 0 sign-ins deleted, 1 password-reset token deleted, 1 API token revoked. Sessions of every driver end at their next request (environment: ${environment.describe()}).`,
+      expect.stringMatching(/^Not touched: passkeys, second factors .*PasskeyRegistered, TwoFactorEnabled, RecoveryCodesGenerated.*auth:reset-two-factor/),
     ]);
     expect(info).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ operator: userInfo().username, host: hostname(), accounts: 1, rememberTokens: 1 }));
+  });
+
+  it('keeps the tokens it is told to keep, and names them', async () => {
+    const { run, lines, rows, access, token } = await setup();
+    expect(await run({ force: true, 'keep-api-tokens': true })).toBe(0);
+    expect(await access.find(token.plainText), 'kept').toBeDefined();
+    expect(await rows(PASSWORD_RESET_TABLE)).toBe(0);
+    expect(lines[1]).toContain('1 password-reset token deleted');
+    expect(lines[1]).not.toContain('API token');
+    expect(lines[2]).toBe('Kept as asked: API tokens.');
+
+    expect(await run({ force: true, 'keep-api-tokens': true, 'keep-reset-tokens': true })).toBe(0);
+    expect(lines.at(-2)).toBe('Kept as asked: API tokens and password-reset tokens.');
+  });
+
+  it('refuses --api-tokens and --reset-tokens, which are the default now, and ends nothing', async () => {
+    const { users, run, lines, rows, access, token } = await setup();
+    for (const [flag, kept] of [['api-tokens', 'keep-api-tokens'], ['reset-tokens', 'keep-reset-tokens']] as const) {
+      lines.length = 0;
+      expect(await run({ force: true, [flag]: true })).toBe(1);
+      expect(lines).toEqual([expect.stringContaining(`--${flag} no longer exists`)]);
+      expect(lines[0]).toContain(`--${kept}`);
+    }
+    expect(users.key).toBeNull();
+    expect(await rows(REMEMBER_TABLE)).toBe(1);
+    expect(await rows(PASSWORD_RESET_TABLE)).toBe(1);
+    expect(await access.find(token.plainText)).toBeDefined();
   });
 
   it('takes no arguments: a mistyped per-account call changes nothing', async () => {
@@ -92,17 +120,28 @@ describe('auth:end-all-sessions', () => {
     expect(AuthServiceProvider.commands).toContain(EndAllSessionsCommand);
   });
 
-  it('passes --api-tokens and --reset-tokens through', async () => {
-    const { run, lines, rows, access, token } = await setup();
-    expect(await run({ force: true, 'api-tokens': true, 'reset-tokens': true })).toBe(0);
-    expect(await rows(PASSWORD_RESET_TABLE)).toBe(0);
-    expect(await access.find(token.plainText)).toBeUndefined();
-    expect(lines[1]).toContain('1 password-reset token deleted, 1 API token revoked');
-
+  it('passes the --keep options through', async () => {
     const endEveryone = vi.fn(async () => ({ accounts: 0, rememberTokens: 0, resetTokens: 0, accessTokens: 0, signIns: 0 }));
+    const { run } = await setup();
     await run({ force: true }, { endEveryone });
-    await run({ force: true, 'api-tokens': true }, { endEveryone });
-    expect(endEveryone.mock.calls).toEqual([[{ accessTokens: false, resetTokens: false }], [{ accessTokens: true, resetTokens: false }]]);
+    await run({ force: true, 'keep-api-tokens': true }, { endEveryone });
+    await run({ force: true, 'keep-reset-tokens': true }, { endEveryone });
+    expect(endEveryone.mock.calls).toEqual([
+      [{ accessTokens: true, resetTokens: true }],
+      [{ accessTokens: false, resetTokens: true }],
+      [{ accessTokens: true, resetTokens: false }],
+    ]);
+  });
+
+  it('refuses before changing anything when an API-token store cannot revoke every token', async () => {
+    const { users, run, lines, rows } = await setup();
+    const remember = new DatabaseRememberTokens(connections, new TestClock());
+    const stubborn = new AccountSessions(new Users(), remember, undefined, undefined, undefined, undefined, () => ({ forgetEveryone: async () => 0 }) as never, () => ({}) as never);
+    expect(await run({ force: true }, stubborn)).toBe(1);
+    expect(lines[1]).toContain('AccessTokenStore.revokeEveryone()');
+    expect(lines[1]).toContain('--keep-api-tokens');
+    expect(users.key).toBeNull();
+    expect(await rows(REMEMBER_TABLE)).toBe(1);
   });
 
   it('prints the thrown state message and exits non-zero when it fails', async () => {
