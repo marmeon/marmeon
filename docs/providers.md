@@ -7,7 +7,7 @@ A service provider sets up the services of a module or a package when the app st
 defining a rate limit. Each framework package brings its own provider, and a module adds one when it has something to set up.
 
 ```ts title="modules/notes/NotesServiceProvider.ts"
-import { Limit, RateLimiter } from '@marmeon/cache';
+import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { NoteRepository } from './NoteRepository.ts';
 import { DatabaseNoteSearch } from './DatabaseNoteSearch.ts';
@@ -21,7 +21,7 @@ export class NotesServiceProvider implements ServiceProvider {
 
   boot(app: Application): void {
     // Sharing a note: 30 a minute per signed-in user.
-    app.container.make(RateLimiter).for('notes-share', (ctx) => Limit.perMinute(30).by(String(ctx.user?.id ?? ctx.ip)));
+    app.container.make(RateLimiter).for('notes-share', (ctx) => Limit.perMinute(30).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
   }
 }
 ```

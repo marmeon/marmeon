@@ -67,6 +67,16 @@ describe('LimitLiveValidation', () => {
     expect((await app.request('/api/login', request('ada@example.com'))).status).toBe(204);
   });
 
+  it('counts a whole IPv6 /64 as one client — rotating the address inside it opens no new budget', async () => {
+    const app = await boot();
+    const answers: number[] = [];
+    for (let i = 1; i <= DEFAULT_LIVE_VALIDATION_LIMIT + 1; i++) {
+      const { headers, ...init } = request('ada@example.com');
+      answers.push((await app.request('/api/subscribe', { ...init, headers }, { incoming: { socket: { remoteAddress: `2001:db8:1:2::${i.toString(16)}` } } })).status);
+    }
+    expect(answers.at(-1)).toBe(429);
+  });
+
   it("never counts against the route's own limit (the login's tries stay) — but is held to it", async () => {
     const app = await boot();
     // Five checks of the login form, then the three sign-ins its limit allows — none used up by the checks.

@@ -148,7 +148,7 @@ afterwards:
 
 ```ts title="modules/auth/controllers/LoginController.ts"
 import { Auth, Lockout } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
+import { clientKey, RateLimiter } from '@marmeon/cache';
 import { EventDispatcher } from '@marmeon/core';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
@@ -180,7 +180,7 @@ export class LoginController extends Controller {
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password, remember } = ctx.body;
-    const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
+    const key = `login:${email}|${clientKey(ctx.ip)}`;
     if (!(await this.#limiter.attempt(key, 5, 60))) {
       await this.#events.dispatch(new Lockout(email, ctx.ip));
       throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds: await this.#limiter.availableIn(key) })] }, { email });
@@ -214,7 +214,11 @@ configured ones, `attempt()` hashes the password again and stores the new hash. 
 just confirmed for [sudo mode](#sudo-mode).
 
 The limit is counted before the password is checked, in one atomic step: guesses sent at the same moment cannot all slip under
-it. Five failed attempts a minute for one address from one client lock it for the rest of the minute. The
+it. Five failed attempts a minute for one address from one client lock it for the rest of the minute; a client is its IPv4
+address or its IPv6 /64 ([`clientKey()`](rate-limiting.md#keys-and-the-clients-address)). The starter kit also puts a `login-client`
+limit on `POST /login`: 30 requests a minute from one client, whichever addresses they name. It counts every request, successful
+sign-ins and validation failures included, so a CGNAT, a school or an office behind one address shares the 30 a minute. The number is
+in `modules/auth/AuthServiceProvider.ts`. The
 [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
 `login(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or

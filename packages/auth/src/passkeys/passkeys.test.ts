@@ -261,12 +261,16 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
   for (const user of [ada, bob]) users.rows.set(user.id, { user, hash: await hasher.make('secret') });
 
   const browser = (jar: Map<string, string> = new Map()) => {
-    const send = async (path: string, json: unknown = {}): Promise<any> => {
-      const response = await kernel.request(path, {
-        method: 'POST',
-        headers: { cookie: [...jar].map(([name, value]) => `${name}=${value}`).join('; '), accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify(json),
-      });
+    const send = async (path: string, json: unknown = {}, remoteAddress?: string): Promise<any> => {
+      const response = await kernel.request(
+        path,
+        {
+          method: 'POST',
+          headers: { cookie: [...jar].map(([name, value]) => `${name}=${value}`).join('; '), accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify(json),
+        },
+        remoteAddress === undefined ? undefined : { incoming: { socket: { remoteAddress } } },
+      );
       for (const header of response.headers.getSetCookie()) {
         const [pair, ...attributes] = header.split(';');
         const [name, value] = pair!.split('=') as [string, string];
@@ -275,7 +279,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
       }
       return await response.json();
     };
-    const pk = (method: string, json: unknown = {}) => send(`/pk/${method}`, json);
+    const pk = (method: string, json: unknown = {}, remoteAddress?: string) => send(`/pk/${method}`, json, remoteAddress);
     const login = (email = ada.email, password = 'secret', remember = false) => send('/login', { email, password, remember });
     return { send, pk, login, jar };
   };
@@ -646,6 +650,20 @@ describe('Passkeys: signing in without a password', () => {
     delete bare.response.userHandle;
     expect(await b.pk('sign-in', { response: bare })).toEqual({ ok: false, kind: 'invalid' });
     expect(await b.pk('who')).toEqual({ id: null });
+  });
+
+  it('counts failed sign-ins of one IPv6 /64 together — rotating the address inside it opens no new budget', async () => {
+    const booted = await boot();
+    await enrolled(booted, device());
+    const b = booted.browser();
+    const unknown = device();
+    unknown.register({ challenge: 'AAAA' });
+    const attempt = async (n: number) => {
+      const remote = `2001:db8:1:2::${n.toString(16)}`;
+      return b.pk('sign-in', { response: unknown.authenticate(await b.pk('sign-in-options', {}, remote)) }, remote);
+    };
+    for (let n = 1; n <= 60; n++) expect(await attempt(n)).toEqual({ ok: false, kind: 'invalid' });
+    expect(await attempt(61)).toMatchObject({ ok: false, kind: 'throttled' });
   });
 
   it('refuses an unknown passkey, a missing user verification, a missing user presence and a wrong origin', async () => {

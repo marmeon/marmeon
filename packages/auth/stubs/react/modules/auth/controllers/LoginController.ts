@@ -1,5 +1,5 @@
 import { Auth, Lockout } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
+import { clientKey, RateLimiter } from '@marmeon/cache';
 import { EventDispatcher } from '@marmeon/core';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
@@ -39,8 +39,8 @@ export class LoginController extends Controller {
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password, remember } = ctx.body;
-    // Keyed on the *validated* e-mail, after validation — never on raw input.
-    const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
+    // Keyed on the *validated* e-mail, after validation — never on raw input — and the client (an IPv6 address counts as its /64).
+    const key = `login:${email}|${clientKey(ctx.ip)}`;
     // Counted BEFORE the password is checked, in one atomic step: guesses sent at once can never all get past the limit
     // (checking first and counting after a failure lets every request that checks before the others through).
     if (!(await this.#limiter.attempt(key, MAX_ATTEMPTS, DECAY_SECONDS))) {

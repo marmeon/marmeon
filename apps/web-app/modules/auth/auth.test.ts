@@ -193,6 +193,49 @@ describe('auth module', () => {
     await app.post('/login', credentials(alan, 'wrong')).assertInvalid<LoginController>({ email: /^Too many login attempts/ });
   });
 
+  describe('a sign-in limit counts a client, not an address', () => {
+    /** A JSON sign-in as it arrives from `remote` (the connection's peer; no proxy is trusted, so X-Forwarded-For counts for nothing). */
+    const signInFrom = async (remote: string, email: string, headers: Record<string, string> = {}) => {
+      const response = await createHttpKernel(app.application).request(
+        '/login',
+        { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', ...headers }, body: JSON.stringify({ email, password: 'wrong' }) },
+        { incoming: { socket: { remoteAddress: remote } } },
+      );
+      const errors = response.status === 422 ? ((await response.json()) as { errors: { email: string[] } }).errors.email[0]! : '';
+      return { status: response.status, throttled: errors.startsWith('Too many login attempts') };
+    };
+
+    it('six wrong passwords from addresses of one IPv6 /64 are throttled at the sixth', async () => {
+      const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+      const answers = [];
+      for (let i = 1; i <= 6; i++) answers.push(await signInFrom(`2001:db8::${i}`, ada.email));
+      expect(answers.map((answer) => answer.throttled)).toEqual([false, false, false, false, false, true]);
+    });
+
+    it('treats an IPv4-mapped peer as its IPv4 address, and another /64 as another client', async () => {
+      const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+      for (const remote of ['203.0.113.9', '::ffff:203.0.113.9', '203.0.113.9', '::ffff:203.0.113.9', '203.0.113.9']) expect((await signInFrom(remote, ada.email)).throttled).toBe(false);
+      expect((await signInFrom('::ffff:203.0.113.9', ada.email)).throttled).toBe(true);
+      expect((await signInFrom('2001:db8:0:1::1', ada.email)).throttled).toBe(false);
+    });
+
+    it('does not let X-Forwarded-For open a budget when no proxy is trusted', async () => {
+      const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+      const answers = [];
+      for (let i = 1; i <= 6; i++) answers.push(await signInFrom('203.0.113.9', ada.email, { 'x-forwarded-for': `2001:db8:${i}::1` }));
+      expect(answers.map((answer) => answer.throttled)).toEqual([false, false, false, false, false, true]);
+    });
+
+    it('stops a client at 30 sign-ins a minute whatever e-mail addresses it names', async () => {
+      const statuses = [];
+      for (let i = 1; i <= 31; i++) statuses.push((await signInFrom(`2001:db8:5:5::${i.toString(16)}`, `nobody${i}@example.com`)).status);
+      expect(statuses.slice(0, 30).every((status) => status === 422)).toBe(true);
+      expect(statuses[30]).toBe(429);
+      // Another client is not held up by it.
+      expect((await signInFrom('2001:db8:6:6::1', 'nobody@example.com')).status).toBe(422);
+    });
+  });
+
   it('an account with a second factor is not signed in: on to the code, and the throttle budget is not spent', async () => {
     let withFactor: unknown;
     await app.close(); // one database app per test

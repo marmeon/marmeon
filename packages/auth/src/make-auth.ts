@@ -36,7 +36,7 @@ export const NEEDED = [
 ];
 
 /** What only the module's tests import — reported as dev dependencies. */
-export const NEEDED_FOR_TESTS = ['@marmeon/testing', 'vitest'];
+export const NEEDED_FOR_TESTS = ['@marmeon/server', '@marmeon/testing', 'vitest'];
 
 /**
  * `marmeon make:auth`: writes a complete auth module into the app — sign-in, registration, remember-me, password reset,

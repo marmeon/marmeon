@@ -1,5 +1,6 @@
 import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@marmeon/router';
 import { Clock, type Resolver } from '@marmeon/core';
+import { isIP } from 'node:net';
 import { Cache } from './cache.ts';
 
 /** How many attempts per window, and whose attempts count together (`by`). */
@@ -31,10 +32,61 @@ export class Limit {
     return new Limit(Number.POSITIVE_INFINITY, 0);
   }
 
-  /** Attempts with the same key share the limit: `by(ctx.ip)`, `by(\`${email}|${ip}\`)`. */
+  /** Attempts with the same key share the limit: `by(clientKey(ctx.ip))`, `by(\`${email}|${clientKey(ctx.ip)}\`)`. */
   by(key: string): Limit {
     return new Limit(this.maxAttempts, this.decaySeconds, key);
   }
+}
+
+/**
+ * The key that counts a client's attempts together: its IPv4 address, or for IPv6 its /64 — the block one connection gets, so
+ * rotating through the addresses of it opens no new budget. An IPv4-mapped (`::ffff:203.0.113.9`) or NAT64 (`64:ff9b::/96`)
+ * address counts as its IPv4 address, and a port or brackets (`203.0.113.9:443`, `[2001:db8::1]:443`) are dropped. A missing or empty
+ * address is `'unknown'`; anything else that is not an address keeps a key of its own (`raw:…`) and warns once, so a proxy that sends
+ * something odd does not put every client into one budget. Use it instead of `ctx.ip` in `Limit.by()`; `ctx.ip` stays the full
+ * address for logs. See [rate limiting](docs/rate-limiting.md#keys-and-the-clients-address).
+ */
+export function clientKey(ip: string | undefined): string {
+  const raw = (ip ?? '').trim();
+  if (raw === '') return 'unknown';
+  const bracketed = /^\[([^\]]+)\](?::\d{1,5})?$/.exec(raw);
+  const withoutPort = bracketed ? bracketed[1]! : raw.replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/, '$1');
+  const address = withoutPort.replace(/%.*$/, '');
+  const family = isIP(address);
+  if (family === 4) return address;
+  if (family !== 6) {
+    warnAboutUnreadableAddress();
+    return `raw:${raw.slice(0, 200)}`;
+  }
+  const hextets = expandIPv6(address);
+  const embedded = () => `${hextets[6]! >> 8}.${hextets[6]! & 0xff}.${hextets[7]! >> 8}.${hextets[7]! & 0xff}`;
+  if (hextets.slice(0, 5).every((hextet) => hextet === 0) && hextets[5] === 0xffff) return embedded();
+  if (hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets.slice(2, 6).every((hextet) => hextet === 0)) return embedded();
+  return `${hextets.slice(0, 4).map((hextet) => hextet.toString(16)).join(':')}::/64`;
+}
+
+let warnedAboutAddress = false;
+
+/** Once per process, at the call site of `clientKey()` (the kernel hands `ctx.ip` on as the proxy wrote it). */
+function warnAboutUnreadableAddress(): void {
+  if (warnedAboutAddress) return;
+  warnedAboutAddress = true;
+  process.emitWarning('ctx.ip is not an IP address (check what the proxy sends in X-Forwarded-For and TRUSTED_PROXIES); rate limits count such a client by the text it sent.', 'MarmeonRateLimitWarning');
+}
+
+/** The eight 16-bit groups of a valid IPv6 address, `::` filled up and a dotted IPv4 tail turned into two groups. */
+function expandIPv6(address: string): number[] {
+  const [head = '', tail] = address.split('::') as [string, string | undefined];
+  const groups = (part: string) => (part === '' ? [] : part.split(':'));
+  const read = (parts: string[]) =>
+    parts.flatMap((part) => {
+      if (!part.includes('.')) return [Number.parseInt(part, 16)];
+      const [a, b, c, d] = part.split('.').map(Number) as [number, number, number, number];
+      return [(a << 8) | b, (c << 8) | d];
+    });
+  const before = read(groups(head));
+  const after = tail === undefined ? [] : read(groups(tail));
+  return [...before, ...Array.from({ length: 8 - before.length - after.length }, () => 0), ...after];
 }
 
 /**
@@ -62,7 +114,7 @@ export class RateLimiter {
     this.#cache = cache;
   }
 
-  /** `limiter.for('login', async (ctx) => Limit.perMinute(5).by(ctx.ip ?? ''))`. */
+  /** `limiter.for('login', async (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)))`. */
   for(name: string, callback: LimiterCallback): this {
     this.#limiters.set(name, callback);
     return this;
@@ -212,7 +264,7 @@ export class LimitLiveValidation {
     const route: RouteDefinition | undefined = ctx.route;
     if (!route || !isLiveValidation(ctx.request)) return next();
     const callback = this.#limiter.limiter(LIVE_VALIDATION_LIMITER);
-    const chosen = callback ? await callback(ctx) : Limit.perMinute(DEFAULT_LIVE_VALIDATION_LIMIT).by(ctx.ip ?? 'unknown');
+    const chosen = callback ? await callback(ctx) : Limit.perMinute(DEFAULT_LIVE_VALIDATION_LIMIT).by(clientKey(ctx.ip));
     const limits = [chosen].flat().filter((limit) => Number.isFinite(limit.maxAttempts));
     const name = route.routeName ?? `${ctx.request.method} ${route.path}`;
     for (const limit of limits) {
