@@ -89,7 +89,7 @@ An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `era
   dependency of the framework, not a peer. The shape of the builder (methods, `eb`, result types) is public API: a Kysely update
   that changes it comes only in a Marmeon major version, with an entry in the [upgrade guide](../UPGRADING.md). An update an app
   does not notice comes in a minor version, with a `Low` entry there. Security fixes of Kysely are taken into every supported
-  line.
+  line. Which version that is: [database](database.md#kysely-and-its-version).
 
 ## What is public API
 

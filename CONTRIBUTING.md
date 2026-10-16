@@ -282,6 +282,9 @@ command, and the [package development](docs/package-development.md#dependencies-
 4. Decided exception: **`nodemailer` is a dependency of `@marmeon/mail`** — no dependencies of its own, the production path.
 5. Decided exception: **`@simplewebauthn/server` is a dependency of `@marmeon/auth`** — passkeys are a required standard and their
    verification is security-critical, so a proven implementation; loaded only by `@marmeon/auth/passkeys`.
+6. Decided exception: **`kysely` is an exact dependency of `@marmeon/database` and `@marmeon/table`** — no caret, the same version in
+   both. The builder's shape is public API and the security plugins are tested against exactly this version; one pin in every
+   package installs one copy. A Kysely update is a pull request of its own that changes both manifests.
 
 A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
 peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different
