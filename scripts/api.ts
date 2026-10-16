@@ -32,8 +32,6 @@ export const FOREIGN_TYPES: Readonly<Record<string, readonly string[]>> = {
   database: [LIBRARY],
   table: [LIBRARY],
   react: ['react', 'react-dom', '@tanstack/react-table'], // peers: the adapter is typed in the types of its UI library
-  // The S3 driver takes the SDK's client types until it has own ones.
-  storage: ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
   vite: ['vite'], // a peer: the plugin is a Vite plugin
 };
 

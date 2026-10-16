@@ -39,11 +39,6 @@ export type {
 } from './config.ts';
 export type { Disk, FileContents, ListOptions, OpenedFile, PrivateDisk, PublicDisk, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
 export { FileNotFoundError, InvalidKeyError, StorageError, StorageSetupError } from './errors.ts';
-export { LocalDisk } from './drivers/local.ts';
-export { MemoryDisk } from './drivers/memory.ts';
-export type { ExpectedContents } from './drivers/memory.ts';
-export { S3Disk } from './drivers/s3.ts';
-export type { ImportS3, S3Modules } from './drivers/s3.ts';
 export { Storage } from './storage.ts';
 export { serveFile } from './serve.ts';
 export type { ServeOptions } from './serve.ts';

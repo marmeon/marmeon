@@ -4,7 +4,7 @@
 
 ## `@marmeon/storage`
 
-Types from other packages: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
+Types from other packages: none
 
 ### Stable
 
@@ -71,10 +71,6 @@ export type DiskOptions = {
         readonly url?: string | undefined;
     };
 }[keyof DiskDrivers];
-// ExpectedContents
-export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
-    contentType: string;
-}) => boolean);
 // FileContents
 export type FileContents = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array> | Readable;
 // FileNotFoundError
@@ -84,8 +80,6 @@ export declare class FileNotFoundError extends Error {
     readonly key: string;
     constructor(disk: string, key: string);
 }
-// ImportS3
-export type ImportS3 = () => Promise<S3Modules>;
 // InvalidKeyError
 export declare class InvalidKeyError extends Error {
     name: string;
@@ -95,29 +89,6 @@ export declare class InvalidKeyError extends Error {
 // ListOptions
 export interface ListOptions {
     readonly recursive?: boolean;
-}
-// LocalDisk
-export declare class LocalDisk implements Disk {
-    #private;
-    readonly name: string;
-    readonly visibility: Visibility;
-    constructor(config: LocalDiskConfig);
-    get root(): string;
-    put(key: string, contents: FileContents): Promise<void>;
-    get(key: string): Promise<Uint8Array>;
-    text(key: string): Promise<string>;
-    stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
-    exists(key: string): Promise<boolean>;
-    delete(key: string): Promise<boolean>;
-    move(from: string, to: string): Promise<void>;
-    copy(from: string, to: string): Promise<void>;
-    size(key: string): Promise<number>;
-    mimeType(key: string): Promise<string>;
-    lastModified(key: string): Promise<Date>;
-    list(directory?: string, options?: ListOptions): Promise<string[]>;
-    url(key: string): string;
-    temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
 }
 // LocalDiskOptions
 export interface LocalDiskOptions extends DiskBase {
@@ -137,32 +108,6 @@ export declare class MakeUploadsTableCommand {
         };
     };
     handle(input: CommandInput): Promise<number>;
-}
-// MemoryDisk
-export declare class MemoryDisk implements Disk {
-    #private;
-    readonly name: string;
-    readonly visibility: Visibility;
-    constructor(config: MemoryDiskConfig);
-    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
-    get(key: string): Promise<Uint8Array>;
-    text(key: string): Promise<string>;
-    stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
-    exists(key: string): Promise<boolean>;
-    delete(key: string): Promise<boolean>;
-    move(from: string, to: string): Promise<void>;
-    copy(from: string, to: string): Promise<void>;
-    size(key: string): Promise<number>;
-    mimeType(key: string): Promise<string>;
-    lastModified(key: string): Promise<Date>;
-    list(directory?: string, options?: ListOptions): Promise<string[]>;
-    url(key: string): string;
-    temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
-    files(): string[];
-    assertExists(key: string, contents?: ExpectedContents): this;
-    assertMissing(key: string): this;
-    assertCount(count: number, directory?: string): this;
 }
 // MemoryDiskOptions
 export interface MemoryDiskOptions extends DiskBase {
@@ -209,36 +154,6 @@ export declare class RejectedUpload {
     constructor(problem: UploadProblem);
     toJSON(): undefined;
 }
-// S3Disk
-export declare class S3Disk implements Disk {
-    #private;
-    readonly name: string;
-    readonly visibility: Visibility;
-    constructor(config: S3DiskConfig);
-    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
-    get(key: string): Promise<Uint8Array>;
-    text(key: string): Promise<string>;
-    stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
-    exists(key: string): Promise<boolean>;
-    delete(key: string): Promise<boolean>;
-    move(from: string, to: string): Promise<void>;
-    copy(from: string, to: string): Promise<void>;
-    size(key: string): Promise<number>;
-    mimeType(key: string): Promise<string>;
-    lastModified(key: string): Promise<Date>;
-    list(directory?: string, options?: ListOptions): Promise<string[]>;
-    url(key: string): string;
-    temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
-    presignedPost(key: string, { maxBytes, expiresIn }: {
-        maxBytes: number;
-        expiresIn: number;
-    }): Promise<{
-        url: string;
-        fields: Record<string, string>;
-    }>;
-    close(): Promise<void>;
-}
 // S3DiskOptions
 export interface S3DiskOptions extends DiskBase {
     readonly driver: 's3';
@@ -253,11 +168,6 @@ export interface S3DiskOptions extends DiskBase {
     } | undefined;
     readonly root?: string | undefined;
     readonly url?: string | undefined;
-}
-// S3Modules
-export interface S3Modules {
-    readonly client: typeof S3;
-    readonly presigner: typeof Presigner;
 }
 // ServeOptions
 export interface ServeOptions {
@@ -479,36 +389,12 @@ interface DiskBase {
 type Join<U extends string, Done extends string = ''> = [U] extends [never] ? Done : LastOf<U> extends infer L extends string ? Join<Exclude<U, L>, Done extends '' ? L : `${L}, ${Done}`> : Done;
 // LastOf
 type LastOf<U> = UnionToIntersection<U> extends () => infer R ? R : never;
-// LocalDiskConfig
-export interface LocalDiskConfig {
-    readonly name: string;
-    readonly root: string;
-    readonly visibility: Visibility;
-    readonly url?: string | undefined;
-    readonly temporaryUrls: TemporaryUrls;
-}
-// MemoryDiskConfig
-export interface MemoryDiskConfig {
-    readonly name: string;
-    readonly visibility: Visibility;
-    readonly url?: string | undefined;
-    readonly temporaryUrls: TemporaryUrls;
-    readonly clock: Clock;
-}
 // NO_ENV
 declare const NO_ENV: import("@marmeon/core").EnvSchema<{}, {}>;
 // Near
 type Near<N extends string> = N extends `${infer First}${string}` ? Extract<DiskName, `${First}${string}`> : never;
 // Near (2)
 type Near<M extends string> = M extends `${infer Group}/${string}` ? Extract<UploadMime, `${Group}/${string}`> : never;
-// S3DiskConfig
-export interface S3DiskConfig {
-    readonly name: string;
-    readonly options: S3DiskOptions;
-    readonly visibility: Visibility;
-    readonly clock: Clock;
-    readonly load?: ImportS3;
-}
 // Tables
 type Tables = {
     [UPLOADS_TABLE]: UploadRow;
@@ -545,13 +431,24 @@ interface ServiceProviderClass {
 
 ## `@marmeon/storage/testing`
 
-Types from other packages: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
+Types from other packages: none
 
 ### Stable
 
 ```ts
+// ExpectedContents
+export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
+    contentType: string;
+}) => boolean);
 // FakeDisk
-export type FakeDisk<N extends string> = DiskFor<N> & Pick<MemoryDisk, 'assertExists' | 'assertMissing' | 'assertCount' | 'files'>;
+export type FakeDisk<N extends string> = DiskFor<N> & FakeDiskAssertions;
+// FakeDiskAssertions
+export interface FakeDiskAssertions {
+    files(): string[];
+    assertExists(key: string, contents?: ExpectedContents): this;
+    assertMissing(key: string): this;
+    assertCount(count: number, directory?: string): this;
+}
 // StorageFake
 export declare class StorageFake extends StorageManager {
     constructor(container: Container);
@@ -634,14 +531,8 @@ export type DiskOptions = {
         readonly url?: string | undefined;
     };
 }[keyof DiskDrivers];
-// ExpectedContents
-export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
-    contentType: string;
-}) => boolean);
 // FileContents
 export type FileContents = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array> | Readable;
-// ImportS3
-export type ImportS3 = () => Promise<S3Modules>;
 // Join
 type Join<U extends string, Done extends string = ''> = [U] extends [never] ? Done : LastOf<U> extends infer L extends string ? Join<Exclude<U, L>, Done extends '' ? L : `${L}, ${Done}`> : Done;
 // LastOf
@@ -655,40 +546,6 @@ export interface LocalDiskOptions extends DiskBase {
     readonly driver: 'local';
     readonly root: string;
     readonly url?: string;
-}
-// MemoryDisk
-export declare class MemoryDisk implements Disk {
-    #private;
-    readonly name: string;
-    readonly visibility: Visibility;
-    constructor(config: MemoryDiskConfig);
-    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
-    get(key: string): Promise<Uint8Array>;
-    text(key: string): Promise<string>;
-    stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
-    exists(key: string): Promise<boolean>;
-    delete(key: string): Promise<boolean>;
-    move(from: string, to: string): Promise<void>;
-    copy(from: string, to: string): Promise<void>;
-    size(key: string): Promise<number>;
-    mimeType(key: string): Promise<string>;
-    lastModified(key: string): Promise<Date>;
-    list(directory?: string, options?: ListOptions): Promise<string[]>;
-    url(key: string): string;
-    temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
-    files(): string[];
-    assertExists(key: string, contents?: ExpectedContents): this;
-    assertMissing(key: string): this;
-    assertCount(count: number, directory?: string): this;
-}
-// MemoryDiskConfig
-export interface MemoryDiskConfig {
-    readonly name: string;
-    readonly visibility: Visibility;
-    readonly url?: string | undefined;
-    readonly temporaryUrls: TemporaryUrls;
-    readonly clock: Clock;
 }
 // MemoryDiskOptions
 export interface MemoryDiskOptions extends DiskBase {
@@ -729,11 +586,6 @@ export interface S3DiskOptions extends DiskBase {
     readonly root?: string | undefined;
     readonly url?: string | undefined;
 }
-// S3Modules
-export interface S3Modules {
-    readonly client: typeof S3;
-    readonly presigner: typeof Presigner;
-}
 // Storage
 export interface Storage {
     disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
@@ -749,7 +601,6 @@ export interface StorageDependencies {
     readonly root: string;
     readonly clock: Clock;
     readonly temporaryUrls: TemporaryUrls;
-    readonly loadS3?: ImportS3;
     readonly drivers?: ReadonlyMap<string, DiskDriverFactory>;
     readonly container?: Resolver;
 }
@@ -764,7 +615,7 @@ export declare class StorageManager implements Storage {
     verify(): void;
     options(name: string): DiskOptions;
     protected build(name: string, options: DiskOptions): Disk;
-    protected memory(name: string, options: DiskOptions): MemoryDisk;
+    protected memory(name: string, options: DiskOptions): Disk;
     close(): Promise<void>;
 }
 // StorageOptions

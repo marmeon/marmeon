@@ -6,7 +6,7 @@ import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, Temporary
 import { normalizeDirectory, normalizeKey } from './keys.ts';
 import { LocalDisk } from './drivers/local.ts';
 import { MemoryDisk } from './drivers/memory.ts';
-import { S3Disk, s3BaseUrl, type ImportS3 } from './drivers/s3.ts';
+import { S3Disk, s3BaseUrl } from './drivers/s3.ts';
 import { didYouMean, StorageError, StorageSetupError } from './errors.ts';
 import type { TemporaryUrls } from './temporary.ts';
 
@@ -27,8 +27,6 @@ export interface StorageDependencies {
   readonly root: string;
   readonly clock: Clock;
   readonly temporaryUrls: TemporaryUrls;
-  /** How the AWS SDK is imported (tests). */
-  readonly loadS3?: ImportS3;
   /** The disk drivers that providers bring, by name (`static diskDrivers`). */
   readonly drivers?: ReadonlyMap<string, DiskDriverFactory>;
   /** What a provider's disk driver reads its own configuration from. */
@@ -267,7 +265,7 @@ export class StorageManager implements Storage {
 
   /** Builds a disk from its configuration (the fake builds memory disks instead). */
   protected build(name: string, options: DiskOptions): Disk {
-    const { clock, temporaryUrls, root, loadS3 } = this.#dependencies;
+    const { clock, temporaryUrls, root } = this.#dependencies;
     const visibility = visibilityOf(options);
     switch (options.driver) {
       case 'local':
@@ -275,7 +273,7 @@ export class StorageManager implements Storage {
       case 'memory':
         return new MemoryDisk({ name, visibility, url: options.url, temporaryUrls, clock });
       case 's3':
-        return new S3Disk({ name, options, visibility, clock, ...(loadS3 ? { load: loadS3 } : {}) });
+        return new S3Disk({ name, options, visibility, clock });
       default:
         return this.#custom(name, options);
     }
@@ -293,7 +291,7 @@ export class StorageManager implements Storage {
   }
 
   /** Builds a memory disk like the configured one — for the fake. */
-  protected memory(name: string, options: DiskOptions): MemoryDisk {
+  protected memory(name: string, options: DiskOptions): Disk {
     const { clock, temporaryUrls } = this.#dependencies;
     const visibility = visibilityOf(options);
     const url = options.driver === 's3' ? (visibility === 'public' && options.bucket ? s3BaseUrl(options) : undefined) : options.url;
