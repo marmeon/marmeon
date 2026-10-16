@@ -12,7 +12,7 @@ const authenticatorFor = (algorithm: 'ES256' | 'EdDSA' = 'ES256') => softAuthent
 const userHandle = Buffer.alloc(32, 7);
 const handle = userHandle.toString('base64url');
 
-async function creation(challenge = Buffer.alloc(32, 1)) {
+async function creation(challenge = Buffer.alloc(32, 1), existing: { credentialId: string; transports?: readonly string[] }[] = []) {
   const options = await registrationOptions({
     ...relyingParty,
     rpName: 'Notes',
@@ -20,12 +20,12 @@ async function creation(challenge = Buffer.alloc(32, 1)) {
     userName: 'ada@example.com',
     userDisplayName: 'Ada',
     challenge,
-    existing: [],
+    existing,
   });
   return options;
 }
 
-async function request(challenge = Buffer.alloc(32, 2), allow?: { credentialId: string }[]) {
+async function request(challenge = Buffer.alloc(32, 2), allow?: { credentialId: string; transports?: readonly string[] }[]) {
   return authenticationOptions({ rpId: 'localhost', challenge, ...(allow ? { allow } : {}) });
 }
 
@@ -47,6 +47,17 @@ describe('the options', () => {
     expect(options.rp.id).toBe('localhost');
     expect(options.user.id).toBe(userHandle.toString('base64url'));
     expect(options.challenge).toBe(Buffer.alloc(32, 1).toString('base64url'));
+  });
+
+  it('list the existing passkeys as excluded, with their transports, and ask for the credProps extension', async () => {
+    const options = await creation(undefined, [{ credentialId: 'AQID', transports: ['usb', 'internal'] }, { credentialId: 'BAUG' }]);
+    expect(options.excludeCredentials).toEqual([{ type: 'public-key', id: 'AQID', transports: ['usb', 'internal'] }, { type: 'public-key', id: 'BAUG' }]);
+    expect(options.extensions).toEqual({ credProps: true });
+  });
+
+  it('list the passkeys a sign-in may use as allowed, with their transports', async () => {
+    const options = await request(undefined, [{ credentialId: 'AQID', transports: ['hybrid'] }]);
+    expect(options.allowCredentials).toEqual([{ type: 'public-key', id: 'AQID', transports: ['hybrid'] }]);
   });
 
   it('send an empty allow list for the passwordless sign-in and require user verification', async () => {

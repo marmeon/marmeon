@@ -26,7 +26,6 @@ import { oxc } from './source-files.ts';
  * there; an entry that only waits for a change names it, and that change deletes the entry.
  */
 export const FOREIGN_TYPES: Readonly<Record<string, readonly string[]>> = {
-  auth: ['@simplewebauthn/server'], // the passkey JSON types are re-exported until the package defines its own
   // The query layer is typed in Kysely's types until it has aliases of its own.
   database: [LIBRARY],
   table: [LIBRARY],

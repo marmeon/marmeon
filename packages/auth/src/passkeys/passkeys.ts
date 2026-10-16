@@ -24,11 +24,13 @@ import {
   registrationOptions,
   verifyAuthentication,
   verifyRegistration,
-  type AuthenticationResponseJSON,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type PublicKeyCredentialRequestOptionsJSON,
-  type RegistrationResponseJSON,
 } from './webauthn.ts';
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from './json.ts';
 
 /**
  * Failed passwordless attempts per address and minute. Only failures count (behind one shared address many people sign in, and an

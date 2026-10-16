@@ -6,16 +6,67 @@ import {
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-  type AuthenticationResponseJSON,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type PublicKeyCredentialRequestOptionsJSON,
-  type RegistrationResponseJSON,
+  type PublicKeyCredentialCreationOptionsJSON as LibraryCreationOptions,
+  type PublicKeyCredentialRequestOptionsJSON as LibraryRequestOptions,
 } from '@simplewebauthn/server';
 import { cose, decodeAttestationObject, decodeCredentialPublicKey } from '@simplewebauthn/server/helpers';
+import type {
+  AuthenticationExtensionsClientInputsJSON,
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialDescriptorJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from './json.ts';
 
 // The only file that imports @simplewebauthn/server: the library is loaded by `@marmeon/auth/passkeys` and by nothing else.
 
-export type { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON };
+// Client extension outputs are unsigned client data: nothing here or in the library may decide on them, so they are not handed
+// on — the responses go in with them emptied, every other field as the client sent it.
+const registrationForLibrary = (response: RegistrationResponseJSON) => ({ ...response, clientExtensionResults: {} });
+const authenticationForLibrary = (response: AuthenticationResponseJSON) => ({ ...response, clientExtensionResults: {} });
+
+const descriptorJSON = (descriptor: { id: string; transports?: string[] | undefined }): PublicKeyCredentialDescriptorJSON => ({
+  type: 'public-key',
+  id: descriptor.id,
+  ...(descriptor.transports ? { transports: descriptor.transports } : {}),
+});
+
+/** The one input the framework asks for (`credProps`); the library's `prf` carries byte buffers, which options as JSON never hold. */
+function extensionsJSON(extensions: LibraryCreationOptions['extensions']): AuthenticationExtensionsClientInputsJSON | undefined {
+  if (!extensions) return undefined;
+  return extensions.credProps !== undefined ? { credProps: extensions.credProps } : {};
+}
+
+function creationOptionsJSON(options: LibraryCreationOptions): PublicKeyCredentialCreationOptionsJSON {
+  const extensions = extensionsJSON(options.extensions);
+  return {
+    rp: options.rp,
+    user: options.user,
+    challenge: options.challenge,
+    pubKeyCredParams: options.pubKeyCredParams,
+    ...(options.timeout !== undefined ? { timeout: options.timeout } : {}),
+    ...(options.excludeCredentials ? { excludeCredentials: options.excludeCredentials.map(descriptorJSON) } : {}),
+    ...(options.authenticatorSelection ? { authenticatorSelection: options.authenticatorSelection } : {}),
+    ...(options.hints ? { hints: options.hints } : {}),
+    ...(options.attestation ? { attestation: options.attestation } : {}),
+    ...(options.attestationFormats ? { attestationFormats: options.attestationFormats } : {}),
+    ...(extensions ? { extensions } : {}),
+  };
+}
+
+function requestOptionsJSON(options: LibraryRequestOptions): PublicKeyCredentialRequestOptionsJSON {
+  const extensions = extensionsJSON(options.extensions);
+  return {
+    challenge: options.challenge,
+    ...(options.timeout !== undefined ? { timeout: options.timeout } : {}),
+    ...(options.rpId !== undefined ? { rpId: options.rpId } : {}),
+    ...(options.allowCredentials ? { allowCredentials: options.allowCredentials.map(descriptorJSON) } : {}),
+    ...(options.userVerification ? { userVerification: options.userVerification } : {}),
+    ...(options.hints ? { hints: options.hints } : {}),
+    ...(extensions ? { extensions } : {}),
+  };
+}
 
 /** The COSE algorithms a passkey may use: EdDSA, ES256, RS256. */
 export const PASSKEY_ALGORITHMS: readonly number[] = [-8, -7, -257];
@@ -118,10 +169,10 @@ function bitLength(bytes: Uint8Array): number {
  * The statement is never trusted, so it is never read — the library then cannot reach its X.509 and ASN.1 parsing, or fetch
  * revocation lists, for bytes the client chose. The key, the RP ID hash and the flags are in the authenticator data and still checked.
  */
-function withoutAttestation(response: RegistrationResponseJSON): RegistrationResponseJSON {
+function withoutAttestation(response: RegistrationResponseJSON) {
   const decoded = decodeAttestationObject(Buffer.from(response.response.attestationObject, 'base64url'));
   const attestationObject = cbor(new Map<unknown, unknown>([['fmt', 'none'], ['attStmt', new Map()], ['authData', decoded.get('authData')]])).toString('base64url');
-  return { ...response, response: { ...response.response, attestationObject } };
+  return { ...registrationForLibrary(response), response: { ...response.response, attestationObject } };
 }
 
 const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -206,7 +257,7 @@ export async function verifyAuthentication(
     if (isCrossOrigin(response?.response?.clientDataJSON)) throw new Error('cross-origin response');
     if (response.id !== stored.credentialId || response.rawId !== stored.credentialId) throw new Error('response is for another credential');
     verified = await verifyAuthenticationResponse({
-      response,
+      response: authenticationForLibrary(response),
       expectedChallenge: sameChallenge(expected.challenge),
       expectedOrigin: [...expected.origins],
       expectedRPID: expected.rpId,
@@ -246,7 +297,7 @@ const descriptors = (list: readonly { credentialId: string; transports?: readonl
   list.map((passkey) => ({ id: passkey.credentialId, ...(passkey.transports ? { transports: [...passkey.transports] } : {}) }));
 
 /** Options for `navigator.credentials.create()`: a discoverable credential, user verification required, no attestation. */
-export function registrationOptions(
+export async function registrationOptions(
   input: RelyingParty & {
     readonly rpName: string;
     /** The account's random handle (bytes) — never its id or address. */
@@ -258,7 +309,7 @@ export function registrationOptions(
     readonly existing: readonly { credentialId: string; transports?: readonly string[] }[];
   },
 ): Promise<PublicKeyCredentialCreationOptionsJSON> {
-  return generateRegistrationOptions({
+  return creationOptionsJSON(await generateRegistrationOptions({
     rpName: input.rpName,
     rpID: input.rpId,
     userID: input.userHandle as Uint8Array<ArrayBuffer>,
@@ -270,24 +321,24 @@ export function registrationOptions(
     supportedAlgorithmIDs: [...PASSKEY_ALGORITHMS],
     authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
     excludeCredentials: descriptors(input.existing),
-  });
+  }));
 }
 
 /**
  * Options for `navigator.credentials.get()`. Without `allow` the list is empty — the passwordless sign-in, where the
  * browser offers the passkeys it holds and the server learns nothing about who exists.
  */
-export function authenticationOptions(
+export async function authenticationOptions(
   input: Pick<RelyingParty, 'rpId'> & {
     readonly challenge: Uint8Array;
     readonly allow?: readonly { credentialId: string; transports?: readonly string[] }[];
   },
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
-  return generateAuthenticationOptions({
+  return requestOptionsJSON(await generateAuthenticationOptions({
     rpID: input.rpId,
     challenge: input.challenge as Uint8Array<ArrayBuffer>,
     timeout: PASSKEY_TIMEOUT,
     userVerification: 'required',
     ...(input.allow ? { allowCredentials: descriptors(input.allow) } : {}),
-  });
+  }));
 }
