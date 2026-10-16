@@ -160,6 +160,11 @@ class Guard {
 
   root(node: RootOperationNode): void {
     const kind = rootKind(node);
+    // SECURITY: the compiler writes an explain's format unescaped; the builder types it, a cast or a plugin need not.
+    const format = (node as { explain?: { format?: unknown } }).explain?.format;
+    if (format !== undefined && (typeof format !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(format))) {
+      throw new Error(`The explain format ${JSON.stringify(format)} is no plain identifier, and the compiler writes it into the statement as it is — the query was not sent.`);
+    }
     if (kind === 'reads') this.#select(node as SelectQueryNode);
     else if (kind === 'writes') this.#write(node as InsertQueryNode);
     else this.#scan(node);
