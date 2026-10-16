@@ -493,6 +493,11 @@ describe('check:source — a problem names its rule and why', () => {
     return checkSource(dir);
   };
 
+  it('names a deprecation without the way forward, so the rule is part of check:source', () => {
+    const problems = problemsOf({ 'packages/http/src/x.ts': '/** @deprecated Gone in 9.0. */\nexport const x = 1;' });
+    expect(problems).toEqual([expect.stringMatching(/^every deprecation shows the way forward .*x\.ts:1:/)]);
+  });
+
   it('names the rule and its why for rules 3, 4, 6 and 8, and the rule for rules 1 and 2', () => {
     const problems = problemsOf({
       'notes/name.txt': OLD_NAME,
@@ -594,6 +599,12 @@ describe('rule 8: no mutant is disabled without a reason', () => {
   it('reads code files only, and holds for the repository', () => {
     expect(mutationCommentHits([{ path: 'CONTRIBUTING.md', text: comment('disable', 'x') }])).toEqual([]);
     expect(checkSource(root).filter((problem) => problem.startsWith('mutation testing'))).toEqual([]);
+  });
+});
+
+describe('check:source — every deprecation shows the way forward', () => {
+  it('holds for the repository', () => {
+    expect(checkSource(root).filter((problem) => problem.startsWith('every deprecation'))).toEqual([]);
   });
 });
 
