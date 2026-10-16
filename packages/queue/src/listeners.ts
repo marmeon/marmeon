@@ -107,13 +107,23 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
   }
 }
 
+/** What the framework job behind a queued listener carries: the event's name, the listener's name and the event's payload as it was queued. */
+export interface QueuedListenerPayload {
+  event: string;
+  listener: string;
+  payload: unknown;
+}
+
+/** @internal The validation behind `CallQueuedListener.schema`; the type tests compare its output with `QueuedListenerPayload`. */
+export const queuedListenerSchema = v.object({ event: v.string(), listener: v.string(), payload: v.unknown() });
+
 /**
  * The framework job behind every queued listener: the event's name, the listener's name and the event's payload.
  * Encrypted — an event's payload is the app's, and may carry more than IDs.
  */
 export class CallQueuedListener {
   static readonly job = 'marmeon.listener';
-  static readonly schema = v.object({ event: v.string(), listener: v.string(), payload: v.unknown() });
+  static readonly schema: StandardSchemaV1<QueuedListenerPayload> = queuedListenerSchema;
   static readonly encrypted = true;
 
   readonly #resolver: Resolver;
@@ -124,7 +134,7 @@ export class CallQueuedListener {
     this.#listeners = listeners;
   }
 
-  async handle(data: v.InferOutput<typeof CallQueuedListener.schema>, job: JobContext): Promise<void> {
+  async handle(data: QueuedListenerPayload, job: JobContext): Promise<void> {
     const target = this.#listeners.find(data.event, data.listener);
     // A deploy renamed or removed it — or this worker runs an older version (a rolling deploy): retried by its tries.
     if (!target) throw new QueueError(`No queued listener ${data.listener} of the event ${data.event} in this app — was it renamed or removed?`);

@@ -47,6 +47,7 @@ export type { PayloadCipher, Prepared } from './runner.ts';
 export { JobStuckError, JobTimeoutError, Worker } from './worker.ts';
 export type { WorkerDependencies, WorkOptions, WorkResult } from './worker.ts';
 export { CallQueuedListener, checkQueueableEvent, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
+export type { QueuedListenerPayload } from './listeners.ts';
 export { RECORD_OPTIONS } from './queue.ts';
 export type { RecordOptions } from './queue.ts';
 export { QueueFake } from './fake.ts';

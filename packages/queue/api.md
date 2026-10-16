@@ -4,7 +4,7 @@
 
 ## `@marmeon/queue`
 
-Types from other packages: `valibot`
+Types from other packages: none
 
 ### Stable
 
@@ -19,14 +19,10 @@ export type CacheSource = () => Promise<Cache>;
 export declare class CallQueuedListener {
     #private;
     static readonly job = "marmeon.listener";
-    static readonly schema: v.ObjectSchema<{
-        readonly event: v.StringSchema<undefined>;
-        readonly listener: v.StringSchema<undefined>;
-        readonly payload: v.UnknownSchema;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<QueuedListenerPayload>;
     static readonly encrypted = true;
     constructor(resolver: Resolver, listeners: QueuedListeners);
-    handle(data: v.InferOutput<typeof CallQueuedListener.schema>, job: JobContext): Promise<void>;
+    handle(data: QueuedListenerPayload, job: JobContext): Promise<void>;
 }
 // ChainMatch
 export type ChainMatch = JobClass | readonly [job: JobClass, payload: Record<string, unknown>];
@@ -658,6 +654,12 @@ export interface QueuedJob {
     readonly id: string;
     readonly queue: string;
     readonly payload: string;
+}
+// QueuedListenerPayload
+export interface QueuedListenerPayload {
+    event: string;
+    listener: string;
+    payload: unknown;
 }
 // QueuedListeners
 export declare class QueuedListeners {

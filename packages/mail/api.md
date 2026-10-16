@@ -4,7 +4,7 @@
 
 ## `@marmeon/mail`
 
-Types from other packages: `valibot`
+Types from other packages: none
 
 ### Stable
 
@@ -223,47 +223,39 @@ export interface QueueMailOptions {
     readonly delay?: number | Duration;
     readonly connection?: string;
 }
+// QueuedMailAddress
+export interface QueuedMailAddress {
+    address: string;
+    name?: string | undefined;
+}
+// QueuedMailMessage
+export interface QueuedMailMessage {
+    from: QueuedMailAddress;
+    to: QueuedMailAddress[];
+    cc: QueuedMailAddress[];
+    bcc: QueuedMailAddress[];
+    replyTo?: QueuedMailAddress | undefined;
+    subject: string;
+    html: string;
+    text: string;
+    attachments: {
+        filename: string;
+        content: string;
+        encoding: 'utf8' | 'base64';
+        contentType?: string | undefined;
+    }[];
+    headers: Record<string, string>;
+}
 // QueuedMailPayload
-export type QueuedMailPayload = v.InferOutput<typeof SendQueuedMail.schema>;
+export interface QueuedMailPayload {
+    mailable: string;
+    message: QueuedMailMessage;
+}
 // SendQueuedMail
 export declare class SendQueuedMail {
     #private;
     static readonly job = "marmeon.mail";
-    static readonly schema: v.ObjectSchema<{
-        readonly mailable: v.StringSchema<undefined>;
-        readonly message: v.ObjectSchema<{
-            readonly from: v.ObjectSchema<{
-                readonly address: v.StringSchema<undefined>;
-                readonly name: v.OptionalSchema<v.StringSchema<undefined>, undefined>;
-            }, undefined>;
-            readonly to: v.ArraySchema<v.ObjectSchema<{
-                readonly address: v.StringSchema<undefined>;
-                readonly name: v.OptionalSchema<v.StringSchema<undefined>, undefined>;
-            }, undefined>, undefined>;
-            readonly cc: v.ArraySchema<v.ObjectSchema<{
-                readonly address: v.StringSchema<undefined>;
-                readonly name: v.OptionalSchema<v.StringSchema<undefined>, undefined>;
-            }, undefined>, undefined>;
-            readonly bcc: v.ArraySchema<v.ObjectSchema<{
-                readonly address: v.StringSchema<undefined>;
-                readonly name: v.OptionalSchema<v.StringSchema<undefined>, undefined>;
-            }, undefined>, undefined>;
-            readonly replyTo: v.OptionalSchema<v.ObjectSchema<{
-                readonly address: v.StringSchema<undefined>;
-                readonly name: v.OptionalSchema<v.StringSchema<undefined>, undefined>;
-            }, undefined>, undefined>;
-            readonly subject: v.StringSchema<undefined>;
-            readonly html: v.StringSchema<undefined>;
-            readonly text: v.StringSchema<undefined>;
-            readonly attachments: v.ArraySchema<v.ObjectSchema<{
-                readonly filename: v.StringSchema<undefined>;
-                readonly content: v.StringSchema<undefined>;
-                readonly encoding: v.PicklistSchema<["utf8", "base64"], undefined>;
-                readonly contentType: v.OptionalSchema<v.StringSchema<undefined>, undefined>;
-            }, undefined>, undefined>;
-            readonly headers: v.RecordSchema<v.StringSchema<undefined>, v.StringSchema<undefined>, undefined>;
-        }, undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<QueuedMailPayload>;
     static readonly encrypted = true;
     static readonly tries = 5;
     static readonly backoff: number[];
@@ -309,7 +301,7 @@ export declare function fromMjml(source: Mjml, options?: {
     text?: string;
 }): Promise<MailContent>;
 // fromQueued
-export declare function fromQueued(queued: QueuedMailPayload['message']): MailMessage;
+export declare function fromQueued(queued: QueuedMailMessage): MailMessage;
 // html
 export { html } from '@marmeon/core';
 // mjml
@@ -319,7 +311,7 @@ export { raw } from '@marmeon/core';
 // textFromHtml
 export declare function textFromHtml(markup: string): string;
 // toQueued
-export declare function toQueued(message: MailMessage): QueuedMailPayload['message'];
+export declare function toQueued(message: MailMessage): QueuedMailMessage;
 ```
 
 ### Referenced, not exported

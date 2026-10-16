@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import type { StandardSchemaV1 } from '@marmeon/core';
 import * as v from 'valibot';
 import { idOf, type AuthUser, type AuthUserId } from './user.ts';
 
@@ -17,6 +18,31 @@ const userId = v.custom<AuthUserId>((value) => typeof value === 'string' || type
 /** The longest user agent an event keeps — the header has no limit, a queued payload should. */
 export const MAX_USER_AGENT = 512;
 
+/** What a queued listener of `Login` gets (`EventPayload<typeof Login>`). */
+export interface LoginPayload {
+  userId: AuthUserId;
+  remember: boolean;
+  via: LoginVia;
+  at: string;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+/** What `Login.schema` accepts: `at` as a `Date` or an ISO-8601 string. */
+export interface LoginInput extends Omit<LoginPayload, 'at'> {
+  at: Date | string;
+}
+
+/** @internal The validation behind `Login.schema`; the type tests compare its output with `LoginPayload`. */
+export const loginSchema = v.object({
+  userId,
+  remember: v.boolean(),
+  via: v.picklist(['attempt', 'login', 'remember', 'passkey']),
+  at: instant,
+  ip: v.nullable(v.string()),
+  userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+});
+
 /**
  * A user signed in (password, remember-me cookie, registration). Queueable: a queued listener gets
  * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof Login>`, `at` as an ISO-8601 string) and reads
@@ -25,14 +51,7 @@ export const MAX_USER_AGENT = 512;
  */
 export class Login {
   static readonly event = 'auth.login';
-  static readonly schema = v.object({
-    userId,
-    remember: v.boolean(),
-    via: v.picklist(['attempt', 'login', 'remember', 'passkey']),
-    at: instant,
-    ip: v.nullable(v.string()),
-    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
-  });
+  static readonly schema: StandardSchemaV1<LoginInput, LoginPayload> = loginSchema;
   readonly #event = true;
   readonly user: AuthUser;
   /** Signed in with "remember me" — or by the remember-me cookie. */
@@ -101,13 +120,21 @@ export class Lockout {
   }
 }
 
+/** What a queued listener of `Registered` gets (`EventPayload<typeof Registered>`). */
+export interface RegisteredPayload {
+  userId: AuthUserId;
+}
+
+/** @internal The validation behind `Registered.schema`; the type tests compare its output with `RegisteredPayload`. */
+export const registeredSchema = v.object({ userId });
+
 /**
  * A new user registered — the app dispatches it (the verification mail listens to it). Queueable: a queued
  * listener gets `{ userId }` (`EventPayload<typeof Registered>`) and reads the account as it is when it runs.
  */
 export class Registered {
   static readonly event = 'auth.registered';
-  static readonly schema = v.object({ userId });
+  static readonly schema: StandardSchemaV1<RegisteredPayload> = registeredSchema;
   readonly #event = true;
   readonly user: AuthUser;
 
@@ -153,6 +180,24 @@ export class PasswordReset {
   }
 }
 
+/** What a queued listener of `EverySessionEnded` gets (`EventPayload<typeof EverySessionEnded>`). */
+export interface EverySessionEndedPayload {
+  at: string;
+  accounts: number;
+  rememberTokens: number;
+  resetTokens: number;
+  accessTokens: number;
+  signIns: number;
+}
+
+/** What `EverySessionEnded.schema` accepts: `at` as a `Date` or an ISO-8601 string. */
+export interface EverySessionEndedInput extends Omit<EverySessionEndedPayload, 'at'> {
+  at: Date | string;
+}
+
+/** @internal The validation behind `EverySessionEnded.schema`; the type tests compare its output with `EverySessionEndedPayload`. */
+export const everySessionEndedSchema = v.object({ at: instant, accounts: v.number(), rememberTokens: v.number(), resetTokens: v.number(), accessTokens: v.number(), signIns: v.number() });
+
 /**
  * Every session of every account was ended at once (`AccountSessions.endEveryone()`). Queueable: `{ at, accounts, rememberTokens,
  * resetTokens, accessTokens, signIns }` (`at` as an ISO-8601 string) — how many accounts got a new session key, and how many
@@ -160,7 +205,7 @@ export class PasswordReset {
  */
 export class EverySessionEnded {
   static readonly event = 'auth.every-session-ended';
-  static readonly schema = v.object({ at: instant, accounts: v.number(), rememberTokens: v.number(), resetTokens: v.number(), accessTokens: v.number(), signIns: v.number() });
+  static readonly schema: StandardSchemaV1<EverySessionEndedInput, EverySessionEndedPayload> = everySessionEndedSchema;
   readonly #event = true;
   readonly at: Date;
   readonly accounts: number;
@@ -179,10 +224,19 @@ export class EverySessionEnded {
   }
 }
 
+/** What a queued listener of `TwoFactorEnabled` gets (`EventPayload<typeof TwoFactorEnabled>`). */
+export interface TwoFactorEnabledPayload {
+  userId: AuthUserId;
+  factor: 'totp' | 'passkey';
+}
+
+/** @internal The validation behind `TwoFactorEnabled.schema`; the type tests compare its output with `TwoFactorEnabledPayload`. */
+export const twoFactorEnabledSchema = v.object({ userId, factor: v.picklist(['totp', 'passkey']) });
+
 /** A second factor was turned on for the account (`TwoFactor.confirm()`). Queueable: `{ userId, factor }`. */
 export class TwoFactorEnabled {
   static readonly event = 'auth.two-factor-enabled';
-  static readonly schema = v.object({ userId, factor: v.picklist(['totp', 'passkey']) });
+  static readonly schema: StandardSchemaV1<TwoFactorEnabledPayload> = twoFactorEnabledSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly factor: 'totp' | 'passkey';
@@ -197,13 +251,22 @@ export class TwoFactorEnabled {
   }
 }
 
+/** What a queued listener of `TwoFactorDisabled` gets (`EventPayload<typeof TwoFactorDisabled>`). */
+export interface TwoFactorDisabledPayload {
+  userId: AuthUserId;
+  via: 'user' | 'operator' | 'reset';
+}
+
+/** @internal The validation behind `TwoFactorDisabled.schema`; the type tests compare its output with `TwoFactorDisabledPayload`. */
+export const twoFactorDisabledSchema = v.object({ userId, via: v.picklist(['user', 'operator', 'reset']) });
+
 /**
  * A second factor was turned off: by the user (`TwoFactor.disable()`), by the operator's reset command, or by the password reset of an
  * account whose address was never confirmed (`via: 'reset'`). Queueable: `{ userId, via }`.
  */
 export class TwoFactorDisabled {
   static readonly event = 'auth.two-factor-disabled';
-  static readonly schema = v.object({ userId, via: v.picklist(['user', 'operator', 'reset']) });
+  static readonly schema: StandardSchemaV1<TwoFactorDisabledPayload> = twoFactorDisabledSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly via: 'user' | 'operator' | 'reset';
@@ -218,10 +281,18 @@ export class TwoFactorDisabled {
   }
 }
 
+/** What a queued listener of `RecoveryCodesGenerated` gets (`EventPayload<typeof RecoveryCodesGenerated>`). */
+export interface RecoveryCodesGeneratedPayload {
+  userId: AuthUserId;
+}
+
+/** @internal The validation behind `RecoveryCodesGenerated.schema`; the type tests compare its output with `RecoveryCodesGeneratedPayload`. */
+export const recoveryCodesGeneratedSchema = v.object({ userId });
+
 /** New recovery codes were made (the first factor was turned on, or the user asked for new ones). Queueable: `{ userId }`. */
 export class RecoveryCodesGenerated {
   static readonly event = 'auth.recovery-codes-generated';
-  static readonly schema = v.object({ userId });
+  static readonly schema: StandardSchemaV1<RecoveryCodesGeneratedPayload> = recoveryCodesGeneratedSchema;
   readonly #event = true;
   readonly user: AuthUser;
 
@@ -234,10 +305,19 @@ export class RecoveryCodesGenerated {
   }
 }
 
+/** What a queued listener of `RecoveryCodeUsed` gets (`EventPayload<typeof RecoveryCodeUsed>`). */
+export interface RecoveryCodeUsedPayload {
+  userId: AuthUserId;
+  remaining: number;
+}
+
+/** @internal The validation behind `RecoveryCodeUsed.schema`; the type tests compare its output with `RecoveryCodeUsedPayload`. */
+export const recoveryCodeUsedSchema = v.object({ userId, remaining: v.number() });
+
 /** A recovery code was spent to sign in or to step up; `remaining` are left. Queueable: `{ userId, remaining }`. */
 export class RecoveryCodeUsed {
   static readonly event = 'auth.recovery-code-used';
-  static readonly schema = v.object({ userId, remaining: v.number() });
+  static readonly schema: StandardSchemaV1<RecoveryCodeUsedPayload> = recoveryCodeUsedSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly remaining: number;
@@ -252,19 +332,36 @@ export class RecoveryCodeUsed {
   }
 }
 
+/** What a queued listener of `TwoFactorChallengeFailed` gets (`EventPayload<typeof TwoFactorChallengeFailed>`). */
+export interface TwoFactorChallengeFailedPayload {
+  userId: AuthUserId;
+  at: string;
+  ip: string | null;
+  userAgent: string | null;
+  during: 'sign-in' | 'step-up' | 'confirm';
+}
+
+/** What `TwoFactorChallengeFailed.schema` accepts: `at` as a `Date` or an ISO-8601 string. */
+export interface TwoFactorChallengeFailedInput extends Omit<TwoFactorChallengeFailedPayload, 'at'> {
+  at: Date | string;
+}
+
+/** @internal The validation behind `TwoFactorChallengeFailed.schema`; the type tests compare its output with `TwoFactorChallengeFailedPayload`. */
+export const twoFactorChallengeFailedSchema = v.object({
+  userId,
+  at: instant,
+  ip: v.nullable(v.string()),
+  userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+  during: v.picklist(['sign-in', 'step-up', 'confirm']),
+});
+
 /**
  * A wrong second factor, after the right password (`during: 'sign-in'`) or from a session that is already signed in (`during: 'step-up'`) or a wrong passkey where sudo mode is confirmed with one (`during: 'confirm'`) —
  * for "was this you?" mails and audit logs. Queueable: `{ userId, at, ip, userAgent, during }` (`at` as an ISO-8601 string).
  */
 export class TwoFactorChallengeFailed {
   static readonly event = 'auth.two-factor-challenge-failed';
-  static readonly schema = v.object({
-    userId,
-    at: instant,
-    ip: v.nullable(v.string()),
-    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
-    during: v.picklist(['sign-in', 'step-up', 'confirm']),
-  });
+  static readonly schema: StandardSchemaV1<TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload> = twoFactorChallengeFailedSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly at: Date;
@@ -285,10 +382,19 @@ export class TwoFactorChallengeFailed {
   }
 }
 
+/** What a queued listener of `PasskeyRegistered` gets (`EventPayload<typeof PasskeyRegistered>`). */
+export interface PasskeyRegisteredPayload {
+  userId: AuthUserId;
+  name: string;
+}
+
+/** @internal The validation behind `PasskeyRegistered.schema`; the type tests compare its output with `PasskeyRegisteredPayload`. */
+export const passkeyRegisteredSchema = v.object({ userId, name: v.string() });
+
 /** A passkey was registered for the account. Queueable: `{ userId, name }`. */
 export class PasskeyRegistered {
   static readonly event = 'auth.passkey-registered';
-  static readonly schema = v.object({ userId, name: v.string() });
+  static readonly schema: StandardSchemaV1<PasskeyRegisteredPayload> = passkeyRegisteredSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly name: string;
@@ -303,6 +409,27 @@ export class PasskeyRegistered {
   }
 }
 
+/** What a queued listener of `PasskeySignInFailed` gets (`EventPayload<typeof PasskeySignInFailed>`). */
+export interface PasskeySignInFailedPayload {
+  userId: AuthUserId;
+  at: string;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+/** What `PasskeySignInFailed.schema` accepts: `at` as a `Date` or an ISO-8601 string, or left out. */
+export interface PasskeySignInFailedInput extends Omit<PasskeySignInFailedPayload, 'at'> {
+  at?: Date | string | undefined;
+}
+
+/** @internal The validation behind `PasskeySignInFailed.schema`; the type tests compare its output with `PasskeySignInFailedPayload`. */
+export const passkeySignInFailedSchema = v.object({
+  userId,
+  at: v.optional(instant, () => new Date().toISOString()),
+  ip: v.nullable(v.string()),
+  userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+});
+
 /**
  * Someone presented a passkey of this account for a passwordless sign-in and failed — a wrong signature, or a user handle that is not the
  * account's. For "was this you?" mails and audit logs; the client learns nothing of it. Queueable: `{ userId, at, ip, userAgent }` (`at` as an
@@ -310,12 +437,7 @@ export class PasskeyRegistered {
  */
 export class PasskeySignInFailed {
   static readonly event = 'auth.passkey-sign-in-failed';
-  static readonly schema = v.object({
-    userId,
-    at: v.optional(instant, () => new Date().toISOString()),
-    ip: v.nullable(v.string()),
-    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
-  });
+  static readonly schema: StandardSchemaV1<PasskeySignInFailedInput, PasskeySignInFailedPayload> = passkeySignInFailedSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly at: Date;
@@ -334,10 +456,24 @@ export class PasskeySignInFailed {
   }
 }
 
+/** What a queued listener of `PasskeyRemoved` gets (`EventPayload<typeof PasskeyRemoved>`). */
+export interface PasskeyRemovedPayload {
+  userId: AuthUserId;
+  via: 'user' | 'reset';
+}
+
+/** What `PasskeyRemoved.schema` accepts: `via` may be left out (then `'user'`). */
+export interface PasskeyRemovedInput extends Omit<PasskeyRemovedPayload, 'via'> {
+  via?: 'user' | 'reset' | undefined;
+}
+
+/** @internal The validation behind `PasskeyRemoved.schema`; the type tests compare its output with `PasskeyRemovedPayload`. */
+export const passkeyRemovedSchema = v.object({ userId, via: v.optional(v.picklist(['user', 'reset']), 'user') });
+
 /** A passkey was removed from the account: by the user, or by the password reset of an account whose address was never confirmed (`via: 'reset'`). Queueable: `{ userId, via }`. */
 export class PasskeyRemoved {
   static readonly event = 'auth.passkey-removed';
-  static readonly schema = v.object({ userId, via: v.optional(v.picklist(['user', 'reset']), 'user') });
+  static readonly schema: StandardSchemaV1<PasskeyRemovedInput, PasskeyRemovedPayload> = passkeyRemovedSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly via: 'user' | 'reset';
@@ -352,6 +488,29 @@ export class PasskeyRemoved {
   }
 }
 
+/** What a queued listener of `RememberTokenReused` gets (`EventPayload<typeof RememberTokenReused>`). */
+export interface RememberTokenReusedPayload {
+  userId: AuthUserId;
+  at: string;
+  ip: string | null;
+  userAgent: string | null;
+  sessionsEnded: boolean;
+}
+
+/** What `RememberTokenReused.schema` accepts: `at` as a `Date` or an ISO-8601 string. */
+export interface RememberTokenReusedInput extends Omit<RememberTokenReusedPayload, 'at'> {
+  at: Date | string;
+}
+
+/** @internal The validation behind `RememberTokenReused.schema`; the type tests compare its output with `RememberTokenReusedPayload`. */
+export const rememberTokenReusedSchema = v.object({
+  userId,
+  at: instant,
+  ip: v.nullable(v.pipe(v.string(), v.ip())),
+  userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
+  sessionsEnded: v.boolean(),
+});
+
 /**
  * A remember-me cookie of a known selector was presented with a validator that is neither the current nor the just-replaced one: an
  * old one (replaced a rotation or many rotations ago) or one never issued. Someone held the cookie, so it was copied. Every
@@ -363,13 +522,7 @@ export class PasskeyRemoved {
  */
 export class RememberTokenReused {
   static readonly event = 'auth.remember-token-reused';
-  static readonly schema = v.object({
-    userId,
-    at: instant,
-    ip: v.nullable(v.pipe(v.string(), v.ip())),
-    userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
-    sessionsEnded: v.boolean(),
-  });
+  static readonly schema: StandardSchemaV1<RememberTokenReusedInput, RememberTokenReusedPayload> = rememberTokenReusedSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly at: Date;
@@ -395,10 +548,19 @@ export class RememberTokenReused {
   }
 }
 
+/** What a queued listener of `PasskeyCloneSuspected` gets (`EventPayload<typeof PasskeyCloneSuspected>`). */
+export interface PasskeyCloneSuspectedPayload {
+  userId: AuthUserId;
+  passkeyId: number;
+}
+
+/** @internal The validation behind `PasskeyCloneSuspected.schema`; the type tests compare its output with `PasskeyCloneSuspectedPayload`. */
+export const passkeyCloneSuspectedSchema = v.object({ userId, passkeyId: v.number() });
+
 /** A passkey answered with a sign count that did not move forward: it may have been copied. The sign-in was refused. Queueable: `{ userId, passkeyId }`. */
 export class PasskeyCloneSuspected {
   static readonly event = 'auth.passkey-clone-suspected';
-  static readonly schema = v.object({ userId, passkeyId: v.number() });
+  static readonly schema: StandardSchemaV1<PasskeyCloneSuspectedPayload> = passkeyCloneSuspectedSchema;
   readonly #event = true;
   readonly user: AuthUser;
   readonly passkeyId: number;

@@ -1,4 +1,4 @@
-import type { Resolver } from '@marmeon/core';
+import type { Resolver, StandardSchemaV1 } from '@marmeon/core';
 import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import { NotificationChannelError, type NotificationDeliverer } from './notifications.ts';
@@ -6,7 +6,20 @@ import { NotificationError, type NotificationRegistry } from './registry.ts';
 import { describeIssues, NotificationDataError } from './validate.ts';
 
 /** What a queued notification carries: its id, its name, the recipient as data and the data as JSON. */
-export type QueuedNotificationPayload = v.InferOutput<typeof SendQueuedNotification.schema>;
+export interface QueuedNotificationPayload {
+  id: string;
+  notification: string;
+  recipient: { type: string; id: string | number };
+  data: unknown;
+}
+
+/** @internal The validation behind `SendQueuedNotification.schema`; the type tests compare its output with `QueuedNotificationPayload`. */
+export const queuedNotificationSchema = v.object({
+  id: v.string(),
+  notification: v.string(),
+  recipient: v.object({ type: v.string(), id: v.union([v.string(), v.number()]) }),
+  data: v.unknown(),
+});
 
 /**
  * The framework job behind `notifications.send()`: one notification for one recipient. **Encrypted** — a
@@ -15,12 +28,7 @@ export type QueuedNotificationPayload = v.InferOutput<typeof SendQueuedNotificat
  */
 export class SendQueuedNotification {
   static readonly job = 'marmeon.notification';
-  static readonly schema = v.object({
-    id: v.string(),
-    notification: v.string(),
-    recipient: v.object({ type: v.string(), id: v.union([v.string(), v.number()]) }),
-    data: v.unknown(),
-  });
+  static readonly schema: StandardSchemaV1<QueuedNotificationPayload> = queuedNotificationSchema;
   static readonly encrypted = true;
   static readonly tries = 3;
   static readonly backoff = [10, 60, 300];
