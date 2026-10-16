@@ -870,6 +870,23 @@ describe('checkCiWorkflow — the pins of ci.yml', () => {
     expect(problemsOf(real.replace(/uses: actions\/checkout@[0-9a-f]{40}/, '"uses": actions/checkout@v5'))).toContain('is not pinned to a commit');
     expect(problemsOf(real.replace(/uses: actions\/checkout@[0-9a-f]{40}/, 'uses : actions/checkout@main'))).toContain('is not pinned to a commit');
   });
+
+  it('refuses a checkout that keeps the token', () => {
+    expect(problemsOf(real.replace('persist-credentials: false', 'fetch-depth: 1'))).toContain('without "persist-credentials: false"');
+  });
+
+  it('refuses a cache save that is not limited to main', () => {
+    expect(problemsOf(real.replace("github.ref == 'refs/heads/main' && ", ''))).toContain('actions/cache/save step without');
+  });
+
+  it('refuses a setup-node that restores or saves a cache by itself', () => {
+    expect(problemsOf(real.replace('package-manager-cache: false', 'cache: pnpm'))).toContain('actions/setup-node step needs');
+    expect(problemsOf(real.replace('          package-manager-cache: false\n', ''))).toContain('actions/setup-node step needs');
+  });
+
+  it('refuses the combined cache action, which a pull request would write', () => {
+    expect(problemsOf(real.replace('actions/cache/restore@', 'actions/cache@'))).toContain('a pull request would write the cache');
+  });
 });
 
 describe('checkLabelWorkflow — the release label check', () => {

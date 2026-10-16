@@ -1,0 +1,9 @@
+# Keeps the commit pins of the workflows current (the version in each comment moves with them).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3

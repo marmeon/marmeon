@@ -564,6 +564,24 @@ export function checkCiWorkflow(repository: string): string[] {
   for (const [, action] of code.matchAll(/["']?\buses["']?\s*:\s*["']?([^\s"']+)/g)) {
     if (!/@[0-9a-f]{40}$/.test(action!)) problems.push(`ci.yml: "${action}" is not pinned to a commit — every action is pinned by its full SHA`);
   }
+  // A checkout leaves the token in .git/config for every later step, unless it is told not to.
+  for (const chunk of code.split(/^(?=\s*- )/m)) {
+    if (!/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/checkout@/m.test(chunk)) continue;
+    if (!/^\s*persist-credentials:\s*false\s*$/m.test(chunk)) problems.push('ci.yml: an actions/checkout step without "persist-credentials: false" — the token would stay in the checkout for every later step');
+  }
+  for (const chunk of code.split(/^(?=\s*- )/m)) {
+    if (/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/cache\/save@/m.test(chunk) && !/^\s*(?:- )?if:.*github\.ref == 'refs\/heads\/main'/m.test(chunk)) {
+      problems.push("ci.yml: an actions/cache/save step without \"if: github.ref == 'refs/heads/main'\" — only main writes the cache");
+    }
+    if (/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/setup-node@/m.test(chunk)) {
+      const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(chunk)?.[2] ?? '';
+      if (!/^\s*package-manager-cache:\s*false\s*$/m.test(withBlock) || /^\s*cache:/m.test(withBlock)) {
+        problems.push('ci.yml: an actions/setup-node step needs "package-manager-cache: false" and no "cache:" — the store is restored by actions/cache/restore');
+      }
+    }
+  }
+  // actions/cache itself saves on every run, a pull request's included; restore and save are the two halves.
+  if (/\bactions\/cache@/.test(code)) problems.push('ci.yml: actions/cache — a pull request would write the cache; use actions/cache/restore, and actions/cache/save only on main');
   return problems;
 }
 

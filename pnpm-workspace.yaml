@@ -1,3 +1,18 @@
 packages:
   - packages/*
   - apps/*
+
+# Supply-chain policy for installs.
+# A release younger than three days (4320 minutes) is not installed.
+minimumReleaseAge: 4320
+# A version may not be published with weaker trust evidence than an earlier one.
+trustPolicy: no-downgrade
+# A transitive dependency may not come from a repository or tarball URL.
+blockExoticSubdeps: true
+# An install script runs only for a package listed under allowBuilds (none today).
+strictDepBuilds: true
+allowBuilds: {}
+# chokidar 4.0.3 was published by hand by its maintainer, without the trusted-publishing evidence of the versions before it.
+# mjml-cli requires ^4.0.3 and 5.x is back on trusted publishing, so this exact version is accepted.
+trustPolicyExclude:
+  - chokidar@4.0.3
