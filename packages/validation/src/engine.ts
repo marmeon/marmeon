@@ -161,8 +161,79 @@ export function stringEngine(): Engine {
   return typed('string', (value) => typeof value === 'string' && !value.includes('\0'));
 }
 
-export function arrayEngine(item: Engine, async: boolean): Engine {
-  return (async ? v.arrayAsync(item as Schema, typeMessage('array')) : v.array(item as Schema, typeMessage('array'))) as unknown as Engine;
+/** How many items of a list are checked at once when their rules are asynchronous (a database rule asks one query per item). */
+export const ITEM_CONCURRENCY = 8;
+
+/** A check on a list's size, run before any item. */
+export interface SizeGate {
+  readonly test: (size: number) => boolean;
+  readonly message: Message;
+}
+
+// The validations whose item check rejected: no list of them takes another item (each would be one more query nobody awaits). Keyed by
+// the config object, which Valibot creates anew for every parse and hands unchanged to every schema of it — one validation, one key.
+const rejected = new WeakSet<object>();
+
+/** The items of a list, checked at most {@link ITEM_CONCURRENCY} at a time — issues and paths as Valibot's own `arrayAsync` gives them. */
+function boundedArray(item: Schema): Schema {
+  const base = v.arrayAsync(item, typeMessage('array'));
+  return {
+    ...base,
+    async '~run'(dataset: Dataset, config: { abortEarly?: boolean }) {
+      const input = dataset.value;
+      if (!Array.isArray(input)) return base['~run'](dataset as never, config);
+      dataset.typed = true;
+      const values: unknown[] = [];
+      dataset.value = values;
+      const results = Array.from<Dataset>({ length: input.length });
+      let next = 0;
+      let stopped = false;
+      const worker = async () => {
+        while (!stopped && !rejected.has(config) && next < input.length) {
+          const key = next++;
+          try {
+            results[key] = await item['~run']({ value: input[key] }, config);
+          } catch (error) {
+            rejected.add(config);
+            throw error;
+          }
+          if (config.abortEarly && results[key]!.issues) stopped = true;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(ITEM_CONCURRENCY, input.length) }, worker));
+      for (let key = 0; key < results.length; key++) {
+        const itemDataset = results[key]!;
+        if (itemDataset.issues) {
+          const pathItem = { type: 'array', origin: 'value', input, key, value: input[key] };
+          for (const issue of itemDataset.issues) {
+            if (issue.path) issue.path.unshift(pathItem);
+            else issue.path = [pathItem];
+            dataset.issues?.push(issue);
+          }
+          if (!dataset.issues) dataset.issues = itemDataset.issues;
+          if (config.abortEarly) {
+            dataset.typed = false;
+            break;
+          }
+        }
+        if (!itemDataset.typed) dataset.typed = false;
+        values.push(itemDataset.value);
+      }
+      return dataset;
+    },
+  };
+}
+
+/**
+ * A list of `item`s. `sizes` run on the list before its first item does — a rule that asks the database per item must not run
+ * for a list that is too long anyway. Asynchronous items are checked {@link ITEM_CONCURRENCY} at a time.
+ */
+export function arrayEngine(item: Engine, async: boolean, sizes: readonly SizeGate[] = []): Engine {
+  const items = async ? boundedArray(item) : v.array(item as Schema, typeMessage('array'));
+  if (sizes.length === 0) return items as unknown as Engine;
+  const gates = sizes.map(({ test, message }) => v.check((value: unknown[]) => test(value.length), message));
+  const head = v.custom((value) => Array.isArray(value), typeMessage('array'));
+  return (async ? v.pipeAsync(head, ...gates, items) : v.pipe(head, ...gates, items)) as unknown as Engine;
 }
 
 export function unionEngine(options: readonly Engine[], async: boolean): Engine {
@@ -170,10 +241,10 @@ export function unionEngine(options: readonly Engine[], async: boolean): Engine 
 }
 
 /** A comma-separated list (`a@x.io, b@x.io`) or a list — each item checked by `item`. */
-export function listEngine(item: Engine, async: boolean): Engine {
+export function listEngine(item: Engine, async: boolean, sizes: readonly SizeGate[] = []): Engine {
   const split = (value: string | unknown[]) => (typeof value === 'string' ? value.split(',').map((part) => part.trim()).filter((part) => part !== '') : value);
   const base = v.custom((value) => typeof value === 'string' || Array.isArray(value), typeMessage('array'));
-  return (async ? v.pipeAsync(base, v.transform(split), arrayEngine(item, true) as Schema) : v.pipe(base, v.transform(split), arrayEngine(item, false) as Schema)) as unknown as Engine;
+  return (async ? v.pipeAsync(base, v.transform(split), arrayEngine(item, true, sizes) as Schema) : v.pipe(base, v.transform(split), arrayEngine(item, false, sizes) as Schema)) as unknown as Engine;
 }
 
 // ——— Objects ———

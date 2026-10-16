@@ -114,7 +114,7 @@ export const rules = {
   /** A list, each item checked by `item`. */
   array: <Item extends Rule<any, any>>(item: Item): ArrayRule<InferOutput<Item>, InferInput<Item>> =>
     new ArrayRule(
-      definition((context) => engine.arrayEngine(item['~engine'](context), item['~rule'].async), {
+      definition((context, sizes) => engine.arrayEngine(item['~engine'](context), item['~rule'].async, sizes), {
         async: item['~rule'].async,
         contextual: item['~rule'].contextual,
         container: true,
@@ -156,7 +156,7 @@ export const rules = {
   /** A comma-separated list (`ada@example.com, alan@example.com`) or a list — each item checked by `item`. */
   list: <Item extends Rule<any, any>>(item: Item): ArrayRule<InferOutput<Item>, InferInput<Item>, string | InferInput<Item>[]> =>
     new ArrayRule(
-      definition((context) => engine.listEngine(item['~engine'](context), item['~rule'].async), {
+      definition((context, sizes) => engine.listEngine(item['~engine'](context), item['~rule'].async, sizes), {
         async: item['~rule'].async,
         contextual: item['~rule'].contextual,
         container: true,

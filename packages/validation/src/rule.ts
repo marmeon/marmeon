@@ -15,8 +15,10 @@ export interface RuleStep {
 
 /** How a rule is built (internal — the shape of a rule, not its API). */
 export interface RuleDefinition {
-  readonly base: (context: BuildContext) => Engine;
+  readonly base: (context: BuildContext, sizes: readonly engine.SizeGate[]) => Engine;
   readonly steps: readonly RuleStep[];
+  /** A list's size rules: checked before its items, so the base (the list engine) takes them along. */
+  readonly sizes: readonly engine.SizeGate[];
   readonly async: boolean;
   readonly contextual: boolean;
   /** `.live()`: its rules run in a live validation too. */
@@ -171,6 +173,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
     return new Rule({
       base: (context) => engine.modifiedEngine(this['~engine'](context), { ...modifier, keepsEmpty: definition.keepsEmpty }, definition.async),
       steps: [],
+      sizes: [],
       async: definition.async,
       contextual: definition.contextual,
       live: false,
@@ -188,12 +191,12 @@ export const LIVE_ON_CONTAINER =
 
 function build(definition: RuleDefinition, context: BuildContext): Engine {
   const items = definition.steps.map((step) => step.build(context)).filter((item): item is Engine => item !== undefined);
-  return engine.pipeEngine(definition.base(context), items, definition.async);
+  return engine.pipeEngine(definition.base(context, definition.sizes), items, definition.async);
 }
 
 /** A rule's base on its own. */
-export function definition(base: (context: BuildContext) => Engine, parts: Partial<RuleDefinition> = {}): RuleDefinition {
-  return { base, steps: [], async: false, contextual: false, live: false, container: false, keepsEmpty: false, meta: {}, ...parts };
+export function definition(base: (context: BuildContext, sizes: readonly engine.SizeGate[]) => Engine, parts: Partial<RuleDefinition> = {}): RuleDefinition {
+  return { base, steps: [], sizes: [], async: false, contextual: false, live: false, container: false, keepsEmpty: false, meta: {}, ...parts };
 }
 
 /** A step that never depends on the request. */
@@ -268,17 +271,22 @@ type Sized = 'string' | 'number' | 'array';
 
 const sizeOf = (kind: Sized, value: any): number => (kind === 'string' ? [...(value as string)].length : kind === 'array' ? (value as unknown[]).length : (value as number));
 
-function sizeStep(kind: Sized, rule: 'min' | 'max' | 'between', min: number | undefined, max: number | undefined): RuleStep {
+function sizeMessage(kind: Sized, rule: 'min' | 'max' | 'between', min: number | undefined, max: number | undefined): engine.Message {
   for (const bound of [min, max]) {
     if (bound !== undefined && !Number.isFinite(bound)) throw new RangeError(`${rule}() takes finite numbers, got ${bound}.`);
   }
   const params = rule === 'min' ? { min } : rule === 'max' ? { max } : { min, max };
-  return step(() =>
-    engine.check(
-      (value) => (min === undefined || sizeOf(kind, value) >= min) && (max === undefined || sizeOf(kind, value) <= max),
-      engine.message(`${rule}.${kind}` as TextKey, params),
-    ),
-  );
+  return engine.message(`${rule}.${kind}` as TextKey, params);
+}
+
+function sizeStep(kind: Sized, rule: 'min' | 'max' | 'between', min: number | undefined, max: number | undefined): RuleStep {
+  const message = sizeMessage(kind, rule, min, max);
+  return step(() => engine.check((value) => (min === undefined || sizeOf(kind, value) >= min) && (max === undefined || sizeOf(kind, value) <= max), message));
+}
+
+/** A list's size rule: its items count, and it runs before the first of them. */
+function sizeGate(rule: 'min' | 'max' | 'between', min: number | undefined, max: number | undefined): engine.SizeGate {
+  return { test: (size) => (min === undefined || size >= min) && (max === undefined || size <= max), message: sizeMessage('array', rule, min, max) };
 }
 
 /**
@@ -407,17 +415,23 @@ export class ArrayRule<Item, ItemInput, In = ItemInput[]> extends Rule<Item[], I
 
   /** At least `min` items. */
   min(min: number): this {
-    return this.with(sizeStep('array', 'min', min, undefined));
+    return this.#sized(sizeGate('min', min, undefined));
   }
 
   /** At most `max` items. */
   max(max: number): this {
-    return this.with(sizeStep('array', 'max', undefined, max));
+    return this.#sized(sizeGate('max', undefined, max));
   }
 
   /** From `min` to `max` items. */
   between(min: number, max: number): this {
-    return this.with(sizeStep('array', 'between', min, max));
+    return this.#sized(sizeGate('between', min, max));
+  }
+
+  #sized(gate: engine.SizeGate): this {
+    const definition = this['~rule'];
+    const Class = this.constructor as new (definition: RuleDefinition) => this;
+    return new Class({ ...definition, sizes: [...definition.sizes, gate] });
   }
 }
 
@@ -514,6 +528,7 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition):
   return {
     base,
     steps,
+    sizes: [],
     async: async || steps.some((s) => s.async),
     contextual: rules.some((rule) => rule['~rule'].contextual) || steps.some((s) => s.contextual),
     live: previous?.live ?? false,
