@@ -1,7 +1,7 @@
 import { pageQuery, queryUrl } from '@marmeon/http/client';
 import type { PageObject, PaginationMeta } from '@marmeon/http/page';
 import type { ReactNode } from 'react';
-import { usePage } from './app.tsx';
+import { useRouterContext } from './app.tsx';
 import { Link } from './link.tsx';
 
 /** What `<Pagination>` says — for screen readers too. */
@@ -33,7 +33,7 @@ export interface PaginationProps {
  * page's URL). Renders nothing for a single page.
  */
 export function Pagination({ meta, window = 2, param = 'page', labels }: PaginationProps): ReactNode {
-  const page = usePage();
+  const { page } = useRouterContext();
   if (meta.lastPage <= 1) return null;
   const text: PaginationLabels = { ...ENGLISH, ...labels };
   const href = pageHref(page, param);

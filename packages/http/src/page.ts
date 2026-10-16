@@ -229,6 +229,40 @@ export interface PageObject {
   live?: LiveSubscription[];
 }
 
+/**
+ * What a page knows about itself — the app's view of the page object, as `usePage()` returns it: the protocol fields of the
+ * wire format stay with the adapter. See docs/pages.md#reading-the-page.
+ */
+export interface PageInfo<TProps = ViewProps> {
+  /** The view's name: `user-profile/Show`. */
+  readonly component: string;
+  /** The controller's props and the shared ones. */
+  readonly props: TProps;
+  /** The page's URL, path and query. */
+  readonly url: string;
+  /** The name of the route that answered — absent for an error page and for a route the browser does not know. */
+  readonly route?: string;
+  /** The page's language, one of the app's supported locales. */
+  readonly locale?: string;
+  /** The page's parsed query — absent for a route without a query schema. */
+  readonly query?: Readonly<Record<string, unknown>>;
+  /** The flash messages this page delivered. */
+  readonly flash?: readonly FlashMessage[];
+}
+
+/** The {@link PageInfo} of a page object — only its fields: a field added to the wire format never reaches the app by itself. */
+export function pageInfo<TProps = ViewProps>(page: PageObject): PageInfo<TProps> {
+  return {
+    component: page.component,
+    props: page.props as TProps,
+    url: page.url,
+    ...(page.route !== undefined && { route: page.route }),
+    ...(page.locale !== undefined && { locale: page.locale }),
+    ...(page.query !== undefined && { query: page.query }),
+    ...(page.flash !== undefined && { flash: page.flash }),
+  };
+}
+
 /** A channel a page (island, layer) follows — `PageObject.live`. */
 export interface LiveSubscription {
   /** The channel's name: `users.7`, `dashboard.sign-ins`. */

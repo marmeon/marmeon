@@ -27,7 +27,7 @@ import {
   type VisitEvents,
   type VisitOptions,
 } from '@marmeon/http/client';
-import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@marmeon/http/page';
+import { matchesPath, pageInfo, type BrowserRouteNameInput, type CheckIslandRouteName, type PageInfo, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@marmeon/http/page';
 import type { Catalog, MessageLoader } from '@marmeon/i18n/messages';
 import {
   addTransitionType,
@@ -258,11 +258,12 @@ export function useFeature<API>(feature: Feature<API>): API {
 }
 
 /**
- * The current page object (component name, props, url). Its props include the
- * shared ones — `usePage().props.auth` — typed through `interface SharedProps`.
+ * The page on screen: its `component`, `props`, `url`, `route`, `locale`, `query` and `flash`. Its props include the shared
+ * ones — `usePage().props.auth` — typed through `interface SharedProps`. See docs/pages.md#reading-the-page.
  */
-export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'> & { props: SharedProps & TProps } {
-  return useRouterContext().page as Omit<PageObject, 'props'> & { props: SharedProps & TProps };
+export function usePage<TProps extends object = {}>(): PageInfo<SharedProps & TProps> {
+  const { page } = useRouterContext();
+  return useMemo(() => pageInfo<SharedProps & TProps>(page), [page]);
 }
 
 /**

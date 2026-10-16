@@ -7,6 +7,7 @@ export { MarmeonApp, useFeature, usePage, useRouter } from './app.tsx';
 // The progress bar (opt-in): `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`.
 export { progressBar } from '@marmeon/http/client';
 export type { ProgressIndicator, ViewTransitionOption } from '@marmeon/http/client';
+export type { PageInfo } from '@marmeon/http/page';
 export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {

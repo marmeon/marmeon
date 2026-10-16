@@ -343,6 +343,68 @@ describe('usePage inside layouts', () => {
   });
 });
 
+describe('usePage returns the page info', () => {
+  const seen: ReturnType<typeof usePage>[] = [];
+  function Spy({ children }: { children: ReactNode }) {
+    const info = usePage<{ flash: string }>();
+    seen.push(info);
+    // The type holds the curated fields only.
+    // @ts-expect-error — the build version is a protocol field
+    void info.version;
+    // @ts-expect-error — deferred props are a protocol field
+    void info.deferredProps;
+    // @ts-expect-error — once props are a protocol field
+    void info.onceProps;
+    // @ts-expect-error — layers are a protocol field
+    void info.layers;
+    // @ts-expect-error — the csrf token is a protocol field
+    void info.csrf;
+    const text: string = info.props.flash;
+    const [bumps, setBumps] = useState(0);
+    return (
+      <div data-info={text} data-bumps={bumps}>
+        <button data-testid="bump" onClick={() => setBumps((n) => n + 1)} />
+        {children}
+      </div>
+    );
+  }
+
+  it('hands out the curated fields and nothing of the wire format', async () => {
+    seen.length = 0;
+    const wire: PageObject = {
+      ...page('Plain', '/plain?tab=a', { flash: 'Saved.' }),
+      route: 'plain',
+      locale: 'de',
+      query: { tab: 'a' },
+      flash: [{ id: 'f1', key: 'toast', data: { message: 'Hi' } }],
+      onceScope: 'scope',
+      csrf: 'token',
+      epoch: 'e1',
+    };
+    await mount(wire, { layout: () => Spy });
+    const info = seen.at(-1)!;
+    expect(Object.keys(info).sort()).toEqual(['component', 'flash', 'locale', 'props', 'query', 'route', 'url']);
+    expect(info).toEqual({
+      component: 'app/Plain',
+      props: { flash: 'Saved.' },
+      url: '/plain?tab=a',
+      route: 'plain',
+      locale: 'de',
+      query: { tab: 'a' },
+      flash: [{ id: 'f1', key: 'toast', data: { message: 'Hi' } }],
+    });
+  });
+
+  it('leaves out what the page object does not have, and keeps the same object while the page stays', async () => {
+    seen.length = 0;
+    await mount(page('Plain', '/plain', { flash: 'Saved.' }), { layout: () => Spy });
+    expect(Object.keys(seen.at(-1)!).sort()).toEqual(['component', 'props', 'url']);
+    await click('bump'); // a render without a page change
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(seen).size).toBe(1);
+  });
+});
+
 describe('deferred and optional props', () => {
   it('renders the page with the fallback first, then the deferred prop the browser loads after mount', async () => {
     let release!: () => void;
