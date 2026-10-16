@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/scheduler",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Scheduled tasks for Marmeon apps: written in the modules, run by schedule:work or cron, with locks against overlaps.",
   "keywords": [
     "marmeon",
