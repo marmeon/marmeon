@@ -1,6 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Clock } from '@marmeon/core';
-import type { Kysely } from '@marmeon/database';
+import { sql, type Kysely } from '@marmeon/database';
 import { HttpError, ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
@@ -65,9 +65,23 @@ export interface UploadsOptions {
   readonly lifetime: number;
   /** How long the browser has to send the file (seconds). */
   readonly sendWithin: number;
+  /** Open uploads (not used, token still works) one session may hold. */
+  readonly maxOpen: number;
+  /** Bytes the open uploads of one session may announce together. */
+  readonly maxOpenBytes: number;
+  /** Bytes the open uploads of all sessions may announce together; 0 = no limit. */
+  readonly maxOpenTotalBytes: number;
   /** The signed URL the bytes of upload `id` go to (local and memory disks). */
   readonly receiveUrl: (id: string, expiresIn: number) => string;
 }
+
+/** Every open upload counts for at least this many bytes in the sums, so files of 0 or 1 byte still run into the limits (a row costs more than its file). */
+export const OPEN_UPLOAD_MIN_CHARGE = 64 * 1024;
+
+/** How often a target that lost a race for the last place tries again before it is turned away. */
+const SETTLE_ATTEMPTS = 5;
+
+const CHARGE = sql`case when size > ${OPEN_UPLOAD_MIN_CHARGE} then size else ${OPEN_UPLOAD_MIN_CHARGE} end`;
 
 const TOKEN = /^tu_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([\w-]{43})$/;
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -81,7 +95,8 @@ export function uploadError(field: string, key: string, message: string, params:
 
 /**
  * Temporary uploads: the table of tokens and the private disk their files wait on. A target is
- * handed out for one route's field and one session; the bytes arrive once, cut off at the field's `maxBytes`; on submit the
+ * handed out for one route's field and one session; the bytes arrive once, cut off at the size the browser announced (never above
+ * the field's `maxBytes`); the open ones are counted against `maxOpen`, `maxOpenBytes` and `maxOpenTotalBytes`; on submit the
  * token is verified (signature, session, route and field, expiry, not used) and the file's type read from its bytes; storing
  * it uses the token up — one `UPDATE … WHERE consumed_at IS NULL`, so of two submits racing exactly one wins.
  *
@@ -99,43 +114,54 @@ export class TemporaryUploads {
     return this.#options.disk();
   }
 
-  /** A target for one file: a row for its token, and where the bytes go. A file the browser says is too large: 422 at once. */
+  /**
+   * A target for one file: a row for its token, and where the bytes go. A file the browser says is too large: 422 at once. A
+   * session over its open uploads, or all sessions over theirs: 429 with `Retry-After` — what keeps unsent files from filling the disk.
+   */
   async target(request: TargetRequest): Promise<UploadTarget> {
     const { rule, field } = request;
-    if (request.size > rule.maxBytes) throw uploadError(field, 'marmeon.validation.upload.max', 'The file may be at most {max}.', { max: formatBytes(rule.maxBytes) });
+    // A file no limit would ever take is a 422 with the real maximum, not a 429 that promises a later try.
+    const { maxOpenBytes, maxOpenTotalBytes } = this.#options;
+    const largest = Math.min(rule.maxBytes, maxOpenBytes, maxOpenTotalBytes === 0 ? Infinity : maxOpenTotalBytes);
+    if (request.size > largest) throw uploadError(field, 'marmeon.validation.upload.max', 'The file may be at most {max}.', { max: formatBytes(largest) });
     const disk = this.disk;
     const id = randomUUID();
     const now = this.#options.clock.now();
-    await this.#options
-      .db()
-      .insertInto(UPLOADS_TABLE)
-      .values({
+    const db = this.#options.db();
+    const charge = Math.max(request.size, OPEN_UPLOAD_MIN_CHARGE);
+    // Counting and inserting are one statement, so requests one after another never get past a limit. On a database where statements
+    // do not see each other's uncommitted rows (Postgres), requests at the very same moment may all have counted before any inserted:
+    // the count after the insert settles it, and those that find a limit passed give way — and try again a moment later, so a burst
+    // does not turn everyone away.
+    for (let attempt = 1; ; attempt++) {
+      const { numAffectedRows } = await this.#insertWithinLimits(db, {
         id,
         session: request.session,
         route: request.route,
         field,
         disk: disk.name,
-        key: id,
         name: request.name.slice(0, 255),
-        max_bytes: rule.maxBytes,
-        size: null,
-        created_at: now,
-        expires_at: now + this.#options.lifetime,
-        started_at: null,
-        uploaded_at: null,
-        consumed_at: null,
-      })
-      .execute();
+        maxBytes: rule.maxBytes,
+        size: request.size,
+        charge,
+        now,
+      });
+      if (numAffectedRows !== 1n) throw await this.#tooMany(db, request.session, charge, now);
+      if (!(await this.#over(db, request.session, 0, 0, now))) break;
+      await db.deleteFrom(UPLOADS_TABLE).where('id', '=', id).execute();
+      if (attempt === SETTLE_ATTEMPTS) throw await this.#tooMany(db, request.session, charge, now);
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 20 * attempt));
+    }
     const token = `tu_${id}.${this.#sign(id)}`;
     if (disk instanceof S3Disk) {
-      const post = await disk.presignedPost(id, { maxBytes: rule.maxBytes, expiresIn: this.#options.sendWithin });
+      const post = await disk.presignedPost(id, { maxBytes: Math.max(1, request.size), expiresIn: this.#options.sendWithin });
       return { token, upload: { method: 'POST', url: post.url, fields: post.fields } };
     }
     return { token, upload: { method: 'PUT', url: this.#options.receiveUrl(id, this.#options.sendWithin) } };
   }
 
   /**
-   * The bytes of upload `id` (a local or memory disk): once per upload, for its session, cut off after the field's `maxBytes`
+   * The bytes of upload `id` (a local or memory disk): once per upload, for its session, cut off after the size announced with its target (at most the field's `maxBytes`)
    * — whatever `Content-Length` said — with nothing left behind (the disk writes a temporary file and renames it only when
    * complete). Returns the size.
    */
@@ -145,7 +171,8 @@ export class TemporaryUploads {
     const row = await db.selectFrom(UPLOADS_TABLE).selectAll().where('id', '=', id).executeTakeFirst();
     const now = this.#options.clock.now();
     if (!row || row.session !== session || Number(row.expires_at) <= now) throw new HttpError(404);
-    const max = Number(row.max_bytes);
+    // The size the browser announced is the limit — the open uploads were counted by it.
+    const max = Math.min(Number(row.max_bytes), row.size === null ? Infinity : Number(row.size));
     if (declared !== undefined && declared > max) throw new HttpError(413, `The file may be at most ${formatBytes(max)}.`);
     // One sender: the first claims the upload.
     const claimed = await db.updateTable(UPLOADS_TABLE).set({ started_at: now }).where('id', '=', id).where('started_at', 'is', null).executeTakeFirst();
@@ -197,7 +224,7 @@ export class TemporaryUploads {
     try {
       // A local upload knows its size once complete; an S3 one is asked (its POST policy capped it).
       if (row.uploaded_at === null && !(disk instanceof S3Disk)) return new RejectedUpload('invalid');
-      size = row.size === null ? await disk.size(row.key) : Number(row.size);
+      size = row.uploaded_at === null ? await disk.size(row.key) : Number(row.size);
       head = await firstBytes(disk, row.key, SNIFF_BYTES);
     } catch (error) {
       if (error instanceof FileNotFoundError) return new RejectedUpload('invalid');
@@ -222,11 +249,17 @@ export class TemporaryUploads {
   }
 
   /**
-   * Deletes the uploads made before `before` (epoch ms) — the rows first, in one statement, then their files: a token being
-   * used right now either still finds its row (and its file) or finds neither. Returns how many.
+   * Deletes the uploads that expired unused and those made before `before` (epoch ms) — the rows first, in one
+   * statement, then their files: a token being used right now either still finds its row (and its file) or finds neither.
+   * Returns how many.
    */
   async prune(before: number): Promise<number> {
-    const rows = await this.#options.db().deleteFrom(UPLOADS_TABLE).where('created_at', '<=', before).returning(['disk', 'key']).execute();
+    const rows = await this.#options
+      .db()
+      .deleteFrom(UPLOADS_TABLE)
+      .where((eb) => eb.or([eb.and([eb('expires_at', '<=', this.#options.clock.now()), eb('consumed_at', 'is', null)]), eb('created_at', '<=', before)]))
+      .returning(['disk', 'key'])
+      .execute();
     for (const row of rows) {
       try {
         await this.#named(row.disk).delete(row.key);
@@ -235,6 +268,50 @@ export class TemporaryUploads {
       }
     }
     return rows.length;
+  }
+
+  async #insertWithinLimits(
+    db: Kysely<Tables>,
+    row: { id: string; session: string; route: string; field: string; disk: string; name: string; maxBytes: number; size: number; charge: number; now: number },
+  ): Promise<{ numAffectedRows: bigint }> {
+    const { maxOpen, maxOpenBytes, maxOpenTotalBytes } = this.#options;
+    const open = sql`consumed_at is null and expires_at > ${row.now}`;
+    const total = maxOpenTotalBytes === 0 ? sql`1 = 1` : sql`(select coalesce(sum(${CHARGE}), 0) from ${sql.table(UPLOADS_TABLE)} where ${open}) + ${row.charge} <= ${maxOpenTotalBytes}`;
+    const result = await sql`
+      insert into ${sql.table(UPLOADS_TABLE)}
+        (id, session, route, field, disk, key, name, max_bytes, size, created_at, expires_at, started_at, uploaded_at, consumed_at)
+      select ${row.id}, ${row.session}, ${row.route}, ${row.field}, ${row.disk}, ${row.id}, ${row.name}, cast(${row.maxBytes} as bigint),
+        cast(${row.size} as bigint), cast(${row.now} as bigint), cast(${row.now + this.#options.lifetime} as bigint), null, null, null
+      where (select count(*) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) < ${maxOpen}
+        and (select coalesce(sum(${CHARGE}), 0) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) + ${row.charge} <= ${maxOpenBytes}
+        and ${total}
+    `.execute(db);
+    return { numAffectedRows: BigInt(result.numAffectedRows ?? 0) };
+  }
+
+  /** Whether the open uploads of `session` (and of all) stand over a limit once `count` more files and `bytes` more bytes are added. */
+  async #over(db: Kysely<Tables>, session: string, count: number, bytes: number, now: number): Promise<'session' | 'total' | undefined> {
+    const { maxOpen, maxOpenBytes, maxOpenTotalBytes } = this.#options;
+    const open = sql`consumed_at is null and expires_at > ${now}`;
+    const mine = await sql<{ files: number | string; bytes: number | string | null }>`
+      select count(*) as files, coalesce(sum(${CHARGE}), 0) as bytes from ${sql.table(UPLOADS_TABLE)} where session = ${session} and ${open}
+    `.execute(db);
+    if (Number(mine.rows[0]!.files) + count > maxOpen || Number(mine.rows[0]!.bytes) + bytes > maxOpenBytes) return 'session';
+    if (maxOpenTotalBytes === 0) return undefined;
+    const all = await sql<{ bytes: number | string | null }>`select coalesce(sum(${CHARGE}), 0) as bytes from ${sql.table(UPLOADS_TABLE)} where ${open}`.execute(db);
+    return Number(all.rows[0]!.bytes) + bytes > maxOpenTotalBytes ? 'total' : undefined;
+  }
+
+  /** The 429 of a target over a limit: `Retry-After` is when the first open upload that counts expires. */
+  async #tooMany(db: Kysely<Tables>, session: string, size: number, now: number): Promise<HttpError> {
+    const over = (await this.#over(db, session, 1, size, now)) ?? 'total';
+    const oldest = await sql<{ at: number | string | null }>`
+      select min(expires_at) as at from ${sql.table(UPLOADS_TABLE)}
+      where consumed_at is null and expires_at > ${now} ${over === 'session' ? sql`and session = ${session}` : sql``}
+    `.execute(db);
+    const at = oldest.rows[0]?.at;
+    const seconds = at === null || at === undefined ? 60 : Math.max(1, Math.ceil((Number(at) - now) / 1000));
+    return new HttpError(429, 'Too many files are waiting to be sent. Send the form, or wait a little and choose the file again.', { 'retry-after': String(seconds) }, { key: 'marmeon.validation.upload.too_many' });
   }
 
   #named(name: string): Disk {

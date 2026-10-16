@@ -72,4 +72,16 @@ describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s t
     ).rejects.toThrow(Rollback);
     expect(await uploads.consume(id)).toBe(false);
   });
+
+  it('40 targets at once on the real pool leave at most 20 open uploads for the session', async () => {
+    const uploads = app.container.make(TemporaryUploads);
+    const answers = await Promise.allSettled(
+      Array.from({ length: 40 }, () => uploads.target({ route: 'avatar.update', field: 'avatar', rule: { maxBytes: 100, mime: undefined }, session: 'racing', name: 'a.png', size: 10 })),
+    );
+    for (const answer of answers) if (answer.status === 'rejected') expect((answer.reason as { status?: number }).status).toBe(429);
+    const { rows } = await sql<{ n: string }>`select count(*) as n from ${sql.table(UPLOADS_TABLE)} where session = 'racing'`.execute(app.container.make(Connections).get());
+    expect(Number(rows[0]!.n)).toBeLessThanOrEqual(20);
+    expect(answers.filter((answer) => answer.status === 'fulfilled').length).toBe(Number(rows[0]!.n));
+    expect(Number(rows[0]!.n)).toBeGreaterThan(0);
+  });
 });

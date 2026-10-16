@@ -147,6 +147,28 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     expect(await uploadRows()).toEqual([]);
   });
 
+  it('a session with 20 open uploads gets a 429 with the message and Retry-After for the 21st — a sent form frees a place', async () => {
+    const { ada, as } = await setUp();
+    app.freeze();
+    const target = () => as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } });
+    const tokens: string[] = [];
+    for (let index = 0; index < 20; index++) {
+      tokens.push(((await target().assertOk()).json() as { token: string }).token);
+      app.travel({ seconds: 1 });
+    }
+    const refused = await target().assertStatus(429);
+    refused.assertHeader('retry-after', String(120 * 60 - 20));
+    expect(refused.json()).toMatchObject({ message: expect.stringContaining('Too many files') });
+    expect(await uploadRows()).toHaveLength(20);
+
+    await as.upload(ROUTE, 'avatar', png(), { user: ada.public_id }).then(
+      () => expect.unreachable(),
+      (error: Error) => expect(error.message).toContain('429'),
+    );
+    app.travel({ minutes: 121 }); // all of them expired
+    await target().assertOk();
+  });
+
   it('an upload target only for a route field with an upload() rule (404), for whoever may send the form (403/401)', async () => {
     const { ada, as } = await setUp();
     const bob = await app.factory(UserFactory).create();

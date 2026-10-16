@@ -231,16 +231,48 @@ written on a connection of its own and never inside the app's transactions: a ro
 usable again. On SQLite give it the cache's own file with `UPLOADS_CONNECTION`, as the
 [cache](cache.md#the-database-driver-and-transactions) page explains. Postgres needs nothing.
 
+The table has two indexes for the counts of open uploads. A table created before the limits lacks them, and one more migration
+adds them. Name its file with the current timestamp, so it runs after the create migration. A table made by the current
+`make:uploads-table` has the indexes already, and the migration then changes nothing:
+
+```ts title="modules/system/migrations/2026_10_16_090000_index_temporary_uploads_table.ts"
+import { defineMigration, sql } from '@marmeon/database';
+import { uploadsTableConnection } from '@marmeon/storage';
+
+export default defineMigration({
+  connection: uploadsTableConnection,
+  up: async (schema) => {
+    await sql`create index if not exists temporary_uploads_expires_at_index on temporary_uploads (expires_at)`.execute(schema.db);
+    await sql`create index if not exists temporary_uploads_session_expires_at_index on temporary_uploads (session, expires_at)`.execute(schema.db);
+  },
+  down: async (schema) => {
+    await sql`drop index if exists temporary_uploads_session_expires_at_index`.execute(schema.db);
+    await sql`drop index if exists temporary_uploads_expires_at_index`.execute(schema.db);
+  },
+});
+```
+
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `UPLOADS_DISK` | `uploads` | The private disk where uploads wait. A public disk fails the start. |
 | `UPLOADS_CONNECTION` | `default` | The database connection of the uploads table. |
 | `UPLOADS_LIFETIME` | `120` | Minutes a token works after its target was handed out, at most 1440. |
 | `UPLOADS_SEND_WITHIN` | `15` | Minutes the browser has to send the file to its target. |
+| `UPLOADS_MAX_OPEN` | `20` | Open uploads one session may hold. |
+| `UPLOADS_MAX_OPEN_MB` | `1024` | Megabytes the open uploads of one session may announce together. |
+| `UPLOADS_MAX_OPEN_TOTAL_MB` | `10240` | Megabytes the open uploads of all sessions together may announce. `0` turns the limit off. |
 
-`uploads:prune` deletes uploads made more than a day ago, used or not: the rows first, then their files. `--hours` changes the
-age, and a value below `UPLOADS_LIFETIME` would delete uploads whose form is still open, so it needs `--force`. Schedule it every
-hour:
+An upload is open from its target until the form uses it up or its token expires. A target that would pass one of the three limits
+gets a 429 with a `Retry-After` header (seconds until the first open upload that counts expires), and the browser shows the
+message at the field. A guest session costs nothing to make, so the limit over all sessions is the one that keeps unsent files
+from filling the disk: it turns "disk full" into "uploads refused" while the rest of the app keeps running. The browser announces
+each file's size with its target, and the bytes are cut off there (a 413 above it), so the sums stay honest. Forms that take many
+or large files in one session raise the first two. Every open upload counts for at least 64 KiB in the sums, so even empty files
+run into the limits. A file larger than a limit could ever take gets a 422 with the real maximum, never a 429.
+
+`uploads:prune` deletes every unused upload whose token has expired (`UPLOADS_LIFETIME`) and every upload made more than a day
+ago, used or not: the rows first, then their files. `--hours` changes the age, and a value below `UPLOADS_LIFETIME` would delete uploads
+whose form is still open, so it needs `--force`. Unsent files stay on the disk until it runs, so schedule it every hour:
 
 ```ts title="modules/system/schedule.ts"
 import { defineSchedule } from '@marmeon/scheduler';
