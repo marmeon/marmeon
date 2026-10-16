@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { subscribe as subscribeRaw, unsubscribe as unsubscribeRaw } from 'node:diagnostics_channel';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createApplication, type Application } from './application.ts';
-import { channels, messageBase, publishEnded, trace, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type LogMessage } from './diagnostics.ts';
+import { channels, messageBase, publishEnded, trace, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type LogMessage } from './channels.ts';
 import { EventDispatcher, EventRegistry, listen } from './events.ts';
 import { EventFake } from './events-fake.ts';
 import { Logger } from './logger.ts';

@@ -1,5 +1,5 @@
 import { relative } from 'node:path';
-import { writeManifest } from '@marmeon/core';
+import { writeManifest } from '@marmeon/core/internal';
 import type { CommandInput } from '../command.ts';
 
 /**

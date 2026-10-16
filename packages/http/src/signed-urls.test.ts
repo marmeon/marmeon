@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
-import { createApplication, defineModule, TestClock } from '@marmeon/core';
+import { createApplication, defineModule } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { EncryptionConfig, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineRoutes, Router } from '@marmeon/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';

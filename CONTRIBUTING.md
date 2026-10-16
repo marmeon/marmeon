@@ -571,14 +571,17 @@ sources; these are the rules that span several files.
 ### The entry points of `@marmeon/core`
 
 Besides its main entry and the documented `@marmeon/core/diagnostics`, `@marmeon/core/dev` and `@marmeon/core/deprecation`
-(`deprecated()` without the rest of the core, for client code), the core has three entry points
-that only the framework imports:
+(`deprecated()` without the rest of the core, for client code) and `@marmeon/core/testing` (`TestClock` and `EventFake`, for a test
+that builds its own container — the fakes of any package go to the `./testing` of their package, never to its main entry), the core
+has three entry points that only the framework imports:
 
 | Import | What |
 | --- | --- |
+| `@marmeon/core/internal` | what the framework's packages share and an app has no use for: injection analysis and embedding, the manifest, the file guard, the transaction frames, the request/job/task context, `messageBase`/`trace`/`publishEnded` of the diagnostics, `marmeonInjection()` (part of `marmeon()` in `@marmeon/vite`) and `CSP_NONCE_PLACEHOLDER`. Not API, outside semver; a name only a neighbour imports goes here, one nobody imports has no export |
 | `@marmeon/core/environment` | `environment` and `resolveEnvironment` alone, without dependencies — what `marmeon` loads before anything else |
 | `@marmeon/core/register` | the Node loader hook that writes the injection lists of app code. `marmeon` registers it in its own process (`module.registerHooks`) before a command loads; in a protected environment it takes `marmeon build`'s precomputed lists |
-| `@marmeon/core/vite` | the same transform as a Vite plugin (`marmeonInjection()`, part of `marmeon()` in `@marmeon/vite`) and `CSP_NONCE_PLACEHOLDER` |
+
+`pnpm api:usage @marmeon/core` shows who imports each export and suggests where it belongs.
 
 ### The source condition and the manifests
 

@@ -1,4 +1,4 @@
-import { TestClock } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import type { Connections } from '@marmeon/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';

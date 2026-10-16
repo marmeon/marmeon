@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { staticNames, type ModuleDefinition } from '@marmeon/core';
+import type { ModuleDefinition } from '@marmeon/core';
+import { staticNames } from '@marmeon/core/internal';
 import type { CommandInput } from './command.ts';
 
 export interface UnlistedClass {

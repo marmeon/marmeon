@@ -1,14 +1,5 @@
-import {
-  type EventClass,
-  type EventRegistry,
-  isQueuedListener,
-  type ListenerQueue,
-  type QueueableEvent,
-  type QueuedListenerClass,
-  type QueuedListenerOptions,
-  type Resolver,
-  type StandardSchemaV1,
-} from '@marmeon/core';
+import type { EventClass, EventRegistry, ListenerQueue, QueueableEvent, QueuedListenerClass, QueuedListenerOptions, Resolver, StandardSchemaV1 } from '@marmeon/core';
+import { isQueuedListener } from '@marmeon/core/internal';
 import * as v from 'valibot';
 import type { JobContext } from './job.ts';
 import { RECORD_OPTIONS, type Queue } from './queue.ts';

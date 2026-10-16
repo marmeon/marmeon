@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Cache, CacheServiceProvider } from '@marmeon/cache';
-import { Clock, createApplication, EventRegistry, listen, Logger, TestClock, type Application } from '@marmeon/core';
+import { Clock, createApplication, EventRegistry, listen, Logger, type Application } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, InfrastructureTransactionError } from '@marmeon/database';
 import { RedisServiceProvider } from '@marmeon/redis';
 import * as v from 'valibot';

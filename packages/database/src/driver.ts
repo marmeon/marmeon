@@ -1,4 +1,5 @@
-import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
+import { TransactionError, type TransactionFrame } from '@marmeon/core';
+import { leftTransactionOf, transactionOf } from '@marmeon/core/internal';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
 import { PREFIX, SECRET } from './placeholders.ts';

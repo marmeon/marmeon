@@ -1,4 +1,5 @@
-import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, EventRegistry, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
+import { isQueuedListener } from '@marmeon/core/internal';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';

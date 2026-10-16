@@ -1,5 +1,6 @@
 import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, type Application, type Container, type Logger, type Solution } from '@marmeon/core';
-import { channels, messageBase, trace, type SsrRenderMessage } from '@marmeon/core/diagnostics';
+import { channels, type SsrRenderMessage } from '@marmeon/core/diagnostics';
+import { messageBase, trace } from '@marmeon/core/internal';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,

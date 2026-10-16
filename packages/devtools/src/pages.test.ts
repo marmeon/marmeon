@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { createApplication, defineModule, Logger, runWithRequest, type Application } from '@marmeon/core';
+import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
+import { runWithRequest } from '@marmeon/core/internal';
 import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, view } from '@marmeon/http';

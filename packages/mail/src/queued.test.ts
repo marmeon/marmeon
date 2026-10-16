@@ -1,5 +1,6 @@
 import { join } from 'node:path';
-import { Clock, createApplication, Logger, TestClock, type Application, type LogContext } from '@marmeon/core';
+import { Clock, createApplication, Logger, type Application, type LogContext } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Queue, QueueFake, QueueServiceProvider } from '@marmeon/queue';
 import { Router } from '@marmeon/router';

@@ -1,5 +1,6 @@
 import { hostname, userInfo } from 'node:os';
-import { environment, type Logger, TestClock } from '@marmeon/core';
+import { environment, type Logger } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import type { Connections } from '@marmeon/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { migratedConnections } from './__fixtures__/databases.ts';

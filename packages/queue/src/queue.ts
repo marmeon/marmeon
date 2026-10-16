@@ -1,5 +1,6 @@
 import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, Redactor, token, type Application, type Clock, type Logger } from '@marmeon/core';
-import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
+import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
+import { messageBase, trace } from '@marmeon/core/internal';
 import type { Kysely } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';

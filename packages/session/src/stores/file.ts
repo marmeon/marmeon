@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { link, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SystemClock, withFileGuard, type Clock } from '@marmeon/core';
+import { SystemClock, type Clock } from '@marmeon/core';
+import { withFileGuard } from '@marmeon/core/internal';
 import { SESSION_KEY, type SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Stored {

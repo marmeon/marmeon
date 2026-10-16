@@ -1,5 +1,6 @@
-import { Application, currentLogContext, defineConfig, env, environment, escapeControls, logContextSourcesOf, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
-import { channels, messageBase } from '@marmeon/core/diagnostics';
+import { Application, currentLogContext, defineConfig, env, environment, escapeControls, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
+import { logContextSourcesOf, messageBase } from '@marmeon/core/internal';
+import { channels } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { pino, type Logger as Pino } from 'pino';
 import type pinoPretty from 'pino-pretty';

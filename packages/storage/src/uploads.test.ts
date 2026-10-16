@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TestClock } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import type { StandardResult, StandardSchemaV1 } from '@marmeon/core';
 import { rules as r } from '@marmeon/validation';
 import { afterAll, describe, expect, it } from 'vitest';

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { bindingNameOf, editDefinitionFile } from '@marmeon/core';
+import { editDefinitionFile } from '@marmeon/core';
+import { bindingNameOf } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;

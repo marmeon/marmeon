@@ -1,6 +1,6 @@
 import type { Application } from './application.ts';
 import type { Duration } from './clock.ts';
-import { channels, messageBase } from './diagnostics.ts';
+import { channels, messageBase } from './channels.ts';
 import type { InferOutput, StandardSchemaV1 } from './config/standard-schema.ts';
 import type { Resolver } from './container.ts';
 import { token } from './token.ts';

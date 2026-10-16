@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
-import { channels, messageBase, trace, type CommandRunMessage } from '@marmeon/core/diagnostics';
+import { Application, ConfigError, Container, createApplication, ErrorSolutions, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
+import { coreSolutions, loadDiscoveredPackages, messageBase, trace } from '@marmeon/core/internal';
+import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
 import { BUILT_IN } from './built-in.ts';
 import { printCommandHelp, printCommandList } from './commands/list.ts';

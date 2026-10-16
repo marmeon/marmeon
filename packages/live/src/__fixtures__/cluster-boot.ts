@@ -2,7 +2,8 @@
 // node:cluster with the workers' mark (CLUSTER_WORKER) and ends with its code. `single` boots in this process instead, with the
 // mark left in the environment — no worker. Prints `booted` or `failed: <message>`. Used by server.test.ts.
 import cluster from 'node:cluster';
-import { CLUSTER_WORKER, createApplication } from '@marmeon/core';
+import { createApplication } from '@marmeon/core';
+import { CLUSTER_WORKER } from '@marmeon/core/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { LiveServiceProvider } from '../index.ts';

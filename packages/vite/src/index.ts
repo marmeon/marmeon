@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { marmeonInjection, CSP_NONCE_PLACEHOLDER } from '@marmeon/core/vite';
+import { marmeonInjection, CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';

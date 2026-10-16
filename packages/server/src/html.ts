@@ -1,4 +1,4 @@
-import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core';
+import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { PAGE_SCRIPT_ID, scriptJson, type PageObject, type SsrResult } from '@marmeon/http';
 
 /** Placeholders an app's `index.html` provides. */

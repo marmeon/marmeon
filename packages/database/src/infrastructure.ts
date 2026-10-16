@@ -1,4 +1,5 @@
-import { openTransactionOf, TransactionError } from '@marmeon/core';
+import { TransactionError } from '@marmeon/core';
+import { openTransactionOf } from '@marmeon/core/internal';
 import type { DatabaseConnection, Driver, TransactionSettings } from 'kysely';
 import type { MarmeonDriver } from './driver.ts';
 

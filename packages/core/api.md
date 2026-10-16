@@ -48,10 +48,6 @@ export interface ApplicationOptions {
 }
 // ApplicationPhase
 export type ApplicationPhase = 'run' | 'build';
-// CLUSTER_WORKER
-export declare const CLUSTER_WORKER = "MARMEON_CLUSTER_WORKER";
-// CSP_NONCE_PLACEHOLDER
-export declare const CSP_NONCE_PLACEHOLDER = "__marmeon_csp_nonce__";
 // Clock
 export interface Clock {
     now(): number;
@@ -155,29 +151,6 @@ export interface DefinitionImport {
     readonly kind?: 'named' | 'default';
     readonly reuseAnyBinding?: boolean;
 }
-// DiscoverOptions
-export interface DiscoverOptions {
-    root: string;
-    conditions?: readonly string[];
-}
-// DiscoveredPackages
-export interface DiscoveredPackages {
-    readonly providers: readonly (new (...args: any[]) => unknown)[];
-    readonly packages: readonly string[];
-    readonly regenerated: boolean;
-    readonly warning?: string;
-}
-// DiscoveryError
-export declare class DiscoveryError extends Error {
-    name: string;
-}
-// DiscoverySummary
-export interface DiscoverySummary {
-    readonly packages: readonly string[];
-    readonly injectable: number;
-    readonly unresolvable: number;
-    readonly providers: number;
-}
 // Duration
 export interface Duration {
     readonly days?: number;
@@ -188,12 +161,6 @@ export interface Duration {
 }
 // ENCRYPTED
 export declare const ENCRYPTED = "[encrypted]";
-// EmbedPackageOptions
-export interface EmbedPackageOptions {
-    srcDir: string;
-    outDir: string;
-    browser?: readonly string[];
-}
 // EnvBlock
 // type-only
 export declare class EnvBlock<T> implements EnvVariable<T> {
@@ -273,21 +240,6 @@ export interface EventDispatcherOptions {
     readonly observer?: EventObserver;
     readonly app?: Application;
 }
-// EventFake
-export declare class EventFake implements EventObserver {
-    #private;
-    constructor(registry: EventRegistry, faked?: 'all' | readonly EventClass[]);
-    observe(event: object): boolean;
-    isFaked(event: object): boolean;
-    dispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): E[];
-    assertDispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): this;
-    assertDispatchedTimes<E extends object>(Class: EventClass<E>, times: number, match?: EventMatch<E>): this;
-    assertNotDispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): this;
-    assertNothingDispatched(): this;
-    assertListening(Class: EventClass, listener: ListenerBinding['listener']): this;
-}
-// EventMatch
-export type EventMatch<E extends object> = Partial<E> | ((event: E) => boolean);
 // EventObserver
 export interface EventObserver {
     observe(event: object): boolean;
@@ -305,12 +257,6 @@ export declare class EventRegistry {
 }
 // Factory
 export type Factory<T> = (resolver: Resolver) => T;
-// FileGuardOptions
-export interface FileGuardOptions {
-    readonly staleMs?: number;
-    readonly timeoutMs?: number;
-    readonly busy?: (seconds: number) => string;
-}
 // HealthCheck
 export interface HealthCheck {
     handle(): void | string | Promise<void | string>;
@@ -349,8 +295,6 @@ export declare class Html {
     constructor(html: string);
     toString(): string;
 }
-// INJECTIONS_FILE
-export declare const INJECTIONS_FILE = ".marmeon/injections.json";
 // ImportedBinding
 export interface ImportedBinding {
     readonly from: string;
@@ -370,32 +314,11 @@ export type InjectCheck<C> = C extends {
         inject: ResolveAll<Keys>;
     };
 } : unknown : unknown;
-// InjectionError
-export declare class InjectionError extends Error {
-    name: string;
-}
-// InjectionSite
-export type InjectionSite = (SiteBase & {
-    readonly dependencies: readonly string[];
-    readonly warnings?: readonly string[];
-}) | (SiteBase & {
-    readonly unresolvable: string;
-});
 // InjectionWarning
 export interface InjectionWarning {
     readonly className: string;
     readonly message: string;
 }
-// InjectionsFile
-export interface InjectionsFile {
-    readonly format: typeof FORMAT;
-    readonly files: Readonly<Record<string, {
-        readonly sha256: string;
-        readonly insert: readonly Insertion[];
-    }>>;
-}
-// Insertion
-export type Insertion = readonly [offset: number, text: string];
 // IsJson
 export type IsJson<T> = 0 extends 1 & T ? true : false extends JsonMember<T> ? false : true;
 // JobInfo
@@ -443,23 +366,6 @@ export interface Logger {
 export declare const Logger: import("./token.ts").Token<Logger>;
 // MAX_ENTRY_BYTES
 export declare const MAX_ENTRY_BYTES: number;
-// Manifest
-export interface Manifest {
-    readonly version: string;
-    readonly hash: string;
-    readonly packages: readonly string[];
-    readonly modules: readonly string[];
-    readonly injections: readonly ({
-        readonly class: ExportRef;
-        readonly inject: readonly ExportRef[];
-        readonly package: string;
-    } | {
-        readonly class: ExportRef;
-        readonly unresolvable: string;
-        readonly package: string;
-    })[];
-    readonly providers: readonly ExportRef[];
-}
 // ModuleDefinition
 export interface ModuleDefinition {
     readonly name: string;
@@ -482,15 +388,6 @@ export type NodeEnvironmentName = (typeof NODE_ENVIRONMENTS)[number];
 export interface Ok<T> {
     readonly ok: true;
     readonly value: T;
-}
-// PrecomputedInjections
-export declare class PrecomputedInjections {
-    #private;
-    private constructor();
-    static load(root: string): PrecomputedInjections;
-    transform(file: string, source: string | Uint8Array, decode: (source: Uint8Array) => string): string;
-    get stale(): readonly string[];
-    warning(): string | undefined;
 }
 // QueueableEvent
 export interface QueueableEvent {
@@ -622,13 +519,6 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
         } | undefined;
     };
 }
-// StaticName
-export interface StaticName {
-    readonly className: string;
-    readonly key: string;
-    readonly value: string;
-    readonly line: number;
-}
 // SystemClock
 export declare class SystemClock implements Clock {
     now(): number;
@@ -636,15 +526,6 @@ export declare class SystemClock implements Clock {
 // TaskInfo
 export interface TaskInfo {
     readonly task: string;
-}
-// TestClock
-export declare class TestClock implements Clock {
-    #private;
-    now(): number;
-    travel(duration: Duration): number;
-    travelTo(time: Date | number): number;
-    freeze(time?: Date | number): number;
-    unfreeze(): number;
 }
 // Token
 export interface Token<T> {
@@ -685,20 +566,8 @@ export declare const Translator: import("./token.ts").Token<Translator>;
 export declare function afterCommit(fn: () => unknown): Promise<void>;
 // afterRollback
 export declare function afterRollback(fn: () => unknown): Promise<void>;
-// analyzeInjections
-export declare function analyzeInjections(source: string, filename: string): InjectionSite[];
-// applyInsertions
-export declare function applyInsertions(source: string, insertions: readonly Insertion[]): string;
-// bindingNameOf
-export declare function bindingNameOf(kebab: string): string;
-// browserSources
-export declare function browserSources(packageDir: string): readonly string[];
 // commitAnyway
 export declare function commitAnyway<E>(result: Err<E>): Err<E>;
-// computeInjectionArtifacts
-export declare function computeInjectionArtifacts(root: string): InjectionsFile;
-// coreSolutions
-export declare const coreSolutions: readonly import("./solutions.ts").SolutionDefinition<any>[];
 // createApplication
 export declare function createApplication(options: ApplicationOptions): Promise<Application>;
 // currentJob
@@ -728,18 +597,12 @@ export declare function defineSolutions<const Classes extends readonly ErrorClas
 }): readonly SolutionDefinition<any>[];
 // deprecated
 export declare function deprecated(id: string, message: string, removeIn: `${number}.${number}`): void;
-// describeError
-export declare function describeError(error: unknown, redactor?: Redactor): string;
 // durationToMilliseconds
 export declare function durationToMilliseconds(duration: Duration): number;
 // editDefinition
 export declare function editDefinition(source: string, filename: string, edit: DefinitionEdit): DefinitionEditOutcome;
 // editDefinitionFile
 export declare function editDefinitionFile(file: string, edit: DefinitionEdit, display?: string): DefinitionEditOutcome;
-// embedInjections
-export declare function embedInjections(tsSource: string, tsFile: string, jsSource: string, jsFile: string): string;
-// embedPackageInjections
-export declare function embedPackageInjections({ srcDir, outDir, browser }: EmbedPackageOptions): string[];
 // env
 export declare const env: typeof envSchema & {
     string: typeof string;
@@ -773,47 +636,14 @@ export declare function err<K extends string, E extends {
 export declare function escapeControls(line: string): string;
 // escapeHtml
 export declare function escapeHtml(value: string): string;
-// fillPlaceholders
-export declare function fillPlaceholders(text: string, params?: Readonly<Record<string, unknown>>): string;
-// generateManifest
-export declare function generateManifest({ root, conditions }: DiscoverOptions): {
-    manifest: Manifest;
-    summary: DiscoverySummary;
-};
 // html
 export declare function html(strings: TemplateStringsArray, ...values: unknown[]): Html;
 // importedBindings
 export declare function importedBindings(source: string, filename: string): ReadonlyMap<string, ImportedBinding>;
 // inTransaction
 export declare function inTransaction(): boolean;
-// injectConstructorDependencies
-export declare function injectConstructorDependencies(source: string, filename: string): string;
-// insertInjections
-export declare function insertInjections(source: string, sites: readonly InjectionSite[]): string;
-// insertionsOf
-export declare function insertionsOf(sites: readonly InjectionSite[]): Insertion[];
-// interpolateHtml
-export declare function interpolateHtml(value: unknown): string;
-// isBrowserSource
-export declare function isBrowserSource(file: string): boolean;
-// isQueuedListener
-export declare function isQueuedListener(listener: unknown): listener is QueuedListenerClass;
-// leftTransactionOf
-export declare function leftTransactionOf(owner: object): TransactionFrame | undefined;
 // listen
 export declare function listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): ListenerBinding;
-// loadDiscoveredPackages
-export declare function loadDiscoveredPackages(options: DiscoverOptions & {
-    force?: boolean;
-}): Promise<DiscoveredPackages>;
-// loadEnv
-export declare function loadEnv(root: string, mode?: string, environment?: Env): Env;
-// logContextSourcesOf
-export declare function logContextSourcesOf(app: Application | undefined): LogContextSources | undefined;
-// manifestHash
-export declare function manifestHash(root: string, conditions: readonly string[]): string;
-// manifestPath
-export declare function manifestPath(root: string, conditions?: readonly string[]): string;
 // missingListenerQueue
 export declare function missingListenerQueue(listener: {
     readonly name: string;
@@ -821,8 +651,6 @@ export declare function missingListenerQueue(listener: {
 // ok
 export declare function ok(): Ok<void>;
 export declare function ok<T>(value: T): Ok<T>;
-// openTransactionOf
-export declare function openTransactionOf(owner: object): TransactionFrame | undefined;
 // outsideTransaction
 export declare function outsideTransaction<R>(fn: () => R): R;
 // raw
@@ -833,8 +661,6 @@ export declare function readEnvFile(path: string): Record<string, string | undef
 export declare function redact(context: Readonly<Record<string, unknown>>): Record<string, unknown>;
 // redactText
 export declare function redactText(text: string): string;
-// removeEmbeddedInjections
-export declare function removeEmbeddedInjections(jsSource: string, jsFile: string): string;
 // resolveConfig
 export declare function resolveConfig(definitions: readonly ConfigDefinition<unknown>[], env: Env): Promise<Map<ConfigDefinition<unknown>, unknown>>;
 // resolveEnvironment
@@ -842,34 +668,8 @@ export declare function resolveEnvironment(root: string, { fallback, env }?: {
     fallback?: string;
     env?: Record<string, string | undefined>;
 }): ResolvedEnvironment;
-// runWithJob
-export declare function runWithJob<T>(info: JobInfo, fn: () => T): T;
-// runWithRequest
-export declare function runWithRequest<T>(info: RequestInfo, fn: () => T): T;
-// runWithTask
-export declare function runWithTask<T>(info: TaskInfo, fn: () => T): T;
-// runtimeConditions
-export declare function runtimeConditions(execArgv?: readonly string[], nodeOptions?: string): string[];
-// staticNames
-export declare function staticNames(source: string, filename: string, keys: readonly string[]): StaticName[];
 // token
 export declare function token<T>(name: string): Token<T>;
-// transactionOf
-export declare function transactionOf(owner: object): TransactionFrame | undefined;
-// withFileGuard
-export declare function withFileGuard<T>(file: string, work: () => Promise<T>, { staleMs, timeoutMs, busy }?: FileGuardOptions): Promise<T>;
-// writeInjectionArtifacts
-export declare function writeInjectionArtifacts({ root }: {
-    root: string;
-}): {
-    path: string;
-    modules: number;
-    classes: number;
-};
-// writeManifest
-export declare function writeManifest(options: DiscoverOptions): DiscoverySummary & {
-    readonly path: string;
-};
 ```
 
 ### Referenced, not exported
@@ -891,10 +691,6 @@ interface CrossCheck<Out> {
 type Env = Readonly<Record<string, string | undefined>>;
 // ErrorClass
 type ErrorClass<E> = abstract new (...args: any[]) => E;
-// ExportRef
-type ExportRef = readonly [number, string];
-// FORMAT
-declare const FORMAT = 1;
 // Fields
 type Fields = Readonly<Record<string, EnvVariable<unknown>>>;
 // HandleParameter
@@ -939,12 +735,6 @@ type ResolveAll<Keys extends readonly unknown[]> = {
 };
 // SchemaInput
 type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
-// SiteBase
-interface SiteBase {
-    readonly className: string;
-    readonly classIndex: number;
-    readonly bodyStart: number;
-}
 // boolean
 declare const boolean: (message?: string) => EnvBlock<boolean>;
 // choice
@@ -1223,12 +1013,6 @@ export declare const channels: {
     event<N extends EventName>(name: N): EventChannel<EventMessages[N]>;
     built(app: Application): number;
 };
-// messageBase
-export declare function messageBase(app: Application): MessageBase;
-// publishEnded
-export declare function publishEnded<M extends MessageBase & Ended>(channel: TracingChannel<M>, message: M): void;
-// trace
-export declare function trace<M extends MessageBase & Ended, T>(channel: TracingChannel<M>, message: M, fn: () => Promise<T>, finish?: (message: M, result: T) => void): Promise<T>;
 ```
 
 ### Referenced, not exported
@@ -1512,24 +1296,174 @@ export declare function resolveEnvironment(root: string, { fallback, env }?: {
 
 Types from other packages: none
 
-## `@marmeon/core/vite`
+## `@marmeon/core/testing`
 
 Types from other packages: none
 
 ### Stable
 
 ```ts
-// CSP_NONCE_PLACEHOLDER
-export declare const CSP_NONCE_PLACEHOLDER = "__marmeon_csp_nonce__";
-// InjectionPlugin
-export interface InjectionPlugin {
-    name: string;
-    enforce: 'pre';
-    transform(code: string, id: string): {
-        code: string;
-        map: null;
-    } | null;
+// EventFake
+export declare class EventFake implements EventObserver {
+    #private;
+    constructor(registry: EventRegistry, faked?: 'all' | readonly EventClass[]);
+    observe(event: object): boolean;
+    isFaked(event: object): boolean;
+    dispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): E[];
+    assertDispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): this;
+    assertDispatchedTimes<E extends object>(Class: EventClass<E>, times: number, match?: EventMatch<E>): this;
+    assertNotDispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): this;
+    assertNothingDispatched(): this;
+    assertListening(Class: EventClass, listener: ListenerBinding['listener']): this;
 }
-// marmeonInjection
-export declare function marmeonInjection(): InjectionPlugin;
+// EventMatch
+export type EventMatch<E extends object> = Partial<E> | ((event: E) => boolean);
+// TestClock
+export declare class TestClock implements Clock {
+    #private;
+    now(): number;
+    travel(duration: Duration): number;
+    travelTo(time: Date | number): number;
+    freeze(time?: Date | number): number;
+    unfreeze(): number;
+}
+```
+
+### Referenced, not exported
+
+```ts
+// Clock
+export interface Clock {
+    now(): number;
+}
+export declare const Clock: import("./token.ts").Token<Clock>;
+// Duration
+export interface Duration {
+    readonly days?: number;
+    readonly hours?: number;
+    readonly minutes?: number;
+    readonly seconds?: number;
+    readonly milliseconds?: number;
+}
+// EventClass
+export type EventClass<TEvent extends object = object> = abstract new (...args: any[]) => TEvent;
+// EventObserver
+export interface EventObserver {
+    observe(event: object): boolean;
+}
+// EventPayload
+export type EventPayload<E extends QueueableEvent> = InferOutput<E['schema']>;
+// EventRegistry
+export declare class EventRegistry {
+    #private;
+    listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): this;
+    add(bindings: readonly ListenerBinding[]): this;
+    listenersFor(event: object): ListenerBinding['listener'][];
+    bindingsFor(event: object): ListenerBinding[];
+    all(): ListenerBinding[];
+}
+// HandleParameter
+type HandleParameter<L> = L extends new (...args: any[]) => {
+    readonly handle: (payload: infer P) => unknown;
+} ? P : never;
+// InferOutput
+export type InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema['~standard']['types']>['output'];
+// IsJson
+export type IsJson<T> = 0 extends 1 & T ? true : false extends JsonMember<T> ? false : true;
+// JsonMember
+type JsonMember<T> = T extends string | number | boolean | null ? true : T extends readonly (infer E)[] ? IsJson<E> : T extends Date | RegExp | Map<any, any> | Set<any> | ((...args: any[]) => any) | bigint | symbol | undefined ? false : T extends object ? false extends {
+    [K in keyof T]-?: IsJson<Exclude<T[K], undefined>>;
+}[keyof T] ? false : true : false;
+// Listener
+export interface Listener<TEvent> {
+    readonly handle: (event: TEvent) => void | Promise<void>;
+}
+// ListenerBinding
+export interface ListenerBinding {
+    readonly event: EventClass;
+    readonly listener: ListenerLike<any> | QueuedListenerClass;
+}
+// ListenerFor
+type ListenerFor<E extends EventClass, L> = L extends {
+    readonly queue: unknown;
+} ? QueuedListenerFor<E, L> : ListenerLike<InstanceType<E>>;
+// ListenerLike
+export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | ((event: TEvent) => void | Promise<void>);
+// QueueableEvent
+export interface QueueableEvent {
+    readonly event: string;
+    readonly schema: StandardSchemaV1;
+}
+// QueuedListenerClass
+export type QueuedListenerClass<P = any> = {
+    readonly queue: QueuedListenerOptions;
+} & (new (...args: any[]) => {
+    readonly handle: (payload: P) => void | Promise<void>;
+});
+// QueuedListenerFor
+type QueuedListenerFor<E extends EventClass, L> = L extends {
+    readonly queue: {
+        readonly afterCommit: unknown;
+    };
+} ? {
+    readonly queue: {
+        readonly afterCommit: 'afterCommit is always on: queued listeners join the transaction — remove it';
+    };
+} : E extends QueueableEvent ? IsJson<EventPayload<E>> extends false ? {
+    readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E>;
+} : InstanceType<E> extends SchemaInput<E['schema']> ? EventPayload<E> extends HandleParameter<L> ? {
+    readonly queue: QueuedListenerOptions;
+} : {
+    readonly 'handle() of a queued listener gets the event payload (its static schema), not the event: type it as EventPayload<typeof YourEvent>': EventPayload<E>;
+} : {
+    readonly 'The static schema of a queued event reads the event object itself — the event class lacks a field the schema wants': SchemaInput<E['schema']>;
+} : {
+    readonly queue: 'A queued listener (static queue) needs an event that can be queued — give the event class static event = "module.what-happened" and static schema. Job events (JobQueued …) never can: listen to them without static queue.';
+};
+// QueuedListenerOptions
+export interface QueuedListenerOptions {
+    readonly queue?: string;
+    readonly connection?: string;
+    readonly delay?: number | Duration;
+    readonly tries?: number;
+    readonly backoff?: number | readonly number[];
+}
+// SchemaInput
+type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
+// StandardIssue
+export interface StandardIssue {
+    readonly message: string;
+    readonly path?: readonly (PropertyKey | {
+        readonly key: PropertyKey;
+    })[] | undefined;
+}
+// StandardOptions
+export interface StandardOptions {
+    readonly libraryOptions?: Record<string, unknown> | undefined;
+}
+// StandardResult
+export type StandardResult<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: readonly StandardIssue[];
+};
+// StandardSchemaV1
+export interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly '~standard': {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown, options?: StandardOptions | undefined) => StandardResult<Output> | Promise<StandardResult<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        } | undefined;
+    };
+}
+// Token
+export interface Token<T> {
+    readonly key: symbol;
+    readonly name: string;
+    readonly __type?: T;
+}
 ```

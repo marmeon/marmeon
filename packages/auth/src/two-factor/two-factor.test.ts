@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { RateLimiter } from '@marmeon/cache';
-import { Clock, createApplication, defineModule, listen, TestClock, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon/database';
 import { AesGcmEncrypter, Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';

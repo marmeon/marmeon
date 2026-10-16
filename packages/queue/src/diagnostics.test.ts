@@ -1,4 +1,5 @@
-import { createApplication, Logger, runWithRequest, type Application } from '@marmeon/core';
+import { createApplication, Logger, type Application } from '@marmeon/core';
+import { runWithRequest } from '@marmeon/core/internal';
 import { channels, type QueueDispatchMessage, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';

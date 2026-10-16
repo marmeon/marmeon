@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import { Clock, createApplication, defineModule, Logger, TestClock, type HealthCheck } from '@marmeon/core';
+import { Clock, createApplication, defineModule, Logger, type HealthCheck } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { channels } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, ServerClosing } from '@marmeon/http';

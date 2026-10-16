@@ -1,5 +1,6 @@
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
-import { Clock, createApplication, defineModule, listen, TestClock, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';

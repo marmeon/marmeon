@@ -92,7 +92,7 @@ export class NoteLinks {
 ```
 
 `clock.now()` returns milliseconds since the epoch, like `Date.now()`. Outside tests the container binds `SystemClock`, the real
-time. Every test app binds a `TestClock` instead, which the test moves. The framework's own services read the time the same way:
+time. Every test app binds a `TestClock` instead, which the test moves (a test that builds its own container imports it from `@marmeon/core/testing`). The framework's own services read the time the same way:
 cache expiry, locks, rate limits, the session's lifetime and the scheduler.
 
 `Clock` is a token, so import it as a value. Do not give the parameter a default such as `clock: Clock = new SystemClock()`: the

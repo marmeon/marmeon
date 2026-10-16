@@ -4,7 +4,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
+import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core/internal';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { bin, greeter, repo } from './__fixtures__/cli.js';
 

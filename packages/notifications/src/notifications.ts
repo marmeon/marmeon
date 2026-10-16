@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { token, type Application, type Duration, type Resolver, type StandardSchemaV1, type Translator } from '@marmeon/core';
-import { channels, messageBase, trace, type NotificationSendMessage } from '@marmeon/core/diagnostics';
+import { channels, type NotificationSendMessage } from '@marmeon/core/diagnostics';
+import { messageBase, trace } from '@marmeon/core/internal';
 import type { Connections } from '@marmeon/database';
 import type { NotificationChannels } from './channels.ts';
 import type { AnyRecipient, CheckNotification, NotificationClass, Recipients, RecipientTypeOf, SendResult } from './notification.ts';
