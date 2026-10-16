@@ -2,15 +2,18 @@
  * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit. The rules: the
  * old name is gone, no Valibot outside a package's `src/`, `NODE_ENV` is checked positively, the old token prefix is gone, the
  * docs and the framework's messages speak to their readers, no reference to the private record, no mutant switched off without
- * a reason, no import of a package's internal subpath outside `packages/<name>/src/`.
+ * a reason, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward.
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deprecationProblems, findDeprecations } from './deprecations.ts';
+import { oxc, type SourceFile } from './source-files.ts';
+
+export type { SourceFile };
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -31,12 +34,6 @@ export const ALLOWED: readonly Allowance[] = [
   // The company's website, as the footer, README.md, CONTRIBUTING.md and the docs link it.
   { pattern: new RegExp(`https://${OLD_NAME.toLowerCase()}code\\.de(?![\\w.-])`, 'g') },
 ];
-
-export interface SourceFile {
-  /** Relative to the repository, forward slashes. */
-  readonly path: string;
-  readonly text: string;
-}
 
 /** Rule 1: every path and line that says the old name outside the allowances — `path:line: text`. */
 export function oldNameHits(files: Iterable<SourceFile>): string[] {
@@ -302,17 +299,6 @@ const RUNTIME_CODE = /^packages\/[^/]+\/(?:src\/(?!.*__fixtures__\/).+(?<!\.test
 /** What rule 6 looks for in the strings of that code. */
 const RUNTIME_TEXT_RULES = [...PRIVATE_RECORD_RULES, ...DOC_TEXT_RULES].filter((rule) => ['a decision number', 'a wave reference', 'a comparison with another framework'].includes(rule.what));
 
-/** What rule 6 uses of oxc-parser: an ESTree program, and the errors of a file it cannot read. */
-interface OxcParser {
-  parseSync(filename: string, text: string): {
-    program: unknown;
-    comments: readonly { value: string; start: number }[];
-    errors: readonly { message: string }[];
-  };
-}
-/** oxc-parser — the parser of `@marmeon/core` (this script runs from the repository's root, which does not depend on it). */
-const oxc = (): OxcParser => createRequire(join(root, 'packages/core/package.json'))('oxc-parser') as OxcParser;
-
 /**
  * Rule 6: the strings of a package's code — messages, warnings, solutions, command descriptions and output, what `make:*`
  * writes, the devtools' pages — carry no decision number, no wave reference and no other framework: every app shows them. A
@@ -407,6 +393,12 @@ export function repositoryFiles(repository: string = root): SourceFile[] {
   return files;
 }
 
+/** The version of `@marmeon/core` in `repository` (this repository's when it has none) — the one every package is released at. */
+function coreVersion(repository: string): string {
+  const manifest = join(repository, 'packages/core/package.json');
+  return (JSON.parse(readFileSync(existsSync(manifest) ? manifest : join(root, 'packages/core/package.json'), 'utf8')) as { version: string }).version;
+}
+
 /** Every rule over `repository`; [] when all hold. */
 export function checkSource(repository: string = root): string[] {
   const files = repositoryFiles(repository);
@@ -422,6 +414,9 @@ export function checkSource(repository: string = root): string[] {
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
     ...mutationCommentHits(files).map((hit) => `mutation testing (a disabled mutant hides the test gap it would show; CONTRIBUTING.md › Rules over the source): ${hit}`),
     ...privateRecordHits(files).map((hit) => `no references to the private record (${privateRecordWhy(hit)}): ${hit}`),
+    ...deprecationProblems(findDeprecations(files), coreVersion(repository)).map(
+      (problem) => `every deprecation shows the way forward (a replacement, docs/<page>.md#<anchor>, "Removed in x.y"; CONTRIBUTING.md › Rules over the source): ${problem}`,
+    ),
   ];
 }
 
@@ -433,7 +428,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; nothing outside a package's src/ imports an internal subpath.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it.`,
     );
   }
 }

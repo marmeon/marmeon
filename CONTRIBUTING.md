@@ -263,6 +263,14 @@ checked over every file of the repository — tracked, or new and not ignored. E
    `@marmeon/<name>/internal` (the framework's own packages mark their routes with it). Apps, stubs, templates and scripts decide
    access with `everyone` or a check.
 
+10. **Every deprecation shows the way forward**: each `@deprecated` tag in `packages/<name>/src/` (tests and fixtures aside) names
+    the replacement (`Use {@link x}` or ``Use `x` ``), links the docs (`docs/<page>.md#<anchor>`, which the docs link test checks
+    against the real page) and says when it goes (`Removed in x.y`):
+    `@deprecated Use {@link isSensitiveRememberField}. Removed in 0.5; docs/forms.md#remembering-input.` Each
+    `deprecated(id, message, removeIn)` call has three string literals: an id `<package>.<name>` whose package is the file's and
+    that no other call uses, the message, and `removeIn` as `major.minor`. The version must lie after the current one — otherwise it
+    is a typo or overdue. [Package development](docs/package-development.md#deprecating-an-api) shows both.
+
 A new rule joins the same script, with its test.
 
 ## Dependencies of drivers

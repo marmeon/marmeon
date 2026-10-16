@@ -142,8 +142,8 @@ switch (event.via) {
 What is removed is deprecated first, in a minor version: marked `@deprecated` in its types, with the replacement and a link to
 the docs, and warned about once per process as soon as it is used, **only** when `NODE_ENV` is `development` or `test`. On the server,
 the warning is a Node `DeprecationWarning`: `node --no-deprecation` turns it off, and `node --throw-deprecation` turns it into
-an error; in the browser it goes to the console. It is removed in the next breaking release: a major version from 1.0 on, a
-minor before. The removal has an entry in the [upgrade guide](../UPGRADING.md).
+an error; in the browser it goes to the console. It is removed at the earliest in the next breaking release (a major version from 1.0
+on, a minor before); its `@deprecated` tag says which one. The removal has an entry in the [upgrade guide](../UPGRADING.md).
 [Package development](package-development.md#deprecating-an-api) shows how a package deprecates an API.
 
 ## A broken release

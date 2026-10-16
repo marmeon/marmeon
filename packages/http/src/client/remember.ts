@@ -23,10 +23,10 @@ export function loadSensitiveFields(): Promise<void> {
   ));
 }
 
-/** @deprecated Matches a few plain names only — use {@link isSensitiveRememberField}, which also knows codes, keys and one-time passwords. */
+/** @deprecated Use {@link isSensitiveRememberField} — it also knows codes, keys and one-time passwords. Removed in 0.5; docs/forms.md#remembering-input. */
 export const SENSITIVE_REMEMBER_FIELD = /password|secret|token|card|cvc/i;
 
-/** @deprecated Use {@link isSensitiveRememberField}, which says so for a password and for a path through one. */
+/** @deprecated Use {@link isSensitiveRememberField}, which says so for a password and for a path through one. Removed in 0.5; docs/forms.md#remembering-input. */
 export const NEVER_REMEMBERED_FIELD = /password/i;
 
 /**
