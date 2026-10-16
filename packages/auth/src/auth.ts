@@ -684,7 +684,7 @@ export class Auth {
       userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
     });
     this.#cookies.delete(this.#config.rememberCookie);
-    await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) }, result.error.reused === true);
+    await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
     await this.#end();
     return false;
   }

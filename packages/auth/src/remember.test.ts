@@ -108,8 +108,8 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   });
 
   it('theft: a failure while the tokens are revoked deletes nothing, and the next replay reports it again', async () => {
-    const copied = await tokens.create(1, inAMonth());
-    const other = await tokens.create(1, inAMonth());
+    const copied = await tokens.create(1, inAMonth(), 'fp');
+    const other = await tokens.create(1, inAMonth(), 'fp');
     await tokens.consume(copied);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     let armed = true;
