@@ -322,7 +322,8 @@ function withoutStrings(text: string): string {
   return code(false);
 }
 
-const isExport = (item: ApiItem) => item.section === 'stable' || item.section === 'experimental';
+/** An experimental member (`Options.pages`) is no export of its own. */
+const isExport = (item: ApiItem) => item.entry !== '' && (item.section === 'stable' || (item.section === 'experimental' && !item.name.includes('.')));
 
 /** The entry points that have a snapshot: what `api:usage` accepts. */
 export function knownEntries(repository: string = root): string[] {
@@ -384,7 +385,9 @@ export function usageOf(entry: string, repository: string = root, files: readonl
       for (const word of identifiersOf(item.text, entry)) {
         if (!known.has(word) || word === item.name) continue;
         const target = item.entry === entry ? namedHere : namedBy;
-        target.set(word, (target.get(word) ?? new Set()).add(item.entry === entry ? item.name : `${item.entry} ${item.name}`));
+        // An experimental option (`Options.server`) is cut out of its declaration, so its item is the only place that names the type.
+        const member = item.section === 'experimental' && item.name.includes('.') ? ' (experimental)' : '';
+        target.set(word, (target.get(word) ?? new Set()).add(item.entry === entry ? item.name : `${item.entry} ${item.name}${member}`));
       }
     }
   }

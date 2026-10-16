@@ -30,6 +30,7 @@ export interface CommandClass {
     readonly options?: ParseArgsOptionsConfig;
     readonly boots?: boolean | 'build';
     readonly hidden?: boolean;
+    readonly experimental?: boolean;
 }
 // CommandInput
 export interface CommandInput {

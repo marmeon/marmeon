@@ -564,6 +564,156 @@ describe('environment variables and commands', () => {
   });
 });
 
+describe('what is experimental', () => {
+  const OPTIONS = 'export interface Options {\n    /** Where. */\n    path: string;\n    /** Wider pages.\n     * @experimental */\n    pages?: boolean;\n}\n';
+  const two = {
+    'index.d.ts':
+      "interface Helper {\n    x: 1;\n}\nexport declare function a(h: Helper): void;\ndeclare module '@marmeon/core' {\n    interface ApplicationDefinition {\n        /** @experimental */\n        extra?: 1;\n    }\n}\n", 'b.d.ts': 'export declare const b: 1;\n', 'c.d.ts': 'export declare const c: 1;\n' };
+  const entries = { '.': 'index.d.ts', './b': 'b.d.ts', './internal': 'c.d.ts' };
+  const withManifest = (files: Record<string, string>, experimental: unknown, runtime: readonly ApiItem[] = []) => {
+    const { dir, manifest } = demo(files, entries, { marmeon: { experimental } });
+    const result = snapshotPackage({ name: '@marmeon/demo', dir, manifest }, [], runtime);
+    return { ...result, items: result.markdown ? parseSnapshot(result.markdown) : [] };
+  };
+
+  it('marks every entry, variable and command of a package listed as `true`', () => {
+    const env: ApiItem = { entry: '', section: 'environment', name: 'DEMO', text: '`DEMO` — optional' };
+    const command: ApiItem = { entry: '', section: 'commands', name: 'demo:run', text: 'marmeon demo:run' };
+    const { items, problems, experimental } = withManifest(two, true, [env, command]);
+    expect(problems).toEqual([]);
+    expect(items.map((item) => `${item.section}:${item.entry}:${item.name}`).sort()).toEqual([
+      'augments:@marmeon/demo:@marmeon/core.ApplicationDefinition',
+      'experimental::DEMO',
+      'experimental::demo:run',
+      'experimental:@marmeon/demo/b:b',
+      'experimental:@marmeon/demo:a',
+      'referenced:@marmeon/demo:Helper',
+    ]);
+    expect(find(items, 'augments', '@marmeon/core.ApplicationDefinition')?.text).toContain('extra?: 1;');
+    expect(experimental).toEqual(['@marmeon/demo']);
+  });
+
+  it('marks only the listed subpaths', () => {
+    const { items, problems, experimental } = withManifest(two, ['./b']);
+    expect(problems).toEqual([]);
+    expect(items.filter((item) => ['stable', 'experimental'].includes(item.section)).map((item) => `${item.section}:${item.name}`).sort()).toEqual([
+      'experimental:b',
+      'stable:a',
+    ]);
+    expect(experimental).toEqual(['@marmeon/demo/b']);
+  });
+
+  it('refuses a subpath that is no entry or is ./internal', () => {
+    expect(withManifest(two, ['./internal']).problems).toEqual(['@marmeon/demo: marmeon.experimental lists ./internal, which no snapshot holds']);
+    expect(withManifest(two, ['./nope']).problems).toEqual(['@marmeon/demo: marmeon.experimental lists ./nope, which is no subpath of exports']);
+    expect(withManifest(two, 'yes').problems).toHaveLength(1);
+  });
+
+  it('moves an @experimental member out of its declaration into an item of its own', () => {
+    const { items } = snapshot({ 'index.d.ts': OPTIONS });
+    expect(find(items, 'stable', 'Options')?.text).toBe('export interface Options {\n    path: string;\n}');
+    expect(find(items, 'experimental', 'Options.pages')?.text).toBe('pages?: boolean;');
+  });
+
+  it('names a member inside an object type by its path', () => {
+    const { items } = snapshot({
+      'index.d.ts': 'export interface Options {\n    server: {\n        port: number;\n        /** @experimental */\n        tls?: boolean;\n    };\n}\n',
+    });
+    expect(find(items, 'experimental', 'Options.server.tls')?.text).toBe('tls?: boolean;');
+    expect(find(items, 'stable', 'Options')?.text).not.toContain('tls');
+  });
+
+  it('cuts a member whose own members carry comments without eating what follows', () => {
+    const { items } = snapshot({
+      'index.d.ts': 'export interface Options {\n    path: string;\n    /** @experimental */\n    server?: {\n        /** The port. */\n        port: number;\n    };\n    after: string;\n}\n',
+    });
+    expect(find(items, 'stable', 'Options')?.text).toBe('export interface Options {\n    path: string;\n    after: string;\n}');
+    expect(find(items, 'experimental', 'Options.server')?.text).toBe('server?: {\n    port: number;\n};');
+  });
+
+  it('skips an @internal member and what is inside it', () => {
+    const { items } = snapshot({
+      'index.d.ts':
+        'export interface Options {\n    path: string;\n    /** @internal */\n    hidden: {\n        /** @experimental */\n        secret: 1;\n    };\n    /** @internal @experimental */\n    both: 1;\n}\n',
+    });
+    expect(items.filter((item) => item.section === 'experimental')).toEqual([]);
+    expect(find(items, 'stable', 'Options')?.text).toBe('export interface Options {\n    path: string;\n}');
+  });
+
+  it('names a symbol key by its source and numbers equal names', () => {
+    const { items } = snapshot({
+      'index.d.ts':
+        'export interface Iter {\n    /** @experimental */\n    [Symbol.iterator](): void;\n    /** @experimental */\n    (a: string): void;\n    /** @experimental */\n    (a: number): void;\n}\n',
+    });
+    expect(items.filter((item) => item.section === 'experimental').map((item) => item.name).sort()).toEqual(['Iter.()', 'Iter.() (2)', 'Iter.[Symbol.iterator]']);
+  });
+
+  it('leaves the declaration unchanged when only the member changes', () => {
+    const changes = diff(OPTIONS, OPTIONS.replace('pages?: boolean', 'pages?: number'));
+    expect(changes.changed.map(({ after }) => after.name)).toEqual(['Options.pages']);
+    expect(changes.changed[0]!.after.section).toBe('experimental');
+  });
+
+  it('keeps the member in a type that is only referenced', () => {
+    const { items } = snapshot({ 'index.d.ts': `${OPTIONS.replace('export interface', 'interface')}export declare function f(options: Options): void;\n` });
+    expect(find(items, 'referenced', 'Options')?.text).toContain('pages?: boolean;');
+    expect(items.some((item) => item.name === 'Options.pages')).toBe(false);
+  });
+
+  describe('docs/releases.md', () => {
+    const releases = (root: string, text: string) => {
+      mkdirSync(join(root, 'docs'), { recursive: true });
+      writeFileSync(join(root, 'docs/releases.md'), text);
+    };
+    const page = (list: string) => `# Releases\n\n## What is public API\n\n### Experimental\n\nCan break in any minor.\n\n${list}\n\n## Next\n\n\`@marmeon/other\`\n`;
+    const setup = (files: Record<string, string>, experimental: unknown) => demo(files, entries, { marmeon: { experimental } }).root;
+
+    it('passes when every experimental entry is named and nothing else', async () => {
+      const root = setup(two, ['./b']);
+      releases(root, page('- `@marmeon/demo/b`'));
+      expect((await runApi(root, { write: true })).code).toBe(0);
+      expect((await runApi(root)).code).toBe(0);
+    });
+
+    it('names an experimental entry that the page misses', async () => {
+      const root = setup(two, ['./b']);
+      releases(root, page('- nothing yet'));
+      const run = await runApi(root, { write: true });
+      expect(run.code).toBe(1);
+      expect(run.lines.join('\n')).toContain('does not name @marmeon/demo/b under "### Experimental"');
+    });
+
+    it('names an entry of the page that nothing marks', async () => {
+      const root = setup(two, undefined);
+      releases(root, page('- `@marmeon/demo/b`'));
+      const run = await runApi(root, { write: true });
+      expect(run.code).toBe(1);
+      expect(run.lines.join('\n')).toContain('names @marmeon/demo/b under "### Experimental", but nothing marks it experimental');
+    });
+
+    it('needs the page when something is experimental, and no page otherwise', async () => {
+      expect((await runApi(setup(two, true), { write: true })).code).toBe(1);
+      expect((await runApi(setup(two, undefined), { write: true })).code).toBe(0);
+    });
+  });
+
+  it('lists an experimental command in the package-wide section, and reads it back', async () => {
+    const { dir, manifest } = demo(
+      {
+        'index.d.ts': 'export declare const a: 1;\n',
+        'index.js': `export class P { static commands = [class C { static command = 'x:run'; static experimental = true; static options = {}; }, class D { static command = 'x:stay'; static options = {}; }]; }`,
+      },
+      { '.': 'index.d.ts' },
+      { marmeon: { providers: ['P'] } },
+    );
+    const { items } = await runtimeItems({ name: '@marmeon/demo', dir, manifest });
+    const { markdown, experimental } = snapshotPackage({ name: '@marmeon/demo', dir, manifest }, [], items);
+    expect(markdown).toMatch(/## Commands\n\n```ts\n\/\/ x:stay\nmarmeon x:stay\n```\n\n## Experimental\n\n```ts\n\/\/ x:run\nmarmeon x:run\n```\n$/);
+    expect(experimental).toEqual(['marmeon x:run']);
+    expect(parseSnapshot(markdown!).filter((item) => item.entry === '')).toHaveLength(2);
+  });
+});
+
 describe('the repository', () => {
   const built = frameworkPackages(repository).every((pkg) => {
     const exports = (pkg.manifest.exports ?? {}) as Record<string, { types?: string }>;

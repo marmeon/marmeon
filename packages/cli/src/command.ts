@@ -40,6 +40,11 @@ export interface CommandClass {
   readonly boots?: boolean | 'build';
   /** Hidden from `marmeon list`. */
   readonly hidden?: boolean;
+  /**
+   * Whether the command may change in any minor version. `marmeon list` and `--help` say so, and the package's API snapshot
+   * lists it apart. See docs/releases.md#experimental.
+   */
+  readonly experimental?: boolean;
 }
 
 /** Names `main.ts` handles before it looks anything up. */
