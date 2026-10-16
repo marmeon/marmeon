@@ -151,9 +151,42 @@ describe('releaseTarget', () => {
     ['main', '2.4.0', '2.3.0', 'latest', true],
     ['2.x', '2.3.1', '2.3.0', 'latest', true],
     ['main', '0.1.0', undefined, 'latest', true],
+    ['main', '1.0.0', '0.9.3', 'latest', true],
   ];
   it.each(allowed)('%s releases %s over latest %s as %s (marked latest: %s)', (branch, version, latest, distTag, markLatest) => {
-    expect(releaseTarget({ branch, version, latest })).toEqual({ ok: true, distTag, markLatest });
+    expect(releaseTarget({ branch, version, latest })).toEqual({ ok: true, distTag, markLatest, prerelease: false });
+  });
+
+  // The tag follows from the version alone: a candidate is `next`, a prerelease and never `latest`; a plain version is never `next`.
+  it.each([
+    ['main', '1.0.0-rc.1', '0.9.3'],
+    ['main', '1.0.0-rc.2', '0.9.3'],
+    ['main', '2.0.0-rc.1', '1.4.2'],
+    ['main', '0.2.0-rc.1', '0.1.2'],
+  ])('%s releases the candidate %s over latest %s under next, as a prerelease, not as latest', (branch, version, latest) => {
+    expect(releaseTarget({ branch, version, latest })).toEqual({ ok: true, distTag: 'next', markLatest: false, prerelease: true });
+  });
+
+  it('never gives a plain version the dist-tag next, whatever the branch and latest', () => {
+    for (const branch of ['main', '0.1.x', '1.x', '2.x']) {
+      for (const version of ['0.1.3', '0.1.4', '1.0.0', '1.8.4', '2.3.1']) {
+        for (const latest of [undefined, '0.1.2', '0.2.0', '1.0.0', '2.3.0']) {
+          const target = releaseTarget({ branch, version, latest });
+          if (target.ok) expect(target).toMatchObject({ prerelease: false, distTag: expect.stringMatching(/^latest/) });
+        }
+      }
+    }
+  });
+
+  it('never gives a candidate the dist-tag latest, whatever the branch and latest', () => {
+    for (const branch of ['main', '0.1.x', '1.x', '2.x', 'feature/x', 'next', 'latest']) {
+      for (const version of ['1.0.0-rc.1', '1.0.0-rc.3', '0.2.0-rc.1']) {
+        for (const latest of [undefined, '0.1.2', '0.9.3', '1.0.0', '1.0.0-rc.1']) {
+          const target = releaseTarget({ branch, version, latest });
+          if (target.ok) expect(target).toEqual({ ok: true, distTag: 'next', markLatest: false, prerelease: true });
+        }
+      }
+    }
   });
 
   const refused: [string, string, string | undefined, string[]][] = [
@@ -167,7 +200,18 @@ describe('releaseTarget', () => {
     ['0.x', '0.1.3', '0.1.2', ['0.x', '0.1.3', '0.1.x']],
     ['1.2.x', '1.2.5', '2.0.0', ['1.2.x', '1.2.5', '1.x']],
     ['main', '0.2.0-beta.1', '0.1.2', ['main', '0.2.0-beta.1', 'x.y.z']],
-    ['main', '1.0.0-rc.1', '0.9.3', ['main', '1.0.0-rc.1', 'x.y.z']],
+    ['main', '1.0.0-rc.1', undefined, ['main', '1.0.0-rc.1', 'first release is a plain x.y.z']],
+    ['main', '1.0.0-rc.1', '1.0.0', ['main', '1.0.0-rc.1', 'not above latest 1.0.0']],
+    ['main', '1.0.0-rc.1', '1.0.0-rc.1', ['main', '1.0.0-rc.1', 'x.y.z']],
+    ['main', '1.0.0-rc.1', '1.0.0-rc.0', ['main', '1.0.0-rc.1', '1.0.0-rc.0']],
+    ['main', '1.0.0-rc.1', '1.0.0-beta.1', ['main', '1.0.0-rc.1', '1.0.0-beta.1']],
+    ['1.x', '1.0.1-rc.1', '1.0.0', ['1.x', '1.0.1-rc.1', 'from main only']],
+    ['0.1.x', '0.1.4-rc.1', '0.2.0', ['0.1.x', '0.1.4-rc.1', 'from main only']],
+    ['feature/x', '1.0.0-rc.1', '0.9.3', ['feature/x', '1.0.0-rc.1', 'main only']],
+    ['main', '1.0.0-rc.01', '0.9.3', ['main', '1.0.0-rc.01', 'x.y.z-rc.N']],
+    ['main', '1.0.0-rc', '0.9.3', ['main', '1.0.0-rc', 'x.y.z-rc.N']],
+    ['main', '1.0.0-beta.1', '0.9.3', ['main', '1.0.0-beta.1', 'other prereleases']],
+    ['main', '1.0.0-rc.1+build', '0.9.3', ['main', 'other prereleases']],
     ['main', '1.0.0', '1.0.0-rc.1', ['main', '1.0.0', '1.0.0-rc.1']],
     ['main', '0.2.1', '0.2.0-beta.1', ['main', '0.2.1', '0.2.0-beta.1']],
     ['0.2.x', '0.2.1', '0.1.03', ['0.2.x', '0.2.1', '0.1.03']],

@@ -12,7 +12,8 @@
 #   build    (contents: read, no id-token) — runs the repository's scripts and its dependencies' code
 #     1. scripts/release-guard.ts, before anything is installed: the branch, the release commit (checked out, detached — every later
 #        step works on it and none may switch away), one version, v<version> not tagged, the version on no package of npm, the
-#        release base, and the dist-tag (`latest`, or `latest-<line>` for a late fix of an older line).
+#        release base, and the dist-tag (`latest`, `latest-<line>` for a late fix of an older line, or `next` for a release candidate, which
+#        only `main` releases).
 #     2. The checks: a clean build, the content rules, publint, attw, the release rules. No cache is restored: a store written by
 #        another workflow could carry code into this job.
 #     3. scripts/release-pack.ts: `pnpm pack` of every package, and SHA512SUMS naming each tarball. The hash of SHA512SUMS is the
@@ -59,6 +60,7 @@ jobs:
       commit: ${{ steps.guard.outputs.commit }}
       version: ${{ steps.guard.outputs.version }}
       latest: ${{ steps.guard.outputs.latest }}
+      prerelease: ${{ steps.guard.outputs.prerelease }}
       dist-tag: ${{ steps.guard.outputs.dist-tag }}
       sums: ${{ steps.pack.outputs.sums }}
     steps:
@@ -129,7 +131,7 @@ jobs:
           NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/no-globalconfig
         run: |
           set -o pipefail
-          [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\.[0-9]+)?)?$ ]]
+          if [[ "$VERSION" == *-rc.* ]]; then [[ "$DIST_TAG" == next ]] || { echo "::error::a release candidate goes out under next only"; exit 1; }; else [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\.[0-9]+)?)?$ ]] || { echo "::error::a release goes out under latest or latest-<line>, never next"; exit 1; }; fi
           mkdir "$RUNNER_TEMP/empty"
           cd "$TARBALLS"
           printf '%s  SHA512SUMS\n' "$SUMS" | sha512sum --check --strict -
@@ -185,12 +187,13 @@ jobs:
             exit 1
           fi
       # A draft: it becomes public only when the maintainer publishes it, after approving the staged versions on npm. The tag binds
-      # it to the release commit; it is the latest release only when the version is above npm's latest.
+      # it to the release commit; it is the latest release only when the version is above npm's latest, and a prerelease when it is a release candidate.
       - name: draft the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
           LATEST: ${{ needs.build.outputs.latest }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
           node scripts/release-notes.ts "$VERSION" > "$RUNNER_TEMP/release-notes.md"
-          gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --latest="$LATEST"
+          gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --latest="$LATEST" --prerelease="$PRERELEASE"

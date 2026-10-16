@@ -160,16 +160,25 @@ export function fromLine(version: string): string {
   return major === 1 ? '0.x' : `${major - 1}.x`;
 }
 
-export type ReleaseTarget = { ok: true; distTag: string; markLatest: boolean } | { ok: false; problem: string };
+export type ReleaseTarget = { ok: true; distTag: string; markLatest: boolean; prerelease: boolean } | { ok: false; problem: string };
 
 /**
- * The one place that picks the npm dist-tag and whether the draft GitHub Release is marked latest, from the branch the workflow
- * was started on, the version and npm's current `latest` (`undefined`: never published). No npm access: the guard supplies the facts.
- * A release candidate is refused here: it would need a prerelease dist-tag, never `latest`.
+ * The one place that picks the npm dist-tag and whether the draft GitHub Release is marked latest or a prerelease, from the branch
+ * the workflow was started on, the version and npm's current `latest` (`undefined`: never published). No npm access: the guard
+ * supplies the facts. The dist-tag follows from the version alone: a release candidate (`x.y.z-rc.N`, from `main` only, above
+ * `latest`) is `next` and never `latest`; a plain version is never `next`.
  */
 export function releaseTarget({ branch, version, latest }: { branch: string; version: string; latest: string | undefined }): ReleaseTarget {
   const refuse = (problem: string): ReleaseTarget => ({ ok: false, problem });
-  if (!isPlainVersion(version)) return refuse(`"${version}" is not a plain x.y.z version (branch ${branch}); prereleases are not released.`);
+  if (parseVersion(version) === undefined) return refuse(`"${version}" is not an x.y.z or x.y.z-rc.N version (branch ${branch}); other prereleases are not released.`);
+  if (!isPlainVersion(version)) {
+    if (branch !== MAIN) return refuse(`Branch ${branch} cannot release the candidate ${version}: candidates are released from ${MAIN} only.`);
+    // On a first publish npm points `latest` at the version whatever `--tag` says, so a candidate cannot be the first release.
+    if (latest === undefined) return refuse(`npm has no latest yet (branch ${branch}, version ${version}): the first release is a plain x.y.z, not a candidate.`);
+    if (!isPlainVersion(latest)) return refuse(`npm's latest "${latest}" is not a plain x.y.z version (branch ${branch}, version ${version}).`);
+    if (compareVersions(version, latest) <= 0) return refuse(`${version} is not above latest ${latest} (branch ${branch}): a candidate leads to a release above it.`);
+    return { ok: true, distTag: 'next', markLatest: false, prerelease: true };
+  }
   const line = lineOf(version);
   const branchLine = maintenanceLine(branch);
   if (branch !== MAIN && branchLine === undefined) {
@@ -182,16 +191,16 @@ export function releaseTarget({ branch, version, latest }: { branch: string; ver
     // npm's not-found also answers "no permission", so a wrong registry or login must not turn a backport into `latest`; a
     // maintenance line only exists after a newer release.
     if (branch !== MAIN) return refuse(`npm has no latest for ${branch} to sit below: a maintenance release needs a newer release on main first; check the registry and login.`);
-    return { ok: true, distTag: 'latest', markLatest: true };
+    return { ok: true, distTag: 'latest', markLatest: true, prerelease: false };
   }
   if (!isPlainVersion(latest)) return refuse(`npm's latest "${latest}" is not a plain x.y.z version (branch ${branch}, version ${version}).`);
   const order = compareVersions(version, latest);
   if (order === 0) return refuse(`${version} is already published as latest (branch ${branch}).`);
-  if (order > 0) return { ok: true, distTag: 'latest', markLatest: true };
+  if (order > 0) return { ok: true, distTag: 'latest', markLatest: true, prerelease: false };
   if (branch === MAIN) {
     return refuse(`main releases above latest ${latest}; ${version} is below it, so a fix for ${line} goes out from ${line}.x.`);
   }
-  return { ok: true, distTag: `latest-${line}`, markLatest: false };
+  return { ok: true, distTag: `latest-${line}`, markLatest: false, prerelease: false };
 }
 
 /** Runs a command in a fixed directory (no shell); shared by the guard and the preparation so both can be tested with a fake. */
