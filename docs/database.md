@@ -166,11 +166,11 @@ export const ReportingDatabase = defineConnection('reporting', {
 connection by its name:
 
 ```ts title="modules/reports/MonthlyReport.ts"
-import { Connections, type Kysely } from '@marmeon/database';
+import { Connections, type Connection } from '@marmeon/database';
 import type { ReportingTables } from './tables.ts';
 
 export class MonthlyReport {
-  readonly #reporting: Kysely<ReportingTables>;
+  readonly #reporting: Connection<ReportingTables>;
 
   constructor(connections: Connections) {
     this.#reporting = connections.get<ReportingTables>('reporting');

@@ -1,14 +1,12 @@
+import type { NewRowOf, RowOf, RowUpdateOf } from './builder.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import type {
   ColumnType,
   DeleteQueryBuilder,
   DeleteResult,
-  Insertable,
   InsertQueryBuilder,
   InsertResult,
   Kysely,
-  Selectable,
-  Updateable,
   UpdateQueryBuilder,
   UpdateResult,
 } from 'kysely';
@@ -45,9 +43,9 @@ export type Decimal = ColumnType<string, string | number, string | number>;
 export type JsonColumn = ColumnType<Json, string, string>;
 
 /** A row as read, as inserted, as updated. */
-export type Row<T extends keyof Tables> = Selectable<Tables[T]>;
-export type NewRow<T extends keyof Tables> = Insertable<Tables[T]>;
-export type RowUpdate<T extends keyof Tables> = Updateable<Tables[T]>;
+export type Row<T extends keyof Tables> = RowOf<Tables[T]>;
+export type NewRow<T extends keyof Tables> = NewRowOf<Tables[T]>;
+export type RowUpdate<T extends keyof Tables> = RowUpdateOf<Tables[T]>;
 /**
  * A row of table `T` with the relations `N` loaded, as `findOrFail(id, { with })` gives it: `RowWith<'posts', 'author' | 'tags'>`,
  * for example as the prop type of a page. See `docs/queries.md#reading`.
@@ -56,7 +54,7 @@ export type RowWith<T extends keyof Tables, N extends RelationName<Tables, T>> =
 
 // --- Module boundaries (opt-in via `Database<'module'>`) -------------------------------
 
-type ReadOnlyTable<T> = { [C in keyof T]: ColumnType<Selectable<T>[C & keyof Selectable<T>], never, never> };
+type ReadOnlyTable<T> = { [C in keyof T]: ColumnType<RowOf<T>[C & keyof RowOf<T>], never, never> };
 
 /** The tables module `M` owns. */
 export type OwnedTables<All, Owners, M extends string> = {

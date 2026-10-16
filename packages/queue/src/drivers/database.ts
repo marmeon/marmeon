@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { Kysely } from '@marmeon/database';
+import type { Connection } from '@marmeon/database';
 import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
 
 /** The tables `marmeon make:queue-table` creates (the app owns the migration; the queue types them itself). */
@@ -8,7 +8,7 @@ export const FAILED_JOBS_TABLE = 'failed_jobs';
 
 /** A connection of @marmeon/database — or a transaction of one (`queue.using(trx)`). */
 export interface DatabaseQueueConnection {
-  readonly db: Kysely<any>;
+  readonly db: Connection<any>;
   readonly driver: 'sqlite' | 'pgsql';
   /** Whether the current call chain runs inside a `transaction()` of this connection — `db` then writes into it. */
   readonly inTransaction?: () => boolean;
@@ -82,7 +82,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   }
 
   /** The same driver, writing through `db` — a transaction: its dispatches commit or roll back with it. */
-  using(db: Kysely<any>): DatabaseQueueDriver {
+  using(db: Connection<any>): DatabaseQueueDriver {
     const outer = this.#connection;
     return new DatabaseQueueDriver(async () => ({ db, driver: (await outer()).driver, inTransaction: () => true }), { retryAfter: this.#retryAfter, clock: this.#clock });
   }
@@ -96,7 +96,7 @@ export class DatabaseQueueDriver implements QueueDriver {
     return this.#insert(db, sql, { queue, payload, delay });
   }
 
-  async #insert(db: Kysely<any>, sql: Sql, { queue, payload, delay }: QueuedPush): Promise<string> {
+  async #insert(db: Connection<any>, sql: Sql, { queue, payload, delay }: QueuedPush): Promise<string> {
     const now = this.#clock.now();
     const { rows } = await sql<{ id: number | string }>`insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at)
       values (${queue}, ${payload}, 0, null, cast(${now + Math.round(delay * 1000)} as bigint), cast(${now} as bigint)) returning id`.execute(db);
@@ -141,7 +141,7 @@ export class DatabaseQueueDriver implements QueueDriver {
     // The acknowledgement and the next job of the chain in ONE transaction: a crash (or a failed insert) between the two
     // would otherwise lose the rest of the chain; this way the job stays claimed and runs again after retryAfter.
     const connection = await use(this.#connection, this.#cache);
-    const handOff = async (db: Kysely<any>) => {
+    const handOff = async (db: Connection<any>) => {
       if (!(await this.#delete(job, db))) return false;
       for (const push of next) await this.#insert(db, connection.sql, push);
       return true;
@@ -188,7 +188,7 @@ export class DatabaseQueueDriver implements QueueDriver {
     return rows.map((row) => row.queue);
   }
 
-  async #delete(job: ReservedJob, through?: Kysely<any>): Promise<boolean> {
+  async #delete(job: ReservedJob, through?: Connection<any>): Promise<boolean> {
     const connection = await use(this.#connection, this.#cache);
     const { sql } = connection;
     const db = through ?? connection.db;

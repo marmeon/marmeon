@@ -28,7 +28,7 @@ import { oxc } from './source-files.ts';
  * there; an entry that only waits for a change names it, and that change deletes the entry.
  */
 export const FOREIGN_TYPES: Readonly<Record<string, readonly string[]>> = {
-  // The query layer is typed in Kysely's types until it has aliases of its own.
+  // The query builder's aliases (`Connection`, `Row`, …) point at Kysely's types: the builder's shape is public API, its package is not.
   database: [LIBRARY],
   table: [LIBRARY],
   react: ['react', 'react-dom', '@tanstack/react-table'], // peers: the adapter is typed in the types of its UI library

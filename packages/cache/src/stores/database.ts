@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { Kysely } from '@marmeon/database';
+import type { Connection } from '@marmeon/database';
 import type { CacheStore, Entry } from '../cache.ts';
 
 /** The tables `marmeon make:cache-table` creates (the app owns the migration; the store types them itself). */
@@ -8,7 +8,7 @@ export const CACHE_LOCKS_TABLE = 'cache_locks';
 
 /** A connection of @marmeon/database, and which SQL it speaks. */
 export interface DatabaseStoreConnection {
-  readonly db: Kysely<any>;
+  readonly db: Connection<any>;
   readonly driver: 'sqlite' | 'pgsql';
 }
 

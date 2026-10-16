@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } f
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, RecordNotFoundError, Repository, secret, type Connections, type Kysely, type QueryEvent, type Selectable } from './index.ts';
+import { Migrator, RecordNotFoundError, Repository, secret, type Connections, type Connection, type QueryEvent, type RowOf } from './index.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -27,7 +27,7 @@ class UserRepository extends Repository<'users', FixtureTables> {
 describe.each(drivers)('writing through relations on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
-  let db: Kysely<FixtureTables>;
+  let db: Connection<FixtureTables>;
   let posts: PostRepository;
   let users: UserRepository;
   const ids = { ada: 0, alan: 0, gone: 0, first: 0, second: 0, kysely: 0, sql: 0, orm: 0 };
@@ -144,7 +144,7 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
       expect(comment).toMatchObject({ post_id: ids.first, user_id: ids.alan, body: 'hello', approved: false, deleted_at: null });
       expect(comment.created_at).toMatch(ISO_UTC);
       expect(comment.updated_at).toMatch(ISO_UTC);
-      expectTypeOf(comment).toEqualTypeOf<Selectable<FixtureTables['comments']>>();
+      expectTypeOf(comment).toEqualTypeOf<RowOf<FixtureTables['comments']>>();
 
       const many = await posts.relation(ids.second, 'comments').createMany([
         { user_id: ids.ada, body: 'first of two', approved: true },

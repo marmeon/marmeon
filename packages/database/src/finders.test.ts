@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, RecordNotFoundError, Repository, type Connections, type Json, type Kysely, type QueryEvent } from './index.ts';
+import { Migrator, RecordNotFoundError, Repository, type Connections, type Json, type Connection, type QueryEvent } from './index.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -27,7 +27,7 @@ class ApiKeyRepository extends Repository<'api_keys', FixtureTables> {
 describe.each(drivers)('finders of a repository on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
-  let db: Kysely<FixtureTables>;
+  let db: Connection<FixtureTables>;
   let users: UserRepository;
   let posts: PostRepository;
   let keys: ApiKeyRepository;

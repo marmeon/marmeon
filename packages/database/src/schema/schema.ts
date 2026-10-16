@@ -1,4 +1,5 @@
-import { sql, type Kysely } from 'kysely';
+import { sql } from 'kysely';
+import type { Connection } from '../builder.ts';
 import { Blueprint, compileColumn, type Driver, type TableMarker } from './blueprint.ts';
 
 /**
@@ -28,11 +29,11 @@ export interface SchemaRecorder {
  * anything the blueprint does not cover (`schema.db.schema…`, `sql\`…\``).
  */
 export class Schema {
-  readonly db: Kysely<any>;
+  readonly db: Connection<any>;
   readonly driver: Driver;
   readonly #owners: SchemaRecorder | undefined;
 
-  constructor(db: Kysely<any>, driver: Driver, owners?: SchemaRecorder) {
+  constructor(db: Connection<any>, driver: Driver, owners?: SchemaRecorder) {
     this.db = db;
     this.driver = driver;
     this.#owners = owners;

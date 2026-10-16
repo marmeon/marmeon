@@ -1,7 +1,8 @@
 import { err, ok, rollBackOnErr, type Result } from '@marmeon/core';
 import { errOfRollback } from '@marmeon/core/internal';
 import { HttpError, type RouteBinder, type RouteBindingContext, type RouteBindingWith } from '@marmeon/router';
-import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
+import { sql } from 'kysely';
+import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 import { Connections } from './connections.ts';
 import { isUniqueViolation } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
@@ -26,7 +27,7 @@ export class RecordNotFoundError extends HttpError {
 }
 
 /** The type of a table's `id` column — or `never` for tables without one. */
-export type KeyOf<T extends keyof DB, DB = Tables> = Selectable<DB[T]> extends { id: infer K } ? K : never;
+export type KeyOf<T extends keyof DB, DB = Tables> = RowOf<DB[T]> extends { id: infer K } ? K : never;
 
 /** What a repository class declares statically, next to `extends Repository<'users'>`. */
 export interface RepositoryStatics {
@@ -61,10 +62,10 @@ export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never 
  * {@link using} bind one to a transaction. Soft deletes and timestamps follow the table's migration (`softDeletes()`,
  * `timestamps()`). See `docs/queries.md#repositories`.
  */
-export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
+export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<RowOf<DB[T]>> {
   /** Types only: `Route.bind('post', PostRepository, { with: ['author'] })` takes the table's relations and types them on the row. */
   declare readonly routeBindingWith?: RepositoryBindingWith<DB, T>;
-  readonly #db: Kysely<DB>;
+  readonly #db: Connection<DB>;
   /** The app's connections, for `transaction()`. */
   readonly #connections: Connections | undefined;
 
@@ -84,13 +85,13 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /** The connection or the transaction this instance works in. */
-  protected get db(): Kysely<DB> {
+  protected get db(): Connection<DB> {
     return this.#db;
   }
 
   /** The base class works on a table only known at runtime — typed at its public surface instead. */
-  get #untyped(): Kysely<any> {
-    return this.#db as Kysely<any>;
+  get #untyped(): Connection<any> {
+    return this.#db as Connection<any>;
   }
 
   get #name(): string {
@@ -102,7 +103,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * transaction by itself; `using(trx)` is for transactions you control yourself (Kysely's
    * `db.startTransaction()`, a second connection at the same time, code outside the transaction's call chain).
    */
-  using(trx: Transaction<DB> | Kysely<DB>): this {
+  using(trx: Transaction<DB> | Connection<DB>): this {
     // A real instance (a copy via Object.create would lack the private fields and methods of its class),
     // built with connections that hand out `trx`.
     const Class = this.constructor as new (connections: Connections) => this;
@@ -151,23 +152,23 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * A select on the table — without soft-deleted rows when its migration called `softDeletes()`; `query().withTrashed()` keeps
    * them.
    */
-  query(): SelectQueryBuilder<DB, T, {}> {
-    return this.#untyped.selectFrom(this.#name).where(softDeleteFilter(this.#name)) as unknown as SelectQueryBuilder<DB, T, {}>;
+  query(): SelectQuery<DB, T, {}> {
+    return this.#untyped.selectFrom(this.#name).where(softDeleteFilter(this.#name)) as unknown as SelectQuery<DB, T, {}>;
   }
 
   /**
    * One page of a query on this repository's connection — which page: the route's parsed query (`ctx.query`, with `pageQuery()` in
    * its schema) or `{ page, perPage }`: `this.paginate(this.query().selectAll().orderBy('id'), ctx.query)`.
    */
-  paginate<TB extends keyof DB, O, const Q = PageRequest>(query: SelectQueryBuilder<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>> {
+  paginate<TB extends keyof DB, O, const Q = PageRequest>(query: SelectQuery<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>> {
     return paginate(this.db, query, request as PageRequest | undefined);
   }
 
   /** The row with this `id`, or `undefined`. On a uuid key, an id that is no UUID finds nothing — without a query. */
-  async find(id: KeyOf<T, DB>): Promise<Selectable<DB[T]> | undefined> {
+  async find(id: KeyOf<T, DB>): Promise<RowOf<DB[T]> | undefined> {
     const key = await this.#key('id', id);
     if (key === undefined) return undefined;
-    return (await this.query().selectAll().where('id' as never, '=', key as never).executeTakeFirst()) as Selectable<DB[T]> | undefined;
+    return (await this.query().selectAll().where('id' as never, '=', key as never).executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   /**
@@ -185,19 +186,19 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * The first row whose `column` holds `value` (`null` finds a NULL) — `undefined` when there is none. Never a soft-deleted one.
    * See `docs/queries.md#reading`.
    */
-  findBy<C extends keyof Selectable<DB[T]> & string>(column: C, value: Selectable<DB[T]>[C]): Promise<Selectable<DB[T]> | undefined> {
+  findBy<C extends keyof RowOf<DB[T]> & string>(column: C, value: RowOf<DB[T]>[C]): Promise<RowOf<DB[T]> | undefined> {
     return this.#firstWhere('findBy', { [column]: value });
   }
 
   /** The first row that holds every value of `values` (`null` finds a NULL) — `undefined` when there is none. See `docs/queries.md#reading`. */
-  firstWhere<V extends Partial<Selectable<DB[T]>>>(values: Exact<V, Selectable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
+  firstWhere<V extends Partial<RowOf<DB[T]>>>(values: Exact<V, RowOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined> {
     return this.#firstWhere('firstWhere', values as Record<string, unknown>);
   }
 
   /** One column of every row, without the soft-deleted ones. A secret column is refused. See `docs/queries.md#reading`. */
-  async pluck<C extends keyof Selectable<DB[T]> & string>(column: C): Promise<Selectable<DB[T]>[C][]> {
+  async pluck<C extends keyof RowOf<DB[T]> & string>(column: C): Promise<RowOf<DB[T]>[C][]> {
     const rows = await this.query().select(column as never).execute();
-    return rows.map((row) => (row as Record<string, unknown>)[column]) as Selectable<DB[T]>[C][];
+    return rows.map((row) => (row as Record<string, unknown>)[column]) as RowOf<DB[T]>[C][];
   }
 
   /**
@@ -208,13 +209,13 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * for await (const users of this.chunk(500, (query) => query.where('email_verified_at', 'is', null))) …
    * ```
    */
-  async *chunk<O = Selectable<DB[T]>>(
+  async *chunk<O = RowOf<DB[T]>>(
     size: number,
-    query?: (query: SelectQueryBuilder<DB, T, Selectable<DB[T]>>) => SelectQueryBuilder<DB, T, O>,
+    query?: (query: SelectQuery<DB, T, RowOf<DB[T]>>) => SelectQuery<DB, T, O>,
   ): AsyncGenerator<O[], void, undefined> {
     if (!Number.isSafeInteger(size) || size < 1) throw new RangeError(`chunk() takes a size that is a whole number ≥ 1, got ${size}.`);
-    const all = this.query().selectAll() as unknown as SelectQueryBuilder<DB, T, Selectable<DB[T]>>;
-    const base = query ? query(all) : (all as unknown as SelectQueryBuilder<DB, T, O>);
+    const all = this.query().selectAll() as unknown as SelectQuery<DB, T, RowOf<DB[T]>>;
+    const base = query ? query(all) : (all as unknown as SelectQuery<DB, T, O>);
     // The batches go by id: another order would be dropped without a word.
     if (base.toOperationNode().orderBy) throw new TypeError('chunk() reads the rows in the order of their id — leave orderBy() out of its callback.');
     let after: unknown[] | undefined;
@@ -241,12 +242,12 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /** Inserts a row and returns it as stored — defaults and generated id included. */
-  async insert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Selectable<DB[T]>> {
+  async insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>> {
     return (await this.#untyped
       .insertInto(this.#name)
       .values(values as Record<string, unknown>)
       .returningAll()
-      .executeTakeFirstOrThrow()) as Selectable<DB[T]>;
+      .executeTakeFirstOrThrow()) as RowOf<DB[T]>;
   }
 
   /**
@@ -254,7 +255,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * say). Race-free, unlike checking first. Runs in a savepoint: on Postgres a failed statement aborts the whole surrounding
    * transaction. Returned from a transaction's callback, the `err` rolls that transaction back. See `docs/queries.md#writing`.
    */
-  async tryInsert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Result<Selectable<DB[T]>, { kind: 'duplicate' }>> {
+  async tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, { kind: 'duplicate' }>> {
     try {
       return ok(await this.transaction((repository) => repository.insert(values)));
     } catch (error) {
@@ -267,10 +268,10 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * Updates a row unless a unique index already holds the new values — then an `err` of kind `duplicate`; of kind `missing` when
    * there is no such row (or it is soft-deleted). In a savepoint, like `tryInsert`. See `docs/queries.md#writing`.
    */
-  async tryUpdate<V extends Updateable<DB[T]>>(
+  async tryUpdate<V extends RowUpdateOf<DB[T]>>(
     id: KeyOf<T, DB>,
-    values: Exact<V, Updateable<DB[T]>>,
-  ): Promise<Result<Selectable<DB[T]>, { kind: 'duplicate' } | { kind: 'missing' }>> {
+    values: Exact<V, RowUpdateOf<DB[T]>>,
+  ): Promise<Result<RowOf<DB[T]>, { kind: 'duplicate' } | { kind: 'missing' }>> {
     try {
       const row = await this.transaction((repository) => repository.update(id, values));
       return row ? ok(row) : err({ kind: 'missing' });
@@ -312,7 +313,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * Updates a row and returns it — `undefined` when there is none (or it is soft-deleted). Sets `updated_at` when the
    * table's migration called `timestamps()`, unless `values` set it.
    */
-  async update<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
+  async update<V extends RowUpdateOf<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined> {
     const key = await this.#key('id', id);
     if (key === undefined) return undefined;
     return (await this.#untyped
@@ -321,7 +322,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       .where('id', '=', key)
       .where(softDeleteFilter(this.#name))
       .returningAll()
-      .executeTakeFirst()) as Selectable<DB[T]> | undefined;
+      .executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   /** Deletes a row — sets `deleted_at` instead when the table's migration called `softDeletes()`. Returns whether there was one. */
@@ -353,7 +354,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * for scoped bindings (`scope.column` = the parent's id), so another parent's row is a 404 — with the relations the binding
    * names (`{ with }`) loaded in the same query. A value that cannot be a key (not digits, not a UUID) is a 404 without a query.
    */
-  async resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<Selectable<DB[T]> | undefined> {
+  async resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<RowOf<DB[T]> | undefined> {
     const key = this.#statics().routeKey ?? 'id';
     const custom = this.#statics().routeKeyPattern;
     const kind = await this.#kind(key);
@@ -369,14 +370,14 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       if (parent === undefined) return undefined;
       query = query.where(binding.scope.column as never, '=', parent as never);
     }
-    return (await query.executeTakeFirst()) as Selectable<DB[T]> | undefined;
+    return (await query.executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   /**
    * The row whose route key (`static routeKey`, default `id`) is `value`, as a route binding finds it, for lookups outside of
    * routes — `undefined` when there is none, or when `value` cannot be a key. See `docs/queries.md#reading`.
    */
-  findByRouteKey(value: string): Promise<Selectable<DB[T]> | undefined> {
+  findByRouteKey(value: string): Promise<RowOf<DB[T]> | undefined> {
     return this.resolveRouteBinding(value, {} as RouteBindingContext);
   }
 
@@ -403,10 +404,10 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /** `query` with the relations `names` loaded (`with()`) — names from the code's types, checked against the metadata when it runs. */
-  #loading<O>(query: SelectQueryBuilder<DB, T, O>, names: readonly string[] | undefined): SelectQueryBuilder<DB, T, O> {
-    let loading = query as unknown as SelectQueryBuilder<any, any, any>;
+  #loading<O>(query: SelectQuery<DB, T, O>, names: readonly string[] | undefined): SelectQuery<DB, T, O> {
+    let loading = query as unknown as SelectQuery<any, any, any>;
     for (const name of names ?? []) loading = loading.with(name as never);
-    return loading as unknown as SelectQueryBuilder<DB, T, O>;
+    return loading as unknown as SelectQuery<DB, T, O>;
   }
 
   /**
@@ -420,7 +421,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return metadata;
   }
 
-  async #firstWhere(method: string, values: Record<string, unknown>): Promise<Selectable<DB[T]> | undefined> {
+  async #firstWhere(method: string, values: Record<string, unknown>): Promise<RowOf<DB[T]> | undefined> {
     const conditions = Object.entries(values);
     if (conditions.length === 0) throw new TypeError(`${method}() needs at least one column to match — it was given none.`);
     // The names come from the code's types — checked here too, for a cast or an object a request made: never a secret column.
@@ -431,7 +432,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
         throw new TypeError(`${method}() compares columns of ${this.#name} that are not secret — ${column} is ${secret ? 'a secret column' : 'not a column of it'}.`);
       }
     }
-    let query = this.query().selectAll().limit(1) as unknown as SelectQueryBuilder<any, any, any>;
+    let query = this.query().selectAll().limit(1) as unknown as SelectQuery<any, any, any>;
     for (const [column, value] of conditions) {
       // A missing value is a mistake (a field the request did not have), never "any value".
       if (value === undefined) {
@@ -439,7 +440,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       }
       query = value === null ? query.where(column, 'is', null) : query.where(column, '=', value);
     }
-    return (await query.executeTakeFirst()) as Selectable<DB[T]> | undefined;
+    return (await query.executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   #statics(): RepositoryStatics {

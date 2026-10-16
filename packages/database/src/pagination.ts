@@ -1,5 +1,6 @@
 import { HttpError } from '@marmeon/router';
-import { sql, type Expression, type ExpressionBuilder, type Kysely, type SelectQueryBuilder, type SqlBool } from 'kysely';
+import { sql, type Expression, type ExpressionBuilder, type SqlBool } from 'kysely';
+import type { Connection, SelectQuery } from './builder.ts';
 import { rules as r } from '@marmeon/validation';
 
 /** Where a page stands — the same shape `@marmeon/http/page` knows as `PaginationMeta` (for `<Pagination>`). */
@@ -71,8 +72,8 @@ export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never]
  */
 export async function paginate<DB, TB extends keyof DB, O, const Q = PageRequest>(
   // Only `selectFrom` is needed — so a module's restricted `Database<'…'>` works too.
-  db: Pick<Kysely<any>, 'selectFrom'>,
-  query: SelectQueryBuilder<DB, TB, O>,
+  db: Pick<Connection<any>, 'selectFrom'>,
+  query: SelectQuery<DB, TB, O>,
   request?: CheckPageRequest<Q>,
 ): Promise<Paginated<O>> {
   const { page = 1, perPage = 15 } = pageOf(request as PageRequest | undefined);
@@ -158,7 +159,7 @@ function cursorContext(name: string | undefined, direction: 'asc' | 'desc', colu
  * made up; one that does not decrypt answers 400 ({@link InvalidCursorError}). See `docs/pagination.md#cursors`.
  */
 export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<string, unknown>>(
-  query: SelectQueryBuilder<DB, TB, O>,
+  query: SelectQuery<DB, TB, O>,
   { column, key = 'id' as keyof O & string, cursor, perPage = 15, direction = 'asc', encrypter, name }: CursorOptions<keyof O & string>,
 ): Promise<CursorPaginated<O>> {
   if (!Number.isSafeInteger(perPage) || perPage < 1) throw new RangeError(`perPage must be a whole number ≥ 1, got ${perPage}.`);
@@ -186,20 +187,20 @@ export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<s
  * step {@link cursorPaginate} and a repository's `chunk()` take: no offset, so rows added or removed meanwhile neither repeat nor shift.
  */
 export function keyset<DB, TB extends keyof DB, O>(
-  query: SelectQueryBuilder<DB, TB, O>,
+  query: SelectQuery<DB, TB, O>,
   columns: readonly string[],
   after: readonly unknown[] | undefined,
   direction: 'asc' | 'desc',
   limit: number,
-): SelectQueryBuilder<DB, TB, O> {
-  let page = (query as SelectQueryBuilder<any, any, O>).clearOrderBy();
+): SelectQuery<DB, TB, O> {
+  let page = (query as SelectQuery<any, any, O>).clearOrderBy();
   for (const [index, name] of columns.entries()) {
     // The key is unique and never NULL; the columns before it may be NULL — last, in either direction.
     page = index === columns.length - 1 ? page.orderBy(name, direction) : page.orderBy(name, (order) => (direction === 'asc' ? order.asc() : order.desc()).nullsLast());
   }
   page = page.limit(limit);
   if (after) page = page.where((eb) => rowsAfter(eb, columns, after, direction));
-  return page as SelectQueryBuilder<DB, TB, O>;
+  return page as SelectQuery<DB, TB, O>;
 }
 
 /**

@@ -43,7 +43,7 @@ import type { QueueFake } from '@marmeon/queue/testing';
 import type { StorageFake } from '@marmeon/storage/testing';
 import type { DevtoolsTester } from '@marmeon/devtools';
 import type { ScheduleTester } from '@marmeon/scheduler/testing';
-import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@marmeon/database';
+import type { FactoryDefinition, PendingFactory, RowOf, Tables } from '@marmeon/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
 import { checkSsrServer, SSR_TEST_HEADER, TestSsr, type SsrServer } from './ssr.ts';
@@ -698,7 +698,7 @@ export class TestApp {
   // --- Database assertions -----------------------------------------------------------
 
   /** A row in `table` matches every given column value. */
-  async assertDatabaseHas<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this> {
+  async assertDatabaseHas<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<RowOf<DB[T]>>): Promise<this> {
     const { matching, sample } = await this.#rows(table, where as Record<string, unknown>);
     if (matching === 0) {
       throw new AssertionError({
@@ -709,7 +709,7 @@ export class TestApp {
   }
 
   /** No row in `table` matches the given column values. */
-  async assertDatabaseMissing<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this> {
+  async assertDatabaseMissing<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<RowOf<DB[T]>>): Promise<this> {
     const { matching } = await this.#rows(table, where as Record<string, unknown>);
     if (matching > 0) throw new AssertionError({ message: `Expected no row in "${table}" matching ${JSON.stringify(where)} — found ${matching}.` });
     return this;

@@ -1,7 +1,7 @@
 import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, Redactor, token, type Application, type Clock, type Logger } from '@marmeon/core';
 import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import { messageBase, trace } from '@marmeon/core/internal';
-import type { Kysely } from '@marmeon/database';
+import type { Transaction } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
@@ -66,7 +66,7 @@ export interface Queue {
    * await trx.commit().execute();
    * ```
    */
-  using(transaction: Kysely<any>): Queue;
+  using(transaction: Transaction<any>): Queue;
   /** Jobs waiting or running on a queue (default: the connection's default queue). */
   size(queue?: string, connection?: string): Promise<number>;
 }
@@ -114,10 +114,10 @@ interface Prepared {
 /** The `Queue` of a running app: one driver per connection (`QUEUE_CONNECTION`, or `{ connection }` per dispatch). */
 export class QueueManager implements Queue {
   readonly #deps: QueueManagerDependencies;
-  readonly #transaction: Kysely<any> | undefined;
+  readonly #transaction: Transaction<any> | undefined;
   readonly #redactor: Redactor;
 
-  constructor(dependencies: QueueManagerDependencies, transaction?: Kysely<any>) {
+  constructor(dependencies: QueueManagerDependencies, transaction?: Transaction<any>) {
     this.#deps = dependencies;
     this.#transaction = transaction;
     this.#redactor = dependencies.redactor ?? new Redactor();
@@ -188,7 +188,7 @@ export class QueueManager implements Queue {
     };
   }
 
-  using(transaction: Kysely<any>): Queue {
+  using(transaction: Transaction<any>): Queue {
     if (typeof (transaction as { selectFrom?: unknown } | null)?.selectFrom !== 'function') {
       throw new QueueError('queue.using() takes a database transaction (the trx of db.transaction().execute(async (trx) => …)).');
     }

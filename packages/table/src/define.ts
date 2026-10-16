@@ -1,7 +1,7 @@
 import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@marmeon/auth';
-import type { Database, SecretReference } from '@marmeon/database';
+import type { Database, SecretReference, SelectQuery } from '@marmeon/database';
 import type { ClassResolver, HttpContext, JoinNames, StandardSchemaV1 } from '@marmeon/router';
-import type { ExtractTypeFromReferenceExpression, SelectQueryBuilder, StringReference } from 'kysely';
+import type { ExtractTypeFromReferenceExpression, StringReference } from 'kysely';
 import type { Rule } from '@marmeon/validation';
 import type { TableData } from './client/index.ts';
 import { querySchema } from './state.ts';
@@ -328,7 +328,7 @@ export interface TableDefinition {
   readonly name: string;
   readonly prefix: string | undefined;
   readonly authorize: ((ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
-  readonly query: (db: any, ctx: any) => SelectQueryBuilder<any, any, any>;
+  readonly query: (db: any, ctx: any) => SelectQuery<any, any, any>;
   readonly key: string;
   /** How keys from the browser are parsed (`integer` for a key given by name). */
   readonly keyType: KeyType;
@@ -561,12 +561,12 @@ export type CheckBulk<Row, Bulk> = {
 export type TableContext<TState extends object = {}, TParams extends object = {}> = Omit<HttpContext<TState, TParams>, 'query'>;
 
 /** A table's base query — `ctx` annotated as the table needs it (`TableContext<Authenticated>`); checked bivariantly on purpose. */
-export type TableQuery = { bivariance(db: Database, ctx: TableContext): SelectQueryBuilder<any, any, any> }['bivariance'];
+export type TableQuery = { bivariance(db: Database, ctx: TableContext): SelectQuery<any, any, any> }['bivariance'];
 
 /** The tables of a base query's result, its tables in scope, and the context it needs. */
-type DbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, any, any> ? DB : never;
-type TbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
-type OutOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<any, any, infer O> ? O : {};
+type DbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, any, any> ? DB : never;
+type TbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
+type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
 type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 
 /** The input of {@link defineTable}. */

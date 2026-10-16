@@ -122,8 +122,8 @@ export declare class TestApp {
     close(): Promise<void>;
     [Symbol.asyncDispose](): Promise<void>;
     factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
-    assertDatabaseHas<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this>;
-    assertDatabaseMissing<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this>;
+    assertDatabaseHas<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<RowOf<DB[T]>>): Promise<this>;
+    assertDatabaseMissing<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<RowOf<DB[T]>>): Promise<this>;
     assertDatabaseCount<T extends keyof DB & string, DB = Tables>(table: T, count: number): Promise<this>;
     make<K extends Key<any>>(key: K): Resolve<K>;
     withHeaders(headers: Record<string, string>): TestApp;

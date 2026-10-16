@@ -61,6 +61,8 @@ export declare class Column<T> {
     default(value: T): this;
     secret(): this;
 }
+// Connection
+export type Connection<DB> = Kysely<DB>;
 // ConnectionDefinition
 export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions> {
     readonly connection: string;
@@ -89,9 +91,9 @@ export declare class Connections {
         logger: Logger;
         app?: Application;
     });
-    get<DB = Tables>(name?: string): Kysely<DB>;
+    get<DB = Tables>(name?: string): Connection<DB>;
     transaction<R>(callback: (trx: Transaction<Tables>) => R | PromiseLike<R>, options?: TransactionOptions): Promise<R>;
-    infrastructure<DB = any>(name?: string, usage?: InfrastructureUsage): Kysely<DB>;
+    infrastructure<DB = any>(name?: string, usage?: InfrastructureUsage): Connection<DB>;
     inTransaction(name?: string): boolean;
     isolate(name?: string): Promise<{
         rollback(): Promise<void>;
@@ -135,8 +137,8 @@ export interface CursorPaginated<T> {
     };
 }
 // Database
-export type Database<M extends keyof Modules & string = never> = [M] extends [never] ? Kysely<Tables> : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
-export declare const Database: import("@marmeon/core").Token<Kysely<Tables>>;
+export type Database<M extends keyof Modules & string = never> = [M] extends [never] ? Connection<Tables> : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
+export declare const Database: import("@marmeon/core").Token<Connection<Tables>>;
 // DatabaseConnectionError
 export declare class DatabaseConnectionError extends Error {
     name: string;
@@ -231,8 +233,8 @@ export interface FactoryContext {
 // FactoryDefinition
 export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S extends string = never> {
     readonly table: T;
-    readonly definition: (context: FactoryContext) => Attributes<Insertable<DB[T]>>;
-    readonly states: Readonly<Record<S, Partial<Insertable<DB[T]>> | ((context: FactoryContext) => Partial<Insertable<DB[T]>>)>>;
+    readonly definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>;
+    readonly states: Readonly<Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)>>;
 }
 // ForeignIdColumn
 export declare class ForeignIdColumn<T> extends Column<T> {
@@ -251,8 +253,6 @@ export interface InfrastructureUsage {
     readonly system: string;
     readonly remedy: string;
 }
-// Insertable
-export type { Insertable } from 'kysely';
 // InvalidCursorError
 export declare class InvalidCursorError extends HttpError {
     name: string;
@@ -265,11 +265,9 @@ export type Json = null | boolean | number | string | Json[] | {
 // JsonColumn
 export type JsonColumn = ColumnType<Json, string, string>;
 // KeyOf
-export type KeyOf<T extends keyof DB, DB = Tables> = Selectable<DB[T]> extends {
+export type KeyOf<T extends keyof DB, DB = Tables> = RowOf<DB[T]> extends {
     id: infer K;
 } ? K : never;
-// Kysely
-export type { Kysely } from 'kysely';
 // LinkWriter
 export interface LinkWriter<K> {
     sync(ids: readonly K[]): Promise<{
@@ -416,7 +414,9 @@ export type ModuleTables<All, Owners, Exposed, M extends string> = OwnedTables<A
 export interface Modules {
 }
 // NewRow
-export type NewRow<T extends keyof Tables> = Insertable<Tables[T]>;
+export type NewRow<T extends keyof Tables> = NewRowOf<Tables[T]>;
+// NewRowOf
+export type NewRowOf<T> = Insertable<T>;
 // PageMeta
 export interface PageMeta {
     readonly page: number;
@@ -442,10 +442,10 @@ export declare class PendingFactory<T extends keyof DB & string, DB = Tables, Ma
     #private;
     constructor(definition: FactoryDefinition<T, DB, S>, pending: Pending);
     count(count: number): PendingFactory<T, DB, true, S>;
-    state(state: S | Partial<Insertable<DB[T]>>): PendingFactory<T, DB, Many, S>;
-    using(db: Kysely<DB>): PendingFactory<T, DB, Many, S>;
-    make<O extends Partial<Insertable<DB[T]>> = {}>(overrides?: O & KnownColumns<O, Insertable<DB[T]>>): Many extends true ? MadeAttributes<Insertable<DB[T]>, O>[] : MadeAttributes<Insertable<DB[T]>, O>;
-    create(overrides?: Partial<Insertable<DB[T]>>): Promise<Many extends true ? Selectable<DB[T]>[] : Selectable<DB[T]>>;
+    state(state: S | Partial<NewRowOf<DB[T]>>): PendingFactory<T, DB, Many, S>;
+    using(db: Connection<DB>): PendingFactory<T, DB, Many, S>;
+    make<O extends Partial<NewRowOf<DB[T]>> = {}>(overrides?: O & KnownColumns<O, NewRowOf<DB[T]>>): Many extends true ? MadeAttributes<NewRowOf<DB[T]>, O>[] : MadeAttributes<NewRowOf<DB[T]>, O>;
+    create(overrides?: Partial<NewRowOf<DB[T]>>): Promise<Many extends true ? RowOf<DB[T]>[] : RowOf<DB[T]>>;
 }
 // PostgresConnection
 export interface PostgresConnection {
@@ -476,8 +476,8 @@ export declare class RecordNotFoundError extends HttpError {
 }
 // RelatedWriter
 export interface RelatedWriter<DB, X extends keyof DB, F> {
-    create<V extends NewRelated<DB, X, F>>(values: Exact<V, NewRelated<DB, X, F>>): Promise<Selectable<DB[X]>>;
-    createMany<V extends NewRelated<DB, X, F>>(values: readonly Exact<V, NewRelated<DB, X, F>>[]): Promise<Selectable<DB[X]>[]>;
+    create<V extends NewRelated<DB, X, F>>(values: Exact<V, NewRelated<DB, X, F>>): Promise<RowOf<DB[X]>>;
+    createMany<V extends NewRelated<DB, X, F>>(values: readonly Exact<V, NewRelated<DB, X, F>>[]): Promise<RowOf<DB[X]>[]>;
 }
 // RelationDefinition
 export interface RelationDefinition<DB, TB extends keyof DB, T extends keyof DB, One extends boolean> {
@@ -509,42 +509,42 @@ export interface Rendered {
     readonly warnings: string[];
 }
 // Repository
-export declare abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
+export declare abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<RowOf<DB[T]>> {
     #private;
     readonly routeBindingWith?: RepositoryBindingWith<DB, T>;
     constructor(connections: Connections);
     get table(): T;
-    protected get db(): Kysely<DB>;
-    using(trx: Transaction<DB> | Kysely<DB>): this;
+    protected get db(): Connection<DB>;
+    using(trx: Transaction<DB> | Connection<DB>): this;
     transaction<R>(callback: (repository: this) => Promise<R>): Promise<R>;
-    query(): SelectQueryBuilder<DB, T, {}>;
-    paginate<TB extends keyof DB, O, const Q = PageRequest>(query: SelectQueryBuilder<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
-    find(id: KeyOf<T, DB>): Promise<Selectable<DB[T]> | undefined>;
+    query(): SelectQuery<DB, T, {}>;
+    paginate<TB extends keyof DB, O, const Q = PageRequest>(query: SelectQuery<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
+    find(id: KeyOf<T, DB>): Promise<RowOf<DB[T]> | undefined>;
     findOrFail<const W extends readonly RelationName<DB, T>[] = []>(id: KeyOf<T, DB>, options?: {
         readonly with?: W;
     }): Promise<WithRelations<DB, T, W[number]>>;
-    findBy<C extends keyof Selectable<DB[T]> & string>(column: C, value: Selectable<DB[T]>[C]): Promise<Selectable<DB[T]> | undefined>;
-    firstWhere<V extends Partial<Selectable<DB[T]>>>(values: Exact<V, Selectable<DB[T]>>): Promise<Selectable<DB[T]> | undefined>;
-    pluck<C extends keyof Selectable<DB[T]> & string>(column: C): Promise<Selectable<DB[T]>[C][]>;
-    chunk<O = Selectable<DB[T]>>(size: number, query?: (query: SelectQueryBuilder<DB, T, Selectable<DB[T]>>) => SelectQueryBuilder<DB, T, O>): AsyncGenerator<O[], void, undefined>;
+    findBy<C extends keyof RowOf<DB[T]> & string>(column: C, value: RowOf<DB[T]>[C]): Promise<RowOf<DB[T]> | undefined>;
+    firstWhere<V extends Partial<RowOf<DB[T]>>>(values: Exact<V, RowOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined>;
+    pluck<C extends keyof RowOf<DB[T]> & string>(column: C): Promise<RowOf<DB[T]>[C][]>;
+    chunk<O = RowOf<DB[T]>>(size: number, query?: (query: SelectQuery<DB, T, RowOf<DB[T]>>) => SelectQuery<DB, T, O>): AsyncGenerator<O[], void, undefined>;
     exists(id: KeyOf<T, DB>): Promise<boolean>;
     count(): Promise<number>;
-    insert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Selectable<DB[T]>>;
-    tryInsert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Result<Selectable<DB[T]>, {
+    insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>>;
+    tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
         kind: 'duplicate';
     }>>;
-    tryUpdate<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Result<Selectable<DB[T]>, {
+    tryUpdate<V extends RowUpdateOf<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
         kind: 'duplicate';
     } | {
         kind: 'missing';
     }>>;
     relation<N extends WritableRelationName<DB, T>>(id: KeyOf<T, DB>, name: N): RelationWriter<DB, T, N>;
-    update<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined>;
+    update<V extends RowUpdateOf<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined>;
     delete(id: KeyOf<T, DB>): Promise<boolean>;
     forceDelete(id: KeyOf<T, DB>): Promise<boolean>;
     restore(id: KeyOf<T, DB>): Promise<boolean>;
-    resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<Selectable<DB[T]> | undefined>;
-    findByRouteKey(value: string): Promise<Selectable<DB[T]> | undefined>;
+    resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<RowOf<DB[T]> | undefined>;
+    findByRouteKey(value: string): Promise<RowOf<DB[T]> | undefined>;
 }
 // RepositoryBindingWith
 export interface RepositoryBindingWith<DB, T extends keyof DB> extends RouteBindingWith {
@@ -552,17 +552,21 @@ export interface RepositoryBindingWith<DB, T extends keyof DB> extends RouteBind
     readonly value: WithRelations<DB, T, this['with'][number]>;
 }
 // Row
-export type Row<T extends keyof Tables> = Selectable<Tables[T]>;
+export type Row<T extends keyof Tables> = RowOf<Tables[T]>;
+// RowOf
+export type RowOf<T> = Selectable<T>;
 // RowUpdate
-export type RowUpdate<T extends keyof Tables> = Updateable<Tables[T]>;
+export type RowUpdate<T extends keyof Tables> = RowUpdateOf<Tables[T]>;
+// RowUpdateOf
+export type RowUpdateOf<T> = Updateable<T>;
 // RowWith
 export type RowWith<T extends keyof Tables, N extends RelationName<Tables, T>> = WithRelations<Tables, T, N>;
 // Schema
 export declare class Schema {
     #private;
-    readonly db: Kysely<any>;
+    readonly db: Connection<any>;
     readonly driver: Driver;
-    constructor(db: Kysely<any>, driver: Driver, owners?: SchemaRecorder);
+    constructor(db: Connection<any>, driver: Driver, owners?: SchemaRecorder);
     create(table: string, build: (table: Blueprint) => void): Promise<void>;
     alter(table: string, build: (table: Blueprint) => void): Promise<void>;
     drop(table: string): Promise<void>;
@@ -590,7 +594,7 @@ export type SecretReference<DB, TB extends keyof DB> = {
 // SeedContext
 export interface SeedContext {
     factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
-    readonly db: Kysely<Tables>;
+    readonly db: Connection<Tables>;
 }
 // Seeder
 export interface Seeder {
@@ -618,8 +622,8 @@ export declare class Seeding {
         ms: number;
     }) => void): Promise<void>;
 }
-// Selectable
-export type { Selectable } from 'kysely';
+// SelectQuery
+export type SelectQuery<DB, TB extends keyof DB, O> = SelectQueryBuilder<DB, TB, O>;
 // TableOwners
 export interface TableOwners {
 }
@@ -633,7 +637,7 @@ export declare class TimestampColumn<T> extends Column<T> {
     useCurrent(): this;
 }
 // Transaction
-export type { Transaction } from 'kysely';
+export type Transaction<DB> = KyselyTransaction<DB>;
 // TransactionError
 export { TransactionError } from '@marmeon/core';
 // TransactionFinishedError
@@ -655,14 +659,12 @@ export declare class TypeGenerator {
     }>;
     isCurrent(): Promise<boolean>;
 }
-// Updateable
-export type { Updateable } from 'kysely';
 // UuidColumn
 export declare class UuidColumn<T> extends Column<T> {
     useUuidv7(): this;
 }
 // WithRelations
-export type WithRelations<DB, T extends keyof DB, N> = [N] extends [never] ? Selectable<DB[T]> : Simplify<Selectable<DB[T]> & {
+export type WithRelations<DB, T extends keyof DB, N> = [N] extends [never] ? RowOf<DB[T]> : Simplify<RowOf<DB[T]> & {
     [K in N & string]: WithResult<DB, T, K, {}>;
 }>;
 // WritableRelationName
@@ -674,15 +676,15 @@ export { afterCommit } from '@marmeon/core';
 // afterRollback
 export { afterRollback } from '@marmeon/core';
 // cursorPaginate
-export declare function cursorPaginate<DB, TB extends keyof DB, O extends Record<string, unknown>>(query: SelectQueryBuilder<DB, TB, O>, { column, key, cursor, perPage, direction, encrypter, name }: CursorOptions<keyof O & string>): Promise<CursorPaginated<O>>;
+export declare function cursorPaginate<DB, TB extends keyof DB, O extends Record<string, unknown>>(query: SelectQuery<DB, TB, O>, { column, key, cursor, perPage, direction, encrypter, name }: CursorOptions<keyof O & string>): Promise<CursorPaginated<O>>;
 // defineConnection
 export declare function defineConnection<const Schema extends StandardSchemaV1>(name: string, definition: {
     env: Schema;
     resolve: (env: InferOutput<Schema>) => ConnectionDefinitionOptions;
 }): ConnectionDefinition;
 // defineFactory
-export declare function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(table: T, definition: (context: FactoryContext) => Attributes<Insertable<DB[T]>>, options?: {
-    states?: Record<S, Partial<Insertable<DB[T]>> | ((context: FactoryContext) => Partial<Insertable<DB[T]>>)>;
+export declare function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(table: T, definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>, options?: {
+    states?: Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)>;
 }): FactoryDefinition<T, DB, S>;
 // defineMigration
 export declare function defineMigration(migration: Migration): Migration;
@@ -704,7 +706,7 @@ export declare function pageQuery<const P extends number = 15>({ perPage }?: {
     per_page: import("@marmeon/validation").Rule<Exclude<P, undefined>, P | (P extends number ? `${P}` : never) | undefined>;
 };
 // paginate
-export declare function paginate<DB, TB extends keyof DB, O, const Q = PageRequest>(db: Pick<Kysely<any>, 'selectFrom'>, query: SelectQueryBuilder<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
+export declare function paginate<DB, TB extends keyof DB, O, const Q = PageRequest>(db: Pick<Connection<any>, 'selectFrom'>, query: SelectQuery<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
 // secret
 export declare function secret<DB, TB extends keyof DB, R extends SecretReference<DB, TB>>(eb: ExpressionBuilder<DB, TB>, column: R): AliasedExpression<SecretValue<DB, TB, R>, SecretName<R>>;
 // sql
@@ -723,7 +725,7 @@ type Attributes<Row> = {
     [K in keyof Row]: Attribute<Row[K]>;
 };
 // CanWrite
-type CanWrite<DB, X> = X extends keyof DB ? ([keyof Updateable<DB[X]>] extends [never] ? false : true) : false;
+type CanWrite<DB, X> = X extends keyof DB ? ([keyof RowUpdateOf<DB[X]>] extends [never] ? false : true) : false;
 // ColumnSpec
 interface ColumnSpec {
     readonly name: string;
@@ -774,7 +776,7 @@ type ListNamesOf<DB, T> = T extends keyof Relations ? {
     } ? (Sees<DB, Relations[T][N]> extends true ? N : never) : never;
 }[keyof Relations[T]] & string : never;
 // Loaded
-type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof Selectable<DB[T]>>] extends [never] ? Selectable<DB[T]> & O : O>;
+type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof RowOf<DB[T]>>] extends [never] ? RowOf<DB[T]> & O : O>;
 // MigrationConnection
 export type MigrationConnection = string | ((container: Resolver) => string);
 // NamesOf
@@ -782,7 +784,7 @@ type NamesOf<DB, T> = T extends keyof Relations ? {
     [N in keyof Relations[T]]: Sees<DB, Relations[T][N]> extends true ? N : never;
 }[keyof Relations[T]] & string : never;
 // NewRelated
-type NewRelated<DB, X extends keyof DB, F> = Omit<Insertable<DB[X]>, F & string>;
+type NewRelated<DB, X extends keyof DB, F> = Omit<NewRowOf<DB[X]>, F & string>;
 // OnDelete
 type OnDelete = 'cascade' | 'set null' | 'restrict' | 'no action';
 // OwnedTables
@@ -796,11 +798,11 @@ interface Pending {
     readonly factories: Factories;
     readonly count: number | undefined;
     readonly states: readonly (string | Record<string, unknown>)[];
-    readonly db: Kysely<any> | undefined;
+    readonly db: Connection<any> | undefined;
 }
 // ReadOnlyTable
 type ReadOnlyTable<T> = {
-    [C in keyof T]: ColumnType<Selectable<T>[C & keyof Selectable<T>], never, never>;
+    [C in keyof T]: ColumnType<RowOf<T>[C & keyof RowOf<T>], never, never>;
 };
 // RelationOf
 type RelationOf<TB, N> = {
@@ -809,7 +811,7 @@ type RelationOf<TB, N> = {
 // RelationOf (2)
 type RelationOf<T, N> = T extends keyof Relations ? (N extends keyof Relations[T] ? Relations[T][N] : never) : never;
 // RelationQuery
-type RelationQuery<DB, T extends keyof DB> = SelectQueryBuilder<DB, T, {}>;
+type RelationQuery<DB, T extends keyof DB> = SelectQuery<DB, T, {}>;
 // SchemaRecorder
 export interface SchemaRecorder {
     created(table: string): Promise<void>;
@@ -844,7 +846,7 @@ export type TableMarker = 'soft_deletes' | 'timestamps';
 type TargetKey<DB, R> = R extends {
     readonly table: infer X extends keyof DB;
     readonly targetKey: infer K;
-} ? K extends keyof Selectable<DB[X]> ? Selectable<DB[X]>[K] : never : never;
+} ? K extends keyof RowOf<DB[X]> ? RowOf<DB[X]>[K] : never : never;
 // TargetOf
 type TargetOf<DB, TB, N> = RelationOf<TB, N> extends {
     readonly table: infer R extends keyof DB;

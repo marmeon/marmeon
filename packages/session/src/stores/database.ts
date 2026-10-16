@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { Kysely } from '@marmeon/database';
+import type { Connection } from '@marmeon/database';
 import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
 /** The table `marmeon make:session-table` creates (the app owns the migration; the store types it itself). */
@@ -7,7 +7,7 @@ export const SESSIONS_TABLE = 'sessions';
 
 /** A connection of @marmeon/database. */
 export interface DatabaseSessionConnection {
-  readonly db: Kysely<any>;
+  readonly db: Connection<any>;
 }
 
 type Sql = (typeof import('@marmeon/database'))['sql'];

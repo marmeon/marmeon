@@ -1,5 +1,5 @@
 import { Application, Container } from '@marmeon/core';
-import type { Kysely } from 'kysely';
+import type { Connection } from './builder.ts';
 import { Connections } from './connections.ts';
 import { Factories, type FactoryDefinition, type PendingFactory } from './factories.ts';
 import type { Tables } from './types.ts';
@@ -8,7 +8,7 @@ import type { Tables } from './types.ts';
 export interface SeedContext {
   /** Rows from a factory: `await factory(UserFactory).count(10).create()`. */
   factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
-  readonly db: Kysely<Tables>;
+  readonly db: Connection<Tables>;
 }
 
 /**

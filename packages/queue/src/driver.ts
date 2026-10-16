@@ -1,5 +1,5 @@
 import type { Clock, Resolver } from '@marmeon/core';
-import type { Kysely } from '@marmeon/database';
+import type { Transaction } from '@marmeon/database';
 
 /**
  * A queued job as the queue stores it — the same for every driver. `payload` is the JSON of a {@link JobRecord}.
@@ -92,7 +92,7 @@ export interface QueueDriver {
   /** The queues that hold jobs (or held some — a driver may remember a queue after it ran empty), sorted — `queue:size`, the worker's look at the queues it does not take. */
   queues(): Promise<string[]>;
   /** Drivers that keep jobs in the database: the same driver writing through a transaction. */
-  using?(transaction: Kysely<any>): QueueDriver;
+  using?(transaction: Transaction<any>): QueueDriver;
   /**
    * Drivers that keep jobs in the database: whether a push now writes into the ambient transaction of the current call
    * chain — then the job commits or rolls back with it. When this is missing or false, a dispatch inside a
