@@ -11,7 +11,8 @@ import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage } from './config.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { StorageFake } from './fake.ts';
-import { diskAttachment, Storage, StorageError, StorageManager, StorageServiceProvider, StorageSetupError } from './index.ts';
+import { diskAttachment, Storage, StorageError, StorageServiceProvider, StorageSetupError } from './index.ts';
+import { StorageManager } from './storage.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 afterAll(removeDirectories);

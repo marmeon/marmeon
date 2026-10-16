@@ -9,8 +9,8 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from '../__fixtures__/targets.ts';
 import { QueueConnections } from '../connections.ts';
-import { Queue, QUEUE_MIGRATION, QueueConfig, QueueServiceProvider } from '../index.ts';
-import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './failed.ts';
+import { Queue, QueueConfig, QueueServiceProvider } from '../index.ts';
+import { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './failed.ts';
 import { QueueWorkCommand } from './work.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 

@@ -10,7 +10,7 @@ export function sessionScope(id: string): string {
 }
 
 /**
- * The scope of an account: a hash of its id under a prefix of its own, so it never equals a {@link sessionScope}. It outlives every
+ * The scope of an account: a hash of its id under a prefix of its own, so it never equals the scope of a session. It outlives every
  * sign-in of the account; it is an unkeyed hash and stays on the server. The live package files the account's streams under it.
  */
 export function accountScope(userId: string | number): string {
@@ -22,7 +22,7 @@ export type SessionEndedListener = (scope: string) => void | Promise<void>;
 
 /**
  * Who wants to know when a session ends — signed out (`invalidate()`) or signed in (`regenerate()`): its old id is
- * destroyed when the request saves the session, and the listeners hear its scope ({@link sessionScope}). The live package closes
+ * destroyed when the request saves the session, and the listeners hear its scope (a hash of the session's id). The live package closes
  * the streams of that session, in every process. One per application.
  */
 export class SessionEndings {
@@ -36,8 +36,9 @@ export class SessionEndings {
   }
 
   /**
-   * Listens for the sign-ins of an account that ended: the scope of the account ({@link accountScope}), or `'*'` for every
+   * Listens for the sign-ins of an account that ended: the scope of the account (a hash of the account's id), or `'*'` for every
    * account. The live package closes the streams of that account, in every process. Returns the function that stops it.
+   * @internal
    */
   listenAccounts(listener: SessionEndedListener): () => void {
     this.#accountListeners.add(listener);

@@ -17,7 +17,7 @@ import { secondsOf } from './contents.ts';
 
 // Storage: disks — local (with a root jail), S3 (an optional peer) and memory (the fake) — behind one contract;
 // public disks served with safe headers, private ones only through signed, expiring URLs.
-export { defineStorage, DEFAULT_STORAGE, isStorageDefinition } from './config.ts';
+export { defineStorage } from './config.ts';
 export type {
   CheckDiskName,
   DefaultDiskName,
@@ -34,37 +34,27 @@ export type {
 } from './config.ts';
 export type { Disk, FileContents, ListOptions, OpenedFile, PrivateDisk, PublicDisk, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
 export { FileNotFoundError, InvalidKeyError, StorageError, StorageSetupError } from './errors.ts';
-export { basename, encodeKey, keyFromPath, MAX_KEY_BYTES, normalizeDirectory, normalizeKey } from './keys.ts';
-export { contentDisposition, INLINE_TYPES, isInlineType, mimeTypeOf } from './mime.ts';
 export { LocalDisk } from './drivers/local.ts';
 export { MemoryDisk } from './drivers/memory.ts';
 export type { ExpectedContents } from './drivers/memory.ts';
-export { loadS3, missingPackages, S3_INSTALL, s3BaseUrl, S3Disk } from './drivers/s3.ts';
+export { S3Disk } from './drivers/s3.ts';
 export type { ImportS3, S3Modules } from './drivers/s3.ts';
-export { checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
-export type { StorageDependencies } from './storage.ts';
-export { StorageFake } from './fake.ts';
-export type { FakeDisk } from './fake.ts';
-export { fileHeaders, serveFile } from './serve.ts';
+export { Storage } from './storage.ts';
+export { serveFile } from './serve.ts';
 export type { ServeOptions } from './serve.ts';
-export { registerStorageRoutes, servedPublicDisks } from './routes.ts';
-export { TEMPORARY_PREFIX } from './temporary.ts';
 export type { TemporaryUrls } from './temporary.ts';
-export { StorageSetup } from './setup.ts';
 
 // Uploads: a target per route field, the bytes to a private disk, a token in the form, verified on submit.
-export { upload, uploadFields, uploadRuleOf, formatBytes, UPLOAD_RULE } from './uploads/rule.ts';
+export { upload } from './uploads/rule.ts';
 export type { CheckUploadMime, UploadInput, UploadRule, UploadSchema } from './uploads/rule.ts';
 export { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';
 export type { UploadProblem, UploadSource } from './uploads/temporary-upload.ts';
-export { sniff, isActiveType, ACTIVE_TYPES, SNIFF_BYTES, UPLOAD_TYPES } from './uploads/sniff.ts';
-export type { ActiveType, Sniffed, UploadMime } from './uploads/sniff.ts';
-export { TemporaryUploads, UPLOADS_TABLE, uploadError } from './uploads/service.ts';
+export { UPLOAD_TYPES } from './uploads/sniff.ts';
+export type { UploadMime } from './uploads/sniff.ts';
+export { TemporaryUploads, UPLOADS_TABLE } from './uploads/service.ts';
 export type { TargetRequest, UploadTarget, UploadsOptions } from './uploads/service.ts';
 export { UploadsConfig } from './uploads/config.ts';
-export { MakeUploadsTableCommand, PruneUploadsCommand, UPLOADS_MIGRATION, uploadsTableConnection } from './uploads/commands.ts';
-export { UPLOADS_PREFIX } from './uploads/http.ts';
-export { loadPresignedPost, S3_UPLOADS_INSTALL } from './drivers/s3.ts';
+export { MakeUploadsTableCommand, PruneUploadsCommand, uploadsTableConnection } from './uploads/commands.ts';
 
 /**
  * A file of a disk as a mail attachment (`attachments()` of a mailable may be async):

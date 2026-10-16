@@ -12,17 +12,11 @@ import { FileStore } from './stores/file.ts';
 import { MemoryStore } from './stores/memory.ts';
 import { RedisStore } from './stores/redis.ts';
 
-export { Cache, Lock, LockTimeoutError, StoreCache } from './cache.ts';
+export { Cache, Lock, LockTimeoutError } from './cache.ts';
 export type { CacheStore, Entry } from './cache.ts';
-export { CACHE_LOCKS_TABLE, CACHE_TABLE, DatabaseStore } from './stores/database.ts';
-export type { DatabaseStoreConnection } from './stores/database.ts';
-export { FileStore } from './stores/file.ts';
-export { MemoryStore } from './stores/memory.ts';
-export { RedisStore } from './stores/redis.ts';
-export type { RedisStoreConnection } from './stores/redis.ts';
-export { CACHE_MIGRATION, MakeCacheTableCommand } from './commands/make-cache-table.ts';
+export { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 export { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
-export { clientKey, DEFAULT_LIVE_VALIDATION_LIMIT, Limit, LimitLiveValidation, LIVE_VALIDATION_LIMITER, RateLimiter, throttle } from './rate-limiter.ts';
+export { clientKey, Limit, LimitLiveValidation, RateLimiter, throttle } from './rate-limiter.ts';
 export type { LimiterCallback, LimiterContext } from './rate-limiter.ts';
 
 export { CacheConfig } from './config.ts';

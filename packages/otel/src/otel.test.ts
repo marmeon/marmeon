@@ -7,7 +7,8 @@ import { Connections, Database, DatabaseServiceProvider, Schema, sql } from '@ma
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, HttpServiceProvider } from '@marmeon/http';
 import { createPinoLogger } from '@marmeon/log';
-import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider, type JobContext } from '@marmeon/queue';
+import { Queue, QueueConnections, QueueServiceProvider, type JobContext } from '@marmeon/queue';
+import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import type { HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { context, propagation, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';

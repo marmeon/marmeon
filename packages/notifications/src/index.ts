@@ -79,7 +79,7 @@ export function notificationsTableConnection(container: Resolver): string {
   return container.make(NotificationConfig).connection;
 }
 
-type QueueModule = typeof import('@marmeon/queue');
+type QueueModule = typeof import('@marmeon/queue') & typeof import('@marmeon/queue/internal');
 type MailModule = typeof import('@marmeon/mail');
 type I18nModule = typeof import('@marmeon/i18n');
 
@@ -175,7 +175,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     this.#i18n = await importOptional(() => import('@marmeon/i18n'), '@marmeon/i18n');
 
     // The job behind send(): a framework job (`marmeon.notification`) — registered only when the app has notifications.
-    this.#queue = await importOptional(() => import('@marmeon/queue'), '@marmeon/queue');
+    this.#queue = await importOptional(async () => ({ ...(await import('@marmeon/queue')), ...(await import('@marmeon/queue/internal')) }), '@marmeon/queue');
     if (this.#queue && container.has(this.#queue.JobRegistry) && registry.all().length > 0) {
       container.make(this.#queue.JobRegistry).add([SendQueuedNotification as never], '@marmeon/notifications', { framework: true });
     }

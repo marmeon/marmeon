@@ -43,8 +43,6 @@ export declare class EncryptionServiceProvider implements ServiceProvider {
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     register(container: Container): void;
 }
-// encryptionSolutions
-export declare const encryptionSolutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
 // generateKey
 export declare function generateKey(): string;
 ```

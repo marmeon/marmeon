@@ -1,3 +1,7 @@
+/**
+ * Test doubles for apps' tests — see `docs/fakes.md#the-schedule`. `createTestApp()` creates the `ScheduleTester` as
+ * `app.schedule`, so an app imports it only to type a variable.
+ */
 import type { Scheduler, TaskResult } from './scheduler.ts';
 import { minuteOf } from './time.ts';
 
@@ -5,7 +9,7 @@ import { minuteOf } from './time.ts';
 export type ScheduleTime = Date | number | string | Temporal.Instant | Temporal.ZonedDateTime;
 
 /** Epoch milliseconds of a {@link ScheduleTime}. */
-export function toEpoch(time: ScheduleTime): number {
+function toEpoch(time: ScheduleTime): number {
   if (typeof time === 'number') return time;
   if (time instanceof Date) return time.getTime();
   if (typeof time === 'string') {

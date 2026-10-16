@@ -8,7 +8,8 @@ import { migrate, silent } from './__fixtures__/targets.ts';
 import { QueueConnections } from './connections.ts';
 import { JobQueued } from './events.ts';
 import { QueueFake } from './fake.ts';
-import { Queue, QueueServiceProvider, RECORD_OPTIONS } from './index.ts';
+import { Queue, QueueServiceProvider } from './index.ts';
+import { RECORD_OPTIONS } from './queue.ts';
 import { QueueSetupError } from './registry.ts';
 
 // Queued listeners: `static queue` on a listener class — the dispatcher queues a `marmeon.listener` job with the

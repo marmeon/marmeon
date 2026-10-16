@@ -1,4 +1,5 @@
-import { accountScope, SessionEndings, type UserSessions } from '@marmeon/session';
+import { SessionEndings, type UserSessions } from '@marmeon/session';
+import { accountScope } from '@marmeon/session/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { AccountSessions } from './account-sessions.ts';
 import type { RememberTokenStore } from './remember.ts';

@@ -9,8 +9,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// CATCH_UP_DAYS
-export declare const CATCH_UP_DAYS = 7;
 // CatchUp
 export type CatchUp = 'once' | 'skip';
 // CheckTime
@@ -54,14 +52,8 @@ export interface Invokable {
 }
 // InvokableClass
 export type InvokableClass = new (...args: any[]) => Invokable;
-// JOB_UNIQUE_FOR
-export declare const JOB_UNIQUE_FOR = 3600;
 // JobPayloadArgument
 export type JobPayloadArgument<J extends JobClass> = {} extends JobInput<J> ? [payload?: JobInput<J>] : [payload: JobInput<J>];
-// MINUTE
-export declare const MINUTE = 60000;
-// ONE_SERVER_SECONDS
-export declare const ONE_SERVER_SECONDS = 3600;
 // RunReason
 export type RunReason = 'due' | 'catch-up' | 'test';
 // Schedule
@@ -109,20 +101,6 @@ export declare class ScheduleTestCommand {
     constructor(scheduler: Scheduler);
     handle({ args, output }: CommandInput): Promise<number>;
 }
-// ScheduleTester
-export declare class ScheduleTester {
-    #private;
-    constructor(scheduler: Scheduler, clock: {
-        travelTo(time: number): unknown;
-        now(): number;
-    });
-    get tasks(): string[];
-    due(time?: ScheduleTime): string[];
-    run(time?: ScheduleTime): Promise<TaskResult[]>;
-    runTask(name: string): Promise<TaskResult>;
-}
-// ScheduleTime
-export type ScheduleTime = Date | number | string | Temporal.Instant | Temporal.ZonedDateTime;
 // ScheduleWorkCommand
 export declare class ScheduleWorkCommand {
     #private;
@@ -136,18 +114,6 @@ export declare class ScheduleWorkCommand {
     };
     constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor);
     handle({ options, output }: CommandInput): Promise<number>;
-}
-// ScheduleWorker
-export declare class ScheduleWorker {
-    #private;
-    constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor);
-    get running(): number;
-    run(options: {
-        signal: AbortSignal;
-        sleep?: Sleep;
-        onTick?: (minute: number, runs: TaskRun[]) => void;
-    }): Promise<void>;
-    drain(seconds: number): Promise<boolean>;
 }
 // ScheduledTask
 export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
@@ -233,8 +199,6 @@ export declare class SchedulerServiceProvider implements ServiceProvider {
 }
 // SkipReason
 export type SkipReason = 'filter' | 'other-server' | 'overlapping' | 'job-waiting';
-// Sleep
-export type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
 // Task
 export interface Task {
     readonly name: string;
@@ -306,22 +270,6 @@ export interface WallTime {
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 // defineSchedule
 export declare function defineSchedule(define: (s: Schedule) => void): ScheduleDefinition;
-// didYouMean
-export declare function didYouMean(name: string, known: readonly string[]): string;
-// dueMinutes
-export declare function dueMinutes(expression: CronExpression, from: number, to: number, timeZone: string): Generator<number>;
-// formatMinute
-export declare function formatMinute(minute: number, timeZone: string): string;
-// isDue
-export declare function isDue(expression: CronExpression, minute: number, timeZone: string): boolean;
-// lastDue
-export declare function lastDue(expression: CronExpression, from: number, to: number, timeZone: string): number | undefined;
-// minuteOf
-export declare function minuteOf(time: number): number;
-// nextDue
-export declare function nextDue(expression: CronExpression, after: number, timeZone: string, days?: number): number | undefined;
-// toEpoch
-export declare function toEpoch(time: ScheduleTime): number;
 ```
 
 ### Referenced, not exported
@@ -345,6 +293,134 @@ type Overlapping<K extends TaskKind> = K extends 'job' ? (this: 's.job() only qu
 // @marmeon/core.ModuleDefinition
 interface ModuleDefinition {
     readonly schedule?: ScheduleDefinition;
+}
+```
+
+## `@marmeon/scheduler/testing`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// ScheduleTester
+export declare class ScheduleTester {
+    #private;
+    constructor(scheduler: Scheduler, clock: {
+        travelTo(time: number): unknown;
+        now(): number;
+    });
+    get tasks(): string[];
+    due(time?: ScheduleTime): string[];
+    run(time?: ScheduleTime): Promise<TaskResult[]>;
+    runTask(name: string): Promise<TaskResult>;
+}
+// ScheduleTime
+export type ScheduleTime = Date | number | string | Temporal.Instant | Temporal.ZonedDateTime;
+```
+
+### Referenced, not exported
+
+```ts
+// CatchUp
+export type CatchUp = 'once' | 'skip';
+// CronExpression
+export declare class CronExpression {
+    #private;
+    readonly source: string;
+    constructor(expression: string);
+    get hourRestricted(): boolean;
+    matches(time: WallTime): boolean;
+    matchesHour(time: Omit<WallTime, 'minute'>): boolean;
+    toString(): string;
+}
+// Invokable
+export interface Invokable {
+    handle(): unknown;
+}
+// InvokableClass
+export type InvokableClass = new (...args: any[]) => Invokable;
+// RunReason
+export type RunReason = 'due' | 'catch-up' | 'test';
+// ScheduleConfig
+export declare const ScheduleConfig: import("@marmeon/core").ConfigDefinition<{
+    timezone: string;
+    environment: string;
+}>;
+export type ScheduleConfig = ConfigOf<typeof ScheduleConfig>;
+// Scheduler
+export declare class Scheduler {
+    #private;
+    constructor(container: Container, app: Application, config: ScheduleConfig, clock: Clock, logger: Logger);
+    get tasks(): readonly Task[];
+    task(name: string): Task;
+    schedules(command: string): boolean;
+    due(time: number): Task[];
+    next(task: Task, time?: number): number | undefined;
+    tick(time: number): Promise<TaskRun[]>;
+    runNow(task: Task): TaskRun;
+    checkProcess(): Promise<void>;
+    lockWarning(): string | undefined;
+    releaseHeld(): Promise<void>;
+}
+// SkipReason
+export type SkipReason = 'filter' | 'other-server' | 'overlapping' | 'job-waiting';
+// Task
+export interface Task {
+    readonly name: string;
+    readonly definition: TaskDefinition;
+    readonly expression: CronExpression;
+    readonly timeZone: string;
+    readonly summary: string;
+}
+// TaskDefinition
+export interface TaskDefinition {
+    readonly kind: TaskKind;
+    readonly target: JobClass | CommandClass | InvokableClass | string;
+    readonly payload: unknown;
+    readonly args: readonly string[];
+    readonly module: string;
+    fields: [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
+    expression: string | undefined;
+    timezone: string | undefined;
+    readonly when: TaskFilter[];
+    readonly skip: TaskFilter[];
+    environments: readonly string[] | undefined;
+    onOneServer: boolean;
+    overlapMinutes: number | undefined;
+    catchUp: CatchUp;
+    name: string | undefined;
+    description: string | undefined;
+}
+// TaskFilter
+export type TaskFilter = (scope: Container) => boolean | Promise<boolean>;
+// TaskKind
+export type TaskKind = 'job' | 'command' | 'call';
+// TaskResult
+export interface TaskResult {
+    readonly task: string;
+    readonly minute: number;
+    readonly reason: RunReason;
+    readonly outcome: 'ran' | 'skipped' | 'failed';
+    readonly skipped?: SkipReason;
+    readonly error?: unknown;
+    readonly ms: number;
+}
+// TaskRun
+export interface TaskRun {
+    readonly task: Task;
+    readonly minute: number;
+    readonly reason: RunReason;
+    readonly done: Promise<TaskResult>;
+}
+// WallTime
+export interface WallTime {
+    readonly year: number;
+    readonly month: number;
+    readonly day: number;
+    readonly hour: number;
+    readonly minute: number;
+    readonly weekday: number;
 }
 ```
 

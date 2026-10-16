@@ -4,21 +4,15 @@
 
 ## `@marmeon/storage`
 
-Types from other packages: `@aws-sdk/client-s3`, `@aws-sdk/s3-presigned-post`, `@aws-sdk/s3-request-presigner`
+Types from other packages: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
 
 ### Stable
 
 ```ts
-// ACTIVE_TYPES
-export declare const ACTIVE_TYPES: readonly ['text/html', 'image/svg+xml', 'application/xml'];
-// ActiveType
-export type ActiveType = (typeof ACTIVE_TYPES)[number];
 // CheckDiskName
 export type CheckDiskName<N extends string> = string extends DiskName ? N : string extends N ? DiskName : N extends DiskName ? N : [Near<N>] extends [never] ? `'${N}' is not a disk of this app — its disks: ${Join<DiskName>}` : `'${N}' is not a disk of this app — did you mean ${Join<Near<N>>}?`;
 // CheckUploadMime
 export type CheckUploadMime<M extends string> = M extends UploadMime ? M : M extends 'image/svg+xml' | 'text/html' | 'application/xml' | 'text/xml' | 'application/xhtml+xml' ? `'${M}' is never accepted — a browser runs script in it (upload a raster image or a PDF instead)` : [Near<M>] extends [never] ? `'${M}' is not a type an upload is recognised as by its bytes — leave out mime for any type, or name some of: ${JoinNames<UploadMime>}` : `'${M}' is not a type an upload is recognised as by its bytes — did you mean ${JoinNames<Near<M>>}?`;
-// DEFAULT_STORAGE
-export declare const DEFAULT_STORAGE: StorageOptions;
 // DefaultDiskName
 export type DefaultDiskName = Configured extends {
     default: infer Default extends string;
@@ -61,8 +55,6 @@ export type DiskOptions = LocalDiskOptions | S3DiskOptions | MemoryDiskOptions;
 export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
     contentType: string;
 }) => boolean);
-// FakeDisk
-export type FakeDisk<N extends string> = DiskFor<N> & Pick<MemoryDisk, 'assertExists' | 'assertMissing' | 'assertCount' | 'files'>;
 // FileContents
 export type FileContents = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array> | Readable;
 // FileNotFoundError
@@ -72,8 +64,6 @@ export declare class FileNotFoundError extends Error {
     readonly key: string;
     constructor(disk: string, key: string);
 }
-// INLINE_TYPES
-export declare const INLINE_TYPES: ReadonlySet<string>;
 // ImportS3
 export type ImportS3 = () => Promise<S3Modules>;
 // InvalidKeyError
@@ -115,8 +105,6 @@ export interface LocalDiskOptions extends DiskBase {
     readonly root: string;
     readonly url?: string;
 }
-// MAX_KEY_BYTES
-export declare const MAX_KEY_BYTES = 1024;
 // MakeUploadsTableCommand
 export declare class MakeUploadsTableCommand {
     static command: string;
@@ -251,21 +239,10 @@ export interface S3Modules {
     readonly client: typeof S3;
     readonly presigner: typeof Presigner;
 }
-// S3_INSTALL
-export declare const S3_INSTALL = "pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3";
-// S3_UPLOADS_INSTALL
-export declare const S3_UPLOADS_INSTALL = "pnpm add @aws-sdk/s3-presigned-post@^3";
-// SNIFF_BYTES
-export declare const SNIFF_BYTES = 1024;
 // ServeOptions
 export interface ServeOptions {
     readonly cacheControl: string;
     readonly filename?: string | undefined;
-}
-// Sniffed
-export interface Sniffed {
-    readonly mime: UploadMime | ActiveType | 'application/octet-stream';
-    readonly extension: string;
 }
 // Storage
 export interface Storage {
@@ -277,35 +254,9 @@ export declare const Storage: import("@marmeon/core").Token<Storage>;
 export interface StorageDefinition<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> extends ConfigDefinition<StorageOptions<D, Default>> {
     readonly storage: true;
 }
-// StorageDependencies
-export interface StorageDependencies {
-    readonly root: string;
-    readonly clock: Clock;
-    readonly temporaryUrls: TemporaryUrls;
-    readonly loadS3?: ImportS3;
-}
 // StorageError
 export declare class StorageError extends Error {
     name: string;
-}
-// StorageFake
-export declare class StorageFake extends StorageManager {
-    constructor(container: Container);
-    disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N>;
-    protected build(name: string, options: DiskOptions): Disk;
-}
-// StorageManager
-export declare class StorageManager implements Storage {
-    #private;
-    constructor(options: StorageOptions, dependencies: StorageDependencies);
-    get names(): readonly string[];
-    get defaultDisk(): string;
-    disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
-    named(name: string): Disk;
-    options(name: string): DiskOptions;
-    protected build(name: string, options: DiskOptions): Disk;
-    protected memory(name: string, options: DiskOptions): MemoryDisk;
-    close(): Promise<void>;
 }
 // StorageOptions
 export interface StorageOptions<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> {
@@ -329,12 +280,6 @@ export declare class StorageServiceProvider implements ServiceProvider {
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;
 }
-// StorageSetup
-export interface StorageSetup {
-    readonly options: StorageOptions;
-    readonly dependencies: StorageDependencies;
-}
-export declare const StorageSetup: import("@marmeon/core").Token<StorageSetup>;
 // StorageSetupError
 export declare class StorageSetupError extends Error {
     name: string;
@@ -342,8 +287,6 @@ export declare class StorageSetupError extends Error {
 // StorageTypes
 export interface StorageTypes {
 }
-// TEMPORARY_PREFIX
-export declare const TEMPORARY_PREFIX = "/_marmeon/storage";
 // TargetRequest
 export interface TargetRequest {
     readonly route: string;
@@ -398,14 +341,8 @@ export interface TemporaryUrlOptions {
 export interface TemporaryUrls {
     sign(disk: string, key: string, options: TemporaryUrlOptions): string;
 }
-// UPLOADS_MIGRATION
-export declare const UPLOADS_MIGRATION: import("node:url").URL;
-// UPLOADS_PREFIX
-export declare const UPLOADS_PREFIX = "/_marmeon/uploads";
 // UPLOADS_TABLE
 export declare const UPLOADS_TABLE = "temporary_uploads";
-// UPLOAD_RULE
-export declare const UPLOAD_RULE: unique symbol;
 // UPLOAD_TYPES
 export declare const UPLOAD_TYPES: {
     readonly 'image/png': 'png';
@@ -473,14 +410,8 @@ export interface UploadsOptions {
 }
 // Visibility
 export type Visibility = 'public' | 'private';
-// basename
-export declare function basename(key: string): string;
 // checkS3Sdk
 export declare function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing?: (names: readonly string[]) => string[]): void;
-// checkStorage
-export declare function checkStorage(options: StorageOptions, appRoot: string): void;
-// contentDisposition
-export declare function contentDisposition(type: 'attachment' | 'inline', filename: string): string;
 // defineStorage
 export declare function defineStorage<const D extends Readonly<Record<string, DiskOptions>>, const Default extends keyof D & string, const Schema extends StandardSchemaV1 = typeof NO_ENV>(definition: {
     readonly env?: Schema;
@@ -495,60 +426,15 @@ export declare function diskAttachment(disk: Disk, key: string, options?: {
     content: Uint8Array;
     contentType: string;
 }>;
-// encodeKey
-export declare function encodeKey(key: string): string;
-// fileHeaders
-export declare function fileHeaders(key: string, contentType: string, options: ServeOptions): Headers;
-// formatBytes
-export declare function formatBytes(bytes: number): string;
-// isActiveType
-export declare function isActiveType(mime: string): mime is ActiveType;
-// isInlineType
-export declare function isInlineType(contentType: string): boolean;
-// isStorageDefinition
-export declare function isStorageDefinition(value: unknown): value is StorageDefinition;
-// keyFromPath
-export declare function keyFromPath(pathname: string, prefix: string): string | undefined;
-// loadPresignedPost
-export declare function loadPresignedPost(): typeof PresignedPost;
-// loadS3
-export declare function loadS3(load?: ImportS3): Promise<S3Modules>;
-// mimeTypeOf
-export declare function mimeTypeOf(key: string): string;
-// missingPackages
-export declare function missingPackages(names: readonly string[], resolve?: (name: string) => unknown): string[];
-// normalizeDirectory
-export declare function normalizeDirectory(directory: string): string;
-// normalizeKey
-export declare function normalizeKey(key: string): string;
-// registerStorageRoutes
-export declare function registerStorageRoutes(http: Http, container: Container, options: StorageOptions): void;
-// s3BaseUrl
-export declare function s3BaseUrl(options: S3DiskOptions): string;
 // serveFile
 export declare function serveFile(disk: Disk, key: string, request: Request, options: ServeOptions): Promise<Response>;
-// servedPublicDisks
-export declare function servedPublicDisks(options: StorageOptions): {
-    name: string;
-    path: string;
-}[];
-// sniff
-export declare function sniff(bytes: Uint8Array): Sniffed;
 // upload
 export declare function upload<const M extends string = UploadMime>(options: {
     readonly maxBytes: number;
     readonly mime?: readonly CheckUploadMime<M>[];
 }): UploadSchema;
-// uploadError
-export declare function uploadError(field: string, key: string, message: string, params?: Record<string, unknown>): ValidationError;
-// uploadFields
-export declare function uploadFields(schema: unknown): Map<string, UploadRule>;
-// uploadRuleOf
-export declare function uploadRuleOf(schema: unknown): UploadRule | undefined;
 // uploadsTableConnection
 export declare function uploadsTableConnection(container: Resolver): string;
-// visibilityOf
-export declare function visibilityOf(options: DiskOptions): Visibility;
 ```
 
 ### Referenced, not exported
@@ -565,8 +451,6 @@ type Configured = StorageTypes extends {
 interface DiskBase {
     readonly visibility?: Visibility;
 }
-// Http
-type Http = typeof import('@marmeon/http');
 // Join
 type Join<U extends string, Done extends string = ''> = [U] extends [never] ? Done : LastOf<U> extends infer L extends string ? Join<Exclude<U, L>, Done extends '' ? L : `${L}, ${Done}`> : Done;
 // LastOf
@@ -624,6 +508,231 @@ interface UploadRow {
     uploaded_at: number | string | null;
     consumed_at: number | string | null;
 }
+```
+
+## `@marmeon/storage/testing`
+
+Types from other packages: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
+
+### Stable
+
+```ts
+// FakeDisk
+export type FakeDisk<N extends string> = DiskFor<N> & Pick<MemoryDisk, 'assertExists' | 'assertMissing' | 'assertCount' | 'files'>;
+// StorageFake
+export declare class StorageFake extends StorageManager {
+    constructor(container: Container);
+    disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N>;
+    protected build(name: string, options: DiskOptions): Disk;
+}
+```
+
+### Referenced, not exported
+
+```ts
+// CheckDiskName
+export type CheckDiskName<N extends string> = string extends DiskName ? N : string extends N ? DiskName : N extends DiskName ? N : [Near<N>] extends [never] ? `'${N}' is not a disk of this app — its disks: ${Join<DiskName>}` : `'${N}' is not a disk of this app — did you mean ${Join<Near<N>>}?`;
+// Configured
+type Configured = StorageTypes extends {
+    storage: StorageDefinition<infer D, infer Default>;
+} ? {
+    disks: D;
+    default: Default;
+} : undefined;
+// DefaultDiskName
+export type DefaultDiskName = Configured extends {
+    default: infer Default extends string;
+} ? Default : string;
+// Disk
+export interface Disk {
+    readonly name: string;
+    readonly visibility: Visibility;
+    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
+    get(key: string): Promise<Uint8Array>;
+    text(key: string): Promise<string>;
+    stream(key: string): Promise<ReadableStream<Uint8Array>>;
+    open(key: string): Promise<OpenedFile>;
+    exists(key: string): Promise<boolean>;
+    delete(key: string): Promise<boolean>;
+    move(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
+    size(key: string): Promise<number>;
+    mimeType(key: string): Promise<string>;
+    lastModified(key: string): Promise<Date>;
+    list(directory?: string, options?: ListOptions): Promise<string[]>;
+    url(key: string): string;
+    temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
+}
+// DiskBase
+interface DiskBase {
+    readonly visibility?: Visibility;
+}
+// DiskFor
+export type DiskFor<N extends string> = Configured extends {
+    disks: infer D;
+} ? N extends keyof D ? D[N] extends {
+    readonly visibility: 'public';
+} ? PublicDisk : PrivateDisk : Disk : Disk;
+// DiskName
+export type DiskName = Configured extends {
+    disks: infer D;
+} ? keyof D & string : string;
+// DiskNameInput
+export type DiskNameInput = DiskName | (string & {});
+// DiskOptions
+export type DiskOptions = LocalDiskOptions | S3DiskOptions | MemoryDiskOptions;
+// ExpectedContents
+export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
+    contentType: string;
+}) => boolean);
+// FileContents
+export type FileContents = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array> | Readable;
+// ImportS3
+export type ImportS3 = () => Promise<S3Modules>;
+// Join
+type Join<U extends string, Done extends string = ''> = [U] extends [never] ? Done : LastOf<U> extends infer L extends string ? Join<Exclude<U, L>, Done extends '' ? L : `${L}, ${Done}`> : Done;
+// LastOf
+type LastOf<U> = UnionToIntersection<U> extends () => infer R ? R : never;
+// ListOptions
+export interface ListOptions {
+    readonly recursive?: boolean;
+}
+// LocalDiskOptions
+export interface LocalDiskOptions extends DiskBase {
+    readonly driver: 'local';
+    readonly root: string;
+    readonly url?: string;
+}
+// MemoryDisk
+export declare class MemoryDisk implements Disk {
+    #private;
+    readonly name: string;
+    readonly visibility: Visibility;
+    constructor(config: MemoryDiskConfig);
+    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
+    get(key: string): Promise<Uint8Array>;
+    text(key: string): Promise<string>;
+    stream(key: string): Promise<ReadableStream<Uint8Array>>;
+    open(key: string): Promise<OpenedFile>;
+    exists(key: string): Promise<boolean>;
+    delete(key: string): Promise<boolean>;
+    move(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
+    size(key: string): Promise<number>;
+    mimeType(key: string): Promise<string>;
+    lastModified(key: string): Promise<Date>;
+    list(directory?: string, options?: ListOptions): Promise<string[]>;
+    url(key: string): string;
+    temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
+    files(): string[];
+    assertExists(key: string, contents?: ExpectedContents): this;
+    assertMissing(key: string): this;
+    assertCount(count: number, directory?: string): this;
+}
+// MemoryDiskConfig
+export interface MemoryDiskConfig {
+    readonly name: string;
+    readonly visibility: Visibility;
+    readonly url?: string | undefined;
+    readonly temporaryUrls: TemporaryUrls;
+    readonly clock: Clock;
+}
+// MemoryDiskOptions
+export interface MemoryDiskOptions extends DiskBase {
+    readonly driver: 'memory';
+    readonly url?: string;
+}
+// Near
+type Near<N extends string> = N extends `${infer First}${string}` ? Extract<DiskName, `${First}${string}`> : never;
+// OpenedFile
+export interface OpenedFile {
+    readonly body: ReadableStream<Uint8Array>;
+    readonly size: number;
+    readonly lastModified: Date;
+    readonly contentType: string;
+}
+// PrivateDisk
+export type PrivateDisk = Omit<Disk, 'url'> & {
+    url(key: 'url() is for public disks — this disk is private: use temporaryUrl(key, { expiresIn })'): never;
+};
+// PublicDisk
+export type PublicDisk = Disk;
+// PutOptions
+export interface PutOptions {
+    readonly contentType?: string;
+}
+// S3DiskOptions
+export interface S3DiskOptions extends DiskBase {
+    readonly driver: 's3';
+    readonly bucket: string | undefined;
+    readonly region?: string | undefined;
+    readonly endpoint?: string | undefined;
+    readonly forcePathStyle?: boolean | undefined;
+    readonly credentials?: {
+        readonly accessKeyId: string;
+        readonly secretAccessKey: string;
+        readonly sessionToken?: string;
+    } | undefined;
+    readonly root?: string | undefined;
+    readonly url?: string | undefined;
+}
+// S3Modules
+export interface S3Modules {
+    readonly client: typeof S3;
+    readonly presigner: typeof Presigner;
+}
+// Storage
+export interface Storage {
+    disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
+    readonly names: readonly string[];
+}
+export declare const Storage: import("@marmeon/core").Token<Storage>;
+// StorageDefinition
+export interface StorageDefinition<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> extends ConfigDefinition<StorageOptions<D, Default>> {
+    readonly storage: true;
+}
+// StorageDependencies
+export interface StorageDependencies {
+    readonly root: string;
+    readonly clock: Clock;
+    readonly temporaryUrls: TemporaryUrls;
+    readonly loadS3?: ImportS3;
+}
+// StorageManager
+export declare class StorageManager implements Storage {
+    #private;
+    constructor(options: StorageOptions, dependencies: StorageDependencies);
+    get names(): readonly string[];
+    get defaultDisk(): string;
+    disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
+    named(name: string): Disk;
+    options(name: string): DiskOptions;
+    protected build(name: string, options: DiskOptions): Disk;
+    protected memory(name: string, options: DiskOptions): MemoryDisk;
+    close(): Promise<void>;
+}
+// StorageOptions
+export interface StorageOptions<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> {
+    readonly default: Default;
+    readonly disks: D;
+}
+// StorageTypes
+export interface StorageTypes {
+}
+// TemporaryUrlOptions
+export interface TemporaryUrlOptions {
+    readonly expiresIn: number | Duration;
+    readonly filename?: string;
+    readonly base?: string;
+}
+// TemporaryUrls
+export interface TemporaryUrls {
+    sign(disk: string, key: string, options: TemporaryUrlOptions): string;
+}
+// UnionToIntersection
+type UnionToIntersection<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? I : never;
+// Visibility
+export type Visibility = 'public' | 'private';
 ```
 
 ## Environment

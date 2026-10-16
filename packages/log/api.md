@@ -31,12 +31,8 @@ export declare class LogServiceProvider implements ServiceProvider {
     }>[];
     register(container: Container): void;
 }
-// REDACTED_KEYS
-export { REDACTED_KEYS } from '@marmeon/core';
 // createPinoLogger
 export declare function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger;
-// redact
-export { redact } from '@marmeon/core';
 ```
 
 ## Environment

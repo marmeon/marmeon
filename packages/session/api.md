@@ -23,37 +23,6 @@ export declare class CsrfProtection {
     enable(): this;
     skips(path: string): boolean;
 }
-// DatabaseSessionConnection
-export interface DatabaseSessionConnection {
-    readonly db: Kysely<any>;
-}
-// DatabaseSessionStore
-export declare class DatabaseSessionStore implements SessionStore {
-    #private;
-    constructor(connection: DatabaseSessionConnection | (() => Promise<DatabaseSessionConnection>), lifetimeSeconds: number, clock?: Clock);
-    read(key: string): Promise<StoredSession | undefined>;
-    write(key: string, data: string, { expectedVersion, userId }: SessionWrite): Promise<SessionWriteResult>;
-    destroy(key: string): Promise<void>;
-    destroyUser(userId: string): Promise<number>;
-    gc(lifetimeSeconds: number): Promise<number>;
-}
-// EncryptedSessionCodec
-export declare class EncryptedSessionCodec implements SessionCodec {
-    #private;
-    readonly encrypts = true;
-    constructor(encrypter: Encrypter);
-    seal(json: string, key: string): Promise<string>;
-    open(data: string, key: string): Promise<string | undefined>;
-}
-// FileSessionStore
-export declare class FileSessionStore implements SessionStore {
-    #private;
-    constructor(directory: string, clock?: Clock);
-    read(key: string): Promise<StoredSession | undefined>;
-    write(key: string, data: string, { expectedVersion, lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult>;
-    destroy(key: string): Promise<void>;
-    gc(lifetimeSeconds: number): Promise<number>;
-}
 // MakeSessionTableCommand
 export declare class MakeSessionTableCommand {
     static command: string;
@@ -67,15 +36,6 @@ export declare class MakeSessionTableCommand {
     };
     handle(input: CommandInput): Promise<number>;
 }
-// MemorySessionStore
-export declare class MemorySessionStore implements SessionStore {
-    #private;
-    constructor(clock?: Clock);
-    read(key: string): Promise<StoredSession | undefined>;
-    write(key: string, data: string, { expectedVersion, lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult>;
-    destroy(key: string): Promise<void>;
-    gc(): Promise<number>;
-}
 // PruneSessionsCommand
 export declare class PruneSessionsCommand {
     #private;
@@ -84,23 +44,6 @@ export declare class PruneSessionsCommand {
     constructor(config: SessionConfig, container: Container);
     handle({ output }: CommandInput): Promise<number>;
 }
-// RedisSessionConnection
-export type RedisSessionConnection = RedisConnection | (() => Promise<RedisConnection>);
-// RedisSessionStore
-export declare class RedisSessionStore implements SessionStore {
-    #private;
-    constructor(connection: RedisSessionConnection);
-    read(key: string): Promise<StoredSession | undefined>;
-    write(key: string, data: string, { expectedVersion, lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult>;
-    destroy(key: string): Promise<void>;
-    gc(): Promise<number>;
-}
-// SESSIONS_TABLE
-export declare const SESSIONS_TABLE = "sessions";
-// SESSION_ID
-export declare const SESSION_ID: RegExp;
-// SESSION_KEY
-export declare const SESSION_KEY: RegExp;
 // SESSION_USER_KEY
 export declare const SESSION_USER_KEY = "_auth_id";
 // Session
@@ -170,15 +113,12 @@ export type SessionEndedListener = (scope: string) => void | Promise<void>;
 export declare class SessionEndings {
     #private;
     listen(listener: SessionEndedListener): () => void;
-    listenAccounts(listener: SessionEndedListener): () => void;
 }
 // SessionLottery
 export declare class SessionLottery {
     chance: number;
     constructor(chance: number);
 }
-// SessionPayload
-export type SessionPayload = Record<string, unknown>;
 // SessionServiceProvider
 export declare class SessionServiceProvider implements ServiceProvider {
     static config: (import("@marmeon/core").ConfigDefinition<{
@@ -253,20 +193,8 @@ export declare class VerifyCsrfToken {
     constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
-// XSRF_COOKIE
-export declare const XSRF_COOKIE = "XSRF-TOKEN";
-// accountScope
-export declare function accountScope(userId: string | number): string;
-// createSessionId
-export declare function createSessionId(): string;
-// insecureCookieWarning
-export declare function insecureCookieWarning(from: 'APP_URL' | 'SESSION_SECURE_COOKIE'): string;
-// plainSessionCodec
-export declare const plainSessionCodec: SessionCodec;
 // sessionKey
 export declare function sessionKey(id: string): string;
-// sessionScope
-export declare function sessionScope(id: string): string;
 // sessionTableConnection
 export declare function sessionTableConnection(container: Resolver): string;
 ```

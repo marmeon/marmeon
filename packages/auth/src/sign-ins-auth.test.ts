@@ -3,7 +3,8 @@ import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/databas
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { accountScope, CsrfProtection, Session, SessionEndings, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
+import { CsrfProtection, Session, SessionEndings, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
+import { accountScope } from '@marmeon/session/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
