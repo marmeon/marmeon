@@ -27,7 +27,7 @@ Marmeon is at 0.x. Anything may change while the major version is 0, but never s
 
 - A **minor** version, such as 0.1 to 0.2, may break. Every break has an entry in the [upgrade guide](../UPGRADING.md) with its
   impact, the time it takes, the code before and after, and the way back where there is one.
-- A **patch**, such as 0.1.0 to 0.1.1, never breaks.
+- A **patch**, such as 0.1.0 to 0.1.1, never breaks, except for a [security hardening](#what-is-public-api).
 
 Pin the exact version, as `create-marmeon` does, or use `~0.1.0`. A caret range such as `^0.1.0` already stops before 0.2.0.
 
@@ -37,15 +37,69 @@ installs it by name (`pnpm add @marmeon/core@latest-0.1`, then the same for the 
 
 ### From 1.0 on
 
-Breaking changes come only in a major version. A feature to be removed is deprecated first, in a minor version: documented,
-marked `@deprecated` in its types, and warned about while the app runs in development, never in production logs. It goes in the
-next major version, with its entry in the upgrade guide. What is marked `@internal` or `@experimental` is outside this promise.
-How long a major version gets fixes is decided with 1.0.
+Breaking changes come only in a major version, except for a [security hardening](#what-is-public-api). A feature to be
+removed is [deprecated](#deprecations) first, in a minor version, and goes in the next major version, with its entry in the
+upgrade guide. What is outside the [public API](#what-is-public-api) is outside this promise. How long a major version gets
+fixes is decided with 1.0.
 
 ### Node and security fixes
 
 Marmeon needs Node 26.10 or newer. A new minimum version of Node is a breaking change. Security fixes go to the latest minor
 version. The [security policy](../SECURITY.md) explains how to report a vulnerability.
+
+## What is public API
+
+The promise of a version covers the public API. These are part of it:
+
+- The exports of each package's entry points, `.` and the documented subpaths, types included.
+- Interfaces an app implements itself, such as stores and drivers: a new required member is a break. An extension arrives as an
+  optional member, or through a base class with a default.
+- The names and defaults of environment variables.
+- The commands of `marmeon`, their flags and exit codes.
+- The table schemas of the migrations the framework ships, the stubs and the `make:*` tables.
+- The protocol between client and server: headers and the page object.
+- Stored formats: queue payloads, encrypted values, tokens and cookies.
+- Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels.
+
+Not part of it are `./internal` subpaths, anything marked `@internal` or `@experimental`, and the wording of messages and logs.
+
+The same list decides, already in 0.x, whether a pull request is a `breaking` one.
+
+> [!WARNING]
+> **Security hardening.** A security hardening may break in a minor or a patch version. It then has an entry of its own in the
+> [upgrade guide](../UPGRADING.md). Leaving a vulnerability open to keep an API protects nobody.
+
+### When a union grows
+
+A new member of a union, such as a string value, a field of an event like `via`, or a message of a diagnostics channel, is a
+minor change. It ships as an ordinary `feature`, and the title of its pull request names the new member (for example "Add
+'magic-link' to LoginVia"), so the release notes show it.
+
+The exception is the `err` kinds of the [results the framework returns](errors.md#results-the-framework-returns). They are
+closed: a new kind comes only with a new method, so an exhaustive `switch` with `satisfies never` compiles across minor versions.
+
+Everywhere else, handle a value you do not know in a `default` branch. Here `event` is a `Login` event:
+
+```ts
+switch (event.via) {
+  case 'attempt':
+    return 'password';
+  case 'passkey':
+    return 'passkey';
+  case 'remember':
+    return 'cookie';
+  default:
+    return 'other';
+}
+```
+
+### Deprecations
+
+What is removed is deprecated first, in a minor version: marked `@deprecated` in its types, with the replacement and a link to
+the docs, and warned about once per process as soon as it is used, **only** when `NODE_ENV` is `development` or `test`. On the server,
+the warning is a Node `DeprecationWarning`: `node --no-deprecation` turns it off, and `node --throw-deprecation` turns it into
+an error; in the browser it goes to the console. It is removed in the next breaking release: a major version from 1.0 on, a
+minor before. The removal has an entry in the [upgrade guide](../UPGRADING.md).
 
 ## A broken release
 
