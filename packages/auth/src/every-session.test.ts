@@ -202,7 +202,6 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), AuthServiceProvider],
     modules: [
       defineModule({
@@ -212,6 +211,8 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
         listeners: [listen(EverySessionEnded as never, RecordEvent), ...(options.failingListener ? [listen(EverySessionEnded as never, FailingListener)] : [])],
       }),
     ],
+  }, {
+    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);

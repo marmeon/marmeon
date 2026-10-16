@@ -158,7 +158,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     // nginx closes an idle connection to the app before the app does: the other way round, it would send a request on
     // one the app is just closing — a 502 now and then. The app's default (KEEP_ALIVE_TIMEOUT) is longer than nginx's.
     const upstreamIdle = Number(/^\s*keepalive_timeout (\d+)s;/m.exec(conf)?.[1]);
-    const app = await createApplication({ root: repo, discover: false, env: {}, providers: [ServerServiceProvider] });
+    const app = await createApplication({ root: repo, discover: false, providers: [ServerServiceProvider] }, { env: {} });
     expect(upstreamIdle, 'the template names its keepalive_timeout').toBeGreaterThan(0);
     expect(app.container.make(ServerConfig).keepAliveTimeoutMs).toBeGreaterThan(upstreamIdle * 1000);
     expect(nginx.file('compose.production.yaml')).toContain('image: nginx:mainline-alpine');

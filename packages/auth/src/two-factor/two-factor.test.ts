@@ -196,7 +196,6 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: appKey, APP_NAME: 'Acme', SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', CACHE_DRIVER: 'memory', ...CHEAP, ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [
       defineModule({
@@ -206,6 +205,8 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
         listeners: [Login, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed].map((event) => listen(event as never, RecordEvent)),
       }),
     ],
+  }, {
+    env: { APP_KEY: appKey, APP_NAME: 'Acme', SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', CACHE_DRIVER: 'memory', ...CHEAP, ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       if (options.clock) container.instance(Clock, options.clock);

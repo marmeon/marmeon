@@ -19,10 +19,8 @@ async function boot(env: Record<string, string>): Promise<{ app: Application; wa
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
-    override: (container: Container) => container.instance(Logger, logger),
-  });
+  }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env }, override: (container: Container) => container.instance(Logger, logger) });
   // Only these switches': a protected boot warns about other things too (cookies without Secure over http://).
   return { app, warnings: warnings.filter((warning) => warning.startsWith('AUTH_PRIVATE_REGISTRATION') || warning.startsWith('AUTH_UNVERIFIED_DAYS')) };
 }

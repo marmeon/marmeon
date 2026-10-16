@@ -94,7 +94,7 @@ describe('loadEnv', () => {
 
 describe('createApplication — configuration', () => {
   it('binds configuration as tokens, so it is constructor-injected', async () => {
-    const app = await createApplication({ root: tmpdir(), discover: false, config: [AppConfig], env: valid });
+    const app = await createApplication({ root: tmpdir(), discover: false, config: [AppConfig] }, { env: valid });
     expect(app.container.make(ShowTitleController).handle()).toBe('Marmeon on port 3000');
   });
 
@@ -106,7 +106,7 @@ describe('createApplication — configuration', () => {
       }
     }
     const error = await rejection(
-      createApplication({ root: tmpdir(), discover: false, config: [AppConfig], providers: [Provider], env: {} }),
+      createApplication({ root: tmpdir(), discover: false, config: [AppConfig], providers: [Provider] }, { env: {} }),
     );
     expect(error).toBeInstanceOf(ConfigError);
     expect(error.stack).toBe(`ConfigError: ${error.message}`);

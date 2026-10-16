@@ -22,10 +22,9 @@ describe('createHttpKernel — routes that do not say who may call them', () => 
     createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: generateKey(), ...env },
       providers: [EncryptionServiceProvider, HttpServiceProvider],
       modules: routes ? [defineModule({ name: 'notes', routes })] : [],
-    });
+    }, { env: { APP_KEY: generateKey(), ...env } });
 
   it('refuses to start, and names the route, its controller, its name and the file that registered it', async () => {
     const application = await boot(defineRoutes((Route) => Route.get('/about', ShowNoteController).name('about')));

@@ -11,7 +11,6 @@ describe('a guest without a session follows a channel (no guest sessions)', asyn
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', NODE_ENV: 'test' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
     modules: [
       defineModule({
@@ -22,7 +21,7 @@ describe('a guest without a session follows a channel (no guest sessions)', asyn
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', NODE_ENV: 'test' } });
   const kernel = createHttpKernel(application, { strictReadOnly: true });
 
   it('a page signs the channel and keeps the session for it', async () => {

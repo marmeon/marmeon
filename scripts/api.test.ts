@@ -183,9 +183,9 @@ describe('what a change shows', () => {
     const { items } = snapshot({
       'index.d.ts': "import './augment.ts';\nexport declare const a: 1;\n",
       'augment.d.ts':
-        "import type { Middleware } from '@marmeon/router';\ndeclare module '@marmeon/core' {\n    interface ApplicationOptions {\n        middleware?: readonly Middleware[];\n    }\n}\nexport {};\n",
+        "import type { Middleware } from '@marmeon/router';\ndeclare module '@marmeon/core' {\n    interface ApplicationDefinition {\n        middleware?: readonly Middleware[];\n    }\n}\nexport {};\n",
     });
-    expect(find(items, 'augments', '@marmeon/core.ApplicationOptions')?.text).toBe('interface ApplicationOptions {\n    middleware?: readonly Middleware[];\n}');
+    expect(find(items, 'augments', '@marmeon/core.ApplicationDefinition')?.text).toBe('interface ApplicationDefinition {\n    middleware?: readonly Middleware[];\n}');
   });
 
   it('lists an augmentation under the first entry that reaches its file', () => {

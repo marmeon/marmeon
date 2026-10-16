@@ -26,7 +26,7 @@ declare module '@marmeon/core' {
     readonly apiRoutes?: RouteDefinitions;
   }
 
-  interface ApplicationOptions {
+  interface ApplicationDefinition {
     /**
      * App middleware, added after the framework's own:
      * `global` runs for every request — unmatched ones included — `web` / `api` for their routes.
@@ -110,7 +110,7 @@ export class HttpServiceProvider implements ServiceProvider {
       .append('web', ClearClientHistory, MiddlewarePriority.clearClientHistory)
       .append('web', CheckAssetVersion, MiddlewarePriority.checkAssetVersion);
 
-    const { global = [], web = [], api = [] } = app.options.middleware ?? {};
+    const { global = [], web = [], api = [] } = app.definition.middleware ?? {};
     for (const middleware of global) router.middleware.append(GLOBAL, middleware);
     for (const middleware of web) router.middleware.append('web', middleware);
     for (const middleware of api) router.middleware.append('api', middleware);

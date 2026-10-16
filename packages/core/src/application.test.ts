@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Application, createApplication } from './application.ts';
+import { Application, createApplication, type ApplicationDefinition } from './application.ts';
 import type { Container } from './container.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
@@ -28,7 +28,7 @@ function recorder() {
 describe('Application.shutdown', () => {
   it('shuts providers down in reverse boot order, once', async () => {
     const { calls, provider } = recorder();
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [provider('a'), provider('b')] });
+    const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [provider('a'), provider('b')] }, { env: {} });
     await Promise.all([app.shutdown(), app.shutdown()]);
     await app.shutdown();
     expect(calls).toEqual(['boot a', 'boot b', 'shutdown b', 'shutdown a']);
@@ -39,9 +39,8 @@ describe('Application.shutdown', () => {
     const app = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: {},
       providers: [provider('a', true), provider('b'), provider('c', true)],
-    });
+    }, { env: {} });
     const error = await app.shutdown().then(() => undefined, (e: unknown) => e);
     expect(error).toBeInstanceOf(AggregateError);
     expect((error as AggregateError).errors.map((e: Error) => e.message)).toEqual(['c failed', 'a failed']);
@@ -51,7 +50,7 @@ describe('Application.shutdown', () => {
   it('works with `await using`', async () => {
     const { calls, provider } = recorder();
     {
-      await using _app = await createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [provider('a')] });
+      await using _app = await createApplication({ root: import.meta.dirname, discover: false, providers: [provider('a')] }, { env: {} });
     }
     expect(calls).toEqual(['boot a', 'shutdown a']);
   });
@@ -60,22 +59,22 @@ describe('Application.shutdown', () => {
     const OnlyShutdown = class implements ServiceProvider {
       shutdown(): void {}
     };
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [OnlyShutdown] })).resolves.toBeDefined();
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlyShutdown] }, { env: {} })).resolves.toBeDefined();
   });
 
   it('accepts a provider that only brings solutions — and still stops one that brings nothing', async () => {
     const OnlySolutions = class {
       static solutions = defineSolutions([{ for: RangeError, solve: () => ({ title: 'Never', text: 'never' }) }]);
     };
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [OnlySolutions] })).resolves.toBeDefined();
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [Empty] })).rejects.toThrow(
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
       'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions or static commands.',
     );
     const OnlyCommands = class OnlyCommands {
       static commands = [class {}];
     };
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [OnlyCommands] })).resolves.toBeDefined();
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlyCommands] }, { env: {} })).resolves.toBeDefined();
   });
 });
 
@@ -91,7 +90,7 @@ describe('injection warnings in the log', () => {
   const boot = async (nodeEnv: string) => {
     const warnings: string[] = [];
     const logger: Logger = { debug() {}, info() {}, warn: (message) => void warnings.push(message), error() {}, child: () => logger };
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: nodeEnv }, override: (container) => container.instance(Logger, logger) });
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: { NODE_ENV: nodeEnv }, override: (container) => container.instance(Logger, logger) });
     app.container.instance(Clock, new TestClock());
     return { app, warnings };
   };
@@ -138,7 +137,7 @@ describe('createApplication({ phase: "build" })', () => {
         calls.push('boot (it would connect)');
       }
     }
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production' }, phase: 'build', providers: [provider('a'), Registers] });
+    const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [provider('a'), Registers] }, { env: { NODE_ENV: 'production' }, phase: 'build' });
     expect(app.phase).toBe('build');
     expect(registered).toEqual(['register']);
     expect(calls, 'a provider booted in the build phase').toEqual([]);
@@ -148,7 +147,7 @@ describe('createApplication({ phase: "build" })', () => {
   });
 
   it('leaves out the configuration that does not validate — reading it says why; the rest is there', async () => {
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production', PORT: '8080' }, phase: 'build', config: [Secret, Plain] });
+    const app = await createApplication({ root: import.meta.dirname, discover: false, config: [Secret, Plain] }, { env: { NODE_ENV: 'production', PORT: '8080' }, phase: 'build' });
     expect(app.container.make(Plain)).toEqual({ port: '8080' });
     expect(() => app.container.make(Secret)).toThrow(/^The configuration "secret" is not available while building — the build boots the app without runtime secrets:\n {2}• secret: APP_KEY — .+\nRead it when the app runs/);
     expect(() => app.container.make(Secret)).toThrow(ConfigError);
@@ -161,7 +160,7 @@ describe('createApplication({ phase: "build" })', () => {
         registered.push('register');
       }
     }
-    const error = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production' }, config: [Secret, Plain], providers: [Registers] }).catch((e: unknown) => e);
+    const error = await createApplication({ root: import.meta.dirname, discover: false, config: [Secret, Plain], providers: [Registers] }, { env: { NODE_ENV: 'production' } }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConfigError);
     expect((error as Error).message).toMatch(/^Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet these variables in the environment or in \.env \(see \.env\.example\)\.$/);
     expect(registered).toEqual([]);
@@ -170,15 +169,15 @@ describe('createApplication({ phase: "build" })', () => {
 
 describe('the environment', () => {
   it('stops the start at a NODE_ENV that is none of development, test, production — also for an app given its own env', async () => {
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'staging' } })).rejects.toThrow(ConfigError);
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'staging' } })).rejects.toThrow(
+    await expect(createApplication({ root: import.meta.dirname, discover: false }, { env: { NODE_ENV: 'staging' } })).rejects.toThrow(ConfigError);
+    await expect(createApplication({ root: import.meta.dirname, discover: false }, { env: { NODE_ENV: 'staging' } })).rejects.toThrow(
       'NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging.',
     );
   });
 
   it('every app has EnvironmentConfig: NODE_ENV and APP_ENV, read like every variable — APP_ENV by default the one NODE_ENV goes with', async () => {
     const read = async (environment: Record<string, string>) =>
-      (await createApplication({ root: import.meta.dirname, discover: false, env: environment })).container.make(EnvironmentConfig);
+      (await createApplication({ root: import.meta.dirname, discover: false }, { env: environment })).container.make(EnvironmentConfig);
     expect(await read({ NODE_ENV: 'production', APP_ENV: 'staging' })).toEqual({ node: 'production', app: 'staging' });
     expect(await read({ NODE_ENV: 'production', APP_ENV: '' })).toEqual({ node: 'production', app: 'production' });
     expect(await read({})).toEqual({ node: 'production', app: 'production' });
@@ -203,15 +202,55 @@ describe('Application.providers', () => {
 
   for (const phase of ['run', 'build'] as const) {
     it(`lists the app's and the modules' providers in register order (${phase})`, async () => {
-      const app = await createApplication({ root: import.meta.dirname, discover: false, env: {}, phase, providers: [A], modules: [defineModule({ name: 'm', providers: [B] })] });
+      const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [A], modules: [defineModule({ name: 'm', providers: [B] })] }, { env: {}, phase });
       expect(app.providers).toEqual([A, B]);
       expect(Object.isFrozen(app.providers)).toBe(true);
     });
 
     it(`shows a provider the ones registered after it (${phase})`, async () => {
       seen.length = 0;
-      await createApplication({ root: import.meta.dirname, discover: false, env: {}, phase, providers: [Reader], modules: [defineModule({ name: 'm', providers: [B] })] });
+      await createApplication({ root: import.meta.dirname, discover: false, providers: [Reader], modules: [defineModule({ name: 'm', providers: [B] })] }, { env: {}, phase });
       expect(seen).toEqual([[Reader, B]]);
     });
   }
+});
+
+describe('createApplication(definition, options)', () => {
+  class Note {}
+  class BindsNote implements ServiceProvider {
+    register(container: Container): void {
+      container.singleton(Note, () => new Note());
+    }
+  }
+
+  it('boots with the options: the environment, and an override that runs after the providers registered', async () => {
+    const definition = { root: import.meta.dirname, discover: false, providers: [BindsNote] };
+    const replacement = new Note();
+    const app = await createApplication(definition, { env: { NODE_ENV: 'test' }, override: (container) => container.instance(Note, replacement) });
+    expect(app.container.make(Note)).toBe(replacement);
+    expect(app.container.make(EnvironmentConfig).node).toBe('test');
+    expect(app.definition).toBe(definition);
+  });
+
+  it.each(['env', 'phase', 'container', 'override'])('refuses a definition that carries `%s`, also by a spread', async (key) => {
+    const smuggled = { [key]: undefined };
+    const refused = createApplication({ root: import.meta.dirname, discover: false, ...smuggled });
+    await expect(refused).rejects.toBeInstanceOf(TypeError);
+    await expect(refused).rejects.toThrow(`\`${key}\` is a boot option: pass it as createApplication(definition, { ${key} })`);
+  });
+
+  it('refuses an inherited boot option too', async () => {
+    const inherited: ApplicationDefinition = Object.create({ override() {} }, { root: { value: import.meta.dirname, enumerable: true } });
+    await expect(createApplication(inherited)).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it('boots a clean definition', async () => {
+    await expect(createApplication({ root: import.meta.dirname, discover: false }, { env: {} })).resolves.toBeDefined();
+  });
+
+  it('keeps the options out of the definition the app exposes', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {}, override: () => {} });
+    expect(app.definition).not.toHaveProperty('env');
+    expect(app.definition).not.toHaveProperty('override');
+  });
 });

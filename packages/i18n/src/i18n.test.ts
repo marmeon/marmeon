@@ -101,11 +101,9 @@ async function boot({ env = {}, override }: { env?: Record<string, string>; over
   const application = await createApplication({
     root,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', APP_LOCALES: 'en,de', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, I18nServiceProvider],
     modules: [defineModule({ name: 'shop', routes, csrfExcept: ['/signup'] })],
-    override,
-  });
+  }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', APP_LOCALES: 'en,de', ...env }, override });
   const kernel = createHttpKernel(application);
   const jar = new Map<string, string>();
   /** A browser: keeps its cookies. */
@@ -345,6 +343,11 @@ describe('Translators — any locale, outside a request too', () => {
     const err: string[] = [];
     const stdout = process.stdout.write.bind(process.stdout);
     const stderr = process.stderr.write.bind(process.stderr);
+    // The fixture app's definition carries no environment; the process gives it.
+    vi.stubEnv('APP_KEY', 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=');
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('APP_LOCALE', 'de');
+    vi.stubEnv('APP_LOCALES', 'de,en');
     process.stdout.write = ((chunk: string) => (out.push(String(chunk)), true)) as typeof process.stdout.write;
     process.stderr.write = ((chunk: string) => (err.push(String(chunk)), true)) as typeof process.stderr.write;
     try {
@@ -352,6 +355,7 @@ describe('Translators — any locale, outside a request too', () => {
     } finally {
       process.stdout.write = stdout;
       process.stderr.write = stderr;
+      vi.unstubAllEnvs();
     }
     expect(err.join('')).toBe('');
     expect(out.join('')).toBe('de: Zu viele Versuche.\n'); // APP_LOCALE

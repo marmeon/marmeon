@@ -229,9 +229,9 @@ export declare class TestResponse {
     assertHydrates(): this;
 }
 // createTestApp
-export declare function createTestApp(definition: ApplicationOptions, options?: TestAppOptions): Promise<TestApp>;
+export declare function createTestApp(definition: ApplicationDefinition, options?: TestAppOptions): Promise<TestApp>;
 // startSsrServer
-export declare function startSsrServer(application: ApplicationOptions): Promise<SsrServer>;
+export declare function startSsrServer(application: ApplicationDefinition): Promise<SsrServer>;
 ```
 
 ### Referenced, not exported

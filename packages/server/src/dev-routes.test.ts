@@ -36,8 +36,6 @@ describe("an app's development route", () => {
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      // The app's environment (what .env gives it) — not process.env.
-      env: { APP_KEY: generateKey(), APP_URL: 'http://shop.test:3960' },
       config: [AppConfig],
       providers: [EncryptionServiceProvider, HttpServiceProvider],
       modules: [
@@ -49,7 +47,7 @@ describe("an app's development route", () => {
           }),
         }),
       ],
-    });
+    }, { env: { APP_KEY: generateKey(), APP_URL: 'http://shop.test:3960' } });
     const app = createHttpKernel(application);
     const at = (path: string, host: string) => app.request(path, { headers: { host } });
     expect([(await at('/_playground', 'shop.test:3960')).status, (await at('/_playground', 'localhost:3960')).status, (await at('/_playground', 'evil.example')).status]).toEqual([200, 200, 403]);

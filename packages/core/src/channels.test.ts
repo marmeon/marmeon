@@ -8,7 +8,7 @@ import { EventFake } from './events-fake.ts';
 import { Logger } from './logger.ts';
 import { runWithJob, runWithRequest } from './request-context.ts';
 
-const boot = () => createApplication({ root: import.meta.dirname, discover: false, env: {} });
+const boot = () => createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
 
 /** A query message as the database would publish it — for the app given. */
 function query(app: Application, sql = 'select 1'): DbQueryMessage {
@@ -252,9 +252,8 @@ describe('marmeon:event — app events for observers', () => {
     const app = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: {},
       listeners: [listen(Registered, (event) => void ran.push(event.userId))],
-    });
+    }, { env: {} });
     const dispatcher = app.container.make(EventDispatcher);
     await dispatcher.dispatch(new Registered(1));
     expect(channels.built(app)).toBe(0);

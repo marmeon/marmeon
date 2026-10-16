@@ -953,8 +953,8 @@ declare const VIEW_RESULT: unique symbol;
 ### Augments
 
 ```ts
-// @marmeon/core.ApplicationOptions
-interface ApplicationOptions {
+// @marmeon/core.ApplicationDefinition
+interface ApplicationDefinition {
     readonly middleware?: {
         readonly global?: readonly AnyMiddleware[];
         readonly web?: readonly AnyMiddleware[];

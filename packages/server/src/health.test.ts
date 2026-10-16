@@ -56,10 +56,11 @@ async function boot({ env = {}, routes }: { env?: Record<string, string>; routes
   const application = await createApplication({
     root: fileURLToPath(new URL('../../../', import.meta.url)),
     discover: false,
-    env: { APP_KEY: generateKey(), ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     health: [FakeDatabaseCheck],
     modules: [defineModule({ name: 'app', health: [StorageCheck], routes: routes ?? openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
+  }, {
+    env: { APP_KEY: generateKey(), ...env },
     override: (container) => {
       container.instance(Logger, logger);
       container.instance(Clock, clock);

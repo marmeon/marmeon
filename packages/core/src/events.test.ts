@@ -79,7 +79,7 @@ export class SendShippingMail {
 }
 
 async function app(listeners: Parameters<typeof createApplication>[0]['listeners']) {
-  const application = await createApplication({ root: tmpdir(), discover: false, env: {}, listeners });
+  const application = await createApplication({ root: tmpdir(), discover: false, listeners }, { env: {} });
   application.container.scoped(Journal);
   return application;
 }
@@ -142,8 +142,9 @@ describe('events', () => {
     const application = await createApplication({
       root: tmpdir(),
       discover: false,
-      env: {},
       listeners: [listen(OrderShipped, () => void order.push('first')), listen(OrderShipped, SendShippingMail), listen(OrderShipped, () => void order.push('last'))],
+    }, {
+      env: {},
       override: (c) =>
         c.instance(ListenerQueue, {
           queue: async (event: object, registeredFor: EventClass, listener: QueuedListenerClass) => {
@@ -158,9 +159,9 @@ describe('events', () => {
   });
 
   it('fails the start when a queued listener has no queue to go to', async () => {
-    const start = createApplication({ root: tmpdir(), discover: false, env: {}, listeners: [listen(OrderShipped, SendShippingMail)] });
+    const start = createApplication({ root: tmpdir(), discover: false, listeners: [listen(OrderShipped, SendShippingMail)] }, { env: {} });
     await expect(start).rejects.toThrow(ConfigError);
-    await expect(createApplication({ root: tmpdir(), discover: false, env: {}, listeners: [listen(OrderShipped, SendShippingMail)] })).rejects.toThrow(
+    await expect(createApplication({ root: tmpdir(), discover: false, listeners: [listen(OrderShipped, SendShippingMail)] }, { env: {} })).rejects.toThrow(
       'SendShippingMail is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue',
     );
   });
@@ -170,10 +171,8 @@ describe('events', () => {
     const application = await createApplication({
       root: tmpdir(),
       discover: false,
-      env: {},
       listeners: [listen(OrderPlaced, (event) => void ran.push(`placed ${event.orderId}`)), listen(InvoiceSent, () => void ran.push('invoice'))],
-      override: (c) => c.instance(EventFake, new EventFake(c.make(EventRegistry), [OrderPlaced])),
-    });
+    }, { env: {}, override: (c) => c.instance(EventFake, new EventFake(c.make(EventRegistry), [OrderPlaced])) });
     const events = application.container.make(EventDispatcher);
     await events.dispatch(new ExpressOrderPlaced('o-1'));
     await events.dispatch(new InvoiceSent());

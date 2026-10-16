@@ -45,10 +45,9 @@ describe('createHttpKernel — actions', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [defineModule({ name: 'actions', routes })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application, { debug: true });
 
   it('answers with the JSON of `json()` — never cached: no-store, whatever the route set, and Vary on the action header', async () => {

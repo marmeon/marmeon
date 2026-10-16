@@ -156,9 +156,10 @@ export async function notificationApp(
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { ...database.env, APP_KEY: KEY, NODE_ENV: 'test' },
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider, NotificationServiceProvider],
     modules: [{ name: 'shop', notifications: options.notifications ?? [OrderShipped, Welcome], recipients: options.recipients ?? { member: Members } }],
+  }, {
+    env: { ...database.env, APP_KEY: KEY, NODE_ENV: 'test' },
     override: (container) => {
       container.instance(Clock, clock);
       container.instance(Logger, silent);

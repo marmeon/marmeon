@@ -54,7 +54,6 @@ async function appWith(render: SsrRender, options: KernelOptions = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [
       EncryptionServiceProvider,
       HttpServiceProvider,
@@ -81,7 +80,7 @@ async function appWith(render: SsrRender, options: KernelOptions = {}) {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
   return createHttpKernel(application, { renderer, ...options });
 }

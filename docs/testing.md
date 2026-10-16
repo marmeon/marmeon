@@ -61,8 +61,6 @@ A test app reads its environment in this order, each source over the one before:
 4. The `env` option of `createTestApp()`.
 5. With `database: 'refresh'`, the connection of the test's own database.
 
-An app whose `defineApplication()` sets `env` itself reads neither file: its own `env` takes the place of the first three.
-
 A new app's `.env.test` holds what tests need, and nothing secret:
 
 ```sh title=".env.test"
@@ -189,7 +187,8 @@ responses, then shuts the app down.
 
 ## Replacing services
 
-`override` binds your own service in place of the app's, before any provider boots:
+`override` binds your own service in place of the app's, before any provider boots. It is an option of `createTestApp()`, not
+of `defineApplication()`: the app's definition cannot carry test doubles, so none can reach production.
 
 ```ts title="modules/notes/search.test.ts"
 import { createTestApp } from '@marmeon/testing';

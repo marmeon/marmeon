@@ -4,7 +4,7 @@ import { createApplication } from './application.ts';
 
 describe('Clock', () => {
   it('is the system clock unless something else is bound', async () => {
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
     const clock = app.container.make(Clock);
     expect(clock).toBeInstanceOf(SystemClock);
     expect(Math.abs(clock.now() - Date.now())).toBeLessThan(50);

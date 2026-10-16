@@ -10,7 +10,7 @@ export type { Concrete, Constructor, InjectCheck, Key, Resolve, Token } from './
 export { editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';
 export type { DefinitionEdit, DefinitionEditOutcome, DefinitionImport, ImportedBinding } from './definition-edit.ts';
 export { Application, createApplication, defineApplication } from './application.ts';
-export type { ApplicationOptions, ApplicationPhase } from './application.ts';
+export type { ApplicationDefinition, ApplicationPhase, CreateApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, escapeControls, LogContextSources, Logger } from './logger.ts';
 export { DEFAULT_HEALTH_TIMEOUT, HealthChecks } from './health.ts';

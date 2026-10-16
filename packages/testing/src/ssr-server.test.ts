@@ -1,4 +1,4 @@
-import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import type { PageRenderer } from '@marmeon/server';
@@ -35,11 +35,12 @@ class HelloController extends Controller {
   }
 }
 
-function appAt(root: string): ApplicationOptions {
+const env = { APP_KEY: generateKey() };
+
+function appAt(root: string): ApplicationDefinition {
   return {
     root,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => {
       Route.get('/hello', HelloController);
@@ -56,8 +57,8 @@ describe('startSsrServer', () => {
     const started = vites.started;
     const closed = vites.closed;
     const server = await startSsrServer(application);
-    const first = await createTestApp(application, { ssr: true, ssrServer: server });
-    const second = await createTestApp(application, { ssr: 'stream', ssrServer: server });
+    const first = await createTestApp(application, { env, ssr: true, ssrServer: server });
+    const second = await createTestApp(application, { env, ssr: 'stream', ssrServer: server });
     expect(vites.started).toBe(started + 1);
 
     await first.get('/hello', page).assertOk().assertSee('rendered pages/Hello');
@@ -74,8 +75,8 @@ describe('startSsrServer', () => {
   it('keeps what one test app has apart from the next', async () => {
     const application = appAt(tempDir('marmeon-ssr-server-'));
     const server = await startSsrServer(application);
-    const first = await createTestApp(application, { ssr: true, ssrServer: server });
-    const second = await createTestApp(application, { ssr: true, ssrServer: server });
+    const first = await createTestApp(application, { env, ssr: true, ssrServer: server });
+    const second = await createTestApp(application, { env, ssr: true, ssrServer: server });
     await Promise.all([first.get('/hello', page).assertSee('rendered'), second.get('/hello', page).assertSee('rendered')]);
     expect((await first.withCookie('mine', '1').get('/cookie')).body).toMatch(/^mine=/);
     expect((await second.get('/cookie')).body).toBe('');
@@ -88,21 +89,21 @@ describe('startSsrServer', () => {
     const application = appAt(tempDir('marmeon-ssr-server-'));
     const server = await startSsrServer(application);
     const other = appAt(tempDir('marmeon-ssr-server-'));
-    await expect(createTestApp(other, { ssr: true, ssrServer: server })).rejects.toThrow(`started for ${application.root}, the app's root is ${other.root}`);
-    await expect(createTestApp(application, { ssrServer: server })).rejects.toThrow('needs ssr: true');
+    await expect(createTestApp(other, { env, ssr: true, ssrServer: server })).rejects.toThrow(`started for ${application.root}, the app's root is ${other.root}`);
+    await expect(createTestApp(application, { env, ssrServer: server })).rejects.toThrow('needs ssr: true');
     await server.close();
-    await expect(createTestApp(application, { ssr: true, ssrServer: server })).rejects.toThrow(
+    await expect(createTestApp(application, { env, ssr: true, ssrServer: server })).rejects.toThrow(
       'The SSR server was closed — start it in beforeAll and close it in afterAll',
     );
   });
 });
 
 // Never called: only the types matter.
-export async function typeLevelTests(application: ApplicationOptions): Promise<void> {
+export async function typeLevelTests(application: ApplicationDefinition): Promise<void> {
   const server = await startSsrServer(application);
-  await createTestApp(application, { ssr: true, ssrServer: server });
+  await createTestApp(application, { env, ssr: true, ssrServer: server });
   // @ts-expect-error — the Vite server is a `startSsrServer()` result, not a path.
-  await createTestApp(application, { ssr: true, ssrServer: application.root });
+  await createTestApp(application, { env, ssr: true, ssrServer: application.root });
   // @ts-expect-error — the renderer behind a server is not part of its type.
   server.renderer;
 }

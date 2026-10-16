@@ -93,7 +93,7 @@ describe('AesGcmEncrypter payload', () => {
 
 describe('EncryptionConfig & provider', () => {
   const boot = (env: Record<string, string>) =>
-    createApplication({ root: import.meta.dirname, discover: false, env, providers: [EncryptionServiceProvider] });
+    createApplication({ root: import.meta.dirname, discover: false, providers: [EncryptionServiceProvider] }, { env });
 
   it('binds an Encrypter keyed by APP_KEY, with APP_PREVIOUS_KEYS for rotation', async () => {
     const [current, previous] = [generateKey(), generateKey()];

@@ -58,10 +58,9 @@ describe('createHttpKernel — islands', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
     modules: [defineModule({ name: 'islands', routes }), defineModule({ name: 'deferring', routes: deferring })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application, { debug: true });
   const production = createHttpKernel(application, { strictReadOnly: false });
 

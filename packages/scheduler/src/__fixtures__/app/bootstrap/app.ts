@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { CliServiceProvider } from 'marmeon';
-import { Clock, defineApplication, defineModule } from '@marmeon/core';
+import { Clock, defineApplication, defineModule, type Container, type ServiceProvider } from '@marmeon/core';
 import { DatabaseServiceProvider } from '@marmeon/database';
 import { RedisServiceProvider } from '@marmeon/redis';
 import { defineSchedule, SchedulerServiceProvider } from '../../../index.ts';
@@ -32,10 +32,23 @@ function awaitGate(path: string): number {
   return Number(readFileSync(path, 'utf8'));
 }
 
+/** The definition cannot carry an `override` (test doubles never ship): the fixture's clock is a provider, registered after the core's own. */
+class FixtureClock implements ServiceProvider {
+  register(container: Container): void {
+    container.instance(Clock, {
+      now: () => {
+        // The first read — the loop of schedule:work right after its "Running…" line, or the tick of schedule:run — is `at` (with FIXTURE_CLOCK_GATE: at the instant the gate file holds).
+        if (offset === undefined) offset = at === undefined ? 0 : at - (gate === undefined ? Date.now() : awaitGate(gate));
+        return Date.now() + offset;
+      },
+    });
+  }
+}
+
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   discover: false,
-  providers: [CliServiceProvider, DatabaseServiceProvider, RedisServiceProvider, CacheServiceProvider, SchedulerServiceProvider],
+  providers: [CliServiceProvider, DatabaseServiceProvider, RedisServiceProvider, CacheServiceProvider, SchedulerServiceProvider, FixtureClock],
   modules: [
     defineModule({
       name: 'fixture',
@@ -46,13 +59,4 @@ export default defineApplication({
       }),
     }),
   ],
-  override: (container) => {
-    container.instance(Clock, {
-      now: () => {
-        // The first read — the loop of schedule:work right after its "Running…" line, or the tick of schedule:run — is `at` (with FIXTURE_CLOCK_GATE: at the instant the gate file holds).
-        if (offset === undefined) offset = at === undefined ? 0 : at - (gate === undefined ? Date.now() : awaitGate(gate));
-        return Date.now() + offset;
-      },
-    });
-  },
 });

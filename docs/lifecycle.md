@@ -35,7 +35,7 @@ Before the first request, `marmeon start` or `marmeon dev` prepares the process 
 7. **Listen.** The server builds its kernel from the routes and listens. The start line names the environment and the number of
    routes and modules.
 
-Steps 3 to 6 are `createApplication()`, the same function every test calls through `createTestApp()`. The [service
+Steps 3 to 6 are `createApplication(definition, options)`, the same function every test calls through `createTestApp()`. The [service
 providers](providers.md#register-and-boot) page explains the two phases, and the [modules](modules.md) page the definition they
 read.
 

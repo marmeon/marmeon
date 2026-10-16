@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, ConfigError, Container, createApplication, ErrorSolutions, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
+import { Application, ConfigError, Container, createApplication, ErrorSolutions, type ApplicationDefinition, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages, messageBase, trace } from '@marmeon/core/internal';
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
@@ -128,11 +128,11 @@ async function loadApplication(root: string, phase: ApplicationPhase): Promise<A
   const entry = join(root, 'bootstrap', 'app.ts');
   if (!existsSync(entry)) return new Error(`No Marmeon app in ${root} (bootstrap/app.ts not found)`);
   try {
-    const module = (await import(pathToFileURL(entry).href)) as { default?: ApplicationOptions };
+    const module = (await import(pathToFileURL(entry).href)) as { default?: ApplicationDefinition };
     if (!module.default || typeof module.default.root !== 'string') {
       return new Error('bootstrap/app.ts must `export default defineApplication({ … })`.');
     }
-    return await createApplication(phase === 'build' ? { ...module.default, phase } : module.default);
+    return await createApplication(module.default, phase === 'build' ? { phase } : {});
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
   }

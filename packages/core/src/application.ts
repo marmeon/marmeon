@@ -26,10 +26,11 @@ import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 export type ApplicationPhase = 'run' | 'build';
 
 /**
- * How an app is defined. Packages add their own app-level settings through
- * declaration merging, like `ModuleDefinition` (http adds `middleware`).
+ * How an app is defined — what ships. Packages add their own app-level settings through declaration merging, like
+ * `ModuleDefinition` (http adds `middleware`). What only a boot decides — the environment, the phase, test doubles — is
+ * not part of it: see {@link CreateApplicationOptions}.
  */
-export interface ApplicationOptions {
+export interface ApplicationDefinition {
   /** App root: package.json, `.marmeon/`, `index.html`. */
   root: string;
   /** Feature modules, in the order they should register and boot. */
@@ -42,6 +43,15 @@ export interface ApplicationOptions {
   config?: readonly ConfigDefinition<any>[];
   /** App-level readiness checks for `/up/ready`; packages and modules bring their own through `health`. */
   health?: readonly HealthCheckClass[];
+  /** Register providers of installed packages (`marmeon discover`). Default: true. */
+  discover?: boolean;
+}
+
+/**
+ * What a boot decides, apart from the definition. Kept out of {@link ApplicationDefinition} on purpose: an `override`
+ * (test doubles) or a foreign `env` in the definition that ships would replace bindings or configuration in production.
+ */
+export interface CreateApplicationOptions {
   /**
    * Environment to validate the configuration against. Default: `.env`, then
    * `.env.{NODE_ENV}`, then the real environment (which wins).
@@ -52,8 +62,7 @@ export interface ApplicationOptions {
    * app with (`static boots = 'build'` on a built-in command). Default: `run`.
    */
   phase?: ApplicationPhase;
-  /** Register providers of installed packages (`marmeon discover`). Default: true. */
-  discover?: boolean;
+  /** The container to bind into. Default: a new one. */
   container?: Container;
   /**
    * Runs after every provider registered and before any boots — the place to
@@ -66,8 +75,8 @@ export interface ApplicationOptions {
  * Describes the application without booting it — the default export of
  * `bootstrap/app.ts`. The CLI boots it; tests boot a fresh instance per test.
  */
-export function defineApplication(options: ApplicationOptions): ApplicationOptions {
-  return options;
+export function defineApplication(definition: ApplicationDefinition): ApplicationDefinition {
+  return definition;
 }
 
 /**
@@ -93,30 +102,32 @@ export class Application {
    */
   readonly providers: readonly ServiceProviderClass[];
   /** What the app was defined with — packages read their app-level settings from here (e.g. http's `middleware`). */
-  readonly options: ApplicationOptions;
+  readonly definition: ApplicationDefinition;
   /** `build`: registered, never booted — see {@link ApplicationPhase}. */
   readonly phase: ApplicationPhase;
   readonly #providers: ServiceProvider[] = [];
   #shutdown: Promise<void> | undefined;
 
+  /** @internal `createApplication()` builds the app; nothing else does. */
   constructor(options: {
     root: string;
     container: Container;
     modules: readonly ModuleDefinition[];
     packages: readonly string[];
     providers?: readonly ServiceProviderClass[];
-    options?: ApplicationOptions;
+    definition?: ApplicationDefinition;
+    phase?: ApplicationPhase;
   }) {
     this.root = options.root;
     this.container = options.container;
     this.modules = options.modules;
     this.packages = options.packages;
     this.providers = options.providers ?? [];
-    this.options = options.options ?? { root: options.root };
-    this.phase = this.options.phase ?? 'run';
+    this.definition = options.definition ?? { root: options.root };
+    this.phase = options.phase ?? 'run';
   }
 
-  /** Register phase: build each provider through the container and let it bind services. */
+  /** @internal Register phase: build each provider through the container and let it bind services. `createApplication()` calls it; an app never does. */
   register(providers: readonly ServiceProviderClass[]): void {
     // A provider may also only bring configuration (`static config`, validated earlier), health checks, solutions or commands.
     for (const Provider of providers) {
@@ -130,9 +141,9 @@ export class Application {
     }
   }
 
-  /** Boot phase: runs once every provider has registered. */
+  /** @internal Boot phase: runs once every provider has registered. `createApplication()` calls it; an app never does. */
   async boot(): Promise<void> {
-    if (this.phase === 'build') throw new Error('An app in the build phase is never booted: createApplication({ phase: \'build\' }) registers its providers only.');
+    if (this.phase === 'build') throw new Error('An app in the build phase is never booted: createApplication(definition, { phase: \'build\' }) registers its providers only.');
     for (const provider of this.#providers) await provider.boot?.(this);
   }
 
@@ -196,29 +207,39 @@ function quietWhileBooting(container: Container): { end(): void } {
   };
 }
 
-/** Creates and boots the application — the composition root of `bootstrap/app.ts`. */
-export async function createApplication(options: ApplicationOptions): Promise<Application> {
-  const container = options.container ?? new Container();
-  const modules = options.modules ?? [];
+/** The keys of {@link CreateApplicationOptions}: never part of a definition. */
+const BOOT_OPTIONS = ['env', 'phase', 'container', 'override'] as const;
 
-  const discovered = options.discover === false ? undefined : await loadDiscoveredPackages({ root: options.root });
+/**
+ * Creates and boots the application from its definition — the composition root of `bootstrap/app.ts`. The boot options
+ * (`env`, `phase`, `container`, `override`) are what tests and scripts decide; the definition never carries them: one that
+ * does — also by a spread, which the types cannot see — is refused, so no test double or foreign environment ships.
+ */
+export async function createApplication(definition: ApplicationDefinition, options: CreateApplicationOptions = {}): Promise<Application> {
+  for (const key of BOOT_OPTIONS) {
+    if (key in definition) throw new TypeError(`\`${key}\` is a boot option: pass it as createApplication(definition, { ${key} }), not in the definition.`);
+  }
+  const container = options.container ?? new Container();
+  const modules = definition.modules ?? [];
+
+  const discovered = definition.discover === false ? undefined : await loadDiscoveredPackages({ root: definition.root });
   const providers: ServiceProviderClass[] = [
     ...((discovered?.providers ?? []) as ServiceProviderClass[]),
-    ...(options.providers ?? []),
+    ...(definition.providers ?? []),
     ...modules.flatMap((module) => module.providers ?? []),
   ];
 
   // Configuration from the app, its modules and every provider (packages bring their own) — and the environment, every app's.
   const definitions = new Set([
     EnvironmentConfig,
-    ...(options.config ?? []),
+    ...(definition.config ?? []),
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),
   ]);
   // NODE_ENV resolved once for the process: the environment's, else the app's .env — `marmeon` did it already; a script
   // that boots the app itself gets the same answer here. An app given its own `env` (a test fixture) decides for itself.
-  const resolved = options.env ? undefined : resolveEnvironment(options.root);
-  const env = options.env ?? loadEnv(options.root);
+  const resolved = options.env ? undefined : resolveEnvironment(definition.root);
+  const env = options.env ?? loadEnv(definition.root);
   // An unknown NODE_ENV stops the start before anything asks it — also for an app given its own `env`.
   environment.check(env);
   const phase = options.phase ?? 'run';
@@ -232,7 +253,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     });
   }
 
-  const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], providers: Object.freeze([...providers]), options });
+  const app = new Application({ root: definition.root, container, modules, packages: discovered?.packages ?? [], providers: Object.freeze([...providers]), definition, phase });
   container.instance(Application, app);
   container.instance(Container, container);
   // Fields every log entry carries besides the request's or job's (@marmeon/otel: the active span's ids).
@@ -247,7 +268,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   // The readiness checks of `/up/ready`: the packages' (database, redis, cache, queue), then the app's and its modules'.
   container.instance(
     HealthChecks,
-    new HealthChecks([...providers.flatMap((Provider) => Provider.health ?? []), ...(options.health ?? []), ...modules.flatMap((module) => module.health ?? [])]),
+    new HealthChecks([...providers.flatMap((Provider) => Provider.health ?? []), ...(definition.health ?? []), ...modules.flatMap((module) => module.health ?? [])]),
   );
   // A defaulted or optional constructor parameter of an injectable type is never injected: said once per class, in
   // development — `container.warnings` keeps them for the error page.
@@ -257,7 +278,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
 
   // One registry; a dispatcher per resolution, bound to the asking container (e.g. the request scope).
   const events = new EventRegistry()
-    .add(options.listeners ?? [])
+    .add(definition.listeners ?? [])
     .add(modules.flatMap((module) => module.listeners ?? []));
   container.instance(EventRegistry, events);
   // Queued listeners go to the app's ListenerQueue (@marmeon/queue); a test's EventFake sees every event first.

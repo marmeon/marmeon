@@ -9,10 +9,9 @@ async function kernelFor(routes: ReturnType<typeof openRoutes>) {
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [defineModule({ name: 'greedy', routes })],
-  });
+  }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
   return createHttpKernel(app);
 }
 

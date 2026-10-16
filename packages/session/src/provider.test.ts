@@ -60,10 +60,9 @@ function boot(env: Record<string, string>, providers: ServiceProviderClass[], co
     root: import.meta.dirname,
     discover: false,
     config,
-    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ...providers, SessionServiceProvider],
     modules: [defineModule({ name: 'shop', routes })],
-  });
+  }, { env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', ...env } });
 }
 
 const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='));

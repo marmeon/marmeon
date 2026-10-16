@@ -156,10 +156,11 @@ async function boot(
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { NODE_ENV: 'test', CACHE_DRIVER: 'memory', ...options.env },
     providers: [CliServiceProvider, CacheServiceProvider, ...(options.providers ?? []), SchedulerServiceProvider],
     modules: [defineModule({ name: 'fixture', schedule, commands: [PruneCommand] }), ...(options.modules ?? [])],
     listeners: options.listeners ?? [],
+  }, {
+    env: { NODE_ENV: 'test', CACHE_DRIVER: 'memory', ...options.env },
     override: (c) => {
       c.instance(Clock, clock);
       c.instance(Logger, log);
@@ -600,10 +601,8 @@ describe('the provider', () => {
     const built = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      phase: 'build',
-      env: { NODE_ENV: 'test', CACHE_DRIVER: 'memory' },
       providers: [CliServiceProvider, SchedulerServiceProvider],
-    });
+    }, { phase: 'build', env: { NODE_ENV: 'test', CACHE_DRIVER: 'memory' } });
     expect(built.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['schedule:work', 'schedule:run', 'schedule:list', 'schedule:test']));
   });
 });

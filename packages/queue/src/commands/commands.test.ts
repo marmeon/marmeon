@@ -39,9 +39,10 @@ async function app(options: { env?: Record<string, string>; providers?: 'all' | 
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...options.env },
     providers,
     modules: [{ name: 'test', jobs: (options.jobs ?? [PingJob]) as never }],
+  }, {
+    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...options.env },
     override: (container) => {
       container.instance(Clock, clock);
       container.instance(Logger, silent);
@@ -74,10 +75,8 @@ describe('the queue provider', () => {
     const built = await createApplication({
       root: '/tmp',
       discover: false,
-      phase: 'build',
-      env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' },
       providers: [CliServiceProvider, QueueServiceProvider],
-    });
+    }, { phase: 'build', env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' } });
     expect(built.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['queue:work', 'queue:size', 'make:queue-table']));
   });
 

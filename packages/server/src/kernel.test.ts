@@ -34,10 +34,9 @@ describe('createHttpKernel — container', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, RequestScopeProvider],
     modules: [defineModule({ name: 'ids', routes: openRoutes((Route) => Route.get('/id', ShowRequestIdController)) })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
 
   it('resolves controllers from a fresh scope per request', async () => {
@@ -65,10 +64,9 @@ describe('createHttpKernel — what a caller cannot hand in', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'whoami', routes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip ?? null }))) })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
   const headers = { accept: 'application/json' };
 
@@ -153,11 +151,10 @@ describe('createHttpKernel — errors & logging', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
     middleware: { web: [CookieTerminating] },
     modules: [defineModule({ name: 'errors', routes })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   // What the session package does at boot: the session cookie's name joins the app's Redactor.
   application.container.make(Redactor).addKeys('marmeon_session');
   const app = createHttpKernel(application);
@@ -277,10 +274,9 @@ describe('createHttpKernel — the request line at a level that discards it', as
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SilentLoggingProvider],
     modules: [defineModule({ name: 'users', routes: openRoutes((Route) => Route.get('/users/:id', () => ({ ok: true }))) })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const redactor = application.container.make(Redactor);
   let built = 0;
   const path = redactor.path.bind(redactor);
@@ -327,10 +323,9 @@ describe('createHttpKernel — requests & responses', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), MAX_BODY_SIZE: '1k' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'drafts', routes })],
-  });
+  }, { env: { APP_KEY: generateKey(), MAX_BODY_SIZE: '1k' } });
   const app = createHttpKernel(application);
   const form = (fields: Record<string, string>) => ({ method: 'POST', body: new URLSearchParams(fields) });
 
@@ -357,10 +352,9 @@ describe('createHttpKernel — requests & responses', async () => {
       const application = await createApplication({
         root: import.meta.dirname,
         discover: false,
-        env: { APP_KEY: generateKey() },
         providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
         modules: [defineModule({ name: 'leaving', routes: leaving })],
-      });
+      }, { env: { APP_KEY: generateKey() } });
       return createHttpKernel(application);
     })();
     const post = async (to: string, headers: Record<string, string> = {}, extra = '') =>
@@ -423,13 +417,13 @@ describe('createHttpKernel — requests & responses', async () => {
 
   it('refuses to boot the web group without an Encrypter — at boot, not on the first request', async () => {
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [HttpServiceProvider] }),
+      createApplication({ root: import.meta.dirname, discover: false, providers: [HttpServiceProvider] }, { env: {} }),
     ).rejects.toThrow('The web middleware group needs the Encrypter');
   });
 
   it('rejects an invalid MAX_BODY_SIZE at boot', async () => {
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, env: { MAX_BODY_SIZE: 'lots' }, providers: [ServerServiceProvider] }),
+      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { MAX_BODY_SIZE: 'lots' } }),
     ).rejects.toThrow('server: MAX_BODY_SIZE — Expected bytes or a size like 512k, 8m or 1g');
   });
 });
@@ -490,7 +484,6 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, CaptureLogs],
     middleware: { global: [Stamp], api: [Failing] },
     modules: [
@@ -504,7 +497,7 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
         apiRoutes: openRoutes((Route) => Route.get('/items', () => [])),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
 
   it('runs global middleware for routes of every group and for unknown paths', async () => {
@@ -565,11 +558,10 @@ describe('createHttpKernel — shared props', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     middleware: { web: [ShareTheme] },
     modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => Route.get('/page', () => view('pages/Show', { title: 'own' }))) })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application, { debug: true });
 
   it('merges shared props into every page — a prop of the controller wins', async () => {
@@ -582,7 +574,6 @@ describe('createHttpKernel — asset versioning', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [
       defineModule({
@@ -593,7 +584,7 @@ describe('createHttpKernel — asset versioning', async () => {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const visit = (app: ReturnType<typeof createHttpKernel>, version?: string, method = 'GET', path = '/page') =>
     app.request(path, { method, headers: { 'x-marmeon': 'true', ...(version ? { 'x-marmeon-version': version } : {}) } });
 
@@ -628,7 +619,6 @@ describe('createHttpKernel — response copies', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     middleware: { web: [SetVisitCookie] },
     modules: [
@@ -640,7 +630,7 @@ describe('createHttpKernel — response copies', async () => {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
 
   /** Counts `new Response(body, response)` — a copy of another response — while `run` runs. */

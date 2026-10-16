@@ -236,7 +236,6 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), APP_NAME: 'Acme', APP_URL: ORIGIN, SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', CACHE_DRIVER: 'memory', ...CHEAP, ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider, ...(passkeys ? [PasskeyServiceProvider] : [])],
     modules: [
       defineModule({
@@ -246,6 +245,8 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
         listeners: [Login, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, TwoFactorChallengeFailed, PasskeyRegistered, PasskeyRemoved, PasskeyCloneSuspected, PasskeySignInFailed].map((event) => listen(event as never, RecordEvent)),
       }),
     ],
+  }, {
+    env: { APP_KEY: generateKey(), APP_NAME: 'Acme', APP_URL: ORIGIN, SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', CACHE_DRIVER: 'memory', ...CHEAP, ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       if (options.clock) container.instance(Clock, options.clock);

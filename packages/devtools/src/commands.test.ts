@@ -23,7 +23,7 @@ describe('devtools:clear and devtools:prune', () => {
   it('never load config/devtools.ts outside development — they clear the default directory', async () => {
     for (const NODE_ENV of ['production', 'test']) {
       const dir = root();
-      const app = await createApplication({ root: dir, discover: false, env: { NODE_ENV }, providers: [DevtoolsServiceProvider] });
+      const app = await createApplication({ root: dir, discover: false, providers: [DevtoolsServiceProvider] }, { env: { NODE_ENV } });
       try {
         for (const Command of [DevtoolsClearCommand, DevtoolsPruneCommand]) {
           const { lines, output: out } = output();
