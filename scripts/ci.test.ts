@@ -26,7 +26,7 @@ import {
 } from './check-source.ts';
 import { commandFor, parts, parseShard } from './ci.ts';
 import { checkTarball, privateRecordInTarball } from './pack-check.ts';
-import { checkDriverRule, frameworkPackages } from './packages.ts';
+import { checkDriverRule, checkExactPins, frameworkPackages } from './packages.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -664,16 +664,40 @@ describe('the driver rule', () => {
     expect(checkDriverRule('auth', { dependencies: {} })).toEqual(['@simplewebauthn/server must be a dependency (the one driver this package wraps — the app installs nothing else)']);
     expect(checkDriverRule('auth', { dependencies: { '@simplewebauthn/server': '^14.0.3' } })).toEqual([]);
     expect(checkDriverRule('redis', { dependencies: { redis: '6.2.1' } })).toEqual(['dependencies.redis is "6.2.1" — a caret range of the tested major (^6.2.1)']);
-    expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0' } })).toEqual([
+    expect(checkDriverRule('database', { dependencies: { pg: '^8.23.0', kysely: '0.29.6' } })).toEqual([
       'pg must stay an optional peer, not a dependency — one of several drivers; every app would install it',
       'pg must be an optional peer of this package',
     ]);
-    expect(checkDriverRule('database', { peerDependencies: { pg: '^8.23.0' } })).toEqual(['pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver']);
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' } })).toEqual(['pg must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver']);
     // One API instance: the app's SDK registers on the API the framework reads — a second copy would be a second instance.
     expect(checkDriverRule('otel', { dependencies: { '@opentelemetry/api': '^1.9.0' }, peerDependencies: { '@opentelemetry/api': '^1.9.0' } })).toEqual([
       '@opentelemetry/api must stay a peer, not a dependency — the app and the framework share one instance; a dependency installs a second copy',
       '@opentelemetry/api is a dependency — the app and the framework must share one instance of it: a peer',
     ]);
-    expect(checkDriverRule('table', { dependencies: { react: '^19.3.0' } })).toEqual(['react is a dependency — the app and the framework must share one instance of it: a peer']);
+    expect(checkDriverRule('table', { dependencies: { kysely: '0.29.6', react: '^19.3.0' } })).toEqual(['react is a dependency — the app and the framework must share one instance of it: a peer']);
+  });
+
+  const EXACT = 'kysely must be an exact dependency (x.y.z, no range) — the framework is tested against one version of it';
+
+  it('holds the exact pin of kysely in every package, and the same version in all of them', () => {
+    expect(checkExactPins(frameworkPackages(root))).toEqual([]);
+  });
+
+  it('refuses a range, a peer and a missing pin for an exact dependency', () => {
+    expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([]);
+    expect(checkDriverRule('database', { dependencies: { kysely: '^0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { peerDependencies: { kysely: '0.29.6', pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
+    expect(checkDriverRule('table', { dependencies: { kysely: '0.29.6', '@marmeon/database': '1.0.0' } })).toEqual([]);
+    expect(checkDriverRule('table', { dependencies: {} })).toEqual([EXACT]);
+  });
+
+  it('names a package that pins another version of kysely', () => {
+    const pkg = (short: string, version: string) => ({ name: `@marmeon/${short}`, short, dir: '', manifest: { name: `@marmeon/${short}`, version: '1.0.0', dependencies: { kysely: version } } });
+    expect(checkExactPins([pkg('database', '0.29.6'), pkg('table', '0.29.6')])).toEqual([]);
+    expect(checkExactPins([pkg('database', '0.29.6'), pkg('table', '0.29.7')])).toEqual([
+      'kysely must be the same exact version in every package: @marmeon/database 0.29.6, @marmeon/table 0.29.7',
+    ]);
+    const peer = { name: '@marmeon/x', short: 'x', dir: '', manifest: { name: '@marmeon/x', version: '1.0.0', peerDependencies: { kysely: '0.29.7' } } };
+    expect(checkExactPins([pkg('database', '0.29.6'), peer])).toHaveLength(1);
   });
 });

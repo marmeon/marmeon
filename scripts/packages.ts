@@ -63,12 +63,13 @@ export function packAll(root: string, destination: string): PackedPackage[] {
 }
 
 /** How a package lists a third-party library under the driver rule. */
-export type DriverKind = 'dependency' | 'optional peer' | 'peer';
+export type DriverKind = 'dependency' | 'exact dependency' | 'optional peer' | 'peer';
 
 /**
  * The driver rule, per package — `pack:check` holds the packed manifests to it, a test in `scripts/ci.test.ts` the sources:
  *   1. a package that wraps exactly one third-party driver and is useless without it lists it in `dependencies`, at a caret range
  *      of the tested major (`@marmeon/redis` → `redis`); decided exceptions: `nodemailer` in `@marmeon/mail`, `@simplewebauthn/server` in `@marmeon/auth` (loaded only by `@marmeon/auth/passkeys`);
+ *      `kysely` is an exact dependency of `@marmeon/database` and `@marmeon/table` (docs/database.md#kysely-and-its-version);
  *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
  *      exact install command with the major (`pnpm add pg@^8`);
  *   3. a library whose instance or types the app must share (the OpenTelemetry API, React, Vite) is a peer — and no framework package
@@ -82,7 +83,9 @@ export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, Driver
   auth: { '@simplewebauthn/server': 'dependency' },
   mail: { nodemailer: 'dependency', mjml: 'optional peer' },
   storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
-  database: { pg: 'optional peer' },
+  // The builders' shape is public API and the secret guard is tested against one version: exact, and the same in every package, so one copy installs.
+  database: { pg: 'optional peer', kysely: 'exact dependency' },
+  table: { kysely: 'exact dependency' },
   otel: { '@opentelemetry/api': 'peer' },
   server: { vite: 'peer' },
   vite: { vite: 'peer' },
@@ -99,6 +102,12 @@ export function checkDriverRule(short: string, manifest: Record<string, any>): s
   const peers = (manifest.peerDependencies ?? {}) as Record<string, string>;
   const optional = (name: string) => (manifest.peerDependenciesMeta as Record<string, { optional?: boolean }> | undefined)?.[name]?.optional === true;
   for (const [library, kind] of Object.entries(DRIVER_RULE[short] ?? {})) {
+    if (kind === 'exact dependency') {
+      if (!dependencies[library] || !/^\d+\.\d+\.\d+$/.test(dependencies[library]) || peers[library]) {
+        problems.push(`${library} must be an exact dependency (x.y.z, no range) — the framework is tested against one version of it`);
+      }
+      continue;
+    }
     if (kind === 'dependency') {
       if (!dependencies[library]) problems.push(`${library} must be a dependency (the one driver this package wraps — the app installs nothing else)`);
       else if (!/^\^\d+\.\d+\.\d+$/.test(dependencies[library])) problems.push(`dependencies.${library} is "${dependencies[library]}" — a caret range of the tested major (^6.2.1)`);
@@ -117,6 +126,27 @@ export function checkDriverRule(short: string, manifest: Record<string, any>): s
   }
   for (const library of SHARED_LIBRARIES) {
     if (dependencies[library]) problems.push(`${library} is a dependency — the app and the framework must share one instance of it: a peer`);
+  }
+  return problems;
+}
+
+const PINNED_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
+
+/** Every library the driver rule makes an exact dependency stands at the same version in all packages that list it — one version installs one copy. */
+export function checkExactPins(packages: readonly FrameworkPackage[]): string[] {
+  const problems: string[] = [];
+  const libraries = new Set<string>();
+  for (const rules of Object.values(DRIVER_RULE)) for (const [library, kind] of Object.entries(rules)) if (kind === 'exact dependency') libraries.add(library);
+  for (const library of libraries) {
+    const versions = packages.flatMap((pkg) => {
+      return PINNED_FIELDS.flatMap((field) => {
+        const version = ((pkg.manifest[field] ?? {}) as Record<string, string>)[library];
+        return version === undefined ? [] : [{ name: pkg.name, version }];
+      });
+    });
+    if (new Set(versions.map((entry) => entry.version)).size > 1) {
+      problems.push(`${library} must be the same exact version in every package: ${versions.map((entry) => `${entry.name} ${entry.version}`).join(', ')}`);
+    }
   }
   return problems;
 }

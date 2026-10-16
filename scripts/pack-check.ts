@@ -19,7 +19,7 @@ import { parseArgs } from 'node:util';
 import { publint } from 'publint';
 import { formatMessage } from 'publint/utils';
 import { privateRecordHits, privateRecordWhy, type SourceFile } from './check-source.ts';
-import { checkDriverRule, frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
+import { checkDriverRule, checkExactPins, frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
 import { licenseDrift } from './sync-license.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -237,6 +237,7 @@ async function main(): Promise<number> {
     const missing = packages.filter((pkg) => !packed.some((tarball) => tarball.name === pkg.name));
     for (const pkg of missing) report(pkg.name, ['pnpm pack made no tarball']);
 
+    const packedPackages: FrameworkPackage[] = [];
     await Promise.all(
       packed.map(async (tarball) => {
         const pkg = packages.find((candidate) => candidate.name === tarball.name)!;
@@ -248,9 +249,13 @@ async function main(): Promise<number> {
         report(pkg.name, await lint(tarball));
         // attw checks what importing the package resolves to — a package that only has a bin (create-marmeon) has nothing to import.
         const packedManifest = JSON.parse(readFileSync(join(unpacked, 'package', 'package.json'), 'utf8')) as Record<string, unknown>;
+        packedPackages.push({ ...pkg, manifest: packedManifest as PackageManifest });
         if (['exports', 'main', 'types', 'module'].some((field) => field in packedManifest)) report(pkg.name, typesWrong(tarball, packedManifest));
       }),
     );
+
+    // One exact version of a pinned library in every packed manifest — a second version would install a second copy.
+    report('exact pins', checkExactPins(packedPackages));
 
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     if (problems.size === 0) {

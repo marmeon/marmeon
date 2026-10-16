@@ -214,6 +214,13 @@ and point them at it with `CACHE_CONNECTION=system`, `SESSION_CONNECTION=system`
 transaction the app's own file works as well. Never point two connection names at the same SQLite file: a transaction of either
 holds the file for both. On Postgres there is nothing to configure.
 
+## Kysely and its version
+
+The query builder is [Kysely](https://kysely.dev), and the framework pins it to one exact version. You write its builder through
+`@marmeon/database` and never install or import the `kysely` package yourself, so the app and the framework use the same copy.
+A Kysely update that changes the builder's shape comes only in a major version of Marmeon. The
+[releases](releases.md#libraries-the-framework-builds-on) page lists what else it promises.
+
 ## Inspecting a connection
 
 `marmeon db:show` prints where a connection points, its server's version and its tables with their number of columns and rows:

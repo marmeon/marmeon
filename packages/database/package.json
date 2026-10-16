@@ -69,7 +69,7 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/router": "workspace:*",
     "@marmeon/validation": "workspace:*",
-    "kysely": "^0.29.6"
+    "kysely": "0.29.6"
   },
   "peerDependencies": {
     "marmeon": "workspace:*",
