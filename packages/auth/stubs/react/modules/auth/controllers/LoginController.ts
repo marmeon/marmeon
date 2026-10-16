@@ -3,7 +3,10 @@ import { clientKey, RateLimiter } from '@marmeon/cache';
 import { EventDispatcher } from '@marmeon/core';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
+import { Queue } from '@marmeon/queue';
 import { rules as r } from '@marmeon/validation';
+import { ACCOUNT_SIGN_INS, ACCOUNT_WINDOW_SECONDS, accountKey, accountNoticeKey, clearAccountFailures } from '../account-failures.ts';
+import { SendLockoutMailJob } from '../jobs/SendLockoutMailJob.ts';
 
 export const LoginRequest = defineRequest({
   schema: r.object({
@@ -28,13 +31,15 @@ export class LoginController extends Controller {
   readonly #limiter: RateLimiter;
   readonly #events: EventDispatcher;
   readonly #translator: Translator;
+  readonly #queue: Queue;
 
-  constructor(auth: Auth, limiter: RateLimiter, events: EventDispatcher, translator: Translator) {
+  constructor(auth: Auth, limiter: RateLimiter, events: EventDispatcher, translator: Translator, queue: Queue) {
     super();
     this.#auth = auth;
     this.#limiter = limiter;
     this.#events = events;
     this.#translator = translator;
+    this.#queue = queue;
   }
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
@@ -49,6 +54,18 @@ export class LoginController extends Controller {
       throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds })] }, { email });
     }
 
+    // The account's own ceiling, whichever clients the guesses come from: 100 password sign-ins a day, counted before the password is
+    // checked. Past it nothing is checked — the right password included — and an address without an account gets the same answer
+    // and does the same work. The owner still gets in with a password reset or a passkey; a sign-in or a reset starts the count over.
+    if (!(await this.#limiter.attempt(accountKey(email), ACCOUNT_SIGN_INS, ACCOUNT_WINDOW_SECONDS))) {
+      // Once per window: the owner is told (the job finds out whether there is an account), the app can listen for the event.
+      if (await this.#limiter.attempt(accountNoticeKey(email), 1, ACCOUNT_WINDOW_SECONDS)) {
+        await this.#events.dispatch(new Lockout(email, ctx.ip));
+        await this.#queue.dispatch(SendLockoutMailJob, { email, locale: this.#translator.locale }, { queue: 'mail' });
+      }
+      throw new ValidationError({ email: [this.#translator.get('auth.login.locked')] }, { email });
+    }
+
     // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify). The attempt stays counted.
     const signedIn = await this.#auth.attempt(email, password, { remember });
     if (!signedIn.ok) {
@@ -56,12 +73,14 @@ export class LoginController extends Controller {
       // a failure — the limiter is cleared like after a sign-in (the code has its own, per account).
       if (signedIn.error.kind === 'two-factor-required') {
         await this.#limiter.clear(key);
+        await clearAccountFailures(this.#limiter, email);
         return this.redirect().route('auth.two-factor.challenge');
       }
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
 
     await this.#limiter.clear(key);
+    await clearAccountFailures(this.#limiter, email);
     return this.redirect().intended().route('dashboard');
   }
 }

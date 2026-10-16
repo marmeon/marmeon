@@ -17,6 +17,7 @@ const en = {
     demo: 'Demo: ada@example.com, alan@example.com or grace@example.com — password',
     failed: 'These credentials do not match our records.',
     throttled: 'Too many login attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
+    locked: 'Too many failed sign-ins for this account. Reset your password or sign in with a passkey.',
   },
   register: {
     title: 'Create an account',
@@ -320,6 +321,15 @@ const en = {
       preview: 'The address of your account changed',
       intro: 'the e-mail address of your account was changed to {email}.',
       outro: 'If that was not you, reset your password now and contact us.',
+    },
+    // The account stopped taking passwords after 100 failed sign-ins in a day.
+    lockout: {
+      subject: 'Your account stopped taking passwords',
+      preview: 'Too many failed sign-ins in a day',
+      intro: 'there were 100 failed sign-ins to your account within a day, so it takes no more passwords for now. Choose a new password to get in again:',
+      button: 'Reset your password',
+      passkey: 'If you have a passkey, it still works:',
+      outro: 'If the failed sign-ins were not yours, someone is guessing your password: choose a long one nobody can guess. If they were, a password reset ends the pause.',
     },
     sign_in: {
       remember_reused: {

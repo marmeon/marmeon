@@ -26,13 +26,13 @@ framework bring them.
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
 | `controllers/` | 46 controllers, one per endpoint. A form's controller validates it with a request schema. |
 | `views/`, `layouts/` | The React pages and the app's layout, `AppLayout`, with a settings layout inside it. |
-| `mail/` | Nine mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, and the note about a copied "keep me signed in" cookie. |
+| `mail/` | Ten mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, the note about a copied "keep me signed in" cookie, and the note that an account stopped taking passwords. |
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
 | `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys` and `sign_ins`. |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
-| `auth.test.ts` and nine more | The module's own tests. |
+| `auth.test.ts` and twelve more | The module's own tests. |
 
 The module's routes each say who may call them, as the app's do. Its groups decide with `everyone`: the sign-in and registration
 pages are open to guests, and every action behind `authenticate()` concerns only the signed-in user's own account. A route you
@@ -233,6 +233,24 @@ Only `true` and `false` are allowed. Any other value stops the start; an empty o
 off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`. Set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`
 as well: an account registered with somebody else's address may have created an API token, and the owner's password reset then
 ends it, as the [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
+
+## Guesses against one account
+
+Besides the limits per client, `LoginController` stops password sign-ins to one account after 100 a day, whichever clients they come from:
+a guess spread over many addresses still ends. The count is kept per address, normalised, under a hash of it, and is taken before the password
+is checked; a failed or a right password both count until a sign-in succeeds, and a successful sign-in and a completed password reset clear it.
+Past 100, nothing is checked, not even the right password, and the form says: "Too many failed sign-ins for this account. Reset your password
+or sign in with a passkey." Passkey sign-in and the password reset stay open (a passkey sign-in clears the count too), so the owner has two ways in. The answer is the same for an
+address that has no account (its failures are counted too), and so is the work: the request queues `SendLockoutMailJob`, once per day and
+address, and the job mails the owner only when an account exists. The `Lockout` event is dispatched at that moment too. The number is
+`ACCOUNT_SIGN_INS` in `account-failures.ts`.
+
+The cost is one cache entry per address tried, kept for a day, for addresses with and without an account (the entry has the full hash of the
+address, so it cannot be cut down). A public deployment should keep the counts in the `database` or `redis` cache store, not in
+`file`, and keep `cache:prune` scheduled (see [cache](cache.md)), so a flood of made-up addresses does not pile up.
+
+Anyone can lock out an address they know by sending 100 wrong passwords. That is the price of the limit: the owner resets the password or uses a
+passkey, and the mail says so.
 
 ## Signing an account out everywhere
 
