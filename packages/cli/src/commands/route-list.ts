@@ -1,4 +1,5 @@
-import { accessLabel, isMiddlewareClass, routeAccess, Router, type AnyAction, type AnyMiddleware, type RouteDefinition } from '@marmeon/router';
+import { Router, type AnyAction, type AnyMiddleware, type RouteDefinition } from '@marmeon/router';
+import { accessLabel, isMiddlewareClass, routeAccess } from '@marmeon/router/internal';
 import type { CommandInput } from '../command.ts';
 
 /** Prints every registered route as a table: methods, path, name, group, middleware in execution order, who may call it, action. */

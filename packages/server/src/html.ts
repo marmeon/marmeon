@@ -1,5 +1,6 @@
 import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
-import { PAGE_SCRIPT_ID, scriptJson, type PageObject, type SsrResult } from '@marmeon/http';
+import type { PageObject, SsrResult } from '@marmeon/http';
+import { PAGE_SCRIPT_ID, scriptJson } from '@marmeon/http/internal';
 
 /** Placeholders an app's `index.html` provides. */
 export const HEAD_OUTLET = '<!--app-head-->';

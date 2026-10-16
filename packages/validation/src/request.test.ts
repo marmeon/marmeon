@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@marmeon/core';
-import { defineRequest, Router, translatable, VALIDATE_HEADER, ValidationError, type ContextOf, type HttpContext, type MessageTranslator, type Next } from '@marmeon/router';
+import { defineRequest, Router, translatable, ValidationError, type ContextOf, type HttpContext, type MessageTranslator, type Next } from '@marmeon/router';
+import { VALIDATE_HEADER } from '@marmeon/router/internal';
 import { describe, expect, it } from 'vitest';
 import { rules as r } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';

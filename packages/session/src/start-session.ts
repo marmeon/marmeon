@@ -1,5 +1,6 @@
 import { Container, Logger, Redactor } from '@marmeon/core';
-import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@marmeon/http';
+import { ParentRequest, ReadOnly } from '@marmeon/http';
+import { LOCATION_HEADER } from '@marmeon/http/internal';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig } from './config.ts';
 import { sessionScope, SessionEndings } from './ended.ts';

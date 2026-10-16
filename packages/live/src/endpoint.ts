@@ -1,4 +1,5 @@
-import { isLiveChannel, type HttpContext, type LiveAudience } from '@marmeon/http';
+import type { HttpContext, LiveAudience } from '@marmeon/http';
+import { isLiveChannel } from '@marmeon/http/internal';
 import { Redactor, type Logger } from '@marmeon/core';
 import { CONNECTION_ID } from './broadcaster.ts';
 import { END_FRAME, STREAM_HEADERS, type LiveHub } from './hub.ts';

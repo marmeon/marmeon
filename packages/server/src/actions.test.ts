@@ -1,19 +1,17 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
-  ACTION_HEADER,
-  ACTION_REDIRECT_HEADER,
   ClearClientHistory,
   ClientHistory,
   Controller,
   defineRequest,
   HttpServiceProvider,
   json,
-  LOCATION_HEADER,
   view,
   type ContextOf,
   type HttpContext,
 } from '@marmeon/http';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import * as v from 'valibot';

@@ -49,13 +49,13 @@ function locate(input: Record<string, unknown>, path: string): { holder: Record<
  * 3. **The submit** — before the body schema runs, every upload field's token is replaced by the verified upload (or why it
  *    is refused), which the `upload()` rule then checks.
  */
-export function registerUploads(http: Http, container: Container, uploads: () => TemporaryUploads): void {
+export function registerUploads(http: Http, uploadHeader: string, container: Container, uploads: () => TemporaryUploads): void {
   const router = container.make(http.Router);
 
   router.intercept({
-    claims: (request) => request.headers.has(http.UPLOAD_HEADER) && !new URL(request.url).pathname.startsWith(`${UPLOADS_PREFIX}/`),
+    claims: (request) => request.headers.has(uploadHeader) && !new URL(request.url).pathname.startsWith(`${UPLOADS_PREFIX}/`),
     answer: async (ctx: HttpContext, request, resolve) => {
-      const field = ctx.request.headers.get(http.UPLOAD_HEADER)!;
+      const field = ctx.request.headers.get(uploadHeader)!;
       const method = ctx.request.method;
       const route = ctx.route.routeName;
       const rule = FIELD.test(field) && method !== 'GET' && method !== 'HEAD' && route ? uploadFields(bodySchema(request, resolve)).get(field) : undefined;

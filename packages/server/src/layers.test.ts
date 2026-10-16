@@ -1,6 +1,7 @@
 import { ConsoleLogger, createApplication, defineModule, Logger, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, CloseLayerResult, HttpServiceProvider, isPageObject, MAX_LAYER_DEPTH, view, type HttpContext, type PageObject } from '@marmeon/http';
+import { abort, CloseLayerResult, HttpServiceProvider, isPageObject, view, type HttpContext, type PageObject } from '@marmeon/http';
+import { MAX_LAYER_DEPTH } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';

@@ -1,6 +1,7 @@
 import { relative } from 'node:path';
 import { Application, Redactor } from '@marmeon/core';
-import { formatAccessProblems, Router } from '@marmeon/router';
+import { Router } from '@marmeon/router';
+import { formatAccessProblems } from '@marmeon/router/internal';
 import type { CommandInput } from '../command.ts';
 import { RouteTypes } from '../route-types.ts';
 

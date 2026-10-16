@@ -1,7 +1,8 @@
 import { createApplication, defineModule, err, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
-import { accessLabel, type RouteBinder } from '@marmeon/router';
+import type { RouteBinder } from '@marmeon/router';
+import { accessLabel } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';

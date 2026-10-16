@@ -2,8 +2,10 @@ import { existsSync, globSync, mkdirSync, readFileSync, writeFileSync } from 'no
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
-import { BROWSER_ROUTES_FILE, browserRoutes, ERROR_PAGE, matchesRoutePatterns, pageName, writeBrowserRoutes, type BrowserRoutes } from '@marmeon/http';
-import { isControllerClass, Router, type RouteDefinition } from '@marmeon/router';
+import { browserRoutes, type BrowserRoutes } from '@marmeon/http';
+import { BROWSER_ROUTES_FILE, ERROR_PAGE, matchesRoutePatterns, pageName, writeBrowserRoutes } from '@marmeon/http/internal';
+import { Router, type RouteDefinition } from '@marmeon/router';
+import { isControllerClass } from '@marmeon/router/internal';
 
 /** Where the generated routes and views live, relative to the app root. Committed, like `bootstrap/database.d.ts`. */
 export const ROUTES_FILE = 'bootstrap/routes.ts';

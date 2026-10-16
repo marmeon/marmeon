@@ -4,7 +4,8 @@ import { Clock, createApplication, defineModule, env, type ConfigDefinition } fr
 import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
-import { accessLabel, Router, routeAccess } from '@marmeon/router';
+import { Router } from '@marmeon/router';
+import { accessLabel, routeAccess } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';

@@ -183,12 +183,14 @@ export class StorageServiceProvider implements ServiceProvider {
     checkS3Sdk(options, uploads.disk);
 
     let http: typeof import('@marmeon/http') | undefined;
+    let page: typeof import('@marmeon/http/page') | undefined;
     try {
       http = await import('@marmeon/http');
+      page = await import('@marmeon/http/page');
     } catch (error) {
       if ((error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     }
-    if (!http || !container.has(http.Router)) return;
+    if (!http || !page || !container.has(http.Router)) return;
     const signer = container.make(http.UrlSigner);
     this.#temporaryUrls = {
       sign: (disk, key, { expiresIn, filename, base }) =>
@@ -211,7 +213,7 @@ export class StorageServiceProvider implements ServiceProvider {
         keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
         receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),
       };
-      registerUploads(http, container, () => container.make(TemporaryUploads));
+      registerUploads(http, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
     }
   }
 
