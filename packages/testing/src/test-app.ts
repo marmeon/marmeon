@@ -2,7 +2,8 @@ import { Application, Clock, createApplication, EventRegistry, type ApplicationO
 import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
-import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router, writeAppBrowserRoutes } from '@marmeon/http';
+import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router } from '@marmeon/http';
+import { writeAppBrowserRoutes } from '@marmeon/http/internal';
 import {
   ACTION_HEADER,
   PAGE_HEADER,

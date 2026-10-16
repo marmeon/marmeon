@@ -1,5 +1,6 @@
 import { UserFactory, UserRepository } from '#modules/auth';
-import { browserRoutes, LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, Router, VERSION_HEADER, type PageObject } from '@marmeon/http';
+import { browserRoutes, Router, type PageObject } from '@marmeon/http';
+import { LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, VERSION_HEADER } from '@marmeon/http/page';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';

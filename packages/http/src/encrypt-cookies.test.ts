@@ -1,5 +1,6 @@
 import { AesGcmEncrypter } from '@marmeon/encryption';
-import { createRequestState, Router, withQueuedCookies } from '@marmeon/router';
+import { Router } from '@marmeon/router';
+import { createRequestState, withQueuedCookies } from '@marmeon/router/internal';
 import { describe, expect, it } from 'vitest';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';

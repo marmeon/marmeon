@@ -1,22 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { formatAccessProblems, isEveryone, openBindings, registrationSite, siteOf, userSite } from './access.ts';
 import {
-  accessLabel,
   defineMiddleware,
   defineRequest,
   defineRoutes,
   describeAccess,
   everyone,
-  routeAccess,
   Router,
-  VALIDATE_HEADER,
   type HttpContext,
   type RequestDefinition,
   type RouteBinder,
   RouteDefinition,
   type RouteDefinitions,
 } from './index.ts';
-import { FRAMEWORK_ROUTES } from './internal.ts';
+import { accessLabel, FRAMEWORK_ROUTES, routeAccess, VALIDATE_HEADER } from './internal.ts';
 
 interface Note {
   id: string;

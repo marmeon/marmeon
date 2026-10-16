@@ -1,7 +1,8 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { formatAccessProblems, Router } from '@marmeon/router';
+import { Router } from '@marmeon/router';
+import { formatAccessProblems } from '@marmeon/router/internal';
 import { describe, expect, it } from 'vitest';
 import { AUTH_STYLES_IMPORT, MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, STUBS } from './make-auth.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';

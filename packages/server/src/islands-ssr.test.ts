@@ -5,13 +5,13 @@ import {
   defer,
   HttpServiceProvider,
   island,
-  ResponseLifecycle,
   view,
   type HttpContext,
   type PageObject,
   type RegionResult,
   type SsrRender,
 } from '@marmeon/http';
+import { ResponseLifecycle } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';

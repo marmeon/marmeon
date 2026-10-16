@@ -521,10 +521,6 @@ export interface TextKey {
     readonly key: string;
     readonly params?: Readonly<Record<string, unknown>>;
 }
-// VALIDATED_HEADER
-export declare const VALIDATED_HEADER = "x-marmeon-validated";
-// VALIDATE_HEADER
-export declare const VALIDATE_HEADER = "x-marmeon-validate";
 // ValidateOptions
 export interface ValidateOptions {
     readonly only?: readonly string[] | undefined;
@@ -577,24 +573,14 @@ export type WithQuery<TCtx, TQuery extends StandardSchemaV1> = [TQuery] extends 
 };
 // abort
 export declare function abort(status: number, message?: string, headers?: Record<string, string>): never;
-// accessLabel
-export declare function accessLabel(check: AccessCheck): string;
 // addVary
 export declare function addVary(headers: Readonly<Record<string, string>> | undefined, names: readonly string[]): Record<string, string> & {
     vary: string;
 };
 // attributeName
 export declare function attributeName(field: string): string;
-// authorizeRequest
-export declare function authorizeRequest(definition: RequestDefinition, ctx: HttpContext, resolve?: ClassResolver): Promise<void>;
-// clientIp
-export declare function clientIp(remote: string | undefined, forwardedFor: string | null, trusted: readonly string[] | ((address: string) => boolean)): string | undefined;
 // createNonce
 export declare function createNonce(): string;
-// createRequestState
-export declare function createRequestState(request: Request, { maxBodySize, ip, nonce, cookies }?: RequestStateOptions): RequestState;
-// defaultToResponse
-export declare const defaultToResponse: ResponseFactory;
 // defineMiddleware
 export declare function defineMiddleware<TAdds extends object = EmptyObject, TRequires extends object = EmptyObject>(name: string, handle: Middleware<TRequires, TAdds>['handle']): Middleware<TRequires, TAdds>;
 // defineRequest
@@ -622,16 +608,8 @@ export declare function fillPath(name: string, pattern: string, params?: Readonl
     path: string;
     rest: Record<string, Param>;
 };
-// formatAccessProblems
-export declare function formatAccessProblems(problems: readonly AccessProblem[], { path }?: {
-    path?: (route: RouteDefinition) => string;
-}): string;
-// isControllerClass
-export declare function isControllerClass(action: AnyAction): action is ControllerClass;
 // isLiveValidation
 export declare function isLiveValidation(request: Request): boolean;
-// isMiddlewareClass
-export declare function isMiddlewareClass(layer: AnyMiddleware): layer is MiddlewareClass;
 // issueOfFields
 export declare function issueOfFields(issue: StandardIssue, fields: readonly string[]): boolean;
 // joinPaths
@@ -652,10 +630,6 @@ export declare function parseCookies(header: string | null): Map<string, string>
 export declare function parseQuery(schema: StandardSchemaV1, search: URLSearchParams): Promise<ParsedQuery>;
 // queryInput
 export declare function queryInput(search: URLSearchParams): Record<string, string | string[]>;
-// routeAccess
-export declare function routeAccess(route: RouteDefinition): readonly AccessCheck[];
-// runPipeline
-export declare function runPipeline<TCtx extends object>(ctx: TCtx, middleware: readonly AnyMiddleware[], destination: (ctx: TCtx) => Promise<Response>, { resolve, onTerminable, onError }?: PipelineOptions<TCtx>): Promise<Response>;
 // serializeCookie
 export declare function serializeCookie(name: string, value: string, options?: CookieOptions): string;
 // statusText
@@ -666,10 +640,6 @@ export declare function toSearchParams(...queries: Query[]): URLSearchParams;
 export declare function translatable(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): (issue: object) => string;
 // urlFor
 export declare function urlFor(routes: RouteLookup, name: string, params?: Readonly<Record<string, Param | undefined>>, query?: Query): string;
-// validateRequest
-export declare function validateRequest(definition: RequestDefinition, ctx: HttpContext, resolve?: ClassResolver, { only, hooks }?: ValidateOptions): Promise<ValidatedRequest>;
-// withQueuedCookies
-export declare function withQueuedCookies(response: Response, cookies: CookieJar): Promise<Response>;
 ```
 
 ### Referenced, not exported

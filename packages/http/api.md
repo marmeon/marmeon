@@ -9,10 +9,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// ACTION_HEADER
-export declare const ACTION_HEADER = "x-marmeon-action";
-// ACTION_REDIRECT_HEADER
-export declare const ACTION_REDIRECT_HEADER = "x-marmeon-redirect";
 // AccessCheck
 export type { AccessCheck } from '@marmeon/router';
 // ActionAnswerOf
@@ -43,8 +39,6 @@ export interface AssetVersion {
     readonly value: string | null;
 }
 export declare const AssetVersion: import("@marmeon/core").Token<AssetVersion>;
-// BROWSER_ROUTES_FILE
-export declare const BROWSER_ROUTES_FILE = ".marmeon/routes.json";
 // BrowserRoute
 export interface BrowserRoute {
     readonly method: string;
@@ -188,8 +182,6 @@ export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMerg
 export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
 // ERRORS_KEY
 export declare const ERRORS_KEY = "errors";
-// ERROR_PAGE
-export declare const ERROR_PAGE = "errors/Error";
 // EXPECTS_JSON_VARY
 export { EXPECTS_JSON_VARY } from '@marmeon/router';
 // EmptyObject
@@ -222,10 +214,6 @@ export interface ExceptionRenderOptions {
     debug: boolean;
     translator?: Translator;
 }
-// FLASH_HEADER
-export declare const FLASH_HEADER = "x-marmeon-flash";
-// FLASH_WAITING_HEADER
-export declare const FLASH_WAITING_HEADER = "x-marmeon-flash-waiting";
 // FlashData
 export interface FlashData {
 }
@@ -274,8 +262,6 @@ export declare class HttpServiceProvider implements ServiceProvider {
 }
 // INTENDED_KEY
 export declare const INTENDED_KEY = "_intended_url";
-// IncomingRequest
-export declare const IncomingRequest: import("@marmeon/core").Token<Request>;
 // Input
 export type { Input } from '@marmeon/router';
 // InstantProps
@@ -303,16 +289,10 @@ export interface JsonResult<T = unknown> {
     readonly headers?: Readonly<Record<string, string>>;
     readonly flash: FlashMethod<JsonResult<T>>;
 }
-// LAYER_BACKDROP
-export declare const LAYER_BACKDROP = "layers/Backdrop";
-// LAYER_CLOSE_HEADER
-export declare const LAYER_CLOSE_HEADER = "x-marmeon-layer-close";
 // LIVE_CHANNEL
 export declare const LIVE_CHANNEL: RegExp;
 // LIVE_PATH
 export declare const LIVE_PATH = "/_marmeon/live";
-// LOCATION_HEADER
-export declare const LOCATION_HEADER = "x-marmeon-location";
 // LayerBaseRoute
 export interface LayerBaseRoute {
     readonly name: string;
@@ -391,8 +371,6 @@ export interface LiveSubscription {
     readonly only?: readonly string[];
     readonly token: string;
 }
-// MAX_LAYER_DEPTH
-export declare const MAX_LAYER_DEPTH = 10;
 // MatchKey
 export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepItemKey<T, []> : T extends {
     readonly data: readonly unknown[];
@@ -425,10 +403,6 @@ export declare const NO_REQUEST_INFO: RequestInfo;
 export type { Next } from '@marmeon/router';
 // OLD_INPUT_KEY
 export declare const OLD_INPUT_KEY = "_old_input";
-// ONCE_HEADER
-export declare const ONCE_HEADER = "x-marmeon-once";
-// ONCE_SCOPE_HEADER
-export declare const ONCE_SCOPE_HEADER = "x-marmeon-once-scope";
 // OnceContext
 export interface OnceContext {
     readonly component: string;
@@ -455,18 +429,6 @@ export interface OnceProp<T> extends PageProp<'once', T> {
 export interface OptionalProp<T> extends PageProp<'optional', T> {
     readonly resolve: () => unknown;
 }
-// PAGE_HEADER
-export declare const PAGE_HEADER = "x-marmeon";
-// PAGE_SCRIPT_ID
-export declare const PAGE_SCRIPT_ID = "marmeon-page";
-// PARTIAL_COMPONENT_HEADER
-export declare const PARTIAL_COMPONENT_HEADER = "x-marmeon-partial-component";
-// PARTIAL_DATA_HEADER
-export declare const PARTIAL_DATA_HEADER = "x-marmeon-partial-data";
-// PARTIAL_EXCEPT_HEADER
-export declare const PARTIAL_EXCEPT_HEADER = "x-marmeon-partial-except";
-// PURPOSE_HEADER
-export declare const PURPOSE_HEADER = "purpose";
 // PageObject
 export interface PageObject {
     component: string;
@@ -548,12 +510,6 @@ export type { Query } from '@marmeon/router';
 export type { QueryOf } from '@marmeon/router';
 // QueryOptions
 export type { QueryOptions } from '@marmeon/router';
-// REGION_HEADER
-export declare const REGION_HEADER = "x-marmeon-region";
-// REGION_STATUS_HEADER
-export declare const REGION_STATUS_HEADER = "x-marmeon-region-status";
-// RELOAD_HEADER
-export declare const RELOAD_HEADER = "x-marmeon-reload";
 // ReadOnly
 export declare class ReadOnly {
     #private;
@@ -629,12 +585,6 @@ export type ResolvedProp<V> = V extends PageProp<infer K, infer T> ? (K extends 
 export type ResolvedProps<P> = {
     [K in keyof P]: ResolvedProp<P[K]>;
 };
-// ResponseLifecycle
-export declare class ResponseLifecycle {
-    #private;
-    get headersSent(): boolean;
-    whenHeadersSent(): Promise<void>;
-}
 // RouteBinder
 export type { RouteBinder } from '@marmeon/router';
 // RouteBindingContext
@@ -734,8 +684,6 @@ export interface TabSyncMessage {
 }
 // TextKey
 export type { TextKey } from '@marmeon/router';
-// UPLOAD_HEADER
-export declare const UPLOAD_HEADER = "x-marmeon-upload";
 // Upload
 export interface Upload {
     readonly '~upload': true;
@@ -767,12 +715,6 @@ export declare class UrlSigner {
     signedPath(path: string, options?: SignedPathOptions): string;
     hasValidSignature(url: string | URL): boolean;
 }
-// VALIDATED_HEADER
-export declare const VALIDATED_HEADER = "x-marmeon-validated";
-// VALIDATE_HEADER
-export declare const VALIDATE_HEADER = "x-marmeon-validate";
-// VERSION_HEADER
-export declare const VERSION_HEADER = "x-marmeon-version";
 // ValidateSignature
 export declare class ValidateSignature {
     #private;
@@ -824,8 +766,6 @@ export declare function browserRoutes(routes: readonly RouteDefinition[], { incl
 export declare function cacheControl(value: string): MiddlewareClass<{}, {}>;
 // carryLive
 export declare function carryLive(from: object, to: object): void;
-// checkedChannel
-export declare function checkedChannel(channel: unknown, where: string): string;
 // compilePolicy
 export declare function compilePolicy(directives: CspDirectives): {
     pieces: readonly string[];
@@ -847,34 +787,16 @@ export { defineRoutes } from '@marmeon/router';
 export { describeAccess } from '@marmeon/router';
 // editableResponse
 export { editableResponse } from '@marmeon/router';
-// epochOf
-export declare function epochOf(scope: Pick<Container, 'has' | 'make'> | undefined): string | undefined;
 // epochOfResolver
 export declare function epochOfResolver(resolver: Resolver): string;
 // everyone
 export { everyone } from '@marmeon/router';
-// flashEntry
-export declare function flashEntry(key: string, data: unknown): FlashEntry;
-// flashOf
-export declare function flashOf(result: object): readonly FlashEntry[];
 // flashableInput
 export declare function flashableInput(input: Record<string, unknown>): Record<string, unknown>;
-// heldOnceProps
-export declare function heldOnceProps(request: Request, current: string | undefined): ReadonlySet<string>;
 // httpSolutions
 export declare const httpSolutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
 // isActionRequest
 export declare function isActionRequest(request: Request): boolean;
-// isCloseLayerResult
-export declare function isCloseLayerResult(value: unknown): value is CloseLayerResult;
-// isIslandResult
-export declare function isIslandResult(value: unknown): value is IslandResult;
-// isJsonResult
-export declare function isJsonResult(value: unknown): value is JsonResult;
-// isLayerResult
-export declare function isLayerResult(value: unknown): value is LayerResult;
-// isLiveChannel
-export declare function isLiveChannel(channel: unknown): channel is string;
 // isLiveValidation
 export { isLiveValidation } from '@marmeon/router';
 // isLocalPath
@@ -883,22 +805,14 @@ export declare function isLocalPath(value: unknown): value is string;
 export declare function isPageObject(value: unknown): value is PageObject;
 // isPrefetch
 export declare function isPrefetch(request: Request): boolean;
-// isRedirectResult
-export declare function isRedirectResult(value: unknown): value is RedirectResult;
-// isViewResult
-export declare function isViewResult(value: unknown): value is ViewResult;
 // island
 export declare function island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V>;
 // json
 export declare function json<T>(data: T, status?: number, headers?: Readonly<Record<string, string>>): JsonResult<T>;
 // jsonResponse
 export declare function jsonResponse(result: JsonResult): Response;
-// liveOf
-export declare function liveOf(result: object): readonly LiveDeclaration[];
 // liveValidationFields
 export { liveValidationFields } from '@marmeon/router';
-// matchesRoutePatterns
-export declare function matchesRoutePatterns(name: string, patterns: readonly string[]): boolean;
 // merge
 export declare function merge<V>(value: V): MergeProp<Unlazy<V>, 'merge'>;
 // mergeOf
@@ -912,28 +826,14 @@ export declare function once<R>(resolve: () => R & CheckOnceValue<Awaited<R>>, o
 export declare function optional<R>(resolve: () => R): OptionalProp<Awaited<R>>;
 // ownResponse
 export { ownResponse } from '@marmeon/router';
-// pageName
-export declare function pageName(path: string): string | undefined;
-// partialReloadOf
-export declare function partialReloadOf(request: Request, component: string): PartialReload | undefined;
 // propKind
 export declare function propKind(value: unknown): PropKind | undefined;
-// propOrigins
-export declare function propOrigins(props: Readonly<Record<string, unknown>>, shared: SharedData | undefined, sent: readonly string[]): PropOrigins;
 // regionOf
 export declare function regionOf(request: Request): RegionKind | undefined;
-// resolvePageProps
-export declare function resolvePageProps(props: Readonly<Record<string, unknown>>, shared: SharedData | undefined, partial: PartialReload | undefined, once?: OnceContext): Promise<ResolvedPage>;
 // resolveProp
 export declare function resolveProp(value: unknown): Promise<unknown>;
-// scriptJson
-export declare function scriptJson(value: unknown): string;
-// serializedFlash
-export declare function serializedFlash(entries: readonly FlashEntry[]): FlashMessage[];
 // signed
 export declare function signed(): typeof ValidateSignature;
-// signedLive
-export declare function signedLive(declarations: readonly LiveDeclaration[], signer: () => LiveSigner): Promise<LiveSubscription[] | undefined>;
 // staticView
 export declare function staticView(action: unknown): string | undefined;
 // toLayer
@@ -949,10 +849,6 @@ export { translatable } from '@marmeon/router';
 export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status?: number, headers?: Readonly<Record<string, string>>): PageResult<TProps, V>;
 // withLiveMethod
 export declare function withLiveMethod<R extends object>(result: R): R;
-// writeAppBrowserRoutes
-export declare function writeAppBrowserRoutes(app: Application): boolean;
-// writeBrowserRoutes
-export declare function writeBrowserRoutes(root: string, routes: BrowserRoutes): boolean;
 ```
 
 ### Referenced, not exported

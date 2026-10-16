@@ -5,10 +5,8 @@ import {
   ClientHistory,
   Controller,
   HttpServiceProvider,
-  LOCATION_HEADER,
   once,
   PageSession,
-  RELOAD_HEADER,
   SharedData,
   staticView,
   view,
@@ -16,6 +14,7 @@ import {
   type Next,
   type PageObject,
 } from '@marmeon/http';
+import { LOCATION_HEADER, RELOAD_HEADER } from '@marmeon/http/internal';
 import { Router } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';

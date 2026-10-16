@@ -1,7 +1,7 @@
 import { afterCommit, outsideTransaction, Redactor, token, type Application, type Logger } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
 import { messageBase, trace } from '@marmeon/core/internal';
-import { checkedChannel } from '@marmeon/http';
+import { checkedChannel } from '@marmeon/http/internal';
 import type { LiveBackend } from './backend.ts';
 import type { BroadcastRecorder } from './recorder.ts';
 
