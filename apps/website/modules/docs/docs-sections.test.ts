@@ -1,17 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { ENTRIES, fileOf, repo, results, SECTIONS } from './docs.test-support.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 let app: TestApp;
-beforeEach(async () => {
+beforeAll(async () => {
   app = await createTestApp(application);
 }, 30_000);
+afterAll(() => app?.close());
 
 describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
   it('lists the 77 pages in ten sections, in this order', () => {
@@ -71,7 +78,7 @@ describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
 
   it('the start page links the three first steps to existing pages and shows the terminal without a copy button', async () => {
     const docs = app.make(DocsRepository);
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const html = (await ssr.get('/docs', { headers: { accept: 'text/html' } }).assertOk()).body;
     for (const slug of ['installation', 'structure', 'routing']) {
       expect(docs.doc(slug), slug).toBeDefined();

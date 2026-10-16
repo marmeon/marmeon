@@ -1,9 +1,15 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { DocsRepository } from '../docs/DocsRepository.ts';
 import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { expectOriginFromAppUrl } from './origin.test-support.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 const html = { headers: { accept: 'text/html' } };
 const decode = (value: string) => value.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
@@ -22,7 +28,7 @@ const descriptionOf = (body: string) => tags(body, 'meta', 'name', 'description'
 
 let app: TestApp;
 beforeAll(async () => {
-  app = await createTestApp(application, { ssr: true });
+  app = await createTestApp(application, { ssr: true, ssrServer: server });
 }, SSR_TEST_TIMEOUT);
 afterAll(() => app?.close());
 
@@ -83,8 +89,8 @@ describe('the head of a page', () => {
   }, SSR_TEST_TIMEOUT);
 
   it('takes the origin from APP_URL, not from the request', async () => {
-    await expectOriginFromAppUrl('/docs/routing', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/docs/routing', html.headers, true);
-    await expectOriginFromAppUrl('/', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/', html.headers, true);
+    await expectOriginFromAppUrl('/docs/routing', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/docs/routing', html.headers, server);
+    await expectOriginFromAppUrl('/', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/', html.headers, server);
   }, SSR_TEST_TIMEOUT);
 
   it('shares the site root with a Visit', async () => {

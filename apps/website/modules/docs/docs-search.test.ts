@@ -1,16 +1,23 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { SearchController } from './controllers/SearchController.ts';
 import { results } from './docs.test-support.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 let app: TestApp;
-beforeEach(async () => {
+beforeAll(async () => {
   app = await createTestApp(application);
 }, 30_000);
+afterAll(() => app?.close());
 
-// Each test boots the app, some with a Vite server: slow on a busy machine.
+// Some tests boot apps of their own (server-rendered, throttled): slow on a busy machine.
 describe('the search (a server route)', { timeout: 30_000 }, () => {
   it('finds onOneServer() on the scheduling page and "missed runs" under its heading — anchors into the section', async () => {
     const hits = results(await app.navigating().get('/docs/search?q=onOneServer').assertOk().assertPage('docs/Search'));
@@ -52,7 +59,7 @@ describe('the search (a server route)', { timeout: 30_000 }, () => {
   });
 
   it('a document of the search URL has no dialog — the page with its heading and submit button', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const body = (await ssr.get('/docs/search?q=routing', { headers: { accept: 'text/html' } }).assertOk()).body;
     expect(body).not.toContain('<dialog');
     expect(body).toContain('<h1');
@@ -70,7 +77,7 @@ describe('the search (a server route)', { timeout: 30_000 }, () => {
   });
 
   it('renders the hits grouped by page, with the page’s section, and no hit block without a query', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const document = { headers: { accept: 'text/html' } };
     const found = (await ssr.get('/docs/search?q=onOneServer', document).assertOk()).body;
     expect(found).toMatch(/<section class="search-group" aria-label="Task Scheduling"><h2><a [^>]*href="\/docs\/scheduling"[^>]*>Task Scheduling<\/a><span class="visually-hidden"> – <\/span><span class="search-section">Digging Deeper<\/span><\/h2>/);

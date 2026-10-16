@@ -1,10 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { SNIPPETS } from './snippets.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 const repo = resolve(import.meta.dirname, '../../../..');
 const document = { headers: { accept: 'text/html' } };
@@ -12,7 +18,7 @@ const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.j
 
 let app: TestApp;
 beforeAll(async () => {
-  app = await createTestApp(application, { ssr: true });
+  app = await createTestApp(application, { ssr: true, ssrServer: server });
 }, 60_000);
 afterAll(() => app?.close());
 

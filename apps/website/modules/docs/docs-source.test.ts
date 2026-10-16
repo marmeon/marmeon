@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
@@ -9,6 +9,12 @@ import { expectOriginFromAppUrl } from '../site/origin.test-support.ts';
 import { DocsError, DocsRepository } from './DocsRepository.ts';
 import { markdownParser } from './markdown.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 const repo = resolve(import.meta.dirname, '../../../..');
 const ENTRIES = docsConfig.sections.flatMap((section) => section.pages);
@@ -63,7 +69,7 @@ describe('/docs/<slug>.md', () => {
   }, 60_000);
 
   it('is named by every HTML page of the docs', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const html = (await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk()).body;
     const tag = /<link\b[^>]*rel="alternate"[^>]*>/.exec(html)?.[0];
     expect(tag).toContain('type="text/markdown"');
@@ -106,7 +112,7 @@ describe('the "View as Markdown" link (server-rendered)', () => {
   const link = (body: string) => [...body.matchAll(/<a [^>]*class="doc-source"[^>]*>[^<]*<\/a>/g)].map((match) => match[0]);
 
   it('names the page\'s Markdown on a docs page, as a plain link that opens the Markdown', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const links = link((await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered()).body);
     expect(links).toHaveLength(1);
     expect(links[0]).toMatch(/href="\/docs\/routing\.md"/);

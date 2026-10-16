@@ -1,5 +1,5 @@
-import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { layout } from '../../bootstrap/layouts.ts';
@@ -8,13 +8,19 @@ import { SiteLayout } from '../../layouts/SiteLayout.tsx';
 import { absolute, createPageviewCounter, decide, pageOf } from './components/Pageviews.tsx';
 import { fathomScript } from './fathom.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 const document = { headers: { accept: 'text/html' } };
 const TAG = '<script src="https://cdn.usefathom.com/script.js" data-auto="false" data-site="IBAFAHEM" defer></script>';
 const DEFAULT_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'";
 
 async function visit(env: Record<string, string | undefined>, path: string) {
   // A key of its own: .env.test's is public, and production refuses it.
-  const app = await createTestApp(application, { ssr: true, env: { APP_KEY: `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`, ...env } });
+  const app = await createTestApp(application, { ssr: true, ssrServer: server, env: { APP_KEY: `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`, ...env } });
   try {
     const response = await app.get(path, document);
     return { body: response.body, policy: response.headers.get('content-security-policy') };

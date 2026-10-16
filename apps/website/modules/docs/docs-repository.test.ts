@@ -1,14 +1,20 @@
 import { appendFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
 import { DocsError, DocsRepository } from './DocsRepository.ts';
 import { ciTimeout, ENTRIES, fileOf, repo } from './docs.test-support.ts';
 import { PENDING_MARKER } from './markdown.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 describe('the repository and docs.config.ts', () => {
   /** A copy of the repository's pages — the real ones are never touched. */
@@ -87,7 +93,7 @@ describe('the repository and docs.config.ts', () => {
     const dir = copy();
     try {
       writeFileSync(join(dir, 'docs/middleware.md'), `# Middleware\n${PENDING_MARKER}\n\n> [!NOTE]\n> This page is being written.\n`);
-      const ssr = await createTestApp(application, { ssr: true, env: { DOCS_SOURCE: dir } });
+      const ssr = await createTestApp(application, { ssr: true, ssrServer: server, env: { DOCS_SOURCE: dir } });
       const { body } = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
       expect(body).toMatch(/>Middleware<span class="draft">draft<\/span>/);
       expect(body).not.toMatch(/>Routing<span class="draft">/);
@@ -112,7 +118,7 @@ describe('the repository and docs.config.ts', () => {
     const dir = copy();
     try {
       appendFileSync(join(dir, 'docs/routing.md'), "\n<script>alert('page')</script>\n\nInline <img src=x onerror=alert(1)> too.\n");
-      const ssr = await createTestApp(application, { ssr: true, env: { DOCS_SOURCE: dir } });
+      const ssr = await createTestApp(application, { ssr: true, ssrServer: server, env: { DOCS_SOURCE: dir } });
       const response = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
       const content = response.body.slice(response.body.indexOf('<div id="app">'));
       expect(content).toContain('&lt;script&gt;alert(&#x27;page&#x27;)&lt;/script&gt;');

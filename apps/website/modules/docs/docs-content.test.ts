@@ -1,14 +1,21 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 describe('the content of a page, rendered on the server', { timeout: 30_000 }, () => {
   const document = { headers: { accept: 'text/html' } };
   let ssr: TestApp;
-  beforeEach(async () => {
-    ssr = await createTestApp(application, { ssr: true });
+  beforeAll(async () => {
+    ssr = await createTestApp(application, { ssr: true, ssrServer: server });
   }, 30_000);
+  afterAll(() => ssr?.close());
 
   it('renders a callout as aside.callout with role="note" and its title', async () => {
     const html = (await ssr.get('/docs/routing', document).assertOk()).body;

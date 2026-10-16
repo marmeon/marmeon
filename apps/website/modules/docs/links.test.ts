@@ -1,13 +1,19 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
 import { SITE_CSP } from '../site/SiteServiceProvider.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 /**
  * The link check (instead of checking a static export): every page — the landing, the docs' start page and the docs — renders on the server,
@@ -16,7 +22,7 @@ import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
  */
 let app: TestApp;
 beforeAll(async () => {
-  app = await createTestApp(application, { ssr: true });
+  app = await createTestApp(application, { ssr: true, ssrServer: server });
 }, 60_000);
 afterAll(() => app?.close());
 
