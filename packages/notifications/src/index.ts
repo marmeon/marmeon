@@ -1,8 +1,9 @@
-import { Application, Clock, defineConfig, env, Translator, type ConfigOf, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, Translator, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { fillPlaceholders } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
 import { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
+import { NotificationConfig } from './config.ts';
 import { Inbox } from './inbox.ts';
 import { SendQueuedNotification } from './job.ts';
 import type { NotificationClass, RecipientResolvers } from './notification.ts';
@@ -38,20 +39,19 @@ export type {
   RecipientTypeOf,
   SendResult,
 } from './notification.ts';
-export { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
-export type { ChannelFactory, Delivery, NotificationChannel, QueueMail } from './channels.ts';
-export { checkSend, NotificationChannelError, NotificationDeliverer, Notifications, NotificationSender } from './notifications.ts';
-export type { DelivererDependencies, DeliveryOutcome, PendingDelivery, QueueNotification, SendData, SendOptions } from './notifications.ts';
-export { checkNotificationClass, NotificationError, NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
+export { NotificationConfig } from './config.ts';
+export { NotificationChannels } from './channels.ts';
+export type { ChannelFactory, Delivery, NotificationChannel } from './channels.ts';
+export { NotificationChannelError, NotificationDeliverer, Notifications } from './notifications.ts';
+export type { DelivererDependencies, DeliveryOutcome, PendingDelivery, SendData, SendOptions } from './notifications.ts';
+export { NotificationError, NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
 export { Inbox, notificationData } from './inbox.ts';
-export { isNotificationId, NOTIFICATIONS_TABLE, NotificationStore } from './store.ts';
+export { NotificationStore } from './store.ts';
 export type { StoredNotification } from './store.ts';
 export { SendQueuedNotification } from './job.ts';
 export type { QueuedNotificationPayload } from './job.ts';
-export { NotificationFake } from './fake.ts';
-export type { NotificationMatch, SentNotification } from './fake.ts';
-export { MakeNotificationsTableCommand, NOTIFICATIONS_MIGRATION, PruneNotificationsCommand } from './commands.ts';
-export { describeIssues, NotificationDataError } from './validate.ts';
+export { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
+export { NotificationDataError } from './validate.ts';
 
 declare module '@marmeon/core' {
   interface ModuleDefinition {
@@ -61,15 +61,6 @@ declare module '@marmeon/core' {
     readonly recipients?: RecipientResolvers;
   }
 }
-
-/** Notifications: `NOTIFICATIONS_CONNECTION` (default `default`), the database connection of the `notifications` table. */
-export const NotificationConfig = defineConfig('notifications', {
-  env: env({
-    NOTIFICATIONS_CONNECTION: env.string().default('default'),
-  }),
-  resolve: (e) => ({ connection: e.NOTIFICATIONS_CONNECTION }),
-});
-export type NotificationConfig = ConfigOf<typeof NotificationConfig>;
 
 /**
  * The connection the `notifications` table belongs on — for the migration `marmeon make:notifications-table` writes

@@ -1,3 +1,7 @@
+/**
+ * Helpers for an app's tests: the code of an authenticator app (`docs/two-factor-authentication.md#testing`) and a software
+ * passkey authenticator (`docs/passkeys.md#testing`). `actingAs()` of `@marmeon/testing` uses the session and token helpers.
+ */
 import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { cbor } from './cbor.ts';
 import { Clock, type Container } from '@marmeon/core';

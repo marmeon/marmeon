@@ -1,5 +1,6 @@
 import { ValidationError } from '@marmeon/router';
-import { rules as r, VALIDATION_TEXTS } from '@marmeon/validation';
+import { rules as r } from '@marmeon/validation';
+import { VALIDATION_TEXTS } from '@marmeon/validation/internal';
 import { describe, expect, it } from 'vitest';
 import { Catalog } from './catalog.ts';
 import frameworkDe from './lang/de.ts';

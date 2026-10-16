@@ -7,22 +7,21 @@ import { QueueFake } from '@marmeon/queue/testing';
 import { Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import {
-  ArrayTransport,
   calendarEvent,
   fromHtml,
   html,
   MailError,
   Mailer,
-  MailFake,
-  MailPreviews,
   MailServiceProvider,
   MailTransport,
-  SendQueuedMail,
-  TransportMailer,
   type Mailable,
   type MailMessage,
-  type QueuedMailPayload,
 } from './index.ts';
+import { ArrayTransport } from './transports.ts';
+import { MailFake } from './fake.ts';
+import { MailPreviews } from './preview.ts';
+import { SendQueuedMail, type QueuedMailPayload } from './queued.ts';
+import { TransportMailer } from './mailer.ts';
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
 

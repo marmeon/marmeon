@@ -2,7 +2,8 @@ import { Clock, createApplication, Logger, type Application, type ModuleDefiniti
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, Schema, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
-import { Mailer, MailFake, MailServiceProvider, type Mailable } from '@marmeon/mail';
+import { Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
+import { MailFake } from '@marmeon/mail/testing';
 import { Queue, QueueServiceProvider } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import { QueueFake } from '@marmeon/queue/testing';

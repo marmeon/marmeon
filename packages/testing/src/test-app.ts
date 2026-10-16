@@ -34,8 +34,8 @@ import { createHttpKernel, type HttpKernel } from '@marmeon/server';
 import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/internal';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@marmeon/auth';
-import type { MailFake } from '@marmeon/mail';
-import type { NotificationFake } from '@marmeon/notifications';
+import type { MailFake } from '@marmeon/mail/testing';
+import type { NotificationFake } from '@marmeon/notifications/testing';
 import type { BroadcastRecorder, LiveStreamReader } from '@marmeon/live';
 import type { QueueFake } from '@marmeon/queue/testing';
 import type { StorageFake } from '@marmeon/storage/testing';
@@ -378,9 +378,9 @@ async function importDatabase(): Promise<DatabaseModule | undefined> {
 }
 
 /** @marmeon/mail is an optional peer, like the session. */
-async function importMail(): Promise<typeof import('@marmeon/mail') | undefined> {
+async function importMail(): Promise<(typeof import('@marmeon/mail') & typeof import('@marmeon/mail/testing')) | undefined> {
   try {
-    return await import('@marmeon/mail');
+    return { ...(await import('@marmeon/mail')), ...(await import('@marmeon/mail/testing')) };
   } catch {
     return undefined;
   }
@@ -425,9 +425,9 @@ async function importLive(): Promise<LiveModule | undefined> {
 }
 
 /** @marmeon/notifications is an optional peer, like the session. */
-async function importNotifications(): Promise<typeof import('@marmeon/notifications') | undefined> {
+async function importNotifications(): Promise<(typeof import('@marmeon/notifications') & typeof import('@marmeon/notifications/testing')) | undefined> {
   try {
-    return await import('@marmeon/notifications');
+    return { ...(await import('@marmeon/notifications')), ...(await import('@marmeon/notifications/testing')) };
   } catch {
     return undefined;
   }
@@ -443,9 +443,9 @@ async function importScheduler(): Promise<(typeof import('@marmeon/scheduler') &
 }
 
 /** @marmeon/auth is an optional peer, like the session. */
-async function importAuth(): Promise<typeof import('@marmeon/auth') | undefined> {
+async function importAuth(): Promise<typeof import('@marmeon/auth/testing') | undefined> {
   try {
-    return await import('@marmeon/auth');
+    return await import('@marmeon/auth/testing');
   } catch {
     return undefined;
   }

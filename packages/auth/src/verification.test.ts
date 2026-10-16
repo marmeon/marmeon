@@ -4,7 +4,8 @@ import { generateKey } from '@marmeon/encryption';
 import { UrlSigner } from '@marmeon/http';
 import { Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
-import { authenticate, EmailVerification, emailHash, verified } from './index.ts';
+import { authenticate, EmailVerification, verified } from './index.ts';
+import { emailHash } from './verification.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const router = new Router().load(

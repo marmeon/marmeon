@@ -4,7 +4,8 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AuthConfig, AuthServiceProvider, PRIVATE_REGISTRATION_OFF_WARNING } from './index.ts';
+import { AuthConfig, AuthServiceProvider } from './index.ts';
+import { PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 
 /** Boots auth with `env` and returns the app and what was logged as a warning about private registration. */
 async function boot(env: Record<string, string>): Promise<{ app: Application; warnings: string[] }> {

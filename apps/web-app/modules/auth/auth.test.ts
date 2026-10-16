@@ -3,7 +3,8 @@ import { ConsoleLogger, defineModule, Logger, type LogContext } from '@marmeon/c
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Connections } from '@marmeon/database';
 import { Database, secret } from '@marmeon/database';
-import { MailFake, Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
+import { Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
+import { MailFake } from '@marmeon/mail/testing';
 import { createHttpKernel } from '@marmeon/server';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { UserFactory } from './factories/UserFactory.ts';

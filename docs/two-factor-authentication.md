@@ -359,7 +359,7 @@ factor when the account has one, so a page behind `twoFactor()` opens for it, an
 one up. To test the code step, sign in for real and compute the code the authenticator would show with `twoFactorCode()`:
 
 ```ts title="modules/auth/two-factor.test.ts"
-import { twoFactorCode } from '@marmeon/auth';
+import { twoFactorCode } from '@marmeon/auth/testing';
 
 const setup = (await app.withCookie('marmeon_session', cookie).navigating().get('/settings/two-factor')).page()!.props.setup;
 await app.withCookie('marmeon_session', cookie).post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } });

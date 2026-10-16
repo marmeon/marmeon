@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Catalog, createMessageLoader, createTranslate, formatMessage, langFileOf, negotiateLocale, parseMessage, supportedLocale } from './messages.ts';
+import { formatMessage, parseMessage } from './format.ts';
+import { langFileOf } from './loader.ts';
+import { negotiateLocale, supportedLocale } from './locale.ts';
+import { Catalog, createMessageLoader, createTranslate } from './messages.ts';
 
 describe('formatMessage (ICU subset)', () => {
   it('fills placeholders, formats numbers and dates for the locale', () => {

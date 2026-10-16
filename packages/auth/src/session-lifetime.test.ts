@@ -5,7 +5,8 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Auth, AUTH_SESSION_KEYS, AuthConfig, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { Auth, AuthConfig, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { AUTH_SESSION_KEYS } from './auth.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };

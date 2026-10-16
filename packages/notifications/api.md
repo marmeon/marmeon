@@ -32,12 +32,6 @@ export type CheckNotification<N, T extends RecipientType> = N extends {
 }) ? CheckClass<N, T> : {
     readonly notification: 'A notification class needs static notification = "module.what-happened" (a stable name, never the class name), static schema and via(recipient)';
 };
-// DatabaseChannel
-export declare class DatabaseChannel implements NotificationChannel {
-    #private;
-    constructor(store: NotificationStore);
-    deliver(delivery: Delivery): Promise<void>;
-}
 // DatabaseData
 export type DatabaseData<N extends {
     readonly database?: StandardSchemaV1;
@@ -94,12 +88,6 @@ export declare class Inbox {
     markAllRead(recipient: RecipientRef): Promise<number>;
     deleteAll(recipient: RecipientRef): Promise<number>;
 }
-// MailChannel
-export declare class MailChannel implements NotificationChannel {
-    #private;
-    constructor(queue: QueueMail);
-    deliver(delivery: Delivery): Promise<void>;
-}
 // MakeNotificationsTableCommand
 export declare class MakeNotificationsTableCommand {
     static command: string;
@@ -113,10 +101,6 @@ export declare class MakeNotificationsTableCommand {
     };
     handle(input: CommandInput): Promise<number>;
 }
-// NOTIFICATIONS_MIGRATION
-export declare const NOTIFICATIONS_MIGRATION: import("node:url").URL;
-// NOTIFICATIONS_TABLE
-export declare const NOTIFICATIONS_TABLE = "notifications";
 // Notification
 export interface Notification<T extends RecipientType = RecipientType> {
     via(recipient: NotificationRecipients[T], data: any): readonly NotificationChannelName[] | Promise<readonly NotificationChannelName[]>;
@@ -175,22 +159,6 @@ export declare class NotificationDeliverer {
 export declare class NotificationError extends Error {
     name: string;
 }
-// NotificationFake
-export declare class NotificationFake implements Notifications {
-    #private;
-    constructor(container: Container);
-    send(recipient: Recipients, notification: unknown, data: unknown, options?: SendOptions): Promise<any>;
-    sendNow(recipient: Recipients, notification: unknown, data: unknown): Promise<any>;
-    sent<N extends NotificationClass>(notification: N, recipient?: RecipientRef, match?: NotificationMatch<N>): SentNotification<N>[];
-    assertSent<N extends NotificationClass>(recipient: RecipientRef, notification: N, match?: NotificationMatch<N>): this;
-    assertSentTimes<N extends NotificationClass>(recipient: RecipientRef, notification: N, times: number): this;
-    assertNotSent<N extends NotificationClass>(recipient: RecipientRef, notification: N, match?: NotificationMatch<N>): this;
-    assertNothingSent(): this;
-    deliver(): Promise<{
-        readonly id: string;
-        readonly outcome: DeliveryOutcome;
-    }[]>;
-}
 // NotificationInput
 export type NotificationInput<N extends {
     readonly schema: StandardSchemaV1;
@@ -204,8 +172,6 @@ export interface NotificationMail {
     envelope(): unknown;
     content(): unknown;
 }
-// NotificationMatch
-export type NotificationMatch<N extends NotificationClass> = Partial<NotificationData<N>> | ((data: NotificationData<N>, sent: SentNotification<N>) => boolean);
 // NotificationQueueOptions
 export interface NotificationQueueOptions {
     readonly queue?: string;
@@ -224,13 +190,6 @@ export declare class NotificationRegistry {
     get(name: string): NotificationClass | undefined;
     has(notification: NotificationClass): boolean;
     all(): NotificationClass[];
-}
-// NotificationSender
-export declare class NotificationSender implements Notifications {
-    #private;
-    constructor(container: Resolver, registry: NotificationRegistry, recipients: RecipientRegistry, deliverer: () => NotificationDeliverer, dispatch: QueueNotification, app?: Application);
-    send(recipient: Recipients, notification: unknown, data: unknown, options?: SendOptions): Promise<any>;
-    sendNow(recipient: Recipients, notification: unknown, data: unknown): Promise<any>;
 }
 // NotificationServiceProvider
 export declare class NotificationServiceProvider implements ServiceProvider {
@@ -314,13 +273,6 @@ export declare class PruneNotificationsCommand {
     constructor(store: NotificationStore, clock: Clock);
     handle({ options, output }: CommandInput): Promise<number>;
 }
-// QueueMail
-export type QueueMail = (mail: NotificationMail, options: {
-    readonly queue?: string;
-    readonly connection?: string;
-}) => Promise<unknown>;
-// QueueNotification
-export type QueueNotification = (pending: PendingDelivery, options: SendOptions) => Promise<void>;
 // QueuedNotificationPayload
 export interface QueuedNotificationPayload {
     id: string;
@@ -391,16 +343,6 @@ export declare class SendQueuedNotification {
 }
 // SendResult
 export type SendResult<R> = R extends readonly unknown[] ? string[] : string;
-// SentNotification
-export interface SentNotification<N extends NotificationClass = NotificationClass> {
-    readonly notification: N;
-    readonly recipient: AnyRecipient;
-    readonly data: NotificationData<N>;
-    readonly id: string;
-    readonly now: boolean;
-    readonly options: SendOptions;
-    readonly inTransaction: boolean;
-}
 // StoredNotification
 export interface StoredNotification {
     readonly id: string;
@@ -409,14 +351,6 @@ export interface StoredNotification {
     readonly readAt: string | null;
     readonly createdAt: string;
 }
-// checkNotificationClass
-export declare function checkNotificationClass(notification: NotificationClass, source: string): string;
-// checkSend
-export declare function checkSend(registry: NotificationRegistry, recipients: RecipientRegistry, notification: NotificationClass, list: readonly AnyRecipient[], data: unknown): Promise<unknown>;
-// describeIssues
-export declare function describeIssues(issues: readonly Issue[]): string;
-// isNotificationId
-export declare function isNotificationId(id: unknown): id is string;
 // notificationData
 export declare function notificationData<N extends NotificationStatics & {
     readonly database: NonNullable<NotificationStatics['database']>;
@@ -498,6 +432,215 @@ interface ModuleDefinition {
     readonly notifications?: readonly NotificationClass[];
     readonly recipients?: RecipientResolvers;
 }
+```
+
+## `@marmeon/notifications/testing`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// NotificationFake
+export declare class NotificationFake implements Notifications {
+    #private;
+    constructor(container: Container);
+    send(recipient: Recipients, notification: unknown, data: unknown, options?: SendOptions): Promise<any>;
+    sendNow(recipient: Recipients, notification: unknown, data: unknown): Promise<any>;
+    sent<N extends NotificationClass>(notification: N, recipient?: RecipientRef, match?: NotificationMatch<N>): SentNotification<N>[];
+    assertSent<N extends NotificationClass>(recipient: RecipientRef, notification: N, match?: NotificationMatch<N>): this;
+    assertSentTimes<N extends NotificationClass>(recipient: RecipientRef, notification: N, times: number): this;
+    assertNotSent<N extends NotificationClass>(recipient: RecipientRef, notification: N, match?: NotificationMatch<N>): this;
+    assertNothingSent(): this;
+    deliver(): Promise<{
+        readonly id: string;
+        readonly outcome: DeliveryOutcome;
+    }[]>;
+}
+// NotificationMatch
+export type NotificationMatch<N extends NotificationClass> = Partial<NotificationData<N>> | ((data: NotificationData<N>, sent: SentNotification<N>) => boolean);
+// SentNotification
+export interface SentNotification<N extends NotificationClass = NotificationClass> {
+    readonly notification: N;
+    readonly recipient: AnyRecipient;
+    readonly data: NotificationData<N>;
+    readonly id: string;
+    readonly now: boolean;
+    readonly options: SendOptions;
+    readonly inTransaction: boolean;
+}
+```
+
+### Referenced, not exported
+
+```ts
+// AnyRecipient
+export interface AnyRecipient {
+    readonly type: string;
+    readonly id: string | number;
+}
+// ChannelsOf
+export type ChannelsOf<N> = ViaOf<N>['channels'] extends readonly (infer C)[] ? C : never;
+// CheckChannels
+type CheckChannels<N> = string extends ChannelsOf<N> ? {
+    readonly "via() must say which channels — return them as const: return ['database', 'mail'] as const": ChannelsOf<N>;
+} : [Exclude<ChannelsOf<N>, NotificationChannelName>] extends [never] ? [MissingChannelMethods<N>] extends [never] ? CheckDatabase<N> : {
+    readonly 'via() returns a channel whose method the notification lacks — mail needs toMail(recipient, data, t), database needs toDatabase(data)': MissingChannelMethods<N>;
+} : {
+    readonly 'via() returns a channel this app does not have': {
+        readonly unknown: Exclude<ChannelsOf<N>, NotificationChannelName>;
+        readonly known: NotificationChannelName;
+    };
+};
+// CheckClass
+type CheckClass<N, T extends RecipientType> = IsJson<NotificationInput<N & {
+    schema: StandardSchemaV1;
+}>> extends false ? {
+    readonly 'The static schema of a notification describes JSON (strings, numbers, booleans, null, arrays, plain objects) — its data is queued: pass IDs, not records, Dates or Maps': NotificationInput<N & {
+        schema: StandardSchemaV1;
+    }>;
+} : [NotificationRecipients[T]] extends [ViaOf<N>['recipient']] ? CheckChannels<N> : {
+    readonly 'via() of this notification takes another kind of recipient than it is sent to': {
+        readonly sentTo: T;
+        readonly via: ViaOf<N>['recipient'];
+    };
+};
+// CheckDatabase
+type CheckDatabase<N> = 'database' extends ChannelsOf<N> ? N extends {
+    readonly database: StandardSchemaV1;
+} ? [Exclude<keyof DatabaseReturn<N>, keyof DatabaseInput<N>>] extends [never] ? DatabaseReturn<N> extends DatabaseInput<N> ? unknown : {
+    readonly 'toDatabase() returns other values than static database describes': {
+        readonly returns: DatabaseReturn<N>;
+        readonly database: DatabaseInput<N>;
+    };
+} : {
+    readonly 'toDatabase() returns fields that static database does not have — they would not be stored': Exclude<keyof DatabaseReturn<N>, keyof DatabaseInput<N>>;
+} : {
+    readonly database: 'A notification through the database channel needs static database — the schema of what toDatabase() returns (the inbox reads it back)';
+} : unknown;
+// CheckNotification
+export type CheckNotification<N, T extends RecipientType> = N extends {
+    readonly notification: string;
+    readonly schema: StandardSchemaV1;
+} & (new (...args: any[]) => {
+    via(...args: any[]): unknown;
+}) ? CheckClass<N, T> : {
+    readonly notification: 'A notification class needs static notification = "module.what-happened" (a stable name, never the class name), static schema and via(recipient)';
+};
+// DatabaseInput
+export type DatabaseInput<N extends {
+    readonly database?: StandardSchemaV1;
+}> = SchemaInput<N['database']>;
+// DatabaseReturn
+type DatabaseReturn<N> = InstanceOf<N> extends {
+    toDatabase(...args: any[]): infer R;
+} ? Awaited<R> : never;
+// DeliveryOutcome
+export type DeliveryOutcome = 'delivered' | 'gone' | 'delivered-before';
+// InstanceOf
+type InstanceOf<N> = N extends new (...args: any[]) => infer I ? I : never;
+// MissingChannelMethods
+type MissingChannelMethods<N> = {
+    [C in ChannelsOf<N> & NotificationChannelName]: InstanceOf<N> extends NotificationChannelMap[C] ? never : C;
+}[ChannelsOf<N> & NotificationChannelName];
+// NotificationChannelMap
+export interface NotificationChannelMap {
+    mail: {
+        toMail(recipient: any, data: any, t: Translator): NotificationMail | Promise<NotificationMail>;
+    };
+    database: {
+        toDatabase(data: any, recipient: any): unknown;
+    };
+}
+// NotificationChannelName
+export type NotificationChannelName = keyof NotificationChannelMap & string;
+// NotificationClass
+export type NotificationClass = NotificationStatics & (new (...args: any[]) => NotificationInstance);
+// NotificationData
+export type NotificationData<N extends {
+    readonly schema: StandardSchemaV1;
+}> = SchemaOutput<N['schema']>;
+// NotificationInput
+export type NotificationInput<N extends {
+    readonly schema: StandardSchemaV1;
+}> = SchemaInput<N['schema']>;
+// NotificationInstance
+export interface NotificationInstance {
+    via(recipient: any, data: any): readonly string[] | Promise<readonly string[]>;
+}
+// NotificationMail
+export interface NotificationMail {
+    envelope(): unknown;
+    content(): unknown;
+}
+// NotificationQueueOptions
+export interface NotificationQueueOptions {
+    readonly queue?: string;
+    readonly connection?: string;
+    readonly delay?: number | Duration;
+    readonly tries?: number;
+    readonly backoff?: number | readonly number[];
+}
+// NotificationRecipients
+export interface NotificationRecipients {
+}
+// NotificationStatics
+export interface NotificationStatics {
+    readonly notification: string;
+    readonly schema: StandardSchemaV1;
+    readonly database?: StandardSchemaV1;
+    readonly queue?: NotificationQueueOptions;
+}
+// Notifications
+export interface Notifications {
+    send<const R extends Recipients, N extends abstract new (...args: any[]) => object>(recipient: R, notification: N & CheckNotification<N, RecipientTypeOf<R>>, data: SendData<N>, options?: SendOptions): Promise<SendResult<R>>;
+    sendNow<const R extends Recipients, N extends abstract new (...args: any[]) => object>(recipient: R, notification: N & CheckNotification<N, RecipientTypeOf<R>>, data: SendData<N>): Promise<SendResult<R>>;
+}
+export declare const Notifications: import("@marmeon/core").Token<Notifications>;
+// RecipientId
+export type RecipientId<T extends RecipientType> = NotificationRecipients[T] extends {
+    readonly id: infer I extends string | number;
+} ? I : string | number;
+// RecipientRef
+export type RecipientRef<T extends RecipientType = RecipientType> = {
+    [K in T]: {
+        readonly type: K;
+        readonly id: RecipientId<K>;
+    };
+}[T];
+// RecipientType
+export type RecipientType = keyof NotificationRecipients & string;
+// RecipientTypeOf
+export type RecipientTypeOf<R> = R extends readonly (infer E)[] ? (E extends {
+    readonly type: infer T extends RecipientType;
+} ? T : never) : R extends {
+    readonly type: infer T extends RecipientType;
+} ? T : never;
+// Recipients
+export type Recipients = RecipientRef | readonly RecipientRef[];
+// SchemaInput
+type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
+// SchemaInput (2)
+type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
+// SchemaOutput
+type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['output'] : never;
+// SendData
+export type SendData<N> = N extends {
+    readonly schema: infer S extends StandardSchemaV1;
+} ? SchemaInput<S> : never;
+// SendOptions
+export interface SendOptions {
+    readonly delay?: number | Duration;
+}
+// SendResult
+export type SendResult<R> = R extends readonly unknown[] ? string[] : string;
+// ViaOf
+type ViaOf<N> = InstanceOf<N> extends {
+    via(...args: infer A): infer R;
+} ? {
+    readonly recipient: A extends readonly [] ? unknown : A[0];
+    readonly channels: Awaited<R>;
+} : never;
 ```
 
 ## Environment
