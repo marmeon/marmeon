@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
-import type { CacheStore, Entry } from '../cache.ts';
+import type { CacheStore, Entry, LockStore } from '../cache.ts';
 
 /** A named Lua script (the shape of `defineRedisScript` — built here, as @marmeon/redis is an optional peer). */
 function script(name: string, lua: string): RedisScript {
@@ -45,7 +45,7 @@ export type RedisStoreConnection = RedisConnection | (() => Promise<RedisConnect
  * (`PX`, real time — `app.travel()` does not move it); locks are `<prefix>lock:<name>` holding the owner token.
  * `add` and locks are `SET NX PX`; `increment` and releasing a lock are Lua scripts — one atomic step each.
  */
-export class RedisStore implements CacheStore {
+export class RedisStore implements CacheStore, LockStore {
   readonly #connection: () => Promise<RedisConnection>;
   readonly #clock: Clock;
 

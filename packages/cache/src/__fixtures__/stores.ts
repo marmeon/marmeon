@@ -6,7 +6,7 @@ import type { Clock, Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
 import { RedisConnections } from '@marmeon/redis';
-import type { CacheStore } from '../cache.ts';
+import type { CacheStore, LockStore } from '../cache.ts';
 import { CACHE_MIGRATION } from '../commands/make-cache-table.ts';
 import { DatabaseStore } from '../stores/database.ts';
 import { FileStore } from '../stores/file.ts';
@@ -34,7 +34,7 @@ export const storeKinds: readonly StoreKind[] = ['memory', 'file', 'sqlite', ...
 
 /** A store under test: `pass(ms)` lets time go by for it (the test clock; Redis keeps its own time — real waiting). */
 export interface StoreUnderTest {
-  readonly store: CacheStore;
+  readonly store: CacheStore & LockStore;
   readonly clock: TestClock;
   readonly target: StoreTarget;
   pass(ms: number): Promise<void>;
@@ -105,7 +105,7 @@ export function redisConnections(url: string, prefix: string): RedisConnections 
 }
 
 /** Opens the store at `target` (another process opens the same one the same way). */
-export function openStore(target: StoreTarget, clock: Clock): { store: CacheStore; close: () => Promise<void> } {
+export function openStore(target: StoreTarget, clock: Clock): { store: CacheStore & LockStore; close: () => Promise<void> } {
   switch (target.kind) {
     case 'memory':
       return { store: new MemoryStore(clock), close: async () => {} };

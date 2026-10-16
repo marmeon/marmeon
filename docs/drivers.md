@@ -37,6 +37,7 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 | `queueDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_CONNECTION` |
 | `failedJobDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_FAILED_DRIVER` |
 | `diskDrivers` | [File storage](storage.md#disk-drivers) | `driver` of a disk in `defineStorage()` |
+| `cacheDrivers` | [Cache](cache.md#cache-drivers) | `CACHE_DRIVER` |
 
 A driver reads its own settings through a configuration of its own, which its provider lists in `static config`
 ([package development](package-development.md#configuration)). The factory resolves what it needs from the `container` it is given.
@@ -164,3 +165,62 @@ What the framework keeps for a disk of a provider's driver, whatever the driver 
 
 Every member of `Disk` is required except `close()`, which the framework calls at shutdown when the disk has one — close a client
 or a connection there.
+
+## Cache drivers
+
+A cache driver is a pair: a `CacheStore` for the entries and a `LockStore` for the locks. The factory returns both, and neither
+is optional, so there is no cache without atomic locks. `cache.lock()`, `withoutOverlapping`, `onOneServer()` and unique jobs
+all take their locks from the `locks` half.
+
+```ts
+import type { CacheDriverFactory } from '@marmeon/cache';
+
+const dynamo: CacheDriverFactory = ({ name, container, clock, prefix }) => {
+  const table = new DynamoTable(container.make(DynamoConfig), prefix);
+  return { store: new DynamoStore(table, clock), locks: new DynamoLocks(table, clock) };
+};
+
+export class DynamoServiceProvider {
+  static config = [DynamoConfig];
+  static cacheDrivers = { dynamo };
+}
+```
+
+```sh title=".env"
+CACHE_DRIVER=dynamo
+```
+
+One object may implement both interfaces and be returned as `{ store: both, locks: both }`, as the built-in stores do. A driver
+built from two services, such as entries in a fast store and locks in a store that is safe to share, returns two objects.
+
+`CACHE_PREFIX` is already part of every key and lock name the driver is given. The `prefix` of the factory's context is for a
+namespace of the driver's own, such as a table or an index.
+
+The driver is built once, at the start, when `CACHE_DRIVER` selects it. At that point the framework also tries the locks once:
+it takes a lock nobody else uses, checks that a second owner cannot take it and cannot free it, frees it with its own owner, and
+checks that `add` does not overwrite a key. A driver that fails stops the start with what it did wrong, because a lock store that
+lets two owners in would run a `withoutOverlapping` job twice.
+
+What a store must guarantee:
+
+- **`add` is atomic.** Of two calls at once for one key, one writes. It writes only when the key is absent or expired.
+- **`increment` is atomic.** Two processes counting at once never lose a count. A missing, expired or non-integer key starts
+  over at `by` with the given expiry; an existing integer keeps its expiry, so a rate limit window does not restart with every hit.
+- **Expiry is the store's.** `read` returns no entry past its `expires`. The framework drops an entry that does come back
+  expired, but an expired entry that `add` still treats as present blocks the next writer.
+- **`clear` removes entries and never a lock.** `marmeon cache:clear` must not free what a running job holds. This is why
+  locks are a separate interface: nothing in `clear` has a lock to free.
+
+What a lock store must guarantee:
+
+- **`lock` is atomic.** A lock goes to one owner. It is taken when it is free, expired, or already the caller's own.
+- **Only the owner frees a lock.** `unlock(name, owner)` frees it only while `owner` holds it, and an expired lock that another
+  owner took over stays. The framework never calls it with an empty owner.
+- **A lock expires.** A holder that crashed cannot block everyone forever; `lockOwner` returns nothing for an expired lock.
+
+The framework hands the driver only text as keys, lock names and owners, answers `true` only when the driver returned exactly
+`true`, and never serves an entry past its expiry. These are checks on top of the contract, not a replacement for it: whether a
+lock is atomic across processes is the driver's to guarantee.
+
+`prune` is optional on both halves. `marmeon cache:prune` calls each one that has it and adds up the counts; when neither has
+it, the command says the entries expire on their own. A store that expires entries itself, as Redis does, leaves it out.

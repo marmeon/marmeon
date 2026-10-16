@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, err, ok, token, type Clock, type Result } from '@marmeon/core';
+import { SystemClock, err, ok, token, type Clock, type Resolver, type Result } from '@marmeon/core';
 
 /**
  * A key-value store with expiry. Values must survive `JSON.stringify`. `add`, `increment`
@@ -46,9 +46,9 @@ export interface Entry {
 }
 
 /**
- * The storage behind a cache (memory, file, database, redis). Every operation that decides on what is stored — `add`,
- * `increment`, `lock`, `unlock` — is one atomic step of the store, never read-then-write in the cache above it.
- * Expiry is the store's: it reads the time from its {@link Clock} (Redis from its own clock, `PX`).
+ * The entries behind a cache (memory, file, database, redis). Every operation that decides on what is stored — `add`,
+ * `increment` — is one atomic step of the store, never read-then-write in the cache above it. Expiry is the store's: it reads
+ * the time from its {@link Clock} (Redis from its own clock, `PX`). The locks are a {@link LockStore}, beside it in a {@link CacheDriver}.
  */
 export interface CacheStore {
   /** The entry, if present and not expired. */
@@ -62,8 +62,20 @@ export interface CacheStore {
    */
   increment(key: string, by: number, expires: number | null): Promise<number>;
   delete(key: string): Promise<void>;
-  /** Removes every entry of this store — never its locks. */
+  /** Removes every entry of this store. Never a lock: `marmeon cache:clear` must not free what a running job holds. */
   clear(): Promise<void>;
+  /**
+   * Removes expired entries — which file and database stores keep until read or overwritten — and returns how many. Stores
+   * whose entries expire on their own (Redis) have none (`marmeon cache:prune` says so).
+   */
+  prune?(): Promise<number>;
+}
+
+/**
+ * The locks behind `cache.lock()`, `withoutOverlapping`, `onOneServer()` and unique jobs. Every operation is one atomic step of
+ * the store — across processes, when the app runs on more than one. See `docs/drivers.md#cache-drivers`.
+ */
+export interface LockStore {
   /** Takes the lock `name` for `owner` until `expires` if it is free, expired, or already `owner`'s — atomically. Whether it did. */
   lock(name: string, owner: string, expires: number): Promise<boolean>;
   /** Frees the lock only while `owner` holds it — atomically (an expired lock taken over by another stays). Whether it did. */
@@ -72,12 +84,32 @@ export interface CacheStore {
   forceUnlock(name: string): Promise<void>;
   /** Who holds the lock now; undefined when it is free or expired. */
   lockOwner(name: string): Promise<string | undefined>;
-  /**
-   * Removes expired entries and locks — which file and database stores keep until read or overwritten — and returns how many. Stores
-   * whose entries expire on their own (Redis) have none (`marmeon cache:prune` says so).
-   */
+  /** Removes expired locks which the store keeps until read or overwritten, and returns how many. Absent when they expire on their own. */
   prune?(): Promise<number>;
 }
+
+/**
+ * What a cache driver provides: the entries and the locks. Both are required, so there is no cache without atomic locks. A
+ * built-in store implements both interfaces in one class (`{ store, locks: store }`); a driver of your own may do the same, or
+ * return two objects. See `docs/drivers.md#cache-drivers`.
+ */
+export interface CacheDriver {
+  readonly store: CacheStore;
+  readonly locks: LockStore;
+}
+
+/** What a {@link CacheDriverFactory} is given. */
+export interface CacheDriverContext {
+  /** The name the driver was registered under (`CACHE_DRIVER=dynamo`). */
+  readonly name: string;
+  readonly container: Resolver;
+  readonly clock: Clock;
+  /** `CACHE_PREFIX`. Keys and lock names arrive with it already prepended; this is for a namespace of your own (a table, an index). */
+  readonly prefix: string;
+}
+
+/** Creates a cache driver: `static cacheDrivers = { dynamo: (context) => … }` on a service provider. */
+export type CacheDriverFactory = (context: CacheDriverContext) => CacheDriver;
 
 /** The lock was not free within the time `block()` waited. */
 export class LockTimeoutError extends Error {
@@ -92,11 +124,11 @@ export class Lock {
   readonly name: string;
   readonly seconds: number;
   readonly owner: string;
-  readonly #store: CacheStore;
+  readonly #store: LockStore;
   readonly #key: string;
   readonly #clock: Clock;
 
-  constructor(store: CacheStore, options: { name: string; key: string; seconds: number; owner?: string; clock: Clock }) {
+  constructor(store: LockStore, options: { name: string; key: string; seconds: number; owner?: string; clock: Clock }) {
     if (!(options.seconds > 0) || !Number.isFinite(options.seconds)) {
       throw new TypeError(`A lock needs a positive number of seconds after which it expires (got ${options.seconds} for "${options.name}").`);
     }
@@ -166,14 +198,16 @@ function expiresAt(clock: Clock, ttlSeconds: number | undefined): number | null 
   return ttlSeconds === undefined ? null : clock.now() + ttlSeconds * 1000;
 }
 
-/** The cache on top of a store: keys get the prefix, TTLs become expiry times, everything atomic is the store's. */
+/** The cache on top of a driver: keys get the prefix, TTLs become expiry times, everything atomic is the driver's. */
 export class StoreCache implements Cache {
   readonly #store: CacheStore;
+  readonly #locks: LockStore;
   readonly #prefix: string;
   readonly #clock: Clock;
 
-  constructor(store: CacheStore, prefix = '', clock: Clock = new SystemClock()) {
+  constructor({ store, locks }: CacheDriver, prefix = '', clock: Clock = new SystemClock()) {
     this.#store = store;
+    this.#locks = locks;
     this.#prefix = prefix;
     this.#clock = clock;
   }
@@ -221,10 +255,13 @@ export class StoreCache implements Cache {
   }
 
   async prune(): Promise<number | undefined> {
-    return this.#store.prune?.();
+    // One class implementing both interfaces is pruned once.
+    const stores = (this.#locks as unknown) === this.#store ? [this.#store] : [this.#store, this.#locks];
+    const counts = await Promise.all(stores.map((store) => store.prune?.()));
+    return counts.some((count) => count !== undefined) ? counts.reduce<number>((sum, count) => sum + (count ?? 0), 0) : undefined;
   }
 
   lock(name: string, seconds: number, owner?: string): Lock {
-    return new Lock(this.#store, { name, key: this.#prefix + name, seconds, clock: this.#clock, ...(owner === undefined ? {} : { owner }) });
+    return new Lock(this.#locks, { name, key: this.#prefix + name, seconds, clock: this.#clock, ...(owner === undefined ? {} : { owner }) });
   }
 }

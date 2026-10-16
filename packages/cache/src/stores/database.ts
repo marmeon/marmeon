@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { Connection } from '@marmeon/database';
-import type { CacheStore, Entry } from '../cache.ts';
+import type { CacheStore, Entry, LockStore } from '../cache.ts';
 
 /** The tables `marmeon make:cache-table` creates (the app owns the migration; the store types them itself). */
 export const CACHE_TABLE = 'cache';
@@ -20,7 +20,7 @@ type Sql = (typeof import('@marmeon/database'))['sql'];
  * `INSERT … ON CONFLICT … DO UPDATE … WHERE`, `DELETE … WHERE owner = ?` — so the database makes it atomic, on
  * Postgres and SQLite alike, across any number of processes.
  */
-export class DatabaseStore implements CacheStore {
+export class DatabaseStore implements CacheStore, LockStore {
   readonly #connection: () => Promise<DatabaseStoreConnection>;
   readonly #clock: Clock;
   #sql: Promise<Sql> | undefined;

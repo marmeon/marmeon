@@ -36,7 +36,7 @@ framework's rate limits and locks, and the [rate limiting](rate-limiting.md) pag
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `CACHE_DRIVER` | `file` | Where entries live: `file`, `database`, `redis` or `memory`. |
+| `CACHE_DRIVER` | `file` | Where entries live: `file`, `database`, `redis`, `memory` or a driver a package brings. |
 | `CACHE_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
 | `CACHE_PATH` | `storage/framework/cache` | Where the `file` driver keeps entries, relative to the app. |
 | `CACHE_PREFIX` | empty | Put in front of every key and lock, so apps that share a store stay apart. |
@@ -65,6 +65,12 @@ pnpm marmeon migrate
 
 `make:cache-table` writes the migration into the `system` module, or the module that `--module` names. The migration creates the
 tables on the cache's connection, `CACHE_CONNECTION`.
+
+### Cache drivers
+
+A package or an app can bring a cache driver of its own, such as one for DynamoDB. Its provider lists it in `static cacheDrivers`,
+and `CACHE_DRIVER` selects it by name. A driver is a pair of a store and a lock store; the [drivers](drivers.md#cache-drivers)
+page has what each must guarantee.
 
 ### The database driver and transactions
 

@@ -1,9 +1,12 @@
 import { isAbsolute, join } from 'node:path';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { collectDrivers } from '@marmeon/core/internal';
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
-import { Cache, StoreCache, type CacheStore } from './cache.ts';
+import { Cache, StoreCache, type CacheDriver, type CacheDriverFactory, type CacheStore, type LockStore } from './cache.ts';
 import { CacheConfig } from './config.ts';
+import { CacheSetupError } from './errors.ts';
 import { CacheHealthCheck } from './health.ts';
+import { guardDriver, verifyDriver } from './guarded.ts';
 import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 import { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 import { LimitLiveValidation, RateLimiter } from './rate-limiter.ts';
@@ -13,7 +16,7 @@ import { MemoryStore } from './stores/memory.ts';
 import { RedisStore } from './stores/redis.ts';
 
 export { Cache, Lock, LockTimeoutError } from './cache.ts';
-export type { CacheStore, Entry } from './cache.ts';
+export type { CacheDriver, CacheDriverContext, CacheDriverFactory, CacheStore, Entry, LockStore } from './cache.ts';
 export { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 export { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 export { clientKey, Limit, LimitLiveValidation, RateLimiter, throttle } from './rate-limiter.ts';
@@ -22,10 +25,20 @@ export type { LimiterCallback, LimiterContext } from './rate-limiter.ts';
 export { CacheConfig } from './config.ts';
 export { CacheHealthCheck } from './health.ts';
 
-/** A driver's package is missing: what to install, said at startup (the CLI prints it without a stack trace). */
-export class CacheSetupError extends Error {
-  override name = 'CacheSetupError';
+export { CacheSetupError } from './errors.ts';
+
+declare module '@marmeon/core' {
+  interface ServiceProviderClass {
+    /**
+     * Cache drivers this provider brings, by name — `CACHE_DRIVER=<name>` selects one. A built-in name (`file`, `memory`, `database`,
+     * `redis`) or a name another provider brings stops the start. See `docs/drivers.md#cache-drivers`.
+     */
+    readonly cacheDrivers?: Readonly<Record<string, CacheDriverFactory>>;
+  }
 }
+
+/** The names the framework's own drivers answer to — a provider cannot bring a driver under one of them. */
+const BUILT_IN_CACHE_DRIVERS = ['file', 'memory', 'database', 'redis'] as const;
 
 async function importOptional<T>(load: () => Promise<T>, name: string, driver: string, install: string): Promise<T> {
   try {
@@ -66,10 +79,34 @@ export class CacheServiceProvider implements ServiceProvider {
   static health = [CacheHealthCheck];
   static commands = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
 
+  /** The driver a provider brought under `CACHE_DRIVER`, built once; a factory that failed is not run again. */
+  #custom: CacheDriver | undefined;
+  #failure: unknown;
+
   register(container: Container): void {
     const config = container.make(CacheConfig);
-    container.singleton(Cache, (c) => new StoreCache(storeFor(config, c), config.prefix, c.make(Clock)));
+    container.singleton(Cache, (c) => new StoreCache(this.#driver(config, c), config.prefix, c.make(Clock)));
     container.singleton(RateLimiter);
+  }
+
+  #factories(container: Resolver): ReadonlyMap<string, CacheDriverFactory> {
+    return collectDrivers<CacheDriverFactory>(container.make(Application).providers, 'cacheDrivers', BUILT_IN_CACHE_DRIVERS, 'cache driver');
+  }
+
+  /** The driver `CACHE_DRIVER` names: a built-in one, or what a provider's factory returns — checked, and wrapped so that it sees only valid keys and owners. */
+  #driver(config: CacheConfig, container: Resolver): CacheDriver {
+    const factory = this.#factories(container).get(config.driver);
+    if (!factory) return builtIn(config, container);
+    if (this.#custom) return this.#custom;
+    if (this.#failure !== undefined) throw this.#failure;
+    try {
+      const clock = container.make(Clock);
+      this.#custom = guardDriver(config.driver, factory({ name: config.driver, container, clock, prefix: config.prefix }), clock);
+      return this.#custom;
+    } catch (error) {
+      this.#failure = error;
+      throw error;
+    }
   }
 
   async boot(app: Application): Promise<void> {
@@ -77,8 +114,17 @@ export class CacheServiceProvider implements ServiceProvider {
     if (app.container.has(Router)) app.container.make(Router).middleware.append(GLOBAL, LimitLiveValidation, MiddlewarePriority.limitLiveValidation);
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.
-    const { driver, connection } = app.container.make(CacheConfig);
-    if (driver === 'redis') {
+    const config = app.container.make(CacheConfig);
+    const { driver, connection } = config;
+    // A built-in name, a name twice or a malformed one stops the start here; so does a CACHE_DRIVER nobody brought.
+    const custom = this.#factories(app.container);
+    if (!(BUILT_IN_CACHE_DRIVERS as readonly string[]).includes(driver) && !custom.has(driver)) {
+      throw new CacheSetupError(`CACHE_DRIVER=${driver} is not a cache driver. Known: ${[...BUILT_IN_CACHE_DRIVERS, ...custom.keys()].join(', ')}.`);
+    }
+    if (custom.has(driver)) {
+      // Built and tried now: a factory's error, or a lock store that does not exclude, stops the start — not the first job.
+      await verifyDriver(driver, this.#driver(config, app.container), app.container.make(Clock), config.prefix);
+    } else if (driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
         throw new CacheSetupError('CACHE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
@@ -96,24 +142,29 @@ export class CacheServiceProvider implements ServiceProvider {
   }
 }
 
-/** The store of `CACHE_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
-function storeFor(config: CacheConfig, container: Resolver): CacheStore {
+/** The driver of `CACHE_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
+function builtIn(config: CacheConfig, container: Resolver): CacheDriver {
   const clock = container.make(Clock);
+  const both = (store: CacheStore & LockStore): CacheDriver => ({ store, locks: store });
   switch (config.driver) {
     case 'memory':
-      return new MemoryStore(clock);
+      return both(new MemoryStore(clock));
     case 'database':
-      return new DatabaseStore(async () => {
-        const { Connections } = await importDatabase();
-        const connections = container.make(Connections);
-        // Its own connection, never the app's transaction: a rate-limit hit or a lock survives a rollback.
-        return { db: connections.infrastructure(config.connection, CACHE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
-      }, clock);
+      return both(
+        new DatabaseStore(async () => {
+          const { Connections } = await importDatabase();
+          const connections = container.make(Connections);
+          // Its own connection, never the app's transaction: a rate-limit hit or a lock survives a rollback.
+          return { db: connections.infrastructure(config.connection, CACHE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
+        }, clock),
+      );
     case 'redis':
-      return new RedisStore(async () => container.make((await importRedis()).RedisConnections).get(config.connection), clock);
+      return both(new RedisStore(async () => container.make((await importRedis()).RedisConnections).get(config.connection), clock));
     case 'file': {
       const { root } = container.make(Application);
-      return new FileStore(isAbsolute(config.path) ? config.path : join(root, config.path), clock);
+      return both(new FileStore(isAbsolute(config.path) ? config.path : join(root, config.path), clock));
     }
+    default:
+      throw new CacheSetupError(`CACHE_DRIVER=${config.driver} is not a cache driver. Known: ${BUILT_IN_CACHE_DRIVERS.join(', ')}.`);
   }
 }

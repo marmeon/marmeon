@@ -346,8 +346,8 @@ describe('onOneServer', () => {
   it('two schedulers sharing a cache: the task runs once per minute', async () => {
     const shared = new MemoryStore();
     const tasks = defineSchedule((s) => void s.call(CountRun).everyMinute().name('count').onOneServer());
-    const one = await boot(tasks, { cache: new StoreCache(shared) });
-    const two = await boot(tasks, { cache: new StoreCache(shared), env: {} });
+    const one = await boot(tasks, { cache: new StoreCache({ store: shared, locks: shared }) });
+    const two = await boot(tasks, { cache: new StoreCache({ store: shared, locks: shared }), env: {} });
     for (let minute = 0; minute < 3; minute++) {
       const time = START + minute * MINUTE;
       const runs = [...(await one.scheduler.tick(time)), ...(await two.scheduler.tick(time))];
