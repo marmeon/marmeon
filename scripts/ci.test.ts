@@ -11,6 +11,8 @@ import {
   engineHits,
   INTERNAL,
   internalImportHits,
+  LIBRARY,
+  libraryImportHits,
   negativeEnvHits,
   mutationCommentHits,
   oldNameHits,
@@ -162,6 +164,126 @@ describe('check:source — the internal subpath of a package is for the framewor
         { path: 'packages/live/src/index.ts', text: `import { FRAMEWORK_ROUTES } from '@marmeon/http${internal}';` },
         { path: 'docs/package-development.md', text: `@marmeon/router${internal} is not API` },
         { path: 'apps/web-app/modules/x/routes.ts', text: `import { defineRoutes } from '@marmeon/http';` },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('check:source — only the framework\'s packages import the query builder', () => {
+  const lib = LIBRARY; // spelled in parts by the script: this file holds no import of it either
+  const manifest = (dependencies: Record<string, string>) => JSON.stringify({ name: 'app', dependencies }, null, 2);
+
+  it('holds for the repository', () => {
+    expect(checkSource(root).filter((problem) => problem.includes('import Kysely'))).toEqual([]);
+  });
+
+  it('finds every form of the import outside a package\'s src/ — an app, a stub, the template, a script, a generator', () => {
+    const hits = libraryImportHits([
+      { path: 'apps/x/modules/a.ts', text: `import { sql } from '${lib}';\n` },
+      { path: 'apps/x/modules/b.ts', text: `import type { Kysely } from "${lib}";` },
+      { path: 'apps/x/modules/c.ts', text: `export { sql } from '${lib}';` },
+      { path: 'apps/x/modules/d.ts', text: `const m = await import('${lib}');` },
+      { path: 'apps/x/modules/e.ts', text: `import { jsonArrayFrom } from '${lib}/helpers/postgres';` },
+      { path: 'apps/x/modules/f.cjs', text: `const { sql } = require('${lib}');` },
+      { path: 'apps/x/modules/g.ts', text: `import '${lib}';` },
+      { path: 'apps/x/modules/h.ts', text: `import k = require('${lib}');` },
+      { path: 'apps/x/modules/i.ts', text: `import {\n  sql,\n} from\n  '${lib}';` },
+      { path: 'apps/x/modules/j.ts', text: `declare module '${lib}' {}` },
+      { path: 'apps/x/modules/k.ts', text: `import * as k from\`${lib}\`;` },
+      { path: 'packages/auth/stubs/react/x.ts', text: `import { sql } from '${lib}';` },
+      { path: 'packages/create-marmeon/template/base/x.ts', text: `import { sql } from '${lib}';` },
+      { path: 'scripts/x.ts', text: `writeFileSync(file, "import { sql } from '${lib}';");` },
+      { path: 'packages/cli/src/commands/make.ts', text: `const JOB = \`import { sql } from '${lib}';\`;` },
+    ]);
+    expect(hits.map((hit) => hit.split(':')[0] + ':' + hit.split(':')[1])).toEqual([
+      'apps/x/modules/a.ts:1',
+      'apps/x/modules/b.ts:1',
+      'apps/x/modules/c.ts:1',
+      'apps/x/modules/d.ts:1',
+      'apps/x/modules/e.ts:1',
+      'apps/x/modules/f.cjs:1',
+      'apps/x/modules/g.ts:1',
+      'apps/x/modules/h.ts:1',
+      'apps/x/modules/i.ts:4',
+      'apps/x/modules/j.ts:1',
+      'apps/x/modules/k.ts:1',
+      'packages/auth/stubs/react/x.ts:1',
+      'packages/create-marmeon/template/base/x.ts:1',
+      'scripts/x.ts:1',
+      'packages/cli/src/commands/make.ts:1',
+    ]);
+  });
+
+  it('finds it in the docs and READMEs, and in the manifest of an app or of the template', () => {
+    expect(
+      libraryImportHits([
+        { path: 'docs/x.md', text: `\`\`\`ts\nimport { sql } from '${lib}';\n\`\`\`\n` },
+        { path: 'apps/x/README.md', text: `~~~ts\nconst { sql } = require('${lib}');\n~~~` },
+        { path: 'README.md', text: `\`\`\`ts\nimport { sql } from '${lib}';\n\`\`\`` },
+        { path: 'packages/database/README.md', text: `\`\`\`ts\nimport { sql } from '${lib}';\n\`\`\`` },
+        { path: 'apps/x/package.json', text: manifest({ [lib]: '0.29.6' }) },
+        { path: 'packages/create-marmeon/template/base/_package.json', text: manifest({ [lib]: '0.29.6' }) },
+      ]),
+    ).toEqual([
+      `docs/x.md:2: import { sql } from '${lib}';`,
+      `apps/x/README.md:2: const { sql } = require('${lib}');`,
+      `README.md:2: import { sql } from '${lib}';`,
+      `packages/database/README.md:2: import { sql } from '${lib}';`,
+      `apps/x/package.json: dependencies lists ${lib} — an app writes queries through @marmeon/database`,
+      `packages/create-marmeon/template/base/_package.json: dependencies lists ${lib} — an app writes queries through @marmeon/database`,
+    ]);
+  });
+
+  it('finds the other ways to install it — overrides, resolutions, aliases, bundled dependencies', () => {
+    const json = (value: object) => JSON.stringify({ name: 'app', ...value });
+    const hits = libraryImportHits([
+      { path: 'apps/a/package.json', text: json({ overrides: { [lib]: '0.29.7' } }) },
+      { path: 'apps/b/package.json', text: json({ pnpm: { overrides: { [`${lib}@<1`]: '0.29.7' } } }) },
+      { path: 'apps/c/package.json', text: json({ resolutions: { [`@marmeon/database>${lib}`]: '0.29.7' } }) },
+      { path: 'apps/d/package.json', text: json({ dependencies: { qb: `npm:${lib}@0.29.7` } }) },
+      { path: 'apps/e/package.json', text: json({ bundleDependencies: [lib] }) },
+      { path: 'apps/f/package.json', text: json({ bundledDependencies: [lib] }) },
+      { path: 'apps/g/package.json', text: json({ overrides: { '@marmeon/database': { [lib]: '0.29.7' } } }) },
+      { path: 'apps/i/package.json', text: json({ resolutions: { [`**/${lib}`]: '0.29.7' } }) },
+      { path: 'apps/j/package.json', text: json({ dependencies: { qb: `github:${lib}-org/${lib}#v0.30` } }) },
+      { path: 'apps/h/package.json', text: json({ overrides: { [`${lib}-codegen`]: '1.0.0' } }) },
+    ]);
+    expect(hits.map((hit) => hit.split(':')[0])).toEqual(['apps/a/package.json', 'apps/b/package.json', 'apps/c/package.json', 'apps/d/package.json', 'apps/e/package.json', 'apps/f/package.json', 'apps/g/package.json', 'apps/i/package.json', 'apps/j/package.json']);
+  });
+
+  it('finds the specifier behind a constant, createRequire, import.meta.resolve and a triple-slash reference in code', () => {
+    const hits = libraryImportHits([
+      { path: 'apps/x/a.ts', text: `const n = '${lib}'; await import(n);` },
+      { path: 'apps/x/b.ts', text: `const r = createRequire(import.meta.url)("${lib}");` },
+      { path: 'apps/x/c.ts', text: `const u = import.meta.resolve('${lib}/helpers/postgres');` },
+      { path: 'apps/x/d.ts', text: `/// <reference types="${lib}" />` },
+      { path: 'apps/x/e.ts', text: `await import(\`${lib}\`);` },
+      { path: 'apps/x/f.ts', text: `// the module \`${lib}\` is pinned\nexport {};` },
+    ]);
+    expect(hits.map((hit) => hit.split(':')[0])).toEqual(['apps/x/a.ts', 'apps/x/b.ts', 'apps/x/c.ts', 'apps/x/d.ts', 'apps/x/e.ts']);
+  });
+
+  it('reads the code of an example\'s edits, and docs only inside code blocks', () => {
+    expect(
+      libraryImportHits([
+        { path: 'examples/notes/edits.json', text: JSON.stringify([{ file: 'a.ts', find: 'x', replace: `import { sql } from '${lib}';` }, { file: 'b.ts', find: 'x', replace: 'ok' }]) },
+        { path: 'examples/notes/README.md', text: `Apps never import from \`${lib}\` directly; the module \`${lib}\` is pinned. Use \`require('${lib}')\` never.` },
+        { path: 'docs/y.md', text: `\`\`\`ts\nawait import(\`${lib}\`);\n\`\`\`` },
+        { path: 'docs/x.md', text: `Do not write from '${lib}' in prose.` },
+        { path: 'CONTRIBUTING.md', text: `\`\`\`ts\nimport { sql } from '${lib}';\n\`\`\`` },
+      ]),
+    ).toEqual([`examples/notes/edits.json: edit 1 (a.ts): import { sql } from '${lib}';`, `docs/y.md:2: await import(\`${lib}\`);`]);
+  });
+
+  it('lets a package\'s own sources, the upgrade guide, other packages of the same prefix and ordinary imports through', () => {
+    expect(
+      libraryImportHits([
+        { path: 'packages/database/src/x.ts', text: `import { sql } from '${lib}';\nimport { y } from '${lib}/helpers/postgres';` },
+        { path: 'packages/database/package.json', text: manifest({ [lib]: '0.29.6' }) },
+        { path: 'UPGRADING.md', text: `import { sql } from '${lib}';` },
+        { path: 'apps/x/modules/a.ts', text: `import { sql } from '@marmeon/database';\nimport { c } from '${lib}-codegen';` },
+        { path: 'docs/x.md', text: `${lib} is the query builder; apps import from @marmeon/database.` },
+        { path: 'apps/x/package.json', text: manifest({ '@marmeon/database': 'workspace:*' }) },
       ]),
     ).toEqual([]);
   });

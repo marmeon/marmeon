@@ -2,7 +2,7 @@
  * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit. The rules: the
  * old name is gone, no Valibot outside a package's `src/`, `NODE_ENV` is checked positively, the old token prefix is gone, the
  * docs and the framework's messages speak to their readers, no reference to the private record, no mutant switched off without
- * a reason, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward.
+ * a reason, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward, no import of the query builder outside a package's `src/`.
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -132,6 +132,119 @@ export function internalImportHits(files: Iterable<SourceFile>): string[] {
     text.split('\n').forEach((line, index) => {
       if (INTERNAL_IMPORT.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
     });
+  }
+  return hits;
+}
+
+/** The query builder under `@marmeon/database`, spelled in parts like the engine: this file holds no import of it either. */
+export const LIBRARY = ['kys', 'ely'].join('');
+const LIBRARY_SPECIFIER = `${LIBRARY}(?:/[^'"\`]*)?`;
+/** The import-shaped forms, for the code in docs: `from '…'` (also `import type`, `export … from`), `import('…')`, `require('…')`, a bare import, `declare module '…'`. */
+const LIBRARY_IMPORT = new RegExp(
+  [
+    `\\bfrom\\s*(['"])${LIBRARY_SPECIFIER}\\1`,
+    `\\bimport\\s*\\(\\s*(['"\`])${LIBRARY_SPECIFIER}\\2`,
+    `\\brequire\\s*\\(\\s*(['"])${LIBRARY_SPECIFIER}\\3`,
+    `^\\s*import\\s*(['"])${LIBRARY_SPECIFIER}\\4`,
+    `\\bdeclare\\s+module\\s*(['"])${LIBRARY_SPECIFIER}\\5`,
+  ].join('|'),
+  'gm',
+);
+/**
+ * Code files: the specifier in any quoted form — it also catches `import(name)` behind a constant, `createRequire(…)('…')`,
+ * `import.meta.resolve('…')` and `/// <reference types="…" />`. A template literal counts only as the argument of a call or
+ * after `from`, so a comment that names the package in backticks stays allowed.
+ */
+const LIBRARY_QUOTED = new RegExp(`(['"])${LIBRARY_SPECIFIER}\\1|(?:\\(|\\bfrom)\\s*\`${LIBRARY_SPECIFIER}\``, 'g');
+/** Where the import of the library is shown to an app: docs pages and READMEs of packages, apps and examples (UPGRADING.md may show the old import). */
+const LIBRARY_TEXT = /^(?:docs\/[^/]+|README|(?:packages|apps|examples)\/[^/]+\/README)\.md$/;
+/** The edits of an example: their `replace` text becomes app code. */
+const EXAMPLE_EDITS = /^examples\/[^/]+\/edits\.json$/;
+/** A key of `overrides`, `resolutions`: `kysely`, `kysely@<range>`, `parent>kysely`, `a/kysely` (yarn). */
+const LIBRARY_KEY = new RegExp(`(?:^|[>/])${LIBRARY}(?:@|$)`);
+const LIBRARY_ALIAS = new RegExp(`^(?:npm:|github:[^/]+/)${LIBRARY}(?:[@#]|$)`);
+
+/** The manifest's ways to install the library: a dependency, an alias of it, a bundled one, an override of it. */
+function libraryInManifest(manifest: Record<string, unknown>): string[] {
+  const found: string[] = [];
+  const asRecord = (value: unknown): Record<string, unknown> => (value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+  const walk = (field: string, value: Record<string, unknown>, nested: boolean) => {
+    for (const [key, entry] of Object.entries(value)) {
+      if (key === LIBRARY || (nested && LIBRARY_KEY.test(key))) found.push(`${field} lists ${LIBRARY}`);
+      else if (typeof entry === 'string' && LIBRARY_ALIAS.test(entry)) found.push(`${field} aliases ${LIBRARY} as ${key}`);
+      else if (nested && entry && typeof entry === 'object') walk(`${field}.${key}`, asRecord(entry), nested);
+    }
+  };
+  for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) walk(field, asRecord(manifest[field]), false);
+  walk('overrides', asRecord(manifest.overrides), true);
+  walk('resolutions', asRecord(manifest.resolutions), true);
+  walk('pnpm.overrides', asRecord(asRecord(manifest.pnpm).overrides), true);
+  for (const field of ['bundleDependencies', 'bundledDependencies']) {
+    if (Array.isArray(manifest[field]) && (manifest[field] as unknown[]).includes(LIBRARY)) found.push(`${field} lists ${LIBRARY}`);
+  }
+  return found;
+}
+
+/** The text of a markdown file with everything outside fenced code blocks blanked (line numbers stay). */
+function fencedCode(text: string): string {
+  let inside = false;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (/^\s*(?:```|~~~)/.test(line)) {
+        inside = !inside;
+        return '';
+      }
+      return inside ? line : '';
+    })
+    .join('\n');
+}
+
+/** The (1-based) lines on which `pattern` matches in `text` — a match is on the line of its first non-blank character. */
+function matchedLines(text: string, pattern: RegExp): number[] {
+  const lines = new Set<number>();
+  for (const match of text.matchAll(pattern)) lines.add(text.slice(0, match.index + match[0].search(/\S/)).split('\n').length);
+  return [...lines];
+}
+
+/**
+ * Rule 11: every import of the library outside a package's `src/` (or in a generator), in the code of docs and READMEs, in the
+ * edits of an example, and every app manifest that installs it — `path:line: text`.
+ */
+export function libraryImportHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  const say = (text: string, line: number) => text.split('\n')[line - 1]!.trim().slice(0, 160);
+  for (const { path, text } of files) {
+    if (APP_MANIFEST.test(path)) {
+      let manifest: Record<string, unknown>;
+      try {
+        manifest = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        continue; // not JSON: the template's own checks catch it
+      }
+      for (const found of libraryInManifest(manifest)) hits.push(`${path}: ${found} — an app writes queries through @marmeon/database`);
+      continue;
+    }
+    if (EXAMPLE_EDITS.test(path)) {
+      let edits: unknown;
+      try {
+        edits = JSON.parse(text);
+      } catch {
+        continue;
+      }
+      (Array.isArray(edits) ? edits : []).forEach((edit: { file?: string; replace?: unknown }, index) => {
+        if (typeof edit?.replace !== 'string') return;
+        for (const line of matchedLines(edit.replace, LIBRARY_QUOTED)) hits.push(`${path}: edit ${index + 1} (${edit.file ?? '?'}): ${say(edit.replace, line)}`);
+      });
+      continue;
+    }
+    if (LIBRARY_TEXT.test(path)) {
+      const code = fencedCode(text);
+      for (const line of matchedLines(code, LIBRARY_IMPORT)) hits.push(`${path}:${line}: ${say(text, line)}`);
+      continue;
+    }
+    if (!CODE.test(path) || (/^packages\/[^/]+\/src\//.test(path) && !GENERATORS.includes(path))) continue;
+    for (const line of matchedLines(text, LIBRARY_QUOTED)) hits.push(`${path}:${line}: ${say(text, line)}`);
   }
   return hits;
 }
@@ -406,6 +519,9 @@ export function checkSource(repository: string = root): string[] {
     ...oldNameHits(files).map((hit) => `the old name: ${hit}`),
     ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates: ${hit}`),
     ...internalImportHits(files).map((hit) => `the internal subpath of a package is not API (decide access with everyone or a check; docs/package-development.md): ${hit}`),
+    ...libraryImportHits(files).map(
+      (hit) => `import Kysely's builder through @marmeon/database (sql, Kysely, Transaction …) — the framework pins its version; docs/releases.md#libraries-the-framework-builds-on: ${hit}`,
+    ),
     ...negativeEnvHits(files).map(
       (hit) => `NODE_ENV checked positively (only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
@@ -428,7 +544,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; no app, stub, template, doc or generator imports or installs ${LIBRARY}.`,
     );
   }
 }

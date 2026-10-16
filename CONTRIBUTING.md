@@ -271,6 +271,13 @@ checked over every file of the repository — tracked, or new and not ignored. E
     that no other call uses, the message, and `removeIn` as `major.minor`. The version must lie after the current one — otherwise it
     is a typo or overdue. [Package development](docs/package-development.md#deprecating-an-api) shows both.
 
+11. **Only the framework's packages import the query builder**: no code file outside `packages/<name>/src/` (apps, the
+    template, stubs, scripts, the templates of `make:*`, the edits of an example) names `kysely` as a quoted module specifier —
+    `import`, `import type`, `export … from`, `import()`, `require()`, `import.meta.resolve()`, any subpath such as
+    `kysely/helpers/postgres` — and no code block of a docs page or README of a package, app or example imports it. No app or
+    template manifest installs it: not as a dependency, an alias (`npm:kysely@…`), a bundled dependency or an override.
+    Apps take the builder, `sql`, `Kysely` and `Transaction` from `@marmeon/database`. `UPGRADING.md` may show an old import.
+
 A new rule joins the same script, with its test.
 
 ## Dependencies of drivers
