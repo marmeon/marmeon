@@ -21,7 +21,7 @@ export type { EmbedPackageOptions } from './injection/embed.ts';
 export { Application, CLUSTER_WORKER, createApplication, defineApplication } from './application.ts';
 export type { ApplicationOptions, ApplicationPhase } from './application.ts';
 export { defineModule } from './module.ts';
-export { ConsoleLogger, LogContextSources, Logger, logContextSourcesOf } from './logger.ts';
+export { ConsoleLogger, escapeControls, LogContextSources, Logger, logContextSourcesOf } from './logger.ts';
 export { DEFAULT_HEALTH_TIMEOUT, HealthChecks } from './health.ts';
 export type { HealthCheck, HealthCheckClass, HealthCheckResult, HealthReport } from './health.ts';
 export { Clock, durationToMilliseconds, SystemClock, TestClock } from './clock.ts';

@@ -259,3 +259,79 @@ describe('URL objects', () => {
     expect(shown.query).toBe('signature=[redacted]');
   });
 });
+
+describe('the secret names the logging page promises', () => {
+  const redactor = new Redactor();
+  const names = [
+    'password', 'new_password', 'secret', 'client_secret', 'token', 'authorization', 'cookie', 'remember', 'apikey', 'api-key', 'api_key', 'signature',
+    'credentials', 'credential', 'privateKey', 'private_key', 'APP_KEY', 'appKey', 'otp', 'totp_code', 'otpCode', 'user_otp', 'userOtp', 'mfaCode', 'mfa_code',
+    'recovery_code', 'recoveryCodes', 'recoveryCode', 'auth', 'x-auth', 'encryption_key', 'encryptionKey', 'cvv', 'cvc', 'card_number', 'cardNumber', 'code', 'session_id', 'sessionId', 'jwt', 'dsn', 'SENTRY_DSN',
+  ];
+
+  it.each(names)('hides the value under %s', (name) => {
+    expect(redactor.log({ [name]: 'hunter2' })).toEqual({ [name]: REDACTED });
+    expect(redactor.value({ [name]: 'hunter2' })).toEqual({ [name]: REDACTED });
+    expect(redactor.headers({ [name]: 'hunter2' })).toEqual({ [name]: REDACTED });
+  });
+
+  it('keeps harmless names, `code` inside a longer name and the own `code` of an error', () => {
+    for (const name of ['footprint', 'postcode', 'status_code', 'email', 'codes', 'author']) expect(redactor.log({ [name]: 'ok' })).toEqual({ [name]: 'ok' });
+    const failure = Object.assign(new Error('refused'), { code: 'ECONNREFUSED', otp: '123456' });
+    expect(redactor.log({ err: failure }).err).toMatchObject({ code: 'ECONNREFUSED', otp: REDACTED });
+  });
+
+  it('masks the names as text, too', () => {
+    const masked = redactText('APP_KEY=base64:abc credentials=u:p private_key: "-----BEGIN" otp=123456 user_otp=654321 session_id=s3ss sentry_dsn=https://k@o.ingest/1 jwt=a.b.c recovery_code=rec0v cvv=987 card_number=4111');
+    expect(masked).not.toMatch(/base64:abc|u:p|BEGIN|123456|654321|s3ss|ingest|a\.b\.c|rec0v|987|4111/);
+    expect(redactText('footprint=big')).toBe('footprint=big');
+  });
+
+  it('masks `code` in text only as a query parameter or a JSON key, and a private key in PEM form entirely', () => {
+    expect(redactText('GET /cb?state=s&code=999111&x=1')).toBe('GET /cb?state=s&code=[redacted]&x=1');
+    expect(redactText('body {"code":"999111","n":1} and {"code": 42}')).toBe('body {"code":"[redacted]","n":1} and {"code": "[redacted]"}');
+    expect(redactText('the postcode=1234 and status code stay')).toBe('the postcode=1234 and status code stay');
+    const pem = 'before -----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\nabc123\n-----END RSA PRIVATE KEY----- after';
+    expect(redactText(pem)).toBe('before [redacted] after');
+    expect(redactText('cut -----BEGIN PRIVATE KEY-----\nMIIEvQIBADAN')).toBe('cut [redacted]');
+  });
+
+  it('keeps the own code of an error in the text of a stored error although `"code"` is masked in text', () => {
+    const failure = Object.assign(new Error('refused'), { code: 'ECONNREFUSED', otp: '1' });
+    const text = describeError(failure);
+    expect(text).toContain('"code":"ECONNREFUSED"');
+    expect(text).toContain('"otp":"[redacted]"');
+  });
+
+  it('masks in time that does not grow with the square of the input — a long word, a long header', () => {
+    const inputs = [
+      `${'a'.repeat(200_000)}:/x://y`,
+      `${'my_password'.repeat(18_000)}`,
+      `${'pass'.repeat(50_000)}=x`,
+      `${'otp'.repeat(60_000)}`,
+      `${'recovery'.repeat(25_000)} x`,
+      `${'-----BEGIN PRIVATE KEY-----'.repeat(7_000)}`,
+    ];
+    for (const input of inputs) {
+      const started = performance.now();
+      new Redactor().text(input);
+      new Redactor().log({ agent: input });
+      expect(performance.now() - started).toBeLessThan(100);
+    }
+    expect(redactText('my_password=hunter2 user_otp=1 userOtp=2 auth_code=3 oauth_code=4 mfa_code=5')).toBe(
+      'my_password=[redacted] user_otp=[redacted] userOtp=[redacted] auth_code=[redacted] oauth_code=[redacted] mfa_code=[redacted]',
+    );
+    expect(redactText('{"code":"a\\"b"} x')).toBe('{"code":"[redacted]"} x');
+  });
+
+  it('masks a URL in the middle of a string, too', () => {
+    const shown = redactor.log({ note: 'connecting to postgres://u:pw0rd@h/db failed' });
+    expect(JSON.stringify(shown)).not.toContain('pw0rd');
+  });
+
+  it('masks a URL under a harmless key: the password of its userinfo and the sensitive values of its query', () => {
+    const shown = redactor.log({ target: 'postgres://u:p4ss@h/db?password=x9&sslmode=require', note: 'plain text', other: { url: 'https://h/cb?token=t0k&page=2' } });
+    expect(JSON.stringify(shown)).not.toMatch(/p4ss|x9|t0k/);
+    expect(shown).toMatchObject({ note: 'plain text' });
+    expect(String(shown.target)).toContain('sslmode=require');
+  });
+});

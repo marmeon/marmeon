@@ -1,4 +1,4 @@
-import { Application, currentLogContext, defineConfig, env, environment, logContextSourcesOf, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
+import { Application, currentLogContext, defineConfig, env, environment, escapeControls, logContextSourcesOf, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
 import { channels, messageBase } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { pino, type Logger as Pino } from 'pino';
@@ -113,6 +113,22 @@ function pretty(): typeof pinoPretty {
   return createRequire(import.meta.url)('pino-pretty') as typeof pinoPretty;
 }
 
+/**
+ * A log context for a terminal: the `message` and `stack` of errors (at any depth) with control characters written out, so
+ * neither forges a line nor passes an escape sequence. A stack keeps the line breaks that start its own frames.
+ */
+function terminalSafe(value: unknown, key?: string): unknown {
+  if (typeof value === 'string') {
+    if (key === 'stack') return value.split('\n    at ').map((piece) => escapeControls(piece)).join('\n    at ');
+    return key === 'message' ? escapeControls(value) : value;
+  }
+  if (Array.isArray(value)) return value.map((item) => terminalSafe(item));
+  if (value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, terminalSafe(entry, name)]));
+  }
+  return value;
+}
+
 /** `app`: its entries also go to the `log` channel while something listens. */
 export function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
@@ -126,7 +142,15 @@ export function createPinoLogger(config: LogOptions, destination?: NodeJS.Writab
       // The app's environment on every entry (`APP_ENV`, informative) — a log shipper tells one deployment from another by it.
       base: config.environment === undefined ? undefined : { appEnv: config.environment },
       // The app's Redactor: sensitive keys at any depth, an error under any key as type, message and stack, masked.
-      formatters: { log: (object) => redactor.log(object) },
+      formatters: { log: (object) => (config.format === 'pretty' ? terminalSafe(redactor.log(object)) : redactor.log(object)) as Record<string, unknown> },
+      // A line break in a message must not start a line of its own in the terminal (pino-pretty prints it as it is): JSON
+      // escapes it already.
+      hooks: {
+        logMethod(args, method) {
+          if (config.format === 'pretty' && typeof args[1] === 'string') args[1] = escapeControls(args[1]);
+          method.apply(this, args);
+        },
+      },
       // The redaction wrote `err` already, in the shape of pino's error serializer — which would take it for an object of its own.
       serializers: { err: (value: unknown) => value },
       // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt; and

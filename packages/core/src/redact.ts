@@ -1,5 +1,13 @@
-/** Keys whose values never reach a log (or a stored error): passwords, tokens, secrets, credentials and cookies. */
-export const REDACTED_KEYS = /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature/i;
+/**
+ * Keys whose values never reach a log (or a stored error): passwords, tokens, secrets, credentials, keys, one-time codes,
+ * session ids, recovery codes, card data and cookies. `code` and `auth` count only as the whole name, and `otp` only as a word of its
+ * own (`otp`, `totp_code`, `otpCode`, `user_otp` — not `footprint`; `userOtp` is told by {@link Redactor.isSensitive}); an error's
+ * own `code` (`ECONNREFUSED`) is never hidden.
+ */
+export const REDACTED_KEYS =
+  /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?key|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code|(?:^|[-_])t?otp|^(?:x-)?auth$|^code$/i;
+// `userOtp`, `totpSecret`: an `otp` at a camel-case boundary — told from `footprint` by its capital, which `REDACTED_KEYS` ignores.
+const CAMEL_OTP = /[a-z](?:Otp|Totp)/;
 
 /**
  * A log entry's context with sensitive values replaced by `[redacted]`, by the core's key list alone — what
@@ -18,7 +26,7 @@ const MAX_CAUSES = 5;
 // `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value (not a statement's `?`/`$1`
 // placeholder: `where password = ?` stays readable). Matches start at a word's beginning only (the lookbehind): otherwise a
 // long word costs quadratic time (a 64 KB string took seconds).
-const KEY_VALUE = /(?<![\w-])([\w-]*(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature)[\w-]*)("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
+const KEY_VALUE = /(?<![\w-])((?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?key|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64}))("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
 // `Authorization: Bearer …` without the key in front (a header value on its own).
 const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 // `postgres://user:secret@host`, `redis://:secret@host` — the password of a URL.
@@ -30,6 +38,13 @@ const API_TOKEN = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
 // A path segment of 32 or more URL-safe characters (`/reset-password/<token>`, a signed link's hash) — kept unless it reads
 // like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).
 const PATH_SEGMENT = /(?<=\/)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
+// A string with a URL in it (`scheme://…`): masked as text even under a key that is not sensitive.
+const URL_LIKE = /(?<![\w+.-])[a-z][\w+.-]*:\/\//i;
+// A private key in PEM form — to its end line, or to the end of the text when that is cut off.
+const PEM_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
+// `?code=…`, `&code=…` (an OAuth callback) and `"code":"…"` (a JSON body): `code` is no secret name in free text, only here.
+const CODE_PARAM = /([?&]code=)(?!\[redacted\])[^\s"'&,;}]+/gi;
+const CODE_JSON = /("code"\s*:\s*)(?:"(?:[^"\\]|\\.)*"|\d+)/gi;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // What every pattern above (and an added name's `name=value`) needs to match at all: a separator (`:` `=`), a `$` (PHC),
 // whitespace (`Bearer …`) or a run of 32 URL-safe characters (a token-like segment — and an API token's secret). A text
@@ -64,6 +79,9 @@ function looksLikeToken(segment: string): boolean {
  */
 export function redactText(text: string): string {
   return text
+    .replace(PEM_KEY, '[redacted]')
+    .replace(CODE_PARAM, '$1[redacted]')
+    .replace(CODE_JSON, '$1"[redacted]"')
     .replace(URL_PASSWORD, '$1***@')
     .replace(PHC_HASH, '[redacted]')
     .replace(API_TOKEN, '$1|[redacted]')
@@ -114,7 +132,12 @@ export class Redactor {
 
   /** Whether the value under `key` is never shown. */
   isSensitive(key: string): boolean {
-    return REDACTED_KEYS.test(key) || this.#keys.has(key.toLowerCase());
+    return REDACTED_KEYS.test(key) || CAMEL_OTP.test(key) || this.#keys.has(key.toLowerCase());
+  }
+
+  /** {@link isSensitive} for the own field of an error: its `code` (`ECONNREFUSED`, `23505`) says what failed and stays. */
+  #isSensitiveField(key: string, value: unknown): boolean {
+    return !(key === 'code' && (typeof value === 'string' || typeof value === 'number')) && this.isSensitive(key);
   }
 
   /**
@@ -125,7 +148,8 @@ export class Redactor {
    * - **errors under any key** as `{ type, message, stack, …own fields }` — the message and stack name the causes
    *   (`: cause`, `caused by: …`), are masked as text ({@link text}) and their own fields are redacted by key; an aggregate
    *   error's errors go to `aggregateErrors`;
-   * - **URLs** as masked text; dates, buffers and other strings as they are (only keys are checked in a context).
+   * - **URLs** — `URL` objects and strings with one in them (`scheme://…`) — as masked text; dates, buffers and other strings as
+   *   they are (otherwise only keys are checked in a context).
    */
   log(context: Readonly<Record<string, unknown>>): Record<string, unknown> {
     return this.#logObject(context, 0);
@@ -139,6 +163,8 @@ export class Redactor {
 
   /** A value inside a log context (`depth`: the level of the object holding it). */
   #logValue(value: unknown, depth: number): unknown {
+    // A URL-shaped string under a harmless key (`{ target: 'postgres://u:p@h/db?password=x' }`) is masked like text.
+    if (typeof value === 'string') return value.includes('://') && URL_LIKE.test(value) ? this.text(value) : value;
     if (value === null || typeof value !== 'object') return value;
     if (depth >= MAX_DEPTH) return '[…]';
     if (value instanceof Error) return this.#logError(value, depth + 1, new Set());
@@ -171,7 +197,7 @@ export class Redactor {
     if (error.cause !== undefined && !(error.cause instanceof Error)) out.cause = this.isSensitive('cause') ? REDACTED : nested(error.cause);
     for (const [key, value] of Object.entries(error)) {
       if (key in out || key === 'cause') continue;
-      out[key] = this.isSensitive(key) ? REDACTED : nested(value);
+      out[key] = this.#isSensitiveField(key, value) ? REDACTED : nested(value);
     }
     return out;
   }
@@ -315,15 +341,27 @@ function truncate(text: string): string {
 export function describeError(error: unknown, redactor: Redactor = new Redactor()): string {
   if (!(error instanceof Error)) return redactor.text(typeof error === 'string' ? error : safeJson(redactor.log({ value: error }).value));
   const parts: string[] = [];
+  const codes = new Map<string, string>();
+  const nonce = crypto.randomUUID();
   let current: unknown = error;
   for (let depth = 0; current instanceof Error && depth < 5; depth++) {
     const own = Object.fromEntries(Object.entries(current).filter(([key]) => key !== 'cause'));
-    const properties = Object.keys(own).length > 0 ? `\n${safeJson(redactor.log(own))}` : '';
+    // The error's own `code` (`EAUTH`, `23505`) says what failed and stays, unlike a `code` in a log context or in text: it
+    // passes the masking of the whole text as a placeholder.
+    const shown = redactor.log(own);
+    if (typeof own.code === 'string' || typeof own.code === 'number') {
+      delete shown.code;
+      shown[`@@code-${nonce}-${depth}@@`] = '@@';
+      codes.set(`"@@code-${nonce}-${depth}@@":"@@"`, `"code":${JSON.stringify(own.code)}`);
+    }
+    const properties = Object.keys(own).length > 0 ? `\n${safeJson(shown)}` : '';
     parts.push(`${depth > 0 ? 'Caused by: ' : ''}${current.stack ?? `${current.name}: ${current.message}`}${properties}`);
     current = current.cause;
   }
   if (current !== undefined && !(current instanceof Error)) parts.push(`Caused by: ${typeof current === 'string' ? current : safeJson(redactor.log({ value: current }).value)}`);
-  return redactor.text(parts.join('\n'));
+  let masked = redactor.text(parts.join('\n'));
+  for (const [placeholder, code] of codes) masked = masked.replace(placeholder, () => code);
+  return masked;
 }
 
 function safeJson(value: unknown): string {

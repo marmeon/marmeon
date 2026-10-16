@@ -94,8 +94,13 @@ The line is built only when it goes somewhere. With `LOG_LEVEL=warn` or `silent`
 ## Keeping secrets out of the log
 
 Before an entry is written, its context passes the app's `Redactor`. Every key that contains `pass`, `secret`, `token`,
-`authorization`, `cookie`, `remember`, `apikey` with or without a `-` or `_`, or `signature`, in any case, has its value replaced
-by `[redacted]`. So `password`, `new_password` and `api_key` are masked, and so is a harmless `passport`. The names that packages
+`authorization`, `cookie`, `remember`, `apikey` with or without a `-` or `_`, `signature`, `credential`, `private_key`, `app_key`,
+`encryption_key`, `session_id`, `jwt`, `dsn`, `recovery`, `cvv`, `cvc`, `card_number`, `mfa_code`, `two_factor_code`,
+`verification_code` or `sms_code`, in any case, has its value replaced by `[redacted]`. So do keys that start with `otp` or
+`totp`, have it after a `-` or `_`, or at a camel-case boundary (`otp_code`, `totpCode`, `userOtp`), and the keys that are exactly
+`code`, `auth` or `x-auth`. So `password`, `new_password`, `privateKey` and `api_key` are masked, and so is a harmless
+`passport`. The `code` of an error (`ECONNREFUSED`) stays, because it says what failed, and so do names such as `status_code`
+and `footprint`. The names that packages
 and your providers add with `addKeys()`, such as the name of the session cookie, are masked the same way:
 
 ```ts
@@ -108,17 +113,25 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 - An error is written as its `type`, `message` and `stack` under any key and at any depth, not only under `err`. The message
   and the stack name its causes, after `: ` and `caused by:`, and are masked as text. Its own fields are redacted by key, and
   the errors of an `AggregateError` go to `aggregateErrors`.
-- A `URL` or `URLSearchParams` is written as text, masked: neither a `?token=` nor a token in the path survives.
+- A `URL` or `URLSearchParams` is written as text, masked: neither a `?token=` nor a token in the path survives. So is a string
+  under any key that starts like a URL (`postgres://user:password@host/db?password=…`): the password of the URL and the values of
+  sensitive query parameters go.
+- The console logger, which is used without `@marmeon/log`, writes every control and format character of a line as an escape: a line
+  break in a message or a value (a decoded `%0A` in a route parameter) comes out as `\n`, so it cannot forge a line of its own.
+  The pretty format of `@marmeon/log` does the same for the message and the stacks of errors. JSON lines escape it by themselves.
+  A logger of your own that writes lines can call `escapeControls(line)` from `@marmeon/core` for the same escaping.
 
 > [!WARNING]
 > Only keys are checked. The message and the strings in a context are written as they are, so never put a secret into either.
+> The one exception is a string that holds a URL (`scheme://…`): its password and the values of sensitive query parameters are masked.
 > Never turn an error into a string before you log it: `{ exception: String(error) }` is a string, and a connection URL with its
 > password in the error's message goes out as it is. Log the error itself: `logger.error('Import failed', { err: error })`.
 
 When you must log text that may hold a secret, mask it with the app's `Redactor`: take it in your constructor and call its
 `text()` method. It takes out the values of sensitive keys such as `token=…`, bearer credentials, passwords in URLs, password
 hashes, API tokens and path segments that look like a token, and the values of the names packages add, such as the session
-cookie's. `redactText()` of `@marmeon/core` does the same with the core's key list alone, for code that runs without an app.
+cookie's. In text, `code` counts as a name only in a query parameter (`?code=…`) or a JSON key (`"code":…`), and a private key in
+PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's key list alone, for code that runs without an app.
 
 Every error entry of the framework passes the app's `Redactor` as text: the exception handler's report, server rendering,
 islands, work after the response, scheduled tasks, live updates, session clean-up, the listeners of job events, failed jobs, and lost
