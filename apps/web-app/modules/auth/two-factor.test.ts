@@ -302,9 +302,10 @@ describe('a session that ends while the authenticator is set up', () => {
   /** The moment after the other devices are signed out, an operator ends the account's sessions. */
   function endSessionsAfterSignOut() {
     const write = UserRepository.prototype.updatePasswordHash;
-    return vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash) {
-      await write.call(this, id, hash);
+    return vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash, expected) {
+      const wrote = await write.call(this, id, hash, expected);
       await this.updateSessionKey(id, 'e'.repeat(40), undefined);
+      return wrote;
     });
   }
 

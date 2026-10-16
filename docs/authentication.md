@@ -68,7 +68,7 @@ Users come from a `UserProvider`. The starter kit's `UserRepository` is one, and
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
-import { Repository, secret } from '@marmeon/database';
+import { Repository, secret, sql } from '@marmeon/database';
 import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> implements UserProvider<User> {
@@ -82,8 +82,19 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('email', '=', email));
   }
 
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    await this.update(id, { password: hash });
+  /**
+   * With `expected`, writes only where the stored hash still equals it, in one statement, and answers whether it wrote: a rehash or
+   * "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes regardless.
+   */
+  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean> {
+    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
+    const result = await this.db
+      .updateTable('users')
+      .set({ password: hash, updated_at: new Date() })
+      .where('id', '=', id)
+      .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
   }
 
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
@@ -102,6 +113,13 @@ explains. Both `findById()` and `findForLogin()` must return it: a `findForLogin
 `attempt()` throw, and a bad sign-in is not what it reports. `findForLogin()` gets what the person typed after
 the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Until a provider is
 bound, the first use of `UserProvider` throws an error that says how to bind one.
+
+`updatePasswordHash(id, hash, expected?)` is a compare-and-set when `expected` is given: it writes only where the stored hash still
+equals `expected`, in one statement, and returns whether it wrote. `attempt()` rehashes over the hash it verified, and
+`logoutOtherDevices()` writes over the hash its request read, so a password reset that lands in between is never turned back to the old
+password: the rehash makes the sign-in an `invalid-credentials` (a new attempt checks the new password), and `logoutOtherDevices()`
+returns `false`. A reset or a new password passes no `expected` and writes regardless. A provider that returns nothing still works, but writes blindly and keeps that race; add
+`expected` to a provider of your own.
 
 ## Protecting routes
 
@@ -352,7 +370,7 @@ before it, even one a sign-in wrote a moment after the account changed. A refuse
 an invalid one. A token without a fingerprint, such as a row from before the column existed, is refused: when you add the column,
 the cookies of existing devices stop working once and the users sign in again. The device that stays signed in when
 `updateSessionKey()` or `logoutOtherDevices()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs, say)
-changes the password hash and so the fingerprint: it refuses the remember-me cookies of the user's other devices, not only their sessions.
+changes the password hash and so the fingerprint; the sign-in itself is stamped with the new one. It refuses the remember-me cookies of the user's other devices, not only their sessions.
 
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
   value within 10 seconds of the rotation still passes.
@@ -483,7 +501,7 @@ throws a field error for a wrong password. Never check a signed-in user's passwo
 [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
 
 `logoutOtherDevices(password)` signs out every other device without changing the password. It checks the password, returns `false`
-when it is wrong, and otherwise hashes it again with a new salt. The other sessions end at their next request, and the
+when it is wrong or when the password changed meanwhile (a reset landed during the request: nothing is written), and otherwise hashes it again with a new salt. The other sessions end at their next request, and the
 remember-me tokens of the other devices are deleted.
 
 The starter kit runs both routes with `.block()`: one such request per session at a time. Two at once could leave the session
@@ -528,8 +546,19 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('email', '=', email));
   }
 
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    await this.update(id, { password: hash });
+  /**
+   * With `expected`, writes only where the stored hash still equals it, in one statement, and answers whether it wrote: a rehash or
+   * "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes regardless.
+   */
+  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean> {
+    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
+    const result = await this.db
+      .updateTable('users')
+      .set({ password: hash, updated_at: new Date() })
+      .where('id', '=', id)
+      .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
   }
 
   // Compare-and-set, in one statement: writes only while the stored key is still `expected` (null: none) and says whether it did.

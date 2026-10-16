@@ -51,8 +51,14 @@ export interface UserProvider<U = AuthUser> {
   findById(id: U extends { readonly id: infer Id } ? Id : never): Promise<Credentials<U> | undefined>;
   /** By what people type to sign in — usually the e-mail, already normalized by the request schema. Returns `sessionKey` when the account has one, as `findById()` does, or `attempt()` throws. */
   findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
-  /** Stores a new hash (rehash on login, password change, reset). */
-  updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash): Promise<void>;
+  /**
+   * Stores a new hash (rehash on login, password change, reset). With `expected` it is a compare-and-set: write `hash` only when the
+   * stored hash equals `expected`, in **one** statement (`UPDATE … WHERE password = expected`), and return whether it wrote — a rehash
+   * over the hash it verified, or `logoutOtherDevices()`, must never put an old password back over a reset that landed meanwhile.
+   * Without `expected` it writes regardless (a reset, a new password). Returning nothing means "written blindly", as a provider
+   * written before `expected` existed does; such a provider is as exposed to that race as it was.
+   */
+  updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void>;
   /**
    * Stores a new session key (`auth.updateSessionKey()`, `AccountSessions`); `findById()` and `findForLogin()` hand it back as
    * `sessionKey`. Compare-and-set: write `key` only when the stored key equals `expected` (`null`: none), in **one** statement

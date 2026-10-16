@@ -56,7 +56,7 @@ password even for a known address, so both take the same time, and keeps quiet a
 | `dummyVerify(password)` | Takes as long as a real check, and is always `false`. |
 
 `dummyVerify()` is for the sign-in of an unknown address: without it, the quick answer would tell a stranger that the address has
-no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in.
+no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).
 
 A hash is a string in the PHC format, such as `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, with the type `PasswordHash`. The
 type keeps the two strings apart: `verify(hash, password)`, with the arguments swapped, does not compile. A hash read from the

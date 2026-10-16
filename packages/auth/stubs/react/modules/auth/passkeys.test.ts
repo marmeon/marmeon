@@ -513,9 +513,10 @@ describe('a session that ends while a passkey is added', () => {
     const response = device().register(options.json() as never);
     // The moment after the other devices are signed out, an operator ends the account's sessions.
     const write = UserRepository.prototype.updatePasswordHash;
-    const spy = vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash) {
-      await write.call(this, id, hash);
+    const spy = vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash, expected) {
+      const wrote = await write.call(this, id, hash, expected);
       await this.updateSessionKey(id, 'e'.repeat(40), undefined);
+      return wrote;
     });
     try {
       await app.withCookie(SESSION, cookie).post('/settings/passkeys', { json: { response, name: 'Laptop', password: 'password' } }).assertStatus(401);

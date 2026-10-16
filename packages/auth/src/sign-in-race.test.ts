@@ -16,6 +16,8 @@ const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
 class Users implements UserProvider {
   readonly rows = new Map<number, { user: AuthUser; hash: PasswordHash | null; key: string | null }>();
+  /** A provider written before `expected` existed writes blindly and answers nothing. */
+  blind = false;
   async findById(id: number): Promise<Credentials | undefined> {
     const row = this.rows.get(id);
     return row && { user: row.user, passwordHash: row.hash, sessionKey: row.key };
@@ -24,8 +26,15 @@ class Users implements UserProvider {
     for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: row.key };
     return undefined;
   }
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    this.rows.get(id)!.hash = hash;
+  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void> {
+    const row = this.rows.get(id)!;
+    if (this.blind) {
+      row.hash = hash;
+      return undefined;
+    }
+    if (expected !== undefined && row.hash !== expected) return false;
+    row.hash = hash;
+    return true;
   }
   /** Compare-and-set; `expected === undefined` writes regardless. */
   async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
@@ -309,6 +318,68 @@ describe('a password sign-in while the account changes', () => {
     expect(((await (await world.send('/login', { email: ada.email, password: 'secret' })).json()) as { ok: boolean }).ok).toBe(true);
     expect(world.users.rows.get(1)!.hash).toMatch(/^\$argon2id/);
     expect((await world.send('/me')).status).toBe(200);
+  });
+});
+
+describe('a rehash only over the hash that was verified', () => {
+  const oldCosts = () => new PasswordHasher({ driver: 'scrypt', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } });
+  const reset = (world: World) => async () => {
+    const container = world.application.container;
+    await container.make(NewPassword).store(world.users, container.make(RememberTokenStore), 1, await world.hasher.make('reset'), 'reset');
+  };
+
+  it('keeps the password of a reset that landed between the check and the rehash', async () => {
+    const world = await boot({ hold: 'verify' });
+    world.users.rows.get(1)!.hash = await oldCosts().make('secret');
+    const answer = await during(world, attempt(world, true), reset(world));
+    expect(answer).toMatchObject({ ok: false, kind: 'invalid-credentials' });
+    const stored = world.users.rows.get(1)!.hash!;
+    expect(await world.hasher.verify('reset', stored), 'the reset hash survived').toBe(true);
+    expect(await world.hasher.verify('secret', stored), 'the old password was not written back').toBe(false);
+    expect((await world.send('/me')).status).toBe(401);
+    expect(world.jar.has('remember_web')).toBe(false);
+    expect(failed, 'no Failed event: the password was right').toHaveLength(0);
+  });
+
+  it('keeps the sign-in that rehashed, signing in under the new hash', async () => {
+    const world = await boot({ hold: 'verify' });
+    world.users.rows.get(1)!.hash = await oldCosts().make('secret');
+    world.release();
+    const { send } = world;
+    const answer = (await (await send('/login', { email: ada.email, password: 'secret', remember: true })).json()) as { ok: boolean };
+    expect(answer.ok).toBe(true);
+    expect(world.users.rows.get(1)!.hash).toMatch(/^\$argon2id/);
+    expect((await send('/me')).status).toBe(200);
+    world.jar.delete('marmeon_session');
+    expect((await send('/me')).status, 'the remember-me token carries the new hash').toBe(200);
+  });
+
+  it('rehashes as before over a provider that writes blindly', async () => {
+    const world = await boot({ hold: 'verify' });
+    world.users.blind = true;
+    world.users.rows.get(1)!.hash = await oldCosts().make('secret');
+    world.release();
+    expect(((await (await world.send('/login', { email: ada.email, password: 'secret' })).json()) as { ok: boolean }).ok).toBe(true);
+    expect(world.users.rows.get(1)!.hash).toMatch(/^\$argon2id/);
+  });
+
+  it('logoutOtherDevices() writes nothing when a reset landed meanwhile', async () => {
+    const world = await boot({ hold: 'verify' });
+    world.release();
+    await login(world.send, false);
+    const before = world.users.rows.get(1)!.hash;
+    // The reset lands after this request read the account and before its write: the provider resets first, then runs the write.
+    const real = world.users.updatePasswordHash.bind(world.users);
+    world.users.updatePasswordHash = async (id, hash, expected) => {
+      world.users.rows.get(1)!.hash = await world.hasher.make('reset');
+      world.users.updatePasswordHash = real;
+      return real(id, hash, expected);
+    };
+    const answer = (await (await world.send('/logout-others', {})).json()) as { done: boolean };
+    expect(answer.done).toBe(false);
+    expect(world.users.rows.get(1)!.hash).not.toBe(before);
+    expect(await world.hasher.verify('reset', world.users.rows.get(1)!.hash!)).toBe(true);
+    expect((await world.send('/me')).status).toBe(401);
   });
 });
 
