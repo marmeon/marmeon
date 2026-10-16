@@ -183,6 +183,12 @@ describe('the script', () => {
     expect(removed.run(['internal']).status).toBe(0);
   });
 
+  it('counts a move from stable to experimental as a removal', () => {
+    const { run } = repository({ demo: [a, b] }, { demo: [a, item('b', 'export declare const b: 1;', 'experimental')] });
+    expect(run(['feature']).status).toBe(1);
+    expect(run(['breaking']).status).toBe(0);
+  });
+
   it('refuses malformed labels instead of passing', () => {
     const { directory } = repository({ demo: [a] }, { demo: [a2] });
     const noLabels = spawnSync('node', [script], { cwd: directory, env: { PATH: process.env.PATH, LABELS: '{"fix":1}' }, encoding: 'utf8' });

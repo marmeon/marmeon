@@ -25,6 +25,21 @@ describe('api.md format', () => {
     expect(markdown).toContain('Types from other packages: none');
   });
 
+  it('tells the package-wide Experimental section from the one of an entry point', () => {
+    const items = [
+      item('Probe', 'export declare class Probe {}', 'experimental'),
+      item('Options.pages', 'pages?: boolean;', 'experimental'),
+      item('DEMO_FLAG', '`DEMO_FLAG` — optional', 'experimental', ''),
+      item('demo:probe', 'marmeon demo:probe', 'experimental', ''),
+    ];
+    const markdown = renderSnapshot('@marmeon/demo', items, new Map([['@marmeon/demo', []]]));
+    expect(markdown).toContain('\n### Experimental\n');
+    expect(markdown).toContain('\n## Experimental\n');
+    const parsed = parseSnapshot(markdown);
+    expect(parsed).toHaveLength(items.length);
+    for (const original of items) expect(parsed).toContainEqual(original);
+  });
+
   it('sorts by name, so the order of the source does not matter', () => {
     const items = [item('b', 'export declare const b: 1;'), item('a', 'export declare const a: 1;')];
     expect(renderSnapshot('@marmeon/demo', items, none)).toBe(renderSnapshot('@marmeon/demo', [...items].reverse(), none));

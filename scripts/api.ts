@@ -8,8 +8,10 @@
  *
  * The snapshot is read from the emitted `.d.ts` files with oxc-parser: per entry point (not `./internal`) every exported
  * declaration without its comments, and the types a public declaration names without exporting them. `@internal` declarations
- * and members are left out, `@experimental` ones listed apart. The Environment and Commands sections come from the built
- * `dist/*.js` of the providers, which are imported (nothing boots). The format: `scripts/api-snapshot.ts`.
+ * and members are left out, `@experimental` ones listed apart: a declaration or a member tagged so, a whole entry point or
+ * package (`marmeon.experimental` in its `package.json`: `true`, or a list of subpaths), a command (`static experimental`).
+ * The Environment and Commands sections come from the built `dist/*.js` of the providers, which are imported (nothing boots).
+ * Everything experimental must be named in `docs/releases.md`. The format: `scripts/api-snapshot.ts`.
  */
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -309,14 +311,49 @@ function internalMembers(file: DtsFile, node: Node, out: Node[] = []): Node[] {
   return out;
 }
 
-/** The text of a statement as emitted, without comments, without the members marked `@internal` and without blank lines. */
-function declarationText(file: DtsFile, statement: Statement): string {
+/** What a member is called in the item `<Declaration>.<member>`. */
+function memberName(file: DtsFile, member: Node): string {
+  if (member.key) return member.computed ? `[${file.text.slice(member.key.start, member.key.end)}]` : nameOf(member.key);
+  if (member.type === 'TSIndexSignature') return '[index]';
+  return member.type === 'TSConstructSignatureDeclaration' ? 'new' : '()';
+}
+
+interface ExperimentalMember {
+  readonly node: Node;
+  /** The names from the declaration down to the member (`['pages']`, or `['server', 'port']` for a member of an object type). */
+  readonly path: readonly string[];
+}
+
+/** The members under `node` that carry `@experimental` (not those inside one): the snapshot lists each as an item of its own. */
+function experimentalMembers(file: DtsFile, node: Node, path: readonly string[] = [], out: ExperimentalMember[] = []): ExperimentalMember[] {
+  for (const child of children(node)) {
+    if (!MEMBER_TYPES.has(child.type)) {
+      experimentalMembers(file, child, path, out);
+    } else if (hasTag(commentBefore(file, child), 'internal')) {
+      continue;
+    } else if (hasTag(commentBefore(file, child), 'experimental')) {
+      out.push({ node: child, path: [...path, memberName(file, child)] });
+    } else {
+      experimentalMembers(file, child, [...path, memberName(file, child)], out);
+    }
+  }
+  return out;
+}
+
+/**
+ * The text of a statement as emitted, without comments, without the members marked `@internal` and (unless `whole`) the ones
+ * marked `@experimental`, and without blank lines.
+ */
+function declarationText(file: DtsFile, statement: Statement, whole = false): string {
   const { start, end } = statement.wrapper;
   const cuts: [number, number][] = file.comments.filter((comment) => comment.start >= start && comment.end <= end).map((comment) => [comment.start, comment.end]);
   for (const member of internalMembers(file, statement.node)) cuts.push([member.start, member.end]);
-  cuts.sort((a, b) => b[0] - a[0]);
+  if (!whole) for (const { node } of experimentalMembers(file, statement.node)) cuts.push([node.start, node.end]);
+  // A cut inside another one (a comment in a removed member) is already gone with it.
+  cuts.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const outer = cuts.filter(([from, to], index) => !cuts.slice(0, index).some(([earlier, until]) => earlier <= from && to <= until));
   let text = file.text.slice(start, end);
-  for (const [from, to] of cuts) {
+  for (const [from, to] of outer.reverse()) {
     if (from >= start && to <= end) text = text.slice(0, from - start) + text.slice(to - start);
   }
   // A statement inside `declare module { … }` is indented: take that off its continuation lines.
@@ -395,6 +432,7 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
   const queue: { file: DtsFile; local: string }[] = [];
   const referenced = new Map<string, string>();
   const referencedNames = new Set<string>();
+  const memberItems = new Set<string>();
 
   /** A public declaration names `name` from `specifier`: a library's types, or a package's `./internal`, which no snapshot holds. */
   const note = (specifier: string, name: string) => {
@@ -468,7 +506,17 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
       })
       .join('\n');
     items.push({ entry, section: experimental ? 'experimental' : 'stable', name, text });
-    for (const statement of shown) pending.push(...referencesOf(file, statement));
+    for (const statement of shown) {
+      pending.push(...referencesOf(file, statement));
+      for (const member of experimentalMembers(file, statement.node)) {
+        const memberText = declarationText(file, { wrapper: member.node, node: member.node }, true);
+        // Several call signatures, or merged interfaces, can share a name: number them like referenced names.
+        let memberItem = `${name}.${member.path.join('.')}`;
+        for (let count = 2; memberItems.has(memberItem); count++) memberItem = `${name}.${member.path.join('.')} (${count})`;
+        memberItems.add(memberItem);
+        items.push({ entry, section: 'experimental', name: memberItem, text: memberText });
+      }
+    }
   }
 
   // The augmentations of the files the entry reaches (the first entry to reach a file owns it).
@@ -505,7 +553,7 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
           for (let count = 2; augmentNames.has(name); count++) name = `${moduleName}.${local} (${count})`;
           augmentNames.add(name);
           const statement = { wrapper: member, node };
-          items.push({ entry, section: 'augments', name, text: declarationText(file, statement) });
+          items.push({ entry, section: 'augments', name, text: declarationText(file, statement, true) });
           pending.push(...referencesOf(file, statement));
         }
       }
@@ -526,7 +574,7 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
     for (let count = 2; referencedNames.has(name); count++) name = `${local} (${count})`;
     referencedNames.add(name);
     const statements = file.declarations.get(local) ?? [];
-    items.push({ entry, section: 'referenced', name, text: statements.map((statement) => declarationText(file, statement)).join('\n') });
+    items.push({ entry, section: 'referenced', name, text: statements.map((statement) => declarationText(file, statement, true)).join('\n') });
   }
   return { items, foreign };
 }
@@ -540,6 +588,7 @@ interface EnvField {
 interface CommandShape {
   readonly command: string;
   readonly usage?: string;
+  readonly experimental?: boolean;
   readonly options?: Readonly<Record<string, { readonly type?: string; readonly short?: string; readonly multiple?: boolean }>>;
 }
 
@@ -559,7 +608,7 @@ function commandItem(Command: CommandShape): ApiItem {
       return `--${name} (${more.join(', ')})`;
     });
   const head = `marmeon ${Command.command}${Command.usage ? ` ${Command.usage}` : ''}`;
-  return { entry: '', section: 'commands', name: Command.command, text: [head, ...options].join('\n') };
+  return { entry: '', section: Command.experimental === true ? 'experimental' : 'commands', name: Command.command, text: [head, ...options].join('\n') };
 }
 
 /**
@@ -636,11 +685,39 @@ export interface PackageToSnapshot {
   readonly manifest: Readonly<Record<string, unknown>>;
 }
 
-/** The `api.md` of a package, or none when it has no entry point with types; plus the problems met on the way. */
-export function snapshotPackage(pkg: PackageToSnapshot, allowedForeign: readonly string[], runtime: readonly ApiItem[] = []): { markdown?: string; problems: string[] } {
+/**
+ * What `marmeon.experimental` of a manifest marks: `true` for the whole package, or the entries (`@marmeon/x/y`) of the listed
+ * subpaths. A subpath that is no entry point, or is `./internal`, is a problem.
+ */
+function experimentalScope(pkg: PackageToSnapshot, problems: string[]): true | ReadonlySet<string> | undefined {
+  const value = (pkg.manifest.marmeon as { experimental?: unknown } | undefined)?.experimental;
+  if (value === undefined || value === false) return undefined;
+  if (value === true) return true;
+  const exportsField = (pkg.manifest.exports ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(value) || value.some((subpath) => typeof subpath !== 'string')) {
+    problems.push(`${pkg.name}: marmeon.experimental must be true or a list of subpaths of exports`);
+    return undefined;
+  }
+  const entries = new Set<string>();
+  for (const subpath of value as string[]) {
+    if (subpath === './internal') problems.push(`${pkg.name}: marmeon.experimental lists ./internal, which no snapshot holds`);
+    else if (!(subpath in exportsField)) problems.push(`${pkg.name}: marmeon.experimental lists ${subpath}, which is no subpath of exports`);
+    else entries.add(subpath === '.' ? pkg.name : `${pkg.name}${subpath.slice(1)}`);
+  }
+  return entries;
+}
+
+/** The api.md of a package, or none when it has no entry point with types; plus the problems met on the way and what is experimental in it. */
+export function snapshotPackage(
+  pkg: PackageToSnapshot,
+  allowedForeign: readonly string[],
+  runtime: readonly ApiItem[] = [],
+): { markdown?: string; problems: string[]; experimental: string[] } {
   const declarations = new Declarations();
   const problems: string[] = [];
-  const items: ApiItem[] = [...runtime];
+  const scope = experimentalScope(pkg, problems);
+  // A package that is experimental as a whole has experimental variables and commands too.
+  const items: ApiItem[] = runtime.map((item) => (scope === true && item.section !== 'experimental' ? { ...item, section: 'experimental' } : item));
   const foreign = new Map<string, readonly string[]>();
   const claimed = new Set<string>();
   const used = new Set<string>();
@@ -652,7 +729,7 @@ export function snapshotPackage(pkg: PackageToSnapshot, allowedForeign: readonly
     if (typeof types !== 'string') continue;
     const entry = subpath === '.' ? pkg.name : `${pkg.name}${subpath.slice(1)}`;
     const collected = collectEntry(declarations, entry, join(pkg.dir, types), claimed, pkg.dir);
-    items.push(...collected.items);
+    items.push(...collected.items.map((item) => (item.section === 'stable' && (scope === true || scope?.has(entry)) ? { ...item, section: 'experimental' as const } : item)));
     foreign.set(entry, [...collected.foreign].sort());
     for (const name of [...collected.foreign].sort()) {
       used.add(name);
@@ -665,7 +742,10 @@ export function snapshotPackage(pkg: PackageToSnapshot, allowedForeign: readonly
     problems.push(`FOREIGN_TYPES lists ${name} for ${pkg.name}, but no entry point names its types any more: delete the entry`);
   }
   problems.push(...new Set(declarations.problems));
-  return { markdown: foreign.size === 0 ? undefined : renderSnapshot(pkg.name, items, foreign), problems };
+  // What `docs/releases.md` must name: the package, the listed entries, and the commands marked on their own.
+  const experimental =
+    scope === true ? [pkg.name] : [...(scope ?? [])].sort().concat(runtime.filter((item) => item.section === 'experimental').map((item) => `marmeon ${item.name}`));
+  return { markdown: foreign.size === 0 ? undefined : renderSnapshot(pkg.name, items, foreign), problems, experimental };
 }
 
 const NAMES_SHOWN = 10;
@@ -683,6 +763,32 @@ function describeChanges(changes: ApiChanges): string[] {
   return lines;
 }
 
+const RELEASES = 'docs/releases.md';
+
+/** The inline code in the list items under `### Experimental` in `docs/releases.md`, or `undefined` when there is no such heading. */
+function documentedExperimental(root: string): Set<string> | undefined {
+  const file = join(root, RELEASES);
+  if (!existsSync(file)) return undefined;
+  const lines = readFileSync(file, 'utf8').split('\n');
+  const start = lines.indexOf('### Experimental');
+  if (start === -1) return undefined;
+  const end = lines.findIndex((line, index) => index > start && /^#{1,3} /.test(line));
+  const names = new Set<string>();
+  for (const line of lines.slice(start + 1, end === -1 ? undefined : end).filter((entry) => /^[-*] /.test(entry))) for (const match of line.matchAll(/`([^`]+)`/g)) names.add(match[1]!);
+  return names;
+}
+
+/** Every experimental entry point, package and command must be named in `docs/releases.md`, and every name there must exist. */
+function experimentalProblems(root: string, sources: ReadonlySet<string>): string[] {
+  const documented = documentedExperimental(root);
+  if (documented === undefined && sources.size === 0 && !existsSync(join(root, RELEASES))) return [];
+  if (documented === undefined) return [`${RELEASES} has no "### Experimental" section under "What is public API", but ${[...sources].sort().join(', ') || 'nothing'} is experimental`];
+  return [
+    ...[...sources].sort().filter((name) => !documented.has(name)).map((name) => `${RELEASES} does not name ${name} under "### Experimental", but a package marks it experimental`),
+    ...[...documented].filter((name) => !sources.has(name)).map((name) => `${RELEASES} names ${name} under "### Experimental", but nothing marks it experimental`),
+  ];
+}
+
 export interface ApiRun {
   readonly code: number;
   readonly lines: string[];
@@ -693,10 +799,12 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
+  const experimental = new Set<string>();
   for (const pkg of frameworkPackages(root)) {
     const { items: runtime, problems: runtimeProblems } = await runtimeItems(pkg);
     const snapshot = snapshotPackage(pkg, allowed[pkg.short] ?? [], runtime);
     const markdown = snapshot.markdown;
+    for (const name of snapshot.experimental) experimental.add(name);
     const problems = [...snapshot.problems, ...runtimeProblems];
     const file = join(pkg.dir, 'api.md');
     const shown = relative(root, file).split('\\').join('/');
@@ -731,6 +839,11 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
       lines.push(...(changes.length > 0 ? changes : ['    the layout or the packages named under "Types from other packages" differ']));
     }
     lines.push(`  run pnpm api:update and commit ${shown}`);
+  }
+  const docs = experimentalProblems(root, experimental);
+  if (docs.length > 0) {
+    failed = true;
+    lines.push(`${RELEASES}:`, ...docs.map((problem) => `  ${problem}`));
   }
   if (!failed && !options.write) lines.push('api: every api.md matches the built declarations, environment variables and commands');
   return { code: failed ? 1 : 0, lines };
