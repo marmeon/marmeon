@@ -36,9 +36,9 @@ function privateFiles(root: string): string[] {
 }
 
 export interface MarmeonEntries {
-  /** Browser entry, relative to the app root. Default `bootstrap/client.tsx`. */
+  /** Browser entry. See `MarmeonOptions.entries`. */
   client: string;
-  /** SSR entry exporting `render`, relative to the app root. Default `bootstrap/ssr.tsx`. */
+  /** SSR entry. See `MarmeonOptions.entries`. */
   ssr: string;
 }
 
@@ -48,8 +48,11 @@ export interface MarmeonPluginApi {
 }
 
 export interface MarmeonOptions {
-  /** Entries relative to the app root — override only if the app keeps them elsewhere. */
-  entries?: Partial<MarmeonEntries>;
+  /**
+   * Entries relative to the app root — override only if the app keeps them elsewhere. `client` is the browser entry
+   * (default `bootstrap/client.tsx`), `ssr` the entry exporting `render` (default `bootstrap/ssr.tsx`). Further entries come as their own options.
+   */
+  entries?: { client?: string; ssr?: string };
   /** Page components, as a glob relative to the app root (`virtual:marmeon/pages`). Default `modules/*\/views/**\/*.tsx`.
    * Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. See docs/vite.md#options. */
   pages?: string | string[];

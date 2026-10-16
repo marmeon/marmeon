@@ -9,24 +9,18 @@ Types from other packages: `vite`
 ### Stable
 
 ```ts
-// MarmeonEntries
-export interface MarmeonEntries {
-    client: string;
-    ssr: string;
-}
 // MarmeonOptions
 export interface MarmeonOptions {
-    entries?: Partial<MarmeonEntries>;
+    entries?: {
+        client?: string;
+        ssr?: string;
+    };
     pages?: string | string[];
     lang?: string | string[];
     routeSinks?: readonly RouteSink[];
     serverModules?: readonly string[];
     test?: boolean;
     viteEnv?: boolean;
-}
-// MarmeonPluginApi
-export interface MarmeonPluginApi {
-    entries: MarmeonEntries;
 }
 // RouteSink
 export type RouteSink = {

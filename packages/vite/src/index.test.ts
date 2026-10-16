@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { mergeConfig, resolveConfig, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
-import { adapterPeers, marmeon, CLIENT_CHUNKS, PLUGIN_NAME, SOURCE_CONDITION, virtualGlob, type MarmeonPluginApi } from './plugin.ts';
+import { adapterPeers, marmeon, CLIENT_CHUNKS, PLUGIN_NAME, SOURCE_CONDITION, virtualGlob, type MarmeonOptions, type MarmeonPluginApi } from './plugin.ts';
 import { routesModule } from './routes-module.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -194,7 +194,16 @@ export function typeTests(): void {
   marmeon({ entries: { ssr: true } });
   // @ts-expect-error — an unknown entry
   marmeon({ entries: { server: 'bootstrap/ssr.tsx' } });
+  marmeon({ entries: { client: 'bootstrap/client.tsx' } });
+  const options: MarmeonOptions['entries'] = { ssr: 'bootstrap/ssr.tsx' };
+  void options;
 }
+
+// The entries object the server reads stays internal: neither type is part of the package's entry.
+// @ts-expect-error — not exported
+export type NotExportedEntries = import('./index.ts').MarmeonEntries;
+// @ts-expect-error — not exported
+export type NotExportedApi = import('./index.ts').MarmeonPluginApi;
 
 describe('virtual:marmeon/routes while serving', () => {
   const root = tree({
