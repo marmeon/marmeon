@@ -194,6 +194,8 @@ export default defineModule({
 - **`static options`** declares the options in the format of Node's `parseArgs`: `{ type: 'string' }` or `{ type: 'boolean' }`,
   with `short: 'd'` for a one-letter form. An option the command does not declare is an error before the command runs.
 - **`static hidden = true`** keeps a command out of `marmeon list`.
+- **`static experimental = true`** marks a command that may change in any minor version. `marmeon list` and `--help` add
+  "(experimental)". See [experimental](releases.md#experimental).
 - **`handle(input)`** gets the positional arguments as `args`, the options as `options`, the console as `output` and the app's
   directory as `root`, and `spawn(...args)` runs another `marmeon` command in a fresh process. It returns the exit code, and
   nothing means 0.

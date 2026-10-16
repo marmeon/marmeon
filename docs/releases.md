@@ -105,13 +105,21 @@ The promise of a version covers the public API. These are part of it:
 - Stored formats: queue payloads, encrypted values, tokens and cookies.
 - Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels.
 
-Not part of it are `./internal` subpaths, anything marked `@internal` or `@experimental`, and the wording of messages and logs.
+Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), and the wording of messages and logs.
 
 The same list decides, already in 0.x, whether a pull request is a `breaking` one.
 
 > [!WARNING]
 > **Security hardening.** A security hardening may break in a minor or a patch version. It then has an entry of its own in the
 > [upgrade guide](../UPGRADING.md). Leaving a vulnerability open to keep an API protects nobody.
+
+### Experimental
+
+Experimental means: it can change or go away in any minor version, without an entry in the [upgrade guide](../UPGRADING.md). It
+is still listed in the package's `api.md`, under **Experimental**, so a change shows in the pull request's diff, but the
+`breaking` label is not required for it. Build on it only when you can follow the releases. What is experimental today:
+
+None at the moment.
 
 ### When a union grows
 

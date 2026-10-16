@@ -136,6 +136,23 @@ describe('who imports an export', () => {
     expect(usage.wholeImports).toEqual(['apps/web-app/c.ts']);
   });
 
+  it('lists an experimental export, but not an experimental member of a declaration', () => {
+    const root = repository();
+    const experimental = (name: string): ApiItem => ({ entry: '@marmeon/demo', section: 'experimental', name, text: 'x' });
+    mkdirSync(join(root, 'packages/solo'), { recursive: true });
+    writeFileSync(join(root, 'packages/solo/api.md'), renderSnapshot('@marmeon/solo', [experimental('Probe'), experimental('Options.pages')].map((entry) => ({ ...entry, entry: '@marmeon/solo' })), new Map()));
+    expect(usageOf('@marmeon/solo', root, [])!.names.map((entry) => entry.name)).toEqual(['Probe']);
+  });
+
+  it('does not count a package-wide experimental item as an export', () => {
+    const root = repository();
+    const wide: ApiItem = { entry: '', section: 'experimental', name: 'used', text: "export { used } from '@marmeon/demo';" };
+    mkdirSync(join(root, 'packages/wide'), { recursive: true });
+    writeFileSync(join(root, 'packages/wide/api.md'), renderSnapshot('@marmeon/wide', [item('@marmeon/wide', 'Own'), wide], new Map()));
+    expect(usageOf('@marmeon/demo', root, files)!.names.find((entry) => entry.name === 'used')).toMatchObject({ reexportedBy: [] });
+    expect(usageOf('@marmeon/wide', root, [])!.names.map((entry) => entry.name)).toEqual(['Own']);
+  });
+
   it('answers undefined for an entry no api.md lists, and lists the ones that exist', () => {
     const root = repository();
     expect(usageOf('@marmeon/nope', root, [])).toBeUndefined();
@@ -236,6 +253,17 @@ describe('public declarations that name an export', () => {
     expect(by('Handler')).toMatchObject({ suggestion: 'keep', namedBy: ['@marmeon/other Mount'] });
     expect(by('PageObject')).toMatchObject({ suggestion: 'drop', namedBy: [] });
     expect(renderUsage(usage)).toContain('Route  — named by @marmeon/demo/page check');
+  });
+
+  it('keeps a name that only an experimental option of another entry names', () => {
+    const root = snapshots([
+      ...base,
+      item('@marmeon/demo/page', 'Options', 'export interface Options {\n    path: string;\n}'),
+      { entry: '@marmeon/demo/page', section: 'experimental', name: 'Options.server', text: 'server?: Handler;' },
+    ]);
+    const handler = usageOf('@marmeon/demo', root, [])!.names.find((entry) => entry.name === 'Handler')!;
+    expect(handler).toMatchObject({ suggestion: 'keep', namedBy: ['@marmeon/demo/page Options.server (experimental)'] });
+    expect(handler.reason).toContain('named by a public declaration of @marmeon/demo/page');
   });
 
   it('counts a Referenced item and an Experimental one, but not the middle of a word or a member', () => {

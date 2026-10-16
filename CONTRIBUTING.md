@@ -338,10 +338,19 @@ conflict in an `api.md` is never merged by hand: take either side, run `pnpm api
 Per entry point (every subpath of `exports` with `types`, except `./internal`) the file lists each exported declaration without
 its comments, sorted by name: **Stable**; **Referenced, not exported** — the local helper types and `@internal` exports that a
 public signature names, because their shape is public too; **Augments** — `declare module` and `declare global` blocks of the
-files the entry reaches (a file belongs to the first entry that reaches it); **Experimental** — what is tagged `@experimental`.
+files the entry reaches (a file belongs to the first entry that reaches it); **Experimental** — what is experimental (below).
 Members and declarations tagged `@internal` are left out, a `@deprecated` declaration carries a `// @deprecated` line, and a
 re-export from another package is the `export … from` statement (its declaration is in that package's snapshot). Below the
 entry's heading, "Types from other packages" names the libraries whose types the entry's declarations mention.
+
+Experimental has three forms, one source each: a whole entry point or package through `marmeon.experimental` in the
+`package.json` (`true` for every entry point, variable and command of the package, or a list of subpaths such as
+`["./client/adapter"]`); one option of an options interface through `@experimental` in the JSDoc of the member, which the
+snapshot takes out of its declaration and lists as the item `<Declaration>.<member>`; one command through `static experimental
+= true` on its class (`marmeon list` and `--help` say so). Experimental variables and commands stand in a section `## Experimental`
+of the package. `pnpm api:check` fails unless `docs/releases.md` › "What is public API" › "Experimental" names every experimental
+entry point (`@marmeon/x/y`), package and command (`marmeon tinker`) as inline code in a list item, and names nothing else. `api label` does not
+enforce Experimental, but moving something from Stable to Experimental removes it from the stable surface: label it `breaking`.
 
 A class, function, constant or enum that an entry exports only as a type (`export type { Foo }`) carries a `// type-only` line:
 an app can no longer `new` it. A public signature must not name a type of another package's `./internal` (no snapshot holds

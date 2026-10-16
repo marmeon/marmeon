@@ -13,9 +13,11 @@ export function printCommandList({ output }: Pick<CommandInput, 'output'>, comma
       output.line();
       output.line(style('yellow', group || 'Available commands'));
     }
-    output.line(`  ${style('green', command.command.padEnd(width))}  ${command.description}`);
+    output.line(`  ${style('green', command.command.padEnd(width))}  ${command.description}${marker(command)}`);
   }
 }
+
+const marker = (command: Pick<CommandClass, 'experimental'>) => (command.experimental === true ? ` ${style('dim', '(experimental)')}` : '');
 
 function namespace(command: Pick<CommandClass, 'command'>): string {
   return command.command.includes(':') ? command.command.split(':')[0]! : '';
@@ -29,7 +31,7 @@ const LAUNCHER = [
 
 /** `marmeon <command> --help`: what the command does, its usage line and its options. */
 export function printCommandHelp({ output }: Pick<CommandInput, 'output'>, command: CommandClass): void {
-  output.line(command.description);
+  output.line(`${command.description}${marker(command)}`);
   output.line();
   output.line(`Usage: marmeon ${command.command} ${command.usage ?? ''}`.trimEnd());
   output.line();
