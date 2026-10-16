@@ -30,6 +30,23 @@ const root = fileURLToPath(new URL('..', import.meta.url));
  * listed entry must stand under its release.
  */
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {
+  '0.3.0': [
+    'high-a-server-listens-on-127001-unless-host-says-otherwise',
+    'high-accounts-keep-a-session-key-that-userproviderupdatesessionkey-compares-and-sets',
+    'high-changing-a-second-factor-needs-a-second-factor-proven-in-the-last-15-minutes',
+    'high-the-cookie-session-driver-is-gone',
+    'high-remember-me-tokens-are-bound-to-the-account-state-and-need-an-account_fingerprint-column',
+    'high-marmeon-start-refuses-a-development-node_env-that-comes-from-env',
+    'medium-a-passkey-confirms-sudo-mode-and-some-actions-ask-for-the-password-again',
+    'medium-sign-ins-remember-me-cookies-and-second-factor-proofs-have-upper-bounds',
+    'medium-the-session-cookie-ends-when-the-browser-closes',
+    'medium-a-second-factor-a-passkey-and-an-api-token-need-a-confirmed-address',
+    'medium-open-uploads-are-capped-per-session-and-in-total',
+    'medium-vite-reads-no-env-file-and-no-vite_-variable',
+    'medium-apps-made-with-the-starter-kit-copy-its-security-fixes-by-hand',
+    'low-confirming-a-second-factor-can-answer-signed-out',
+    'low-livestreamrequest-takes-accounts-instead-of-account',
+  ],
   '0.2.0': [
     'high-every-route-has-to-say-who-may-call-it',
     'medium-authattempt-and-authlogin-can-wait-for-a-second-factor',

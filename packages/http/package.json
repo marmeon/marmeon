@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/http",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "HTTP for Marmeon apps: controllers, views and page props, redirects, signed URLs, encrypted cookies and the UI-free client core.",
   "keywords": [
     "marmeon",

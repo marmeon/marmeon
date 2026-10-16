@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/database",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Data access on Kysely for Marmeon apps: connections, migrations per module, generated table types, repositories, relations derived from foreign keys (with), tryInsert/tryUpdate returning a Result, transactions that roll back on err, and pagination.",
   "keywords": [
     "marmeon",
