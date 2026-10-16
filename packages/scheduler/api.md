@@ -347,3 +347,28 @@ interface ModuleDefinition {
     readonly schedule?: ScheduleDefinition;
 }
 ```
+
+## Environment
+
+```ts
+// APP_ENV
+`APP_ENV` — optional
+// NODE_ENV
+`NODE_ENV` — optional
+// SCHEDULE_TIMEZONE
+`SCHEDULE_TIMEZONE` = `"UTC"`
+```
+
+## Commands
+
+```ts
+// schedule:list
+marmeon schedule:list
+// schedule:run
+marmeon schedule:run
+// schedule:test
+marmeon schedule:test <name>
+// schedule:work
+marmeon schedule:work [--stop-timeout=30]
+--stop-timeout (string)
+```

@@ -849,3 +849,57 @@ interface ModuleDefinition {
     readonly jobs?: readonly JobClass[];
 }
 ```
+
+## Environment
+
+```ts
+// DB_QUEUE
+`DB_QUEUE` = `"default"`
+// DB_QUEUE_CONNECTION
+`DB_QUEUE_CONNECTION` = `"default"`
+// DB_QUEUE_RETRY_AFTER
+`DB_QUEUE_RETRY_AFTER` = `90`
+// QUEUE_CONNECTION
+`QUEUE_CONNECTION` = `"database"`
+// QUEUE_FAILED_CONNECTION
+`QUEUE_FAILED_CONNECTION` — optional
+// QUEUE_FAILED_DRIVER
+`QUEUE_FAILED_DRIVER` = `"database"`
+// REDIS_QUEUE
+`REDIS_QUEUE` = `"default"`
+// REDIS_QUEUE_CONNECTION
+`REDIS_QUEUE_CONNECTION` = `"default"`
+// REDIS_QUEUE_RETRY_AFTER
+`REDIS_QUEUE_RETRY_AFTER` = `90`
+```
+
+## Commands
+
+```ts
+// make:queue-table
+marmeon make:queue-table [--module=system]
+--module (string, short m)
+// queue:failed
+marmeon queue:failed
+// queue:flush
+marmeon queue:flush
+// queue:forget
+marmeon queue:forget <id>
+// queue:prune-failed
+marmeon queue:prune-failed [--hours=168]
+--hours (string)
+// queue:retry
+marmeon queue:retry <id…|all>
+// queue:size
+marmeon queue:size [queue…] [--connection=database|redis]
+--connection (string)
+// queue:work
+marmeon queue:work [--connection=database|redis] [--queue=mail,default] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]
+--connection (string)
+--max-jobs (string)
+--max-time (string)
+--queue (string)
+--sleep (string)
+--stop-timeout (string)
+--stop-when-empty (boolean)
+```

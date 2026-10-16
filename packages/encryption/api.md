@@ -48,3 +48,14 @@ export declare const encryptionSolutions: readonly import("@marmeon/core").Solut
 // generateKey
 export declare function generateKey(): string;
 ```
+
+## Environment
+
+```ts
+// APP_KEY
+`APP_KEY` — required
+// APP_PREVIOUS_KEYS
+`APP_PREVIOUS_KEYS` = `[]`
+// NODE_ENV
+`NODE_ENV` — optional
+```

@@ -269,3 +269,27 @@ describe('env through defineConfig — the start error', () => {
     );
   });
 });
+
+describe('env — the variables of a schema', () => {
+  const FIELDS = Symbol.for('marmeon.env.fields');
+
+  it('hands out the blocks of each variable under a registered symbol', () => {
+    const port = env.port().default(3000);
+    const fields = (env({ PORT: port, NAME: env.string() }) as unknown as Record<symbol, Record<string, EnvVariable<unknown>>>)[FIELDS]!;
+    expect(Object.keys(fields)).toEqual(['PORT', 'NAME']);
+    expect(fields.PORT).toBe(port);
+    expect(fields.PORT!['~env'](undefined, 'PORT')).toEqual({ value: 3000 });
+    expect(fields.NAME!['~env'](undefined, 'NAME')).toEqual({ problem: 'NAME is required.' });
+  });
+
+  it('freezes the map, and a change to it does not reach the schema', () => {
+    const schema = env({ A: env.string().default('a') }) as unknown as Record<symbol, Record<string, EnvVariable<unknown>>>;
+    const fields = schema[FIELDS]!;
+    expect(Object.isFrozen(fields)).toBe(true);
+    expect(() => {
+      'use strict';
+      fields.B = env.string();
+    }).toThrow(TypeError);
+    expect(Object.keys(schema[FIELDS]!)).toEqual(['A']);
+  });
+});

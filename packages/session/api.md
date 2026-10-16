@@ -290,3 +290,42 @@ interface SharedProps {
     errors: ValidationErrors;
 }
 ```
+
+## Environment
+
+```ts
+// APP_URL
+`APP_URL` — optional
+// CSRF_TRUSTED_ORIGINS
+`CSRF_TRUSTED_ORIGINS` = `[]`
+// NODE_ENV
+`NODE_ENV` — optional
+// SESSION_CONNECTION
+`SESSION_CONNECTION` = `"default"`
+// SESSION_COOKIE
+`SESSION_COOKIE` = `"marmeon_session"`
+// SESSION_DRIVER
+`SESSION_DRIVER` = `"file"`
+// SESSION_ENCRYPT
+`SESSION_ENCRYPT` = `"false"`
+// SESSION_FILES
+`SESSION_FILES` = `"storage/framework/sessions"`
+// SESSION_LIFETIME
+`SESSION_LIFETIME` = `120`
+// SESSION_LOTTERY
+`SESSION_LOTTERY` = `"2/100"`
+// SESSION_SAME_SITE
+`SESSION_SAME_SITE` = `"lax"`
+// SESSION_SECURE_COOKIE
+`SESSION_SECURE_COOKIE` — optional
+```
+
+## Commands
+
+```ts
+// make:session-table
+marmeon make:session-table [--module=system]
+--module (string, short m)
+// session:prune
+marmeon session:prune
+```

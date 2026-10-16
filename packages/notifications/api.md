@@ -499,3 +499,22 @@ interface ModuleDefinition {
     readonly recipients?: RecipientResolvers;
 }
 ```
+
+## Environment
+
+```ts
+// NOTIFICATIONS_CONNECTION
+`NOTIFICATIONS_CONNECTION` = `"default"`
+```
+
+## Commands
+
+```ts
+// make:notifications-table
+marmeon make:notifications-table [--module=system]
+--module (string, short m)
+// notifications:prune
+marmeon notifications:prune [--days=30] [--unread-days=N]
+--days (string)
+--unread-days (string)
+```

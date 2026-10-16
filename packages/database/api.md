@@ -1034,3 +1034,60 @@ interface SelectQueryBuilder<DB, TB extends keyof DB, O> {
     withTrashed(): SelectQueryBuilder<DB, TB, O>;
 }
 ```
+
+## Environment
+
+```ts
+// DB_CONNECTION
+`DB_CONNECTION` = `"sqlite"`
+// DB_DATABASE
+`DB_DATABASE` — optional
+// DB_HOST
+`DB_HOST` = `"127.0.0.1"`
+// DB_INFRA_POOL_MAX
+`DB_INFRA_POOL_MAX` = `4`
+// DB_PASSWORD
+`DB_PASSWORD` = `""`
+// DB_POOL_MAX
+`DB_POOL_MAX` = `10`
+// DB_PORT
+`DB_PORT` = `5432`
+// DB_URL
+`DB_URL` — optional
+// DB_USERNAME
+`DB_USERNAME` = `"postgres"`
+```
+
+## Commands
+
+```ts
+// db:seed
+marmeon db:seed [--module=<module>] [--class=<Seeder>] [--force]
+--class (string)
+--force (boolean)
+--module (string)
+// db:show
+marmeon db:show [--database=<connection>]
+--database (string)
+// db:types
+marmeon db:types [--check]
+--check (boolean)
+// migrate
+marmeon migrate [--force] [--no-types]
+--force (boolean)
+--no-types (boolean)
+// migrate:fresh
+marmeon migrate:fresh [--seed] [--force] [--no-types]
+--force (boolean)
+--no-types (boolean)
+--seed (boolean)
+// migrate:reset
+marmeon migrate:reset [--force]
+--force (boolean)
+// migrate:rollback
+marmeon migrate:rollback [--step=<n>] [--force]
+--force (boolean)
+--step (string)
+// migrate:status
+marmeon migrate:status
+```
