@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages, type FrameworkPackage } from './packages.ts';
-import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
+import { trustScript, TRUST_SCRIPT, ENVIRONMENT } from './npm-trust.ts';
 import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseVersion, RELEASE_CONFIG, releaseConfigCurrent, releaseSection, upgradesFrom } from './release-rules.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -278,6 +278,9 @@ export function checkWorkflow(repository: string): string[] {
     const builds = name === buildName;
     const releases = name === releaseName;
     const oidc = /^\s+id-token:\s*write\s*$/m.test(body);
+    const environment = /^ {4}environment:\s*["']?([\w.-]+)["']?\s*(#.*)?$/m.exec(body)?.[1];
+    if (stages && environment !== ENVIRONMENT) problems.push(`${where}: the job "${name}" stages without "environment: ${ENVIRONMENT}" — npm trusts the staging only from that environment, whose branch policy keeps other branches out`);
+    if (!stages && /^ {4}environment:/m.test(body)) problems.push(`${where}: the job "${name}" has an "environment:" — only the staging job enters ${ENVIRONMENT}`);
     if (stages && !oidc) problems.push(`${where}: the job "${name}" stages the packages without "id-token: write" — trusted publishing and provenance need the OIDC token`);
     if (!stages && oidc) problems.push(`${where}: the job "${name}" has "id-token: write" but stages nothing — only the staging job gets the OIDC token`);
     for (const [, scope] of body.matchAll(/^\s+([\w-]+):\s*write\b/gm)) {
@@ -464,6 +467,7 @@ export function checkWorkflow(repository: string): string[] {
 /** 5 · `scripts/npm-trust.sh`. */
 export function checkTrust(repository: string): string[] {
   const file = join(repository, TRUST_SCRIPT);
+  if (existsSync(file) && !new RegExp(`--environment ${ENVIRONMENT}\\b`).test(readFileSync(file, 'utf8'))) return [`${TRUST_SCRIPT} does not pass --environment ${ENVIRONMENT} — a trust without the environment accepts the staging from any branch`];
   if (!existsSync(file) || readFileSync(file, 'utf8') !== trustScript(repository)) return [`${TRUST_SCRIPT} is missing or out of date — node scripts/npm-trust.ts`];
   if (/--allow-publish\b/.test(readFileSync(file, 'utf8'))) return [`${TRUST_SCRIPT} allows direct publishing — staged only (--allow-stage-publish)`];
   return [];

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -515,6 +515,20 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(`${real}\n  third:\n    runs-on: ubuntu-latest\n    permissions:\n      pull-requests: write\n    steps:\n      - run: echo\n`)).toContain('the job "third" asks for "pull-requests: write"');
       expect(problemsOf(mutated('      contents: write', '      contents: write\n      id-token: write'))).toContain('the job "release" has "id-token: write" but stages nothing');
       expect(problemsOf(mutated('      id-token: write', '', 'stage'))).toContain('without "id-token: write"');
+    });
+
+    it('stages from the protected environment, in the staging job and in no other', () => {
+      expect(problemsOf(mutated('    environment: npm-release\n', '', 'stage'))).toContain('the job "stage" stages without "environment: npm-release"');
+      expect(problemsOf(mutated('    environment: npm-release', '    environment: other', 'stage'))).toContain('the job "stage" stages without "environment: npm-release"');
+      expect(problemsOf(mutated('    permissions:\n      contents: write', '    environment: npm-release\n    permissions:\n      contents: write', 'release'))).toContain('the job "release" has an "environment:"');
+    });
+
+    it('wants the trust script to pass the environment', () => {
+      const directory = tempDir('marmeon-check-release-');
+      mkdirSync(join(directory, 'scripts'));
+      writeFileSync(join(directory, 'scripts/npm-trust.sh'), '#!/usr/bin/env bash\nnpm trust github "$package" --repository marmeon/marmeon --file release.yml --allow-stage-publish --yes\n');
+      expect(checkTrust(directory)).toEqual([expect.stringContaining('does not pass --environment npm-release')]);
+      expect(checkTrust(root)).toEqual([]);
     });
 
     it('gives the OIDC token to the staging job only — not to the build job, which runs the repository’s code', () => {

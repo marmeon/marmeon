@@ -17,7 +17,7 @@
 #        another workflow could carry code into this job.
 #     3. scripts/release-pack.ts: `pnpm pack` of every package, and SHA512SUMS naming each tarball. The hash of SHA512SUMS is the
 #        job's output `sums`; the tarballs and SHA512SUMS are uploaded as the artifact `tarballs` (kept for a day).
-#   stage    (id-token: write, contents: read) — installs nothing, checks out nothing, runs no script of the repository
+#   stage    (environment: npm-release, id-token: write, contents: read) — installs nothing, checks out nothing, runs no script of the repository
 #     4. Downloads the artifact, checks SHA512SUMS against the output `sums` and the tarballs against SHA512SUMS, then
 #        `npm stage publish` of exactly the tarballs SHA512SUMS names, with the dist-tag (OIDC, no token anywhere; provenance from
 #        this workflow). Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
@@ -32,7 +32,8 @@
 #
 # scripts/check-release.ts (a part of `pnpm run ci`) checks this file as a review aid, not as a barrier: dispatch only, the
 # guard first and nothing switching away from the release commit after it, id-token only in the job that stages — which has no
-# checkout, no pnpm and runs nothing but the hash checks and `npm stage publish` — the write token only in the release job's last
+# checkout, no pnpm and runs nothing but the hash checks and `npm stage publish`, and is the only job in `environment: npm-release` —
+# the write token only in the release job's last
 # two steps, every action pinned by full SHA, no npm publish, no token, no cache, a GitHub Release only as a draft, no expression
 # inside a script.
 name: Release
@@ -99,6 +100,8 @@ jobs:
     # Trusted publishing needs a GitHub-hosted runner.
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # npm trusts the staging only from this environment; its deployment branches are `main` and `*.x`.
+    environment: npm-release
     permissions:
       contents: read
       id-token: write # OIDC: trusted publishing and provenance
