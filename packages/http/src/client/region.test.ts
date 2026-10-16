@@ -1,4 +1,4 @@
-import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../page.ts';
+import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../protocol.ts';
 import { describe, expect, it } from 'vitest';
 import { regionId, regionInitial } from './region.ts';
 import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle } from './test-window.ts';

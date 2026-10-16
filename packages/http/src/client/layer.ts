@@ -5,13 +5,14 @@
  * again from memory. What a layer showed lives only in this tab's memory — never in `history.state` or any storage.
  * The layers feature creates them; an adapter renders `navigator.layers` (handed with every `render`) and calls their methods.
  */
-import { MAX_LAYER_DEPTH, type LayerClose, type PageObject } from '../page.ts';
+import type { LayerClose } from '../protocol.ts';
+import { MAX_LAYER_DEPTH, type PageObject } from '../protocol.ts';
 import type { RegionOwner } from './owner.ts';
 import type { VisitOptions } from './navigation.ts';
 import { call } from './notify.ts';
 import { PatchQueue, Revalidations, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 
-export { MAX_LAYER_DEPTH } from '../page.ts';
+export { MAX_LAYER_DEPTH } from '../protocol.ts';
 
 /** How a layer closes (`layer.close()`): then reload what is beneath it — some of its props, or `true` all of them. */
 export interface LayerCloseOptions {

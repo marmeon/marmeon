@@ -1,4 +1,4 @@
-import { ONCE_HEADER, ONCE_SCOPE_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type OnceInfo, type PageObject } from './page.ts';
+import { ONCE_HEADER, ONCE_SCOPE_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type OnceInfo, type PageObject } from './protocol.ts';
 import { mergeOf, propKind, resolveProp, type OnceProp } from './props.ts';
 import type { SharedData } from './shared-data.ts';
 

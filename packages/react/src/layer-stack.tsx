@@ -1,5 +1,5 @@
 import { layers } from '@marmeon/http/client';
-import type { PageObject } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { RegionOwnerContext, reloadsOf, RouterContext, type RouterValue } from './app.tsx';
 import { ErrorBoundary, RenderErrorFallback } from './fallbacks.tsx';

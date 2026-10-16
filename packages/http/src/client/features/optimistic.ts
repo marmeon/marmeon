@@ -3,7 +3,7 @@
  * fails, folded into the props when it succeeded and nothing reloads them, replaced by the server's props when a reload lands.
  * (A layer keeps its own patches, `Layer`.) And a form's patches while its visit is under way (`visit({ optimistic })`).
  */
-import type { PageObject } from '../../page.ts';
+import type { PageObject } from '../../protocol.ts';
 import { updatePage } from '../cache.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';

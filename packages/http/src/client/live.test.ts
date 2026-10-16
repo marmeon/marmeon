@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { PAGE_HEADER, REGION_HEADER, type LiveSubscription, type PageObject, type RegionObject } from '../page.ts';
+import { PAGE_HEADER, REGION_HEADER, type LiveSubscription, type PageObject, type RegionObject } from '../protocol.ts';
 import type { Feature } from './feature.ts';
 import { actions } from './features/actions.ts';
 import { guard } from './features/guard.ts';

@@ -3,7 +3,7 @@
  * the scroll positions and the pages fetched ahead. Everything here lives in this tab's memory only: never in
  * `history.state`, never in any storage.
  */
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 
 export interface LruOptions<K> {
   /** Never evicted while in here (what is on screen) — nor is the entry just set. */

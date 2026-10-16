@@ -3,7 +3,8 @@
  * screen, its history entry, memory, the request pipeline, the hooks and the slots the core empties itself. Each core module
  * names the part it uses (`Pick<NavigatorCore, …>`); a feature gets all of it in `setup`.
  */
-import type { FlashMessage, PageObject } from '../page.ts';
+import type { FlashMessage } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { PageCache } from './cache.ts';
 import type { ConfirmRequest } from './confirm.ts';
 import type { DocumentChange } from './document-change.ts';

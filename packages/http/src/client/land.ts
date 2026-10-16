@@ -1,4 +1,4 @@
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import { updatePage } from './cache.ts';
 import type { NavigatorCore } from './core.ts';
 import { keepDeferred, mergePage, type ResetProps } from './merge.ts';

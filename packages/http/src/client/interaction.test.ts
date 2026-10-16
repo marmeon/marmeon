@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, FLASH_HEADER, FLASH_WAITING_HEADER, LAYER_CLOSE_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, type FlashMessage, type PageObject } from '../page.ts';
+import type { FlashMessage } from '../page.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, FLASH_HEADER, FLASH_WAITING_HEADER, LAYER_CLOSE_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject } from '../protocol.ts';
 import type { ConfirmRequest } from './confirm.ts';
 import { dirtyPaths, isDirtyPath } from './forms.ts';
 import { isCurrentLink } from './links.ts';

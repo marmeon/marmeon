@@ -1,5 +1,5 @@
 import { NO_STORE } from '@marmeon/auth';
-import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/page';
+import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
 import { actions, layers, loadHistoryFallback, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@marmeon/http/client';
 import { createHttpKernel } from '@marmeon/server';
 import { createTestApp, type TestApp } from '@marmeon/testing';

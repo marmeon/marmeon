@@ -1,5 +1,5 @@
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import { regionOf } from '@marmeon/http/page';
+import { regionOf } from '@marmeon/http/protocol';
 import { rules as r } from '@marmeon/validation';
 import { DocsRepository } from '../DocsRepository.ts';
 

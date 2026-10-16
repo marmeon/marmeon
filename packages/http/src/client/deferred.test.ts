@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LOCATION_HEADER, type PageObject } from '../page.ts';
+import { LOCATION_HEADER, type PageObject } from '../protocol.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
 // The chunk the deferred props load from: it fails to load as often as `chunk.failures` says, then it is the real one.

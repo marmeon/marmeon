@@ -5,7 +5,7 @@ import type { StandardIssue } from './request-definition.ts';
  * as its validation and answers `204` or `422`; its controller's `handle` never runs, and the kernel makes the request
  * read-only. See docs/validation.md#live-validation.
  *
- * The browser's copy of these names is in `@marmeon/http/page` (which may not import the router).
+ * The browser's copy of these names is in `@marmeon/http/protocol` (which may not import the router).
  */
 export const VALIDATE_HEADER = 'x-marmeon-validate';
 

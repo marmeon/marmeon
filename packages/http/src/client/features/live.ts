@@ -9,7 +9,7 @@
  * hydration mismatch opens none.
  */
 import { CONNECTION_HEADER, LIVE_PATH } from '../../live-protocol.ts';
-import type { LiveHint, LiveSubscription } from '../../page.ts';
+import type { LiveHint, LiveSubscription } from '../../protocol.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { notify } from '../notify.ts';
 

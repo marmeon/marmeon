@@ -36,6 +36,11 @@
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"
     },
+    "./protocol": {
+      "@marmeon/source": "./src/protocol.ts",
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    },
     "./client": {
       "@marmeon/source": "./src/client/index.ts",
       "types": "./dist/client/index.d.ts",
@@ -58,6 +63,10 @@
       "./page": {
         "types": "./dist/page.d.ts",
         "default": "./dist/page.js"
+      },
+      "./protocol": {
+        "types": "./dist/protocol.d.ts",
+        "default": "./dist/protocol.js"
       },
       "./client": {
         "types": "./dist/client/index.d.ts",
@@ -101,6 +110,7 @@
     "browser": [
       "src/client/**",
       "src/page.ts",
+      "src/protocol.ts",
       "src/sensitive-fields.ts",
       "src/upload-header.ts",
       "src/live-protocol.ts",

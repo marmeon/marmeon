@@ -6,7 +6,8 @@
  */
 import { token } from '@marmeon/core';
 import type { JoinNames } from '@marmeon/router';
-import type { LiveSubscription, SharedProps } from './page.ts';
+import type { SharedProps } from './page.ts';
+import type { LiveSubscription } from './protocol.ts';
 
 /**
  * Who is behind a stream, asked when a stream opens and again whenever its browser reconnects. Bound

@@ -4,7 +4,7 @@
  * `navigation.currentEntry.getState()`, `history.state` stays `null`); where the browser has none, the History fallback feature
  * writes it with `pushState`/`replaceState` (`features/history-fallback.ts`, a chunk of its own).
  */
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { NavigatorWindow } from './navigation.ts';
 import { atOrigin } from './request.ts';
 import type { Scroll, ScrollPosition } from './scroll.ts';

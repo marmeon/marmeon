@@ -8,7 +8,8 @@
  * reads its token from there when it is sent. When the document is left (a 409: signed out, a new build) the slot is
  * emptied — every request aborted, every preview revoked, every token gone; an `Upload` still on screen then sends `''`.
  */
-import { LOCATION_HEADER, type Upload } from '../../page.ts';
+import type { Upload } from '../../page.ts';
+import { LOCATION_HEADER } from '../../protocol.ts';
 import { UPLOAD_HEADER } from '../../upload-header.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { atOrigin, xsrfToken } from '../request.ts';

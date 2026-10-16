@@ -8,7 +8,8 @@
  * tab's memory only, never in `history.state` or any storage. Back/Forward shows them from there without a request;
  * leaving the document (signing out, a new build) drops them with the pages. The islands feature makes them (`islands.region`).
  */
-import type { PageObject, RegionObject, RegionResult } from '../page.ts';
+import type { RegionResult } from '../page.ts';
+import type { PageObject, RegionObject } from '../protocol.ts';
 import { mergePage, pick, resetOf, type ResetProps } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';

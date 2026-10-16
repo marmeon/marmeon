@@ -34,7 +34,7 @@ const budget = readBudget();
 
 /** What a module belongs to, for the summary. */
 function groupOf(module: string): string {
-  if (/^http\/(dist|src)\/(client\/|page\.)/.test(module) || /^router\/(dist|src)\/url\./.test(module)) return 'client core';
+  if (/^http\/(dist|src)\/(client\/|page\.|protocol\.)/.test(module) || /^router\/(dist|src)\/url\./.test(module)) return 'client core';
   if (module.startsWith('react/')) return 'React adapter';
   // The table's browser half: framework code an app has with `useTable`.
   if (/^table\/(dist|src)\/client\//.test(module)) return 'table (client)';

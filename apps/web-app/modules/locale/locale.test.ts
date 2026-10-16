@@ -1,5 +1,5 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { LOCATION_HEADER } from '@marmeon/http/page';
+import { LOCATION_HEADER } from '@marmeon/http/protocol';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';

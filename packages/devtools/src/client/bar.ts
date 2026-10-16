@@ -4,7 +4,7 @@
  * only whether the panel is open and which tab — never props.
  */
 import type { DevtoolsFeature, Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client';
-import type { PageObject } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import type { AnyEntry, RequestContent } from '../entry.ts';
 import { h, json, jsonBytes, size, STYLES, type Child } from './dom.ts';
 

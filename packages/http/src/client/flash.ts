@@ -4,7 +4,8 @@
  * Back/Forward or a page shown from memory (the core keeps no message with a page), and twice for the same message flashed
  * twice (another id). A message nobody listens to yet waits for the first listener of its key — the page that mounts with it.
  */
-import { FLASH_HEADER, type FlashKey, type FlashMessage, type PageObject } from '../page.ts';
+import type { FlashKey, FlashMessage } from '../page.ts';
+import { FLASH_HEADER, type PageObject } from '../protocol.ts';
 import { slot } from './feature.ts';
 import { call } from './notify.ts';
 

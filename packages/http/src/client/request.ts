@@ -2,7 +2,7 @@
  * The requests of the client core: a visit's URL, headers and body (JSON, or multipart with files), the CSRF token and the
  * headers of a partial reload. (Uploads with progress, over XHR, load on first use: `upload.ts`.)
  */
-import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from '../page.ts';
+import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from '../protocol.ts';
 import type { VisitMethod, VisitOptions } from './navigation.ts';
 
 /** What the client reads of its window to tell this site's origin. */

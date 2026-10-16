@@ -21,9 +21,11 @@ import type {
   QueryFields,
   QueryOf,
   QueryParams,
-  RegionObject,
   RegionResult,
 } from '@marmeon/http/page';
+import type {
+  RegionObject,
+} from '@marmeon/http/protocol';
 import { scriptJson } from '@marmeon/http/page';
 import {
   createContext,

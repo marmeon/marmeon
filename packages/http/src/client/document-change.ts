@@ -3,7 +3,7 @@
  * stops; a new build (`x-marmeon-reload: version`) is the one the client may postpone — the `version` event, or unsaved
  * changes the user keeps. Postponed, the user's next visit loads fully.
  */
-import { LOCATION_HEADER, RELOAD_HEADER } from '../page.ts';
+import { LOCATION_HEADER, RELOAD_HEADER } from '../protocol.ts';
 import type { NavigatorCore } from './core.ts';
 import type { VersionChange } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';

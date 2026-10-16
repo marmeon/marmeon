@@ -2673,10 +2673,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// ACTION_HEADER
-export declare const ACTION_HEADER = "x-marmeon-action";
-// ACTION_REDIRECT_HEADER
-export declare const ACTION_REDIRECT_HEADER = "x-marmeon-redirect";
 // ActionAnswerOf
 export type ActionAnswerOf<N extends string> = [ControllerOf<N>] extends [never] ? unknown : Instance<ControllerOf<N>> extends {
     handle: (...args: never[]) => infer R;
@@ -2745,10 +2741,6 @@ export interface ErrorPageProps {
         stack: string;
     } | null;
 }
-// FLASH_HEADER
-export declare const FLASH_HEADER = "x-marmeon-flash";
-// FLASH_WAITING_HEADER
-export declare const FLASH_WAITING_HEADER = "x-marmeon-flash-waiting";
 // FlashData
 export interface FlashData {
 }
@@ -2793,23 +2785,8 @@ export interface JsonResult<T = unknown> {
 }
 // LAYER_BACKDROP
 export declare const LAYER_BACKDROP = "layers/Backdrop";
-// LAYER_CLOSE_HEADER
-export declare const LAYER_CLOSE_HEADER = "x-marmeon-layer-close";
-// LOCATION_HEADER
-export declare const LOCATION_HEADER = "x-marmeon-location";
 // LayerBaseName
 export type { LayerBaseName } from '@marmeon/router';
-// LayerClose
-export interface LayerClose {
-    readonly layers: number;
-    readonly reload?: readonly string[] | true;
-}
-// LayerInfo
-export interface LayerInfo {
-    readonly key: string;
-    readonly base: string;
-    readonly once?: true;
-}
 // LayerResult
 export interface LayerResult<TProps extends ViewProps = ViewProps, TComponent extends string = string> extends ViewResult<TProps, TComponent> {
     readonly [LAYER_RESULT]: true;
@@ -2827,20 +2804,6 @@ export type { LayerRouteName } from '@marmeon/router';
 export type LiveField<F> = keyof {
     [K in keyof F & string as PasswordLike<K> extends true ? never : K]: true;
 } & string;
-// LiveHint
-export interface LiveHint {
-    readonly channel: string;
-    readonly only: readonly string[] | null;
-    readonly seq: number;
-}
-// LiveSubscription
-export interface LiveSubscription {
-    readonly channel: string;
-    readonly only?: readonly string[];
-    readonly token: string;
-}
-// MAX_LAYER_DEPTH
-export declare const MAX_LAYER_DEPTH = 10;
 // MatchKey
 export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepItemKey<T, []> : T extends {
     readonly data: readonly unknown[];
@@ -2863,15 +2826,6 @@ export interface MergingDeferredProp<T, S extends MergeStrategy = MergeStrategy>
 }
 // MethodOf
 export type { MethodOf } from '@marmeon/router';
-// ONCE_HEADER
-export declare const ONCE_HEADER = "x-marmeon-once";
-// ONCE_SCOPE_HEADER
-export declare const ONCE_SCOPE_HEADER = "x-marmeon-once-scope";
-// OnceInfo
-export interface OnceInfo {
-    readonly key: string;
-    readonly expiresAt?: number;
-}
 // OnceProp
 export interface OnceProp<T> extends PageProp<'once', T> {
     readonly resolve: () => unknown;
@@ -2882,18 +2836,6 @@ export interface OnceProp<T> extends PageProp<'once', T> {
 export interface OptionalProp<T> extends PageProp<'optional', T> {
     readonly resolve: () => unknown;
 }
-// PAGE_HEADER
-export declare const PAGE_HEADER = "x-marmeon";
-// PAGE_SCRIPT_ID
-export declare const PAGE_SCRIPT_ID = "marmeon-page";
-// PARTIAL_COMPONENT_HEADER
-export declare const PARTIAL_COMPONENT_HEADER = "x-marmeon-partial-component";
-// PARTIAL_DATA_HEADER
-export declare const PARTIAL_DATA_HEADER = "x-marmeon-partial-data";
-// PARTIAL_EXCEPT_HEADER
-export declare const PARTIAL_EXCEPT_HEADER = "x-marmeon-partial-except";
-// PURPOSE_HEADER
-export declare const PURPOSE_HEADER = "purpose";
 // PageInfo
 export interface PageInfo<TProps = ViewProps> {
     readonly component: string;
@@ -2903,31 +2845,6 @@ export interface PageInfo<TProps = ViewProps> {
     readonly locale?: string;
     readonly query?: Readonly<Record<string, unknown>>;
     readonly flash?: readonly FlashMessage[];
-}
-// PageObject
-export interface PageObject {
-    component: string;
-    props: ViewProps;
-    url: string;
-    version?: string | null;
-    locale?: string;
-    fallbackLocale?: string;
-    deferredProps?: Record<string, string[]>;
-    mergeProps?: string[];
-    deepMergeProps?: string[];
-    matchPropsOn?: string[];
-    query?: Record<string, unknown>;
-    queryDefaults?: Record<string, unknown>;
-    streamedProps?: string[];
-    layer?: LayerInfo;
-    layers?: PageObject[];
-    flash?: FlashMessage[];
-    route?: string;
-    onceProps?: Record<string, OnceInfo>;
-    onceScope?: string;
-    csrf?: string;
-    epoch?: string;
-    live?: LiveSubscription[];
 }
 // PageProps
 export type PageProps<TAction extends PageAction> = Awaited<ActionResult<TAction>> extends infer TResult ? TResult extends ViewResult<infer TProps> ? Serialize<Omit<SharedProps, keyof TProps> & ResolvedProps<TProps>> : never : never;
@@ -2956,18 +2873,6 @@ export type { QueryFields } from '@marmeon/router';
 export type { QueryOf } from '@marmeon/router';
 // QueryParams
 export type { QueryParams } from '@marmeon/router';
-// REGION_HEADER
-export declare const REGION_HEADER = "x-marmeon-region";
-// REGION_STATUS_HEADER
-export declare const REGION_STATUS_HEADER = "x-marmeon-region-status";
-// RELOAD_HEADER
-export declare const RELOAD_HEADER = "x-marmeon-reload";
-// RegionKind
-export type RegionKind = 'island' | 'layer';
-// RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
-// RegionOutcomeStatus
-export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // RegionResult
 export type RegionResult = {
     readonly status: 'ready';
@@ -3032,8 +2937,6 @@ export interface SsrResult {
     head?: string;
     streamedProps?: string[];
 }
-// UPLOAD_HEADER
-export declare const UPLOAD_HEADER = "x-marmeon-upload";
 // Upload
 export interface Upload {
     readonly '~upload': true;
@@ -3056,12 +2959,6 @@ export type UploadField<F> = keyof {
 export type UploadToken = string & {
     readonly '~uploadToken': true;
 };
-// VALIDATED_HEADER
-export declare const VALIDATED_HEADER = "x-marmeon-validated";
-// VALIDATE_HEADER
-export declare const VALIDATE_HEADER = "x-marmeon-validate";
-// VERSION_HEADER
-export declare const VERSION_HEADER = "x-marmeon-version";
 // ValidationErrors
 export type { ValidationErrors } from '@marmeon/router';
 // ViewName
@@ -3083,20 +2980,12 @@ export interface Views {
 }
 // WrappedProp
 export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
-// isActionRequest
-export declare function isActionRequest(request: Request): boolean;
-// isPageObject
-export declare function isPageObject(value: unknown): value is PageObject;
-// isPrefetch
-export declare function isPrefetch(request: Request): boolean;
 // matchesPath
 export { matchesPath } from '@marmeon/router/url';
 // pageInfo
 export declare function pageInfo<TProps = ViewProps>(page: PageObject): PageInfo<TProps>;
 // pageName
 export declare function pageName(path: string): string | undefined;
-// regionOf
-export declare function regionOf(request: Request): RegionKind | undefined;
 // scriptJson
 export declare function scriptJson(value: unknown): string;
 // toSearchParams
@@ -3163,6 +3052,12 @@ export interface LayerBaseRoute {
     readonly params?: Readonly<Record<string, Param>> | undefined;
     readonly query?: Query | undefined;
 }
+// LayerInfo
+export interface LayerInfo {
+    readonly key: string;
+    readonly base: string;
+    readonly once?: true;
+}
 // Lazy
 type Lazy<T> = T | (() => T | PromiseLike<T>);
 // LiveMethod
@@ -3173,10 +3068,21 @@ export type LiveMethod<R, Names extends string, What extends string = 'this page
 export type LiveOnly<O extends readonly string[], Names extends string, What extends string = 'this page'> = {
     readonly [I in keyof O]: O[I] extends Names ? O[I] : `'${O[I] & string}' is not a prop of ${What} — its props: ${JoinNames<Names>}`;
 };
+// LiveSubscription
+export interface LiveSubscription {
+    readonly channel: string;
+    readonly only?: readonly string[];
+    readonly token: string;
+}
 // NotOptional
 interface NotOptional {
     readonly [PROP]: 'optional' | 'defer';
     readonly 'optional() and defer() make a shared prop possibly missing: declare it as `T | undefined` in SharedProps': true;
+}
+// OnceInfo
+export interface OnceInfo {
+    readonly key: string;
+    readonly expiresAt?: number;
 }
 // PROP
 declare const PROP: unique symbol;
@@ -3184,6 +3090,31 @@ declare const PROP: unique symbol;
 type PageAction = {
     handle: (...args: never[]) => unknown;
 } | ((...args: never[]) => unknown);
+// PageObject
+export interface PageObject {
+    component: string;
+    props: ViewProps;
+    url: string;
+    version?: string | null;
+    locale?: string;
+    fallbackLocale?: string;
+    deferredProps?: Record<string, string[]>;
+    mergeProps?: string[];
+    deepMergeProps?: string[];
+    matchPropsOn?: string[];
+    query?: Record<string, unknown>;
+    queryDefaults?: Record<string, unknown>;
+    streamedProps?: string[];
+    layer?: LayerInfo;
+    layers?: PageObject[];
+    flash?: FlashMessage[];
+    route?: string;
+    onceProps?: Record<string, OnceInfo>;
+    onceScope?: string;
+    csrf?: string;
+    epoch?: string;
+    live?: LiveSubscription[];
+}
 // PageProp
 interface PageProp<K extends PropKind, T> {
     readonly [PROP]: K;
@@ -3214,6 +3145,8 @@ export declare class RedirectResult {
 }
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
+// RegionObject
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
 // SerializeElement
@@ -3240,4 +3173,166 @@ declare const TYPE: unique symbol;
 type Unserializable = undefined | symbol | ((...args: never[]) => unknown);
 // VIEW_RESULT
 declare const VIEW_RESULT: unique symbol;
+```
+
+## `@marmeon/http/protocol`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// ACTION_HEADER
+export declare const ACTION_HEADER = "x-marmeon-action";
+// ACTION_REDIRECT_HEADER
+export declare const ACTION_REDIRECT_HEADER = "x-marmeon-redirect";
+// FLASH_HEADER
+export declare const FLASH_HEADER = "x-marmeon-flash";
+// FLASH_WAITING_HEADER
+export declare const FLASH_WAITING_HEADER = "x-marmeon-flash-waiting";
+// LAYER_CLOSE_HEADER
+export declare const LAYER_CLOSE_HEADER = "x-marmeon-layer-close";
+// LOCATION_HEADER
+export declare const LOCATION_HEADER = "x-marmeon-location";
+// LayerClose
+export interface LayerClose {
+    readonly layers: number;
+    readonly reload?: readonly string[] | true;
+}
+// LayerInfo
+export interface LayerInfo {
+    readonly key: string;
+    readonly base: string;
+    readonly once?: true;
+}
+// LiveHint
+export interface LiveHint {
+    readonly channel: string;
+    readonly only: readonly string[] | null;
+    readonly seq: number;
+}
+// LiveSubscription
+export interface LiveSubscription {
+    readonly channel: string;
+    readonly only?: readonly string[];
+    readonly token: string;
+}
+// MAX_LAYER_DEPTH
+export declare const MAX_LAYER_DEPTH = 10;
+// ONCE_HEADER
+export declare const ONCE_HEADER = "x-marmeon-once";
+// ONCE_SCOPE_HEADER
+export declare const ONCE_SCOPE_HEADER = "x-marmeon-once-scope";
+// OnceInfo
+export interface OnceInfo {
+    readonly key: string;
+    readonly expiresAt?: number;
+}
+// PAGE_HEADER
+export declare const PAGE_HEADER = "x-marmeon";
+// PAGE_SCRIPT_ID
+export declare const PAGE_SCRIPT_ID = "marmeon-page";
+// PARTIAL_COMPONENT_HEADER
+export declare const PARTIAL_COMPONENT_HEADER = "x-marmeon-partial-component";
+// PARTIAL_DATA_HEADER
+export declare const PARTIAL_DATA_HEADER = "x-marmeon-partial-data";
+// PARTIAL_EXCEPT_HEADER
+export declare const PARTIAL_EXCEPT_HEADER = "x-marmeon-partial-except";
+// PURPOSE_HEADER
+export declare const PURPOSE_HEADER = "purpose";
+// PageObject
+export interface PageObject {
+    component: string;
+    props: ViewProps;
+    url: string;
+    version?: string | null;
+    locale?: string;
+    fallbackLocale?: string;
+    deferredProps?: Record<string, string[]>;
+    mergeProps?: string[];
+    deepMergeProps?: string[];
+    matchPropsOn?: string[];
+    query?: Record<string, unknown>;
+    queryDefaults?: Record<string, unknown>;
+    streamedProps?: string[];
+    layer?: LayerInfo;
+    layers?: PageObject[];
+    flash?: FlashMessage[];
+    route?: string;
+    onceProps?: Record<string, OnceInfo>;
+    onceScope?: string;
+    csrf?: string;
+    epoch?: string;
+    live?: LiveSubscription[];
+}
+// REGION_HEADER
+export declare const REGION_HEADER = "x-marmeon-region";
+// REGION_STATUS_HEADER
+export declare const REGION_STATUS_HEADER = "x-marmeon-region-status";
+// RELOAD_HEADER
+export declare const RELOAD_HEADER = "x-marmeon-reload";
+// RegionKind
+export type RegionKind = 'island' | 'layer';
+// RegionObject
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+// RegionOutcomeStatus
+export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
+// UPLOAD_HEADER
+export declare const UPLOAD_HEADER = "x-marmeon-upload";
+// VALIDATED_HEADER
+export declare const VALIDATED_HEADER = "x-marmeon-validated";
+// VALIDATE_HEADER
+export declare const VALIDATE_HEADER = "x-marmeon-validate";
+// VERSION_HEADER
+export declare const VERSION_HEADER = "x-marmeon-version";
+// isActionRequest
+export declare function isActionRequest(request: Request): boolean;
+// isPageObject
+export declare function isPageObject(value: unknown): value is PageObject;
+// isPrefetch
+export declare function isPrefetch(request: Request): boolean;
+// regionOf
+export declare function regionOf(request: Request): RegionKind | undefined;
+```
+
+### Referenced, not exported
+
+```ts
+// FlashData
+export interface FlashData {
+}
+// FlashKey
+export type FlashKey = [keyof FlashData] extends [never] ? string : keyof FlashData & string;
+// FlashMessage
+export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
+    readonly id: string;
+    readonly key: K;
+    readonly data: Serialize<FlashValue<K>>;
+} : never;
+// FlashValue
+export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
+// Serialize
+export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
+// SerializeElement
+type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
+// SerializeKnown
+type SerializeKnown<T> = T extends string | number | boolean | null ? T : T extends bigint ? never : T extends Unserializable ? never : T extends {
+    toJSON(...args: never[]): infer R;
+} ? Serialize<R> : T extends ReadonlyMap<unknown, unknown> | ReadonlySet<unknown> ? {} : T extends readonly unknown[] ? {
+    -readonly [I in keyof T]: SerializeElement<T[I]>;
+} : T extends object ? SerializeObject<T> : never;
+// SerializeObject
+type SerializeObject<T> = Simplify<{
+    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
+} & {
+    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
+}>;
+// Simplify
+type Simplify<T> = {
+    [K in keyof T]: T[K];
+} & {};
+// Unserializable
+type Unserializable = undefined | symbol | ((...args: never[]) => unknown);
+// ViewProps
+export type ViewProps = Record<string, unknown>;
 ```

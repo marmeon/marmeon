@@ -3,7 +3,8 @@
  * document. The loading itself (`prop-loader.ts`) is a chunk of its own, fetched when the first page that carries deferred
  * groups arrives — a page without them never loads it.
  */
-import type { DeferredResult, PageObject } from '../page.ts';
+import type { DeferredResult } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { NavigatorCore } from './core.ts';
 import type { PropLoader as Loader } from './prop-loader.ts';
 

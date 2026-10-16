@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
 import { loadHistoryFallback, loadPageMessages } from '@marmeon/http/client';
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/page';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { createMessageLoader } from '@marmeon/i18n/messages';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

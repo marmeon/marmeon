@@ -1,5 +1,5 @@
 /** The browser of the client core's tests: one tab's history, location, fetch and events — in memory. */
-import { PAGE_HEADER, type PageObject } from '../page.ts';
+import { PAGE_HEADER, type PageObject } from '../protocol.ts';
 import type { ActionOptions } from './action.ts';
 import { actions } from './features/actions.ts';
 import { optimistic } from './features/optimistic.ts';

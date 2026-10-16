@@ -2,7 +2,8 @@
  * The loading of deferred props, in a chunk of its own: loaded when a page that carries deferred groups arrives
  * (`deferredProps`, `streamedProps`) — see `deferred.ts`. Each group lands in the page it was loaded for, on screen or in memory.
  */
-import type { DeferredResult, PageObject } from '../page.ts';
+import type { DeferredResult } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { NavigatorCore } from './core.ts';
 import type { Visit } from './events.ts';
 import { land } from './land.ts';

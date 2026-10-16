@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LOCATION_HEADER, RELOAD_HEADER } from '../page.ts';
+import { LOCATION_HEADER, RELOAD_HEADER } from '../protocol.ts';
 import { defineFeature, slot, type FeatureHost } from './feature.ts';
 import { HistoryWriter, OWN, type HistoryState, type NavigateEvent } from './history.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';

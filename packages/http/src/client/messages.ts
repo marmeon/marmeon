@@ -1,4 +1,4 @@
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 
 /**
  * The app's language files as the client core sees them — `createMessageLoader(lang)` of `@marmeon/i18n/messages`

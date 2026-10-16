@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { LOCATION_HEADER, RELOAD_HEADER, UPLOAD_HEADER, type Upload } from '../page.ts';
+import type { Upload } from '../page.ts';
+import { LOCATION_HEADER, RELOAD_HEADER, UPLOAD_HEADER } from '../protocol.ts';
 import { uploads } from './features/uploads.ts';
 import { dirtyPaths } from './forms.ts';
 import { loadSensitiveFields, rememberable } from './remember.ts';

@@ -1,6 +1,6 @@
 import { localLocation } from '@marmeon/router/internal';
 import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
-import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './page.ts';
+import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './protocol.ts';
 
 /**
  * Ends the browser's page session of this app with the current response — what signing in and out need (`Auth` calls it).

@@ -2,7 +2,7 @@
  * `revalidateOnBack`: what a view declares to reload when Back/Forward shows it from memory — the page, a layer or an
  * island shows at once, then those props load in the background, without a progress bar.
  */
-import type { PageObject } from '../../page.ts';
+import type { PageObject } from '../../protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
 import type { Layer } from '../layer.ts';

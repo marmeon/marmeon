@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PAGE_HEADER } from '../page.ts';
+import { PAGE_HEADER } from '../protocol.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse } from './test-window.ts';
 
 /** An XHR that records what it sent and answers with a page. */

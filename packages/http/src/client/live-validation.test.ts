@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../page.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
 import { liveValidation } from './features/live-validation.ts';
 import { liveValidationOnFirstUse, loadLiveValidation } from './lazy.ts';
 import { isSensitiveField, liveValidationData, type LiveValidationOutcome } from './live-validation.ts';

@@ -7,7 +7,8 @@
  * used — and the core loads the layers itself when the server answers with one.
  * No UI framework in here — an adapter (`<MarmeonApp>` of @marmeon/react) renders what the navigator hands it.
  */
-import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type PageObject, type ValidationErrors } from '../page.ts';
+import type { DeferredResult, FlashKey, FlashMessage, ValidationErrors } from '../page.ts';
+import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type PageObject } from '../protocol.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
 import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';

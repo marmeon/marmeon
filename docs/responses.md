@@ -330,6 +330,48 @@ Never use `public` for anything that depends on the user: a shared cache would h
 
 Since that answer stays in the browser's cache, the app signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `logout()`; see [the browser's storage on sign-out](client-features.md#the-browsers-storage-on-sign-out).
 
+#### Protocol headers
+
+A page and its JSON are the same URL: the client sends request headers that change the answer, so a shared cache in front of the
+app must keep one copy per combination. `@marmeon/http/protocol` exports their names: `PAGE_HEADER` (`x-marmeon`, the client wants
+the page object as JSON), `REGION_HEADER` (an island or a layer), `PARTIAL_COMPONENT_HEADER`, `PARTIAL_DATA_HEADER` and
+`PARTIAL_EXCEPT_HEADER` (a partial reload), `PURPOSE_HEADER` (a prefetch, with the browser's own `sec-purpose`), `ONCE_HEADER` and
+`ONCE_SCOPE_HEADER` (the once props the tab holds) and `VERSION_HEADER` (the build the client runs). A middleware that caches
+publicly names all of them in `Vary`; leaving one out lets the cache serve an island, a partial reload or a page without its once
+props to a request that asked for another:
+
+```ts title="modules/site/middleware/CachePublicly.ts"
+import {
+  ONCE_HEADER,
+  ONCE_SCOPE_HEADER,
+  PAGE_HEADER,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
+  REGION_HEADER,
+  VERSION_HEADER,
+} from '@marmeon/http/protocol';
+
+export const PAGE_VARY = [
+  PAGE_HEADER,
+  REGION_HEADER,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
+  'sec-purpose',
+  ONCE_HEADER,
+  ONCE_SCOPE_HEADER,
+  VERSION_HEADER,
+];
+```
+
+The same entry has the `PageObject` and `RegionObject` types of the answer, and the checks `isPrefetch(request)`,
+`isActionRequest(request)` and `regionOf(request)`. The header names and the page object are public API, so a change to
+them is a breaking change of the framework. The types you augment (`Views`, `SharedProps`, `FlashData`) are in
+`@marmeon/http/page`.
+
 ### Cookies
 
 `ctx.cookies.set(name, value, options)` queues a cookie for whatever response the request ends with, a page, a redirect or an

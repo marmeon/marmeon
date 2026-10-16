@@ -12,6 +12,10 @@
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  scriptJson,
+  type RegionResult,
+} from '../page.ts';
+import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
   FLASH_HEADER,
@@ -24,12 +28,10 @@ import {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   RELOAD_HEADER,
-  scriptJson,
   VALIDATE_HEADER,
   VALIDATED_HEADER,
   type PageObject,
-  type RegionResult,
-} from '../page.ts';
+} from '../protocol.ts';
 import {
   actions,
   firstErrors,

@@ -6,7 +6,7 @@
  * core's own requests; what it shows of the server comes from the devtools' JSON API.
  */
 import { devtools, islands, Navigator, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client';
-import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/page';
+import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevtoolsBar, SHORTCUT, STATE_KEY } from './bar.ts';
 import { installDevtoolsHook } from './hook.ts';

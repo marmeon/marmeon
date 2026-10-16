@@ -7,7 +7,8 @@
  * The state (`QueryState`) is a feature (`features/query-state.ts`): in an app only when it uses it (`useQueryState`) — so its
  * code is a module of its own, apart from the helpers links and islands need of a page's query (`query.ts`).
  */
-import { matchesPath, toSearchParams, type PageObject } from '../page.ts';
+import { matchesPath, toSearchParams } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { Navigator, VisitOptions } from './navigation.ts';
 import { pageQuery, queryUrl, withoutDefaults } from './query.ts';
 

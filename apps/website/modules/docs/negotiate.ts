@@ -1,4 +1,4 @@
-import { PAGE_HEADER } from '@marmeon/http/page';
+import { PAGE_HEADER } from '@marmeon/http/protocol';
 
 const MAX_RANGES = 64;
 const WEIGHT = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;

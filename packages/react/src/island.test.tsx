@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/dashboard" }
-import { PAGE_HEADER, REGION_HEADER, REGION_STATUS_HEADER, type PageObject, type RegionObject, type RouteManifest } from '@marmeon/http/page';
+import type { RouteManifest } from '@marmeon/http/page';
+import { PAGE_HEADER, REGION_HEADER, REGION_STATUS_HEADER, type PageObject, type RegionObject } from '@marmeon/http/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

@@ -5,16 +5,7 @@ import { Encrypter } from '@marmeon/encryption';
 import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router } from '@marmeon/http';
 import { writeAppBrowserRoutes } from '@marmeon/http/internal';
 import {
-  ACTION_HEADER,
-  PAGE_HEADER,
-  PARTIAL_COMPONENT_HEADER,
-  PARTIAL_DATA_HEADER,
-  PARTIAL_EXCEPT_HEADER,
-  PURPOSE_HEADER,
-  REGION_HEADER,
-  UPLOAD_HEADER,
   urlFor,
-  VALIDATE_HEADER,
   type CheckIslandRouteName,
   type CheckRouteName,
   type CheckUploadField,
@@ -27,9 +18,20 @@ import {
   type Query,
   type RouteArgs,
   type RouteNameInput,
+} from '@marmeon/http/page';
+import {
+  ACTION_HEADER,
+  PAGE_HEADER,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
+  REGION_HEADER,
+  UPLOAD_HEADER,
+  VALIDATE_HEADER,
   type LiveSubscription,
   type PageObject,
-} from '@marmeon/http/page';
+} from '@marmeon/http/protocol';
 import { createHttpKernel, type HttpKernel } from '@marmeon/server';
 import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/internal';
 import { AssertionError } from 'node:assert';
