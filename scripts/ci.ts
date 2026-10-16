@@ -5,6 +5,7 @@
  *   pnpm run ci                          # everything
  *   pnpm run ci --only test,size         # some parts (in the order below); --skip a,b likewise
  *   pnpm run ci --bail | --no-compose | --list   # stop at the first red · the databases already run · the parts
+ *   pnpm run ci --only test --shard 2/3  # a third of the test files (Vitest's --shard) — how ci.yml spreads a suite over runners
  *
  * The suites that need a database start only this repository's `compose.yaml` containers (`marmeon-*`, `docker compose up -d
  * --wait`), never another project's, and the Postgres and Redis suites run one after the other: they share their databases.
@@ -21,6 +22,8 @@ interface Part {
   readonly name: string;
   readonly command: readonly string[];
   readonly services?: readonly Service[];
+  /** A Vitest run that `--shard i/n` may split: the files of one shard are about a n-th of the suite. */
+  readonly shardable?: true;
   /** Parts this one builds on: when one of them ran in this run and was red, this one is skipped. */
   readonly after?: readonly string[];
 }
@@ -35,10 +38,10 @@ export const parts: readonly Part[] = [
   // Rules over the repository's own files (scripts/check-source.ts).
   { name: 'check:source', command: pnpm('check:source') },
   // The bundle-size test measures the packages' dist/ — after the build.
-  { name: 'test', command: pnpm('test'), after: ['build'] },
-  { name: 'test:pgsql', command: pnpm('test:pgsql'), services: ['pgsql'], after: ['build'] },
-  { name: 'test:redis', command: pnpm('test:redis'), services: ['redis'], after: ['build'] },
-  { name: 'test:s3', command: pnpm('test:s3'), services: ['s3'], after: ['build'] },
+  { name: 'test', command: pnpm('test'), shardable: true, after: ['build'] },
+  { name: 'test:pgsql', command: pnpm('test:pgsql'), shardable: true, services: ['pgsql'], after: ['build'] },
+  { name: 'test:redis', command: pnpm('test:redis'), shardable: true, services: ['redis'], after: ['build'] },
+  { name: 'test:s3', command: pnpm('test:s3'), shardable: true, services: ['s3'], after: ['build'] },
   { name: 'size', command: pnpm('size'), after: ['build'] },
   { name: 'types:check', command: pnpm('types:check') },
   // The website: its production build, started on a free port and asked by a smoke test (scripts/website.ts).
@@ -57,6 +60,17 @@ export const parts: readonly Part[] = [
   // release.yml (staged publishing with OIDC), npm-trust.sh, UPGRADING.md (its entries from the first release on), LICENSE and policies.
   { name: 'check-release', command: pnpm('check-release') },
 ];
+
+/** `i/n` of `--shard`: both whole numbers from 1, `i` not above `n`; undefined for anything else. */
+export function parseShard(value: string): string | undefined {
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(value);
+  return match && Number(match[1]) <= Number(match[2]) ? value : undefined;
+}
+
+/** What runs a part: its command, with Vitest's `--shard=i/n` behind it for a shardable part (`pnpm run` passes it on). */
+export function commandFor(part: Part, shard?: string): readonly string[] {
+  return shard !== undefined && part.shardable ? [...part.command, `--shard=${shard}`] : part.command;
+}
 
 /** The exit code of a part that could not run here (no network, no store): skipped, not green (`scripts/pack-smoke.ts`). */
 const SKIPPED_EXIT = 75;
@@ -124,6 +138,7 @@ async function main(): Promise<number> {
         bail: { type: 'boolean', default: false },
         'no-compose': { type: 'boolean', default: false },
         list: { type: 'boolean', default: false },
+        shard: { type: 'string' },
         help: { type: 'boolean', short: 'h', default: false },
       },
       allowPositionals: false,
@@ -133,8 +148,8 @@ async function main(): Promise<number> {
     return 2;
   }
   if (values.help || values.list) {
-    if (values.help) console.log('Usage: pnpm run ci [--only a,b] [--skip a,b] [--bail] [--no-compose] [--list]\n');
-    for (const part of parts) console.log(`  ${part.name.padEnd(17)} ${part.command.join(' ')}${part.services ? `  (needs ${part.services.join(', ')})` : ''}`);
+    if (values.help) console.log('Usage: pnpm run ci [--only a,b] [--skip a,b] [--bail] [--no-compose] [--list] [--shard i/n]\n');
+    for (const part of parts) console.log(`  ${part.name.padEnd(17)} ${part.command.join(' ')}${part.services ? `  (needs ${part.services.join(', ')})` : ''}${part.shardable ? '  (--shard)' : ''}`);
     return 0;
   }
   const selected = select(values.only, values.skip);
@@ -145,6 +160,16 @@ async function main(): Promise<number> {
   if (selected.length === 0) {
     console.error('ci: nothing selected.');
     return 2;
+  }
+  if (values.shard !== undefined) {
+    if (parseShard(values.shard) === undefined) {
+      console.error(`ci: --shard ${values.shard} — expected i/n with 1 ≤ i ≤ n, e.g. 2/3.`);
+      return 2;
+    }
+    if (!selected.some((part) => part.shardable)) {
+      console.error(`ci: --shard splits a test run, and none is selected (${parts.filter((part) => part.shardable).map((part) => part.name).join(', ')}).`);
+      return 2;
+    }
   }
   const compose = !values['no-compose'];
 
@@ -157,10 +182,11 @@ async function main(): Promise<number> {
       red.add(part.name);
       continue;
     }
-    console.log(github ? `::group::ci: ${part.name}` : `\n▶ ci: ${part.name} — ${part.command.join(' ')}`);
+    const command = commandFor(part, values.shard);
+    console.log(github ? `::group::ci: ${part.name}` : `\n▶ ci: ${part.name} — ${command.join(' ')}`);
     const begin = performance.now();
     const problem = await ensureServices(part.services ?? [], compose);
-    const code = problem ? 1 : await run(part.command);
+    const code = problem ? 1 : await run(command);
     const ms = performance.now() - begin;
     if (github) console.log('::endgroup::');
     if (problem) console.error(`ci: ${problem}`);
@@ -169,7 +195,7 @@ async function main(): Promise<number> {
     const note = problem ?? (status === 'skipped' ? 'could not run here (no network, store or Docker)' : code === 0 ? undefined : `exit ${code}`);
     results.push({ part, status, ms, note });
     console.log(`${{ passed: '✓', failed: '✗', skipped: '–' }[status]} ci: ${part.name} ${seconds(ms)}${note ? ` (${note})` : ''}`);
-    if (github && status === 'failed') console.log(`::error title=ci: ${part.name}::${part.command.join(' ')} — ${problem ?? `exit ${code}`}`);
+    if (github && status === 'failed') console.log(`::error title=ci: ${part.name}::${command.join(' ')} — ${problem ?? `exit ${code}`}`);
   }
 
   const total = results.reduce((sum, result) => sum + result.ms, 0);
