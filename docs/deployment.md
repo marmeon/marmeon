@@ -67,7 +67,7 @@ at start and never serves it, and a CDN in front of the assets gets the `assets/
 can end up in `dist/`. The [configuration](configuration.md#configuration-and-the-build) page explains what that means for a
 provider.
 
-`marmeon start` serves the build. It runs with `NODE_ENV=production` unless the environment or `.env` sets another value, and it
+`marmeon start` serves the build. It runs with `NODE_ENV=production` unless the environment sets another value, and it
 never starts Vite, a worker or the scheduler. A `NODE_ENV` other than `development`, `test` or `production` stops it before
 anything runs. Its start line names the environment, its `APP_ENV` and what it serves. In production it is the message of a JSON
 log entry:
@@ -155,7 +155,8 @@ the server. TypeScript, Vite and pnpm stay in the build stage.
 
 > [!WARNING]
 > Never deploy a developer's `.env`. Its `NODE_ENV=development` would turn on the error page with source code, the devtools and
-> the other development tools. The app logs a loud warning when that happens, but it still starts.
+> the other development tools. `marmeon start` refuses to run when `development` or `test` comes from `.env` alone; the
+> worker and the scheduler log a loud warning but still start.
 
 ### Storage and a read-only file system
 
@@ -426,7 +427,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
 
 ## Checklist
 
-- `NODE_ENV=production` in the real environment, and no developer's `.env` on the server.
+- `NODE_ENV=production` in the real environment, and no developer's `.env` on the server (`marmeon start` refuses a `NODE_ENV=development` that comes from `.env`).
 - `APP_KEY` set, and the same on every instance. `APP_URL` starts with `https://`.
 - `marmeon migrate --force` once per deployment, for example in a one-off container.
 - The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `TRUSTED_PROXIES` names it.

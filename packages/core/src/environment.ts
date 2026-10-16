@@ -124,7 +124,7 @@ export const environment = {
   },
 
   /**
-   * The warning a production command (`marmeon start`, `queue:work`, `schedule:work`) logs when it runs as `development`
+   * The warning a production command (`queue:work`, `schedule:work`; `marmeon start` refuses instead) logs when it runs as `development`
    * because a `.env` says so — a developer's `.env` copied to a server turns the development tools on. Undefined otherwise.
    */
   dotEnvDevelopmentWarning(command: string, env: NodeEnvironment = process.env): string | undefined {

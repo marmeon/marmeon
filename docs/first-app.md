@@ -909,12 +909,13 @@ pnpm lint
 
 ```sh
 pnpm build
-pnpm marmeon start
+NODE_ENV=production pnpm marmeon start
 ```
 
 `build` checks the types, including the route names in your pages, and bundles the browser's files. `start` serves the build. It
-runs in production unless the environment or `.env` sets another value: the `.env` of the starter kit says `development`, and a
-server sets its own. See [building and starting](deployment.md#building-and-starting).
+runs in production, and refuses a `NODE_ENV=development` that comes from `.env` alone: the `.env` of the starter kit says
+`development`, so set `NODE_ENV=production` in the shell to try the build on your machine, and a server sets its own `NODE_ENV`.
+See [building and starting](deployment.md#building-and-starting).
 
 ## Where to go next
 

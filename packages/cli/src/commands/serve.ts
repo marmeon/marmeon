@@ -52,10 +52,6 @@ export class ServeCommand {
       output.error('--workers is for marmeon start (the build): marmeon dev runs one server, with Vite in front of it.');
       return 1;
     }
-    // `marmeon start` as development because a .env says so: allowed, but never quietly — a developer's
-    // .env on a server. (`marmeon dev` clears the mark: it is development by itself.) Said once, by the primary of a cluster.
-    const fromDotEnv = cluster.isPrimary ? environment.dotEnvDevelopmentWarning('start') : undefined;
-    if (fromDotEnv) this.#logger.warn(fromDotEnv);
     if (workers !== undefined && cluster.isPrimary) {
       // Said once, here, not by each of the workers that would refuse the same start.
       try {

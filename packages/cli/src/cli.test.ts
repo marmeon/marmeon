@@ -1030,20 +1030,52 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     expect(performance.now() - stopped).toBeLessThan(3000);
   }, 30_000);
 
-  it('takes NODE_ENV=development from .env when the process has none — and says loudly that start runs as development', () => {
+  it('refuses to start when NODE_ENV=development or test comes from .env only — nothing of the app runs', () => {
+    const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    const run = (command = 'start') => spawnSync(process.execPath, [bin, command], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info' } });
+    for (const [name, command] of [['development', 'start'], ['test', 'start'], ['development', 'serve']] as const) {
+      writeFileSync(join(app, '.env'), `NODE_ENV=${name}\n`);
+      try {
+        const result = run(command);
+        expect(result.status, `${command} ${name}`).toBe(1);
+        expect(result.stderr).toContain(`✗ marmeon ${command} runs in production. NODE_ENV=${name} comes from .env only`);
+        expect(result.stderr).toContain('set NODE_ENV=production to try the build');
+        if (name === 'development') expect(result.stderr).toContain('run `marmeon dev`');
+        expect(result.stdout, 'nothing of the app ran').toBe('');
+        expect(result.stderr).not.toContain(' on http://');
+      } finally {
+        rmSync(join(app, '.env'));
+      }
+    }
+  }, 30_000);
+
+  it('NODE_ENV=development in the process environment starts the development stack on purpose — .env or not', () => {
     writeFileSync(join(app, '.env'), 'NODE_ENV=development\n');
     mkdirSync(join(app, 'modules')); // what development watches for new views
     try {
       const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
-      // Development serves through Vite's dev server, which this app does not have — the warning comes first, before the server.
-      const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info' } });
-      expect(`${result.stdout}${result.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: marmeon start runs with the development tools');
-      // …and the failed start ends (the route-types watcher does not keep it alive).
+      // Development serves through Vite's dev server, which this app does not have: its error shows the stack that started.
+      const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info', NODE_ENV: 'development' } });
       expect(result.stderr).toContain('Vite is not installed in this app.');
+      expect(result.stderr).not.toContain('marmeon start runs in production');
       expect(result.status).toBe(1);
     } finally {
       rmSync(join(app, 'modules'), { recursive: true });
       rmSync(join(app, '.env'));
+    }
+  }, 30_000);
+
+  it('a .env without NODE_ENV, or with NODE_ENV=production, starts as production', async () => {
+    for (const line of ['APP_ENV=staging\n', 'NODE_ENV=production\n']) {
+      writeFileSync(join(app, '.env'), line);
+      try {
+        const server = await start({});
+        server.child.kill('SIGTERM');
+        expect(await server.exited).toBe(0);
+        expect(server.output()).toContain('Marmeon in production (');
+      } finally {
+        rmSync(join(app, '.env'));
+      }
     }
   }, 30_000);
 

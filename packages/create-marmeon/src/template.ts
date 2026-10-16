@@ -291,7 +291,7 @@ export function readme({ title, packageManager, kit, docker }: ReadmeOptions): s
     `${run('test').padEnd(26)}# the tests (Vitest): modules/**/*.test.ts`,
     `${run('lint').padEnd(26)}# oxlint with the app's preset (.oxlintrc.json)`,
     `${run('build').padEnd(26)}# type-check, client and SSR build — for production, also next to this .env`,
-    `${run('start').padEnd(26)}# the build — on a server with NODE_ENV=production in the real environment; here .env says development (marmeon dev's tools)`,
+    `${run('start').padEnd(26)}# the build — on a server with NODE_ENV=production in the real environment; here .env says development, so start refuses: try the build with NODE_ENV=production … start, develop with dev`,
     `${`${exec} migrate`.padEnd(26)}# after a new migration — .env says NODE_ENV=development: it writes bootstrap/database.d.ts`,
     `${`${exec} queue:work`.padEnd(26)}# production: a worker on every queue — the queued jobs and the auth module's mails (marmeon dev runs one)`,
     '```',
