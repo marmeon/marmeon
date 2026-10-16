@@ -6,8 +6,8 @@
  * verifies the hashes before `npm stage publish`; never `npm publish`, a plain `pnpm publish` or an npm token; a
  * GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
- * `.github/workflows/pr-label.yml` (the release label check, token-free) and `.github/release.yml` (what the release rules
- * generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
+ * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
+ * reads a checkout, installs nothing, holds no token) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
  *
  * Each rule in full: CONTRIBUTING.md, "Pull requests and releases".
  */
@@ -639,6 +639,85 @@ export function checkLabelWorkflow(repository: string): string[] {
   return problems;
 }
 
+/** The API label check: it checks out untrusted code, so it holds no token, installs nothing and runs one script of node-only imports. */
+export function checkApiLabelWorkflow(repository: string): string[] {
+  const where = 'api-label.yml';
+  const file = join(repository, '.github/workflows/api-label.yml');
+  if (!existsSync(file)) return [`${where}: .github/workflows/api-label.yml is missing`];
+  const problems: string[] = [];
+  const code = readFileSync(file, 'utf8').replace(/(^|\s)#.*$/gm, '$1');
+
+  const events = eventsOf(code);
+  if (events?.join() !== 'pull_request') {
+    problems.push(`${where}: "on:" must be exactly the pull_request event (found ${events?.join(', ') || 'no event block'}) — pull_request_target and every other event would hand a fork's code a token`);
+  }
+  const types = /^ {4}types:\s*\[([^\]]*)\]\s*$/m.exec(code)?.[1]?.split(',').map((type) => type.trim());
+  if (!types || types.slice().sort().join() !== LABEL_EVENT_TYPES.slice().sort().join()) {
+    problems.push(`${where}: the pull_request types must be [${LABEL_EVENT_TYPES.join(', ')}] — the check has to follow every push and every label change`);
+  }
+  if (!/^permissions:\s*\{\}\s*$/m.test(code)) problems.push(`${where}: the workflow's "permissions:" must be "{}" — only the job reads the contents`);
+  // Every indented `permissions:` — a block of `scope: level` lines or an inline value — may grant `contents: read` and nothing else.
+  const grants = [...code.matchAll(/^([ \t]+)permissions:[ \t]*(\S.*)?$/gm)].flatMap((match) => {
+    if (match[2] !== undefined) return [match[2].trim()];
+    const own: string[] = [];
+    for (const line of code.slice(match.index + match[0].length).split('\n').slice(1)) {
+      if (line.trim() === '' || line.length - line.trimStart().length <= match[1]!.length) break;
+      own.push(line.trim());
+    }
+    return own;
+  });
+  const extra = grants.filter((grant) => grant !== 'contents: read');
+  if (extra.length > 0) problems.push(`${where}: a job asks for more than "contents: read" (${extra.join(', ')}) — the checkout is all it needs`);
+  if (!grants.includes('contents: read')) problems.push(`${where}: the job must say "permissions: contents: read" — the checkout needs it, and the workflow's own permissions are empty`);
+
+  for (const [, action] of code.matchAll(/["']?\buses["']?\s*:\s*["']?([^\s"']+)/g)) {
+    if (!/@[0-9a-f]{40}$/.test(action!)) problems.push(`${where}: "${action}" is not pinned to a commit — every action is pinned by its full SHA`);
+    if (!/^actions\/(?:checkout|setup-node)@/.test(action!)) problems.push(`${where}: "${action}" — only actions/checkout and actions/setup-node; the check runs on untrusted pull requests`);
+  }
+  for (const chunk of code.split(/^(?=\s*- )/m)) {
+    if (/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/checkout@/m.test(chunk)) {
+      if (!/^\s*persist-credentials:\s*false\s*$/m.test(chunk)) problems.push(`${where}: an actions/checkout step without "persist-credentials: false" — the token would stay in the checkout`);
+      if (!/^\s*fetch-depth:\s*0\s*$/m.test(chunk)) problems.push(`${where}: the checkout needs "fetch-depth: 0" — the script reads the base commit's api.md files`);
+    }
+    if (/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/setup-node@/m.test(chunk)) {
+      const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(chunk)?.[2] ?? '';
+      if (!/^\s*package-manager-cache:\s*false\s*$/m.test(withBlock) || /^\s*cache:/m.test(withBlock)) {
+        problems.push(`${where}: an actions/setup-node step needs "package-manager-cache: false" and no "cache:" — nothing is restored into a run of untrusted code`);
+      }
+    }
+  }
+  if (/\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token)|GITHUB_TOKEN/.test(code)) problems.push(`${where}: a secret or the token — the check must hold none`);
+  const scripts = runScripts(code);
+  for (const script of scripts) {
+    const first = script.trim().split('\n')[0];
+    if (script.includes('${{')) problems.push(`${where}: an expression inside a run script ("${first}") — pass it through env:, a label name could inject commands`);
+    if (/\b(?:pnpm|npm|npx|yarn|bun|corepack)\b/.test(script)) problems.push(`${where}: a package manager in a run script ("${first}") — nothing of the pull request is installed, an install script would run its code`);
+    if (script.trim() !== 'node scripts/api-label.ts') problems.push(`${where}: a run script other than "node scripts/api-label.ts" ("${first}")`);
+  }
+  if (scripts.length !== 1) problems.push(`${where}: exactly one run script, "node scripts/api-label.ts" (found ${scripts.length})`);
+  if (!/^\s+name:\s*api label\s*$/m.test(code)) problems.push(`${where}: the job must be named "api label" — that name is the required status check of the ruleset`);
+  if (!/^\s+LABELS:\s*\$\{\{\s*toJSON\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}\s*$/m.test(code)) {
+    problems.push(`${where}: LABELS must be "\${{ toJSON(github.event.pull_request.labels.*.name) }}" in env`);
+  }
+  // The merge commit's first parent is the base of the merge commit GitHub built last; `base.sha` may date from another moment than that commit.
+  if (/\bbase\.sha\b|\bBASE_SHA\b/.test(code)) problems.push(`${where}: the script compares the merge commit with its first parent — base.sha may date from another moment than the merge commit and would show what merged in between as the pull request's change`);
+  // The script runs next to the pull request's own code: what it imports is what it executes.
+  for (const script of ['scripts/api-label.ts', 'scripts/api-snapshot.ts']) {
+    const path = join(repository, script);
+    if (!existsSync(path)) {
+      problems.push(`${where}: ${script} is missing`);
+      continue;
+    }
+    const withSnapshot = script === 'scripts/api-label.ts';
+    const source = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const specifiers = [...source.matchAll(/\b(?:from|import|require)\s*\(?\s*(['"`])(.+?)\1/g)].map((match) => match[2]!);
+    for (const name of specifiers.filter((specifier) => !specifier.startsWith('node:') && !(withSnapshot && specifier === './api-snapshot.ts'))) {
+      problems.push(`${where}: ${script} imports "${name}" — it may load only node:*${withSnapshot ? ' and ./api-snapshot.ts' : ''}, the workflow installs nothing`);
+    }
+  }
+  return problems;
+}
+
 /** `.github/release.yml` is what the release rules generate. */
 export function checkReleaseConfig(repository: string): string[] {
   return releaseConfigCurrent(repository) ? [] : [`${RELEASE_CONFIG}: missing or out of date — run node scripts/release-rules.ts`];
@@ -677,6 +756,7 @@ export function check(repository: string = root): string[] {
     ...checkWorkflow(repository),
     ...checkCiWorkflow(repository),
     ...checkLabelWorkflow(repository),
+    ...checkApiLabelWorkflow(repository),
     ...checkReleaseConfig(repository),
     ...checkTrust(repository),
     ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version),
@@ -697,7 +777,7 @@ if (import.meta.main) {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
-      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, .github/release.yml, ` +
+      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, .github/release.yml, ` +
         `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }
