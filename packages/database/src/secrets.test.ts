@@ -3,7 +3,7 @@ import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, Repository, renderTypes, secret, type Connections, type Generated, type Secret, type Selectable, type Timestamp } from './index.ts';
+import { Migrator, Repository, renderTypes, secret, sql, type Connections, type Generated, type Secret, type Selectable, type Timestamp } from './index.ts';
 
 /** What `db:types` generates for the accounts fixture (checked below), next to the other fixture tables. */
 interface AccountTables extends FixtureTables {
@@ -152,6 +152,66 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     await insertAda();
     const raw = await db.withoutPlugins().selectFrom('accounts').selectAll().executeTakeFirstOrThrow();
     expect(raw).toMatchObject({ password: HASH });
+  });
+
+  describe('values written', () => {
+    const refusal = 'a secret column';
+
+    it('are read like a selection: a secret column is not copied into a readable one', async () => {
+      await insertAda();
+      await expect(db.updateTable('accounts').set((eb) => ({ email: eb.ref('password') })).execute()).rejects.toThrow(refusal);
+      await expect(db.updateTable('accounts').set((eb) => ({ email: eb.ref('PASSWORD' as never) })).execute()).rejects.toThrow(refusal);
+      await expect(db.updateTable('accounts').set({ email: sql.ref('password') } as never).execute()).rejects.toThrow(refusal);
+      await expect(db.insertInto('accounts').values((eb) => ({ email: eb.ref('accounts.password'), password: HASH })).execute()).rejects.toThrow(refusal);
+      expect((await db.selectFrom('accounts').select('email').execute()).map((row) => row.email)).toEqual(['ada@example.com']);
+    });
+
+    it('are read in an upsert too, where excluded is the row that was to be inserted', async () => {
+      await insertAda();
+      const upsert = (value: string) =>
+        db
+          .insertInto('accounts')
+          .columns(['email', 'password'])
+          .expression(db.selectFrom('accounts').select((e) => ['email', secret(e, 'password')]).where(sql<boolean>`true`))
+          .onConflict((conflict) => conflict.column('email').doUpdateSet((eb) => ({ email: eb.ref(value as never) })))
+          .returning('email');
+      await expect(upsert('excluded.password').execute()).rejects.toThrow(refusal);
+      await expect(upsert('EXCLUDED.password').execute()).rejects.toThrow(refusal);
+      await expect(upsert('accounts.password').execute()).rejects.toThrow(refusal);
+      expect((await db.selectFrom('accounts').select('email').execute()).map((row) => row.email)).toEqual(['ada@example.com']);
+    });
+
+    it('may pass from a secret column to a secret column', async () => {
+      await insertAda();
+      await db
+        .insertInto('accounts')
+        .values({ email: 'ada@example.com', password: 'other' })
+        .onConflict((conflict) => conflict.column('email').doUpdateSet((eb) => ({ password: eb.ref('excluded.password') })))
+        .execute();
+      await db.updateTable('accounts').set((eb) => ({ totp_secret: eb.ref('password') })).execute();
+      const copy = await db.insertInto('accounts').columns(['email', 'password']).expression(db.selectFrom('accounts').select((e) => [sql<string>`'grace@example.com'`.as('email'), secret(e, 'password')])).returning('id').execute();
+      expect(copy).toHaveLength(1);
+      const read = await db.selectFrom('accounts').select((eb) => ['email', secret(eb, 'password'), secret(eb, 'totp_secret')]).orderBy('id').execute();
+      expect(read).toEqual([
+        { email: 'ada@example.com', password: 'other', totp_secret: 'other' },
+        { email: 'grace@example.com', password: 'other', totp_secret: null },
+      ]);
+    });
+
+    it('are read in a statement inside a common table expression', () => {
+      const compile = (query: { compile(): unknown }) => () => query.compile();
+      expect(compile(db.with('x', (q) => q.updateTable('accounts').set((eb) => ({ email: eb.ref('password') })).returning('id')).selectFrom('users').select('id'))).toThrow(refusal);
+      const from = db.selectFrom('accounts').select((e) => ['email', secret(e, 'password')]);
+      expect(compile(db.with('x', (q) => q.insertInto('accounts').columns(['email', 'created_at']).expression(from).returning('id')).selectFrom('users').select('id'))).toThrow(refusal);
+      expect(compile(db.with('x', (q) => q.insertInto('accounts').columns(['email', 'password']).expression(from).returning('id')).selectFrom('users').select('id'))).not.toThrow();
+    });
+
+    it('are read in a merge', () => {
+      const merge = db.mergeInto('accounts').using('users', 'users.email', 'accounts.email');
+      expect(() => merge.whenMatched().thenUpdateSet((eb) => ({ email: eb.ref('accounts.password') })).compile()).toThrow(refusal);
+      expect(() => merge.whenMatched().thenUpdateSet((eb) => ({ password: eb.ref('accounts.password') })).compile()).not.toThrow();
+      expect(() => merge.whenNotMatched().thenInsertValues((eb) => ({ email: eb.ref('accounts.password'), password: HASH })).compile()).toThrow(refusal);
+    });
   });
 
   it('follows migrations on a live connection — a renamed secret stays secret', async () => {

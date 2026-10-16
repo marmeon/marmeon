@@ -8,6 +8,8 @@ import {
   SelectionNode,
   SelectQueryNode,
   TableNode,
+  ValuesNode,
+  type ColumnUpdateNode,
   type DeleteQueryNode,
   type InsertQueryNode,
   type MergeQueryNode,
@@ -51,6 +53,8 @@ interface Source {
   /** Raw SQL or a function in FROM: its columns cannot be checked. */
   readonly untyped?: boolean;
 }
+
+const WRITES: ReadonlySet<string> = new Set(['InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'MergeQueryNode']);
 
 /** What the guard changes: selections spelled out without secret columns, by the select (or returning) they belong to. */
 export type Spelled = ReadonlyMap<OperationNode, readonly SelectionNode[]>;
@@ -102,6 +106,9 @@ class Guard {
   readonly #ctes: Map<string, Output>[] = [];
   /** The relation being checked (its label). */
   #relation: string | undefined;
+
+  /** The table each statement being checked writes — innermost last. */
+  readonly #targets: (Source | undefined)[] = [];
 
   readonly #tables: ReadonlyMap<string, Table>;
 
@@ -169,17 +176,59 @@ class Guard {
             : [...node.from.froms, ...(node.using?.tables ?? []), ...(node.joins ?? []).map((join) => join.table)];
     const sources: Source[] = [];
     this.#scopes.push(sources);
+    // `excluded` of an upsert is the row that was to be inserted: it carries the secret columns of the table written.
+    const excluded: Source[] = [];
+    this.#scopes.push(excluded);
+    this.#targets.push(undefined);
     try {
       for (const item of items) if (item) this.#add(sources, this.#source(item));
+      this.#targets[this.#targets.length - 1] = sources[0];
+      if (node.kind === 'InsertQueryNode' && node.onConflict && sources[0]) {
+        const { names, secret } = sources[0];
+        excluded.push({ ref: 'excluded', ...(names ? { names } : {}), secret });
+      }
       const { returning, with: _, ...rest } = node as typeof node & { returning?: ReturningNode };
       // A merge's using clause is a source; only its `on` is a part to scan.
       if (node.kind === 'MergeQueryNode') (rest as { using?: unknown }).using = node.using?.on;
-      this.#scan(Object.values(rest));
+      let scanned: unknown[] = Object.values(rest);
+      if (node.kind === 'InsertQueryNode') scanned = Object.values(this.#copy(rest as InsertQueryNode));
+      this.#scan(scanned);
       if (returning) this.#selections(returning, returning.selections, sources);
     } finally {
+      this.#targets.pop();
+      this.#scopes.pop();
       this.#scopes.pop();
       if (ctes) this.#ctes.pop();
     }
+  }
+
+  /**
+   * Checks the rows an insert is given: a secret column passed on by a select, or read by an expression, may land only in a secret
+   * column of the table written. Returns the insert without them, for the rest to be scanned.
+   */
+  #copy(node: InsertQueryNode): InsertQueryNode {
+    const target = this.#targets.at(-1);
+    const into = (column: string | undefined) => column !== undefined && target?.secret.has(fold(column)) === true;
+    const column = (at: number) => node.columns?.[at]?.column.name;
+    const { values } = node;
+    if (values && SelectQueryNode.is(values)) {
+      const output = this.#select(values);
+      output.names.forEach((name, at) => {
+        if (name !== undefined && output.secret.has(fold(name)) && !into(column(at))) this.#refuse(`${name} of a subquery, copied into ${column(at) ?? 'a column without a name'}`);
+      });
+    } else if (values && ValuesNode.is(values)) {
+      for (const row of values.values) {
+        if (row.kind !== 'ValueListNode') continue;
+        row.values.forEach((value, at) => {
+          if (value.kind === 'ValueNode') return;
+          if (into(column(at))) this.#scan(value);
+          else this.#read(value);
+        });
+      }
+    } else if (values) {
+      this.#scan(values);
+    }
+    return { ...node, values: undefined };
   }
 
   /**
@@ -206,7 +255,8 @@ class Guard {
       }
       if (!SelectQueryNode.is(expression)) {
         // A statement with `returning` as a common table expression: its columns are not followed — it cannot be read from.
-        this.#scan(expression);
+        if (WRITES.has(expression.kind)) this.#write(expression as InsertQueryNode);
+        else this.#scan(expression);
         ctes.set(fold(table), { names: [], secret: new Set(), known: false, untyped: true });
         continue;
       }
@@ -418,7 +468,24 @@ class Guard {
     if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return;
     if (kind === 'SelectQueryNode') return void this.#select(node as SelectQueryNode);
     if (kind === 'FunctionNode' && ((node as FunctionNode).func === MANY || (node as FunctionNode).func === ONE)) return this.#relationOf(node as FunctionNode);
+    if (kind === 'ColumnUpdateNode') return this.#assigned(node as ColumnUpdateNode);
+    // An insert of a merge: the table written is the merge's.
+    if (kind === 'InsertQueryNode') return this.#scan(Object.values(this.#copy(node as InsertQueryNode)));
+    if (kind === 'ValuesNode') {
+      for (const row of (node as ValuesNode).values) if (row.kind === 'ValueListNode') for (const value of row.values) if (value.kind !== 'ValueNode') this.#read(value);
+      return;
+    }
     for (const value of Object.values(node)) if (value !== null && typeof value === 'object') this.#scan(value);
+  }
+
+  /**
+   * The value of a `set` (an update's, an upsert's, a merge's) is stored, and a later select hands it out: it is read like a
+   * selection — unless a secret column of the table written receives it.
+   */
+  #assigned(node: ColumnUpdateNode): void {
+    const name = ColumnNode.is(node.column) ? node.column.column.name : undefined;
+    if (name !== undefined && this.#targets.at(-1)?.secret.has(fold(name))) this.#scan(node.value);
+    else this.#read(node.value);
   }
 
   #relationOf(node: FunctionNode): void {

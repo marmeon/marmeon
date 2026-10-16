@@ -389,7 +389,8 @@ For a hasMany or a hasOne, `create(values)` and `createMany(values)` insert rela
 const link = await users.relation(user.id, 'profile_links').create({ label: 'Blog', url: 'https://example.com' });
 ```
 
-The values are those of an insert without the foreign key, which the relation sets: naming it is a compile error. The rows come
+The values are those of an insert without the foreign key, which the relation sets: naming it is a compile error, and a value that
+got past the types is refused when it names the key in any case (`POST_ID`, which SQLite reads as `post_id`). The rows come
 back as stored, without their secret columns, and `timestamps()` in the related table's migration fills in `created_at` and
 `updated_at`. A hasOne's unique key refuses a second row.
 

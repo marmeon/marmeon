@@ -189,6 +189,13 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     });
   });
 
+  it('refuses the foreign key among the values in any case — SQLite reads POST_ID as post_id and would keep the caller’s value', async () => {
+    const forged = { user_id: ids.ada, body: 'x', POST_ID: ids.second } as never;
+    await expect(posts.relation(ids.first, 'comments').create(forged)).rejects.toThrow("relation('comments').create() sets comments.post_id itself — leave it out of the values.");
+    await expect(posts.relation(ids.first, 'comments').createMany([forged])).rejects.toThrow("relation('comments').createMany() sets comments.post_id itself — leave it out of the values.");
+    expect(await db.selectFrom('comments').selectAll().execute()).toEqual([]);
+  });
+
   it('refuses a parent row that is missing or soft-deleted', async () => {
     await expect(users.relation(ids.gone, 'posts').attach(ids.first)).rejects.toBeInstanceOf(RecordNotFoundError);
     await expect(users.relation(ids.gone, 'comments').create({ post_id: ids.first, body: 'x' })).rejects.toBeInstanceOf(RecordNotFoundError);
