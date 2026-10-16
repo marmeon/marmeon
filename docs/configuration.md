@@ -398,7 +398,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `DB_PASSWORD` | empty | Postgres: the password. |
 | `DB_URL` | none | Postgres: the whole address instead. When it is set, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD` are not read. |
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis` or `memory`. |
-| `CACHE_DRIVER` | `file` | Where the cache lives: `file`, `database`, `redis` or `memory`. |
+| `CACHE_DRIVER` | `file` | Where the cache lives: `file`, `database`, `redis`, `memory` or a driver a package brings. |
 | `QUEUE_CONNECTION` | `database` | Where queued jobs wait: `database`, `redis`, `sync` or a driver a package brings. |
 | `MAIL_MAILER` | `log` | `log` writes every mail to the log, `smtp` sends it, `array` keeps it in memory. |
 

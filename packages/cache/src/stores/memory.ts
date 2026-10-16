@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { CacheStore, Entry } from '../cache.ts';
+import type { CacheStore, Entry, LockStore } from '../cache.ts';
 
 /** Every this many writes, `#sweep` looks at `SWEEP_BATCH` entries: more checked than written, so expired ones cannot pile up. */
 const SWEEP_EVERY = 32;
@@ -9,7 +9,7 @@ const SWEEP_BATCH = 128;
  * In-process: fast, lost on restart, not shared between processes. Tests and single-process apps. Atomic because every
  * operation runs synchronously — no `await` between reading and writing a key.
  */
-export class MemoryStore implements CacheStore {
+export class MemoryStore implements CacheStore, LockStore {
   readonly #entries = new Map<string, { raw: string | undefined; expires: number | null }>();
   readonly #locks = new Map<string, { owner: string; expires: number }>();
   readonly #clock: Clock;

@@ -3,6 +3,7 @@ import { ScheduledTaskFailed } from '@marmeon/scheduler';
 import { StorageWritable } from './health/StorageWritable.ts';
 import { AlertOnFailedTask } from './listeners/AlertOnFailedTask.ts';
 import { schedule } from './schedule.ts';
+import { ScratchCacheServiceProvider } from './ScratchCacheServiceProvider.ts';
 import { ScratchDiskServiceProvider } from './ScratchDiskServiceProvider.ts';
 import { ScratchQueueServiceProvider } from './ScratchQueueServiceProvider.ts';
 
@@ -17,6 +18,6 @@ export default defineModule({
   listeners: [listen(ScheduledTaskFailed, AlertOnFailedTask)],
   // `/up/ready` checks the database, cache and queue through their packages — and, here, that the disks take files.
   health: [StorageWritable],
-  // A queue driver and a disk driver of the app's own: QUEUE_CONNECTION=scratch (the default stays `database`), and the `scratch` disk.
-  providers: [ScratchQueueServiceProvider, ScratchDiskServiceProvider],
+  // A queue, a cache and a disk driver of the app's own: QUEUE_CONNECTION=scratch and CACHE_DRIVER=scratch (the defaults stay `database`), and the `scratch` disk.
+  providers: [ScratchQueueServiceProvider, ScratchCacheServiceProvider, ScratchDiskServiceProvider],
 });

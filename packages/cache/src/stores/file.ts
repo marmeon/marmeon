@@ -4,7 +4,7 @@ import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SystemClock, type Clock } from '@marmeon/core';
 import { withFileGuard } from '@marmeon/core/internal';
-import type { CacheStore, Entry } from '../cache.ts';
+import type { CacheStore, Entry, LockStore } from '../cache.ts';
 
 /** A guard older than this was left by a process that died inside its few-microsecond critical section. */
 const STALE_GUARD_MS = 2_000;
@@ -20,7 +20,7 @@ const ENTRY = /^[0-9a-f]{64}$/;
  * What decides on the stored value — `add`, `increment`, locks — runs under a per-key guard: a `<hash>.guard` file
  * created with `open(…, 'wx')`, which the file system grants to one process at a time. Locks live in `locks/`.
  */
-export class FileStore implements CacheStore {
+export class FileStore implements CacheStore, LockStore {
   readonly #directory: string;
   readonly #locks: string;
   readonly #clock: Clock;

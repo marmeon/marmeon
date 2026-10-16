@@ -180,7 +180,7 @@ export class Application {
 export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 
 /** The statics a package's provider lists drivers in — each service package adds its own through declaration merging. */
-const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers'] as const;
+const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers'] as const;
 
 /** Whether `Provider` brings drivers of any service: a non-empty record in one of the {@link DRIVER_STATICS}. */
 function declaredDrivers(Provider: ServiceProviderClass): boolean {

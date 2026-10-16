@@ -11,7 +11,7 @@ const [targetJson, operation, countText, key] = process.argv.slice(2);
 const target = JSON.parse(targetJson!) as StoreTarget;
 const count = Number(countText);
 const { store, close } = openStore(target, new SystemClock());
-const cache = new StoreCache(store);
+const cache = new StoreCache({ store, locks: store });
 const limiter = new RateLimiter(cache);
 
 // Warm up (connection, client import) on another key, so the race starts with everything open.

@@ -1,10 +1,12 @@
 import { readdirSync } from 'node:fs';
 import { err, ok } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LockTimeoutError, StoreCache } from '../cache.ts';
+import { LockTimeoutError, StoreCache, type CacheStore, type LockStore } from '../cache.ts';
 import { RateLimiter } from '../rate-limiter.ts';
 import { FileStore } from './file.ts';
 import { storeKinds, storeUnderTest, type StoreUnderTest } from '../__fixtures__/stores.ts';
+
+const both = <S extends CacheStore & LockStore>(store: S) => ({ store, locks: store });
 
 // ONE suite for every store: memory, file, database on SQLite — and on Postgres (`pnpm test:pgsql`) and Redis
 // (`pnpm test:redis`). What a store decides — add, increment, locks — must behave the same everywhere.
@@ -16,7 +18,7 @@ describe.each(storeKinds)('the %s store', (kind) => {
   });
   const open = async () => {
     current = await storeUnderTest(kind);
-    return { ...current, cache: new StoreCache(current.store, '', current.clock) };
+    return { ...current, cache: new StoreCache({ store: current.store, locks: current.store }, '', current.clock) };
   };
 
   it('stores, reads, expires and forgets values', async () => {
@@ -87,12 +89,12 @@ describe.each(storeKinds)('the %s store', (kind) => {
 
   it('keeps apps sharing a store apart with a prefix, and flushes entries but never locks', async () => {
     const { store, clock } = await open();
-    await new StoreCache(store, 'a:', clock).put('k', 'from a');
-    expect(await new StoreCache(store, 'b:', clock).get('k')).toBeUndefined();
-    const lock = new StoreCache(store, 'a:', clock).lock('report', 60);
+    await new StoreCache({ store, locks: store }, 'a:', clock).put('k', 'from a');
+    expect(await new StoreCache({ store, locks: store }, 'b:', clock).get('k')).toBeUndefined();
+    const lock = new StoreCache({ store, locks: store }, 'a:', clock).lock('report', 60);
     expect(await lock.get()).toBe(true);
-    await new StoreCache(store, '', clock).flush();
-    expect(await new StoreCache(store, 'a:', clock).get('k')).toBeUndefined();
+    await new StoreCache({ store, locks: store }, '', clock).flush();
+    expect(await new StoreCache({ store, locks: store }, 'a:', clock).get('k')).toBeUndefined();
     expect(await lock.owned()).toBe(true);
   });
 
@@ -216,7 +218,7 @@ describe.each(storeKinds)('the %s store', (kind) => {
     it('survives a restart: a second store on the same directory reads what the first wrote', async () => {
       const { cache, target, clock } = await open();
       await cache.put('k', 'v', 60);
-      expect(await new StoreCache(new FileStore((target as { directory: string }).directory, clock), '', clock).get('k')).toBe('v');
+      expect(await new StoreCache(both(new FileStore((target as { directory: string }).directory, clock)), '', clock).get('k')).toBe('v');
     });
   }
 });

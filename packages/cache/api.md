@@ -34,12 +34,26 @@ export declare class CacheClearCommand {
 }
 // CacheConfig
 export declare const CacheConfig: import("@marmeon/core").ConfigDefinition<{
-    driver: "database" | "file" | "memory" | "redis";
+    driver: string;
     connection: string;
     path: string;
     prefix: string;
 }>;
 export type CacheConfig = ConfigOf<typeof CacheConfig>;
+// CacheDriver
+export interface CacheDriver {
+    readonly store: CacheStore;
+    readonly locks: LockStore;
+}
+// CacheDriverContext
+export interface CacheDriverContext {
+    readonly name: string;
+    readonly container: Resolver;
+    readonly clock: Clock;
+    readonly prefix: string;
+}
+// CacheDriverFactory
+export type CacheDriverFactory = (context: CacheDriverContext) => CacheDriver;
 // CacheHealthCheck
 export declare class CacheHealthCheck implements HealthCheck {
     #private;
@@ -57,8 +71,9 @@ export declare class CachePruneCommand {
 }
 // CacheServiceProvider
 export declare class CacheServiceProvider implements ServiceProvider {
+    #private;
     static config: import("@marmeon/core").ConfigDefinition<{
-        driver: "database" | "file" | "memory" | "redis";
+        driver: string;
         connection: string;
         path: string;
         prefix: string;
@@ -80,10 +95,6 @@ export interface CacheStore {
     increment(key: string, by: number, expires: number | null): Promise<number>;
     delete(key: string): Promise<void>;
     clear(): Promise<void>;
-    lock(name: string, owner: string, expires: number): Promise<boolean>;
-    unlock(name: string, owner: string): Promise<boolean>;
-    forceUnlock(name: string): Promise<void>;
-    lockOwner(name: string): Promise<string | undefined>;
     prune?(): Promise<number>;
 }
 // Entry
@@ -121,7 +132,7 @@ export declare class Lock {
     readonly name: string;
     readonly seconds: number;
     readonly owner: string;
-    constructor(store: CacheStore, options: {
+    constructor(store: LockStore, options: {
         name: string;
         key: string;
         seconds: number;
@@ -137,6 +148,14 @@ export declare class Lock {
     release(): Promise<boolean>;
     forceRelease(): Promise<void>;
     owned(): Promise<boolean>;
+}
+// LockStore
+export interface LockStore {
+    lock(name: string, owner: string, expires: number): Promise<boolean>;
+    unlock(name: string, owner: string): Promise<boolean>;
+    forceUnlock(name: string): Promise<void>;
+    lockOwner(name: string): Promise<string | undefined>;
+    prune?(): Promise<number>;
 }
 // LockTimeoutError
 export declare class LockTimeoutError extends Error {
@@ -174,6 +193,15 @@ export declare function cacheTablesConnection(container: Resolver): string;
 export declare function clientKey(ip: string | undefined): string;
 // throttle
 export declare function throttle(name: string): MiddlewareClass<{}, {}>;
+```
+
+### Augments
+
+```ts
+// @marmeon/core.ServiceProviderClass
+interface ServiceProviderClass {
+    readonly cacheDrivers?: Readonly<Record<string, CacheDriverFactory>>;
+}
 ```
 
 ## Environment
