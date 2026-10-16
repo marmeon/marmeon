@@ -42,6 +42,10 @@ export interface NameUsage {
   readonly tests: string[];
   /** The entry points of other packages that re-export the name. */
   readonly reexportedBy: string[];
+  /** The public declarations of other entries (of this or another package) whose snapshot text names it, as `<entry> <item>`: it stays public. */
+  readonly namedBy: string[];
+  /** The declarations of this entry that name it: without the export it would show up as `Referenced, not exported`. */
+  readonly namedHere: string[];
 }
 
 export interface EntryUsage {
@@ -55,6 +59,8 @@ export interface Import {
   readonly specifier: string;
   /** The exported names the statement takes; `undefined` for the entry as a whole. */
   readonly names: readonly string[] | undefined;
+  /** The local name of `import * as ns from 'x'` and `const ns = await import('x')`: its uses show which names are taken. */
+  readonly namespace?: string;
 }
 
 /** `import … from 'x'` and `export … from 'x'`, over several lines too. The clause has no `=`, quote or bracket: prose and code in between do not match. */
@@ -84,7 +90,8 @@ export function importsOf(text: string): Import[] {
     const braces = /\{([^}]*)\}/.exec(clause);
     const names = braces ? braces[1]!.split(',').map(importedName).filter((name) => name !== '') : [];
     const outside = clause.replace(/\{[^}]*\}/, '').replace(/,/g, ' ').trim();
-    if (outside.startsWith('*')) found.push({ specifier, names: undefined });
+    const namespace = match[0].startsWith('import') ? /^\*\s*as\s+([\w$]+)$/.exec(outside)?.[1] : undefined;
+    if (outside.startsWith('*')) found.push({ specifier, names: undefined, ...(namespace !== undefined && { namespace }) });
     else if (/^[\w$]+$/.test(outside)) names.push('default');
     if (names.length > 0) found.push({ specifier, names });
   }
@@ -96,9 +103,43 @@ export function importsOf(text: string): Import[] {
     found.push({ specifier, names: whole || parts.length === 0 ? undefined : parts });
     return '';
   });
-  for (const match of rest.matchAll(DYNAMIC)) found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined });
-  for (const match of rest.matchAll(REQUIRE)) found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined });
+  for (const regexp of [DYNAMIC, REQUIRE]) {
+    for (const match of rest.matchAll(regexp)) {
+      const namespace = match[3] ? undefined : /\b(?:const|let|var)\s+([\w$]+)\s*=\s*(?:await\s+)?$/.exec(rest.slice(0, match.index))?.[1];
+      found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined, ...(namespace !== undefined && { namespace }) });
+    }
+  }
   return found;
+}
+
+export interface NamespaceUse {
+  /** The members read as `ns.Name` and the names taken by `const { A } = ns`. */
+  readonly names: ReadonlySet<string>;
+  /** `ns` is used in another way (passed on, spread, `ns[expr]`): the names it provides are not known. */
+  readonly whole: boolean;
+}
+
+/** How a file uses the namespace `ns` it imported: named members, or as a whole. Any other occurrence of `ns` counts as a whole use. */
+export function namespaceUseOf(source: string, ns: string): NamespaceUse {
+  const text = source.replace(/(['"])[^'"\n]*\1/g, "''"); // a module specifier may contain the name: '@marmeon/demo'
+  const names = new Set<string>();
+  // Not a member of something else (`a.ns`), but a spread (`...ns`) is the namespace itself.
+  const standalone = `(?<![\\w$])(?<!(?<!\\.)\\.)${ns.replaceAll('$', '\\$')}(?![\\w$])`;
+  let accounted = 1; // the declaration
+  let whole = false;
+  for (const match of text.matchAll(new RegExp(`${standalone}\\??\\.([\\w$]+)`, 'g'))) {
+    names.add(match[1]!);
+    accounted += 1;
+  }
+  for (const match of text.matchAll(new RegExp(`\\{([^}]*)\\}\\s*=\\s*${standalone}`, 'g'))) {
+    // `a: b` and `a = 1` take `a`; a `...rest` or a computed key takes the namespace as a whole.
+    const parts = match[1]!.split(',').map((part) => part.trim().split(/\s*[:=]\s*/)[0]!.trim()).filter((part) => part !== '');
+    if (parts.some((part) => !/^[\w$]+$/.test(part))) whole = true;
+    for (const part of parts) names.add(part);
+    accounted += 1;
+  }
+  const occurrences = [...text.matchAll(new RegExp(standalone, 'g'))].length;
+  return { names, whole: whole || names.size === 0 || occurrences > accounted };
 }
 
 const TEST_FILE = /\.test\.|\.type-test\.|(^|\/)__fixtures__\//;
@@ -127,38 +168,53 @@ function classify(path: string, ownDirectory: string): Kind | undefined {
 const TEST_DOUBLE = /Fake$|^Fake[A-Z]|^TestClock$|^Test[A-Z]/;
 
 /**
- * The names among `known` that a page's inline code or `ts`/`tsx` blocks use as an identifier: any whole word in inline code; in a
- * block one followed by `(`, `<` or `.`, or after `new`, `extends`, `implements` or `<` (a JSX tag). A bare word in prose does not count, nor does a name the page
- * imports from another specifier (`elsewhere`).
+ * The names among `known` that a page's inline code or `ts`/`tsx` blocks use as an identifier: inline code that is the name or starts
+ * with `Name(`, `Name<`, `Name.`, ``Name` ``, `<Name` or `new Name`; in a block any word followed by `(`, `<` or `.`, or after `new`, `extends`,
+ * `implements` or `<` (a JSX tag). A word in prose or in the middle of inline code does not count, nor does a name the page imports
+ * from another specifier (`elsewhere`).
  */
 export function mentionsOf(text: string, known: ReadonlySet<string>, elsewhere: ReadonlySet<string> = new Set()): Set<string> {
   const found = new Set<string>();
-  const scan = (region: string, inline: boolean) => {
+  const scan = (region: string) => {
     for (const match of region.matchAll(/[\w$]+/g)) {
       const name = match[0];
       if (!known.has(name) || elsewhere.has(name)) continue;
       const before = region.slice(0, match.index);
       const after = region[match.index + name.length];
       if (/[./$\-{]$/.test(before)) continue; // a member, a path, a template placeholder, a word of a dashed name
-      if (inline || (after !== undefined && '(<.'.includes(after)) || /(?:\b(?:new|extends|implements)\s+|<)$/.test(before)) found.add(name);
+      if ((after !== undefined && '(<.'.includes(after)) || /(?:\b(?:new|extends|implements)\s+|<)$/.test(before)) found.add(name);
     }
   };
+  // Inline code is a use when it is the name or starts like one: `Name`, `Name(`, `Name<`, `Name.`, `<Name`, `new Name`.
+  const scanInline = (code: string) => {
+    const start = /^(new\s+|<)?([\w$]+)/.exec(code);
+    if (!start || !known.has(start[2]!) || elsewhere.has(start[2]!)) return;
+    const after = code[start[0].length];
+    if (start[1] !== undefined || after === undefined || '(<.`'.includes(after)) found.add(start[2]!);
+  };
   const prose = text.replace(/```(?:tsx?|typescript)[^\n]*\n([\s\S]*?)```/g, (_, code: string) => {
-    scan(code, false);
+    scan(code);
     return '';
   });
   // Code spans as CommonMark pairs them: a run of backticks closes with a run of the same length.
   for (const span of prose.matchAll(/(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g)) {
     const code = span[2]!.trim();
-    if (!code.includes('/') && !/\.[a-z]{2,4}$/.test(code)) scan(code, true); // a path or a file name is no identifier
+    if (!code.includes('/') && !/\.[a-z]{2,4}$/.test(code)) scanInline(code); // a path or a file name is no identifier
   }
   return found;
 }
 
-type Groups = Pick<NameUsage, 'mentioned' | 'docs' | 'apps' | 'kit' | 'siblings' | 'launchers' | 'tests' | 'reexportedBy'>;
+type Groups = Pick<NameUsage, 'mentioned' | 'docs' | 'apps' | 'kit' | 'siblings' | 'launchers' | 'tests' | 'reexportedBy' | 'namedBy' | 'namedHere'>;
 
 function suggest(name: string, usage: Groups, wholeImports: readonly string[], testingEntry: boolean, alsoIn: readonly string[]): Pick<NameUsage, 'suggestion' | 'reason'> {
   let result = decide(name, usage, testingEntry);
+  if (usage.namedBy.length > 0 && result.suggestion !== 'keep') {
+    const entries = [...new Set(usage.namedBy.map((by) => by.split(' ')[0]!))];
+    result = { suggestion: 'keep', reason: `named by a public declaration of ${entries.join(', ')}` };
+  }
+  if (usage.namedHere.length > 0 && result.suggestion !== 'keep') {
+    result = { ...result, reason: `${result.reason}; named by ${usage.namedHere.slice(0, 3).join(', ')}${usage.namedHere.length > 3 ? ' …' : ''} — would show as Referenced` };
+  }
   if (result.reason.startsWith('docs name it') && alsoIn.length > 0) result = { ...result, reason: `${result.reason}; also exported by ${alsoIn.join(', ')} — check which one the docs mean` };
   if (wholeImports.length === 0 || (result.suggestion !== 'drop' && result.suggestion !== 'internal')) return result;
   return { ...result, reason: `${result.reason}; entry imported as a whole by ${wholeImports.join(', ')} — check \`ns.Name\` uses` };
@@ -207,6 +263,65 @@ function readPackages(repository: string): PackageSnapshot[] {
   return packages;
 }
 
+/** The sections whose declarations an app sees: an item of these names the types it uses. */
+const PUBLIC_SECTIONS: ReadonlySet<ApiItem['section']> = new Set(['stable', 'referenced', 'augments', 'experimental']);
+
+/**
+ * The identifiers in a declaration's text that can be references: no members (`a.Name`), parts of longer words (`PageObjectLike`),
+ * words in string literals or `//` lines, and no property, parameter or method name (a word followed by `:`, `?:`, `(` or `?(`;
+ * in printed declarations a reference never is). The code in `${…}` of a template literal type counts. A qualified
+ * `import("<entry>").Name` names `Name`.
+ */
+function identifiersOf(text: string, entry: string): Set<string> {
+  const code = withoutStrings(text.replace(/^\s*\/\/.*$/gm, ''));
+  const words = new Set([...code.matchAll(/(?<![\w$.])[\w$]+(?![\w$])(?!\??[:(])/g)].map((match) => match[0]));
+  for (const match of text.matchAll(/\bimport\(\s*(["'])([^"'\n]+)\1\s*\)\.([\w$]+)/g)) if (match[2] === entry) words.add(match[3]!);
+  return words;
+}
+
+/** The text with every string literal reduced to `""`; the placeholders of a template literal stay, as code. */
+function withoutStrings(text: string): string {
+  let at = 0;
+  const code = (insidePlaceholder: boolean): string => {
+    let out = '';
+    let depth = 0;
+    while (at < text.length) {
+      const char = text[at]!;
+      if (char === '"' || char === "'" || char === '`') {
+        at += 1;
+        out += `""${literal(char)}`;
+        continue;
+      }
+      if (char === '{') depth += 1;
+      if (char === '}') {
+        if (insidePlaceholder && depth === 0) return out;
+        depth -= 1;
+      }
+      out += char;
+      at += 1;
+    }
+    return out;
+  };
+  /** Skips to the closing quote; returns the code of the placeholders in between. */
+  const literal = (quote: string): string => {
+    let placeholders = '';
+    while (at < text.length) {
+      const char = text[at]!;
+      if (char === '\\') at += 2;
+      else if (char === quote) {
+        at += 1;
+        break;
+      } else if (quote === '`' && char === '$' && text[at + 1] === '{') {
+        at += 2;
+        placeholders += ` ${code(true)} `;
+        at += 1;
+      } else at += 1;
+    }
+    return placeholders;
+  };
+  return code(false);
+}
+
 const isExport = (item: ApiItem) => item.section === 'stable' || item.section === 'experimental';
 
 /** The entry points that have a snapshot: what `api:usage` accepts. */
@@ -237,7 +352,11 @@ export function usageOf(entry: string, repository: string = root, files: readonl
     if (!text.includes(entry)) continue;
     for (const statement of importsOf(text)) {
       if (statement.specifier !== entry) continue;
-      if (statement.names === undefined) wholeImports.add(path);
+      if (statement.names === undefined && statement.namespace !== undefined) {
+        const use = namespaceUseOf(text, statement.namespace);
+        if (use.whole) wholeImports.add(path);
+        for (const name of use.names) if (known.has(name)) importers.set(name, (importers.get(name) ?? new Set()).add(path));
+      } else if (statement.names === undefined) wholeImports.add(path);
       else for (const name of statement.names) if (known.has(name)) importers.set(name, (importers.get(name) ?? new Set()).add(path));
     }
   }
@@ -256,8 +375,24 @@ export function usageOf(entry: string, repository: string = root, files: readonl
   for (const pkg of packages) {
     for (const item of pkg.items.filter(isExport)) if (item.entry !== entry && known.has(item.name)) exportedBy.set(item.name, (exportedBy.get(item.name) ?? new Set()).add(item.entry));
   }
+  // Which declarations name which of the entry's names: in another entry they keep the name public, in this one they are a hint.
+  const namedBy = new Map<string, Set<string>>();
+  const namedHere = new Map<string, Set<string>>();
+  for (const pkg of packages) {
+    for (const item of pkg.items) {
+      if (!PUBLIC_SECTIONS.has(item.section) || item.entry === '') continue;
+      for (const word of identifiersOf(item.text, entry)) {
+        if (!known.has(word) || word === item.name) continue;
+        const target = item.entry === entry ? namedHere : namedBy;
+        target.set(word, (target.get(word) ?? new Set()).add(item.entry === entry ? item.name : `${item.entry} ${item.name}`));
+      }
+    }
+  }
   const result = names.map((name): NameUsage => {
-    const usage: Groups = { mentioned: [...(mentions.get(name) ?? [])].sort(), docs: [], apps: [], kit: [], siblings: {}, launchers: {}, tests: [], reexportedBy: [...(reexports.get(name) ?? [])].sort() };
+    const usage: Groups = {
+      mentioned: [...(mentions.get(name) ?? [])].sort(), docs: [], apps: [], kit: [], siblings: {}, launchers: {}, tests: [], reexportedBy: [...(reexports.get(name) ?? [])].sort(),
+      namedBy: [...(namedBy.get(name) ?? [])].sort(), namedHere: [...(namedHere.get(name) ?? [])].sort(),
+    };
     for (const path of [...(importers.get(name) ?? [])].sort()) {
       const kind = classify(path, own.directory)!;
       if (kind.kind === 'sibling') (usage.siblings[kind.directory] ??= []).push(path);
@@ -279,7 +414,7 @@ export function renderUsage(usage: EntryUsage, withFiles = false): string {
   const count = (suggestion: Suggestion) => usage.names.filter((name) => name.suggestion === suggestion).length;
   const lines = [
     `${usage.entry}: ${usage.names.length} names (${ORDER.map((suggestion) => `${count(suggestion)} ${suggestion}`).join(', ')})`,
-    'The suggestions are a first guess: check yourself whether a public signature names a name, and whether apps or drivers implement it.',
+    'The suggestions are a first guess: check yourself whether apps or drivers implement a name.',
   ];
   for (const suggestion of ORDER) {
     const names = usage.names.filter((name) => name.suggestion === suggestion);
@@ -295,6 +430,8 @@ export function renderUsage(usage: EntryUsage, withFiles = false): string {
       for (const [directory, list] of Object.entries(name.launchers)) parts.push(`${directory} launcher ${list.length}`);
       if (name.tests.length > 0) parts.push(`tests ${name.tests.length}`);
       if (name.reexportedBy.length > 0) parts.push(`re-exported by ${name.reexportedBy.join(', ')}`);
+      if (name.namedBy.length > 0) parts.push(`named by ${name.namedBy.join(', ')}`);
+      if (name.namedHere.length > 0) parts.push(`named here by ${name.namedHere.join(', ')} — would show as Referenced`);
       lines.push(`  ${name.name}${parts.length > 0 ? `  — ${parts.join(' · ')}` : ''}`);
       if (withFiles) for (const path of [...name.docs, ...name.mentioned, ...name.apps, ...name.kit, ...Object.values(name.siblings).flat(), ...Object.values(name.launchers).flat(), ...name.tests]) lines.push(`      ${path}`);
     }

@@ -363,6 +363,8 @@ Exit codes cannot be read from the code; tests secure them. A config whose `env`
 `pnpm api:usage <entry>` (for example `pnpm api:usage @marmeon/core`) lists, per export of an entry point from its `api.md`,
 the docs, apps, kit files, neighbour packages and tests that import it outside the package, with a first guess — `keep`,
 `testing`, `internal` or `drop` — for where the export belongs; `--files` names the importing files, `--json` prints the data.
+An export that a public declaration of another entry or package names (`namedBy`) is always a `keep`, since an app would
+otherwise meet it as a type it cannot import.
 
 A pull request that changes an `api.md` needs matching labels. The check "api label" (`.github/workflows/api-label.yml`,
 `scripts/api-label.ts`) compares the merge commit GitHub builds for the pull request with its first parent, `Experimental`
