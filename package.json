@@ -31,6 +31,7 @@
     "bench": "node scripts/bench/index.ts",
     "csp:probe": "node scripts/csp-probe.ts",
     "release:prepare": "node scripts/release-prepare.ts",
+    "release:verify": "node scripts/release-verify.ts",
     "check-release": "node scripts/check-release.ts",
     "ci": "node scripts/ci.ts"
   },
