@@ -1,4 +1,4 @@
-import { createApplication, defineModule, err, inTransaction, listen, Logger, type Container, type LogContext } from '@marmeon/core';
+import { createApplication, defineModule, err, inTransaction, listen, Logger, ok, type Container, type LogContext } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
@@ -414,6 +414,44 @@ describe('Auth (session guard)', () => {
     const ratio = median(unknown) / median(known);
     expect(ratio).toBeGreaterThan(0.5); // wide bounds: parallel test workers add noise; skipping the hash would be ~0.02
     expect(ratio).toBeLessThan(2);
+  });
+
+  describe('the time floor of a failed sign-in', () => {
+    // A stub hasher reports a slow recent check: nothing real is hashed, so the lower bound cannot flake.
+    const boot = (floor: number) => {
+      const users = new MemoryUsers();
+      const real = new PasswordHasher();
+      const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, failureFloorMs: () => floor } as unknown as Hasher;
+      const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
+      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never);
+      return { users, hasher, auth };
+    };
+    const timed = async (run: () => Promise<unknown>) => {
+      const started = performance.now();
+      await run();
+      return performance.now() - started;
+    };
+
+    it('pads an unknown address and a wrong password to the slowest recent hash', async () => {
+      const { users, hasher, auth } = boot(300);
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
+      expect(await timed(() => auth.attempt('nobody@example.com', 'x'))).toBeGreaterThanOrEqual(295);
+      expect(await timed(() => auth.attempt('ada@example.com', 'wrong'))).toBeGreaterThanOrEqual(295);
+    });
+
+    it('pads an account without a password', async () => {
+      const { users, auth } = boot(300);
+      users.rows.set(1, { user: ada, hash: null });
+      expect(await timed(() => auth.attempt('ada@example.com', 'x'))).toBeGreaterThanOrEqual(295);
+    });
+
+    it('does not delay a success', async () => {
+      const { users, hasher, auth } = boot(5000);
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
+      let result: unknown;
+      expect(await timed(async () => (result = await auth.attempt('ada@example.com', 'secret')))).toBeLessThan(2500);
+      expect(result).toStrictEqual(ok(ada));
+    });
   });
 
   it('answers with one error for an unknown identifier, a wrong password and an account without a password', async () => {

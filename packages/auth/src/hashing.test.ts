@@ -1,5 +1,5 @@
 import { createApplication } from '@marmeon/core';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { AuthServiceProvider, DEFAULT_HASHER_OPTIONS, HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher, type HasherOptions, type PasswordHash } from './index.ts';
 
 /** Cheap costs: these tests are about behaviour, not strength (the app does the same in `.env.test`). */
@@ -131,9 +131,139 @@ describe('PasswordHasher', () => {
     expect(median(real)).toBeGreaterThan(5);
   });
 
+  describe('failureFloorMs', () => {
+    const scrypt = (cost: number, blockSize = 8): HasherOptions => ({ ...cheap, driver: 'scrypt', scrypt: { cost, blockSize, parallelism: 1 } });
+    /** A hasher whose clock reports the duration set in `took` for every check, so no test depends on real time. */
+    // A huge spacing keeps the background re-measure out of the tests that do not look at it.
+    const clocked = (options: HasherOptions = scrypt(10), isArgon2Available = true, gapsMs: readonly number[] = [1_000_000]) => {
+      const state = { took: 1, flip: false, queue: [] as number[] };
+      const now = () => {
+        state.flip = !state.flip;
+        return state.flip ? 0 : (state.queue.shift() ?? state.took);
+      };
+      const hasher = new PasswordHasher(options, { isArgon2Available, remeasureGapsMs: gapsMs, now });
+      return { state, hasher };
+    };
+
+    it('is the slowest, over the parameter sets, of the fastest check of each', async () => {
+      const { state, hasher } = clocked();
+      const old = await new PasswordHasher(scrypt(11)).make('secret');
+      const current = await hasher.make('secret');
+      state.took = 80;
+      await hasher.verify('wrong', old);
+      state.took = 5;
+      await hasher.verify('wrong', current);
+      expect(await hasher.failureFloorMs()).toBe(80);
+    });
+
+    it('keeps the minimum of a set: a slower, queued sample does not raise it', async () => {
+      const { state, hasher } = clocked();
+      const current = await hasher.make('secret');
+      for (const took of [30, 10, 500, 20]) {
+        state.took = took;
+        await hasher.verify('wrong', current);
+      }
+      expect(await hasher.failureFloorMs()).toBe(10);
+    });
+
+    it('keeps the slow set after many cheap checks (nothing ages out)', async () => {
+      const { state, hasher } = clocked();
+      const old = await new PasswordHasher(scrypt(11)).make('secret');
+      state.took = 80;
+      await hasher.verify('wrong', old);
+      state.took = 1;
+      for (let i = 0; i < 100; i++) await hasher.verify('wrong', 'not a hash' as PasswordHash);
+      expect(await hasher.failureFloorMs()).toBe(80);
+    });
+
+    it('has a sample of the configured costs before anything was checked', async () => {
+      const { state, hasher } = clocked();
+      state.took = 7;
+      expect(await hasher.failureFloorMs()).toBe(7);
+    });
+
+    it('sends a broken hash, and an argon2id hash without argon2, through the dummy check', async () => {
+      const argon = await new PasswordHasher(cheap).make('secret');
+      const { hasher } = clocked(scrypt(10), false);
+      let dummies = 0;
+      const real = hasher.dummyVerify.bind(hasher);
+      hasher.dummyVerify = (password) => (dummies++, real(password));
+      expect(await hasher.verify('x', 'garbage' as PasswordHash)).toBe(false);
+      expect(await hasher.verify('secret', argon)).toBe(false);
+      expect(dummies).toBe(2);
+    });
+
+    it('replaces an inflated first sample of another set by a background re-measure', async () => {
+      const { state, hasher } = clocked(scrypt(10), true, [0, 0, 0, 0, 0]);
+      state.took = 5;
+      await hasher.verify('x', await hasher.make('secret')); // the configured set
+      const foreign = await new PasswordHasher(scrypt(11)).make('secret');
+      state.took = 900; // the thread pool was busy
+      await hasher.verify('x', foreign);
+      expect(await hasher.failureFloorMs()).toBe(900);
+      state.took = 20;
+      await vi.waitFor(async () => expect(await hasher.failureFloorMs()).toBe(20));
+    });
+
+    it('keeps re-measuring a set while the runs get lower, so a burst of a few seconds does not stick', async () => {
+      const { state, hasher } = clocked(scrypt(10), true, [0, 0, 0, 0, 0]);
+      state.took = 5;
+      await hasher.verify('x', await hasher.make('secret'));
+      const foreign = await new PasswordHasher(scrypt(11)).make('secret');
+      state.took = 900;
+      await hasher.verify('x', foreign);
+      state.queue = [800, 700, 20]; // the first two runs still fall in the burst
+      await vi.waitFor(async () => expect(await hasher.failureFloorMs()).toBe(20));
+    });
+
+    it('stops re-measuring at a run that is not lower (after two)', async () => {
+      const { state, hasher } = clocked(scrypt(10), true, [0, 0, 0, 0, 0]);
+      state.took = 5;
+      await hasher.verify('x', await hasher.make('secret'));
+      state.took = 50;
+      await hasher.verify('x', await new PasswordHasher(scrypt(11)).make('secret'));
+      state.queue = [60, 70, 10]; // not lower from the first run; the second ends it
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(state.queue).toEqual([10]);
+      expect(await hasher.failureFloorMs()).toBe(50);
+    });
+
+    it('never evicts the configured set, even when 32 dearer sets are known', async () => {
+      const { state, hasher } = clocked();
+      state.took = 1;
+      await hasher.verify('x', await hasher.make('secret'));
+      for (let parallelism = 1; parallelism <= 16; parallelism++) {
+        for (const blockSize of [1, 2]) {
+          state.took = 50 + parallelism;
+          const options: HasherOptions = { ...cheap, driver: 'scrypt', scrypt: { cost: 10, blockSize, parallelism } };
+          await hasher.verify('x', await new PasswordHasher(options).make('secret'));
+        }
+      }
+      let dummies = 0;
+      const real = hasher.dummyVerify.bind(hasher);
+      hasher.dummyVerify = (password) => (dummies++, real(password));
+      await hasher.failureFloorMs();
+      expect(dummies).toBe(0); // the configured sample is still there
+    });
+
+    it('holds at most 32 sets, and the most expensive ones stay', async () => {
+      const { state, hasher } = clocked();
+      for (let blockSize = 1; blockSize <= 32; blockSize++) {
+        state.took = blockSize;
+        await hasher.verify('x', await new PasswordHasher(scrypt(10, blockSize)).make('secret'));
+      }
+      state.took = 100; // a 33rd set, dearer than the cheapest
+      await hasher.verify('x', await new PasswordHasher({ ...scrypt(10, 1), scrypt: { cost: 10, blockSize: 1, parallelism: 2 } }).make('secret'));
+      expect(await hasher.failureFloorMs()).toBe(100);
+      state.took = 0.5; // dearer than nothing: dropped
+      await hasher.verify('x', await new PasswordHasher({ ...scrypt(10, 1), scrypt: { cost: 10, blockSize: 1, parallelism: 3 } }).make('secret'));
+      expect(await hasher.failureFloorMs()).toBe(100);
+    });
+  });
+
   it('refuses to start with argon2id when Node lacks it — and says how to fix it', () => {
-    expect(() => new PasswordHasher(DEFAULT_HASHER_OPTIONS, false)).toThrow(/HASH_DRIVER=scrypt/);
-    expect(() => new PasswordHasher({ ...cheap, driver: 'scrypt' }, false)).not.toThrow();
+    expect(() => new PasswordHasher(DEFAULT_HASHER_OPTIONS, { isArgon2Available: false })).toThrow(/HASH_DRIVER=scrypt/);
+    expect(() => new PasswordHasher({ ...cheap, driver: 'scrypt' }, { isArgon2Available: false })).not.toThrow();
     expect(() => new PasswordHasher({ ...cheap, argon2: { memory: 64, time: 1, parallelism: 1 } })).toThrow('argon2 memory (KiB) must be a whole number from 1024');
     expect(() => new PasswordHasher({ ...cheap, driver: 'scrypt', scrypt: { cost: 20, blockSize: 32, parallelism: 1 } })).toThrow('scrypt needs more than 256 MiB');
   });

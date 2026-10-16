@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
@@ -701,16 +702,27 @@ export class Auth {
     return this.#verified;
   }
 
+  /**
+   * Waits out what is left of `failureFloorMs()`, so a failed sign-in answers no faster than a check over the slowest hash
+   * parameters this process has verified. A parameter set it has not verified yet (after a restart, on another node) is not known.
+   */
+  async #padFailure(started: number): Promise<undefined> {
+    const left = ((await this.#hasher.failureFloorMs?.()) ?? 0) - (performance.now() - started);
+    if (left > 0) await sleep(left); // real time, not the app Clock: waiting costs no CPU
+    return undefined;
+  }
+
   async #check(identifier: string, password: string): Promise<Credentials | undefined> {
+    const started = performance.now();
     const found = await this.#users.findForLogin(identifier);
     if (!found || found.passwordHash === null) {
       await this.#hasher.dummyVerify(password);
       await this.#events.dispatch(new Failed(identifier, found?.user));
-      return undefined;
+      return this.#padFailure(started);
     }
     if (!(await this.#hasher.verify(password, found.passwordHash))) {
       await this.#events.dispatch(new Failed(identifier, found.user));
-      return undefined;
+      return this.#padFailure(started);
     }
     if (!this.#hasher.needsRehash(found.passwordHash)) return found;
     const passwordHash = await this.#hasher.make(password);
