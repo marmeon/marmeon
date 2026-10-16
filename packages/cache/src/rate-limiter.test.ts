@@ -57,7 +57,7 @@ const login = (email: string, accept = 'application/json') => ({
 
 const peer = (remoteAddress: string, headers: Record<string, string> = {}) => ({
   init: { method: 'POST', headers: { accept: 'application/json', ...headers } },
-  env: { incoming: { socket: { remoteAddress } } },
+  env: { remoteAddress },
 });
 
 describe('clientKey()', () => {

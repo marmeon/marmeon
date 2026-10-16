@@ -271,7 +271,7 @@ type LiveModule = typeof import('@marmeon/live');
 type MultipartValue = string | Blob | readonly (string | Blob)[];
 // Shared
 interface Shared {
-    readonly kernel: ReturnType<typeof createHttpKernel>;
+    readonly kernel: HttpKernel;
     readonly database: DatabaseModule | undefined;
     readonly mail: MailFake | undefined;
     readonly queue: QueueFake | undefined;

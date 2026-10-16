@@ -38,7 +38,7 @@ const entries = channels.event('log');
  * goes to the `log` channel — at any level, before pino's level filter — while something listens; otherwise the
  * path is pino's alone. A subscriber of `log` must not log itself.
  */
-export class PinoLogger implements Logger {
+class PinoLogger implements Logger {
   readonly #pino: Pino;
   readonly #app: Application | undefined;
   /** This logger's own bindings — with its parent's, only computed for a message on the channel. */

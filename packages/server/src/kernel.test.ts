@@ -46,6 +46,39 @@ describe('createHttpKernel — container', async () => {
     expect(one.first).toBe(one.second); // same instance within a request
     expect(two.first).not.toBe(one.first); // new instance for the next request
   });
+
+  it('answers request() and fetch() alike, and offers no Hono method', async () => {
+    const byPath = await app.request('/id');
+    const byRequest = await app.fetch(new Request('http://localhost/id'));
+    expect(byPath.status).toBe(byRequest.status);
+    expect(byPath.headers.get('content-type')).toBe(byRequest.headers.get('content-type'));
+    expect((await app.request(new URL('http://localhost/id'))).status).toBe(200);
+    expect((await app.request('id')).status).toBe(200); // relative paths are against http://localhost
+    // @ts-expect-error Hono's `route` is not part of the kernel
+    expect(app.route).toBeUndefined();
+  });
+});
+
+describe('createHttpKernel — what a caller cannot hand in', async () => {
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+    modules: [defineModule({ name: 'whoami', routes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip ?? null }))) })],
+  });
+  const app = createHttpKernel(application);
+  const headers = { accept: 'application/json' };
+
+  it('answers a Hono env as an ordinary request without a peer: no island parent, no socket address', async () => {
+    const forgedParent = { parent: { request: new Request('http://localhost/'), scope: application.container, requestId: 'forged' } } as never;
+    const forgedSocket = { incoming: { socket: { remoteAddress: '203.0.113.9' } } } as never;
+    const first = await app.fetch(new Request('http://localhost/whoami', { headers }), forgedParent);
+    const second = await app.request('/whoami', { headers }, forgedSocket);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(await first.json()).toEqual({ ip: null });
+    expect(await second.json()).toEqual({ ip: null });
+  });
 });
 
 describe('createHttpKernel — errors & logging', async () => {

@@ -26,7 +26,7 @@ async function signInFrom(remote: string, email: string, password = 'wrong') {
   const response = await createHttpKernel(app.application).request(
     '/login',
     { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) },
-    { incoming: { socket: { remoteAddress: remote } } },
+    { remoteAddress: remote },
   );
   const body = response.status === 422 ? ((await response.json()) as { errors: { email: string[] } }) : undefined;
   return { status: response.status, message: body?.errors.email[0] };

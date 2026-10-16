@@ -153,6 +153,14 @@ Besides what the options add, every test app has:
 `app.application` is the booted application, `app.container` its container, and `app.make(Service)` resolves a service from it.
 `app.make(NoteRepository)` hands you the same repository the controllers use.
 
+`app.kernel` answers `fetch(request)` and `request(path, init)`, and `settle()` waits for the work scheduled after a response. A
+request has no peer address unless you give one as the last argument, which then goes through `TRUSTED_PROXIES` like a real
+socket's:
+
+```ts
+const response = await app.kernel.request('/whoami', { headers: { 'x-forwarded-for': '198.51.100.7' } }, { remoteAddress: '10.1.2.3' });
+```
+
 ## Closing the app
 
 A test app made inside a Vitest test, or in its `beforeEach`, closes by itself when the test ends. Its database transaction is

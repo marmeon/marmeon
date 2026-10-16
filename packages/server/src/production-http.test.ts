@@ -20,7 +20,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 // What a production server does at the HTTP level — the proxies it believes, the assets it sends,
 // the nonce every document and its policy share.
 
-const peer = (remoteAddress: string) => ({ incoming: { socket: { remoteAddress } } });
+const peer = (remoteAddress: string) => ({ remoteAddress });
 
 describe('TRUSTED_PROXIES', async () => {
   it('knows addresses and ranges — IPv4, IPv6, an IPv4-mapped peer — and refuses anything else at boot', async () => {
@@ -77,6 +77,16 @@ describe('TRUSTED_PROXIES', async () => {
   it('a trusted peer (in the range): the client\'s address, the protocol and host the client used — in every group', async () => {
     expect(await whoami('10.1.2.3', proxied)).toEqual({ ip: '198.51.100.7', url: 'https://example.com/whoami' });
     expect(await whoami('::ffff:10.1.2.3', proxied, '/api/whoami')).toEqual({ ip: '198.51.100.7', url: 'https://example.com/api/whoami' });
+  });
+
+  it('fetch() takes the connection like request() — an untrusted remoteAddress keeps its X-Forwarded-For out, none means no trusted peer', async () => {
+    const ask = async (connection?: { remoteAddress: string }) =>
+      (await (await app.fetch(new Request('http://localhost/whoami', { headers: { accept: 'application/json', ...proxied } }), connection)).json()) as { ip: string; url: string };
+    expect(await ask({ remoteAddress: '203.0.113.9' })).toEqual({ ip: '203.0.113.9', url: 'http://localhost/whoami' });
+    expect(await ask({ remoteAddress: '10.1.2.3' })).toEqual({ ip: '198.51.100.7', url: 'https://example.com/whoami' });
+    const alone = await ask();
+    expect(alone.ip).toBeUndefined();
+    expect(alone.url).toBe('http://localhost/whoami');
   });
 
   it("TRUSTED_PROXIES='*' trusts the direct peer only: a client's own X-Forwarded-For through the proxy chooses no address", async () => {

@@ -131,11 +131,35 @@ const ISLAND_HEADERS = ['cookie', 'accept-language', 'user-agent', 'forwarded', 
 
 type OnTerminable = NonNullable<DispatchOptions['onTerminable']>;
 
-/** The Hono app, plus a way to wait for `terminate` work (tests do, so they stay deterministic). */
-export type HttpKernel = Hono & {
-  /** Resolves once every `terminate` hook scheduled so far has run. */
+/** The app's HTTP entry: answers a `Request`; `request()` is the shorthand tests use. See docs/testing.md#what-every-test-app-has. */
+export interface HttpKernel {
+  /** Answers a request the way the server does. */
+  fetch(request: Request, connection?: KernelConnection): Promise<Response>;
+  /** `fetch` for a path (against `http://localhost`), a URL or a `Request`; `init` overrides the request's own. */
+  request(input: string | URL | Request, init?: RequestInit, connection?: KernelConnection): Promise<Response>;
+  /** Resolves once every `terminate` hook scheduled so far has run — tests wait for it to stay deterministic. */
   settle(): Promise<void>;
-};
+}
+
+/**
+ * The connection a request arrived on, for adapters of other runtimes and for tests. `remoteAddress` is the socket's peer —
+ * it must come from the socket, never from a header — and goes through TRUSTED_PROXIES and `X-Forwarded-*` like the server's own. See docs/deployment.md#trusted-proxies.
+ */
+export interface KernelConnection {
+  readonly remoteAddress?: string | undefined;
+}
+
+/** The bindings @hono/node-server hands the kernel for a connection; `remoteAddress()` reads them back. */
+const bindingsOf = (connection: KernelConnection | undefined) => (connection ? { incoming: { socket: { remoteAddress: connection.remoteAddress } } } : undefined);
+
+/** The Hono app behind each kernel: the server entry hands it the connection's bindings, which `fetch` does not take. */
+const engines = new WeakMap<HttpKernel, Hono>();
+
+function engineOf(kernel: HttpKernel): Hono {
+  const engine = engines.get(kernel);
+  if (!engine) throw new Error('Not a kernel created by createHttpKernel()');
+  return engine;
+}
 
 /** The start check of route middleware (internal; the same `Symbol.for` key in @marmeon/cache's `throttle()`). */
 const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
@@ -694,11 +718,15 @@ export function createHttpKernel(
   const dispatch = app.fetch;
   app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(forwardedRequest(request, remoteAddress(env), trusts)), env, executionContext);
 
-  return Object.assign(app, {
+  const kernel: HttpKernel = {
+    fetch: async (request, connection) => app.fetch(request, bindingsOf(connection)),
+    request: async (input, init, connection) => app.request(input, init, bindingsOf(connection)),
     settle: async () => {
       while (pending.size > 0) await Promise.all(pending);
     },
-  });
+  };
+  engines.set(kernel, app);
+  return kernel;
 }
 
 
@@ -858,14 +886,14 @@ export async function startServer({
       await vite.close();
       throw error;
     }
-    const handle = getRequestListener(kernel.fetch);
+    const handle = getRequestListener(engineOf(kernel).fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));
     closeVite = () => vite.close();
   } else {
     const renderer = await createProductionRenderer({ root });
     kernel = createHttpKernel(app, { renderer, clientDir: join(root, 'dist/client') });
-    server.on('request', getRequestListener(kernel.fetch));
+    server.on('request', getRequestListener(engineOf(kernel).fetch));
   }
 
   let closed: Promise<void> | undefined;

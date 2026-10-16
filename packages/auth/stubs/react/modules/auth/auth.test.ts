@@ -83,7 +83,7 @@ describe('signing in and out', { timeout: 30_000 }, () => {
       const response = await createHttpKernel(app.application).request(
         '/login',
         { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', ...headers }, body: JSON.stringify({ email, password: 'wrong' }) },
-        { incoming: { socket: { remoteAddress: remote } } },
+        { remoteAddress: remote },
       );
       const errors = response.status === 422 ? ((await response.json()) as { errors: { email: string[] } }).errors.email[0]! : '';
       return { status: response.status, throttled: errors.startsWith('Too many login attempts') };
