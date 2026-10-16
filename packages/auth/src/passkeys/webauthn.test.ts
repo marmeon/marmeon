@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { MemorySessionStore, plainSessionCodec, Session, type SessionConfig } from '@marmeon/session';
+import { Session, type SessionConfig } from '@marmeon/session';
+import { MemorySessionStore, plainSessionCodec } from '@marmeon/session/internal';
 import { describe, expect, it } from 'vitest';
 import { softAuthenticator } from '../testing.ts';
 import { issueChallenge, takeChallenge } from './challenge.ts';

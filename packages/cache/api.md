@@ -9,12 +9,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// CACHE_LOCKS_TABLE
-export declare const CACHE_LOCKS_TABLE = "cache_locks";
-// CACHE_MIGRATION
-export declare const CACHE_MIGRATION: import("node:url").URL;
-// CACHE_TABLE
-export declare const CACHE_TABLE = "cache";
 // Cache
 export interface Cache {
     get<T = unknown>(key: string): Promise<T | undefined>;
@@ -92,52 +86,11 @@ export interface CacheStore {
     lockOwner(name: string): Promise<string | undefined>;
     prune?(): Promise<number>;
 }
-// DEFAULT_LIVE_VALIDATION_LIMIT
-export declare const DEFAULT_LIVE_VALIDATION_LIMIT = 30;
-// DatabaseStore
-export declare class DatabaseStore implements CacheStore {
-    #private;
-    constructor(connection: DatabaseStoreConnection | (() => Promise<DatabaseStoreConnection>), clock?: Clock);
-    read(key: string): Promise<Entry | undefined>;
-    write(key: string, entry: Entry): Promise<void>;
-    add(key: string, entry: Entry): Promise<boolean>;
-    increment(key: string, by: number, expires: number | null): Promise<number>;
-    delete(key: string): Promise<void>;
-    clear(): Promise<void>;
-    lock(name: string, owner: string, expires: number): Promise<boolean>;
-    unlock(name: string, owner: string): Promise<boolean>;
-    forceUnlock(name: string): Promise<void>;
-    lockOwner(name: string): Promise<string | undefined>;
-    prune(): Promise<number>;
-}
-// DatabaseStoreConnection
-export interface DatabaseStoreConnection {
-    readonly db: Kysely<any>;
-    readonly driver: 'sqlite' | 'pgsql';
-}
 // Entry
 export interface Entry {
     value: unknown;
     expires: number | null;
 }
-// FileStore
-export declare class FileStore implements CacheStore {
-    #private;
-    constructor(directory: string, clock?: Clock);
-    read(key: string): Promise<Entry | undefined>;
-    write(key: string, entry: Entry): Promise<void>;
-    add(key: string, entry: Entry): Promise<boolean>;
-    increment(key: string, by: number, expires: number | null): Promise<number>;
-    delete(key: string): Promise<void>;
-    clear(): Promise<void>;
-    lock(name: string, owner: string, expires: number): Promise<boolean>;
-    unlock(name: string, owner: string): Promise<boolean>;
-    forceUnlock(name: string): Promise<void>;
-    lockOwner(name: string): Promise<string | undefined>;
-    prune(): Promise<number>;
-}
-// LIVE_VALIDATION_LIMITER
-export declare const LIVE_VALIDATION_LIMITER = "live-validation";
 // Limit
 export declare class Limit {
     readonly maxAttempts: number;
@@ -202,22 +155,6 @@ export declare class MakeCacheTableCommand {
     };
     handle(input: CommandInput): Promise<number>;
 }
-// MemoryStore
-export declare class MemoryStore implements CacheStore {
-    #private;
-    constructor(clock?: Clock);
-    read(key: string): Promise<Entry | undefined>;
-    write(key: string, entry: Entry): Promise<void>;
-    add(key: string, entry: Entry): Promise<boolean>;
-    increment(key: string, by: number, expires: number | null): Promise<number>;
-    delete(key: string): Promise<void>;
-    clear(): Promise<void>;
-    lock(name: string, owner: string, expires: number): Promise<boolean>;
-    unlock(name: string, owner: string): Promise<boolean>;
-    forceUnlock(name: string): Promise<void>;
-    lockOwner(name: string): Promise<string | undefined>;
-    prune(): Promise<number>;
-}
 // RateLimiter
 export declare class RateLimiter {
     #private;
@@ -230,39 +167,6 @@ export declare class RateLimiter {
     tooManyAttempts(key: string, maxAttempts: number): Promise<boolean>;
     availableIn(key: string): Promise<number>;
     clear(key: string): Promise<void>;
-}
-// RedisStore
-export declare class RedisStore implements CacheStore {
-    #private;
-    constructor(connection: RedisStoreConnection, clock?: Clock);
-    read(key: string): Promise<Entry | undefined>;
-    write(key: string, entry: Entry): Promise<void>;
-    add(key: string, entry: Entry): Promise<boolean>;
-    increment(key: string, by: number, expires: number | null): Promise<number>;
-    delete(key: string): Promise<void>;
-    clear(): Promise<void>;
-    lock(name: string, owner: string, expires: number): Promise<boolean>;
-    unlock(name: string, owner: string): Promise<boolean>;
-    forceUnlock(name: string): Promise<void>;
-    lockOwner(name: string): Promise<string | undefined>;
-}
-// RedisStoreConnection
-export type RedisStoreConnection = RedisConnection | (() => Promise<RedisConnection>);
-// StoreCache
-export declare class StoreCache implements Cache {
-    #private;
-    constructor(store: CacheStore, prefix?: string, clock?: Clock);
-    get<T>(key: string): Promise<T | undefined>;
-    put(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
-    add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean>;
-    has(key: string): Promise<boolean>;
-    forget(key: string): Promise<void>;
-    increment(key: string, by?: number, ttlSeconds?: number): Promise<number>;
-    remember<T>(key: string, ttlSeconds: number | undefined, compute: () => T | Promise<T>): Promise<T>;
-    ttl(key: string): Promise<number | undefined>;
-    flush(): Promise<void>;
-    prune(): Promise<number | undefined>;
-    lock(name: string, seconds: number, owner?: string): Lock;
 }
 // cacheTablesConnection
 export declare function cacheTablesConnection(container: Resolver): string;

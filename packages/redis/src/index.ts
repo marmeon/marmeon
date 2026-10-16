@@ -3,7 +3,7 @@ import { RedisConnections, type RedisConnectionOptions } from './connections.ts'
 import { RedisHealthCheck } from './health.ts';
 
 // Redis connections on node-redis, opened per name on first use: the cache, session, queue and live drivers build on them.
-export { defineRedisScript, describeRedisUrl, RedisConnection, RedisConnections } from './connections.ts';
+export { defineRedisScript, RedisConnection, RedisConnections } from './connections.ts';
 export type { RedisConnectionOptions, RedisScript } from './connections.ts';
 export { RedisHealthCheck } from './health.ts';
 
@@ -51,7 +51,7 @@ export function defineRedisConnection<const Schema extends StandardSchemaV1>(
   return Object.freeze({ ...defineConfig(`redis.${name}`, definition), redisConnection: name });
 }
 
-export function isRedisConnectionDefinition(value: unknown): value is RedisConnectionDefinition {
+function isRedisConnectionDefinition(value: unknown): value is RedisConnectionDefinition {
   return typeof (value as Partial<RedisConnectionDefinition> | undefined)?.redisConnection === 'string';
 }
 

@@ -12,14 +12,8 @@ import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
 
 export { QueueConfig, queueTablesConnection } from './config.ts';
 export { QueueHealthCheck } from './health.ts';
-export { checkTimeouts, QueueConnections } from './connections.ts';
-export { backoffDelay } from './driver.ts';
+export { QueueConnections } from './connections.ts';
 export type { FailedJob, FailedJobStore, JobRecord, QueueCounts, QueueDriver, QueuedJob, QueuedPush, ReleaseOptions, ReservedJob, UniqueRecord } from './driver.ts';
-export { DatabaseFailedJobStore, DatabaseQueueDriver, FAILED_JOBS_TABLE, JOBS_TABLE } from './drivers/database.ts';
-export type { DatabaseQueueConnection } from './drivers/database.ts';
-export { MemoryFailedJobStore, MemoryQueueDriver, NullFailedJobStore } from './drivers/memory.ts';
-export { RedisQueueDriver } from './drivers/redis.ts';
-export type { RedisQueueConnection } from './drivers/redis.ts';
 export { JobEvent, JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased } from './events.ts';
 export type { JobEvents } from './events.ts';
 export type {
@@ -35,26 +29,19 @@ export type {
   JobMiddlewareContext,
   JobPayload,
   JobStatics,
-  PendingJob,
   UniqueDispatchOptions,
 } from './job.ts';
-export { DEFAULT_ONCE_FOR, DEFAULT_UNIQUE_FOR, JobOnceBusyError, withoutOverlapping } from './locks.ts';
+export { JobOnceBusyError, withoutOverlapping } from './locks.ts';
 export type { CacheSource, WithoutOverlappingOptions } from './locks.ts';
-export { prepareChain, prepareRecord, Queue, QueueManager } from './queue.ts';
-export type { PendingJobs, QueueConnectionOptions, QueueManagerDependencies } from './queue.ts';
-export { checkJobClass, DEFAULT_TIMEOUT, FRAMEWORK_PREFIX, JobRegistry, QueueError, QueueSetupError } from './registry.ts';
-export { cipherContext, describeIssues, JobPayloadError, JobRunner, nextInChain, parseRecord } from './runner.ts';
+export { Queue } from './queue.ts';
+export type { PendingJobs, QueueConnectionOptions } from './queue.ts';
+export { JobRegistry, QueueError, QueueSetupError } from './registry.ts';
+export { JobPayloadError, JobRunner } from './runner.ts';
 export type { PayloadCipher, Prepared } from './runner.ts';
 export { JobStuckError, JobTimeoutError, Worker } from './worker.ts';
 export type { WorkerDependencies, WorkOptions, WorkResult } from './worker.ts';
-export { CallQueuedListener, checkQueueableEvent, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
-export type { QueuedListenerPayload } from './listeners.ts';
-export { RECORD_OPTIONS } from './queue.ts';
-export type { RecordOptions } from './queue.ts';
-export { QueueFake } from './fake.ts';
-export type { ChainMatch, DispatchedJob, DispatchMatch } from './fake.ts';
-export { EXIT_STUCK, QueueWorkCommand } from './commands/work.ts';
-export { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
+export { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
+export { QueueWorkCommand } from './commands/work.ts';
 
 declare module '@marmeon/core' {
   interface ModuleDefinition {

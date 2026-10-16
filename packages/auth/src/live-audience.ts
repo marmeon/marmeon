@@ -1,5 +1,6 @@
 import type { LiveAudience } from '@marmeon/http';
-import { accountScope, type Session } from '@marmeon/session';
+import type { Session } from '@marmeon/session';
+import { accountScope } from '@marmeon/session/internal';
 import { AUTH_SESSION_KEYS, type Auth } from './auth.ts';
 import { idOf } from './user.ts';
 

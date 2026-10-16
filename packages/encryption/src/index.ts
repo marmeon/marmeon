@@ -127,7 +127,7 @@ export function generateKey(): string {
  * A missing or broken `APP_KEY` — at the start (the configuration) or in a package that needs it: the command that
  * writes one. Text only.
  */
-export const encryptionSolutions = defineSolutions([
+const encryptionSolutions = defineSolutions([
   {
     for: Error,
     when: (e) => /\bAPP_KEY\b/.test(e.message),

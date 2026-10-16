@@ -36,10 +36,10 @@ import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail';
 import type { NotificationFake } from '@marmeon/notifications';
 import type { BroadcastRecorder, LiveStreamReader } from '@marmeon/live';
-import type { QueueFake } from '@marmeon/queue';
-import type { StorageFake } from '@marmeon/storage';
+import type { QueueFake } from '@marmeon/queue/testing';
+import type { StorageFake } from '@marmeon/storage/testing';
 import type { DevtoolsTester } from '@marmeon/devtools';
-import type { ScheduleTester } from '@marmeon/scheduler';
+import type { ScheduleTester } from '@marmeon/scheduler/testing';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@marmeon/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
@@ -387,9 +387,9 @@ async function importMail(): Promise<typeof import('@marmeon/mail') | undefined>
 }
 
 /** @marmeon/queue is an optional peer, like the session. */
-async function importQueue(): Promise<typeof import('@marmeon/queue') | undefined> {
+async function importQueue(): Promise<(typeof import('@marmeon/queue') & typeof import('@marmeon/queue/testing')) | undefined> {
   try {
-    return await import('@marmeon/queue');
+    return { ...(await import('@marmeon/queue')), ...(await import('@marmeon/queue/testing')) };
   } catch {
     return undefined;
   }
@@ -405,9 +405,9 @@ async function importDevtools(): Promise<typeof import('@marmeon/devtools')> {
 }
 
 /** @marmeon/storage is an optional peer, like the session. */
-async function importStorage(): Promise<typeof import('@marmeon/storage') | undefined> {
+async function importStorage(): Promise<(typeof import('@marmeon/storage') & typeof import('@marmeon/storage/testing')) | undefined> {
   try {
-    return await import('@marmeon/storage');
+    return { ...(await import('@marmeon/storage')), ...(await import('@marmeon/storage/testing')) };
   } catch {
     return undefined;
   }
@@ -434,9 +434,9 @@ async function importNotifications(): Promise<typeof import('@marmeon/notificati
 }
 
 /** @marmeon/scheduler is an optional peer, like the session. */
-async function importScheduler(): Promise<typeof import('@marmeon/scheduler') | undefined> {
+async function importScheduler(): Promise<(typeof import('@marmeon/scheduler') & typeof import('@marmeon/scheduler/testing')) | undefined> {
   try {
-    return await import('@marmeon/scheduler');
+    return { ...(await import('@marmeon/scheduler')), ...(await import('@marmeon/scheduler/testing')) };
   } catch {
     return undefined;
   }
@@ -452,9 +452,9 @@ async function importAuth(): Promise<typeof import('@marmeon/auth') | undefined>
 }
 
 /** @marmeon/session is an optional peer: only apps that use it have it installed. */
-async function importSession(): Promise<typeof import('@marmeon/session') | undefined> {
+async function importSession(): Promise<(typeof import('@marmeon/session') & typeof import('@marmeon/session/internal')) | undefined> {
   try {
-    return await import('@marmeon/session');
+    return { ...(await import('@marmeon/session')), ...(await import('@marmeon/session/internal')) };
   } catch {
     return undefined;
   }

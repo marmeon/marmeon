@@ -85,10 +85,6 @@ export declare function defineRedisConnection<const Schema extends StandardSchem
 }): RedisConnectionDefinition;
 // defineRedisScript
 export declare function defineRedisScript(name: string, lua: string): RedisScript;
-// describeRedisUrl
-export declare function describeRedisUrl(url: string): string;
-// isRedisConnectionDefinition
-export declare function isRedisConnectionDefinition(value: unknown): value is RedisConnectionDefinition;
 ```
 
 ### Referenced, not exported

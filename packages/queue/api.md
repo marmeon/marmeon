@@ -15,17 +15,6 @@ export interface BatchOptions extends Omit<DispatchOptions, 'unique'> {
 }
 // CacheSource
 export type CacheSource = () => Promise<Cache>;
-// CallQueuedListener
-export declare class CallQueuedListener {
-    #private;
-    static readonly job = "marmeon.listener";
-    static readonly schema: StandardSchemaV1<QueuedListenerPayload>;
-    static readonly encrypted = true;
-    constructor(resolver: Resolver, listeners: QueuedListeners);
-    handle(data: QueuedListenerPayload, job: JobContext): Promise<void>;
-}
-// ChainMatch
-export type ChainMatch = JobClass | readonly [job: JobClass, payload: Record<string, unknown>];
 // CheckJob
 export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown : IsJson<JobInput<J>> extends false ? {
     readonly 'A job payload is stored as JSON — its schema must describe JSON (strings, numbers, booleans, null, arrays, plain objects); pass IDs, not records, Dates or Maps': JobInput<J>;
@@ -35,51 +24,6 @@ export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown
         handle: Parameters<InstanceType<J>['handle']>[0];
     };
 };
-// DEFAULT_ONCE_FOR
-export declare const DEFAULT_ONCE_FOR = 86400;
-// DEFAULT_TIMEOUT
-export declare const DEFAULT_TIMEOUT = 60;
-// DEFAULT_UNIQUE_FOR
-export declare const DEFAULT_UNIQUE_FOR = 3600;
-// DatabaseFailedJobStore
-export declare class DatabaseFailedJobStore implements FailedJobStore {
-    #private;
-    constructor(connection: DatabaseQueueConnection | (() => Promise<DatabaseQueueConnection>));
-    record(job: FailedJob): Promise<void>;
-    all(): Promise<FailedJob[]>;
-    find(uuid: string): Promise<FailedJob | undefined>;
-    forget(uuid: string): Promise<boolean>;
-    flush(): Promise<number>;
-    prune(before: number): Promise<number>;
-}
-// DatabaseQueueConnection
-export interface DatabaseQueueConnection {
-    readonly db: Kysely<any>;
-    readonly driver: 'sqlite' | 'pgsql';
-    readonly inTransaction?: () => boolean;
-    readonly transaction?: <R>(work: () => Promise<R>) => Promise<R>;
-}
-// DatabaseQueueDriver
-export declare class DatabaseQueueDriver implements QueueDriver {
-    #private;
-    constructor(connection: DatabaseQueueConnection | (() => Promise<DatabaseQueueConnection>), options: {
-        retryAfter: number;
-        clock?: Clock;
-    });
-    using(db: Kysely<any>): DatabaseQueueDriver;
-    joinsTransaction(): Promise<boolean>;
-    push(queue: string, payload: string, delay: number): Promise<string>;
-    reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
-    reserveAny(except?: readonly string[]): Promise<ReservedJob | undefined>;
-    ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
-    release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
-    fail(job: ReservedJob): Promise<boolean>;
-    size(queue: string): Promise<number>;
-    counts(queue: string): Promise<QueueCounts>;
-    queues(): Promise<string[]>;
-}
-// DispatchMatch
-export type DispatchMatch<J extends JobClass> = Partial<JobInput<J>> | ((payload: JobInput<J>, dispatched: DispatchedJob<J>) => boolean);
 // DispatchOptions
 export interface DispatchOptions {
     readonly delay?: number | Duration;
@@ -91,28 +35,6 @@ export interface DispatchOptions {
 export type DispatchResult<O> = O extends {
     readonly unique: string;
 } ? string | undefined : string;
-// DispatchedJob
-export interface DispatchedJob<J extends JobClass = JobClass> {
-    readonly job: J;
-    readonly payload: JobInput<J>;
-    readonly id: string;
-    readonly queue: string | undefined;
-    readonly connection: string | undefined;
-    readonly delay: number;
-    readonly inTransaction: boolean;
-    readonly unique: (Pick<UniqueRecord, 'key' | 'for' | 'until'>) | undefined;
-    readonly chain: readonly {
-        readonly job: JobClass;
-        readonly payload: unknown;
-        readonly id: string;
-    }[];
-}
-// EXIT_STUCK
-export declare const EXIT_STUCK = 70;
-// FAILED_JOBS_TABLE
-export declare const FAILED_JOBS_TABLE = "failed_jobs";
-// FRAMEWORK_PREFIX
-export declare const FRAMEWORK_PREFIX = "marmeon.";
 // FailedJob
 export interface FailedJob {
     readonly uuid: string;
@@ -132,8 +54,6 @@ export interface FailedJobStore {
     flush(): Promise<number>;
     prune(before: number): Promise<number>;
 }
-// JOBS_TABLE
-export declare const JOBS_TABLE = "jobs";
 // JobClass
 export type JobClass = JobStatics & (new (...args: any[]) => JobInstance);
 // JobContext
@@ -325,57 +245,11 @@ export declare class MakeQueueTableCommand {
     };
     handle(input: CommandInput): Promise<number>;
 }
-// MemoryFailedJobStore
-export declare class MemoryFailedJobStore implements FailedJobStore {
-    #private;
-    record(job: FailedJob): Promise<void>;
-    all(): Promise<FailedJob[]>;
-    find(uuid: string): Promise<FailedJob | undefined>;
-    forget(uuid: string): Promise<boolean>;
-    flush(): Promise<number>;
-    prune(before: number): Promise<number>;
-}
-// MemoryQueueDriver
-export declare class MemoryQueueDriver implements QueueDriver {
-    #private;
-    constructor(options?: {
-        clock?: Clock;
-        retryAfter?: number;
-    });
-    push(queue: string, payload: string, delay: number): Promise<string>;
-    reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
-    reserveAny(except?: readonly string[]): Promise<ReservedJob | undefined>;
-    ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
-    release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
-    fail(job: ReservedJob): Promise<boolean>;
-    size(queue: string): Promise<number>;
-    counts(queue: string): Promise<QueueCounts>;
-    queues(): Promise<string[]>;
-    entries(): readonly {
-        readonly id: string;
-        readonly queue: string;
-        readonly payload: string;
-        readonly attempts: number;
-        readonly reserved: boolean;
-        readonly availableAt: number;
-    }[];
-}
-// NullFailedJobStore
-export declare class NullFailedJobStore implements FailedJobStore {
-    record(): Promise<void>;
-    all(): Promise<FailedJob[]>;
-    find(): Promise<FailedJob | undefined>;
-    forget(): Promise<boolean>;
-    flush(): Promise<number>;
-    prune(): Promise<number>;
-}
 // PayloadCipher
 export interface PayloadCipher {
     encrypt(plaintext: string, context: string): Promise<string>;
     decrypt(ciphertext: string, context: string): Promise<string>;
 }
-// PendingJob
-export type PendingJob<J extends JobClass = JobClass> = readonly [job: J, payload: JobInput<J>];
 // PendingJobs
 export type PendingJobs<J extends readonly JobClass[]> = {
     readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>];
@@ -396,8 +270,6 @@ export type Prepared = {
     readonly kind: 'unknown';
     readonly record: JobRecord;
 };
-// QUEUE_MIGRATION
-export declare const QUEUE_MIGRATION: import("node:url").URL;
 // Queue
 export interface Queue {
     dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
@@ -474,38 +346,6 @@ export declare class QueueFailedCommand {
     constructor(connections: QueueConnections);
     handle({ output }: CommandInput): Promise<number>;
 }
-// QueueFake
-export declare class QueueFake implements Queue {
-    #private;
-    constructor(container: Container, root?: QueueFake);
-    dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
-    bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
-    chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
-    using(_transaction: Kysely<any>): Queue;
-    size(queue?: string): Promise<number>;
-    dispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>): DispatchedJob<J>[];
-    assertDispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>, options?: {
-        readonly unique?: string;
-    }): this;
-    assertChained(expected: readonly ChainMatch[]): this;
-    listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): {
-        readonly payload: P;
-        readonly dispatched: DispatchedJob;
-    }[];
-    assertListenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this;
-    assertListenerNotQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this;
-    assertDispatchedTimes<J extends JobClass>(job: J, times: number, match?: DispatchMatch<J>): this;
-    assertNotDispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>): this;
-    assertNothingDispatched(): this;
-    work(options?: Partial<Pick<WorkOptions, 'queues' | 'maxJobs' | 'stopTimeout'>>): Promise<WorkResult>;
-    failed(): Promise<FailedJob[]>;
-    pending(): readonly {
-        readonly queue: string;
-        readonly payload: string;
-        readonly attempts: number;
-        readonly availableAt: number;
-    }[];
-}
 // QueueFlushCommand
 export declare class QueueFlushCommand {
     #private;
@@ -529,37 +369,6 @@ export declare class QueueHealthCheck implements HealthCheck {
     static check: string;
     constructor(queue: Queue, config: QueueConfig);
     handle(): Promise<string>;
-}
-// QueueListenerDispatcher
-export declare class QueueListenerDispatcher implements ListenerQueue {
-    #private;
-    constructor(queue: () => Queue, listeners: QueuedListeners);
-    queue(event: object, registeredFor: EventClass, listener: QueuedListenerClass): Promise<void>;
-}
-// QueueManager
-export declare class QueueManager implements Queue {
-    #private;
-    constructor(dependencies: QueueManagerDependencies, transaction?: Kysely<any>);
-    dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
-    bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
-    chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
-    using(transaction: Kysely<any>): Queue;
-    size(queue?: string, connection?: string): Promise<number>;
-}
-// QueueManagerDependencies
-export interface QueueManagerDependencies {
-    readonly connections: Readonly<Record<string, QueueConnectionOptions>>;
-    readonly default: string;
-    readonly registry: JobRegistry;
-    readonly driver: (connection: string) => QueueDriver;
-    readonly runner: () => JobRunner;
-    readonly cipher: () => Promise<PayloadCipher>;
-    readonly clock: Clock;
-    readonly logger: Logger;
-    readonly cache?: CacheSource;
-    readonly events?: JobEvents;
-    readonly app?: Application;
-    readonly redactor?: Redactor;
 }
 // QueuePruneFailedCommand
 export declare class QueuePruneFailedCommand {
@@ -655,50 +464,11 @@ export interface QueuedJob {
     readonly queue: string;
     readonly payload: string;
 }
-// QueuedListenerPayload
-export interface QueuedListenerPayload {
-    event: string;
-    listener: string;
-    payload: unknown;
-}
-// QueuedListeners
-export declare class QueuedListeners {
-    #private;
-    constructor(registry: EventRegistry);
-    get any(): boolean;
-    find(event: string, listener: string): QueuedTarget | undefined;
-}
 // QueuedPush
 export interface QueuedPush {
     readonly queue: string;
     readonly payload: string;
     readonly delay: number;
-}
-// RECORD_OPTIONS
-export declare const RECORD_OPTIONS: unique symbol;
-// RecordOptions
-export interface RecordOptions {
-    readonly tries?: number;
-    readonly backoff?: readonly number[];
-}
-// RedisQueueConnection
-export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnection>);
-// RedisQueueDriver
-export declare class RedisQueueDriver implements QueueDriver {
-    #private;
-    constructor(connection: RedisQueueConnection, options: {
-        retryAfter: number;
-        clock?: Clock;
-    });
-    push(queue: string, payload: string, delay: number): Promise<string>;
-    reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
-    reserveAny(except?: readonly string[]): Promise<ReservedJob | undefined>;
-    ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
-    release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
-    fail(job: ReservedJob): Promise<boolean>;
-    size(queue: string): Promise<number>;
-    counts(queue: string): Promise<QueueCounts>;
-    queues(): Promise<string[]>;
 }
 // ReleaseOptions
 export interface ReleaseOptions {
@@ -766,41 +536,6 @@ export interface WorkerDependencies {
     readonly events?: JobEvents;
     readonly redactor?: Redactor;
 }
-// backoffDelay
-export declare function backoffDelay(backoff: readonly number[], attempt: number): number;
-// checkJobClass
-export declare function checkJobClass(job: JobClass, source: string): string;
-// checkQueueableEvent
-export declare function checkQueueableEvent(event: EventClass, listener: {
-    readonly name: string;
-}): EventClass & QueueableEvent;
-// checkTimeouts
-export declare function checkTimeouts(registry: JobRegistry, connection: string, retryAfter: number, stopTimeout: number): void;
-// cipherContext
-export declare const cipherContext: (name: string) => string;
-// describeIssues
-export declare function describeIssues(issues: readonly StandardIssue[]): string;
-// nextInChain
-export declare function nextInChain(record: JobRecord): string | undefined;
-// parseRecord
-export declare function parseRecord(payload: string): JobRecord | undefined;
-// prepareChain
-export declare function prepareChain(deps: Parameters<typeof prepareRecord>[0], jobs: readonly PendingJob[], traceparent?: string): Promise<{
-    first: Prepared;
-    ids: string[];
-}>;
-// prepareRecord
-export declare function prepareRecord(deps: {
-    readonly registry: JobRegistry;
-    readonly cipher: () => Promise<PayloadCipher>;
-    readonly clock: Clock;
-}, job: JobClass, payload: unknown, extra?: RecordOptions & {
-    readonly unique?: UniqueRecord;
-    readonly traceparent?: string;
-}): Promise<{
-    record: JobRecord;
-    serialized: string;
-}>;
 // queueTablesConnection
 export declare function queueTablesConnection(container: Resolver): string;
 // withoutOverlapping
@@ -816,16 +551,6 @@ export declare function withoutOverlapping<J extends {
 ```ts
 // Outcome
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
-// Prepared
-interface Prepared {
-    readonly record: JobRecord;
-    readonly serialized: string;
-}
-// QueuedTarget
-interface QueuedTarget {
-    readonly event: EventClass & QueueableEvent;
-    readonly listener: QueuedListenerClass;
-}
 // Requested
 export type Requested = {
     readonly kind: 'discard';
@@ -849,6 +574,218 @@ export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~stand
 // @marmeon/core.ModuleDefinition
 interface ModuleDefinition {
     readonly jobs?: readonly JobClass[];
+}
+```
+
+## `@marmeon/queue/testing`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// ChainMatch
+export type ChainMatch = JobClass | readonly [job: JobClass, payload: Record<string, unknown>];
+// DispatchMatch
+export type DispatchMatch<J extends JobClass> = Partial<JobInput<J>> | ((payload: JobInput<J>, dispatched: DispatchedJob<J>) => boolean);
+// DispatchedJob
+export interface DispatchedJob<J extends JobClass = JobClass> {
+    readonly job: J;
+    readonly payload: JobInput<J>;
+    readonly id: string;
+    readonly queue: string | undefined;
+    readonly connection: string | undefined;
+    readonly delay: number;
+    readonly inTransaction: boolean;
+    readonly unique: (Pick<UniqueRecord, 'key' | 'for' | 'until'>) | undefined;
+    readonly chain: readonly {
+        readonly job: JobClass;
+        readonly payload: unknown;
+        readonly id: string;
+    }[];
+}
+// QueueFake
+export declare class QueueFake implements Queue {
+    #private;
+    constructor(container: Container, root?: QueueFake);
+    dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
+    bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
+    chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
+    using(_transaction: Kysely<any>): Queue;
+    size(queue?: string): Promise<number>;
+    dispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>): DispatchedJob<J>[];
+    assertDispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>, options?: {
+        readonly unique?: string;
+    }): this;
+    assertChained(expected: readonly ChainMatch[]): this;
+    listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): {
+        readonly payload: P;
+        readonly dispatched: DispatchedJob;
+    }[];
+    assertListenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this;
+    assertListenerNotQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this;
+    assertDispatchedTimes<J extends JobClass>(job: J, times: number, match?: DispatchMatch<J>): this;
+    assertNotDispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>): this;
+    assertNothingDispatched(): this;
+    work(options?: Partial<Pick<WorkOptions, 'queues' | 'maxJobs' | 'stopTimeout'>>): Promise<WorkResult>;
+    failed(): Promise<FailedJob[]>;
+    pending(): readonly {
+        readonly queue: string;
+        readonly payload: string;
+        readonly attempts: number;
+        readonly availableAt: number;
+    }[];
+}
+```
+
+### Referenced, not exported
+
+```ts
+// BatchOptions
+export interface BatchOptions extends Omit<DispatchOptions, 'unique'> {
+    readonly unique?: 'bulk() and chain() queue no unique jobs — dispatch them one by one';
+}
+// CheckJob
+export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown : IsJson<JobInput<J>> extends false ? {
+    readonly 'A job payload is stored as JSON — its schema must describe JSON (strings, numbers, booleans, null, arrays, plain objects); pass IDs, not records, Dates or Maps': JobInput<J>;
+} : Parameters<InstanceType<J>['handle']> extends [] ? unknown : JobPayload<J> extends Parameters<InstanceType<J>['handle']>[0] ? unknown : {
+    readonly 'handle() expects another payload than static schema yields — type it as JobPayload<typeof YourJob>': {
+        schema: JobPayload<J>;
+        handle: Parameters<InstanceType<J>['handle']>[0];
+    };
+};
+// DispatchOptions
+export interface DispatchOptions {
+    readonly delay?: number | Duration;
+    readonly queue?: string;
+    readonly connection?: string;
+    readonly unique?: undefined;
+}
+// DispatchResult
+export type DispatchResult<O> = O extends {
+    readonly unique: string;
+} ? string | undefined : string;
+// FailedJob
+export interface FailedJob {
+    readonly uuid: string;
+    readonly connection: string;
+    readonly queue: string;
+    readonly job: string;
+    readonly payload: string;
+    readonly exception: string;
+    readonly failedAt: number;
+}
+// JobClass
+export type JobClass = JobStatics & (new (...args: any[]) => JobInstance);
+// JobContext
+export interface JobContext {
+    readonly id: string;
+    readonly name: string;
+    readonly attempt: number;
+    readonly tries: number;
+    readonly queue: string;
+    readonly connection: string;
+    readonly signal: AbortSignal;
+    discard(reason?: string): void;
+    release(delay?: number | Duration): void;
+    fail(reason: string | Error): void;
+    once(key: string, fn: () => unknown, options?: {
+        readonly for?: number;
+    }): Promise<boolean>;
+}
+// JobInput
+export type JobInput<J extends JobStatics> = SchemaInput<J['schema']>;
+// JobInstance
+export interface JobInstance {
+    handle(payload: any, job: JobContext): void | Promise<void>;
+}
+// JobMiddleware
+export interface JobMiddleware<P = any> {
+    handle(context: JobMiddlewareContext<P>, next: () => Promise<void>): Promise<void>;
+}
+// JobMiddlewareContext
+export interface JobMiddlewareContext<P = unknown> {
+    readonly payload: P;
+    readonly job: JobContext;
+    readonly timeout: number;
+    readonly retryAfter: number | undefined;
+    cache(): Promise<Cache>;
+}
+// JobPayload
+export type JobPayload<J extends JobStatics> = SchemaOutput<J['schema']>;
+// JobStatics
+export interface JobStatics {
+    readonly job: string;
+    readonly schema: StandardSchemaV1;
+    readonly tries?: number;
+    readonly backoff?: number | readonly number[];
+    readonly timeout?: number;
+    readonly encrypted?: boolean;
+    readonly middleware?: readonly JobMiddleware[];
+}
+// JobStuckError
+export declare class JobStuckError extends Error {
+    name: string;
+}
+// PendingJobs
+export type PendingJobs<J extends readonly JobClass[]> = {
+    readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>];
+};
+// Queue
+export interface Queue {
+    dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
+    bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
+    chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
+    using(transaction: Kysely<any>): Queue;
+    size(queue?: string, connection?: string): Promise<number>;
+}
+export declare const Queue: import("@marmeon/core").Token<Queue>;
+// QueuedJob
+export interface QueuedJob {
+    readonly id: string;
+    readonly queue: string;
+    readonly payload: string;
+}
+// ReservedJob
+export interface ReservedJob extends QueuedJob {
+    readonly attempts: number;
+    readonly reservedAt: number;
+}
+// SchemaInput
+export type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
+// SchemaOutput
+export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['output'] : never;
+// UniqueDispatchOptions
+export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
+    readonly unique: string;
+    readonly uniqueFor?: number | Duration;
+    readonly uniqueUntil?: 'processing' | 'done';
+}
+// UniqueRecord
+export interface UniqueRecord {
+    readonly lock: string;
+    readonly key: string;
+    readonly for: number;
+    readonly until: 'processing' | 'done';
+}
+// WorkOptions
+export interface WorkOptions {
+    readonly queues?: readonly string[];
+    readonly sleep?: number;
+    readonly maxJobs?: number;
+    readonly maxTime?: number;
+    readonly stopWhenEmpty?: boolean;
+    readonly stopTimeout?: number;
+    readonly signal?: AbortSignal;
+    readonly watchOtherQueues?: number | false;
+    readonly onStuck?: (job: ReservedJob, error: JobStuckError) => void;
+}
+// WorkResult
+export interface WorkResult {
+    readonly processed: number;
+    readonly failed: number;
+    readonly released: number;
+    readonly reason: 'empty' | 'max-jobs' | 'max-time' | 'stopped' | 'interrupted';
 }
 ```
 

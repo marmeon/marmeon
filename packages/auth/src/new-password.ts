@@ -1,6 +1,7 @@
 import { afterCommit, type EventDispatcher, type Logger } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
-import { accountScope, type SessionEndings } from '@marmeon/session';
+import type { SessionEndings } from '@marmeon/session';
+import { accountScope } from '@marmeon/session/internal';
 import type { AuthConfig } from './config.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';

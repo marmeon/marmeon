@@ -6,7 +6,8 @@ import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, view } from '@marmeon/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
-import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
+import { Queue, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
+import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import { Router, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, DevDocument, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';

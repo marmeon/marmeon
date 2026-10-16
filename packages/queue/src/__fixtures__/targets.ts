@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { CACHE_MIGRATION } from '@marmeon/cache';
+import { CACHE_MIGRATION } from '@marmeon/cache/internal';
 import type { Clock, Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';

@@ -90,9 +90,6 @@ class PinoLogger implements Logger {
   }
 }
 
-// The redaction lives in core: the queue redacts a failed job's error the same way.
-export { redact, REDACTED_KEYS } from '@marmeon/core';
-
 /** The app's `Redactor` — one per app, with the names its packages add (the session's cookie) — or the core's key list alone. */
 function redactorOf(app: Application | undefined): Redactor {
   return app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();

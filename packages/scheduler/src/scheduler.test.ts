@@ -1,16 +1,20 @@
 import { join } from 'node:path';
-import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@marmeon/cache';
+import { Cache, CacheServiceProvider } from '@marmeon/cache';
+import { CACHE_MIGRATION, MemoryStore, StoreCache } from '@marmeon/cache/internal';
 import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from 'marmeon';
 import { Clock, createApplication, currentLogContext, defineModule, EventRegistry, inTransaction, listen, Logger, Redactor, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, Schema } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { QUEUE_MIGRATION, Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
+import { Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
+import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
-import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, ScheduleTester, ScheduleWorker, type TaskResult } from './index.ts';
+import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, type TaskResult } from './index.ts';
+import { ScheduleTester } from './testing.ts';
 import { MINUTE } from './time.ts';
+import { ScheduleWorker } from './worker.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 /** Log entries, for assertions — and silence. */

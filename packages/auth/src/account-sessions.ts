@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { type Clock, err, type EventDispatcher, inTransaction, type Logger, ok, type Result } from '@marmeon/core';
-import { accountScope, type SessionEndings, type UserSessions } from '@marmeon/session';
+import type { SessionEndings, UserSessions } from '@marmeon/session';
+import { accountScope } from '@marmeon/session/internal';
 import { EverySessionEnded } from './events.ts';
 import type { PasswordResetTokenStore } from './password-reset.ts';
 import type { RememberTokenStore } from './remember.ts';

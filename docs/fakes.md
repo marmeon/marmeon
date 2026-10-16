@@ -22,6 +22,10 @@ A getter whose package the app lacks, or whose fake the test turned off, says so
 app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: 'real' })).
 ```
 
+A test reaches the fakes through `app`. The classes behind the queue, storage and schedule fakes (`QueueFake`, `StorageFake`,
+`ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a variable with them:
+`import type { QueueFake } from '@marmeon/queue/testing'`.
+
 The devtools record into memory with `devtools: true`, as the [devtools](devtools.md#testing) page shows, and the clock is the
 subject of the [time](time.md) page.
 

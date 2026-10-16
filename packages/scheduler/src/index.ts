@@ -9,14 +9,9 @@ export type { WallTime } from './cron.ts';
 export { defineSchedule } from './schedule.ts';
 export type { JobPayloadArgument, Schedule, ScheduleDefinition } from './schedule.ts';
 export type { CatchUp, CheckTime, Frequencies, Invokable, InvokableClass, ScheduledTask, TaskDefinition, TaskFilter, TaskKind, TimeOfDay, UnscheduledTask, Weekday } from './task.ts';
-export { CATCH_UP_DAYS, didYouMean, JOB_UNIQUE_FOR, ONE_SERVER_SECONDS, Scheduler } from './scheduler.ts';
+export { Scheduler } from './scheduler.ts';
 export type { RunReason, SkipReason, Task, TaskResult, TaskRun } from './scheduler.ts';
-export { dueMinutes, formatMinute, isDue, lastDue, MINUTE, minuteOf, nextDue } from './time.ts';
 export { ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting } from './events.ts';
-export { ScheduleWorker } from './worker.ts';
-export type { Sleep } from './worker.ts';
-export { ScheduleTester, toEpoch } from './testing.ts';
-export type { ScheduleTime } from './testing.ts';
 export { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand } from './commands/schedule.ts';
 
 /**

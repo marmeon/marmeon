@@ -1,4 +1,5 @@
-import { accountScope, type Session } from '@marmeon/session';
+import type { Session } from '@marmeon/session';
+import { accountScope } from '@marmeon/session/internal';
 import { describe, expect, it } from 'vitest';
 import { AUTH_SESSION_KEYS, type Auth } from './auth.ts';
 import { SignInAudience } from './live-audience.ts';
