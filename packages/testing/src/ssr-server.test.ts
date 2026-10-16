@@ -10,8 +10,8 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 // The rendering itself needs the app's Vite setup (the web app's tests run it for real); here only what the shared server
 // does around it: who starts it, who closes it, and what stays per app.
 const vites = vi.hoisted(() => ({ started: 0, closed: 0 }));
-vi.mock('@marmeon/server', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@marmeon/server')>()),
+vi.mock('@marmeon/server/internal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@marmeon/server/internal')>()),
   createViteDevRenderer: async () => {
     vites.started++;
     const renderer = {

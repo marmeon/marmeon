@@ -74,7 +74,7 @@ async function importQueue() {
 
 async function importCli() {
   try {
-    return await import('marmeon');
+    return { ...(await import('marmeon')), ...(await import('marmeon/internal')) };
   } catch {
     throw new ScheduleError('s.command() runs console commands — it needs marmeon in the app: pnpm add -D marmeon');
   }

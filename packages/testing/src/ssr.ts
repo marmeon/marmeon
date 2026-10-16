@@ -1,6 +1,7 @@
 import type { DeferredResult, PageObject, RegionResult } from '@marmeon/http/page';
 import type { ApplicationOptions } from '@marmeon/core';
-import { createViteDevRenderer, type PageRenderer } from '@marmeon/server';
+import type { PageRenderer } from '@marmeon/server';
+import { createViteDevRenderer } from '@marmeon/server/internal';
 
 /** Marks a test request, so the SSR errors of exactly that request reach its response. */
 export const SSR_TEST_HEADER = 'x-marmeon-test-render';

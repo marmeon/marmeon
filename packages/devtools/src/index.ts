@@ -2,19 +2,8 @@
 // did, kept as redacted entries in `storage/framework/devtools/` (development only). The pages under `/_marmeon/devtools`
 // read them through the store.
 export { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
-export {
-  DEFAULT_IGNORED_COMMANDS,
-  DEFAULT_IGNORED_PATHS,
-  defineDevtools,
-  DevtoolsConfig,
-  DevtoolsConfigError,
-  ignoresPath,
-  loadDevtoolsOptions,
-  resolveOptions,
-  WATCHERS,
-} from './config.ts';
-export type { DevtoolsDefinition, DevtoolsOptions, PathPattern, ResolvedDevtoolsOptions, Watcher } from './config.ts';
-export { ENTRY_TYPES, EntryIds, newestFirst } from './entry.ts';
+export { defineDevtools, DevtoolsConfig, DevtoolsConfigError } from './config.ts';
+export type { DevtoolsDefinition, DevtoolsOptions, PathPattern, Watcher } from './config.ts';
 export type {
   AnyEntry,
   CommandContent,
@@ -33,14 +22,9 @@ export type {
   RequestContent,
   ScheduleContent,
 } from './entry.ts';
-export { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES, FileStore } from './file-store.ts';
+export { FileStore } from './file-store.ts';
 export type { FileStoreOptions } from './file-store.ts';
-export { BAR_SCRIPT, barMarkup, DevtoolsServiceProvider, DevtoolsSettings } from './provider.ts';
-export { API_VERSION, BASE, MAIL_CSP, PAGE_CSP, registerDevtoolsPages } from './pages/index.ts';
-export type { PagesOptions } from './pages/index.ts';
-export type { FailedJobView, QueueSnapshot, QueueView, ScheduleSnapshot, TaskView } from './pages/infra.ts';
-export { MAX_BATCH_ENTRIES, Recorder } from './recorder.ts';
-export type { RecorderOptions } from './recorder.ts';
-export { DEFAULT_LIMIT, DevtoolsStore, matchesEntry, MAX_LIMIT, MemoryStore } from './store.ts';
+export { DevtoolsServiceProvider } from './provider.ts';
+export { DevtoolsStore, MemoryStore } from './store.ts';
 export type { EntryQuery, EntryTail, PruneResult, StoreUsage } from './store.ts';
-export { DevtoolsTester, DevtoolsTestOptIn, enableDevtoolsForTests } from './testing.ts';
+export { DevtoolsTester } from './testing.ts';

@@ -30,9 +30,7 @@ export const FOREIGN_TYPES: Readonly<Record<string, readonly string[]>> = {
   // The query layer is typed in Kysely's types until it has aliases of its own.
   database: [LIBRARY],
   table: [LIBRARY],
-  otel: ['@opentelemetry/api'], // an optional peer: the app installs the API it traces with
   react: ['react', 'react-dom', '@tanstack/react-table'], // peers: the adapter is typed in the types of its UI library
-  server: ['vite'], // an optional peer of the dev server
   // The S3 driver takes the SDK's client types until it has own ones.
   storage: ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
   vite: ['vite'], // a peer: the plugin is a Vite plugin

@@ -30,7 +30,8 @@ import {
   type LiveSubscription,
   type PageObject,
 } from '@marmeon/http/page';
-import { createHttpKernel, DevRequestRecorder, type HttpKernel } from '@marmeon/server';
+import { createHttpKernel, type HttpKernel } from '@marmeon/server';
+import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/internal';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail';
@@ -250,8 +251,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   }
   const scheduler = await importScheduler();
   // The error page's recorder, as the server's provider binds it in development — until the app closes.
-  const recorder =
-    options.debug && !application.container.has(DevRequestRecorder) ? (await import('@marmeon/server/error-page')).createRequestRecorder(application) : undefined;
+  const recorder = options.debug && !application.container.has(DevRequestRecorder) ? (await importRequestRecorder()).createRequestRecorder(application) : undefined;
   if (recorder) application.container.instance(DevRequestRecorder, recorder);
   const shared: Shared = {
     kernel: createHttpKernel(application, { ...(ssr ? { renderer: ssr.renderer } : {}), ...(options.debug === undefined ? {} : { debug: options.debug }) }),
@@ -396,9 +396,9 @@ async function importQueue(): Promise<(typeof import('@marmeon/queue') & typeof 
 }
 
 /** @marmeon/devtools is an optional peer (a dev dependency of the app) — needed only with `devtools: true`. */
-async function importDevtools(): Promise<typeof import('@marmeon/devtools')> {
+async function importDevtools(): Promise<typeof import('@marmeon/devtools/internal')> {
   try {
-    return await import('@marmeon/devtools');
+    return await import('@marmeon/devtools/internal');
   } catch (error) {
     throw new Error('createTestApp(…, { devtools: true }) needs @marmeon/devtools (pnpm add -D @marmeon/devtools).', { cause: error });
   }
