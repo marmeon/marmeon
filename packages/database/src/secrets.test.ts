@@ -1,5 +1,5 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import type { Kysely } from 'kysely';
+import { CamelCasePlugin, ColumnNode, RawNode, ColumnUpdateNode, CommonTableExpressionNameNode, CommonTableExpressionNode, WithNode, type UpdateQueryNode, ExplainNode, OperationNodeTransformer, TableNode, type InsertQueryNode, type Kysely, type KyselyPlugin, type SelectQueryNode } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -277,6 +277,160 @@ describe.each(drivers)('statements the guard reads through on %s', (driver) => {
       await expect(db.selectFrom('accounts').select((eb) => eb.fn.agg('(select password from accounts limit 1) || max', ['email']).as('leak')).execute()).rejects.toThrow('which is no identifier');
       await expect(db.selectFrom('accounts').select((eb) => eb.fn.count('id').as('n')).executeTakeFirstOrThrow()).resolves.toMatchObject({ n: 1 });
       await expect(db.selectFrom('accounts').select((eb) => eb.fn('lower', ['email']).as('e')).executeTakeFirstOrThrow()).resolves.toMatchObject({ e: 'ada@example.com' });
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe.each(drivers)('a plugin added to a single query on %s', (driver) => {
+  /** Renames a column in whatever the query reads — runs after the connection's own plugins. */
+  const rename = (from: string, to: string): KyselyPlugin => ({
+    transformQuery: ({ node }) => new (class extends OperationNodeTransformer {
+      protected override transformColumn(column: ColumnNode): ColumnNode {
+        return column.column.name === from ? ColumnNode.create(to) : column;
+      }
+    })().transformNode(node),
+    transformResult: async ({ result }) => result,
+  });
+  const retarget = (table: string): KyselyPlugin => ({
+    transformQuery: ({ node }) => ({ ...(node as InsertQueryNode), into: TableNode.create(table) }),
+    transformResult: async ({ result }) => result,
+  });
+
+  // Cold: a schema change leaves the metadata stale, so the query is compiled before the schema is known again.
+  const temperatures = ['warm', 'cold'] as const;
+
+  it.each(temperatures)('does not hand out a secret column it renamed to — %s', async (temperature) => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
+      if (temperature === 'cold') await sql`alter table accounts add column note text`.execute(db);
+      await expect(db.selectFrom('accounts').select('email').withPlugin(rename('email', 'password')).execute()).rejects.toThrow('password');
+      await expect(db.selectFrom('accounts').select('email').withPlugin(rename('email', 'password')).execute()).rejects.toThrow('password');
+      await expect(db.withPlugin(rename('email', 'password')).selectFrom('accounts').select('email').execute()).rejects.toThrow('password');
+      // The same query without the secret stays as it was.
+      await expect(db.selectFrom('accounts').select('email').withPlugin(rename('id', 'email')).execute()).resolves.toEqual([{ email: 'ada@example.com' }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it.each(temperatures)('does not write another table than the one it was built for — %s', async (temperature) => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      if (temperature === 'cold') await sql`alter table accounts add column note text`.execute(db);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(
+          db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).withPlugin(retarget('accounts')).execute(),
+        ).rejects.toThrow('changed the tables it writes');
+      }
+      expect(await db.selectFrom('accounts').select('id').execute()).toEqual([]);
+      // A plugin that keeps the table works, and so does a rename of the table's own spelling.
+      await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).withPlugin(new CamelCasePlugin()).execute();
+      expect(await db.selectFrom('users').select('name').execute()).toEqual([{ name: 'Ada' }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it.each(temperatures)('still checks a query a benign plugin rewrote — %s', async (temperature) => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
+      if (temperature === 'cold') await sql`alter table accounts add column note text`.execute(db);
+      const camel = new CamelCasePlugin();
+      await expect(db.selectFrom('accounts').selectAll().withPlugin(camel).execute()).resolves.toMatchObject([{ email: 'ada@example.com' }]);
+      await expect(db.selectFrom('accounts').select('email').withPlugin(camel).execute()).resolves.toEqual([{ email: 'ada@example.com' }]);
+      const [row] = await db.selectFrom('accounts').selectAll().withPlugin(camel).execute();
+      expect(row).not.toHaveProperty('password');
+    } finally {
+      await close();
+    }
+  });
+
+  it('does not take a node another query passed on cold metadata for its own', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
+      await sql`alter table accounts add column note text`.execute(db);
+      // Compiled on stale metadata: nothing checked it.
+      const leak = db.selectFrom('accounts').select('password' as never).compile().query;
+      const write = db.insertInto('accounts').values({ email: 'x@example.com', password: 'x' }).compile().query;
+      await db.selectFrom('users').select('id').execute(); // warm again
+      const replay = (node: unknown): KyselyPlugin => ({ transformQuery: () => node as never, transformResult: async ({ result }) => result });
+      await expect(db.selectFrom('accounts').select('email').withPlugin(replay(leak)).execute()).rejects.toThrow('password');
+      await expect(db.insertInto('users').values({ name: 'Ada', email: 'a@example.com' }).withPlugin(replay(write)).execute()).rejects.toThrow('changed the tables it writes');
+      expect(await db.selectFrom('accounts').select('id').execute()).toHaveLength(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it('sees a write a plugin hides in a common table expression, and a table of another schema', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
+      const gone = db.deleteFrom('accounts').returning('id').toOperationNode();
+      const cte: KyselyPlugin = {
+        transformQuery: ({ node }) => ({ ...(node as SelectQueryNode), with: WithNode.create(CommonTableExpressionNode.create(CommonTableExpressionNameNode.create('gone'), gone as never)) }),
+        transformResult: async ({ result }) => result,
+      };
+      const schemed: KyselyPlugin = {
+        transformQuery: ({ node }) => ({ ...(node as InsertQueryNode), into: TableNode.createWithSchema('other', 'users') }),
+        transformResult: async ({ result }) => result,
+      };
+      await expect(db.selectFrom('users').select('id').withPlugin(cte).execute()).rejects.toThrow('changed the tables it writes');
+      await expect(db.insertInto('users').values({ name: 'Ada', email: 'a@example.com' }).withPlugin(schemed).execute()).rejects.toThrow('changed the tables it writes');
+      expect(await db.selectFrom('accounts').select('id').execute()).toHaveLength(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it('cannot be changed in place after the check', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
+      const inPlace: KyselyPlugin = {
+        transformQuery: ({ node }) => {
+          const update = node as UpdateQueryNode;
+          (update.updates as ColumnUpdateNode[])[0] = ColumnUpdateNode.create(ColumnNode.create('email'), RawNode.create(['(select password from accounts)'], []));
+          return node;
+        },
+        transformResult: async ({ result }) => result,
+      };
+      await db.insertInto('users').values({ name: 'a', email: 'a@example.com' }).execute();
+      // Kysely leaves the array of the first set() open; the plugin gets the node as it was checked.
+      await expect(db.updateTable('users').set({ name: 'b' }).withPlugin(inPlace).execute()).rejects.toThrow(TypeError);
+      expect(await db.selectFrom('users').select('email').execute()).toEqual([{ email: 'a@example.com' }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('refuses an explain format that is not a plain identifier', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      const explained = (format: string): KyselyPlugin => ({
+        transformQuery: ({ node }) => ({ ...(node as SelectQueryNode), explain: ExplainNode.create(format as 'json') }),
+        transformResult: async ({ result }) => result,
+      });
+      await expect(db.selectFrom('users').select('id').withPlugin(explained('json) select 1 --')).execute()).rejects.toThrow('no plain identifier');
     } finally {
       await close();
     }

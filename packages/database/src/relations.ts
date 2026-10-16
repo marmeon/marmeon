@@ -328,6 +328,8 @@ export class RelationsPlugin implements KyselyPlugin {
   readonly #lastShapes = new WeakMap<QueryId, Map<string, Shape>>();
   /** What {@link transform} returned: checked and rewritten already (`secret()` unwrapped) — never again. */
   readonly #done = new WeakSet<RootOperationNode>();
+  /** By query id, the node this plugin handed on while compiling, checked or not (the metadata was not fresh): the last Marmeon's own plugins produced. */
+  readonly #passed = new WeakMap<QueryId, RootOperationNode>();
 
   constructor(driver: Driver, metadata: SchemaMetadata) {
     this.#driver = driver;
@@ -336,8 +338,21 @@ export class RelationsPlugin implements KyselyPlugin {
 
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
     // Not fresh: the schema resolver left the query for the connection, which transforms it after loading ({@link transform}).
-    if (!this.#metadata.fresh) return node;
-    return this.transform(node, queryId);
+    const result = this.#metadata.fresh ? this.transform(node, queryId) : node;
+    // Frozen all the way down: Kysely leaves some arrays open, and a plugin changing the node in place would keep its identity.
+    freezeDeep(result);
+    this.#passed.set(queryId, result);
+    return result;
+  }
+
+  /**
+   * Whether `node` is what Marmeon's plugins produced for a query. A plugin added to a single builder (`.withPlugin()`) or to the
+   * connection (`db.withPlugin()`) runs after them and may hand on anything of the same kind: such a node was not checked.
+   * @internal
+   */
+  passed(node: RootOperationNode, queryId: QueryId): boolean {
+    // SECURITY: by query — a node another query passed (unchecked, on cold metadata) replayed by a plugin is not this one's.
+    return this.#passed.get(queryId) === node;
   }
 
   /** The query checked for secret columns, with its relations as JSON — while compiling, or on the connection after loading. */
@@ -363,6 +378,20 @@ export class RelationsPlugin implements KyselyPlugin {
     }
     this.#shapes.set(transformed, shapes);
     this.#lastShapes.set(queryId, shapes);
+    return transformed;
+  }
+
+  /**
+   * {@link transform} for a node a plugin added after this one handed on: its relations were turned into JSON already, so the shapes
+   * of the compile it came from stay the ones its rows are converted by.
+   */
+  recheck(node: RootOperationNode, queryId: QueryId): RootOperationNode {
+    const shapes = this.#lastShapes.get(queryId);
+    const transformed = this.transform(node, queryId);
+    if (shapes?.size && !this.#shapes.get(transformed)?.size) {
+      this.#shapes.set(transformed, shapes);
+      this.#lastShapes.set(queryId, shapes);
+    }
     return transformed;
   }
 
@@ -461,4 +490,16 @@ function convert(value: unknown, kind: Kind): unknown {
   if (kind === 'timestamp') return typeof value === 'string' && !value.endsWith('Z') ? new Date(value).toISOString() : value;
   if (typeof kind === 'object') return typeof value === 'number' ? value.toFixed(kind.decimal) : value;
   return value;
+}
+
+/** Freezes the plain objects and arrays of `node` that are not frozen yet; the values a query carries (rows, buffers) are left alone. */
+function freezeDeep(node: unknown): void {
+  if (node === null || typeof node !== 'object') return;
+  const prototype = Object.getPrototypeOf(node);
+  if (!Array.isArray(node) && prototype !== Object.prototype && prototype !== null) return;
+  const kind = (node as { kind?: unknown }).kind;
+  // A value is the app's own object, not a part of the statement.
+  if (kind === 'ValueNode' || kind === 'PrimitiveValueListNode') return void Object.freeze(node);
+  if (!Object.isFrozen(node)) Object.freeze(node);
+  for (const value of Object.values(node)) freezeDeep(value);
 }

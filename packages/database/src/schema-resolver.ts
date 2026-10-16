@@ -21,6 +21,7 @@ import {
   type InsertQueryNode,
   type Kysely,
   type KyselyPlugin,
+  type MergeQueryNode,
   type OperationNode,
   type PluginTransformQueryArgs,
   type PluginTransformResultArgs,
@@ -35,7 +36,7 @@ import {
 import type { SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, RELATION, SOFT_DELETE, SOFT_DELETE_FILTER, sourcesOf, TOUCH_COLUMN, WITH_TRASHED, type Source } from './placeholders.ts';
 import { labelOf, relationQuery, type RelationSpec, type RelationsPlugin } from './relations.ts';
-import { outputName, rootKind } from './secret-guard.ts';
+import { fold, outputName, rootKind } from './secret-guard.ts';
 
 // Placeholders for what only the schema metadata knows — whether a table has soft deletes or timestamps, which relations its
 // foreign keys describe and which columns they may load. A query is built synchronously, often before anything was loaded (the
@@ -93,6 +94,8 @@ export class SchemaResolver implements KyselyPlugin {
    * (an infrastructure connection on SQLite) was never added — its placeholders are refused on the connection.
    */
   readonly #deferred = new WeakSet<QueryId>();
+  /** The statement each query was last compiled from, as written — to see a plugin added after our plugins change what it writes. */
+  readonly #written = new WeakMap<QueryId, RootOperationNode>();
 
   constructor(metadata: SchemaMetadata, compiler: QueryCompiler, relations: RelationsPlugin) {
     this.#metadata = metadata;
@@ -108,6 +111,7 @@ export class SchemaResolver implements KyselyPlugin {
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
     // Before anything else, whatever the schema's state: a statement kind nobody classified is refused, not passed on.
     rootKind(node);
+    this.#written.set(queryId, node);
     if (!hasPlaceholder(node)) {
       // What it reads is checked against the secret columns (`guardSecrets`) and stripped of them: with the schema it runs against.
       if (!this.#metadata.fresh && readsRows(node)) this.#deferred.add(queryId);
@@ -128,15 +132,28 @@ export class SchemaResolver implements KyselyPlugin {
 
   /** Whether `query` was left for the connection to resolve (it may hold placeholders, or wait for the metadata only). */
   deferred(query: CompiledQuery): boolean {
-    return this.#deferred.has(query.queryId);
+    // A plugin added to a builder or the connection runs after this connection's plugins: what it hands on was not checked.
+    return this.#deferred.has(query.queryId) || (this.#written.has(query.queryId) && !this.#relations.passed(query.query, query.queryId));
   }
 
   /** The query with its placeholders resolved — called on the connection, once the metadata is loaded there. */
   resolve(query: CompiledQuery): CompiledQuery {
+    const passed = this.#relations.passed(query.query, query.queryId);
+    // SECURITY: a node the plugins added after ours produced is checked below like any other, but may not write another table.
+    if (!passed) {
+      const before = writtenBy(this.#written.get(query.queryId)!);
+      const after = writtenBy(query.query);
+      if (before !== after) {
+        throw new Error(
+          `A plugin added to this query changed the tables it writes from ${before || 'none'} to ${after || 'none'} — it was not sent. ` +
+            'A statement writes the tables it was built for. See docs/queries.md#module-boundaries.',
+        );
+      }
+    }
     // A builder deferred once keeps its id: a later compile of it, made while the metadata was fresh, is resolved and checked
     // already (`RelationsPlugin` returns such a node as it is) — only a soft delete is still to be done.
     const resolved = hasPlaceholder(query.query) ? resolve(query.query, this.#metadata) : query.query;
-    const node = this.#relations.transform(resolved, query.queryId);
+    const node = passed ? this.#relations.transform(resolved, query.queryId) : this.#relations.recheck(resolved, query.queryId);
     return node === query.query ? query : this.#compiler.compileQuery(node, query.queryId);
   }
 }
@@ -331,6 +348,35 @@ function drop(node: OperationNode): OperationNode {
   if (left === NOTHING) return right;
   if (right === NOTHING) return left;
   return left === node.left && right === node.right ? node : AndNode.create(left, right);
+}
+
+/** Every table a statement writes, in the statement and in every statement inside it (a CTE's delete): `schema.table`, sorted. */
+function writtenBy(root: RootOperationNode): string {
+  const tables = new Set<string>();
+  const targets = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return;
+    if (Array.isArray(node)) return void node.forEach(targets);
+    const { kind } = node as { kind?: string };
+    if (kind === 'TableNode') {
+      const { table } = node as TableNode;
+      tables.add(`${table.schema ? fold(table.schema.name) : ''}.${fold(table.identifier.name)}`);
+      return;
+    }
+    for (const value of Object.values(node)) targets(value);
+  };
+  const walk = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return;
+    if (Array.isArray(node)) return void node.forEach(walk);
+    const { kind } = node as { kind?: string };
+    if (kind === 'ValueNode') return;
+    if (kind === 'InsertQueryNode') targets((node as InsertQueryNode).into);
+    else if (kind === 'UpdateQueryNode') targets((node as UpdateQueryNode).table);
+    else if (kind === 'DeleteQueryNode') targets((node as DeleteQueryNode).from);
+    else if (kind === 'MergeQueryNode') targets((node as MergeQueryNode).into);
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk(root);
+  return [...tables].sort().join(', ');
 }
 
 function tableOf(node: OperationNode | undefined): string | undefined {

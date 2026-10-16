@@ -482,9 +482,13 @@ export default defineModule({
 
 In the `notes` module, `insertInto('users')`, `updateTable('users')` and `deleteFrom('users')` are compile errors, and a table of
 another module that is not exposed does not exist at all. Writing to `users` goes through the auth module's `UserRepository`. The
-boundary is a type: at runtime both are the same connection, and raw SQL is not checked — nor are `sql` fragments inside a builder
-(`modifyEnd`, for one), nor a plugin added to a single query with `.withPlugin()`, which runs after the check for secret columns. A
-follow-up change closes the last. `Database<'notes'>` offers only the builder's reading methods (`selectFrom`, `selectNoFrom`, `fn`,
+boundary is a type: at runtime both are the same connection, and the connection checks none of the following: raw SQL, `sql`
+fragments inside a builder (`modifyEnd`, for one), and a query built with the builder's own `.withoutPlugins()` — these are
+deliberate escape hatches. A plugin added to a single query with `.withPlugin()` (or to the connection) runs after the connection's
+own plugins, so the connection checks what it returns again before sending it — for secret columns like any query — and refuses
+one that changes which tables the statement writes (its own and those of any statement inside it, such as a common table
+expression), schema included. A query without such a plugin pays a lookup; one with a plugin is compiled a second time.
+`Database<'notes'>` offers only the builder's reading methods (`selectFrom`, `selectNoFrom`, `fn`,
 `case`, `dynamic`, `isTransaction`) and `insertInto`, `updateTable`, `deleteFrom` and `transaction()` for the module's own tables: no
 `schema`, `introspection` or `with()`, and no `sql` template executed against it (``sql`…`.execute(db)``) — use `Database` where a
 module needs those. A method the query builder gains later is not offered to modules until the framework has classified it. A module that exposes a table another
