@@ -38,6 +38,10 @@ export interface OpenedFile {
  * A disk: files under keys (`avatars/7.webp`), on the local file system, in S3 or in memory. Every key is checked
  * ({@link normalizeKey}): no `..`, no absolute path, no backslash, no NUL. Reading a missing file throws
  * `FileNotFoundError`. See `docs/storage.md#using-a-disk`.
+ *
+ * A package or an app brings a disk of its own (`static diskDrivers`, `docs/drivers.md#disk-drivers`) by implementing every
+ * member below except `close`. The framework checks every key ({@link normalizeKey}) before the driver sees it, refuses a disk
+ * whose `visibility` is not the configured one and never calls `url()` of a private disk on the driver.
  */
 export interface Disk {
   /** The disk's name in the configuration. */
@@ -72,9 +76,12 @@ export interface Disk {
   url(key: string): string;
   /**
    * A URL that works until it expires — for private files: signed by the app (`UrlSigner`, local and memory disks) or
-   * presigned (S3). Served as a download unless it is a raster image.
+   * presigned (S3). Served as a download unless it is a raster image. A driver of your own signs it and lets it expire: the
+   * URL is the only way to a private file, so one that anybody can open for ever makes the file public.
    */
   temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
+  /** Releases what the disk holds open (a client, a connection) when the app shuts down. Without it there is nothing to release. */
+  close?(): Promise<void>;
 }
 
 /** A public disk: `url()` works. */

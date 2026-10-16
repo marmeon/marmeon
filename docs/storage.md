@@ -183,6 +183,12 @@ the content type of the file name's extension.
 
 A stream of unknown length is read into memory before it is uploaded.
 
+## Disk drivers
+
+A package or an app can bring its own disk driver, for Google Cloud Storage or an FTP server say. Its provider lists it in
+`static diskDrivers`, and a disk in `defineStorage()` names it with `driver`. The framework keeps visibility and signed links
+for it as for the built-in disks. The [drivers](drivers.md#disk-drivers) page has the contract and what it guarantees.
+
 ## Uploads
 
 A file from a user goes ahead of its form. The browser sends it while the user fills in the rest, with progress, and the form

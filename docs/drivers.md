@@ -36,6 +36,7 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 | --- | --- | --- |
 | `queueDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_CONNECTION` |
 | `failedJobDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_FAILED_DRIVER` |
+| `diskDrivers` | [File storage](storage.md#disk-drivers) | `driver` of a disk in `defineStorage()` |
 
 A driver reads its own settings through a configuration of its own, which its provider lists in `static config`
 ([package development](package-development.md#configuration)). The factory resolves what it needs from the `container` it is given.
@@ -61,7 +62,7 @@ Give the subclass a record of its own.
 
 ## Contracts are stable
 
-The interfaces a driver implements, such as `QueueDriver` and `FailedJobStore`, are public API. From 1.0 on, a new method comes
+The interfaces a driver implements, such as `QueueDriver`, `FailedJobStore` and `Disk`, are public API. From 1.0 on, a new method comes
 only as an optional member, or with a default that keeps the old behaviour, so a driver written today keeps working. A member that
 is optional says in its documentation what the framework does without it.
 
@@ -107,3 +108,59 @@ What happens without an optional member:
 
 `using` and `joinsTransaction` apply to drivers that keep jobs in the app's database. Any other driver leaves them out and gets
 the safe behaviour in the table.
+
+## Disk drivers
+
+A disk driver implements `Disk` and is a `DiskDriverFactory`: it gets the options of the disk from `defineStorage()` and the
+disk's `name`, the app `root` and the `container`, and returns the disk. A disk selects its driver by name, like the built-in
+`local`, `s3` and `memory`:
+
+```ts title="src/GcsServiceProvider.ts"
+import type { DiskDriverFactory } from '@marmeon/storage';
+
+declare module '@marmeon/storage' {
+  interface DiskDrivers {
+    gcs: { readonly bucket: string };
+  }
+}
+
+const gcs: DiskDriverFactory<{ bucket: string; visibility?: 'public' | 'private' }> = (options, { name, container }) =>
+  new GcsDisk(name, options, container.make(GcsConfig));
+
+export class GcsServiceProvider {
+  static config = [GcsConfig];
+  static diskDrivers = { gcs };
+}
+```
+
+```ts title="config/storage.ts"
+export const AppStorage = defineStorage({
+  default: 'media',
+  disks: { media: { driver: 'gcs', bucket: 'files' } }, // without `bucket` this is a type error
+});
+```
+
+Declaring the options in `DiskDrivers` is what makes `defineStorage()` check them; every disk has `visibility` and `url` on top.
+A disk whose `driver` nobody brought stops the start with the disk's name and the drivers there are. The disks of a
+driver are built at the start, so a factory that throws, or returns something that is not a `Disk` (every member of the
+contract is required), stops it then. The test fake replaces every disk with a memory disk, so a test never reaches a
+provider's driver.
+
+What the framework keeps for a disk of a provider's driver, whatever the driver does:
+
+- **Visibility is the configuration's.** The returned disk must have the configured `name` and `visibility`, or the start stops.
+  `url()` on a private disk is refused by the framework and never reaches the driver, and a private disk with a `url` option
+  stops the start.
+- **A private file is reached only through a signed URL.** `temporaryUrl()` of a private disk must sign the URL and let it expire.
+  That is the driver's job: the framework cannot tell a signature from a long string and refuses only an empty result. A driver
+  that returns an unsigned URL publishes its private files.
+- **The app serves nothing for it.** Routes for public paths and signed local URLs exist for `local` and `memory` disks only. The
+  `url` of a provider's disk is an address the driver owns, such as a CDN.
+- **Keys are checked before the driver sees them.** Every key, and the directory of `list()`, goes through `normalizeKey()` and
+  `normalizeDirectory()` first: `..`, absolute paths, backslashes, empty segments and control characters are refused with
+  `InvalidKeyError`, as on the built-in disks. Both functions are exported for a driver that checks keys it builds itself.
+- **The disk is held privately.** The app gets a wrapper that delegates to the driver's disk; its `name` and `visibility` are the
+  configured ones.
+
+Every member of `Disk` is required except `close()`, which the framework calls at shutdown when the disk has one — close a client
+or a connection there.

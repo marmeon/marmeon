@@ -1,8 +1,9 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve, sep } from 'node:path';
-import { token, type Clock } from '@marmeon/core';
-import type { CheckDiskName, DefaultDiskName, DiskFor, DiskNameInput, DiskOptions, StorageOptions } from './config.ts';
-import type { Disk, Visibility } from './disk.ts';
+import { token, type Clock, type Resolver } from '@marmeon/core';
+import type { CheckDiskName, DefaultDiskName, DiskDriverFactory, DiskFor, DiskNameInput, DiskOptions, StorageOptions } from './config.ts';
+import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
+import { normalizeDirectory, normalizeKey } from './keys.ts';
 import { LocalDisk } from './drivers/local.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { S3Disk, s3BaseUrl, type ImportS3 } from './drivers/s3.ts';
@@ -28,7 +29,113 @@ export interface StorageDependencies {
   readonly temporaryUrls: TemporaryUrls;
   /** How the AWS SDK is imported (tests). */
   readonly loadS3?: ImportS3;
+  /** The disk drivers that providers bring, by name (`static diskDrivers`). */
+  readonly drivers?: ReadonlyMap<string, DiskDriverFactory>;
+  /** What a provider's disk driver reads its own configuration from. */
+  readonly container?: Resolver;
 }
+
+/** The names the framework's own disks answer to — a provider cannot bring a driver under one of them. */
+export const BUILT_IN_DISK_DRIVERS = ['local', 's3', 'memory'] as const;
+
+const DISK_MEMBERS = ['put', 'get', 'text', 'stream', 'open', 'exists', 'delete', 'move', 'copy', 'size', 'mimeType', 'lastModified', 'list', 'url', 'temporaryUrl'] as const;
+
+/**
+ * A disk of a provider's driver, as the app gets it: every key is checked here ({@link normalizeKey}) before the driver sees it,
+ * `url()` of a private disk is refused here and never reaches the driver, `name` and `visibility` are the configured ones, and a
+ * `temporaryUrl()` of a private disk that comes back empty is refused. The driver's disk is held privately and each member
+ * delegated, so nothing depends on what kind of object the driver returned.
+ */
+class GuardedDisk implements Disk {
+  // Private fields with getters: an assignment to `visibility` (a plain field would take it) never unlocks `url()`.
+  readonly #name: string;
+  readonly #visibility: Visibility;
+  readonly #disk: Disk;
+
+  get name(): string {
+    return this.#name;
+  }
+
+  get visibility(): Visibility {
+    return this.#visibility;
+  }
+
+  constructor(name: string, visibility: Visibility, made: unknown) {
+    const disk = made as Partial<Disk> | null | undefined;
+    const missing = DISK_MEMBERS.filter((member) => typeof disk?.[member] !== 'function');
+    if (typeof disk !== 'object' || disk === null || missing.length > 0) {
+      throw new StorageSetupError(`The driver of the disk "${name}" must return a Disk with ${DISK_MEMBERS.join(', ')}, name and visibility${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`);
+    }
+    if (disk.name !== name) {
+      throw new StorageSetupError(`The driver of the disk "${name}" returned a disk named "${String(disk.name)}" — name must be the disk's name from the configuration.`);
+    }
+    if (disk.visibility !== visibility) {
+      throw new StorageSetupError(`The disk "${name}" is ${visibility} in the configuration, but its driver returned a ${String(disk.visibility)} disk — it must keep the configured visibility.`);
+    }
+    this.#name = name;
+    this.#visibility = visibility;
+    this.#disk = disk as Disk;
+  }
+
+  async put(key: string, contents: FileContents, options?: PutOptions): Promise<void> {
+    return this.#disk.put(normalizeKey(key), contents, options);
+  }
+  async get(key: string): Promise<Uint8Array> {
+    return this.#disk.get(normalizeKey(key));
+  }
+  async text(key: string): Promise<string> {
+    return this.#disk.text(normalizeKey(key));
+  }
+  async stream(key: string): Promise<ReadableStream<Uint8Array>> {
+    return this.#disk.stream(normalizeKey(key));
+  }
+  async open(key: string): Promise<OpenedFile> {
+    return this.#disk.open(normalizeKey(key));
+  }
+  async exists(key: string): Promise<boolean> {
+    return this.#disk.exists(normalizeKey(key));
+  }
+  async delete(key: string): Promise<boolean> {
+    return this.#disk.delete(normalizeKey(key));
+  }
+  async move(from: string, to: string): Promise<void> {
+    return this.#disk.move(normalizeKey(from), normalizeKey(to));
+  }
+  async copy(from: string, to: string): Promise<void> {
+    return this.#disk.copy(normalizeKey(from), normalizeKey(to));
+  }
+  async size(key: string): Promise<number> {
+    return this.#disk.size(normalizeKey(key));
+  }
+  async mimeType(key: string): Promise<string> {
+    return this.#disk.mimeType(normalizeKey(key));
+  }
+  async lastModified(key: string): Promise<Date> {
+    return this.#disk.lastModified(normalizeKey(key));
+  }
+  async list(directory = '', options?: ListOptions): Promise<string[]> {
+    return this.#disk.list(normalizeDirectory(directory), options);
+  }
+
+  url(key: string): string {
+    const checked = normalizeKey(key);
+    if (this.#visibility === 'private') {
+      throw new StorageError(`The disk "${this.#name}" is private: its files have no public URL — use temporaryUrl(key, { expiresIn }).`);
+    }
+    return this.#disk.url(checked);
+  }
+
+  async temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string> {
+    const url = await this.#disk.temporaryUrl(normalizeKey(key), options);
+    if (typeof url !== 'string' || url === '') throw new StorageError(`The driver of the disk "${this.name}" returned no URL from temporaryUrl().`);
+    return url;
+  }
+
+  async close(): Promise<void> {
+    await this.#disk.close?.();
+  }
+}
+
 
 /** A disk's visibility, `private` unless configured `public`. */
 export function visibilityOf(options: DiskOptions): Visibility {
@@ -51,19 +158,20 @@ function nests(a: string, b: string): boolean {
 }
 
 /**
- * Checks the configuration at startup: the default disk exists, every driver is known, a private disk has no `url`, a
- * public local disk's `url` is a path or an absolute URL — and **no private local disk shares a directory with a public
+ * Checks the configuration at startup: the default disk exists, every driver is known (built in, or one of `drivers` — the names
+ * providers bring), a private disk has no `url`, a public local disk's `url` is a path or an absolute URL — and **no private local disk shares a directory with a public
  * one** (the same root, or one inside the other): its files would be served under the public disk's URL.
  */
-export function checkStorage(options: StorageOptions, appRoot: string): void {
+export function checkStorage(options: StorageOptions, appRoot: string, drivers: Iterable<string> = []): void {
+  const known = [...BUILT_IN_DISK_DRIVERS, ...drivers];
   const names = Object.keys(options.disks);
   if (names.length === 0) throw new StorageSetupError('The storage configuration has no disks.');
   if (!Object.hasOwn(options.disks, options.default)) {
     throw new StorageSetupError(`The default disk "${options.default}" is not configured — the disks: ${names.join(', ')}.${didYouMean(options.default, names)}`);
   }
   for (const [name, disk] of Object.entries(options.disks)) {
-    if (!['local', 's3', 'memory'].includes(disk.driver)) {
-      throw new StorageSetupError(`The disk "${name}" has an unknown driver "${String(disk.driver)}" — local, s3 or memory.`);
+    if (!known.includes(disk.driver)) {
+      throw new StorageSetupError(`The disk "${name}" has an unknown driver "${String(disk.driver)}" — the drivers: ${known.join(', ')}.${didYouMean(String(disk.driver), known)}`);
     }
     if (disk.visibility !== undefined && disk.visibility !== 'public' && disk.visibility !== 'private') {
       throw new StorageSetupError(`The disk "${name}" has an unknown visibility "${String(disk.visibility)}" — public or private.`);
@@ -73,7 +181,7 @@ export function checkStorage(options: StorageOptions, appRoot: string): void {
         `The disk "${name}" is private but has a url — private files are never public: remove url (and use temporaryUrl()), or make the disk public.`,
       );
     }
-    if (disk.url !== undefined && disk.driver !== 's3' && !disk.url.startsWith('/') && !/^https?:\/\//.test(disk.url)) {
+    if (disk.url !== undefined && (disk.driver === 'local' || disk.driver === 'memory') && !disk.url.startsWith('/') && !/^https?:\/\//.test(disk.url)) {
       throw new StorageSetupError(`The url of the disk "${name}" must be a path ("/storage") or an absolute URL, not "${disk.url}".`);
     }
     if (disk.driver === 'local' && (typeof disk.root !== 'string' || disk.root === '')) throw new StorageSetupError(`The local disk "${name}" needs a root directory.`);
@@ -139,6 +247,16 @@ export class StorageManager implements Storage {
     return disk;
   }
 
+  /**
+   * Builds every disk of a driver a provider brought, so that a factory's error — and a disk that breaks the contract — stops
+   * the start instead of the first request.
+   */
+  verify(): void {
+    for (const [name, options] of Object.entries(this.#options.disks)) {
+      if (!(BUILT_IN_DISK_DRIVERS as readonly string[]).includes(options.driver)) this.named(name);
+    }
+  }
+
   /** The configuration of the disk `name` — or a {@link StorageError} with the known names. */
   options(name: string): DiskOptions {
     if (!Object.hasOwn(this.#options.disks, name)) {
@@ -158,7 +276,20 @@ export class StorageManager implements Storage {
         return new MemoryDisk({ name, visibility, url: options.url, temporaryUrls, clock });
       case 's3':
         return new S3Disk({ name, options, visibility, clock, ...(loadS3 ? { load: loadS3 } : {}) });
+      default:
+        return this.#custom(name, options);
     }
+  }
+
+  /** The disk a provider's driver makes. `verify()` builds every one at the start, so a failing factory never runs again later. */
+  #custom(name: string, options: DiskOptions): Disk {
+    const { drivers, container, root } = this.#dependencies;
+    const driver = String(options.driver);
+    const factory = drivers?.get(driver);
+    if (!factory || !container) {
+      throw new StorageSetupError(`The disk "${name}" has an unknown driver "${driver}" — the drivers: ${[...BUILT_IN_DISK_DRIVERS, ...(drivers?.keys() ?? [])].join(', ')}.`);
+    }
+    return new GuardedDisk(name, visibilityOf(options), factory(options, { name, root, container }));
   }
 
   /** Builds a memory disk like the configured one — for the fake. */
@@ -169,8 +300,8 @@ export class StorageManager implements Storage {
     return new MemoryDisk({ name, visibility, url, temporaryUrls, clock });
   }
 
-  /** Closes what the disks hold open (S3 clients). */
+  /** Closes every built disk that has a `close()` (S3 clients, a driver's connections). */
   async close(): Promise<void> {
-    await Promise.all([...this.#disks.values()].map((disk) => (disk instanceof S3Disk ? disk.close() : undefined)));
+    await Promise.all([...this.#disks.values()].map((disk) => disk.close?.()));
   }
 }

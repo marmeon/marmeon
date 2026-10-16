@@ -8,10 +8,10 @@ import { TEMPORARY_PREFIX } from './temporary.ts';
 
 type Http = typeof import('@marmeon/http');
 
-/** `/storage` → the public disks the app serves under a path: not S3, public, with a `url` that is a path. */
+/** `/storage` → the public disks the app serves under a path: local or memory, public, with a `url` that is a path. */
 export function servedPublicDisks(options: StorageOptions): { name: string; path: string }[] {
   return Object.entries(options.disks).flatMap(([name, disk]) =>
-    disk.driver !== 's3' && visibilityOf(disk) === 'public' && disk.url?.startsWith('/') ? [{ name, path: disk.url.replace(/\/+$/, '') }] : [],
+    (disk.driver === 'local' || disk.driver === 'memory') && visibilityOf(disk) === 'public' && disk.url?.startsWith('/') ? [{ name, path: disk.url.replace(/\/+$/, '') }] : [],
   );
 }
 
@@ -54,8 +54,8 @@ export function registerStorageRoutes(http: Http, container: Container, options:
       } catch {
         return notFound();
       }
-      // Only disks the app serves itself: S3 disks presign their own URLs.
-      if (!Object.hasOwn(options.disks, disk) || options.disks[disk]!.driver === 's3') return notFound();
+      // Only disks the app serves itself: other drivers (S3, a provider's) answer for their own URLs.
+      if (!Object.hasOwn(options.disks, disk) || !['local', 'memory'].includes(options.disks[disk]!.driver)) return notFound();
       const key = keyFromPath(url.pathname, `${TEMPORARY_PREFIX}/${rest.slice(0, slash)}`);
       if (key === undefined) return notFound();
       return serveFile(storage().named(disk), key, ctx.request, {

@@ -1,4 +1,4 @@
-import { Storage, type PrivateDisk, type PublicDisk } from '@marmeon/storage';
+import { defineStorage, Storage, type PrivateDisk, type PublicDisk } from '@marmeon/storage';
 
 // Disk names and visibility come from config/storage.ts (StorageTypes) — checked by `pnpm typecheck`, never run.
 export function storageTypes(storage: Storage) {
@@ -22,4 +22,11 @@ export function storageTypes(storage: Storage) {
   storage.disk(name);
   // @ts-expect-error — expiresIn is required
   void open.temporaryUrl('a.png', {});
+
+  // A driver a provider brings is typed through DiskDrivers (modules/system/ScratchDiskServiceProvider.ts).
+  defineStorage({ default: 'a', disks: { a: { driver: 'scratch', capacity: 10 } } });
+  // @ts-expect-error — `capacity` is required by the scratch driver
+  defineStorage({ default: 'a', disks: { a: { driver: 'scratch' } } });
+  // @ts-expect-error — no driver of this name
+  defineStorage({ default: 'a', disks: { a: { driver: 'gcs' } } });
 }

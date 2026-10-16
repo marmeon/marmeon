@@ -1,10 +1,12 @@
 import { hkdfSync } from 'node:crypto';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
-import { DEFAULT_STORAGE, isStorageDefinition, type StorageOptions } from './config.ts';
+import { collectDrivers } from '@marmeon/core/internal';
+import { DEFAULT_STORAGE, isStorageDefinition, type DiskDriverFactory, type StorageOptions } from './config.ts';
 import type { Disk } from './disk.ts';
+import { loadHttpModules } from './http-modules.ts';
 import { registerStorageRoutes } from './routes.ts';
 import { StorageSetup } from './setup.ts';
-import { checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
+import { BUILT_IN_DISK_DRIVERS, checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
 import { StorageSetupError } from './errors.ts';
 import { missingPackages, S3_INSTALL, S3_UPLOADS_INSTALL } from './drivers/s3.ts';
 import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
@@ -23,6 +25,9 @@ export type {
   DefaultDiskName,
   DiskFor,
   DiskName,
+  DiskDriverContext,
+  DiskDriverFactory,
+  DiskDrivers,
   DiskNameInput,
   DiskOptions,
   LocalDiskOptions,
@@ -43,6 +48,7 @@ export { Storage } from './storage.ts';
 export { serveFile } from './serve.ts';
 export type { ServeOptions } from './serve.ts';
 export type { TemporaryUrls } from './temporary.ts';
+export { normalizeDirectory, normalizeKey } from './keys.ts';
 
 // Uploads: a target per route field, the bytes to a private disk, a token in the form, verified on submit.
 export { upload } from './uploads/rule.ts';
@@ -55,6 +61,16 @@ export { TemporaryUploads, UPLOADS_TABLE } from './uploads/service.ts';
 export type { TargetRequest, UploadTarget, UploadsOptions } from './uploads/service.ts';
 export { UploadsConfig } from './uploads/config.ts';
 export { MakeUploadsTableCommand, PruneUploadsCommand, uploadsTableConnection } from './uploads/commands.ts';
+
+declare module '@marmeon/core' {
+  interface ServiceProviderClass {
+    /**
+     * Disk drivers this provider brings, by name — a disk with `driver: '<name>'` uses one. A built-in name (`local`, `s3`,
+     * `memory`) or a name another provider brings stops the start. See `docs/drivers.md#disk-drivers`.
+     */
+    readonly diskDrivers?: Readonly<Record<string, DiskDriverFactory>>;
+  }
+}
 
 /**
  * A file of a disk as a mail attachment (`attachments()` of a mailable may be async):
@@ -126,6 +142,9 @@ export class StorageServiceProvider implements ServiceProvider {
         clock: c.make(Clock),
         // Resolved per call: @marmeon/http is looked for while booting.
         temporaryUrls: { sign: (disk, key, options) => this.#temporaryUrls.sign(disk, key, options) },
+        // A built-in name, a name twice or a malformed one stops the start here.
+        drivers: collectDrivers<DiskDriverFactory>(c.make(Application).providers, 'diskDrivers', BUILT_IN_DISK_DRIVERS, 'disk driver'),
+        container: c,
       },
     }));
     container.singleton(Storage, (c) => {
@@ -162,8 +181,11 @@ export class StorageServiceProvider implements ServiceProvider {
 
   async boot(app: Application): Promise<void> {
     const { container } = app;
-    const { options } = container.make(StorageSetup);
-    checkStorage(options, app.root);
+    const { options, dependencies } = container.make(StorageSetup);
+    checkStorage(options, app.root, dependencies.drivers?.keys());
+    // A driver of a provider is built now: its factory's errors stop the start, not the first request.
+    const storage = container.make(Storage);
+    if (storage instanceof StorageManager) storage.verify();
     // Temporary uploads are anyone's files until a form checked them: never on a public disk.
     const uploads = container.make(UploadsConfig);
     const uploadDisk = options.disks[uploads.disk];
@@ -175,8 +197,7 @@ export class StorageServiceProvider implements ServiceProvider {
     let http: typeof import('@marmeon/http') | undefined;
     let page: typeof import('@marmeon/http/protocol') | undefined;
     try {
-      http = await import('@marmeon/http');
-      page = await import('@marmeon/http/protocol');
+      ({ http, page } = await loadHttpModules());
     } catch (error) {
       if ((error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     }
