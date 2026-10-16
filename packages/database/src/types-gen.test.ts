@@ -4,7 +4,9 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import type { TableMetadata } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { drivers, freshConnections, silent } from './__fixtures__/databases.ts';
-import { columnType, renderTypes, TypeGenerator, type Connections } from './index.ts';
+import { TypeGenerator, type Connections } from './index.ts';
+import { columnType, renderTypes } from './types-gen/render.ts';
+
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
-import { cursorPaginate, isSecretSelection, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
+import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
+import { isSecretSelection } from '@marmeon/database/internal';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, json, PAGE_HEADER, RedirectResult, type JsonResult } from '@marmeon/http';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
 import { AliasNode, IdentifierNode, type Kysely, type KyselyPlugin, type RootOperationNode, type SelectQueryBuilder } from 'kysely';

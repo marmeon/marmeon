@@ -15,7 +15,7 @@ export class MakeCacheTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database');
+    const { publishMigration } = await import('@marmeon/database/internal');
     return publishMigration(input, { name: 'create_cache_table', table: 'cache', contents: readFileSync(CACHE_MIGRATION, 'utf8') });
   }
 }

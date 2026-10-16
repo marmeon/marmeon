@@ -2,7 +2,7 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { Migrator, ForeignIdColumn, type Connections } from './index.ts';
+import { ForeignIdColumn, Migrator, type Connections } from './index.ts';
 
 type Spec = ConstructorParameters<typeof ForeignIdColumn>[0];
 

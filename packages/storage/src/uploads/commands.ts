@@ -21,7 +21,7 @@ export class MakeUploadsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database');
+    const { publishMigration } = await import('@marmeon/database/internal');
     return publishMigration(input, { name: 'create_temporary_uploads_table', table: 'temporary_uploads', contents: readFileSync(UPLOADS_MIGRATION, 'utf8') });
   }
 }

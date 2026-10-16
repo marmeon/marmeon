@@ -61,10 +61,6 @@ export declare class Column<T> {
     default(value: T): this;
     secret(): this;
 }
-// ColumnKind
-export type ColumnKind = 'boolean' | 'json' | 'timestamp' | 'uuid' | {
-    decimal: number;
-} | 'other';
 // ConnectionDefinition
 export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions> {
     readonly connection: string;
@@ -138,16 +134,9 @@ export interface CursorPaginated<T> {
         readonly nextCursor: string | null;
     };
 }
-// DEFAULT_INFRASTRUCTURE_POOL_MAX
-export declare const DEFAULT_INFRASTRUCTURE_POOL_MAX = 4;
 // Database
 export type Database<M extends keyof Modules & string = never> = [M] extends [never] ? Kysely<Tables> : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
 export declare const Database: import("@marmeon/core").Token<Kysely<Tables>>;
-// DatabaseConfig
-export declare const DatabaseConfig: ConfigDefinition<{
-    default: ConnectionOptions;
-}>;
-export type DatabaseConfig = ConfigOf<typeof DatabaseConfig>;
 // DatabaseConnectionError
 export declare class DatabaseConnectionError extends Error {
     name: string;
@@ -291,10 +280,6 @@ export interface LinkWriter<K> {
     detach(): Promise<number>;
     detach(ids: K | readonly K[]): Promise<number>;
 }
-// MARKERS_TABLE
-export declare const MARKERS_TABLE = "schema_markers";
-// MIGRATIONS_TABLE
-export declare const MIGRATIONS_TABLE = "migrations";
 // MadeAttributes
 export type MadeAttributes<Row, O> = {
     [K in keyof Row]: K extends keyof O ? Exclude<O[K], undefined> | (undefined extends O[K] ? Attribute<Row[K]> : never) : Attribute<Row[K]>;
@@ -432,8 +417,6 @@ export interface Modules {
 }
 // NewRow
 export type NewRow<T extends keyof Tables> = Insertable<Tables[T]>;
-// OWNERS_TABLE
-export declare const OWNERS_TABLE = "table_owners";
 // PageMeta
 export interface PageMeta {
     readonly page: number;
@@ -520,14 +503,6 @@ export type RelationWriter<DB, T, N> = RelationOf<T, N> extends infer R ? R exte
 // Relations
 export interface Relations {
 }
-// RelationsPlugin
-export declare class RelationsPlugin implements KyselyPlugin {
-    #private;
-    constructor(driver: Driver, metadata: SchemaMetadata);
-    transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode;
-    transform(node: RootOperationNode, queryId: QueryId): RootOperationNode;
-    transformResult({ result }: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>>;
-}
 // Rendered
 export interface Rendered {
     readonly source: string;
@@ -576,29 +551,12 @@ export interface RepositoryBindingWith<DB, T extends keyof DB> extends RouteBind
     readonly with: readonly RelationName<DB, T>[];
     readonly value: WithRelations<DB, T, this['with'][number]>;
 }
-// RepositoryClass
-export type RepositoryClass<R extends Repository<any, any> = Repository<any, any>> = (abstract new (...args: any[]) => R) & {
-    readonly table: TableOf<R>;
-};
-// RepositoryStatics
-export interface RepositoryStatics {
-    readonly table: string;
-    readonly connection?: string;
-    readonly routeKey?: string;
-    readonly routeKeyPattern?: RegExp;
-}
 // Row
 export type Row<T extends keyof Tables> = Selectable<Tables[T]>;
-// RowOf
-export type RowOf<R> = R extends Repository<infer T, infer DB> ? Selectable<DB[T]> : never;
 // RowUpdate
 export type RowUpdate<T extends keyof Tables> = Updateable<Tables[T]>;
 // RowWith
 export type RowWith<T extends keyof Tables, N extends RelationName<Tables, T>> = WithRelations<Tables, T, N>;
-// SECRETS_TABLE
-export declare const SECRETS_TABLE = "secret_columns";
-// SYSTEM_MODULE
-export declare const SYSTEM_MODULE = "system";
 // Schema
 export declare class Schema {
     #private;
@@ -620,43 +578,6 @@ export interface SchemaMarker {
     readonly column: string;
     readonly marker: 'inverse' | 'soft_deletes' | 'timestamps';
     readonly value: string | null;
-}
-// SchemaMetadata
-export declare class SchemaMetadata {
-    #private;
-    constructor(driver: Driver);
-    get driver(): Driver;
-    get kinds(): ReadonlyMap<string, ReadonlyMap<string, ColumnKind>>;
-    get secrets(): ReadonlyMap<string, ReadonlySet<string>>;
-    get columns(): ReadonlyMap<string, readonly string[]>;
-    get relations(): ReadonlyMap<string, ReadonlyMap<string, Relation>>;
-    get problems(): readonly string[];
-    get softDeletes(): ReadonlySet<string>;
-    get timestamps(): ReadonlySet<string>;
-    get fresh(): boolean;
-    invalidate(): void;
-    hold(connection: object): void;
-    holds(connection: object): boolean;
-    release(connection: object): void;
-    refresh(connection: DatabaseConnection, owner?: object): Promise<void>;
-    settle(connection: DatabaseConnection, owner: object, { limit, name }: {
-        limit: number;
-        name: string;
-    }): Promise<void>;
-}
-// SchemaSnapshot
-export interface SchemaSnapshot {
-    readonly driver: Driver;
-    readonly tables: readonly TableMetadata[];
-    readonly sqliteKeys?: ReadonlyMap<string, {
-        primary: readonly string[];
-        autoIncrement: string | undefined;
-    }>;
-    readonly owners: ReadonlyMap<string, string>;
-    readonly secrets?: ReadonlyMap<string, ReadonlySet<string>>;
-    readonly relations?: ReadonlyMap<string, ReadonlyMap<string, Relation>>;
-    readonly modules: readonly string[];
-    readonly exposes: ReadonlyMap<string, readonly string[]>;
 }
 // Secret
 export type Secret<T> = ColumnType<never, T, T>;
@@ -699,10 +620,6 @@ export declare class Seeding {
 }
 // Selectable
 export type { Selectable } from 'kysely';
-// TYPES_FILE
-export declare const TYPES_FILE = "bootstrap/database.d.ts";
-// TableOf
-export type TableOf<R> = R extends Repository<infer T, any> ? T : never;
 // TableOwners
 export interface TableOwners {
 }
@@ -752,18 +669,12 @@ export type WithRelations<DB, T extends keyof DB, N> = [N] extends [never] ? Sel
 export type WritableRelationName<DB, T> = T extends keyof Relations ? {
     [N in keyof Relations[T]]: Writes<DB, Relations[T][N]> extends true ? N : never;
 }[keyof Relations[T]] & string : never;
-// adaptNodeSqlite
-export declare function adaptNodeSqlite(db: DatabaseSync): SqliteDatabase;
 // afterCommit
 export { afterCommit } from '@marmeon/core';
 // afterRollback
 export { afterRollback } from '@marmeon/core';
-// columnType
-export declare function columnType(dataType: string, driver: Driver): string | undefined;
 // cursorPaginate
 export declare function cursorPaginate<DB, TB extends keyof DB, O extends Record<string, unknown>>(query: SelectQueryBuilder<DB, TB, O>, { column, key, cursor, perPage, direction, encrypter, name }: CursorOptions<keyof O & string>): Promise<CursorPaginated<O>>;
-// databaseSolutions
-export declare const databaseSolutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
 // defineConnection
 export declare function defineConnection<const Schema extends StandardSchemaV1>(name: string, definition: {
     env: Schema;
@@ -775,14 +686,10 @@ export declare function defineFactory<T extends keyof DB & string, DB = Tables, 
 }): FactoryDefinition<T, DB, S>;
 // defineMigration
 export declare function defineMigration(migration: Migration): Migration;
-// describeConnection
-export declare function describeConnection(options: ConnectionOptions): string;
 // failOnDuplicate
 export declare function failOnDuplicate<T>(fields: string | readonly string[] | Readonly<Record<string, string>>, work: () => Promise<T>, input?: Record<string, unknown>): Promise<T>;
 // inTransaction
 export { inTransaction } from '@marmeon/core';
-// isSecretSelection
-export declare function isSecretSelection(selection: OperationNode): boolean;
 // isUniqueViolation
 export declare function isUniqueViolation(error: unknown): boolean;
 // missingTable
@@ -798,14 +705,6 @@ export declare function pageQuery<const P extends number = 15>({ perPage }?: {
 };
 // paginate
 export declare function paginate<DB, TB extends keyof DB, O, const Q = PageRequest>(db: Pick<Kysely<any>, 'selectFrom'>, query: SelectQueryBuilder<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
-// publishMigration
-export declare function publishMigration(input: CommandInput, migration: {
-    name: string;
-    contents: string;
-    table: string;
-}): number;
-// renderTypes
-export declare function renderTypes(snapshot: SchemaSnapshot): Rendered;
 // secret
 export declare function secret<DB, TB extends keyof DB, R extends SecretReference<DB, TB>>(eb: ExpressionBuilder<DB, TB>, column: R): AliasedExpression<SecretValue<DB, TB, R>, SecretName<R>>;
 // sql
@@ -903,17 +802,6 @@ interface Pending {
 type ReadOnlyTable<T> = {
     [C in keyof T]: ColumnType<Selectable<T>[C & keyof Selectable<T>], never, never>;
 };
-// Relation
-export interface Relation {
-    readonly kind: 'belongsTo' | 'hasMany' | 'hasOne' | 'belongsToMany';
-    readonly table: string;
-    readonly foreignKey: string;
-    readonly localKey: string;
-    readonly targetKey: string;
-    readonly nullable?: boolean;
-    readonly pivot?: string;
-    readonly relatedKey?: string;
-}
 // RelationOf
 type RelationOf<TB, N> = {
     [T in TB & keyof Relations]: N extends keyof Relations[T] ? Relations[T][N] : never;

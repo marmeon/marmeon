@@ -20,8 +20,9 @@ export interface WorkerDatabase {
   readonly adminUrl?: string;
 }
 
-export async function workerDatabase(database: DatabaseModule, root: string, env: Env): Promise<WorkerDatabase> {
-  const config = (await resolveConfig([database.DatabaseConfig], env)).get(database.DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
+export async function workerDatabase(root: string, env: Env): Promise<WorkerDatabase> {
+  const { DatabaseConfig } = await import('@marmeon/database/internal');
+  const config = (await resolveConfig([DatabaseConfig], env)).get(DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
   const options = config.default;
   // Named after the worker slot, not the process: the next run reuses (and first resets) it, so
   // databases do not pile up. Two runs at once would share them.
