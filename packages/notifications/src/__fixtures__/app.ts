@@ -1,4 +1,5 @@
-import { Clock, createApplication, Logger, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Clock, createApplication, Logger, type Application, type ModuleDefinition } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, Schema, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Mailer, MailFake, MailServiceProvider, type Mailable } from '@marmeon/mail';

@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { Redactor, rollBackOnErr, runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@marmeon/core';
-import { channels, messageBase, publishEnded, type DbQueryMessage } from '@marmeon/core/diagnostics';
+import { Redactor, rollBackOnErr, runTransaction, TransactionError, token, type Application, type Logger } from '@marmeon/core';
+import { messageBase, publishEnded, transactionOf } from '@marmeon/core/internal';
+import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';

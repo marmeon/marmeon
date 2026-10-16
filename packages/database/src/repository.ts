@@ -1,4 +1,5 @@
-import { err, errOfRollback, ok, rollBackOnErr, type Result } from '@marmeon/core';
+import { err, ok, rollBackOnErr, type Result } from '@marmeon/core';
+import { errOfRollback } from '@marmeon/core/internal';
 import { HttpError, type RouteBinder, type RouteBindingContext, type RouteBindingWith } from '@marmeon/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';

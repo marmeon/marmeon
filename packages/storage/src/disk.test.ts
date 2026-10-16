@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { TestClock } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { DISK_KINDS, recordingUrls, removeDirectories } from './__fixtures__/disks.ts';
 import type { Disk } from './disk.ts';

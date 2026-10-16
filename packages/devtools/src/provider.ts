@@ -1,4 +1,5 @@
-import { CSP_NONCE_PLACEHOLDER, defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@marmeon/core';
+import { defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@marmeon/core';
+import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
 import { DevtoolsConfig, DevtoolsConfigError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
 import { FileStore } from './file-store.ts';

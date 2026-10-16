@@ -1,6 +1,7 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Clock, createApplication, defineModule, env, TestClock, type ConfigDefinition } from '@marmeon/core';
+import { Clock, createApplication, defineModule, env, type ConfigDefinition } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { accessLabel, Router, routeAccess } from '@marmeon/router';

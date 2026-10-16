@@ -1,7 +1,8 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CliServiceProvider, CommandRegistry, DevProcesses } from 'marmeon';
-import { Clock, createApplication, Logger, resolveConfig, TestClock, type Application, type Resolver } from '@marmeon/core';
+import { Clock, createApplication, Logger, resolveConfig, type Application, type Resolver } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';

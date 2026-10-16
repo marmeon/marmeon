@@ -1,4 +1,5 @@
-import { Clock, createApplication, EventDispatcher, inTransaction, listen, Logger, TestClock, type Application, type EventPayload, type ModuleDefinition } from '@marmeon/core';
+import { Clock, createApplication, EventDispatcher, inTransaction, listen, Logger, type Application, type EventPayload, type ModuleDefinition } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';

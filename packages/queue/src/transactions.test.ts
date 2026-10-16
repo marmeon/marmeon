@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, inTransaction, Logger, TestClock, TransactionError, type Application } from '@marmeon/core';
+import { Clock, createApplication, inTransaction, Logger, TransactionError, type Application } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';

@@ -1,4 +1,5 @@
-import { Application, Clock, defineConfig, env, Translator, type ConfigOf, type Container, type Resolver, type ServiceProvider, fillPlaceholders } from '@marmeon/core';
+import { Application, Clock, defineConfig, env, Translator, type ConfigOf, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { fillPlaceholders } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
 import { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';

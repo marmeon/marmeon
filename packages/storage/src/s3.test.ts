@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TestClock } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ensureBucket, S3_ENDPOINT, s3Options } from './__fixtures__/disks.ts';
 import { S3Disk } from './drivers/s3.ts';

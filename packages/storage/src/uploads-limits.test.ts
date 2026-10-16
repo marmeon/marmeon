@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { ConsoleLogger, TestClock } from '@marmeon/core';
+import { ConsoleLogger } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, sql } from '@marmeon/database';
 import { HttpError } from '@marmeon/router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

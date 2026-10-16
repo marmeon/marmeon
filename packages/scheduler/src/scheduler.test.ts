@@ -1,7 +1,8 @@
 import { join } from 'node:path';
 import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@marmeon/cache';
 import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from 'marmeon';
-import { Clock, createApplication, currentLogContext, defineModule, EventFake, EventRegistry, inTransaction, listen, Logger, Redactor, TestClock, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, defineModule, EventRegistry, inTransaction, listen, Logger, Redactor, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { EventFake, TestClock } from '@marmeon/core/testing';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, Schema } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';

@@ -1,5 +1,6 @@
 import cluster from 'node:cluster';
-import { Application, CLUSTER_WORKER, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { CLUSTER_WORKER } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveAudience, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { FRAMEWORK_ROUTES } from '@marmeon/http/internal';

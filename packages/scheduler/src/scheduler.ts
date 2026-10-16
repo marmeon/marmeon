@@ -1,8 +1,9 @@
 import { hostname } from 'node:os';
 import { Cache, CacheConfig, type Lock } from '@marmeon/cache';
 import type { CommandClass } from 'marmeon';
-import { Application, Clock, EventDispatcher, Logger, outsideTransaction, Redactor, runWithTask, type Container } from '@marmeon/core';
-import { channels, messageBase, trace, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
+import { Application, Clock, EventDispatcher, Logger, outsideTransaction, Redactor, type Container } from '@marmeon/core';
+import { messageBase, runWithTask, trace } from '@marmeon/core/internal';
+import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import type { JobClass } from '@marmeon/queue';
 import { ScheduleConfig } from './config.ts';
 import { CronExpression, ScheduleError } from './cron.ts';

@@ -54,7 +54,8 @@ function createFixtureApp(): string {
   link(store('acme-mailer'), join(app, 'node_modules/@acme/mailer'));
   link(store('acme-source'), join(app, 'node_modules/@acme/source'));
   link(corePackage, join(app, 'node_modules/@marmeon/core'));
-  cpSync(join(fixtures, 'main.ts'), join(app, 'main.ts'));
+  // The fixture is no file of the core's sources, which alone may import `@marmeon/core/internal`: it names a placeholder instead.
+  writeFileSync(join(app, 'main.ts'), readFileSync(join(fixtures, 'main.ts'), 'utf8').replace("'the-core-internals'", "'@marmeon/core/internal'"));
   return app;
 }
 
@@ -133,7 +134,7 @@ describe('marmeon discover', () => {
     // The dev server, `marmeon` commands and test workers all regenerate after `pnpm add`.
     writeFileSync(
       join(app, 'race.ts'),
-      `import { loadDiscoveredPackages } from '@marmeon/core';
+      `import { loadDiscoveredPackages } from '@marmeon/core/internal';
        let failures = 0;
        for (let i = 0; i < 25; i++) {
          try { await loadDiscoveredPackages({ root: import.meta.dirname, force: true }); } catch { failures++; }
@@ -151,7 +152,7 @@ describe('marmeon discover', () => {
   it('discovers again when a listed package is gone but package.json and the lockfile stayed — a production install without dev dependencies', async () => {
     writeFileSync(
       join(app, 'packages.ts'),
-      `import { loadDiscoveredPackages } from '@marmeon/core';
+      `import { loadDiscoveredPackages } from '@marmeon/core/internal';
        const { packages, regenerated } = await loadDiscoveredPackages({ root: import.meta.dirname });
        console.log(JSON.stringify({ packages, regenerated }));`,
     );

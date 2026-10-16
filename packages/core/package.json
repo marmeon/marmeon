@@ -45,11 +45,6 @@
       "types": "./dist/dev.d.ts",
       "default": "./dist/dev.js"
     },
-    "./vite": {
-      "@marmeon/source": "./src/vite.ts",
-      "types": "./dist/vite.d.ts",
-      "default": "./dist/vite.js"
-    },
     "./diagnostics": {
       "@marmeon/source": "./src/diagnostics.ts",
       "types": "./dist/diagnostics.d.ts",
@@ -59,6 +54,16 @@
       "@marmeon/source": "./src/deprecation.ts",
       "types": "./dist/deprecation.d.ts",
       "default": "./dist/deprecation.js"
+    },
+    "./testing": {
+      "@marmeon/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./internal": {
+      "@marmeon/source": "./src/internal.ts",
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
     }
   },
   "publishConfig": {
@@ -81,10 +86,6 @@
         "types": "./dist/dev.d.ts",
         "default": "./dist/dev.js"
       },
-      "./vite": {
-        "types": "./dist/vite.d.ts",
-        "default": "./dist/vite.js"
-      },
       "./diagnostics": {
         "types": "./dist/diagnostics.d.ts",
         "default": "./dist/diagnostics.js"
@@ -92,6 +93,14 @@
       "./deprecation": {
         "types": "./dist/deprecation.d.ts",
         "default": "./dist/deprecation.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },

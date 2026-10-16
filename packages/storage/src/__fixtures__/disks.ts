@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TestClock } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import type { S3DiskOptions } from '../config.ts';
 import type { Disk, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import { LocalDisk } from '../drivers/local.ts';

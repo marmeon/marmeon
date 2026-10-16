@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, currentLogContext, listen, Logger, Redactor, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';

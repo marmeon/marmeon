@@ -1,7 +1,8 @@
 import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
 import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, Redactor, type Container, type QueuedListenerClass } from '@marmeon/core';
-import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
+import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
+import { messageBase, trace } from '@marmeon/core/internal';
 import type { Kysely } from '@marmeon/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';

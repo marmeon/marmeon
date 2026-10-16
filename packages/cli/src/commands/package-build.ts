@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
-import { browserSources, embedPackageInjections } from '@marmeon/core';
+import { browserSources, embedPackageInjections } from '@marmeon/core/internal';
 import type { CommandInput } from '../command.ts';
 
 /**

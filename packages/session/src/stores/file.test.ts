@@ -1,7 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { TestClock, withFileGuard } from '@marmeon/core';
+import { withFileGuard } from '@marmeon/core/internal';
+import { TestClock } from '@marmeon/core/testing';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { plainSessionCodec } from '../codec.ts';

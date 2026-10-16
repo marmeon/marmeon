@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { bindingNameOf, editDefinitionFile, editDefinition, importedBindings, type DefinitionEdit } from '@marmeon/core';
+import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
+import { bindingNameOf } from '@marmeon/core/internal';
 import { CommandRegistry, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 

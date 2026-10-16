@@ -1,5 +1,6 @@
-import { createApplication, defineModule, Logger, runWithRequest, type Application, type LogContext } from '@marmeon/core';
-import { channels, messageBase, publishEnded, type ExceptionMessage, type HttpRequestMessage, type SsrRenderMessage } from '@marmeon/core/diagnostics';
+import { createApplication, defineModule, Logger, type Application, type LogContext } from '@marmeon/core';
+import { messageBase, publishEnded, runWithRequest } from '@marmeon/core/internal';
+import { channels, type ExceptionMessage, type HttpRequestMessage, type SsrRenderMessage } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, HttpServiceProvider, view } from '@marmeon/http';
 import { openRoutes } from './test-helpers/open-routes.ts';

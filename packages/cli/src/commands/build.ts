@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
+import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core/internal';
 import { marmeonEntries, explainConfigError, importVite, ViteSetupError } from '@marmeon/server';
 import type { CommandInput } from '../command.ts';
 import { precompressAssets } from '../precompress.ts';

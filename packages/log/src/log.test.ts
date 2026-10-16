@@ -1,6 +1,7 @@
 import { Writable } from 'node:stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { ConsoleLogger, createApplication, describeError, LogContextSources, Redactor, redactText, runWithJob, runWithRequest, runWithTask } from '@marmeon/core';
+import { ConsoleLogger, createApplication, LogContextSources, Redactor, redactText } from '@marmeon/core';
+import { describeError, runWithJob, runWithRequest, runWithTask } from '@marmeon/core/internal';
 import { channels, type LogMessage } from '@marmeon/core/diagnostics';
 import pinoPretty from 'pino-pretty';
 import { describe, expect, it } from 'vitest';

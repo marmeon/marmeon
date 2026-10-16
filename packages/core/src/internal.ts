@@ -1,0 +1,31 @@
+/**
+ * What the framework's own packages import from the core: injection analysis and embedding, the manifest, the transaction
+ * frames and the context of a request, job or task. Not API, can change in any release — an app imports from `@marmeon/core`.
+ * @internal
+ */
+export { CLUSTER_WORKER } from './application.ts';
+export { messageBase, publishEnded, trace } from './channels.ts';
+export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
+export { coreSolutions } from './core-solutions.ts';
+export { describeError } from './redact.ts';
+export { bindingNameOf } from './definition-edit.ts';
+export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
+export type { DiscoveredPackages, DiscoverOptions, DiscoverySummary, Manifest } from './discovery/discover.ts';
+export { runtimeConditions } from './discovery/resolve.ts';
+export { isQueuedListener } from './events.ts';
+export { withFileGuard } from './file-guard.ts';
+export type { FileGuardOptions } from './file-guard.ts';
+export { browserSources } from './injection/browser.ts';
+export { embedPackageInjections } from './injection/embed.ts';
+export type { EmbedPackageOptions } from './injection/embed.ts';
+export { writeInjectionArtifacts } from './injection/artifacts.ts';
+export { interpolateHtml } from './html.ts';
+export { loadEnv } from './config/config.ts';
+export { logContextSourcesOf } from './logger.ts';
+export { runWithJob, runWithRequest, runWithTask } from './request-context.ts';
+export { staticNames } from './static-names.ts';
+export type { StaticName } from './static-names.ts';
+export { errOfRollback, leftTransactionOf, openTransactionOf, transactionOf } from './transaction-context.ts';
+export { fillPlaceholders } from './translator.ts';
+export { marmeonInjection } from './vite.ts';
+export type { InjectionPlugin } from './vite.ts';

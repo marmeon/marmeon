@@ -1,5 +1,5 @@
 import type { Application } from './application.ts';
-import { channels, messageBase } from './diagnostics.ts';
+import { channels, messageBase } from './channels.ts';
 import { Redactor } from './redact.ts';
 import { currentLogContext } from './request-context.ts';
 import { token } from './token.ts';

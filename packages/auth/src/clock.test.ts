@@ -1,4 +1,5 @@
-import { Clock, createApplication, defineModule, TestClock, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, type Container } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider } from '@marmeon/http';

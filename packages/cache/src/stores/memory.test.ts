@@ -1,4 +1,4 @@
-import { TestClock } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { describe, expect, it } from 'vitest';
 import { MemoryStore } from './memory.ts';
 

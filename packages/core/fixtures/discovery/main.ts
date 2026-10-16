@@ -1,5 +1,6 @@
 // The fixture app: discovers installed packages, registers their providers, resolves.
-import { createApplication, loadDiscoveredPackages } from '@marmeon/core';
+import { createApplication } from '@marmeon/core';
+import { loadDiscoveredPackages } from 'the-core-internals'; // the test points it at the core's internal entry
 import { Greeting, Mailer, Money } from '@acme/mailer';
 import { FakeMailer } from '@acme/mailer/testing';
 

@@ -243,6 +243,11 @@ start (see [the framework's paths](routing.md#the-frameworks-paths)). A package 
 loaded with their marker outside `/_marmeon/` is refused at load; `pnpm check:source` refuses importing them outside the
 framework's own sources.
 
+A package that ships test doubles for its users' tests puts them in a `./testing` subpath of their own (`@marmeon/core/testing`
+holds `TestClock` and `EventFake`), not in its main entry: the main entry stays what an app's code imports, and a bundle of the
+app never contains a fake. Name the fakes `*Fake`, document them on [the fakes page](fakes.md) and export the types their
+methods name from the same subpath.
+
 ### Hooks of the router
 
 Two hooks let a package take part in every request. Add them in `boot()`:

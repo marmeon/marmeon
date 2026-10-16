@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SystemClock, withFileGuard, type Clock } from '@marmeon/core';
+import { SystemClock, type Clock } from '@marmeon/core';
+import { withFileGuard } from '@marmeon/core/internal';
 import type { CacheStore, Entry } from '../cache.ts';
 
 /** A guard older than this was left by a process that died inside its few-microsecond critical section. */
