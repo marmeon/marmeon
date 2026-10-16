@@ -114,7 +114,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   anchor (a path to a package README fails, and so does an anchor GitHub cannot make or, outside the READMEs, a page without
   one). `styles.test.ts` reads the layout stylesheet: the phone menu is a panel that scrolls, and the side navigation and the menu are each shown at one breakpoint.
   `search.test.ts` checks the search's order. `modules/site/site.test.ts` checks the landing (server-rendered, public, no navigation, the
-  version). `docs.test.ts` checks the sections and their pages, previous and next, the start
+  version). The `modules/docs/docs-*.test.ts` files check the sections and their pages, previous and next, the start
   page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks (the reserved slug included).
 
 Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image) and
