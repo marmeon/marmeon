@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages, type FrameworkPackage } from './packages.ts';
 import { trustScript, TRUST_SCRIPT, ENVIRONMENT } from './npm-trust.ts';
-import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseVersion, RELEASE_CONFIG, releaseConfigCurrent, releaseSection, upgradesFrom } from './release-rules.ts';
+import { CATEGORIES, compareVersions, fromLine, isBreakingRelease, parseChangelog, parseVersion, RELEASE_CONFIG, releaseConfigCurrent, releaseOf, releaseSection, upgradesFrom } from './release-rules.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -492,7 +492,7 @@ export function checkTrust(repository: string): string[] {
 
 /**
  * 6 · `UPGRADING.md`: nothing before the first release; from then on every listed entry under its release. With the packages'
- * `version` the sections are bound to it: none above it, and a breaking release ({@link isBreakingRelease}) needs its section,
+ * `version` the sections are bound to it: none above it (a release candidate may have its release's section already), and a breaking release ({@link isBreakingRelease}) needs its section,
  * from a version of the line below, with its entries listed.
  */
 export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS, version?: string): string[] {
@@ -527,7 +527,7 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
         if (!parseVersion(to) || !parseVersion(from)) problems.push(`UPGRADING.md: "${line}" — "## Upgrading to <x.y.z> from <x.y.z>", plain versions`);
         else {
           if (compareVersions(to, from) <= 0) problems.push(`UPGRADING.md: "${line}" — a release upgrades from a lower version to a higher one`);
-          if (version !== undefined && compareVersions(to, version) > 0) problems.push(`UPGRADING.md has a section for ${to}, but the packages are at ${version}`);
+          if (version !== undefined && compareVersions(to, releaseOf(version)) > 0) problems.push(`UPGRADING.md has a section for ${to}, but the packages are at ${version}`);
         }
       }
     }

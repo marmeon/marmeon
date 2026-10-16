@@ -14,7 +14,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages } from './packages.ts';
-import { MAIN, maintenanceLine, isReleaseFile, parseReleaseBase, parseVersion, RELEASE_BASE, releaseCommit, releaseSection, releaseTarget, spawnRunner, type Runner } from './release-rules.ts';
+import { MAIN, maintenanceLine, isPlainVersion, isReleaseFile, parseReleaseBase, RELEASE_BASE, releaseCommit, releaseSection, releaseTarget, spawnRunner, type Runner } from './release-rules.ts';
 
 /** npm's error code for a package or version that does not exist (spelled so `check:source` does not read it as a decision number). */
 const NOT_FOUND = `E${404}`;
@@ -101,7 +101,7 @@ export function guard({ root, refType, branch, run }: GuardContext): GuardResult
     return { problems: [`The packages do not share one version — ${byVersion.join('; ')}.`], commit };
   }
   const version = versions[0]!;
-  if (!parseVersion(version)) return { problems: [`"${version}" is not a plain x.y.z version; prereleases are not released.`], commit };
+  if (!isPlainVersion(version)) return { problems: [`"${version}" is not a plain x.y.z version; prereleases are not released.`], commit };
 
   try {
     releaseSection(root, version);

@@ -215,6 +215,15 @@ describe('checkUpgrading — bound to the version', () => {
   });
 });
 
+describe('release candidates', () => {
+  it('may have the section of their release already, and none above it', () => {
+    expectProblems(checkUpgrading(repositoryWith(released()), anchors, '0.3.0-rc.1'), []);
+    expectProblems(checkUpgrading(repositoryWith(released()), anchors, '0.2.0-rc.1'), [
+      'UPGRADING.md has a section for 0.3.0, but the packages are at 0.2.0-rc.1',
+    ]);
+  });
+});
+
 describe('prereleases', () => {
   it('refuses a prerelease version', () => {
     const problems = checkUpgrading(repositoryWith(unreleased), {}, '0.2.0-beta.0');

@@ -122,6 +122,7 @@ describe('guard on a fake runner', () => {
     writePackage(root, 'mail', '@marmeon/mail', '0.1.2');
     expect(guard({ root, ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('do not share one version');
     expect(guard({ root: fixture('0.1.3-beta.1'), ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('prereleases are not released');
+    expect(guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun(none) }).problems).toEqual(['"1.0.0-rc.1" is not a plain x.y.z version; prereleases are not released.']);
   });
 
   it('refuses a shallow clone, a branch without a release commit and a failing checkout, and stops there', () => {

@@ -55,24 +55,51 @@ export function releaseConfigCurrent(repository: string = root): boolean {
   return existsSync(file) && readFileSync(file, 'utf8') === releaseConfig();
 }
 
-export type Version = readonly [major: number, minor: number, patch: number];
+/** `rc` is set for a release candidate, `x.y.z-rc.N`. */
+export type Version = readonly [major: number, minor: number, patch: number, rc?: number];
 
-/** `x.y.z` and nothing else: no leading zeros, no prerelease, no build metadata, no `v`. */
+/** `x.y.z` or the release candidate `x.y.z-rc.N` (N from 1) and nothing else: no leading zeros, no other prerelease, no build metadata, no `v`. */
 export function parseVersion(text: string): Version | undefined {
-  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(text);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.([1-9]\d*))?$/.exec(text);
+  if (!match) return undefined;
+  const base = [Number(match[1]), Number(match[2]), Number(match[3])] as const;
+  return match[4] === undefined ? base : [...base, Number(match[4])];
+}
+
+/** Whether `text` is a plain `x.y.z`: what may be published as a release (a release candidate is not). */
+export function isPlainVersion(text: string): boolean {
+  const version = parseVersion(text);
+  return version !== undefined && version[3] === undefined;
 }
 
 function mustParse(text: string): Version {
   const version = parseVersion(text);
-  if (!version) throw new Error(`"${text}" is not a plain x.y.z version.`);
+  if (!version) throw new Error(`"${text}" is not an x.y.z or x.y.z-rc.N version.`);
   return version;
 }
 
-/** Negative when `a` is lower than `b`, positive when higher, 0 when equal. */
+/** The release candidate number of `version`, `undefined` for a release. */
+export function rcOf(version: string): number | undefined {
+  return mustParse(version)[3];
+}
+
+/** The release a candidate leads to: `1.0.0-rc.2` → `1.0.0`; a release stays as it is. */
+export function releaseOf(version: string): string {
+  const [major, minor, patch] = mustParse(version);
+  return `${major}.${minor}.${patch}`;
+}
+
+/** The release candidate `rc` of the release `version`: `withRc('1.0.0', 2)` is `1.0.0-rc.2`. */
+export function withRc(version: string, rc: number): string {
+  if (rcOf(version) !== undefined) throw new Error(`${version} is a release candidate already.`);
+  if (!Number.isInteger(rc) || rc < 1) throw new Error(`${rc} is not a release candidate number.`);
+  return `${version}-rc.${rc}`;
+}
+
+/** Negative when `a` is lower than `b`, positive when higher, 0 when equal. A candidate is lower than its release and higher than the candidates before it. */
 export function compareVersions(a: string, b: string): number {
   const [left, right] = [mustParse(a), mustParse(b)];
-  return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+  return left[0] - right[0] || left[1] - right[1] || left[2] - right[2] || (left[3] ?? Infinity) - (right[3] ?? Infinity) || 0;
 }
 
 export type Bump = 'major' | 'minor' | 'patch';
@@ -83,17 +110,22 @@ export function bumpFor(current: string, labels: { breaking: boolean; feature: b
   return labels.breaking ? 'major' : labels.feature ? 'minor' : 'patch';
 }
 
+/** The release `bump` above the release `current`; a candidate has none (it leads to {@link releaseOf}). */
 export function bumpVersion(current: string, bump: Bump): string {
-  const [major, minor, patch] = mustParse(current);
+  const [major, minor, patch, rc] = mustParse(current);
+  if (rc !== undefined) throw new Error(`${current} is a release candidate: it has no next version, its release is ${releaseOf(current)}.`);
   if (bump === 'major') return `${major + 1}.0.0`;
   if (bump === 'minor') return `${major}.${minor + 1}.0`;
   return `${major}.${minor}.${patch + 1}`;
 }
 
-/** Whether `version` is the first of a breaking line: `0.y.0` (y >= 2; 0.1.0 was the first release) or `x.0.0` (x >= 1). */
+/**
+ * Whether `version` is the first of a breaking line: `0.y.0` (y >= 2; 0.1.0 was the first release) or `x.0.0` (x >= 1). A release
+ * candidate is none: the upgrade guide belongs to its release.
+ */
 export function isBreakingRelease(version: string): boolean {
-  const [major, minor, patch] = mustParse(version);
-  if (patch !== 0) return false;
+  const [major, minor, patch, rc] = mustParse(version);
+  if (patch !== 0 || rc !== undefined) return false;
   return major === 0 ? minor >= 2 : minor === 0;
 }
 
@@ -133,11 +165,11 @@ export type ReleaseTarget = { ok: true; distTag: string; markLatest: boolean } |
 /**
  * The one place that picks the npm dist-tag and whether the draft GitHub Release is marked latest, from the branch the workflow
  * was started on, the version and npm's current `latest` (`undefined`: never published). No npm access: the guard supplies the facts.
- * A prerelease tag (`next`, `canary`) would be chosen here once prerelease versions are allowed; they are refused today.
+ * A release candidate is refused here: it would need a prerelease dist-tag, never `latest`.
  */
 export function releaseTarget({ branch, version, latest }: { branch: string; version: string; latest: string | undefined }): ReleaseTarget {
   const refuse = (problem: string): ReleaseTarget => ({ ok: false, problem });
-  if (!parseVersion(version)) return refuse(`"${version}" is not a plain x.y.z version (branch ${branch}); prereleases are not released.`);
+  if (!isPlainVersion(version)) return refuse(`"${version}" is not a plain x.y.z version (branch ${branch}); prereleases are not released.`);
   const line = lineOf(version);
   const branchLine = maintenanceLine(branch);
   if (branch !== MAIN && branchLine === undefined) {
@@ -152,7 +184,7 @@ export function releaseTarget({ branch, version, latest }: { branch: string; ver
     if (branch !== MAIN) return refuse(`npm has no latest for ${branch} to sit below: a maintenance release needs a newer release on main first; check the registry and login.`);
     return { ok: true, distTag: 'latest', markLatest: true };
   }
-  if (!parseVersion(latest)) return refuse(`npm's latest "${latest}" is not a plain x.y.z version (branch ${branch}, version ${version}).`);
+  if (!isPlainVersion(latest)) return refuse(`npm's latest "${latest}" is not a plain x.y.z version (branch ${branch}, version ${version}).`);
   const order = compareVersions(version, latest);
   if (order === 0) return refuse(`${version} is already published as latest (branch ${branch}).`);
   if (order > 0) return { ok: true, distTag: 'latest', markLatest: true };
@@ -230,7 +262,7 @@ export interface Changelog {
 }
 
 /**
- * Splits a changelog at its `## ` headings, each of which must be `## x.y.z`. Code fences are not recognised: a `## ` line inside
+ * Splits a changelog at its `## ` headings, each of which must be `## x.y.z` or `## x.y.z-rc.N`. Code fences are not recognised: a `## ` line inside
  * one throws.
  */
 export function parseChangelog(text: string): Changelog {
@@ -241,7 +273,7 @@ export function parseChangelog(text: string): Changelog {
     if (line.startsWith('## ')) {
       const ending = /\r?\n$/.exec(line)?.[0] ?? '';
       const version = line.slice(3, line.length - ending.length);
-      if (!parseVersion(version)) throw new Error(`CHANGELOG line ${index + 1}: ${JSON.stringify(line.slice(0, line.length - ending.length))} is not "## x.y.z".`);
+      if (!parseVersion(version)) throw new Error(`CHANGELOG line ${index + 1}: ${JSON.stringify(line.slice(0, line.length - ending.length))} is not "## x.y.z" or "## x.y.z-rc.N".`);
       sections.push({ version, ending, body: '' });
     } else if (sections.length === 0) title += line;
     else sections[sections.length - 1]!.body += line;
