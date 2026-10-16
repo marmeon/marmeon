@@ -148,8 +148,9 @@ export class AcceptInvitationController extends Controller {
 }
 ```
 
-The `default` makes the switch exhaustive. When `accept()` gains a kind, the controller stops compiling until it handles the
-new one:
+The `default` makes the switch exhaustive. It suits your own results and the framework's results listed
+[below](#results-the-framework-returns), whose kinds are closed. When `accept()` gains a kind, the controller stops compiling
+until it handles the new one:
 
 ```text
 Type '{ kind: "banned"; }' does not satisfy the expected type 'never'.
@@ -175,6 +176,10 @@ a transaction, an `err` rolls the transaction back, as the [transactions](transa
 | `PasswordResetTokenStore.create()` | `throttled` | [Password reset](passwords.md#a-store-of-your-own) |
 | `PasswordResetTokenStore.consume()` | `invalid-token` | [Password reset](passwords.md#a-store-of-your-own) |
 | `lock.get(callback)` | `locked` | [Cache](cache.md#locks) |
+
+These `err` kinds are closed: a new kind comes only with a new method, never as a new member of an existing one. That is why an
+exhaustive `switch` over them with `satisfies never` keeps compiling across minor versions. Other unions are open, as
+[when a union grows](releases.md#when-a-union-grows) explains.
 
 `RememberTokenStore` and `PasswordResetTokenStore` are the contracts a store of your own implements, so the table lists the kinds
 each has to return. A `get(callback)` whose callback returns a `Result` gives a nested one: the lock's `ok` holds the callback's
