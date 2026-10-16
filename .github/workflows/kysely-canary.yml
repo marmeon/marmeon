@@ -1,0 +1,89 @@
+# Once a week: build and test the database, table and queue packages against the newest Kysely under the `next` tag, which is
+# ahead of the exact version the packages pin. A break, or a statement or method the guards of `@marmeon/database` do not
+# classify, shows here before a pull request that updates Kysely. The newest version goes in on the runner only; nothing is
+# committed. Not a required check: a red run is a reminder, never a block for a pull request.
+#
+# This runs a package nobody has pinned or reviewed, hence the shape, which `scripts/check-release.ts` keeps: a schedule and a
+# manual start, never a pull request or a push; no permission but reading the contents, no secret; a checkout that leaves no
+# credentials behind; actions pinned by SHA; no cache of any kind, neither restored nor saved, so the run can plant nothing a
+# later run of the normal CI would read. The version reaches the script through env, never through an expression inside it.
+name: Kysely canary
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: kysely-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    name: kysely next
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0, the version from "packageManager"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      # The tag is data from the registry: only a version number goes on. The install keeps the repository's release-age gate, so a
+      # version younger than that is left for the next run, and so is a `next` that is not newer than the pin; both end green.
+      - id: kysely
+        name: resolve the newest Kysely
+        run: |
+          version="$(npm view kysely@next version)"
+          if [[ ! "$version" =~ ^[0-9][0-9a-z.-]*$ ]]; then
+            echo "not a version: $version" >&2
+            exit 1
+          fi
+          pinned="$(node -p "require('./packages/database/package.json').dependencies.kysely")"
+          age="$(sed -n 's/^minimum[A-Za-z]*: *//p' pnpm-workspace.yaml)"
+          verdict="$(npm view kysely time --json | VERSION="$version" PINNED="$pinned" AGE="$age" node -e '
+            const times = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const core = (v) => v.split("-")[0].split(".").map(Number);
+            const [next, pin] = [core(process.env.VERSION), core(process.env.PINNED)];
+            const newer = (next[0] - pin[0] || next[1] - pin[1] || next[2] - pin[2]) > 0;
+            const minutes = (Date.now() - Date.parse(times[process.env.VERSION])) / 60000;
+            if (!/^[0-9]+$/.test(process.env.AGE) || Number.isNaN(minutes)) throw new Error("no usable age (" + process.env.AGE + ") or publish time of " + process.env.VERSION);
+            console.log(!newer ? "older" : minutes >= Number(process.env.AGE) ? "test" : "young");
+          ')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$verdict" in
+            test) echo "run=true" >> "$GITHUB_OUTPUT"; echo "Testing Kysely $version (pinned: $pinned)." >> "$GITHUB_STEP_SUMMARY" ;;
+            older)
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Skipped: Kysely next ($version) is not newer than the pin ($pinned)." >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::Kysely next ($version) is not newer than the pin ($pinned); nothing was tested."
+              ;;
+            young)
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Skipped: Kysely $version is younger than the release-age gate ($age minutes); the next run tests it." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "unexpected verdict: $verdict" >&2
+              exit 1
+              ;;
+          esac
+      # Changes the manifests and the lockfile of this checkout only; the checkout is thrown away with the runner.
+      - name: install it over the pinned version
+        if: steps.kysely.outputs.run == 'true'
+        env:
+          VERSION: ${{ steps.kysely.outputs.version }}
+        run: pnpm -r --filter "./packages/*" update "kysely@$VERSION"
+      - if: steps.kysely.outputs.run == 'true'
+        run: pnpm build
+      - if: steps.kysely.outputs.run == 'true'
+        run: pnpm run ci --only typecheck
+      - if: steps.kysely.outputs.run == 'true'
+        run: pnpm test packages/database packages/table packages/queue

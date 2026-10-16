@@ -302,7 +302,15 @@ command, and the [package development](docs/package-development.md#dependencies-
    verification is security-critical, so a proven implementation; loaded only by `@marmeon/auth/passkeys`.
 6. Decided exception: **`kysely` is an exact dependency of `@marmeon/database` and `@marmeon/table`** — no caret, the same version in
    both. The builder's shape is public API and the security plugins are tested against exactly this version; one pin in every
-   package installs one copy. A Kysely update is a pull request of its own that changes both manifests.
+   package installs one copy. A Kysely update is a pull request of its own that changes both manifests. Once a week the
+   workflow `.github/workflows/kysely-canary.yml` installs the newest Kysely under the `next` tag over that pin on its runner
+   (nothing is committed), builds, typechecks and tests `database`, `table` and `queue`, and fails when something breaks or a
+   new builder method or statement is unclassified. It is no required check and opens no issue: a red run is the cue to prepare the update. A version younger than the
+   release-age gate of `pnpm-workspace.yaml`, or a `next` not newer than the pin, is skipped with a note in the run's summary
+   (green). A schedule runs only on the default branch and GitHub disables it after 60 days without activity in the repository, so
+   start the workflow by hand once after it merges. It runs
+   code nobody pinned, so `pnpm check-release` holds it to a schedule and a manual start (never a pull request or a push), the
+   `contents: read` permission and no secret, a checkout without credentials, actions pinned by SHA, and no cache, restored or saved.
 
 A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
 peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different
