@@ -44,7 +44,7 @@ describe('the imports of a file', () => {
   it('knows a default import, a namespace import and a dynamic import', () => {
     expect(importsOf("import x, { y } from 'm';")).toEqual([{ specifier: 'm', names: ['y', 'default'] }]);
     expect(importsOf("import * as ns from 'm'; export * from 'n'; await import('o');")).toEqual([
-      { specifier: 'm', names: undefined },
+      { specifier: 'm', names: undefined, namespace: 'ns' },
       { specifier: 'n', names: undefined },
       { specifier: 'o', names: undefined },
     ]);
@@ -66,7 +66,7 @@ describe('the imports of a file', () => {
       { specifier: 'm', names: undefined },
       { specifier: 'm', names: undefined },
       { specifier: 'm', names: undefined },
-      { specifier: 'n', names: undefined },
+      { specifier: 'n', names: undefined, namespace: 'lib' },
       { specifier: 'o', names: ['Foo'] },
     ]);
   });
@@ -180,7 +180,7 @@ describe('which mentions count', () => {
 
   it('finds a name anywhere in inline code, and pairs backtick runs as CommonMark does', () => {
     const names = new Set(['LogConfig', 'MarmeonApp', 'SessionConfig', 'fromHtml', 'html', 'Key']);
-    expect([...mentionsOf("`static config = [LogConfig]`, `<MarmeonApp>` and `SessionConfig['driver']`", names)].sort()).toEqual(['LogConfig', 'MarmeonApp', 'SessionConfig']);
+    expect([...mentionsOf("`LogConfig`, `<MarmeonApp>` and `SessionConfig.resolve`", names)].sort()).toEqual(['LogConfig', 'MarmeonApp', 'SessionConfig']);
     expect([...mentionsOf('Write `` html`…` `` or `fromHtml(x)`.', names)].sort()).toEqual(['fromHtml', 'html']);
     expect(mentionsOf('Use a Key here, which is no code.', names).size).toBe(0);
     expect([...mentionsOf('```tsx\nreturn <MarmeonApp />;\n```', names)]).toEqual(['MarmeonApp']);
@@ -195,6 +195,134 @@ describe('which mentions count', () => {
   it('names the other entries that export a mentioned name', () => {
     const usage = usageOf('@marmeon/demo', repository(), [file('docs/a.md', 'Call `shared()`.')])!;
     expect(usage.names.find((entry) => entry.name === 'shared')!.reason).toContain('also exported by @marmeon/other');
+  });
+});
+
+describe('which words of a page are a use', () => {
+  const known = new Set(['run', 'Output', 'PageObject', 'new']);
+
+  it('counts inline code that starts like a use, and no word of prose or of a sentence in code', () => {
+    expect(mentionsOf('We run the tests. The Output is long.', known).size).toBe(0);
+    expect(mentionsOf('`run the tests` and `see Output here`', known).size).toBe(0);
+    expect([...mentionsOf('`run()`', known)]).toEqual(['run']);
+    expect([...mentionsOf('`new PageObject(page)` and `Output<T>`', known)].sort()).toEqual(['Output', 'PageObject']);
+    expect([...mentionsOf('`<Output>`', known)]).toEqual(['Output']);
+  });
+});
+
+describe('public declarations that name an export', () => {
+  /** `@marmeon/demo` with the entries `.` and `/page`, and `@marmeon/other`; the names `Route`, `Handler` and `PageObject` of `.` are used by nobody. */
+  function snapshots(entries: ApiItem[]) {
+    const root = tempDir('marmeon-api-usage-');
+    for (const [directory, items] of [['demo', entries.filter((entry) => entry.entry.startsWith('@marmeon/demo'))], ['other', entries.filter((entry) => entry.entry === '@marmeon/other')]] as const) {
+      if (items.length === 0) continue;
+      mkdirSync(join(root, 'packages', directory), { recursive: true });
+      writeFileSync(join(root, 'packages', directory, 'api.md'), renderSnapshot(`@marmeon/${directory}`, items, new Map()));
+    }
+    return root;
+  }
+  const base = [item('@marmeon/demo', 'Route'), item('@marmeon/demo', 'Handler'), item('@marmeon/demo', 'PageObject')];
+
+  it('keeps a name that a stable declaration of another entry or package names', () => {
+    const root = snapshots([
+      ...base,
+      item('@marmeon/demo/page', 'check', 'export declare function check(route: Route): void;'),
+      item('@marmeon/other', 'Mount', 'export declare class Mount { handle(h: Handler): void }'),
+    ]);
+    const usage = usageOf('@marmeon/demo', root, [])!;
+    const by = (name: string) => usage.names.find((entry) => entry.name === name)!;
+    expect(by('Route')).toMatchObject({ suggestion: 'keep', namedBy: ['@marmeon/demo/page check'] });
+    expect(by('Route').reason).toContain('named by a public declaration of @marmeon/demo/page');
+    expect(by('Handler')).toMatchObject({ suggestion: 'keep', namedBy: ['@marmeon/other Mount'] });
+    expect(by('PageObject')).toMatchObject({ suggestion: 'drop', namedBy: [] });
+    expect(renderUsage(usage)).toContain('Route  — named by @marmeon/demo/page check');
+  });
+
+  it('counts a Referenced item and an Experimental one, but not the middle of a word or a member', () => {
+    const root = snapshots([
+      ...base,
+      { entry: '@marmeon/demo/page', section: 'referenced', name: 'Hidden', text: 'export interface Hidden { r: Route }' },
+      { entry: '@marmeon/demo/page', section: 'experimental', name: 'Trial', text: 'export declare const Trial: Handler;' },
+      item('@marmeon/demo/page', 'PageObjectLike', 'export declare const PageObjectLike: { PageObject: 1; x: Other.PageObject };'),
+    ]);
+    const usage = usageOf('@marmeon/demo', root, [])!;
+    const by = (name: string) => usage.names.find((entry) => entry.name === name)!;
+    expect(by('Route').namedBy).toEqual(['@marmeon/demo/page Hidden']);
+    expect(by('Handler').namedBy).toEqual(['@marmeon/demo/page Trial']);
+    expect(by('PageObject').namedBy).toEqual([]);
+  });
+
+  it('does not count property keys, method or parameter names, string literals or comment lines', () => {
+    const root = snapshots([
+      ...base,
+      item('@marmeon/demo/page', 'Keys', 'export interface Keys { Route: 1; Handler?: 2 }'),
+      item('@marmeon/demo/page', 'Methods', 'export interface Methods { Route(x: 1): void; PageObject?(): void }'),
+      item('@marmeon/demo/page', 'param', 'export declare function param(Route: 1, Handler?: 2): void;'),
+      item('@marmeon/demo/page', 'LABEL', 'export declare const LABEL: "layers/Route" | \'Handler\' | `PageObject`;'),
+      item('@marmeon/demo/page', 'Commented', 'export interface Commented {\n  // Route Handler PageObject\n  x: 1;\n}'),
+    ]);
+    const usage = usageOf('@marmeon/demo', root, [])!;
+    for (const name of ['Route', 'Handler', 'PageObject']) expect(usage.names.find((entry) => entry.name === name)!.namedBy, name).toEqual([]);
+  });
+
+  it('counts the placeholders of a template literal type, but not its text', () => {
+    const root = snapshots([
+      ...base,
+      item('@marmeon/demo/page', 'Join', 'export type Join<T> = `Handler/${Route<T>}/${`PageObject-${Handler}`}`;'),
+    ]);
+    const by = (name: string) => usageOf('@marmeon/demo', root, [])!.names.find((entry) => entry.name === name)!;
+    expect(by('Route').namedBy).toEqual(['@marmeon/demo/page Join']);
+    expect(by('Handler').namedBy).toEqual(['@marmeon/demo/page Join']);
+    expect(by('PageObject').namedBy).toEqual([]);
+  });
+
+  it('counts a qualified import type of the entry, and none of another specifier', () => {
+    const root = snapshots([
+      ...base,
+      item('@marmeon/other', 'Mount', 'export declare const Mount: import("@marmeon/demo").Route;'),
+      item('@marmeon/other', 'Other', 'export declare const Other: import("@marmeon/demo/page").Handler;'),
+    ]);
+    const by = (name: string) => usageOf('@marmeon/demo', root, [])!.names.find((entry) => entry.name === name)!;
+    expect(by('Route')).toMatchObject({ suggestion: 'keep', namedBy: ['@marmeon/other Mount'] });
+    expect(by('Handler').namedBy).toEqual([]);
+  });
+
+  it('only hints when the entry itself names the export', () => {
+    const root = snapshots([...base, item('@marmeon/demo', 'check', 'export declare function check(route: Route): void;')]);
+    const route = usageOf('@marmeon/demo', root, [])!.names.find((entry) => entry.name === 'Route')!;
+    expect(route).toMatchObject({ suggestion: 'drop', namedBy: [], namedHere: ['check'] });
+    expect(route.reason).toContain('named by check — would show as Referenced');
+    expect(renderUsage(usageOf('@marmeon/demo', root, [])!)).toContain('named here by check — would show as Referenced');
+  });
+});
+
+describe('namespace imports', () => {
+  const run = (text: string) => {
+    const usage = usageOf('@marmeon/demo', repository(), [file('apps/web-app/c.ts', text)])!;
+    return { usage, by: (name: string) => usage.names.find((entry) => entry.name === name)! };
+  };
+
+  it('reads the members of a dynamic import kept in a constant', () => {
+    const { usage, by } = run("const m = await import('@marmeon/demo');\nm.used();");
+    expect(by('used')).toMatchObject({ suggestion: 'keep', apps: ['apps/web-app/c.ts'] });
+    expect(usage.wholeImports).toEqual([]);
+  });
+
+  it('reads the members of import * as and the names of a destructuring', () => {
+    const { usage, by } = run("import * as demo from '@marmeon/demo';\nconst { docs, neighbour: n } = demo;\ntype T = demo.Key; demo?.used();");
+    expect(['docs', 'neighbour', 'Key', 'used'].map((name) => by(name).suggestion)).toEqual(['keep', 'keep', 'keep', 'keep']);
+    expect(usage.wholeImports).toEqual([]);
+  });
+
+  it('still counts the entry as a whole when the namespace is passed on, spread or indexed', () => {
+    for (const use of ['register(m);', 'const copy = { ...m };', 'm[key]();', 'const { a, ...rest } = m;', 'export { m };']) {
+      const { usage } = run(`const m = await import('@marmeon/demo');\nm.used();\n${use}`);
+      expect(usage.wholeImports, use).toEqual(['apps/web-app/c.ts']);
+    }
+  });
+
+  it('keeps export * as a whole import', () => {
+    expect(run("export * as demo from '@marmeon/demo';").usage.wholeImports).toEqual(['apps/web-app/c.ts']);
   });
 });
 
