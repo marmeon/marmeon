@@ -1737,7 +1737,7 @@ describe('Passkeys: the events', () => {
   it('PasskeyRegistered, PasskeyRemoved and PasskeyCloneSuspected carry JSON payloads and refuse malformed ones', async () => {
     expect(await validate(PasskeyRegistered, new PasskeyRegistered(ada, 'Laptop'))).toEqual({ userId: 1, name: 'Laptop' });
     expect(await validate(PasskeyRegistered, { userId: 1 })).toBeUndefined();
-    expect(await validate(PasskeyRemoved, new PasskeyRemoved(ada))).toEqual({ userId: 1 });
+    expect(await validate(PasskeyRemoved, new PasskeyRemoved(ada))).toEqual({ userId: 1, via: 'user' });
     expect(await validate(PasskeyRemoved, { userId: {} })).toBeUndefined();
     expect(await validate(PasskeyCloneSuspected, new PasskeyCloneSuspected(ada, 7))).toEqual({ userId: 1, passkeyId: 7 });
     expect(await validate(PasskeyCloneSuspected, { userId: 1, passkeyId: 'seven' })).toBeUndefined();

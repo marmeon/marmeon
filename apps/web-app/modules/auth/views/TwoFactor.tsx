@@ -6,7 +6,7 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowTwoFactorController>;
 
-export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCodesLeft }: Props) {
+export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCodesLeft, verified }: Props) {
   const route = useRoute();
   const t = useTranslation('auth');
   const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
@@ -17,9 +17,17 @@ export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCo
     <main>
       <Head title={t('two_factor.title')} />
       <h1>{t('two_factor.title')}</h1>
+      {!verified && (
+        <div className="card cluster">
+          <p>{t('verify.needed_for_factors')}</p>
+          <Link route="auth.verification.send" className="button">
+            {t('verify.resend')}
+          </Link>
+        </div>
+      )}
       <p>{t('two_factor.intro')}</p>
 
-      {!enabled && !setup && (
+      {verified && !enabled && !setup && (
         <Link route="auth.two-factor.begin">{t('two_factor.enable')}</Link>
       )}
 

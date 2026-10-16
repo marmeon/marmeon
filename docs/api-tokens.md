@@ -194,8 +194,9 @@ the transaction gives the tokens back, as long as your token store uses the defa
 change.
 
 Turn it on when a reset is how a stolen account comes back to its owner: whoever had the password may have created a token with
-it. With open registration, `AUTH_PRIVATE_REGISTRATION=false`, turn it on: an account registered with somebody else's address can
-create a token before the owner takes the account over with a reset, and the reset then ends that token too.
+it. With open registration, `AUTH_PRIVATE_REGISTRATION=false`, a token of an account whose address nobody confirmed ends with the reset
+whatever this setting says, and the starter kit no longer lets such an account create one. Turn it on all the same for the accounts that
+were confirmed.
 
 ## Pruning tokens
 

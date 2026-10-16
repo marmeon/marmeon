@@ -1,4 +1,4 @@
-import { authenticate, confirmedPassword, guest } from '@marmeon/auth';
+import { authenticate, confirmedPassword, guest, verified } from '@marmeon/auth';
 import { confirmedSecondFactor, twoFactor } from '@marmeon/auth/two-factor';
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone, signed } from '@marmeon/http';
@@ -114,11 +114,14 @@ export default defineRoutes((Route) => {
   // that is older than that, must not add a factor of its own or take one away. An account without a factor passes — its first one needs
   // only the password — which keeps the setup page reachable. Confirming a setup is left out, like the sudo mode.
   const factors = sudo.middleware(confirmedSecondFactor({ verify: 'auth.two-factor.verify' }));
+  // An account owns a factor, a passkey or a token only once its address is confirmed — in every registration mode: whoever signed up with
+  // somebody else's address must not attach a way in of their own before the owner got the link. Adding a factor needs it; the rest does not.
+  const confirmedFactors = factors.middleware(verified());
   // The second factor: sudo mode for all of it; turning it off asks for the password again.
   factors.get('/settings/two-factor', ShowTwoFactorController).name('auth.two-factor');
-  factors.post('/settings/two-factor/setup', BeginTwoFactorController).name('auth.two-factor.begin');
+  confirmedFactors.post('/settings/two-factor/setup', BeginTwoFactorController).name('auth.two-factor.begin');
   // Confirming needs a signed-in user and the throttle, not sudo mode: the code of a setup that took a while to scan must not be lost.
-  confirmed.post('/settings/two-factor/confirm', ConfirmTwoFactorController).name('auth.two-factor.confirm');
+  confirmed.middleware(verified()).post('/settings/two-factor/confirm', ConfirmTwoFactorController).name('auth.two-factor.confirm');
   factors.post('/settings/two-factor/recovery-codes', RegenerateRecoveryCodesController).name('auth.two-factor.codes');
   // The recovery codes are layers that answer these POSTs, shown once; Forward asks their URLs with a GET (the settings page).
   confirmed.get('/settings/two-factor/confirm', RedirectToTwoFactorController);
@@ -136,8 +139,8 @@ export default defineRoutes((Route) => {
   confirmed.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 })).get('/settings/sensitive', ShowSensitiveController).name('auth.sensitive');
   // Passkeys: sudo mode and a recently proven factor for all of it but renaming; adding one asks for the password again, removing the last factor too.
   factors.get('/settings/passkeys', ShowPasskeysController).name('auth.passkeys');
-  factors.post('/settings/passkeys/options', PasskeyRegistrationOptionsController).name('auth.passkeys.options');
-  factors.post('/settings/passkeys', RegisterPasskeyController).name('auth.passkeys.store').block();
+  confirmedFactors.post('/settings/passkeys/options', PasskeyRegistrationOptionsController).name('auth.passkeys.options');
+  confirmedFactors.post('/settings/passkeys', RegisterPasskeyController).name('auth.passkeys.store').block();
   sudo.put('/settings/passkeys/:passkey', RenamePasskeyController).name('auth.passkeys.update');
   factors.post('/settings/passkeys/:passkey/release', ReleasePasskeyController).name('auth.passkeys.release').block();
   factors.post('/settings/passkeys/:passkey/remove', RemovePasskeyController).name('auth.passkeys.destroy').block();
@@ -148,7 +151,7 @@ export default defineRoutes((Route) => {
   // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');
   // A new token and a new address are as good as a factor of one's own: a stolen session must not make either with the password alone.
-  factors.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
+  confirmedFactors.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
 
   // E-mail verification: the link is signed (made by the app, expires) — and only for its own user. Internal: only

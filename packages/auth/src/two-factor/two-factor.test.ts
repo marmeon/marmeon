@@ -491,7 +491,7 @@ describe('TwoFactor: setting up', () => {
     await a.login();
     expect(await a.tf('begin')).toMatchObject({ thrown: expect.stringContaining('source of factors') });
 
-    const deaf = await boot({}, { state: { factors: async () => [], enabledSince: async () => undefined } });
+    const deaf = await boot({}, { state: { removeAll: async () => {}, factors: async () => [], enabledSince: async () => undefined } });
     const b = deaf.browser();
     await b.login();
     const setup = await b.tf('begin');
@@ -522,7 +522,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
 
   it('a sign-in that read "no factor" but finishes after the commit is taken back, token and cookie included', async () => {
     let reads = 0;
-    const state: TwoFactorState = { factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined };
+    const state: TwoFactorState = { removeAll: async () => {}, factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined };
     const booted = await boot({}, { state });
     const b = booted.browser();
     events.length = 0;
@@ -543,6 +543,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
         throw new Error('the database went away');
       },
       enabledSince: async () => undefined,
+      removeAll: async () => {},
     };
     const booted = await boot({}, { state });
     const b = booted.browser();
@@ -555,7 +556,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
   it('fails closed when forgetting the token throws: nobody stays signed in, and the token signs nobody in', async () => {
     let reads = 0;
     const factorSince = new Date(Date.now() + 60_000); // the commit that the second read saw, later than the token
-    const state: TwoFactorState = { factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => (reads > 1 ? factorSince : undefined) };
+    const state: TwoFactorState = { removeAll: async () => {}, factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => (reads > 1 ? factorSince : undefined) };
     const booted = await boot({}, { state });
     const tokens = booted.application.container.make(RememberTokenStore);
     let token: string | undefined;
@@ -572,7 +573,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
 
   it('a remember-me token whose time cannot be read is refused, not taken as a proof', async () => {
     let on = false;
-    const state: TwoFactorState = { factors: async () => (on ? ['totp'] : []), enabledSince: async () => (on ? new Date(Date.now() - 60_000) : undefined) };
+    const state: TwoFactorState = { removeAll: async () => {}, factors: async () => (on ? ['totp'] : []), enabledSince: async () => (on ? new Date(Date.now() - 60_000) : undefined) };
     const booted = await boot({}, { state });
     const first = booted.browser();
     await first.login(ada.email, 'secret', true);
@@ -593,7 +594,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
 
   it('a remember-me token is refused when the factor\'s start time cannot be read', async () => {
     let on = false;
-    const state: TwoFactorState = { factors: async () => (on ? ['totp'] : []), enabledSince: async () => (on ? new Date(Number.NaN) : undefined) };
+    const state: TwoFactorState = { removeAll: async () => {}, factors: async () => (on ? ['totp'] : []), enabledSince: async () => (on ? new Date(Number.NaN) : undefined) };
     const booted = await boot({}, { state });
     const first = booted.browser();
     await first.login(ada.email, 'secret', true);
@@ -605,7 +606,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
 
   it('a remember-me token with an unreadable time is refused when the account has a factor but no start time', async () => {
     let on = false;
-    const state: TwoFactorState = { factors: async () => (on ? ['totp'] : []), enabledSince: async () => undefined };
+    const state: TwoFactorState = { removeAll: async () => {}, factors: async () => (on ? ['totp'] : []), enabledSince: async () => undefined };
     const booted = await boot({}, { state });
     const first = booted.browser();
     await first.login(ada.email, 'secret', true);
@@ -639,7 +640,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
 
   it('login() takes a sign-in back the same way', async () => {
     let reads = 0;
-    const state: TwoFactorState = { factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined };
+    const state: TwoFactorState = { removeAll: async () => {}, factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined };
     const booted = await boot({}, { state });
     const b = booted.browser();
     events.length = 0;
@@ -954,6 +955,7 @@ describe('TwoFactor: changing the factors of an account that has one', () => {
     const state: TwoFactorState = {
       factors: async (id) => [...(passkey ? (['passkey'] as const) : []), ...(await store!.factors(id))],
       enabledSince: async (id) => store!.enabledSince(id),
+      removeAll: async () => {},
     };
     const booted = await boot({}, { state });
     store = booted.store;

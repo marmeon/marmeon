@@ -14,7 +14,7 @@ export class ShowPasskeysController extends Controller {
     this.#twoFactor = twoFactor;
   }
 
-  async handle(_ctx: HttpContext<Authenticated>) {
+  async handle(ctx: HttpContext<Authenticated>) {
     const passkeys = await this.#passkeys.list();
     const status = await this.#twoFactor.status();
     return this.view('auth/Passkeys', {
@@ -22,6 +22,8 @@ export class ShowPasskeysController extends Controller {
       // Removing the account's last factor asks for the password (and takes the recovery codes along).
       lastFactor: passkeys.length === 1 && status.factors.every((factor) => factor === 'passkey'),
       firstFactor: status.factors.length === 0,
+      // An unconfirmed address cannot add a passkey (the routes refuse it): the page says so instead.
+      verified: ctx.user.email_verified_at !== null,
     });
   }
 }

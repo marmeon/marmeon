@@ -185,6 +185,17 @@ A successful reset:
 - stores a new hash, so every session of the user ends at its next request,
 - deletes every remember-me token of the user,
 - with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, revokes every API token of the user, in the same transaction as the new hash,
+- when the address of the user was never confirmed (`email_verified_at` and `first_verified_at` are both `null`), also removes every
+  passkey, the authenticator and the recovery codes, and revokes every API token whatever that setting says, in the same transaction.
+  The reset proves the mailbox, but whoever registered the address first may have attached a way in of their own. An account that was
+  confirmed once keeps its factors and tokens even when a change of address cleared `email_verified_at` since: a mistyped new address
+  must not let its holder wipe the owner's factors. A user without a `first_verified_at` property is judged by `email_verified_at`
+  alone, which then also covers an address changed and not yet confirmed. The factors are read again
+  afterwards; one that is still there is logged as an error. It then dispatches `PasskeyRemoved` (`via: 'reset'`) and `TwoFactorDisabled`
+  (`via: 'reset'`) for what went. A user without an `email_verified_at` property loses nothing, and with a `TwoFactorState` bound the
+  app logs a warning once that the rule is off: the `UserProvider` has to load that column (and `first_verified_at`) for the rule to apply. The removal calls `removeAll(userId)` of the `TwoFactorState` binding, which every source
+  implements: `TwoFactorStore`, `PasskeyStore` and `combineFactors()` do, and a source of your own must. `reset()` throws before it spends the
+  token when the bound source has no `removeAll()` (an older source), so the link stays usable once you fixed it,
 - dispatches `PasswordReset`, with `revokedTokens`, the number of API tokens it revoked.
 
 It does not sign the user in: the starter kit sends them to the login page. The `password()` rule is explained on the

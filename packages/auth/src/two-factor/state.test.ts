@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthServiceProvider, combineFactors, TwoFactorState, TwoFactorStore } from '../index.ts';
 import type { SecondFactor } from './state.ts';
 
-const source = (...factors: SecondFactor[]): TwoFactorState => ({ factors: async () => factors, enabledSince: async () => undefined });
-const since = (date: Date | undefined): TwoFactorState => ({ factors: async () => [], enabledSince: async () => date });
+const source = (...factors: SecondFactor[]): TwoFactorState => ({ removeAll: async () => {}, factors: async () => factors, enabledSince: async () => undefined });
+const since = (date: Date | undefined): TwoFactorState => ({ removeAll: async () => {}, factors: async () => [], enabledSince: async () => date });
 
 describe('TwoFactorState default', () => {
   const boot = () => createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [AuthServiceProvider] });

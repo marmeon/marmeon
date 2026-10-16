@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { PageProps } from '@marmeon/http';
-import { Head, useRoute, useTranslation } from '@marmeon/react';
+import { Head, Link, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowPasskeysController } from '../controllers/ShowPasskeysController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
@@ -13,7 +13,7 @@ type Problem = { field?: string; message: string; sudo?: boolean; target?: { for
 
 // The page works with JavaScript only: a passkey is made by the browser's API, and every answer is JSON. The forms still say they post, so a
 // field that holds a password never goes into an address when the script is not there.
-export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
+export default function Passkeys({ passkeys, lastFactor, firstFactor, verified }: Props) {
   const t = useTranslation('auth');
   const route = useRoute();
   const [supported, setSupported] = useState(false);
@@ -115,6 +115,14 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
     <main className="stack stack-loose">
       <Head title={t('passkeys.title')} />
       <h1>{t('passkeys.title')}</h1>
+      {!verified && (
+        <div className="card cluster">
+          <p>{t('verify.needed_for_factors')}</p>
+          <Link route="auth.verification.send" className="button">
+            {t('verify.resend')}
+          </Link>
+        </div>
+      )}
       <p>{t('passkeys.intro')}</p>
       {error?.sudo && (
         <div role="alert" className="notice" data-kind="error">
@@ -236,49 +244,51 @@ export default function Passkeys({ passkeys, lastFactor, firstFactor }: Props) {
         )}
       </section>
 
-      <section aria-labelledby="add-heading" className="card">
-        <h2 id="add-heading">{t('passkeys.add_heading')}</h2>
-        {!supported ? (
-          <p className="muted">{t('passkeys.unsupported')}</p>
-        ) : (
-          <form
-            method="post"
-            action={route('auth.passkeys.store')}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              void add();
-            }}
-          >
-            {firstFactor && (
-              <p role="note" className="hint">
-                {t('passkeys.add_notice')}
-              </p>
-            )}
-            <div className="field">
-              <label htmlFor="passkey-name">{t('passkeys.name')}</label>
-              <input id="passkey-name" name="name" type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="field">
-              <label htmlFor="passkey-password">{t('passkeys.password')}</label>
-              <input
-                id="passkey-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                aria-invalid={error?.field === 'password' && !error.target}
-              />
-              {error?.field === 'password' && !error.target && <small role="alert"> {error.message}</small>}
-            </div>
-            {error && error.field !== 'password' && !error.target && <p role="alert">{error.message}</p>}
-            <button type="submit" className="button" disabled={working || password === ''}>
-              {working ? t('passkeys.working') : t('passkeys.add')}
-            </button>
-          </form>
-        )}
-      </section>
+      {verified && (
+        <section aria-labelledby="add-heading" className="card">
+          <h2 id="add-heading">{t('passkeys.add_heading')}</h2>
+          {!supported ? (
+            <p className="muted">{t('passkeys.unsupported')}</p>
+          ) : (
+            <form
+              method="post"
+              action={route('auth.passkeys.store')}
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void add();
+              }}
+            >
+              {firstFactor && (
+                <p role="note" className="hint">
+                  {t('passkeys.add_notice')}
+                </p>
+              )}
+              <div className="field">
+                <label htmlFor="passkey-name">{t('passkeys.name')}</label>
+                <input id="passkey-name" name="name" type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div className="field">
+                <label htmlFor="passkey-password">{t('passkeys.password')}</label>
+                <input
+                  id="passkey-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-invalid={error?.field === 'password' && !error.target}
+                />
+                {error?.field === 'password' && !error.target && <small role="alert"> {error.message}</small>}
+              </div>
+              {error && error.field !== 'password' && !error.target && <p role="alert">{error.message}</p>}
+              <button type="submit" className="button" disabled={working || password === ''}>
+                {working ? t('passkeys.working') : t('passkeys.add')}
+              </button>
+            </form>
+          )}
+        </section>
+      )}
     </main>
   );
 }

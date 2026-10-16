@@ -215,7 +215,7 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
       // Cy has a second factor: signing Cy in leaves a sign-in that waits for it.
-      container.instance(TwoFactorState, { factors: async (id) => (Number(id) === cy.id ? ['totp' as const] : []), enabledSince: async () => new Date(0) });
+      container.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (Number(id) === cy.id ? ['totp' as const] : []), enabledSince: async () => new Date(0) });
       if (options.signIns) container.singleton(SignInStore, options.signIns as never);
       options.override?.(container);
     },

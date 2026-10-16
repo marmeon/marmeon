@@ -298,7 +298,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
         const real = container.make(RememberTokenStore);
         container.instance(RememberTokenStore, { ...real, create: (...a) => real.create(...a), exists: (c) => real.exists(c), forget: (c) => real.forget(c), forgetUser: (...a) => real.forgetUser(...a), prune: (n) => real.prune(n), consume: options.consume(real) });
       }
-      if (options.factors) container.instance(TwoFactorState, { factors: async (id) => options.factors!.get(Number(id)) ?? [], enabledSince: async () => undefined });
+      if (options.factors) container.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => options.factors!.get(Number(id)) ?? [], enabledSince: async () => undefined });
     },
   });
   await application.container.make(Migrator).migrate();

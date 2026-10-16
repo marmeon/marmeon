@@ -13,6 +13,8 @@ export class NotifyAboutPasskeyRemoved {
   }
 
   async handle(payload: EventPayload<typeof PasskeyRemoved>): Promise<void> {
+    // A reset of an unconfirmed account removed it, and `NotifyAboutTwoFactorDisabled` already tells the owner once.
+    if (payload.via === 'reset') return;
     await this.#notices.send(payload.userId, { kind: 'removed' });
   }
 }

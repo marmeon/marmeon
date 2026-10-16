@@ -71,7 +71,7 @@ export class AuthServiceProvider implements ServiceProvider {
 }
 ```
 
-`TwoFactorState` answers which factors an account has (`factors()`) and since when (`enabledSince()`, the earliest confirmation). Without a binding it says "none" and asks nothing, so an app that does
+`TwoFactorState` answers which factors an account has (`factors()`), since when (`enabledSince()`, the earliest confirmation) and removes them all (`removeAll()`, which a source of your own must implement). Without a binding it says "none" and asks nothing, so an app that does
 not bind it behaves exactly as before. Removing the binding later switches two-factor authentication off for every account: users
 who set it up sign in with the password alone. `combineFactors()` joins several sources into one: the authenticator app is `TwoFactorStore`,
 and [passkeys](passkeys.md) add `PasskeyStore` (`combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore))`). Recovery codes belong to the
@@ -306,6 +306,9 @@ an API token never counts as a proven second factor, and `twoFactor()` there ans
 
 ## In the starter kit
 
+The routes that begin or confirm an authenticator setup sit behind `verified()` in every registration mode: an account whose address nobody
+confirmed gets the notice page (403 for JSON) and keeps no factor. See [security](security.md#open-registration).
+
 The [starter kit](starter-kit.md) brings the pages, so a new app has two-factor authentication without writing any. `make:auth`
 adds a migration for both tables (`foreignId('user_id').constrained().cascadeOnDelete()`, as the kit's other tables), the
 binding `combineFactors(TwoFactorStore, PasskeyStore)` in `AuthServiceProvider.ts` (the [passkeys](passkeys.md#in-the-starter-kit) are the kit's second source), the controllers and routes, and these pages, in both
@@ -341,7 +344,7 @@ The kit's listeners send the owner a mail on `TwoFactorEnabled`, `TwoFactorDisab
 | Event | When | Fields |
 | --- | --- | --- |
 | `TwoFactorEnabled` | `confirm()` turned a factor on | `user`, `factor` |
-| `TwoFactorDisabled` | `disable()` or the operator's reset | `user`, `via` (`user` or `operator`) |
+| `TwoFactorDisabled` | `disable()`, the operator's reset, or the password reset of an account with an unconfirmed address | `user`, `via` (`user`, `operator` or `reset`) |
 | `RecoveryCodesGenerated` | The first factor, or `regenerateRecoveryCodes()` | `user` |
 | `RecoveryCodeUsed` | A recovery code signed in or stepped up | `user`, `remaining` |
 | `TwoFactorChallengeFailed` | A wrong factor (code, recovery code or passkey) after a right password (`during: 'sign-in'`), or a wrong code or passkey from a signed-in session at `stepUp()` (`during: 'step-up'`), or a wrong passkey at `passkeys.confirm()` (`during: 'confirm'`) | `user`, `at`, `ip`, `userAgent`, `during` |

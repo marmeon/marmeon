@@ -43,6 +43,7 @@ class Factors implements TwoFactorState {
   async enabledSince(): Promise<Date | undefined> {
     return undefined;
   }
+  async removeAll(): Promise<void> {}
 }
 
 /** Deletes every row just before the store continues one: a sign-in ended between the token check and the resume. */

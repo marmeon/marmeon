@@ -149,7 +149,7 @@ describe('the failure ceiling of an account', { timeout: 60_000 }, () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, {
       database: 'refresh',
-      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
+      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined, removeAll: async () => {} }),
     });
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;

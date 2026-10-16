@@ -167,11 +167,16 @@ form and a list of who has an account. Outside development and tests the app log
 only when the accounts of your app are public anyway. The [starter kit](starter-kit.md#turning-it-off) page shows the switch.
 
 An unconfirmed account is then a working account. Whoever registers with somebody else's address uses it at once: the module's
-`ConfirmedAddress` lets every signed-in user through, the tokens page included, which asks only for the password they chose. When
+`ConfirmedAddress` lets every signed-in user through, which is why the kit puts `verified()` on the routes that add a factor or create a token; your own routes need it too. When
 the owner later takes the account over with a password reset, its sessions and remember-me tokens end. An API token created in the
-meantime ends with them only with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`; without it, it stays valid, up to 90 days with the
-starter kit. With open registration, set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` and put `verified()` in place of
-`ConfirmedAddress` on the token routes.
+meantime ends with them too, because the account was never confirmed (see below); an API token of a confirmed account ends only with
+`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`.
+
+The routes that add an authenticator app or a passkey sit behind `verified()` in every registration mode, so an account whose address
+nobody confirmed cannot attach a second factor of its own. And the password reset of such an account (`email_verified_at` and `first_verified_at` are `null`: the address was never confirmed)
+removes its passkeys, its authenticator, its recovery codes and every API token, whatever `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` says:
+the owner proved the mailbox with the link, and nothing the first registrant attached stays. The reset leaves the address unconfirmed;
+the owner confirms it with the link of the notice page. A confirmed account loses nothing in a reset.
 
 ### Accounts nobody confirmed
 

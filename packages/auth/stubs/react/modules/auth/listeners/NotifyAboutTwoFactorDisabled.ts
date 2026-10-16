@@ -16,6 +16,7 @@ export class NotifyAboutTwoFactorDisabled {
   }
 
   async handle(payload: EventPayload<typeof TwoFactorDisabled>): Promise<void> {
+    if (payload.via === 'reset') return void (await this.#notices.send(payload.userId, { kind: 'disabled_by_reset' }));
     if (payload.via === 'operator') return void (await this.#notices.send(payload.userId, { kind: 'disabled_by_operator' }));
     // The event does not say what is left: with a passkey, only the authenticator app went and the account is still protected.
     const passkeys = await this.#passkeys.forUser(payload.userId);

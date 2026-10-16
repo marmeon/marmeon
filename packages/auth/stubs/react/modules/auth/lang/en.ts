@@ -77,6 +77,7 @@ const en = {
     back: 'Back to the dashboard',
     sent: 'A new verification link is on its way.',
     verified: 'Your e-mail address is verified.',
+    needed_for_factors: 'Confirm your e-mail address first: a second factor or a passkey can be added only to a confirmed address.',
     wrong_account: 'This verification link is not for your account.',
   },
   // Private registration: the link to a new address.
@@ -361,6 +362,12 @@ const en = {
         preview: 'An operator removed the second factor of your account',
         intro: 'an operator removed the second factor and the recovery codes of your account, at the request of its owner.',
         outro: 'If you did not ask for that, reset your password now and contact us. Turn two-factor authentication on again in the settings.',
+      },
+      disabled_by_reset: {
+        subject: 'Your second factors were removed',
+        preview: 'The passkeys and the authenticator of your account were removed',
+        intro: 'your password was reset while the address of your account was not confirmed, so its passkeys, its authenticator, its recovery codes and its API tokens were removed.',
+        outro: 'You can set them up again in the settings once you have confirmed your address. If you did not reset your password, reset it again now.',
       },
       recovery_used: {
         subject: 'A recovery code was used',

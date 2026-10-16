@@ -17,6 +17,12 @@ export interface TwoFactorState {
    * one. A remember-me token made before that moment never proved a factor, and is refused.
    */
   enabledSince(userId: number | string): Promise<Date | undefined>;
+  /**
+   * Removes every factor the source holds for the account, recovery codes included — what the reset of an account with an unconfirmed
+   * address does (`NewPassword`) and the operator's reset command. Dispatches nothing. A source that keeps a factor here leaves it standing
+   * through such a reset: the reset logs an error then.
+   */
+  removeAll(userId: number | string): Promise<void>;
 }
 export const TwoFactorState = token<TwoFactorState>('TwoFactorState');
 
@@ -29,6 +35,8 @@ export class NoTwoFactorState implements TwoFactorState {
   async enabledSince(): Promise<Date | undefined> {
     return undefined;
   }
+
+  async removeAll(): Promise<void> {}
 }
 
 /** One state from several sources (`TwoFactorStore`, the passkey store): an account has every factor any source reports, each once. */
@@ -41,6 +49,9 @@ export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactor
     async enabledSince(userId) {
       const dates = (await Promise.all(sources.map((source) => source.enabledSince(userId)))).filter((date): date is Date => date !== undefined);
       return dates.length === 0 ? undefined : new Date(Math.min(...dates.map((date) => date.getTime())));
+    },
+    async removeAll(userId) {
+      for (const source of sources) await source.removeAll(userId);
     },
   };
 }
