@@ -383,7 +383,10 @@ A secret column is written like any other, but:
   select may carry a column read with `secret()` only into a secret column. Statements on a table with secret columns are marked
   for observability whatever the case of its name, since SQLite reads `Users` as `users`;
 - a subquery that selects it in a `where()` is refused too, although its value stays in the database. Filter on a key instead:
-  `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`.
+  `where('id', 'in', (eb) => eb.selectFrom('accounts').select('id').where(…))`;
+- a statement of a kind the check does not know is refused, never let through unchecked, and so is a function whose name is not a
+  plain identifier (`fn('…')` and `fn.agg('…')` send the name as written): a quoted name (`fn('"MyFunc"')`) is refused, a
+  schema-qualified one (`pg_catalog.lower`) still works.
 
 The starter kit's `UserRepository` is that place. It checks a password at sign-in, and the hash travels next to the user, never
 inside it:

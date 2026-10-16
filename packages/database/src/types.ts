@@ -66,14 +66,33 @@ export type ExposedToOthers<All, Owners, Exposed, M extends string> = {
 };
 export type ModuleTables<All, Owners, Exposed, M extends string> = OwnedTables<All, Owners, M> & ExposedToOthers<All, Owners, Exposed, M>;
 
-type WriteMethods = 'insertInto' | 'replaceInto' | 'updateTable' | 'deleteFrom' | 'mergeInto' | 'transaction' | 'startTransaction' | 'connection' | 'with' | 'withRecursive' | 'withSchema' | 'withTables' | 'withPlugin' | 'withoutPlugins';
+/**
+ * What a module may call on its database besides the writes below: building reads and expressions. Every method of Kysely's
+ * `Kysely` and `QueryCreator` is in exactly one of the two lists ({@link WRITE_METHODS} is the other), so a method a newer Kysely
+ * adds is withheld from modules until someone classifies it here — `builder-contract.test.ts` fails until then.
+ */
+export const READ_METHODS = ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynamic', 'isTransaction'] as const;
+
+/**
+ * What a module does not get as Kysely has it: statements that write (given back for own tables only: `insertInto`, `updateTable`,
+ * `deleteFrom`, `transaction`), DDL (`schema`), another module's tables by name (`introspection` lists the ones not exposed), raw execution (`executeQuery`, `getExecutor` — `sql\`…\`.execute(db)` would run
+ * against any table), anything that changes the connection (`destroy`, plugins, schema, tables), and `$extendTables`,
+ * `$omitTables`, `$pickTables`, which hand back a plain `Kysely` without the module's own `insertInto`.
+ */
+export const WRITE_METHODS = [
+  'insertInto', 'replaceInto', 'updateTable', 'deleteFrom', 'mergeInto', 'transaction', 'startTransaction', 'connection',
+  'with', 'withRecursive', 'withSchema', 'withTables', 'withPlugin', 'withoutPlugins',
+  'schema', 'introspection', 'executeQuery', 'getExecutor', 'destroy', '$extendTables', '$omitTables', '$pickTables',
+] as const;
+
+type ReadMethods = (typeof READ_METHODS)[number];
 
 /**
  * The database as module `M` sees it: its own tables for everything, other modules' exposed tables
  * for reading and joins. Writes take only an own table as target — insert, update and delete
  * (restricting the columns alone would not stop `insert` or `delete`).
  */
-export type ModuleDatabase<All, Owners, Exposed, M extends string> = Omit<Kysely<ModuleTables<All, Owners, Exposed, M>>, WriteMethods> & {
+export type ModuleDatabase<All, Owners, Exposed, M extends string> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M>>, ReadMethods> & {
   insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, InsertResult>;
   updateTable<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): UpdateQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, T, UpdateResult>;
   deleteFrom<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): DeleteQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, DeleteResult>;
