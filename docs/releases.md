@@ -119,7 +119,18 @@ Experimental means: it can change or go away in any minor version, without an en
 is still listed in the package's `api.md`, under **Experimental**, so a change shows in the pull request's diff, but the
 `breaking` label is not required for it. Build on it only when you can follow the releases. What is experimental today:
 
-None at the moment.
+- `@marmeon/devtools`
+- `@marmeon/live`
+- `@marmeon/otel`
+- `@marmeon/table`
+- `@marmeon/react/table`
+- `@marmeon/react/table-tanstack`
+- `marmeon tinker`
+
+The message types of the diagnostics channels in `@marmeon/core` (the channel names stay stable), the devtools feature of
+`@marmeon/http/client` and its types, the options `pages` and `lang` of the Vite plugin, and the members of `@marmeon/testing`
+that follow an experimental package (`devtools`, `broadcast`, `live` of the test app) are experimental too, one by one; their
+declarations say so.
 
 ### When a union grows
 

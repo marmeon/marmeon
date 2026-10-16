@@ -580,6 +580,8 @@ export class TestApp {
    * What the app's `Broadcaster` sent — every refresh once it went out (after its commit): `app.broadcast.assertRefreshed(
    * \`users.${ada.id}\`, { only: ['profile'] })`, `assertNotRefreshed`, `assertNothingRefreshed`. The hints reach the streams as in
    * production (`app.live(path)`). Needs @marmeon/live.
+   *
+   * @experimental Follows `@marmeon/live`.
    */
   get broadcast(): BroadcastRecorder {
     if (!this.#shared.broadcast) throw new Error('app.broadcast needs @marmeon/live in the app.');
@@ -591,6 +593,8 @@ export class TestApp {
    * those given (`(await app.island(…)).page()?.live`) — and reads it as it arrives: `hello()`, `waitFor(n)`, `hints`. Signing
    * out through the same view ends it; it closes with the app or `stream.close()`. `connection` is the tab's id
    * (`x-marmeon-connection`, default `test-tab-0001`). See `docs/fakes.md#live-updates`.
+   *
+   * @experimental Follows `@marmeon/live`.
    */
   async live(
     target: string | readonly LiveSubscription[],
@@ -619,6 +623,8 @@ export class TestApp {
   /**
    * What the devtools recorded — with `createTestApp(App, { devtools: true })`: `app.devtools.entries('request')`,
    * `app.devtools.assertRecorded('mail', (mail) => mail.to.includes('ada@example.com'))`.
+   *
+   * @experimental Follows `@marmeon/devtools`.
    */
   get devtools(): DevtoolsTester {
     if (!this.#shared.devtools) throw new Error('app.devtools needs createTestApp(…, { devtools: true }) (and @marmeon/devtools in the app).');

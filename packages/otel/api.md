@@ -6,7 +6,7 @@
 
 Types from other packages: none
 
-### Stable
+### Experimental
 
 ```ts
 // OtelConfig
@@ -36,7 +36,7 @@ export declare class OtelSetupError extends Error {
 }
 ```
 
-## Environment
+## Experimental
 
 ```ts
 // OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST
