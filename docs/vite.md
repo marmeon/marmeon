@@ -116,6 +116,23 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |
 | `test` | `false` | For `vitest.config.ts`. |
+| `viteEnv` | `false` | Keep Vite's own handling of `.env` files and `VITE_*` variables. See [Environment variables](#environment-variables). |
+
+## Environment variables
+
+Vite normally reads the `.env` files of the app's folder and writes every `VITE_*` variable that client code reads through
+`import.meta.env` into the public bundle, whatever its value. A misnamed variable, or a CI secret that happens to start with
+`VITE_`, would reach every visitor without passing the [configuration](configuration.md#values-for-the-browser) checks.
+
+`marmeon()` therefore reads no `.env` file and gives `import.meta.env` no variable prefix: `import.meta.env.VITE_*` is
+`undefined`, in `marmeon dev` and in `marmeon build`. `import.meta.env.MODE`, `DEV`, `PROD`, `SSR` and `BASE_URL` stay. This holds in client and in server (SSR) code. To hand a value to
+the browser, [share it as a prop](configuration.md#values-for-the-browser).
+
+The plugin owns `envDir` and `envPrefix`: an app's own value, or a prefix another plugin adds, stops the start with an error that
+names `viteEnv: true`.
+
+An app that needs Vite's behaviour sets `marmeon({ viteEnv: true })` in `vite.config.ts`, and in `vitest.config.ts` if its tests
+read the variables. Then every `VITE_*` variable of the process and of the `.env` files is public.
 
 ## Server code in the browser
 

@@ -330,10 +330,10 @@ unchanged in every environment, and `marmeon build` needs no `.env`. And nothing
 so a variable is never published by being in the environment. The [Vite page](vite.md#server-code-in-the-browser) explains
 the same rule for imports.
 
-Do not use Vite's own `VITE_*` variables for the app's values. Vite reads the `.env` files of the app's folder itself, in
-`marmeon dev` and in `marmeon build`, and puts each `VITE_*` variable that client code reads through `import.meta.env` into
-the bundle. The value is then fixed at build time, it can differ between the dev server and the build, and it bypasses the
-validation of a definition.
+Vite's own `VITE_*` variables are switched off: `marmeon()` reads no `.env` file and publishes no variable through
+`import.meta.env`, so an environment variable never reaches the bundle by its name. A value fixed at build time would differ
+between the dev server and the build, and would bypass the validation of a definition. An app that needs them anyway sets
+`marmeon({ viteEnv: true })`; see [Environment variables](vite.md#environment-variables).
 
 ## When a value is wrong
 

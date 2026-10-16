@@ -50,6 +50,28 @@ describe('marmeon()', () => {
     }
   });
 
+  it('reads no .env file and has no public variable prefix — unless viteEnv hands Vite its own behaviour back', () => {
+    for (const env of [{ command: 'serve', mode: 'development' }, { command: 'build', mode: 'production' }] as const) {
+      const config = configFor(marmeon(), env);
+      expect(config.envDir).toBe(false);
+      expect(config.envPrefix).toBe('__MARMEON_NO_PUBLIC_ENV__');
+      expect(configFor(marmeon({ test: true }), env).envDir).toBe(false);
+      const open = configFor(marmeon({ viteEnv: true }), env);
+      expect(open).not.toHaveProperty('envDir');
+      expect(open).not.toHaveProperty('envPrefix');
+    }
+  });
+
+  it('refuses an own envDir or envPrefix, and a prefix another plugin adds — unless viteEnv is set', async () => {
+    const resolve = (config: UserConfig, plugin: Plugin[] = marmeon()) => resolveConfig({ root: app, configFile: false, logLevel: 'silent', ...config, plugins: [plugin, { name: 'adds', config: () => ({}) }] }, 'serve');
+    await expect(resolve({})).resolves.toMatchObject({ envDir: false, envPrefix: '__MARMEON_NO_PUBLIC_ENV__' });
+    await expect(resolve({ envPrefix: ['APP_'] })).rejects.toThrow(/viteEnv: true/);
+    await expect(resolve({ envPrefix: 'APP_' })).rejects.toThrow(/viteEnv: true/);
+    await expect(resolve({ envDir: '.' })).rejects.toThrow(/viteEnv: true/);
+    await expect(resolve({}, [...marmeon(), { name: 'adds-prefix', config: () => ({ envPrefix: ['PUBLIC_'] }) }])).rejects.toThrow(/viteEnv: true/);
+    await expect(resolve({ envPrefix: ['APP_'] }, marmeon({ viteEnv: true }))).resolves.toMatchObject({ envPrefix: ['APP_'] });
+  });
+
   it('builds the client to dist/client and the SSR entry to dist/server/ssr.js — not in test mode', () => {
     expect(configFor(marmeon(), { command: 'build', mode: 'production' }).build).toEqual({ outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } });
     expect(configFor(marmeon({ entries: { ssr: 'src/server.tsx' } }), { command: 'build', mode: 'production', isSsrBuild: true }).build).toEqual({

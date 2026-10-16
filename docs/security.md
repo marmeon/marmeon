@@ -55,6 +55,8 @@ with `Host: evil.example`, and reads the answers as if they were its own: record
 - Vite's file serving has its own list of refused paths. With `marmeon dev`, it covers `storage/`, `dist/`, `.marmeon/` and
   database files (`*.sqlite`, `*.sqlite3`, `*.db`, `*.db3` and their companions) on top of Vite's own, so an app that listens beyond localhost, with
   `HOST=0.0.0.0`, does not hand out its database, private uploads or build output. Your own `server.fs.deny` entries are added.
+- Vite's `.env` files and `VITE_*` variables are off: no variable reaches the public bundle by its name. `marmeon({ viteEnv: true })`
+  turns them back on, and then every `VITE_*` variable of the process is public. See [environment variables](vite.md#environment-variables).
 - A development route of your own takes the same guard. Outside `development` and `test` it answers 404 by itself, asked on every
   request: a route registered on a server by mistake stays shut. The [routing](routing.md#development-only-routes) page shows how.
 - `*.localhost` names pass Vite, since they are loopback by definition, but not the guard, unless `APP_URL` names one.

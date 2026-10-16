@@ -80,6 +80,13 @@ export interface MarmeonOptions {
    * nonce, no pre-bundling, no build settings.
    */
   test?: boolean;
+  /**
+   * Keep Vite's own handling of `.env` files and `VITE_*` variables: every `VITE_*` variable of the process and of the `.env`
+   * files of the app's folder that client code reads through `import.meta.env` is written into the public bundle. Off by
+   * default, so a variable never reaches the browser by its name, and an own `envDir` or `envPrefix` is refused. `MODE`, `DEV`,
+   * `PROD`, `SSR` and `BASE_URL` stay either way. See docs/vite.md#environment-variables.
+   */
+  viteEnv?: boolean;
 }
 
 /** A module of a third-party package — not one of the framework's (`@marmeon/*`), not the app's own. */
@@ -99,6 +106,8 @@ export const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions = {
   ],
 };
 
+const ENV_OWNED = 'marmeon(): `envDir` and `envPrefix` are set by the plugin, so no variable reaches the client bundle by its name. Remove them from the config, or pass `marmeon({ viteEnv: true })` to manage them yourself. See docs/vite.md#environment-variables.';
+const NO_PUBLIC_ENV_PREFIX = '__MARMEON_NO_PUBLIC_ENV__';
 const DEFAULT_ENTRIES: MarmeonEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
 const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
 const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
@@ -129,6 +138,14 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
         // it, tests would load builds only a bundler can run (the AWS SDK's ES build, with extensionless imports).
         ssr: { resolve: { conditions: [...source, ...(options.test ? defaultServerConditions.filter((condition) => condition !== 'module') : defaultServerConditions)] } },
       };
+      // No `.env` file is read and no variable has a public prefix, so nothing reaches `import.meta.env` by its name: the prefix
+      // is no real variable name. `MODE`, `DEV`, `PROD` and `SSR` stay, Vite sets them itself.
+      if (!options.viteEnv) {
+        // Our values would replace a string or an `envDir` of the app silently: say so instead.
+        if (config.envDir !== undefined || config.envPrefix !== undefined) throw new Error(ENV_OWNED);
+        result.envDir = false;
+        result.envPrefix = NO_PUBLIC_ENV_PREFIX;
+      }
       // Tags (and the `csp-nonce` meta Vite reads) carry the placeholder; the server replaces only this value with the
       // response's nonce, or takes the attribute out.
       if (!options.test) result.html = { cspNonce: CSP_NONCE_PLACEHOLDER };
@@ -147,6 +164,15 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
             { outDir: 'dist/client', emptyOutDir: true, manifest: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } };
       }
       return result;
+    },
+    configResolved(resolved) {
+      if (options.viteEnv) return;
+      // An app's own `envPrefix` array is concatenated with ours, a string or an `envDir` replaces it, and another plugin may add
+      // prefixes: whatever the merge left, a public variable would reach the bundle by its name.
+      const prefixes = [resolved.envPrefix ?? []].flat();
+      if (resolved.envDir !== false || prefixes.length !== 1 || prefixes[0] !== NO_PUBLIC_ENV_PREFIX) {
+        throw new Error(ENV_OWNED);
+      }
     },
     transformIndexHtml: {
       order: 'pre',
