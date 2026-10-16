@@ -48,10 +48,8 @@ describe('a tinker session (in-process)', () => {
     app = await createApplication({
       root,
       discover: false,
-      env: {},
       modules: [defineModule({ name: 'shop', jobs: [ShipOrderJob] })],
-      override: (container) => container.instance(Router, router).instance(Mailer, { send: () => 'sent' }),
-    });
+    }, { env: {}, override: (container) => container.instance(Router, router).instance(Mailer, { send: () => 'sent' }) });
   });
 
   it('knows classes and tokens by name — bound ones and those a module lists', () => {

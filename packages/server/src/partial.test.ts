@@ -15,7 +15,6 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [
       defineModule({
@@ -36,7 +35,7 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
 
   const visit = (headers: Record<string, string> = {}) => app.request('/users/1', { headers: { 'x-marmeon': 'true', ...headers } });

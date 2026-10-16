@@ -100,11 +100,10 @@ describe('createHttpKernel — what its error lines write', async () => {
     createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: generateKey() },
       providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider, ...(extra.solutions ? [FailingSolutions] : []), ...(extra.rendering ? [FailingHandler] : [])],
       ...(extra.sharing ? { middleware: { web: [SharesAFailingProp] } } : {}),
       modules: [defineModule({ name: 'log', routes })],
-    });
+    }, { env: { APP_KEY: generateKey() } });
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
   const application = await create({});
   application.container.make(Redactor);

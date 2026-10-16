@@ -1,4 +1,4 @@
-import { Application, Clock, createApplication, EventRegistry, type ApplicationOptions, type Container, type Duration, type EventClass, type Key, type Resolve } from '@marmeon/core';
+import { Application, Clock, createApplication, EventRegistry, type ApplicationDefinition, type Container, type Duration, type EventClass, type Key, type Resolve } from '@marmeon/core';
 import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
@@ -152,7 +152,7 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
  * await app.get('/users/1').assertOk().assertPage('user-profile/Show');
  * ```
  */
-export async function createTestApp(definition: ApplicationOptions, options: TestAppOptions = {}): Promise<TestApp> {
+export async function createTestApp(definition: ApplicationDefinition, options: TestAppOptions = {}): Promise<TestApp> {
   if (options.ssrServer) {
     if (!options.ssr) throw new Error("createTestApp(…, { ssrServer }) needs ssr: true (or ssr: 'stream').");
     checkSsrServer(options.ssrServer, definition.root);
@@ -174,9 +174,9 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let eventFake: EventFake | undefined;
   // The devtools record in a test only when it opts in (into memory) — never into the app's storage/framework/devtools, also
   // not in a test that runs as development (`env: { NODE_ENV: 'development' }`, for Server-Timing or the error page).
-  // A test app is a test (NODE_ENV=test) unless its environment names another: an app's own `env` without NODE_ENV would
+  // A test app is a test (NODE_ENV=test) unless its environment names another: an `env` option without NODE_ENV would
   // otherwise count as protected, like production.
-  let env = { NODE_ENV: 'test', ...(definition.env ?? loadEnv(definition.root)), ...options.env, ...(options.devtools ? {} : { DEVTOOLS_ENABLED: 'false' }) };
+  let env = { NODE_ENV: 'test', ...loadEnv(definition.root), ...options.env, ...(options.devtools ? {} : { DEVTOOLS_ENABLED: 'false' }) };
   const clock = new TestClock();
 
   let worker: WorkerDatabase | undefined;
@@ -196,8 +196,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     throw new Error("createTestApp(…, { seed: true }) seeds a refreshed database: add database: 'refresh'.");
   }
 
-  const application = await createApplication({
-    ...definition,
+  const application = await createApplication(definition, {
     env,
     override: (container) => {
       // The time, movable from the test: app.travel({ minutes: 5 }), app.freeze().
@@ -228,7 +227,6 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       container.instance(EventFake, eventFake);
       // The devtools' opt-in: a memory store, recorded from the boot on.
       if (devtools) devtoolsTester = devtools.enableDevtoolsForTests(container);
-      definition.override?.(container);
       options.override?.(container);
     },
   });

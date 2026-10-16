@@ -27,7 +27,6 @@ async function boot(liveLimit?: LimiterCallback) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), CACHE_DRIVER: 'memory' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, CacheServiceProvider, Limits],
     modules: [
       defineModule({
@@ -38,7 +37,7 @@ async function boot(liveLimit?: LimiterCallback) {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey(), CACHE_DRIVER: 'memory' } });
   return createHttpKernel(application);
 }
 

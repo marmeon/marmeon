@@ -13,6 +13,8 @@ import type { ServiceProviderClass } from './provider.ts';
  *   interface ModuleDefinition { readonly routes?: RouteDefinitions }
  * }
  * ```
+ *
+ * The app's own settings are added the same way, to `ApplicationDefinition`.
  */
 export interface ModuleDefinition {
   readonly name: string;

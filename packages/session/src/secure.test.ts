@@ -12,10 +12,8 @@ async function boot(env: Record<string, string>) {
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
-    override: (container: Container) => container.instance(Logger, logger),
-  });
+  }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', ...env }, override: (container: Container) => container.instance(Logger, logger) });
   return { config: app.container.make(SessionConfig), defaults: app.container.make(CookieDefaults), warnings };
 }
 

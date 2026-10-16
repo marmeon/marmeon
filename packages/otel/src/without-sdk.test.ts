@@ -36,11 +36,9 @@ async function boot() {
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, OtelServiceProvider],
     modules: [defineModule({ name: 'app', routes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
-    override: (container) => container.instance(Logger, logger),
-  });
+  }, { env: { APP_KEY: generateKey() }, override: (container) => container.instance(Logger, logger) });
   return { app, logger };
 }
 

@@ -1,5 +1,5 @@
-import { tmpdir } from 'node:os';
-import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, LIVE_PATH, ServerClosing, SharedData, type HttpContext, type Next } from '@marmeon/http';
 import { Broadcaster, LiveServiceProvider } from '@marmeon/live';
@@ -78,10 +78,11 @@ const routes = openRoutes((Route) => {
   Route.post('/sign-out', SignOutController);
 });
 
-const definition: ApplicationOptions = {
-  root: tmpdir(),
+const env = { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LIVE_HEARTBEAT: '1' };
+
+const definition: ApplicationDefinition = {
+  root: tempDir('marmeon-testing-'),
   discover: false,
-  env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LIVE_HEARTBEAT: '1' },
   providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, LiveServiceProvider],
   middleware: { web: [ShareCounter] },
   modules: [defineModule({ name: 'board', routes })],
@@ -89,7 +90,7 @@ const definition: ApplicationOptions = {
 
 describe('live props through the app — the page declares, the stream hints', () => {
   it('signs what a page, a layer and an island follow into their objects — a page also what every page shares', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const ada = app.withSession({ who: 'ada' });
     const page = (await ada.navigating().get('/boards/7').assertOk()).page()!;
     expect(page.live).toEqual([
@@ -107,7 +108,7 @@ describe('live props through the app — the page declares, the stream hints', (
   });
 
   it('a refresh reaches the tabs that follow the channel — the tab that caused it gets nothing to reload; app.broadcast saw it', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const ada = app.withSession({ who: 'ada' });
     const tabA = await ada.live('/boards/7', { connection: 'tab-a-0001' });
     const tabB = await ada.live('/boards/7', { connection: 'tab-b-0001' });
@@ -122,7 +123,7 @@ describe('live props through the app — the page declares, the stream hints', (
   });
 
   it('the stream is read-only: no cookie, the session not written — with the stream headers', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const ada = app.withSession({ who: 'ada' });
     const stream = await ada.live('/boards/7');
     await stream.hello();
@@ -134,7 +135,7 @@ describe('live props through the app — the page declares, the stream hints', (
   });
 
   it('a token rewritten to another channel, or of another session, opens no stream (403)', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const ada = app.withSession({ who: 'ada' });
     const page = (await ada.navigating().get('/boards/7')).page()!;
     const forged = page.live!.map((subscription) => ({ ...subscription, channel: subscription.channel.replace('board.7', 'board.8') }));
@@ -144,7 +145,7 @@ describe('live props through the app — the page declares, the stream hints', (
   });
 
   it('signing out in one tab closes the streams of the session in every tab — `end`, no further hints; the old tokens are void', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const ada = app.withSession({ who: 'ada' });
     const page = (await ada.navigating().get('/boards/7')).page()!;
     const tabB = await ada.live(page.live!, { connection: 'tab-b-0001' });
@@ -161,7 +162,7 @@ describe('live props through the app — the page declares, the stream hints', (
   });
 
   it('the server closing ends every stream', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const stream = await app.withSession({ who: 'ada' }).live('/boards/7');
     await stream.hello();
     app.make(ServerClosing).close();
@@ -170,7 +171,7 @@ describe('live props through the app — the page declares, the stream hints', (
   });
 
   it('a page that follows a channel in an app without @marmeon/live says what to install', async () => {
-    const app = await createTestApp({ ...definition, providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider], middleware: {} });
+    const app = await createTestApp({ ...definition, providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider], middleware: {} }, { env });
     const answer = await app.withSession({ who: 'ada' }).navigating().get('/boards/7');
     expect(answer.status).toBe(500);
     expect(() => app.broadcast).toThrow('app.broadcast needs @marmeon/live in the app.');

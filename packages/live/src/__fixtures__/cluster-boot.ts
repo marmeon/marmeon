@@ -15,9 +15,8 @@ async function boot(): Promise<number> {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), LIVE_DRIVER: 'memory', LOG_LEVEL: 'silent', NODE_ENV: 'production' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, LiveServiceProvider],
-    });
+    }, { env: { APP_KEY: generateKey(), LIVE_DRIVER: 'memory', LOG_LEVEL: 'silent', NODE_ENV: 'production' } });
     await app.shutdown();
     process.stdout.write('booted\n');
     return 0;

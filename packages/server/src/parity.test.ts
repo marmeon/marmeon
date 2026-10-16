@@ -43,7 +43,6 @@ describe('once props on the server', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [
       defineModule({
@@ -54,7 +53,7 @@ describe('once props on the server', async () => {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   application.container.make(Router).middleware.append('web', ShareCountries, 400);
   application.container.scoped(PageSession, () => ({ csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined }));
   const app = createHttpKernel(application);
@@ -122,10 +121,9 @@ describe('the two kinds of 409 — a new build may wait, signing in or out never
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => void Route.get('/a', () => view('pages/A', {}))) })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   application.container.make(Router).middleware.append('web', SignsInEarly, 220);
   const app = createHttpKernel(application, { version: 'build-2' });
   const stale = (path: string) => app.request(path, { headers: { 'x-marmeon': 'true', 'x-marmeon-version': 'build-1' } });
@@ -149,7 +147,6 @@ describe('method spoofing — a form without JavaScript sends PUT, PATCH and DEL
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [
       defineModule({
@@ -165,7 +162,7 @@ describe('method spoofing — a form without JavaScript sends PUT, PATCH and DEL
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
   const form = (body: string, path = '/api/links/1', type = 'application/x-www-form-urlencoded') => app.request(path, { method: 'POST', headers: { 'content-type': type }, body });
 
@@ -265,10 +262,9 @@ describe('the view a route renders, for instant visits', () => {
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: generateKey() },
       providers: [EncryptionServiceProvider, HttpServiceProvider],
       modules: [defineModule({ name: 'users', routes: openRoutes((Route) => void Route.get('/users/:id', ShowController).name('users.show')) })],
-    });
+    }, { env: { APP_KEY: generateKey() } });
     expect(browserRoutes(application.container.make(Router).routes).routes).toEqual({ 'users.show': { method: 'get', path: '/users/:id', view: 'users/Show' } });
   });
 });

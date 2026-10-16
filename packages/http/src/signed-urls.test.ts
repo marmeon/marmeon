@@ -94,10 +94,9 @@ describe('signed() middleware', () => {
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: KEY, LOG_LEVEL: 'silent' },
       providers: [EncryptionServiceProvider, HttpServiceProvider],
       modules: [defineModule({ name: 'signed', routes })],
-    });
+    }, { env: { APP_KEY: KEY, LOG_LEVEL: 'silent' } });
     const appSigner = application.container.make(UrlSigner);
     const middleware = new ValidateSignature(appSigner);
     const url = appSigner.temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '5m', { base: 'https://app.example' });

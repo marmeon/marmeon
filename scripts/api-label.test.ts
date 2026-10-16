@@ -48,7 +48,7 @@ describe('labelProblems', () => {
   it('keeps a removed stable, augments, environment or commands item a removal', () => {
     const removals: ApiItem[] = [
       item('s', 'x'),
-      item('@marmeon/core.ApplicationOptions', 'x', 'augments'),
+      item('@marmeon/core.ApplicationDefinition', 'x', 'augments'),
       item('PORT', 'x', 'environment', ''),
       item('demo:run', 'x', 'commands', ''),
     ];

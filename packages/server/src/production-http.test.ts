@@ -33,7 +33,7 @@ describe('TRUSTED_PROXIES', async () => {
     expect(proxyMatcher(['*'])('203.0.113.9')).toBe(true);
     expect(['10.0.0.0/33', '10.0.0.1/', 'fd00::/129', 'proxy.internal', '10.0.0.0/8/1'].some(isProxyEntry)).toBe(false);
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, env: { TRUSTED_PROXIES: '10.0.0.0/8, proxy.internal' }, providers: [ServerServiceProvider] }),
+      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { TRUSTED_PROXIES: '10.0.0.0/8, proxy.internal' } }),
     ).rejects.toThrow('server: TRUSTED_PROXIES — Expected addresses or ranges like 10.0.0.0/8, or *: proxy.internal is not one');
   });
 
@@ -57,7 +57,6 @@ describe('TRUSTED_PROXIES', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '10.0.0.0/8' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [
       defineModule({
@@ -66,7 +65,7 @@ describe('TRUSTED_PROXIES', async () => {
         apiRoutes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '10.0.0.0/8' } });
   const app = createHttpKernel(application);
   const whoami = async (remote: string, headers: Record<string, string>, path = '/whoami') =>
     (await (await app.request(path, { headers: { accept: 'application/json', ...headers } }, peer(remote))).json()) as { ip: string; url: string };
@@ -96,10 +95,9 @@ describe('TRUSTED_PROXIES', async () => {
       await createApplication({
         root: import.meta.dirname,
         discover: false,
-        env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '*' },
         providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
         modules: [defineModule({ name: 'whoami', routes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))) })],
-      }),
+      }, { env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '*' } }),
     );
     const ask = async (remote: string, headers: Record<string, string>) =>
       (await (await behindAny.request('/whoami', { headers: { accept: 'application/json', ...headers } }, peer(remote))).json()) as { ip: string; url: string };
@@ -115,7 +113,7 @@ describe('TRUSTED_PROXIES', async () => {
 
   it('the server config: HOST is where it listens (default: this machine only)', async () => {
     expect(application.container.make(ServerConfig).host).toBe('127.0.0.1');
-    const open = await createApplication({ root: import.meta.dirname, discover: false, env: { APP_KEY: generateKey(), HOST: '0.0.0.0' }, providers: [ServerServiceProvider] });
+    const open = await createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { APP_KEY: generateKey(), HOST: '0.0.0.0' } });
     expect(open.container.make(ServerConfig).host).toBe('0.0.0.0');
   });
 });
@@ -132,10 +130,9 @@ describe('the build\'s assets', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => Route.get('/page', () => view('pages/Show', { secret: 'x'.repeat(4000) }))) })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application, { clientDir });
 
   it('are kept for a year, immutable — the hash in the name changes with the content', async () => {
@@ -196,9 +193,7 @@ describe('the CSP nonce', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), NODE_ENV: 'test' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    override: (container: Container) => container.instance(Logger, logger),
     middleware: { global: [contentSecurityPolicy({ imgSrc: ["'self'", 'data:'] })] },
     modules: [
       defineModule({
@@ -212,7 +207,7 @@ describe('the CSP nonce', async () => {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey(), NODE_ENV: 'test' }, override: (container: Container) => container.instance(Logger, logger) });
   const app = createHttpKernel(application, { renderer: createDocumentRenderer({ template: () => TEMPLATE, ssr: () => render }) });
   const nonceOf = (response: Response) => /'nonce-([^']+)'/.exec(response.headers.get('content-security-policy') ?? '')?.[1];
 
@@ -280,10 +275,9 @@ describe('the CSP nonce', async () => {
     const plain = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: generateKey(), NODE_ENV: 'test' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => Route.get('/page', () => view('pages/Show', {}))) })],
-    });
+    }, { env: { APP_KEY: generateKey(), NODE_ENV: 'test' } });
     const kernel = createHttpKernel(plain, { renderer: createDocumentRenderer({ template: () => TEMPLATE, ssr: () => render }) });
     const response = await kernel.request('/page', { headers: { accept: 'text/html' } });
     const html = await response.text();
@@ -313,10 +307,8 @@ describe('startServer and HOST', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-      override: (container: Container) => container.instance(Logger, logger),
-    });
+    }, { env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test' }, override: (container: Container) => container.instance(Logger, logger) });
     const running = await startServer({ app, port: 0, mode: 'production' });
     try {
       const address = running.server.address() as AddressInfo;
@@ -347,7 +339,7 @@ describe('keep-alive behind a proxy', () => {
     writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
     writeFileSync(join(root, 'dist/server/ssr.js'), 'export const render = async () => ({ html: "" });');
     for (const [env, seconds] of [[{}, 65], [{ KEEP_ALIVE_TIMEOUT: '620' }, 620]] as const) {
-      const app = await createApplication({ root, discover: false, env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test', LOG_LEVEL: 'silent', ...env }, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] });
+      const app = await createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test', LOG_LEVEL: 'silent', ...env } });
       const running = await startServer({ app, port: 0, mode: 'production' });
       try {
         expect([running.server.keepAliveTimeout, running.server.headersTimeout, running.server.requestTimeout]).toEqual([seconds * 1000, seconds === 65 ? 66_000 : 300_000, 300_000]);
@@ -357,7 +349,7 @@ describe('keep-alive behind a proxy', () => {
         await app.shutdown();
       }
     }
-    await expect(createApplication({ root: import.meta.dirname, discover: false, env: { KEEP_ALIVE_TIMEOUT: '0' }, providers: [ServerServiceProvider] })).rejects.toThrow(
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { KEEP_ALIVE_TIMEOUT: '0' } })).rejects.toThrow(
       'server: KEEP_ALIVE_TIMEOUT — Expected at least 1 second',
     );
   });

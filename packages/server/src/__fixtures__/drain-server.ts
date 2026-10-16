@@ -40,10 +40,9 @@ class SendResetLinkController {
 const app = await createApplication({
   root: process.argv[2]!,
   discover: false,
-  env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
   providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, TransportProvider],
   modules: [defineModule({ name: 'reset', apiRoutes: openRoutes((Route) => Route.post('/reset', SendResetLinkController)) })],
-});
+}, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
 const server = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
 process.once('SIGTERM', async () => {
   await server.close();

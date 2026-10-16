@@ -66,11 +66,24 @@ the explicit list low: it adds the new module to `bootstrap/app.ts` for you (see
 | `listeners` | App-level event listeners: `listen(Event, Listener)`. |
 | `health` | App-level checks for `/up/ready`. See [health checks](health.md). |
 | `discover` | `false` registers none of the installed packages. Default: `true`. |
+
+The definition is what ships. What only one boot decides is not part of it: `defineApplication({ root, env: {} })` and
+`defineApplication({ root, override: … })` are type errors, so a test double or a foreign environment cannot end up in the
+app that runs in production. A definition that carries one anyway, through a variable or a spread the types cannot see, is refused
+when `createApplication()` boots it. A package that adds an option to the definition declares it on `ApplicationDefinition` (see [extending
+the app's types](package-development.md#extending-the-apps-types)).
+
+`createApplication(definition, options)` boots an app from its definition and returns it. The `marmeon` command and
+`createTestApp()` call it for you. The options are the ones a boot decides:
+
+| Option | What it is |
+| --- | --- |
 | `env` | The environment to check the configuration against, instead of `.env` and the real environment. For tests and scripts. |
+| `phase` | `'build'` registers the providers and boots none (what `marmeon build` needs). Default: `'run'`. |
+| `container` | The container to bind into. Default: a new one. |
 | `override` | A function that replaces bindings after every provider registered and before any boots. For tests. |
 
-`createApplication(definition)` boots an app from its definition and returns it. The `marmeon` command and `createTestApp()` call
-it for you. `app.shutdown()` stops the app again: every provider's `shutdown()` runs and closes its pools and connections. Code
+ `app.shutdown()` stops the app again: every provider's `shutdown()` runs and closes its pools and connections. Code
 that needs the booted app outside of a request, such as a maintenance script, belongs in a [console
 command](console.md#writing-commands): `marmeon` boots the app for it and shuts it down afterwards.
 

@@ -78,11 +78,9 @@ async function boot(env: Record<string, string> = {}, kernelOptions: { version?:
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', CACHE_DRIVER: 'memory', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ...(extra.providers ?? [])],
-    modules: [defineModule({ name: 'visits', routes, apiRoutes, ...(extra.schedule ? { schedule: extra.schedule } : {}) })],
-    override: (container) => container.make(CsrfProtection).disable(), // CSRF has its own tests
-  });
+    modules: [defineModule({ name: 'visits', routes, apiRoutes, ...(extra.schedule ? { schedule: extra.schedule } : {}) })], // CSRF has its own tests
+  }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', CACHE_DRIVER: 'memory', ...env }, override: (container) => container.make(CsrfProtection).disable() });
   const kernel = createHttpKernel(application, kernelOptions);
   Object.assign(application, { kernel });
   // A tiny browser: remembers the session cookie between requests.

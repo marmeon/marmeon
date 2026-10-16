@@ -105,10 +105,9 @@ describe('createHttpKernel — live validation', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [defineModule({ name: 'live', routes })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application, { debug: true, strictReadOnly: false });
   const strict = createHttpKernel(application, { debug: true });
   const post = (path: string, body: unknown, headers: Record<string, string>, kernel = app) =>

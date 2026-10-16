@@ -11,7 +11,7 @@ describe('api.md format', () => {
       item('a', 'export interface a {\n    x: string;\n}\nexport declare function a(): void;'),
       item('Hidden', 'interface Hidden {}', 'referenced'),
       item('old', '// @deprecated\nexport declare function old(): void;'),
-      item('@marmeon/core.ApplicationOptions', 'interface ApplicationOptions {\n    x?: 1;\n}', 'augments'),
+      item('@marmeon/core.ApplicationDefinition', 'interface ApplicationDefinition {\n    x?: 1;\n}', 'augments'),
       item('Probe', 'export declare class Probe {}', 'experimental'),
       item('page', 'export declare const page: 1;', 'stable', '@marmeon/demo/page'),
       item('APP_URL', 'string, default http://localhost', 'environment', ''),

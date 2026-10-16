@@ -69,7 +69,7 @@ export class RouteTypes {
     }
     importLines.sort((a, b) => (a < b ? -1 : 1));
 
-    const clientRoutes = this.#app.options.clientRoutes ?? {};
+    const clientRoutes = this.#app.definition.clientRoutes ?? {};
     const browser = this.browserRoutes();
     for (const [option, patterns] of [['include', clientRoutes.include ?? []], ['except', clientRoutes.except ?? []]] as const) {
       for (const pattern of patterns) {
@@ -112,7 +112,7 @@ export class RouteTypes {
 
   /** The routes the browser may learn and those it never does — the content of `.marmeon/routes.json`. */
   browserRoutes(): BrowserRoutes {
-    return browserRoutes(this.#router.routes, this.#app.options.clientRoutes);
+    return browserRoutes(this.#router.routes, this.#app.definition.clientRoutes);
   }
 
   /** Where `.marmeon/routes.json` lives. */

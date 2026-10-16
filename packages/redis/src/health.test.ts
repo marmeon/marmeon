@@ -10,10 +10,8 @@ const boot = (url: string) =>
   createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { REDIS_URL: url, REDIS_PREFIX: `marmeon-test-${crypto.randomUUID().slice(0, 8)}:` },
     providers: [RedisServiceProvider],
-    override: (container) => container.instance(Logger, silent),
-  });
+  }, { env: { REDIS_URL: url, REDIS_PREFIX: `marmeon-test-${crypto.randomUUID().slice(0, 8)}:` }, override: (container) => container.instance(Logger, silent) });
 
 describe('the redis health check', () => {
   it('checks only the connections the app uses — a configured Redis nobody talks to is no reason to be "not ready"', async () => {

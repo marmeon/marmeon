@@ -17,34 +17,20 @@ export declare class Application {
     readonly modules: readonly ModuleDefinition[];
     readonly packages: readonly string[];
     readonly providers: readonly ServiceProviderClass[];
-    readonly options: ApplicationOptions;
+    readonly definition: ApplicationDefinition;
     readonly phase: ApplicationPhase;
-    constructor(options: {
-        root: string;
-        container: Container;
-        modules: readonly ModuleDefinition[];
-        packages: readonly string[];
-        providers?: readonly ServiceProviderClass[];
-        options?: ApplicationOptions;
-    });
-    register(providers: readonly ServiceProviderClass[]): void;
-    boot(): Promise<void>;
     shutdown(): Promise<void>;
     [Symbol.asyncDispose](): Promise<void>;
 }
-// ApplicationOptions
-export interface ApplicationOptions {
+// ApplicationDefinition
+export interface ApplicationDefinition {
     root: string;
     modules?: readonly ModuleDefinition[];
     providers?: readonly ServiceProviderClass[];
     listeners?: readonly ListenerBinding[];
     config?: readonly ConfigDefinition<any>[];
     health?: readonly HealthCheckClass[];
-    env?: Readonly<Record<string, string | undefined>>;
-    phase?: ApplicationPhase;
     discover?: boolean;
-    container?: Container;
-    override?: (container: Container) => void;
 }
 // ApplicationPhase
 export type ApplicationPhase = 'run' | 'build';
@@ -115,6 +101,13 @@ export interface ContainerErrorDetails {
 }
 // ContainerErrorReason
 export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular';
+// CreateApplicationOptions
+export interface CreateApplicationOptions {
+    env?: Readonly<Record<string, string | undefined>>;
+    phase?: ApplicationPhase;
+    container?: Container;
+    override?: (container: Container) => void;
+}
 // DEFAULT_HEALTH_TIMEOUT
 export declare const DEFAULT_HEALTH_TIMEOUT = 2000;
 // DOTENV_MARKER
@@ -569,7 +562,7 @@ export declare function afterRollback(fn: () => unknown): Promise<void>;
 // commitAnyway
 export declare function commitAnyway<E>(result: Err<E>): Err<E>;
 // createApplication
-export declare function createApplication(options: ApplicationOptions): Promise<Application>;
+export declare function createApplication(definition: ApplicationDefinition, options?: CreateApplicationOptions): Promise<Application>;
 // currentJob
 export declare function currentJob(): JobInfo | undefined;
 // currentLogContext
@@ -581,7 +574,7 @@ export declare function currentTask(): TaskInfo | undefined;
 // currentTransaction
 export declare function currentTransaction(): TransactionFrame | undefined;
 // defineApplication
-export declare function defineApplication(options: ApplicationOptions): ApplicationOptions;
+export declare function defineApplication(definition: ApplicationDefinition): ApplicationDefinition;
 // defineConfig
 export declare function defineConfig<const Schema extends StandardSchemaV1, T>(name: string, definition: {
     env: Schema;
@@ -1026,34 +1019,20 @@ export declare class Application {
     readonly modules: readonly ModuleDefinition[];
     readonly packages: readonly string[];
     readonly providers: readonly ServiceProviderClass[];
-    readonly options: ApplicationOptions;
+    readonly definition: ApplicationDefinition;
     readonly phase: ApplicationPhase;
-    constructor(options: {
-        root: string;
-        container: Container;
-        modules: readonly ModuleDefinition[];
-        packages: readonly string[];
-        providers?: readonly ServiceProviderClass[];
-        options?: ApplicationOptions;
-    });
-    register(providers: readonly ServiceProviderClass[]): void;
-    boot(): Promise<void>;
     shutdown(): Promise<void>;
     [Symbol.asyncDispose](): Promise<void>;
 }
-// ApplicationOptions
-export interface ApplicationOptions {
+// ApplicationDefinition
+export interface ApplicationDefinition {
     root: string;
     modules?: readonly ModuleDefinition[];
     providers?: readonly ServiceProviderClass[];
     listeners?: readonly ListenerBinding[];
     config?: readonly ConfigDefinition<any>[];
     health?: readonly HealthCheckClass[];
-    env?: Readonly<Record<string, string | undefined>>;
-    phase?: ApplicationPhase;
     discover?: boolean;
-    container?: Container;
-    override?: (container: Container) => void;
 }
 // ApplicationPhase
 export type ApplicationPhase = 'run' | 'build';

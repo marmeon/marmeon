@@ -182,7 +182,7 @@ describe('transports', () => {
     vi.doMock('nodemailer', () => ({ default: { createTransport: (options: Record<string, unknown>) => (created.push(options), { sendMail: async () => {}, close() {} }) } }));
     try {
       const send = async (env: Record<string, string>) => {
-        const app = await createApplication({ root: import.meta.dirname, discover: false, env: { LOG_LEVEL: 'silent', MAIL_MAILER: 'smtp', ...env }, providers: [MailServiceProvider] });
+        const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: { LOG_LEVEL: 'silent', MAIL_MAILER: 'smtp', ...env } });
         await app.container.make(Mailer).send(new WelcomeMail('Ada'));
         await app.shutdown();
         return created.at(-1)!;
@@ -199,7 +199,7 @@ describe('transports', () => {
 
 describe('MailServiceProvider', () => {
   const boot = (env: Record<string, string>, override?: (container: Container) => void) =>
-    createApplication({ root: import.meta.dirname, discover: false, env: { LOG_LEVEL: 'silent', ...env }, providers: [MailServiceProvider], ...(override ? { override } : {}) });
+    createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: { LOG_LEVEL: 'silent', ...env }, ...(override ? { override } : {}) });
 
   it('picks the transport by MAIL_MAILER and sends from MAIL_FROM_*', async () => {
     const app = await boot({ MAIL_MAILER: 'array', MAIL_FROM_ADDRESS: 'team@app.test', MAIL_FROM_NAME: 'The Team' });

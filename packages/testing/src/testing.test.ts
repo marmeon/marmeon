@@ -1,6 +1,6 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { tmpdir } from 'node:os';
-import { Clock, defineModule, type ApplicationOptions } from '@marmeon/core';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { Clock, defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { DevtoolsServiceProvider } from '@marmeon/devtools';
 import { ServerServiceProvider } from '@marmeon/server';
@@ -25,10 +25,11 @@ export class ShowGreetingController extends Controller {
   }
 }
 
-const definition: ApplicationOptions = {
-  root: tmpdir(),
+const env = { APP_KEY: generateKey() };
+
+const definition: ApplicationDefinition = {
+  root: tempDir('marmeon-testing-'),
   discover: false,
-  env: { APP_KEY: generateKey() },
   providers: [EncryptionServiceProvider, HttpServiceProvider],
   modules: [
     defineModule({
@@ -63,7 +64,7 @@ async function failure(check: PromiseLike<unknown>): Promise<string> {
 
 describe('@marmeon/testing', () => {
   it("moves the app's time: every service reading the Clock sees app.travel() and app.freeze()", async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const clock = app.container.make(Clock);
     expect(clock).toBe(app.clock);
     const frozen = app.freeze(new Date('2026-12-24T18:00:00Z'));
@@ -72,12 +73,12 @@ describe('@marmeon/testing', () => {
     app.travelTo(Date.UTC(2027, 0, 1));
     expect(new Date(clock.now()).toISOString()).toBe('2027-01-01T00:00:00.000Z');
     // Every test app has its own clock.
-    const other = await createTestApp(definition);
+    const other = await createTestApp(definition, { env });
     expect(Math.abs(other.container.make(Clock).now() - Date.now())).toBeLessThan(1_000);
   });
 
   it('chains assertions on the pending request (page loads and navigations)', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     await app.get('/greeting').assertOk().assertSee('Hello Ada').assertPage('greetings/Show', { meta: { lang: 'en' } });
     await app.navigating().get('/greeting').assertHeader('x-marmeon', 'true').assertPage<ShowGreetingController>('greetings/Show', {
       message: 'Hello Ada',
@@ -85,13 +86,13 @@ describe('@marmeon/testing', () => {
   });
 
   it('sends JSON and returns the awaited response', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     const response = await app.post('/echo', { json: { a: 1 } }).assertCreated().assertExactJson({ a: 1 });
     expect(response.json()).toEqual({ a: 1 });
   });
 
   it('sends multipart bodies with files and repeated fields', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     await app
       .post('/upload', { multipart: { avatar: new File(['hello'], 'ada.txt'), 'tags[]': ['a', 'b'] } })
       .assertOk()
@@ -99,7 +100,7 @@ describe('@marmeon/testing', () => {
   });
 
   it('asserts cookies that responses set, leave alone or expire', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     await app.post('/prefs', { form: { theme: 'dark' } }).assertCookie('theme').assertCookie('theme', 'dark').assertCookieMissing('other');
     await app.withCookie('theme', 'dark').post('/prefs').assertCookieExpired('theme');
 
@@ -118,12 +119,12 @@ describe('@marmeon/testing', () => {
         return `HELLO ${name.toUpperCase()}`;
       }
     }
-    const app = await createTestApp(definition, { override: (c) => c.instance(Greeting, new LoudGreeting()) });
+    const app = await createTestApp(definition, { env, override: (c) => c.instance(Greeting, new LoudGreeting()) });
     await app.navigating().get('/greeting').assertPage('greetings/Show', { message: 'HELLO ADA' });
   });
 
   it('explains failures with the request, status and body', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     expect(await failure(app.get('/nope').assertOk())).toMatch(/^Expected status 200, got 404\n {2}GET \/nope → 404\n/);
     expect(await failure(app.navigating().get('/greeting').assertPage('greetings/Index'))).toContain(
       'Expected page "greetings/Index", got "greetings/Show"',
@@ -136,7 +137,7 @@ describe('@marmeon/testing', () => {
 
 // Never called: only the types matter.
 export async function typeLevelTests(): Promise<void> {
-  const app = await createTestApp(definition);
+  const app = await createTestApp(definition, { env });
   // @ts-expect-error — `mesage` is not a prop of the page ShowGreetingController renders.
   await app.get('/greeting').assertPage<ShowGreetingController>('greetings/Show', { mesage: 'typo' });
   // @ts-expect-error — `count` is a number.
@@ -155,11 +156,11 @@ describe('closing a test app', () => {
     };
     const closing = { ...definition, providers: [...(definition.providers ?? []), Recorder] };
     {
-      await using app = await createTestApp(closing);
+      await using app = await createTestApp(closing, { env });
       await app.get('/greeting').assertOk();
     }
     expect(calls).toEqual(['shutdown']);
-    const app = await createTestApp(closing);
+    const app = await createTestApp(closing, { env });
     await app.close();
     await app.close(); // shutting down twice is harmless
     expect(calls).toEqual(['shutdown', 'shutdown']);
@@ -168,7 +169,7 @@ describe('closing a test app', () => {
 
 describe('server rendering assertions', () => {
   it('say how to turn server rendering on in tests', async () => {
-    const app = await createTestApp(definition);
+    const app = await createTestApp(definition, { env });
     expect(await failure(app.get('/greeting', { headers: { accept: 'text/html' } }).assertHydrates())).toContain(
       'assertHydrates() needs server rendering in the test: createTestApp(app, { ssr: true })',
     );
@@ -178,17 +179,17 @@ describe('server rendering assertions', () => {
 describe('the devtools in tests', () => {
   it('records into memory with devtools: true — app.devtools — and never without it', async () => {
     const withDevtools = { ...definition, providers: [...(definition.providers ?? []), ServerServiceProvider, DevtoolsServiceProvider] };
-    const app = await createTestApp(withDevtools, { devtools: true });
+    const app = await createTestApp(withDevtools, { env, devtools: true });
     await app.get('/greeting').assertOk();
     const request = app.devtools.assertRecorded('request', (content) => content.path === '/greeting');
     expect(request.content.page).toMatchObject({ component: 'greetings/Show', props: { message: JSON.stringify('Hello Ada').length } });
     expect(() => app.devtools.assertRecorded('mail')).toThrow(/Expected the devtools to have recorded a mail\. Recorded 0 mail entries\./);
 
-    const without = await createTestApp(withDevtools);
+    const without = await createTestApp(withDevtools, { env });
     expect(() => without.devtools).toThrow('app.devtools needs createTestApp(…, { devtools: true })');
   });
 
   it('says when the app does not register the devtools', async () => {
-    await expect(createTestApp(definition, { devtools: true })).rejects.toThrow(/does not register @marmeon\/devtools — add it to the app's package\.json/);
+    await expect(createTestApp(definition, { env, devtools: true })).rejects.toThrow(/does not register @marmeon\/devtools — add it to the app's package\.json/);
   });
 });

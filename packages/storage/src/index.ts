@@ -81,7 +81,7 @@ const UPLOADS_INFRASTRUCTURE = {
 /** The app's storage configuration: its `defineStorage(…)` (in the app's or a module's `config`), else the defaults. */
 function storageOptions(container: Resolver): StorageOptions {
   const app = container.make(Application);
-  const definitions = [...(app.options.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isStorageDefinition);
+  const definitions = [...(app.definition.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isStorageDefinition);
   if (definitions.length > 1) throw new Error('The app has more than one defineStorage(…) in its config — keep one.');
   return definitions[0] ? container.make(definitions[0]) : DEFAULT_STORAGE;
 }

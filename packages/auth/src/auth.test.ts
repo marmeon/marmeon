@@ -279,7 +279,6 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
     modules: [
       defineModule({
@@ -289,6 +288,8 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
         listeners: [listen(Login, RecordEvent), listen(Logout, RecordEvent), listen(Failed, RecordEvent), listen(PasswordChanged, RecordEvent), listen(RememberTokenReused, RecordEvent)],
       }),
     ],
+  }, {
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
@@ -609,10 +610,9 @@ describe('authenticate() and guest()', () => {
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', ...CHEAP },
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
       modules: [defineModule({ name: 'auth-test', routes })], // boots: make:auth must run in apps without an auth module
-    });
+    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', ...CHEAP } });
     const response = await createHttpKernel(application).request('/me', { headers: { accept: 'application/json' } });
     expect(response.status).toBe(500);
     expect(() => application.container.make(UserProvider)).toThrow('container.bind(UserProvider, UserRepository)');

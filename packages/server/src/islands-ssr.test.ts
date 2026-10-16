@@ -144,11 +144,10 @@ describe('islands resolved in-process while the page streams', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
     modules: [defineModule({ name: 'islands', routes })],
     middleware: { web: [ExposesLifecycle] },
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
   const app = createHttpKernel(application, { renderer, debug: true, islandTimeout: 100 });
   const production = createHttpKernel(application, { renderer, strictReadOnly: false, islandTimeout: 100 });

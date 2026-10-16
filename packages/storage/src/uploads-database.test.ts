@@ -29,9 +29,8 @@ describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s t
     app = await createApplication({
       root: freshDirectory(),
       discover: false,
-      env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent', DB_CONNECTION: 'pgsql', DB_URL: url.href, UPLOADS_CONNECTION: 'default' },
       providers: [EncryptionServiceProvider, DatabaseServiceProvider, HttpServiceProvider, StorageServiceProvider],
-    });
+    }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent', DB_CONNECTION: 'pgsql', DB_URL: url.href, UPLOADS_CONNECTION: 'default' } });
     await app.container
       .make(Connections)
       .get()

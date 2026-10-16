@@ -38,7 +38,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
     container.singleton(Connections, (c) => {
       const app = c.make(Application);
       // Named connections are config definitions listed by the app or a module (`defineConnection`).
-      const named = [...(app.options.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isConnectionDefinition);
+      const named = [...(app.definition.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isConnectionDefinition);
       const connections: Record<string, ConnectionOptions> = { default: c.make(DatabaseConfig).default };
       for (const definition of named) connections[definition.connection] = c.make(definition);
       return new Connections({ connections, root: app.root, logger: c.make(Logger), app });

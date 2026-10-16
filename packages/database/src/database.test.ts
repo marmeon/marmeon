@@ -204,10 +204,9 @@ describe('DatabaseServiceProvider', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { DB_DATABASE: 'app.sqlite', REPORTING_DB: ':memory:' },
       config: [Reporting],
       providers: [DatabaseServiceProvider],
-    });
+    }, { env: { DB_DATABASE: 'app.sqlite', REPORTING_DB: ':memory:' } });
     const db = app.container.make(Database);
     const connections = app.container.make(Connections);
     expect(db).toBe(connections.get());
@@ -224,13 +223,12 @@ describe('DatabaseServiceProvider', () => {
     const pgsql = await createApplication({
       root,
       discover: false,
-      env: { DB_CONNECTION: 'pgsql', DB_HOST: 'db.internal', DB_PORT: '6543', DB_DATABASE: 'shop', DB_USERNAME: 'shop', DB_PASSWORD: 's3cr€t' },
       providers: [DatabaseServiceProvider],
-    });
+    }, { env: { DB_CONNECTION: 'pgsql', DB_HOST: 'db.internal', DB_PORT: '6543', DB_DATABASE: 'shop', DB_USERNAME: 'shop', DB_PASSWORD: 's3cr€t' } });
     expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://shop:s3cr%E2%82%ACt@db.internal:6543/shop', poolMax: 10, infrastructurePoolMax: 4 });
     await pgsql.shutdown();
     await expect(
-      createApplication({ root, discover: false, env: { DB_CONNECTION: 'pgsql', DB_URL: 'mysql://x' }, providers: [DatabaseServiceProvider] }),
+      createApplication({ root, discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_CONNECTION: 'pgsql', DB_URL: 'mysql://x' } }),
     ).rejects.toThrow(/DB_URL.*postgres:\/\//);
   });
 
@@ -238,9 +236,8 @@ describe('DatabaseServiceProvider', () => {
     const pgsql = await createApplication({
       root,
       discover: false,
-      env: { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:secret@db.example:5433/app', DB_HOST: 'other', DB_DATABASE: 'other', DB_USERNAME: 'other' },
       providers: [DatabaseServiceProvider],
-    });
+    }, { env: { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:secret@db.example:5433/app', DB_HOST: 'other', DB_DATABASE: 'other', DB_USERNAME: 'other' } });
     expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://app:secret@db.example:5433/app', poolMax: 10, infrastructurePoolMax: 4 });
     await pgsql.shutdown();
   });
@@ -267,7 +264,7 @@ describe('DatabaseServiceProvider', () => {
       }),
     });
     const options = async (variables: Record<string, string>) => {
-      await using app = await createApplication({ root, discover: false, env: { DB_DATABASE: ':memory:', ...variables }, config: [Reporting], providers: [DatabaseServiceProvider] });
+      await using app = await createApplication({ root, discover: false, config: [Reporting], providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:', ...variables } });
       return app.container.make(Connections).options('reporting');
     };
     expect(await options({ REPORTING_DB_HOST: 'reports.internal', REPORTING_DB_PORT: '6543', REPORTING_DB_USERNAME: 'report', REPORTING_DB_PASSWORD: 'p@ss/word' })).toEqual({
@@ -282,7 +279,7 @@ describe('DatabaseServiceProvider', () => {
     });
     // Neither a URL nor a database: the start names the connection instead of guessing a database.
     const Nameless = defineConnection('nameless', { env: env({}), resolve: () => ({ driver: 'pgsql', host: 'db' }) });
-    await expect(createApplication({ root, discover: false, env: { DB_DATABASE: ':memory:' }, config: [Nameless], providers: [DatabaseServiceProvider] })).rejects.toThrow(
+    await expect(createApplication({ root, discover: false, config: [Nameless], providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:' } })).rejects.toThrow(
       'The Postgres connection "nameless" needs a url or a database.',
     );
   });

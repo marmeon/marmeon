@@ -44,10 +44,9 @@ describe('RedisConnections without a server', () => {
     const app = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_NAME: 'My Shop (EU)', REDIS_URL: 'redis://cache.internal:6380/2', QUEUE_REDIS_URL: 'redis://queue.internal:6379' },
       providers: [RedisServiceProvider],
       config: [Queue],
-    });
+    }, { env: { APP_NAME: 'My Shop (EU)', REDIS_URL: 'redis://cache.internal:6380/2', QUEUE_REDIS_URL: 'redis://queue.internal:6379' } });
     expect(app.container.make(RedisConfig).default).toEqual({ url: 'redis://cache.internal:6380/2', prefix: 'my-shop-eu:' });
     const redis = app.container.make(RedisConnections);
     expect(redis.names()).toEqual(['default', 'queue']);
@@ -58,7 +57,7 @@ describe('RedisConnections without a server', () => {
 
   it('takes an empty REDIS_PREFIX as a missing one — the app name, never a key without a prefix', async () => {
     const prefix = async (variables: Record<string, string>) =>
-      (await createApplication({ root: import.meta.dirname, discover: false, env: { APP_NAME: 'Shop', ...variables }, providers: [RedisServiceProvider] })).container.make(RedisConfig).default.prefix;
+      (await createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { APP_NAME: 'Shop', ...variables } })).container.make(RedisConfig).default.prefix;
     expect(await prefix({ REDIS_PREFIX: '' })).toBe('shop:');
     expect(await prefix({ REDIS_PREFIX: 'tenant-a:' })).toBe('tenant-a:');
     expect(await prefix({ APP_NAME: '' })).toBe('marmeon:');
@@ -66,7 +65,7 @@ describe('RedisConnections without a server', () => {
 
   it('rejects a REDIS_URL that is not one', async () => {
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, env: { REDIS_URL: 'localhost:6379' }, providers: [RedisServiceProvider] }),
+      createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { REDIS_URL: 'localhost:6379' } }),
     ).rejects.toThrow(/REDIS_URL.*redis:\/\//s);
   });
 });

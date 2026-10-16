@@ -147,9 +147,10 @@ async function withApp(kind: SharedTarget['kind'], test: (app: TestApp) => Promi
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { ...targetEnv(target), ...cacheFor(target), ...env },
     providers: [DatabaseServiceProvider, RedisServiceProvider, CacheServiceProvider, QueueServiceProvider],
     modules: [{ name: 'test', jobs: [NoteJob, MailJob, OnceJob, GuardedJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
+  }, {
+    env: { ...targetEnv(target), ...cacheFor(target), ...env },
     override: (container) => {
       container.instance(Seen, seen);
       container.instance(Logger, silent);

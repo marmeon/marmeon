@@ -57,8 +57,9 @@ async function app(env: Record<string, string> = {}, transport: MailTransport = 
   return createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null', ...env },
     providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider],
+  }, {
+    env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null', ...env },
     override: (c) => {
       c.instance(Clock, new TestClock());
       c.instance(MailTransport, transport);
@@ -164,11 +165,11 @@ describe('MailServiceProvider', () => {
   it('builds the transport only when a mail is sent — a process that never sends closes none at shutdown', async () => {
     const children: LogContext[] = [];
     const logger: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: (context) => (children.push(context), logger) };
-    const quiet = await createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [MailServiceProvider], override: (c) => c.instance(Logger, logger) });
+    const quiet = await createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: {}, override: (c) => c.instance(Logger, logger) });
     await quiet.shutdown();
     expect(children).toEqual([]); // the log transport (channel mail) was never built
 
-    const used = await createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [MailServiceProvider], override: (c) => c.instance(Logger, logger) });
+    const used = await createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: {}, override: (c) => c.instance(Logger, logger) });
     await used.container.make(Mailer).send(new ResetMail('https://app.test/r'));
     await used.shutdown();
     expect(children).toEqual([{ channel: 'mail' }]);
@@ -223,7 +224,7 @@ describe('calendarEvent() (.ics)', () => {
 describe('mail previews', () => {
   const root = join(import.meta.dirname, '__fixtures__', 'preview-app');
   const previewApp = (environment = 'development', override: (c: import('@marmeon/core').Container) => void = () => {}) =>
-    createApplication({ root, discover: false, env: environment ? { NODE_ENV: environment } : {}, providers: [MailServiceProvider], override: (c) => (c.instance(Router, new Router()), override(c)) });
+    createApplication({ root, discover: false, providers: [MailServiceProvider] }, { env: environment ? { NODE_ENV: environment } : {}, override: (c) => (c.instance(Router, new Router()), override(c)) });
 
   it('lists the mails with static preview() and shows one — header, the HTML in a sandboxed frame, ?text, ?raw, ?locale', async () => {
     const application = await previewApp();

@@ -89,11 +89,9 @@ async function boot({ env = { NODE_ENV: 'development' } as Record<string, string
   const application = await createApplication({
     root: fileURLToPath(new URL('../../../', import.meta.url)),
     discover: false,
-    env: { APP_KEY: generateKey(), ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'lab', routes })],
-    override: (container) => container.instance(Logger, new Quiet()),
-  });
+  }, { env: { APP_KEY: generateKey(), ...env }, override: (container) => container.instance(Logger, new Quiet()) });
   current = application;
   return { application, kernel: createHttpKernel(application, renderer ? { renderer } : {}) };
 }

@@ -34,10 +34,9 @@ describe('a live stream and the server', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
       modules: [defineModule({ name: 'board', routes: openRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
-    });
+    }, { env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-marmeon': 'true' } });
@@ -80,11 +79,9 @@ describe('a live stream and the server', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
       modules: [defineModule({ name: 'board', routes: openRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
-      override: (container: Container) => container.instance(LiveBackend, slow),
-    });
+    }, { env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' }, override: (container: Container) => container.instance(LiveBackend, slow) });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-marmeon': 'true' } });
@@ -145,9 +142,10 @@ describe("the live package's error lines", () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory' },
       // The session package adds its cookie's name to the app's Redactor at boot.
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, LiveServiceProvider],
+    }, {
+      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory' },
       override: (container) => {
         container.instance(LiveBackend, failing);
         container.instance(Logger, capture);

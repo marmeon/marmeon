@@ -81,10 +81,9 @@ describe('createHttpKernel — layers', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey() },
     providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
     modules: [defineModule({ name: 'layers', routes })],
-  });
+  }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application, { debug: true });
 
   it('answers a layer’s request with its page object — `layer: { key, base }`, the region header', async () => {

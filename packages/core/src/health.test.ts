@@ -92,11 +92,10 @@ describe('HealthChecks', () => {
     const app = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: {},
       providers: [DatabaseProvider],
       health: [PingCheck],
       modules: [defineModule({ name: 'storage', health: [SlowCheck] })],
-    });
+    }, { env: {} });
     expect(app.container.make(HealthChecks).all()).toEqual([FailingCheck, PingCheck, SlowCheck]);
   });
 

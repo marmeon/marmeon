@@ -1,5 +1,5 @@
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, inTransaction, type Generated } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { AfterResponse, Controller, HttpServiceProvider } from '@marmeon/http';
@@ -47,10 +47,10 @@ const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 describe.each(drivers)('work after the response on %s', (driver) => {
-  const definition: ApplicationOptions = {
+  const env = { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_CONNECTION: 'sqlite', DB_URL: undefined, DB_DATABASE: ':memory:' }) };
+  const definition: ApplicationDefinition = {
     root: tempDir('marmeon-testing-db-'),
     discover: false,
-    env: { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_DATABASE: ':memory:' }) },
     providers: [EncryptionServiceProvider, HttpServiceProvider, DatabaseServiceProvider],
     modules: [
       defineModule({
@@ -64,7 +64,7 @@ describe.each(drivers)('work after the response on %s', (driver) => {
   it('runs outside of any transaction — also one that was open around the request and is finished by then', async () => {
     gate.open = Promise.withResolvers();
     gate.outcome = Promise.withResolvers();
-    const app = await createTestApp(definition, { database: 'refresh' });
+    const app = await createTestApp(definition, { env, database: 'refresh' });
     const connections = app.make(Connections);
     // A request handled inside a transaction (in-process), which rolls back after the response.
     await connections

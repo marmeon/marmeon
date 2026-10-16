@@ -1,5 +1,5 @@
 import type { DeferredResult, PageObject, RegionResult } from '@marmeon/http/page';
-import type { ApplicationOptions } from '@marmeon/core';
+import type { ApplicationDefinition } from '@marmeon/core';
 import type { PageRenderer } from '@marmeon/server';
 import { createViteDevRenderer } from '@marmeon/server/internal';
 
@@ -43,7 +43,7 @@ const servers = new WeakMap<SsrServer, SsrServerState>();
  * Starts one Vite dev server (through the app's `vite.config.ts`, as `marmeon dev` does) that every server-rendered test app
  * of a file can share: start it in `beforeAll`, close it in `afterAll`. See docs/testing-pages.md#one-vite-server-per-file.
  */
-export async function startSsrServer(application: ApplicationOptions): Promise<SsrServer> {
+export async function startSsrServer(application: ApplicationDefinition): Promise<SsrServer> {
   const { vite, renderer } = await createViteDevRenderer({ root: application.root });
   const state: SsrServerState = { root: application.root, renderer, closed: false };
   let closing: Promise<void> | undefined;

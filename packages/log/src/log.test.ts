@@ -76,7 +76,7 @@ describe('@marmeon/log', () => {
   });
 
   it('adds what the app\'s log context sources give — a tracer\'s trace_id and span_id — and nothing without a source', async () => {
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
     const lines: Record<string, unknown>[] = [];
     const stream = new Writable({
       write(chunk, _encoding, done) {
@@ -204,7 +204,7 @@ describe('@marmeon/log', () => {
   });
 
   it("redacts the names the app's Redactor adds (addKeys) — in the context, a child's bindings and an error's text", async () => {
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
     app.container.make(Redactor).addKeys('marmeon_session', 'X-Tenant-Key');
     const raw: string[] = [];
     const stream = new Writable({ write: (chunk, _encoding, done) => (raw.push(String(chunk)), done()) });
@@ -273,8 +273,8 @@ describe('@marmeon/log', () => {
 
 describe('the log channel', () => {
   it('carries every entry of its app — any level, the bindings of every parent, the request — while something listens', async () => {
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
-    const other = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
+    const other = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
     const lines: Record<string, unknown>[] = [];
     const stream = new Writable({ write: (chunk, _encoding, done) => (lines.push(JSON.parse(String(chunk))), done()) });
     const logger = createPinoLogger({ level: 'warn', format: 'json' }, stream, app);
@@ -303,7 +303,7 @@ describe('the log channel', () => {
 
 describe('enabled(level) — asked before an entry is built', () => {
   it('follows the level — silent lets nothing through — and says yes while the log channel listens', async () => {
-    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'test' } });
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: { NODE_ENV: 'test' } });
     const sink = new Writable({ write: (_chunk, _encoding, done) => done() });
     const silent = createPinoLogger({ level: 'silent', format: 'json' }, sink, app);
     const warn = createPinoLogger({ level: 'warn', format: 'json' }, sink, app);

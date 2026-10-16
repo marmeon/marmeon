@@ -64,7 +64,7 @@ export class RedisServiceProvider implements ServiceProvider {
   register(container: Container): void {
     container.singleton(RedisConnections, (c) => {
       const app = c.make(Application);
-      const named = [...(app.options.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isRedisConnectionDefinition);
+      const named = [...(app.definition.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isRedisConnectionDefinition);
       const connections: Record<string, RedisConnectionOptions> = { default: c.make(RedisConfig).default };
       for (const definition of named) connections[definition.redisConnection] = c.make(definition);
       return new RedisConnections({ connections, logger: c.make(Logger), redactor: c.make(Redactor) });

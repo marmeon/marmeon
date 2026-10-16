@@ -30,7 +30,6 @@ async function boot({ broken = false } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), CACHE_DRIVER: 'memory' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, CacheServiceProvider, LoginLimits],
     modules: [
       defineModule({
@@ -45,7 +44,7 @@ async function boot({ broken = false } = {}) {
         }),
       }),
     ],
-  });
+  }, { env: { APP_KEY: generateKey(), CACHE_DRIVER: 'memory' } });
   return createHttpKernel(application);
 }
 

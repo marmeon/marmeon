@@ -194,7 +194,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
 
     it('fails the start for a notification without a name, a name used twice, two resolvers of one kind', async () => {
       const start = (modules: Parameters<typeof createApplication>[0]['modules']) =>
-        createApplication({ root: '/tmp', discover: false, env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY }, providers: [DatabaseServiceProvider, NotificationServiceProvider], modules, override: (c) => c.instance(Logger, silent) });
+        createApplication({ root: '/tmp', discover: false, providers: [DatabaseServiceProvider, NotificationServiceProvider], modules }, { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY }, override: (c) => c.instance(Logger, silent) });
       class Nameless {
         static readonly schema = OrderShipped.schema;
         via() {
@@ -375,11 +375,9 @@ describe('without a queue in the app', () => {
     const application = await createApplication({
       root: '/tmp',
       discover: false,
-      env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' },
       providers: [DatabaseServiceProvider, NotificationServiceProvider],
       modules: [{ name: 'shop', notifications: [Welcome], recipients: { member: Members } }],
-      override: (c) => c.instance(Logger, silent),
-    });
+    }, { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' }, override: (c) => c.instance(Logger, silent) });
     try {
       await expect(application.container.make(Notifications).send(ada, Welcome, { code: 'x' })).rejects.toThrow(/needs @marmeon\/queue/);
     } finally {

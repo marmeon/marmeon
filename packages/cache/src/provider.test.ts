@@ -28,10 +28,9 @@ function boot(env: Record<string, string>, providers: ServiceProviderClass[], co
     root: import.meta.dirname,
     discover: false,
     config,
-    env: { APP_KEY: generateKey(), ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ...providers, CacheServiceProvider, Limits],
     modules: [defineModule({ name: 'limits', apiRoutes: openRoutes((Route) => Route.middleware(throttle('login')).post('/login', () => ({ ok: true }))) })],
-  });
+  }, { env: { APP_KEY: generateKey(), ...env } });
 }
 
 async function statuses(app: Awaited<ReturnType<typeof boot>>, count: number): Promise<number[]> {

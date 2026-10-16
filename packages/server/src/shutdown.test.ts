@@ -58,7 +58,6 @@ describe('stopping the server', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey() },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [
         defineModule({
@@ -66,7 +65,7 @@ describe('stopping the server', () => {
           apiRoutes: openRoutes((Route) => Route.post('/work', DeferController)),
         }),
       ],
-    });
+    }, { env: { APP_KEY: generateKey() } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     expect((await fetch(`http://127.0.0.1:${port}/api/work`, { method: 'POST' })).status).toBe(200);
@@ -79,7 +78,6 @@ describe('stopping the server', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey() },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [
         defineModule({
@@ -87,7 +85,7 @@ describe('stopping the server', () => {
           apiRoutes: openRoutes((Route) => Route.post('/hang', HangController)),
         }),
       ],
-    });
+    }, { env: { APP_KEY: generateKey() } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development', drainTimeoutMs: 200 });
     const { port } = running.server.address() as AddressInfo;
     await fetch(`http://127.0.0.1:${port}/api/hang`, { method: 'POST' });
@@ -101,10 +99,9 @@ describe('stopping the server', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '0.6' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'hello', apiRoutes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
-    });
+    }, { env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '0.6' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     const base = `http://127.0.0.1:${port}`;
@@ -130,16 +127,15 @@ describe('stopping the server', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    });
+    }, { env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const started = performance.now();
     await running.close({ immediately: true });
     expect(performance.now() - started).toBeLessThan(2_000);
     await app.shutdown();
     await expect(
-      createApplication({ root, discover: false, env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5s' }, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }),
+      createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5s' } }),
     ).rejects.toThrow('Expected seconds, like 5 or 0.5');
   });
 

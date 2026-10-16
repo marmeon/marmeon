@@ -1,5 +1,5 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@marmeon/database';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { existsSync } from 'node:fs';
@@ -39,10 +39,10 @@ const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 describe.each(drivers)('a refreshed database on %s', (driver) => {
-  const definition: ApplicationOptions = {
+  const env = { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_CONNECTION: 'sqlite', DB_URL: undefined, DB_DATABASE: ':memory:' }) };
+  const definition: ApplicationDefinition = {
     root: tempDir('marmeon-testing-db-'),
     discover: false,
-    env: { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_DATABASE: ':memory:' }) },
     providers: [EncryptionServiceProvider, HttpServiceProvider, DatabaseServiceProvider],
     modules: [
       defineModule({
@@ -58,7 +58,7 @@ describe.each(drivers)('a refreshed database on %s', (driver) => {
   let previous: TestApp | undefined;
   beforeEach(async () => {
     previous = app;
-    app = await createTestApp(definition, { database: 'refresh' });
+    app = await createTestApp(definition, { env, database: 'refresh' });
   });
 
   it('starts migrated and empty, and sees what the test creates', async () => {
@@ -79,14 +79,14 @@ describe.each(drivers)('a refreshed database on %s', (driver) => {
   });
 
   it('seeds per test when asked to — one database app at a time', async () => {
-    await expect(createTestApp(definition, { database: 'refresh', seed: true })).rejects.toThrow(
+    await expect(createTestApp(definition, { env, database: 'refresh', seed: true })).rejects.toThrow(
       "Another test app with database: 'refresh' is still open. Close it first (await app.close())",
     );
     await app.close();
-    const seeded = await createTestApp(definition, { database: 'refresh', seed: true });
+    const seeded = await createTestApp(definition, { env, database: 'refresh', seed: true });
     await seeded.assertDatabaseHas<'notes', NotesTables>('notes', { title: 'Welcome', pinned: true });
     await seeded.close();
-    const next = await createTestApp(definition, { database: 'refresh' });
+    const next = await createTestApp(definition, { env, database: 'refresh' });
     await next.assertDatabaseMissing<'notes', NotesTables>('notes', { title: 'Welcome' });
   });
 
@@ -95,7 +95,7 @@ describe.each(drivers)('a refreshed database on %s', (driver) => {
     await app.make(Connections).destroy();
     const closed = await app.close().then(() => 'closed', (error: unknown) => String(error));
     expect(closed).toBe('closed');
-    const next = await createTestApp(definition, { database: 'refresh' });
+    const next = await createTestApp(definition, { env, database: 'refresh' });
     await next.assertDatabaseMissing<'notes', NotesTables>('notes', { title: 'Closed over' });
     await next.close();
   });
@@ -122,7 +122,7 @@ it('types database assertions by the table', () => void (async (app: TestApp) =>
 
 describe('createTestApp options', () => {
   it('only seeds a refreshed database', async () => {
-    await expect(createTestApp({ root: tempDir('marmeon-testing-db-'), discover: false, env: {} }, { seed: true })).rejects.toThrow("add database: 'refresh'");
+    await expect(createTestApp({ root: tempDir('marmeon-testing-db-'), discover: false }, { env: {}, seed: true })).rejects.toThrow("add database: 'refresh'");
   });
 });
 
@@ -139,8 +139,8 @@ describe('where the worker databases live', () => {
   it('creates the folder in a root that has no storage directory', async () => {
     const root = tempDir('marmeon-testing-db-');
     const app = await createTestApp(
-      { root, discover: false, env: { APP_KEY: generateKey() }, providers: [EncryptionServiceProvider, DatabaseServiceProvider] },
-      { database: 'refresh' },
+      { root, discover: false, providers: [EncryptionServiceProvider, DatabaseServiceProvider] },
+      { env: { APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_URL: undefined }, database: 'refresh' },
     );
     try {
       expect(existsSync(join(root, 'storage', 'framework', 'testing'))).toBe(true);

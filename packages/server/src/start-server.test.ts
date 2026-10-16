@@ -30,9 +30,8 @@ describe('startServer', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), PORT: '1' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    });
+    }, { env: { APP_KEY: generateKey(), PORT: '1' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
 
@@ -57,9 +56,8 @@ describe('startServer', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), PORT: '1' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    });
+    }, { env: { APP_KEY: generateKey(), PORT: '1' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     try {
@@ -88,9 +86,8 @@ describe('startServer', () => {
       const app = await createApplication({
         root,
         discover: false,
-        env: { APP_KEY: generateKey(), PORT: '1' },
         providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-      });
+      }, { env: { APP_KEY: generateKey(), PORT: '1' } });
       const warned: string[] = [];
       vi.spyOn(app.container.make(Logger), 'warn').mockImplementation((message: unknown) => void warned.push(String(message)));
       return { app, warned };
@@ -193,9 +190,8 @@ describe('startServer', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), PORT: '1' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    });
+    }, { env: { APP_KEY: generateKey(), PORT: '1' } });
     try {
       // An unknown NODE_ENV — set after the app booted — never serves: the start error, before any mode is chosen.
       process.env.NODE_ENV = 'staging';
@@ -222,10 +218,9 @@ describe('startServer', () => {
     const app = await createApplication({
       root,
       discover: false,
-      env: { APP_KEY: generateKey(), PORT: '1' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/about', () => 'about')) })],
-    });
+    }, { env: { APP_KEY: generateKey(), PORT: '1' } });
     vi.mocked(createViteDevRenderer).mockClear();
     try {
       await expect(startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' })).rejects.toBeInstanceOf(RouteAccessError);

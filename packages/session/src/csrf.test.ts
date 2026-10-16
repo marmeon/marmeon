@@ -94,10 +94,9 @@ async function boot(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
     modules: [defineModule({ name: 'shop', routes, csrfExcept: ['/webhooks/*'] })],
-  });
+  }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', ...env } });
   const kernel = createHttpKernel(application);
   const jar = new Map<string, string>();
   /** A browser: keeps cookies, sends JSON-accepting requests. */

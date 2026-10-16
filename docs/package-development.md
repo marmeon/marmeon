@@ -279,7 +279,9 @@ declare module '@marmeon/core' {
 }
 ```
 
-The provider reads it from `app.modules`. The same works for the framework's other extensible types, such as `SharedProps` of
+The provider reads it from `app.modules`. A setting of the whole app goes into `ApplicationDefinition` the same way, as http adds
+`middleware`, and the provider reads it from `app.definition`. Do not put anything there that only a boot decides: `env`,
+`phase` and `override` belong to the options of `createApplication()`. The same works for the framework's other extensible types, such as `SharedProps` of
 `@marmeon/http/page` for a prop on every page.
 
 A page name with `::` (`package::Page`) belongs to a package: an app's page files may not contain it, and

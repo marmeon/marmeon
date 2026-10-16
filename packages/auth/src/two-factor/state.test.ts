@@ -8,7 +8,7 @@ const source = (...factors: SecondFactor[]): TwoFactorState => ({ removeAll: asy
 const since = (date: Date | undefined): TwoFactorState => ({ removeAll: async () => {}, factors: async () => [], enabledSince: async () => date });
 
 describe('TwoFactorState default', () => {
-  const boot = () => createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [AuthServiceProvider] });
+  const boot = () => createApplication({ root: import.meta.dirname, discover: false, providers: [AuthServiceProvider] }, { env: {} });
 
   it('says nobody has a factor and asks no database', async () => {
     const app = await boot();

@@ -36,9 +36,10 @@ async function boot(config?: ConfigDefinition<unknown>, options: { http?: boolea
   const app = await createApplication({
     root: freshDirectory(),
     discover: false,
-    env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
     config: config ? [config] : [],
     providers: [EncryptionServiceProvider, ...(options.http === false ? [] : [HttpServiceProvider]), StorageServiceProvider],
+  }, {
+    env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
     override: (container) => {
       container.instance(Clock, clock);
       if (options.fake) container.instance(Storage, new StorageFake(container));
@@ -403,11 +404,10 @@ describe('the signed storage route against greedy app routes', () => {
     const app = await createApplication({
       root: freshDirectory(),
       discover: false,
-      env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
       config: [storageConfig(freshDirectory())],
       providers: [EncryptionServiceProvider, HttpServiceProvider, StorageServiceProvider],
       modules: [defineModule({ name: 'greedy', routes: openRoutes((Route) => Route.get(path, () => 'app')) })],
-    });
+    }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
     const kernel = createHttpKernel(app);
     expect((await kernel.request('/_marmeon/storage/local/a.txt')).status).toBe(403);
     expect(await (await kernel.request(other)).text()).toBe('app');

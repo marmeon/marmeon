@@ -271,7 +271,7 @@ describe('PasswordHasher', () => {
 });
 
 describe('AuthServiceProvider', () => {
-  const boot = (env: Record<string, string>) => createApplication({ root: import.meta.dirname, discover: false, env, providers: [AuthServiceProvider] });
+  const boot = (env: Record<string, string>) => createApplication({ root: import.meta.dirname, discover: false, providers: [AuthServiceProvider] }, { env });
 
   it('binds the Hasher, configured from the environment', async () => {
     const app = await boot({ HASH_DRIVER: 'scrypt', HASH_SCRYPT_COST: '11' });

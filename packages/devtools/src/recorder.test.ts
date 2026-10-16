@@ -168,9 +168,10 @@ async function boot(env: Record<string, string> = {}, options: { test?: boolean;
   const app = await createApplication({
     root,
     discover: false,
-    env: { NODE_ENV: 'test', APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_CONNECTION: 'sync', MAIL_MAILER: 'array', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, QueueServiceProvider, MailServiceProvider, ...(options.providers ?? [DevtoolsServiceProvider])],
     modules: [defineModule({ name: 'people', routes, jobs: [ReportJob, SecretJob], migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
+  }, {
+    env: { NODE_ENV: 'test', APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_CONNECTION: 'sync', MAIL_MAILER: 'array', ...env },
     override: (container) => {
       if (options.test) tester = enableDevtoolsForTests(container);
     },

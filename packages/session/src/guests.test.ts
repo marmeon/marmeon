@@ -59,11 +59,9 @@ describe.each(storeKinds)('guests and the %s session store', (kind) => {
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
       modules: [defineModule({ name: 'auth', routes })],
-      override: (container) => void container.instance(SessionStore, counting),
-    });
+    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent' }, override: (container) => void container.instance(SessionStore, counting) });
     const kernel = createHttpKernel(application);
 
     const pages = await Promise.all(Array.from({ length: 100 }, (_, i) => kernel.request('/login', { headers: i % 2 ? { 'x-marmeon': 'true' } : { accept: 'application/json', 'x-marmeon': 'true' } })));

@@ -116,5 +116,5 @@ export function writeBrowserRoutes(root: string, routes: BrowserRoutes): boolean
 
 /** Writes the booted app's {@link BROWSER_ROUTES_FILE} — what `marmeon route:types` does, for server rendering in tests. */
 export function writeAppBrowserRoutes(app: Application): boolean {
-  return writeBrowserRoutes(app.root, browserRoutes(app.container.make(Router).routes, app.options.clientRoutes));
+  return writeBrowserRoutes(app.root, browserRoutes(app.container.make(Router).routes, app.definition.clientRoutes));
 }

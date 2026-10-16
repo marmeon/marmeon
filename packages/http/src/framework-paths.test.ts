@@ -9,10 +9,9 @@ const boot = (name: string, routes: ReturnType<typeof defineRoutes>, key: 'route
   createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' },
     providers: [EncryptionServiceProvider, HttpServiceProvider],
     modules: [defineModule({ name, [key]: routes })],
-  });
+  }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
 
 describe('the framework’s paths', () => {
   it('stop an app whose module hides the session route', async () => {

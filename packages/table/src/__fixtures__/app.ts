@@ -380,9 +380,10 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
   const application = await createApplication({
     root: '/tmp',
     discover: false,
-    env: { ...database.env, APP_KEY: KEY, NODE_ENV: 'test', LOG_LEVEL: 'silent' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, TableServiceProvider],
     modules: [defineModule({ name: 'table-test', routes })],
+  }, {
+    env: { ...database.env, APP_KEY: KEY, NODE_ENV: 'test', LOG_LEVEL: 'silent' },
     override: (container) => {
       container.instance(Logger, silent);
       container.instance(Recorder, recorder);
