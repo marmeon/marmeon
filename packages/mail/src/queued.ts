@@ -1,4 +1,4 @@
-import type { Application } from '@marmeon/core';
+import type { Application, StandardSchemaV1 } from '@marmeon/core';
 import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import type { Attachment, MailMessage } from './message.ts';
@@ -7,7 +7,6 @@ import type { MailTransport } from './transports.ts';
 
 const address = v.object({ address: v.string(), name: v.optional(v.string()) });
 
-/** A composed message as the queue keeps it: JSON, attachments as text or base64. */
 const message = v.object({
   from: address,
   to: v.array(address),
@@ -21,8 +20,34 @@ const message = v.object({
   headers: v.record(v.string(), v.string()),
 });
 
+/** An address as the queue keeps it. */
+export interface QueuedMailAddress {
+  address: string;
+  name?: string | undefined;
+}
+
+/** A composed message as the queue keeps it: JSON, attachments as text or base64. */
+export interface QueuedMailMessage {
+  from: QueuedMailAddress;
+  to: QueuedMailAddress[];
+  cc: QueuedMailAddress[];
+  bcc: QueuedMailAddress[];
+  replyTo?: QueuedMailAddress | undefined;
+  subject: string;
+  html: string;
+  text: string;
+  attachments: { filename: string; content: string; encoding: 'utf8' | 'base64'; contentType?: string | undefined }[];
+  headers: Record<string, string>;
+}
+
 /** What a queued mail carries: the composed message and, for logs, the mailable's class name. */
-export type QueuedMailPayload = v.InferOutput<typeof SendQueuedMail.schema>;
+export interface QueuedMailPayload {
+  mailable: string;
+  message: QueuedMailMessage;
+}
+
+/** @internal The validation behind `SendQueuedMail.schema`; the type tests compare its output with `QueuedMailPayload`. */
+export const queuedMailSchema = v.object({ mailable: v.string(), message });
 
 /**
  * The framework job behind `mailer.queue(mail)`: hands the message composed where it was queued to the transport.
@@ -31,7 +56,7 @@ export type QueuedMailPayload = v.InferOutput<typeof SendQueuedMail.schema>;
  */
 export class SendQueuedMail {
   static readonly job = 'marmeon.mail';
-  static readonly schema = v.object({ mailable: v.string(), message });
+  static readonly schema: StandardSchemaV1<QueuedMailPayload> = queuedMailSchema;
   static readonly encrypted = true;
   static readonly tries = 5;
   static readonly backoff = [10, 60, 300];
@@ -55,7 +80,7 @@ export class SendQueuedMail {
 }
 
 /** A message as the queue keeps it — binary attachments as base64. */
-export function toQueued(message: MailMessage): QueuedMailPayload['message'] {
+export function toQueued(message: MailMessage): QueuedMailMessage {
   return {
     from: plain(message.from),
     to: message.to.map(plain),
@@ -77,7 +102,7 @@ export function toQueued(message: MailMessage): QueuedMailPayload['message'] {
 }
 
 /** The message back from the queue. */
-export function fromQueued(queued: QueuedMailPayload['message']): MailMessage {
+export function fromQueued(queued: QueuedMailMessage): MailMessage {
   return {
     from: plain(queued.from),
     to: queued.to.map(plain),

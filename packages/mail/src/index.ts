@@ -11,7 +11,7 @@ export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage 
 export { compose, MailError, Mailer, TransportMailer } from './mailer.ts';
 export type { MailQueue, QueueMailOptions } from './mailer.ts';
 export { fromQueued, SendQueuedMail, toQueued } from './queued.ts';
-export type { QueuedMailPayload } from './queued.ts';
+export type { QueuedMailAddress, QueuedMailMessage, QueuedMailPayload } from './queued.ts';
 export { calendarEvent } from './ics.ts';
 export type { CalendarEvent } from './ics.ts';
 export { findMailPreviews, MailPreviews } from './preview.ts';

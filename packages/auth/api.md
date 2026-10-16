@@ -4,7 +4,7 @@
 
 ## `@marmeon/auth`
 
-Types from other packages: `valibot`
+Types from other packages: none
 
 ### Stable
 
@@ -358,14 +358,7 @@ export interface EndedSessions {
 export declare class EverySessionEnded {
     #private;
     static readonly event = "auth.every-session-ended";
-    static readonly schema: v.ObjectSchema<{
-        readonly at: v.SchemaWithPipe<readonly [v.UnionSchema<[v.DateSchema<undefined>, v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.IsoTimestampAction<string, undefined>]>], undefined>, v.TransformAction<string | Date, string>]>;
-        readonly accounts: v.NumberSchema<undefined>;
-        readonly rememberTokens: v.NumberSchema<undefined>;
-        readonly resetTokens: v.NumberSchema<undefined>;
-        readonly accessTokens: v.NumberSchema<undefined>;
-        readonly signIns: v.NumberSchema<undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<EverySessionEndedInput, EverySessionEndedPayload>;
     readonly at: Date;
     readonly accounts: number;
     readonly rememberTokens: number;
@@ -379,6 +372,19 @@ export declare class EverySessionEnded {
         readonly accessTokens: number;
         readonly signIns: number;
     });
+}
+// EverySessionEndedInput
+export interface EverySessionEndedInput extends Omit<EverySessionEndedPayload, 'at'> {
+    at: Date | string;
+}
+// EverySessionEndedPayload
+export interface EverySessionEndedPayload {
+    at: string;
+    accounts: number;
+    rememberTokens: number;
+    resetTokens: number;
+    accessTokens: number;
+    signIns: number;
 }
 // EveryoneEnded
 export interface EveryoneEnded {
@@ -470,14 +476,7 @@ export declare class Lockout {
 export declare class Login {
     #private;
     static readonly event = "auth.login";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly remember: v.BooleanSchema<undefined>;
-        readonly via: v.PicklistSchema<["attempt", "login", "remember", "passkey"], undefined>;
-        readonly at: v.SchemaWithPipe<readonly [v.UnionSchema<[v.DateSchema<undefined>, v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.IsoTimestampAction<string, undefined>]>], undefined>, v.TransformAction<string | Date, string>]>;
-        readonly ip: v.NullableSchema<v.StringSchema<undefined>, undefined>;
-        readonly userAgent: v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.MaxLengthAction<string, 512, undefined>]>, undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<LoginInput, LoginPayload>;
     readonly user: AuthUser;
     readonly remember: boolean;
     readonly at: Date;
@@ -491,11 +490,24 @@ export declare class Login {
     });
     get userId(): AuthUserId;
 }
+// LoginInput
+export interface LoginInput extends Omit<LoginPayload, 'at'> {
+    at: Date | string;
+}
 // LoginOptions
 export interface LoginOptions {
     readonly remember?: boolean;
     readonly ip?: string | undefined;
     readonly userAgent?: string | undefined;
+}
+// LoginPayload
+export interface LoginPayload {
+    userId: AuthUserId;
+    remember: boolean;
+    via: LoginVia;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
 }
 // LoginVia
 export type LoginVia = 'attempt' | 'login' | 'remember' | 'passkey';
@@ -551,51 +563,56 @@ export declare const PRIVATE_REGISTRATION_OFF_WARNING: string;
 export declare class PasskeyCloneSuspected {
     #private;
     static readonly event = "auth.passkey-clone-suspected";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly passkeyId: v.NumberSchema<undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<PasskeyCloneSuspectedPayload>;
     readonly user: AuthUser;
     readonly passkeyId: number;
     constructor(user: AuthUser, passkeyId: number);
     get userId(): AuthUserId;
 }
+// PasskeyCloneSuspectedPayload
+export interface PasskeyCloneSuspectedPayload {
+    userId: AuthUserId;
+    passkeyId: number;
+}
 // PasskeyRegistered
 export declare class PasskeyRegistered {
     #private;
     static readonly event = "auth.passkey-registered";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly name: v.StringSchema<undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<PasskeyRegisteredPayload>;
     readonly user: AuthUser;
     readonly name: string;
     constructor(user: AuthUser, name: string);
     get userId(): AuthUserId;
 }
+// PasskeyRegisteredPayload
+export interface PasskeyRegisteredPayload {
+    userId: AuthUserId;
+    name: string;
+}
 // PasskeyRemoved
 export declare class PasskeyRemoved {
     #private;
     static readonly event = "auth.passkey-removed";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly via: v.OptionalSchema<v.PicklistSchema<["user", "reset"], undefined>, "user">;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<PasskeyRemovedInput, PasskeyRemovedPayload>;
     readonly user: AuthUser;
     readonly via: 'user' | 'reset';
     constructor(user: AuthUser, via?: 'user' | 'reset');
     get userId(): AuthUserId;
 }
+// PasskeyRemovedInput
+export interface PasskeyRemovedInput extends Omit<PasskeyRemovedPayload, 'via'> {
+    via?: 'user' | 'reset' | undefined;
+}
+// PasskeyRemovedPayload
+export interface PasskeyRemovedPayload {
+    userId: AuthUserId;
+    via: 'user' | 'reset';
+}
 // PasskeySignInFailed
 export declare class PasskeySignInFailed {
     #private;
     static readonly event = "auth.passkey-sign-in-failed";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly at: v.OptionalSchema<v.SchemaWithPipe<readonly [v.UnionSchema<[v.DateSchema<undefined>, v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.IsoTimestampAction<string, undefined>]>], undefined>, v.TransformAction<string | Date, string>]>, () => string>;
-        readonly ip: v.NullableSchema<v.StringSchema<undefined>, undefined>;
-        readonly userAgent: v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.MaxLengthAction<string, 512, undefined>]>, undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<PasskeySignInFailedInput, PasskeySignInFailedPayload>;
     readonly user: AuthUser;
     readonly at: Date;
     readonly ip: string | null;
@@ -605,6 +622,17 @@ export declare class PasskeySignInFailed {
         readonly userAgent?: string | undefined;
     }, at?: Date);
     get userId(): AuthUserId;
+}
+// PasskeySignInFailedInput
+export interface PasskeySignInFailedInput extends Omit<PasskeySignInFailedPayload, 'at'> {
+    at?: Date | string | undefined;
+}
+// PasskeySignInFailedPayload
+export interface PasskeySignInFailedPayload {
+    userId: AuthUserId;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
 }
 // PasswordBroker
 export declare class PasswordBroker {
@@ -765,36 +793,42 @@ export interface RecoveryCodeTable {
 export declare class RecoveryCodeUsed {
     #private;
     static readonly event = "auth.recovery-code-used";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly remaining: v.NumberSchema<undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<RecoveryCodeUsedPayload>;
     readonly user: AuthUser;
     readonly remaining: number;
     constructor(user: AuthUser, remaining: number);
     get userId(): AuthUserId;
 }
+// RecoveryCodeUsedPayload
+export interface RecoveryCodeUsedPayload {
+    userId: AuthUserId;
+    remaining: number;
+}
 // RecoveryCodesGenerated
 export declare class RecoveryCodesGenerated {
     #private;
     static readonly event = "auth.recovery-codes-generated";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<RecoveryCodesGeneratedPayload>;
     readonly user: AuthUser;
     constructor(user: AuthUser);
     get userId(): AuthUserId;
+}
+// RecoveryCodesGeneratedPayload
+export interface RecoveryCodesGeneratedPayload {
+    userId: AuthUserId;
 }
 // Registered
 export declare class Registered {
     #private;
     static readonly event = "auth.registered";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<RegisteredPayload>;
     readonly user: AuthUser;
     constructor(user: AuthUser);
     get userId(): AuthUserId;
+}
+// RegisteredPayload
+export interface RegisteredPayload {
+    userId: AuthUserId;
 }
 // RememberTokenError
 export type RememberTokenError = {
@@ -808,13 +842,7 @@ export type RememberTokenError = {
 export declare class RememberTokenReused {
     #private;
     static readonly event = "auth.remember-token-reused";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly at: v.SchemaWithPipe<readonly [v.UnionSchema<[v.DateSchema<undefined>, v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.IsoTimestampAction<string, undefined>]>], undefined>, v.TransformAction<string | Date, string>]>;
-        readonly ip: v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.IpAction<string, undefined>]>, undefined>;
-        readonly userAgent: v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.MaxLengthAction<string, 512, undefined>]>, undefined>;
-        readonly sessionsEnded: v.BooleanSchema<undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<RememberTokenReusedInput, RememberTokenReusedPayload>;
     readonly user: AuthUser;
     readonly at: Date;
     readonly ip: string | null;
@@ -826,6 +854,18 @@ export declare class RememberTokenReused {
         readonly sessionsEnded: boolean;
     }, at?: Date);
     get userId(): AuthUserId;
+}
+// RememberTokenReusedInput
+export interface RememberTokenReusedInput extends Omit<RememberTokenReusedPayload, 'at'> {
+    at: Date | string;
+}
+// RememberTokenReusedPayload
+export interface RememberTokenReusedPayload {
+    userId: AuthUserId;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+    sessionsEnded: boolean;
 }
 // RememberTokenStore
 export interface RememberTokenStore {
@@ -1013,13 +1053,7 @@ export declare const TWO_FACTOR_TABLE = "two_factor_authentications";
 export declare class TwoFactorChallengeFailed {
     #private;
     static readonly event = "auth.two-factor-challenge-failed";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly at: v.SchemaWithPipe<readonly [v.UnionSchema<[v.DateSchema<undefined>, v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.IsoTimestampAction<string, undefined>]>], undefined>, v.TransformAction<string | Date, string>]>;
-        readonly ip: v.NullableSchema<v.StringSchema<undefined>, undefined>;
-        readonly userAgent: v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.MaxLengthAction<string, 512, undefined>]>, undefined>;
-        readonly during: v.PicklistSchema<["sign-in", "step-up", "confirm"], undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload>;
     readonly user: AuthUser;
     readonly at: Date;
     readonly during: 'sign-in' | 'step-up' | 'confirm';
@@ -1032,31 +1066,47 @@ export declare class TwoFactorChallengeFailed {
     });
     get userId(): AuthUserId;
 }
+// TwoFactorChallengeFailedInput
+export interface TwoFactorChallengeFailedInput extends Omit<TwoFactorChallengeFailedPayload, 'at'> {
+    at: Date | string;
+}
+// TwoFactorChallengeFailedPayload
+export interface TwoFactorChallengeFailedPayload {
+    userId: AuthUserId;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+    during: 'sign-in' | 'step-up' | 'confirm';
+}
 // TwoFactorDisabled
 export declare class TwoFactorDisabled {
     #private;
     static readonly event = "auth.two-factor-disabled";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly via: v.PicklistSchema<["user", "operator", "reset"], undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<TwoFactorDisabledPayload>;
     readonly user: AuthUser;
     readonly via: 'user' | 'operator' | 'reset';
     constructor(user: AuthUser, via?: 'user' | 'operator' | 'reset');
     get userId(): AuthUserId;
 }
+// TwoFactorDisabledPayload
+export interface TwoFactorDisabledPayload {
+    userId: AuthUserId;
+    via: 'user' | 'operator' | 'reset';
+}
 // TwoFactorEnabled
 export declare class TwoFactorEnabled {
     #private;
     static readonly event = "auth.two-factor-enabled";
-    static readonly schema: v.ObjectSchema<{
-        readonly userId: v.CustomSchema<number, v.ErrorMessage<v.CustomIssue> | undefined>;
-        readonly factor: v.PicklistSchema<["totp", "passkey"], undefined>;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<TwoFactorEnabledPayload>;
     readonly user: AuthUser;
     readonly factor: 'totp' | 'passkey';
     constructor(user: AuthUser, factor: 'totp' | 'passkey');
     get userId(): AuthUserId;
+}
+// TwoFactorEnabledPayload
+export interface TwoFactorEnabledPayload {
+    userId: AuthUserId;
+    factor: 'totp' | 'passkey';
 }
 // TwoFactorState
 export interface TwoFactorState {

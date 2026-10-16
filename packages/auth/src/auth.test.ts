@@ -5,7 +5,6 @@ import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, HttpServiceP
 import { rules as r } from '@marmeon/validation';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
-import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   AccessTokenStore,
@@ -908,7 +907,9 @@ describe('remember me', () => {
       expect(reused[0]!.at).toBeInstanceOf(Date);
       expect(JSON.stringify(reused[0])).not.toContain(copied);
       expect(JSON.stringify(reused[0])).not.toContain(copied.split('.')[0]!);
-      expect(v.parse(RememberTokenReused.schema, reused[0])).toEqual({
+      const parsed = await RememberTokenReused.schema['~standard'].validate(reused[0]);
+      expect(parsed.issues).toBeUndefined();
+      expect('value' in parsed && parsed.value).toEqual({
         userId: 1,
         at: reused[0]!.at.toISOString(),
         ip: '198.51.100.7',
@@ -922,10 +923,12 @@ describe('remember me', () => {
       expect(event.userAgent).toBe('Firefox/1');
     });
 
-    it('carries no address that is not one, and still parses', () => {
+    it('carries no address that is not one, and still parses', async () => {
       const event = new RememberTokenReused(ada, { ip: 'unknown, 10.0.0.1', sessionsEnded: true });
       expect(event.ip).toBeNull();
-      expect(v.parse(RememberTokenReused.schema, event).ip).toBeNull();
+      const parsed = await RememberTokenReused.schema['~standard'].validate(event);
+      expect(parsed.issues).toBeUndefined();
+      expect('value' in parsed && parsed.value).toEqual({ userId: 1, at: event.at.toISOString(), ip: null, userAgent: null, sessionsEnded: true });
       expect(new RememberTokenReused(ada, { ip: '2001:db8::1', sessionsEnded: true }).ip).toBe('2001:db8::1');
     });
 

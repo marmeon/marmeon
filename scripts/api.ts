@@ -26,16 +26,12 @@ import { oxc } from './source-files.ts';
  * there; an entry that only waits for a change names it, and that change deletes the entry.
  */
 export const FOREIGN_TYPES: Readonly<Record<string, readonly string[]>> = {
-  // `static schema` is a Valibot schema until the queued payloads are typed as Standard Schema.
-  auth: ['valibot', '@simplewebauthn/server'], // the passkey JSON types are re-exported until the package defines its own
+  auth: ['@simplewebauthn/server'], // the passkey JSON types are re-exported until the package defines its own
   // The query layer is typed in Kysely's types until it has aliases of its own.
   database: [LIBRARY],
   table: [LIBRARY],
   // PinoLogger takes a Pino instance until it takes an own logger type.
   log: ['pino'],
-  mail: ['valibot'], // until the queued mail's payload schema is typed as Standard Schema
-  notifications: ['valibot'], // until the queued notification's payload schema is typed as Standard Schema
-  queue: ['valibot'], // until the queued listener's payload schema is typed as Standard Schema
   otel: ['@opentelemetry/api'], // an optional peer: the app installs the API it traces with
   react: ['react', 'react-dom', '@tanstack/react-table'], // peers: the adapter is typed in the types of its UI library
   // HttpKernel is a Hono app until the kernel has an own type; Vite is an optional peer of the dev server.

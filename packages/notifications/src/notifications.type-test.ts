@@ -5,6 +5,8 @@ import { OrderShipped, Welcome } from './__fixtures__/app.ts';
 import type { Inbox } from './inbox.ts';
 import type { DatabaseInput, Notification, NotificationData } from './notification.ts';
 import type { Notifications } from './notifications.ts';
+import type { QueuedNotificationPayload, queuedNotificationSchema, SendQueuedNotification } from './job.ts';
+import type { JobPayload } from '@marmeon/queue';
 
 declare const notifications: Notifications;
 declare const inbox: Inbox;
@@ -154,3 +156,10 @@ export class Faxing implements Notification<'member'> {
     return ['fax'] as const;
   }
 }
+
+// The annotation on `SendQueuedNotification.schema` must not lie: the schema behind it infers exactly the named payload.
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Expect<T extends true> = T;
+export type QueuedPayloadOutput = Expect<Equal<v.InferOutput<typeof queuedNotificationSchema>, QueuedNotificationPayload>>;
+export type QueuedPayloadInput = Expect<Equal<v.InferInput<typeof queuedNotificationSchema>, QueuedNotificationPayload>>;
+export type QueuedPayloadJob = Expect<Equal<JobPayload<typeof SendQueuedNotification>, QueuedNotificationPayload>>;

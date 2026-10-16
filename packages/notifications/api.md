@@ -4,7 +4,7 @@
 
 ## `@marmeon/notifications`
 
-Types from other packages: `valibot`
+Types from other packages: none
 
 ### Stable
 
@@ -322,7 +322,15 @@ export type QueueMail = (mail: NotificationMail, options: {
 // QueueNotification
 export type QueueNotification = (pending: PendingDelivery, options: SendOptions) => Promise<void>;
 // QueuedNotificationPayload
-export type QueuedNotificationPayload = v.InferOutput<typeof SendQueuedNotification.schema>;
+export interface QueuedNotificationPayload {
+    id: string;
+    notification: string;
+    recipient: {
+        type: string;
+        id: string | number;
+    };
+    data: unknown;
+}
 // RecipientId
 export type RecipientId<T extends RecipientType> = NotificationRecipients[T] extends {
     readonly id: infer I extends string | number;
@@ -374,15 +382,7 @@ export interface SendOptions {
 export declare class SendQueuedNotification {
     #private;
     static readonly job = "marmeon.notification";
-    static readonly schema: v.ObjectSchema<{
-        readonly id: v.StringSchema<undefined>;
-        readonly notification: v.StringSchema<undefined>;
-        readonly recipient: v.ObjectSchema<{
-            readonly type: v.StringSchema<undefined>;
-            readonly id: v.UnionSchema<[v.StringSchema<undefined>, v.NumberSchema<undefined>], undefined>;
-        }, undefined>;
-        readonly data: v.UnknownSchema;
-    }, undefined>;
+    static readonly schema: StandardSchemaV1<QueuedNotificationPayload>;
     static readonly encrypted = true;
     static readonly tries = 3;
     static readonly backoff: number[];
