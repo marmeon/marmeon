@@ -298,18 +298,18 @@ every queue, and restarts it when the code changes. It runs none with `QUEUE_CON
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `QUEUE_CONNECTION` | `database` | The default connection: `database`, `redis` or `sync`. |
+| `QUEUE_CONNECTION` | `database` | The default connection: `database`, `redis`, `sync` or the name of a driver a package brings. |
 | `DB_QUEUE_CONNECTION` | `default` | The database connection of the `jobs` table. |
 | `DB_QUEUE` | `default` | The default queue of the `database` connection. |
 | `DB_QUEUE_RETRY_AFTER` | `90` | Seconds before a claimed job of the `database` connection may be claimed again. |
 | `REDIS_QUEUE_CONNECTION` | `default` | The Redis connection of the `redis` queue. |
 | `REDIS_QUEUE` | `default` | The default queue of the `redis` connection. |
 | `REDIS_QUEUE_RETRY_AFTER` | `90` | Seconds before a claimed job of the `redis` connection may be claimed again. |
-| `QUEUE_FAILED_DRIVER` | `database` | Where failed jobs go: `database`, the `failed_jobs` table, or `null`, which only logs them. |
+| `QUEUE_FAILED_DRIVER` | `database` | Where failed jobs go: `database`, the `failed_jobs` table, `null`, which only logs them, or the name of a store a package brings. |
 | `QUEUE_FAILED_CONNECTION` | `DB_QUEUE_CONNECTION` | The database connection of `failed_jobs`. |
 
-A connection the app does not configure, an unknown database or Redis connection or a missing driver package stops the app at its
-start, with what to do.
+A connection the app does not configure, a driver name nobody brought, an unknown database or Redis connection or a missing driver
+package stops the app at its start, with what to do.
 
 ### Drivers
 
@@ -332,6 +332,13 @@ pnpm marmeon migrate
 `make:queue-table` writes into the `system` module, or the module that `--module` names. The migration runs on
 `DB_QUEUE_CONNECTION`, and the [migrations](migrations.md#the-frameworks-tables) page says what to do when `failed_jobs` goes
 elsewhere.
+
+### Queue drivers and failed-job stores
+
+A package or an app can bring its own queue driver and failed-job store, such as one for SQS. Its provider lists them in
+`static queueDrivers` and `static failedJobDrivers`, and `QUEUE_CONNECTION` or `QUEUE_FAILED_DRIVER` selects them by name. The
+[drivers](drivers.md#queue-drivers-and-failed-job-stores) page has the contract a driver keeps and what the framework does
+without its optional members.
 
 ## Retries and failures
 

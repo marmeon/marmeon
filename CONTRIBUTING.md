@@ -283,6 +283,9 @@ A new rule joins the same script, with its test.
 
 ## Dependencies of drivers
 
+A driver of another package, such as a queue driver for SQS, comes through the static record of its provider
+(`static queueDrivers`), never through a change to the service's own package; see [drivers](docs/drivers.md).
+
 Third-party driver libraries follow one rule. Each package README names the part that applies to it, with the exact install
 command, and the [package development](docs/package-development.md#dependencies-of-drivers) page explains it to package authors:
 

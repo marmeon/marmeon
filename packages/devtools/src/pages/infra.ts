@@ -93,9 +93,12 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
   const connections = app.container.make(module.QueueConnections);
   const views: QueueView[] = [];
   for (const name of connections.names()) {
-    const options = connections.options(name);
-    if (options.driver === 'sync') continue;
+    // A custom driver's factory can throw: the view says so, with the name as its driver.
+    let kind: string = name;
     try {
+      const options = connections.options(name);
+      kind = options.driver;
+      if (options.driver === 'sync') continue;
       const driver = connections.driver(name);
       const queues = await bounded(async () => {
         const names = [...new Set([options.queue, ...(await driver.queues())])].sort();
@@ -109,7 +112,7 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
       });
       views.push({ connection: name, driver: options.driver, queues });
     } catch (error) {
-      views.push({ connection: name, driver: options.driver, queues: [], error: redactor.text(messageOf(error)) });
+      views.push({ connection: name, driver: kind, queues: [], error: redactor.text(messageOf(error)) });
     }
   }
 

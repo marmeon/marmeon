@@ -1,3 +1,4 @@
+import type { Clock, Resolver } from '@marmeon/core';
 import type { Kysely } from '@marmeon/database';
 
 /**
@@ -45,7 +46,13 @@ export interface QueueCounts {
  * The contract of a queue driver: `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
  * lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts the
  * attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after `retryAfter`)
- * and another worker holds the job now, they change nothing and return false.
+ * and another worker holds the job now, they change nothing and return false. A driver that expects `retryAfter` to guard
+ * its claims must honour it in `reserve`: a claim older than `retryAfter` is taken again — a driver that ignores it runs a
+ * job twice while the first worker still holds it. The payload arrives as the queue stores it, already encrypted for an
+ * encrypted job. Packages and apps bring their own: see `docs/drivers.md#queue-drivers-and-failed-job-stores`.
+ *
+ * Optional members: `reserveAny` and `counts` are conveniences (the worker goes round `queues()` itself, the devtools show less); `using` and `joinsTransaction`
+ * decide what a dispatch inside a database transaction does — without them the job is held until the outermost commit and dropped on a rollback, and `queue.using(trx)` refuses.
  */
 export interface QueueDriver {
   /** Queues `payload` on `queue`, to be claimed no earlier than `delay` seconds from now. Returns the entry's id. */
@@ -93,6 +100,34 @@ export interface QueueDriver {
    */
   joinsTransaction?(): Promise<boolean>;
 }
+
+/** What a {@link QueueDriverFactory} is given. */
+export interface QueueDriverContext {
+  /** The connection's name — the name the driver was registered under (`QUEUE_CONNECTION=sqs`). */
+  readonly name: string;
+  readonly container: Resolver;
+  readonly clock: Clock;
+}
+
+/** A connection a custom driver provides: the driver, the queue it uses by default and how long a claim holds. */
+export interface QueueConnection {
+  readonly driver: QueueDriver;
+  /** The queue a job goes to when it names none. */
+  readonly queue: string;
+  /** Seconds before a claim may be taken again; positive. `queue:work` checks every job's timeout against it. */
+  readonly retryAfter: number;
+}
+
+/** Creates a queue connection: `static queueDrivers = { sqs: (context) => … }` on a service provider. */
+export type QueueDriverFactory = (context: QueueDriverContext) => QueueConnection;
+
+/** What a {@link FailedJobStoreFactory} is given. */
+export interface FailedJobStoreContext {
+  readonly container: Resolver;
+}
+
+/** Creates a failed-job store: `static failedJobDrivers = { dynamo: (context) => … }` on a service provider. */
+export type FailedJobStoreFactory = (context: FailedJobStoreContext) => FailedJobStore;
 
 /**
  * The payload column: the job's identity, its data and the retry policy it was dispatched with (so a worker of an

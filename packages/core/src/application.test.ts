@@ -69,7 +69,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions or static commands.',
+      'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers or static failedJobDrivers.',
     );
     const OnlyCommands = class OnlyCommands {
       static commands = [class {}];
@@ -242,6 +242,17 @@ describe('createApplication(definition, options)', () => {
   it('refuses an inherited boot option too', async () => {
     const inherited: ApplicationDefinition = Object.create({ override() {} }, { root: { value: import.meta.dirname, enumerable: true } });
     await expect(createApplication(inherited)).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it('accepts a provider that only brings drivers, and refuses one with an empty record', async () => {
+    class OnlyDrivers {
+      static queueDrivers = { sqs: () => ({}) };
+    }
+    class EmptyDrivers {
+      static queueDrivers = {};
+    }
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlyDrivers as never] }, { env: {} })).resolves.toBeDefined();
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [EmptyDrivers as never] }, { env: {} })).rejects.toThrow(/static queueDrivers/);
   });
 
   it('boots a clean definition', async () => {
