@@ -1,17 +1,23 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import application from '../../bootstrap/app.ts';
 import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { LegalPages } from './LegalPages.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 const document = { headers: { accept: 'text/html' } };
 
 let app: TestApp;
 beforeAll(async () => {
-  app = await createTestApp(application, { ssr: true });
+  app = await createTestApp(application, { ssr: true, ssrServer: server });
 }, 60_000);
 afterAll(() => app?.close());
 

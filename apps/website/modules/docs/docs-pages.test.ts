@@ -1,14 +1,21 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { Navigation } from './DocsRepository.ts';
 import { ENTRIES, SECTIONS } from './docs.test-support.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 let app: TestApp;
-beforeEach(async () => {
+beforeAll(async () => {
   app = await createTestApp(application);
 }, 30_000);
+afterAll(() => app?.close());
 
 describe('pages', { timeout: 30_000 }, () => {
   it('has no package pages — a package README is a card for npm: /packages/… is a 404', async () => {
@@ -18,7 +25,7 @@ describe('pages', { timeout: 30_000 }, () => {
   });
 
   it('a path without a route is a 404 page in the site layout — without the navigation (no shared props there), rendered on the server', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const response = await ssr.get('/no/such/page', { headers: { accept: 'text/html' } }).assertNotFound().assertServerRendered();
     expect(response.body).toContain('Not Found');
     expect(response.body).toContain('class="site-header"');

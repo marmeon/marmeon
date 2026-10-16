@@ -1,11 +1,17 @@
-import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 describe('the layout of a docs page (server-rendered)', () => {
   it('opens the current section only, marks the current page and a draft, names the neighbours’ sections, and searches without JavaScript', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const response = await ssr.get('/docs/routing', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
     // React separates adjacent text nodes with comments.
     const body = response.body.replace(/<!-- -->/g, '');
@@ -30,7 +36,7 @@ describe('the layout of a docs page (server-rendered)', () => {
   }, SSR_TEST_TIMEOUT);
 
   it('renders the start page and the search without the section navigation — the search also without the top field', async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     for (const path of ['/docs', '/docs/search?q=routing']) {
       const { body } = await ssr.get(path, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered();
       expect(body, path).not.toContain('class="sidebar"');

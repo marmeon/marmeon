@@ -1,8 +1,14 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { expectOriginFromAppUrl } from '../site/origin.test-support.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
 
 const BROWSER = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
 const MARKDOWN = 'text/markdown';
@@ -11,8 +17,12 @@ let app: TestApp;
 let ssr: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
-  ssr = await createTestApp(application, { ssr: true });
+  ssr = await createTestApp(application, { ssr: true, ssrServer: server });
 }, SSR_TEST_TIMEOUT);
+afterAll(async () => {
+  await app?.close();
+  await ssr?.close();
+});
 
 const vary = (response: { headers: Headers }) => (response.headers.get('vary') ?? '').toLowerCase().split(/\s*,\s*/);
 

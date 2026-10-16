@@ -1,15 +1,22 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from '../site/middleware/CachePublicly.ts';
 import { repo } from './docs.test-support.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 let app: TestApp;
-beforeEach(async () => {
+beforeAll(async () => {
   app = await createTestApp(application);
 }, 30_000);
+afterAll(() => app?.close());
 
 describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', { timeout: 30_000 }, () => {
   const document = { headers: { accept: 'text/html' } };
@@ -47,7 +54,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   });
 
   it("a cached page's policy has no nonce ('self'); in development — nothing cached — Vite's inline scripts get the strict nonce policy", async () => {
-    const ssr = await createTestApp(application, { ssr: true });
+    const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
     const first = await ssr.get('/docs/csp', document).assertOk();
     const second = await ssr.get('/docs/csp', document).assertOk();
     expect(first.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'");
