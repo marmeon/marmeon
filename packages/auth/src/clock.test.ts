@@ -77,6 +77,25 @@ class ProveController extends Controller {
   }
 }
 
+/** Dates the sign-in's proofs relative to the app's clock, in seconds; what a node with another clock would have written. */
+const stamps: { confirmedAt?: number; twoFactorAt?: number } = {};
+
+class StampController extends Controller {
+  readonly #session: Session;
+  readonly #clock: Clock;
+  constructor(session: Session, clock: Clock) {
+    super();
+    this.#session = session;
+    this.#clock = clock;
+  }
+  async handle() {
+    const now = Math.floor(this.#clock.now() / 1000);
+    if (stamps.confirmedAt !== undefined) this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now + stamps.confirmedAt);
+    if (stamps.twoFactorAt !== undefined) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now + stamps.twoFactorAt);
+    return { ok: true };
+  }
+}
+
 class Page extends Controller {
   async handle() {
     return { page: true };
@@ -88,6 +107,7 @@ const routes = openRoutes((Route) => {
   Route.post('/login-once', LoginOnceController);
   Route.post('/confirm', ConfirmController);
   Route.post('/prove', ProveController);
+  Route.post('/stamp', StampController);
   Route.get('/state', StateController);
   Route.get('/setup', Page).name('test.setup');
   Route.get('/verify', Page).name('test.verify');
@@ -187,5 +207,53 @@ describe('Auth on the app clock', () => {
     clock.travel({ days: 2 });
     jar.delete('marmeon_session');
     expect(await (await send('/state')).json(), 'past the cap').toMatchObject({ id: null });
+  });
+
+  describe('clock skew', () => {
+    const confirmed = async (send: (path: string, method?: string) => Promise<Response>) => ((await (await send('/state')).json()) as { confirmed: boolean }).confirmed;
+
+    it('accepts a confirmation up to a minute ahead and refuses one beyond', async () => {
+      for (const [offset, accepted] of [[30, true], [59, true], [61, false], [3600, false]] as const) {
+        const { send } = await boot();
+        await send('/login', 'POST');
+        stamps.confirmedAt = offset;
+        await send('/stamp', 'POST');
+        expect(await confirmed(send), `${offset} s ahead`).toBe(accepted);
+      }
+      delete stamps.confirmedAt;
+    });
+
+    it('does not stretch the window of a confirmation that lies in the past', async () => {
+      const { clock, send } = await boot();
+      await send('/login', 'POST');
+      await send('/confirm', 'POST');
+      clock.travel({ seconds: 899 });
+      expect(await confirmed(send), 'last second of the window').toBe(true);
+      clock.travel({ seconds: 2 });
+      expect(await confirmed(send), 'window over').toBe(false);
+    });
+
+    it('accepts a confirmation dated up to a minute before the sign-in and refuses one from 5 minutes before', async () => {
+      for (const [offset, accepted] of [[-30, true], [-59, true], [-61, false], [-300, false]] as const) {
+        const { send } = await boot();
+        await send('/login', 'POST');
+        stamps.confirmedAt = offset;
+        await send('/stamp', 'POST');
+        expect(await confirmed(send), `${offset} s`).toBe(accepted);
+      }
+      delete stamps.confirmedAt;
+    });
+
+    it('accepts the proof of a second factor up to a minute ahead and refuses one beyond', async () => {
+      for (const [offset, accepted] of [[30, true], [59, true], [61, false], [3600, false]] as const) {
+        const { send, hasFactor } = await boot();
+        await send('/login', 'POST');
+        hasFactor.on = true;
+        stamps.twoFactorAt = offset;
+        await send('/stamp', 'POST');
+        expect((await send('/factors')).status, `${offset} s ahead`).toBe(accepted ? 200 : 403);
+      }
+      delete stamps.twoFactorAt;
+    });
   });
 });

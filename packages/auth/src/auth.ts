@@ -5,6 +5,7 @@ import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { ANNOUNCE_ENDED, AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
+import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -43,9 +44,6 @@ export const AUTH_SESSION_KEYS = {
   /** Set when the sign-in began with a typed password (`attempt()`, including its second factor), never by a passkey or `login()`. */
   typedPassword: '_auth_typed_password',
 } as const;
-
-/** How far ahead of this server's clock another server's sign-in time may lie, in seconds. */
-const CLOCK_SKEW_SECONDS = 60;
 
 /** How long a correct password waits for the second factor, in seconds. */
 export const PENDING_SECONDS = 300;
@@ -424,8 +422,17 @@ export class Auth {
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
     const signedInAt = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.signedInAt) : undefined;
     const current = this.#now();
-    // A time in the future is no confirmation (a clock that moved back, a value that did not come from here).
-    return typeof at === 'number' && Number.isFinite(at) && at <= current && typeof signedInAt === 'number' && at >= signedInAt && current - at < seconds;
+    // A time further in the future than the clock skew is no confirmation (a clock that moved back, a value that did not come from
+    // here). An earlier sign-in cannot slip in through the skew before `signedInAt`, because `#login` forgets `confirmedAt`.
+    return (
+      typeof at === 'number' &&
+      Number.isFinite(at) &&
+      at <= current + CLOCK_SKEW_SECONDS &&
+      typeof signedInAt === 'number' &&
+      Number.isFinite(signedInAt) &&
+      at >= signedInAt - CLOCK_SKEW_SECONDS &&
+      Math.max(0, current - at) < seconds
+    );
   }
 
   /**
@@ -895,7 +902,11 @@ export class Auth {
       return this.#fromRememberCookie();
     }
     // A session from before the lifetime was kept: its clock starts now, so a deploy signs nobody out.
-    if (signedInAt === undefined && !this.#session.readOnly) this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
+    // A confirmation it holds is dated outside that sign-in, so it goes (the clock skew would otherwise let one just before count).
+    if (signedInAt === undefined && !this.#session.readOnly) {
+      this.#session.forget(AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.typedPassword);
+      this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
+    }
     if (this.#signIns.enabled) {
       // Invariant: the row in the store is the authority over a sign-in. A session whose row is gone — ended from another device, by
       // the user's list or by `prune` — is over, whatever the session driver still holds; its remember-me cookie hangs on the same row.

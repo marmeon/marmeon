@@ -444,6 +444,10 @@ address, creating an API token, registering, releasing or removing a passkey, tu
 (`TwoFactor.confirm(code, password)`, `disable(password)`; `confirm()` checks the password before the code, so only whoever knows it spends the code budget), making new recovery codes (`regenerateRecoveryCodes(password)`) and changing the password. A passkey alone can confirm sudo mode, so without that second question a hijacked session could add a way in that
 survives the owner's recovery.
 
+Every `confirmedPassword()` route is reachable with a passkey alone, the reading ones too (a data export) and those that end or rename something else (ending another sign-in, renaming a passkey). Whatever creates a way into the account asks for the password in its form, as above; add that question to your own routes of the same kind.
+
+A confirmation or a proven second factor dated up to a minute ahead of this server's clock still counts, so that a cluster whose clocks differ by a little does not send a user back to the confirmation page. Anything further ahead does not count, and the window is counted from the time the confirmation carries, so one dated ahead lasts at most a minute longer than the window above; a confirmation dated in the past is never valid for longer.
+
 An account with neither a password nor a passkey, such as one created by a sign-in link or by an OAuth provider your app wrote, has
 no way to confirm sudo mode yet: `confirmedPassword()` never lets it through.
 

@@ -1262,7 +1262,7 @@ describe('twoFactor() middleware', () => {
   it.each([
     ['a string', '1700000000'],
     ['null', null],
-    ['a time in the future', Math.floor(Date.now() / 1000) + 60],
+    ['a time in the future', Math.floor(Date.now() / 1000) + 120],
   ])('refuses a proof that is %s', async (_name, value) => {
     const booted = await boot();
     const b = booted.browser();

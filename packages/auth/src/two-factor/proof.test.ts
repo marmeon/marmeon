@@ -25,7 +25,13 @@ describe('secondFactorProvenWithin()', () => {
   });
 
   it('counts a missing, malformed or future time as not proven', () => {
-    for (const value of [undefined, null, 'now', String(NOW), Number.NaN, Infinity, NOW + 1, {}]) expect(secondFactorProvenWithin(session(value), 900, NOW), String(value)).toBe(false);
+    for (const value of [undefined, null, 'now', String(NOW), Number.NaN, Infinity, NOW + 61, {}]) expect(secondFactorProvenWithin(session(value), 900, NOW), String(value)).toBe(false);
+  });
+
+  it('counts a time up to a minute ahead of the clock, and not a second more', () => {
+    expect(secondFactorProvenWithin(session(NOW + 59), 900, NOW)).toBe(true);
+    expect(secondFactorProvenWithin(session(NOW + 60), 900, NOW)).toBe(true);
+    expect(secondFactorProvenWithin(session(NOW + 61), 900, NOW)).toBe(false);
   });
 
   it('reads nothing from a session that has not started', () => {
