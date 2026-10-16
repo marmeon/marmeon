@@ -280,6 +280,33 @@ The provider reads it from `app.modules`. The same works for the framework's oth
 A page name with `::` (`package::Page`) belongs to a package: an app's page files may not contain it, and
 `marmeon route:types` fails when one does (see [where pages live](pages.md#where-pages-live)).
 
+## Deprecating an API
+
+Remove an API in two steps: first mark it deprecated in a release, then delete it in the next major version. Mark it twice, in
+the types and at run time:
+
+```ts
+import { deprecated } from '@marmeon/core/deprecation';
+
+export class Greeter {
+  /**
+   * @deprecated Use {@link Greeter.greet} instead. Removed in 2.0; docs/greeter.md#greeting.
+   */
+  hello(name: string): string {
+    deprecated('greeter.hello', 'Greeter.hello() is deprecated, use Greeter.greet() instead.', '2.0');
+    return this.greet(name);
+  }
+}
+```
+
+`deprecated(id, message, removeIn)` warns once per `id`. Name the id `<package>.<name>`, let `message` name the replacement, and give
+`removeIn` as the version that removes the API. Import it from `@marmeon/core/deprecation` in code that runs in the browser: that
+entry point does not load the rest of the core.
+
+The warning appears only when `NODE_ENV` is `development` or `test`, so production pays nothing. On the server it is a Node
+`DeprecationWarning`: `node --no-deprecation` silences it, and `node --throw-deprecation` turns it into an error, which makes a
+test run fail on deprecated calls.
+
 ## Building and publishing
 
 Node strips types only outside `node_modules`, so a published package runs its compiled JavaScript. Publish `dist/` with its `.js`

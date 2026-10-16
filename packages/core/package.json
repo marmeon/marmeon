@@ -54,6 +54,11 @@
       "@marmeon/source": "./src/diagnostics.ts",
       "types": "./dist/diagnostics.d.ts",
       "default": "./dist/diagnostics.js"
+    },
+    "./deprecation": {
+      "@marmeon/source": "./src/deprecation.ts",
+      "types": "./dist/deprecation.d.ts",
+      "default": "./dist/deprecation.js"
     }
   },
   "publishConfig": {
@@ -83,6 +88,10 @@
       "./diagnostics": {
         "types": "./dist/diagnostics.d.ts",
         "default": "./dist/diagnostics.js"
+      },
+      "./deprecation": {
+        "types": "./dist/deprecation.d.ts",
+        "default": "./dist/deprecation.js"
       }
     }
   },
