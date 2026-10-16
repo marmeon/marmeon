@@ -138,6 +138,26 @@ describe('ctx.input()', () => {
     expect((await rejection(createRequestState(form(deep)).input())).status).toBe(400);
   });
 
+  it('drops `__proto__` keys from JSON bodies at every depth', async () => {
+    const json = { 'content-type': 'application/json' };
+    const body = '{"__proto__":{"admin":true},"a":{"__proto__":{"x":1},"b":2},"list":[{"__proto__":{"y":1},"c":3}],"constructor":{"k":1}}';
+    const input: Input = await createRequestState(post('/', body, json)).input();
+    expect(Object.keys(input)).toEqual(['a', 'list', 'constructor']);
+    expect(Object.assign({}, input).admin).toBeUndefined();
+    expect(Object.getOwnPropertyNames(input.a as object)).toEqual(['b']);
+    expect(Object.getOwnPropertyNames((input.list as object[])[0]!)).toEqual(['c']);
+    expect(({} as Record<string, unknown>).admin).toBeUndefined();
+  });
+
+  it('accepts JSON nested up to the limit and refuses deeper', async () => {
+    const json = { 'content-type': 'application/json' };
+    const nested = (levels: number) => `${'{"a":'.repeat(levels - 1)}{}${'}'.repeat(levels - 1)}`;
+    expect(await createRequestState(post('/', nested(256), json)).input()).toHaveProperty('a');
+    expect((await rejection(createRequestState(post('/', nested(257), json)).input())).message).toBe('JSON body nested too deeply.');
+    const absurd = '['.repeat(100_000) + ']'.repeat(100_000);
+    expect((await rejection(createRequestState(post('/', `{"a":${absurd}}`, json)).input())).status).toBe(400);
+  });
+
   it('numbers `a[]` after the highest index so far, explicit or implicit', async () => {
     expect(await createRequestState(form('a[]=x&a[3]=y&a[]=z')).input()).toEqual({ a: { '0': 'x', '3': 'y', '4': 'z' } });
     expect(await createRequestState(form('a[]=x&a[]=y&a[1]=z&a[]=w')).input()).toEqual({ a: ['x', 'z', 'w'] });

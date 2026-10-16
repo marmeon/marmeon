@@ -59,6 +59,8 @@ export const DEFAULT_MAX_BODY_SIZE = 8 * 1024 * 1024;
 
 /** Bracket nesting deeper than this is rejected (a request is not a data structure attack surface). */
 const MAX_DEPTH = 20;
+/** Nesting limit of a JSON body; far below where V8's own recursion gives out, far above any real payload. */
+const MAX_JSON_DEPTH = 256;
 
 export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE, ip, nonce = new RequestNonce(), cookies }: RequestStateOptions = {}): RequestState {
   const query = new URL(request.url).searchParams;
@@ -136,6 +138,30 @@ export function expectsJson(request: Request): boolean {
   return request.headers.get('x-requested-with') === 'XMLHttpRequest' && (first === '' || first === '*/*');
 }
 
+/** Same rule as for form fields: a `__proto__` key never reaches the app, at any depth. Iterative, so depth cannot overflow the stack. */
+function dropProtoKeys(root: object): void {
+  // Parallel stacks instead of tuples: this runs over every node of a body up to the size limit.
+  const nodes: object[] = [root];
+  const depths: number[] = [1];
+  while (nodes.length > 0) {
+    const node = nodes.pop()!;
+    const depth = depths.pop()!;
+    if (depth > MAX_JSON_DEPTH) throw new HttpError(400, 'JSON body nested too deeply.');
+    const record = node as Record<string, unknown>;
+    for (const key in record) {
+      if (key === '__proto__') {
+        delete record[key];
+        continue;
+      }
+      const value = record[key];
+      if (typeof value === 'object' && value !== null) {
+        nodes.push(value);
+        depths.push(depth + 1);
+      }
+    }
+  }
+}
+
 async function parseInput(request: Request, maxBodySize: number): Promise<Input> {
   const type = mediaType(request);
   if (request.method === 'GET' || request.method === 'HEAD' || request.body === null || type === undefined) {
@@ -148,12 +174,15 @@ async function parseInput(request: Request, maxBodySize: number): Promise<Input>
     let body: unknown;
     try {
       body = JSON.parse(text);
-    } catch {
+    } catch (error) {
+      // V8 parses recursively and gives up on absurd nesting.
+      if (error instanceof RangeError) throw new HttpError(400, 'JSON body nested too deeply.');
       throw new HttpError(400, 'Malformed JSON body.');
     }
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new HttpError(400, 'The JSON body must be an object.');
     }
+    dropProtoKeys(body);
     return { ...body };
   }
 
