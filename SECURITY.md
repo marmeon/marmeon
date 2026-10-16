@@ -26,13 +26,15 @@ What happens then:
 ## Supported versions
 
 Marmeon is in 0.x ([release policy](docs/releases.md#what-a-version-promises)): security fixes are released for the
-**latest minor version** only — upgrade along [UPGRADING.md](UPGRADING.md). How long a major version receives security fixes is
-set with 1.0 ([release policy](docs/releases.md#from-10-on)).
+**latest minor version** only — upgrade along [UPGRADING.md](UPGRADING.md). From 1.0 on, the current major version and, for 12
+months after the next major is released, the previous one receive them; 0.x gets none once 1.0.0 is out
+([which versions get fixes](docs/releases.md#which-versions-get-fixes)).
 
 | Version | Security fixes |
 |---|---|
-| latest 0.x minor | yes |
+| latest 0.x minor (before 1.0) | yes |
 | older 0.x | no — upgrade |
+| 0.x after 1.0.0 | no — upgrade to 1.0 |
 
 ## What is in scope
 
