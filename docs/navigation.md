@@ -154,7 +154,9 @@ export default function Search({ results }: PageProps<SearchNotesController>) {
 - **`prefetch(url)`** fetches a page ahead.
 - **`on(event, listener)`** listens to every visit and returns the function that stops listening. The events are `start`,
   `progress`, `success`, `error` (the answer brought validation errors), `exception` (offline or a server error), `cancel`,
-  `finish` and `version`.
+  `finish` and `version`. `success` hands the listener the page that landed as `PageInfo`, the fields `usePage()` returns; the
+  `server` kind of `exception` carries the server's error page the same way (`page`), or the plain HTML of an answer from in
+  front of the server (`html`).
 
 Only `http:` and `https:` addresses are loaded. A `visit()`, a link click, an action's redirect and a `409` with
 `x-marmeon-location` that name any other scheme, such as `javascript:`, `data:` or `blob:`, load nothing, however the scheme is
@@ -167,6 +169,8 @@ navigation), so check an address a user wrote before you pass it on. A location 
 
 With the controller's type, `useRouter<SearchNotesController>()` checks the prop names of `only`, `except` and `reset`. A visit
 also takes the callbacks `onStart`, `onProgress`, `onSuccess`, `onError`, `onException`, `onCancel` and `onFinish` for itself.
+`onSuccess` gets the page as `PageInfo`, like `visit()` resolves with. The server's protocol fields (version, deferred props, layers,
+the CSRF token) are not part of it: `useNewVersion()` and `on('version')`, `<Deferred>` and `<WhenVisible>`, `useLayer()` and `xsrfToken` have them.
 
 ## Prefetching
 

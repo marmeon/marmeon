@@ -6,7 +6,7 @@
  */
 import { atOrigin } from '../request.ts';
 import type { FlashMessage } from '../../page.ts';
-import { LAYER_BACKDROP } from '../../page-support.ts';
+import { LAYER_BACKDROP, pageInfo } from '../../page-support.ts';
 import type { LayerClose } from '../../protocol.ts';
 import { LAYER_CLOSE_HEADER, MAX_LAYER_DEPTH, REGION_HEADER, type PageObject } from '../../protocol.ts';
 import { updatePage } from '../cache.ts';
@@ -195,7 +195,7 @@ export class LayerStack implements LayerHost {
     if (!from || from.layer.closed) return undefined;
     await this.#close(from.layer, close);
     const shown = this.controls.at(-1)?.layer.page ?? this.#core.page;
-    this.#core.emit('success', callbacks.onSuccess, shown, visit);
+    this.#core.emit('success', callbacks.onSuccess, pageInfo(shown), visit);
     return shown;
   }
 

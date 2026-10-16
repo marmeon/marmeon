@@ -9,6 +9,7 @@
  */
 import type { DeferredResult, FlashKey, FlashMessage, ValidationErrors } from '../page.ts';
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type PageObject } from '../protocol.ts';
+import { pageInfo } from '../page-support.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
 import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';
@@ -767,7 +768,7 @@ export class Navigator {
         if (shown) {
           const errors = validationErrors(shown);
           if (errors) this.#events.emit('error', options.onError, errors, visit);
-          else this.#events.emit('success', options.onSuccess, shown, visit);
+          else this.#events.emit('success', options.onSuccess, pageInfo(shown), visit);
         }
         return shown;
       });
@@ -1094,7 +1095,7 @@ export class Navigator {
       // The page stays (and whatever was typed into it); the app shows the server's error as a fallback.
       const page = isPage ? this.#collect((await response.json()) as PageObject) : undefined;
       const html = isPage ? undefined : await response.text();
-      this.#events.emit('exception', callbacks.onException, { type: 'server', visit, status: response.status, page, html });
+      this.#events.emit('exception', callbacks.onException, { type: 'server', visit, status: response.status, page: page && pageInfo(page), html });
       return undefined;
     }
     if (!isPage) {

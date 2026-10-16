@@ -3,8 +3,7 @@
  * or `cancel`, and always `finish` — per visit (`onStart`, …) and for every request (`navigator.on`). Plus `flash` and
  * `version`.
  */
-import type { FlashMessage, ValidationErrors } from '../page.ts';
-import type { PageObject } from '../protocol.ts';
+import type { FlashMessage, PageInfo, ValidationErrors } from '../page.ts';
 import type { VisitMethod } from './navigation.ts';
 import { call, notify } from './notify.ts';
 
@@ -32,14 +31,14 @@ export interface VisitProgress {
  * A visit that failed (`exception`) — the page stays as it is (nothing typed is lost) and the
  * app shows a fallback:
  * - `network`: the server could not be reached (offline, the server is down, the connection broke).
- * - `server`: the server answered with a 5xx — its error page (`page`, with the exception in debug mode) or, from
+ * - `server`: the server answered with a 5xx — its error page (`page`, as `usePage()` shows a page, with the exception in debug mode) or, from
  *   something in front of it (a proxy), plain HTML (`html`).
  *
  * Validation errors are no failure: they are the `error` event (the page's `errors` prop, see `useForm`).
  */
 export type VisitException =
   | { readonly type: 'network'; readonly visit: Visit; readonly cause: unknown }
-  | { readonly type: 'server'; readonly visit: Visit; readonly status: number; readonly page: PageObject | undefined; readonly html: string | undefined };
+  | { readonly type: 'server'; readonly visit: Visit; readonly status: number; readonly page: PageInfo | undefined; readonly html: string | undefined };
 
 /**
  * The events of a visit, in order: `start`, `progress` (uploads), then one of `success`, `error`, `exception` or
@@ -50,8 +49,8 @@ export type VisitException =
 export interface VisitEvents {
   start: (visit: Visit) => void;
   progress: (progress: VisitProgress, visit: Visit) => void;
-  /** The visit ended on a page without validation errors. */
-  success: (page: PageObject, visit: Visit) => void;
+  /** The visit ended on a page without validation errors — the page as `usePage()` shows it. */
+  success: (page: PageInfo, visit: Visit) => void;
   /** The visit ended on a page with validation errors (its `errors` prop — the server redirected back to the form). */
   error: (errors: ValidationErrors, visit: Visit) => void;
   /** The request failed: offline or a 5xx. The page stays; the app shows a fallback. */

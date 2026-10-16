@@ -1,10 +1,10 @@
 import { hasServerMarkup, loadHistoryFallback, loadPageMessages, loadTabSync, readInitialPage, rootElement, type Feature } from '@marmeon/http/client/adapter';
-import type { TitleTemplate } from '@marmeon/http/client';
+import type { ProgressIndicator, TitleTemplate, ViewTransitionOption } from '@marmeon/http/client';
 import type { DevtoolsGlobal } from '@marmeon/http/client/adapter';
 import type { RouteManifest } from '@marmeon/http/page';
 import type { MessageLoader } from '@marmeon/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
-import { MarmeonApp, loadLayerStack, type MarmeonAppProps } from './app.tsx';
+import { MarmeonApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { LayerFrame } from './layer.tsx';
 import type { ConfirmComponent } from './confirm.tsx';
@@ -33,7 +33,7 @@ export interface CreateMarmeonAppOptions {
    * An indicator of visits under way (opt-in): `progress: progressBar({ delay: 250 })` shows the core's bar for visits
    * slower than `delay`; none without it.
    */
-  progress?: MarmeonAppProps['progress'];
+  progress?: ProgressIndicator;
   /**
    * The frame around every layer's view — the same as the SSR entry's. Default `LayerDialog` (a native modal
    * `<dialog>`); wrap it for the app's labels: `layer: (props) => <LayerDialog {...props} closeLabel="Schließen" />`.
@@ -55,7 +55,7 @@ export interface CreateMarmeonAppOptions {
    * `document.startViewTransition` around each page swap. `'react'`: React's — each page change renders in `startTransition`
    * with its types, and the views' `<ViewTransition>` components animate. See docs/navigation.md#view-transitions.
    */
-  viewTransition?: MarmeonAppProps['viewTransition'];
+  viewTransition?: ViewTransitionOption | 'react' | undefined;
   /**
    * Errors React recovered from while hydrating: the server's markup did not match (React rendered that part again in
    * the browser), or a part failed on the server (the browser rendered it). Default: reported to the console — in

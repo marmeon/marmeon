@@ -358,7 +358,7 @@ included, gets the code alone.
 | R6 | pages | A page's `revalidateOnBack` is not `true`, `false` or a list of prop names. |
 | R7 | `useAction` | An action submitted while rendering on the server. |
 | R8 | `reloading({ islands })` | An island route the browser does not know. |
-| R9 | hooks | A hook of the framework outside `<MarmeonApp>`. |
+| R9 | hooks | A hook of the framework outside the app `createMarmeonApp()` renders. |
 | R10 | `useFeature` | A client feature used while rendering on the server. |
 | R11 | `useRouter` | A visit while rendering on the server. |
 | R12 | translation hooks | A translation hook without the app's messages. |

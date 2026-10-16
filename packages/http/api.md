@@ -1239,7 +1239,7 @@ export type VisitEvent = keyof VisitEvents;
 export interface VisitEvents {
     start: (visit: Visit) => void;
     progress: (progress: VisitProgress, visit: Visit) => void;
-    success: (page: PageObject, visit: Visit) => void;
+    success: (page: PageInfo, visit: Visit) => void;
     error: (errors: ValidationErrors, visit: Visit) => void;
     exception: (exception: VisitException) => void;
     cancel: (visit: Visit) => void;
@@ -1256,7 +1256,7 @@ export type VisitException = {
     readonly type: 'server';
     readonly visit: Visit;
     readonly status: number;
-    readonly page: PageObject | undefined;
+    readonly page: PageInfo | undefined;
     readonly html: string | undefined;
 };
 // VisitMethod
@@ -1298,8 +1298,6 @@ export declare const hooksHandle: FeatureHandle<ClientHooks>;
 export declare function isDevelopment(): boolean;
 // isSensitiveRememberField
 export declare function isSensitiveRememberField(field: string, include?: readonly string[]): boolean;
-// pageQuery
-export declare function pageQuery(page: Pick<PageObject, 'query' | 'queryDefaults'>): Record<string, unknown>;
 // progressBar
 export declare function progressBar(options?: ProgressOptions): ProgressIndicator;
 // resolveRoute
@@ -1340,51 +1338,19 @@ export interface LayerClose {
     readonly layers: number;
     readonly reload?: readonly string[] | true;
 }
-// LayerInfo
-export interface LayerInfo {
-    readonly key: string;
-    readonly base: string;
-    readonly once?: true;
-}
-// LiveSubscription
-export interface LiveSubscription {
-    readonly channel: string;
-    readonly only?: readonly string[];
-    readonly token: string;
-}
 // NAME_TERMS
 declare const NAME_TERMS = "password|passcode|passphrase|secret|token|credential|signature|jwt|recovery|cvv|cvc|card|iban|dsn";
-// OnceInfo
-export interface OnceInfo {
-    readonly key: string;
-    readonly expiresAt?: number;
-}
 // PASSWORD_TERMS
 declare const PASSWORD_TERMS = "password|passcode|passphrase";
-// PageObject
-export interface PageObject {
-    component: string;
-    props: ViewProps;
-    url: string;
-    version?: string | null;
-    locale?: string;
-    fallbackLocale?: string;
-    deferredProps?: Record<string, string[]>;
-    mergeProps?: string[];
-    deepMergeProps?: string[];
-    matchPropsOn?: string[];
-    query?: Record<string, unknown>;
-    queryDefaults?: Record<string, unknown>;
-    streamedProps?: string[];
-    layer?: LayerInfo;
-    layers?: PageObject[];
-    flash?: FlashMessage[];
-    route?: string;
-    onceProps?: Record<string, OnceInfo>;
-    onceScope?: string;
-    csrf?: string;
-    epoch?: string;
-    live?: LiveSubscription[];
+// PageInfo
+export interface PageInfo<TProps = ViewProps> {
+    readonly component: string;
+    readonly props: TProps;
+    readonly url: string;
+    readonly route?: string;
+    readonly locale?: string;
+    readonly query?: Readonly<Record<string, unknown>>;
+    readonly flash?: readonly FlashMessage[];
 }
 // RouteManifest
 export type RouteManifest = Readonly<Record<string, {
@@ -2613,7 +2579,7 @@ export type VisitEvent = keyof VisitEvents;
 export interface VisitEvents {
     start: (visit: Visit) => void;
     progress: (progress: VisitProgress, visit: Visit) => void;
-    success: (page: PageObject, visit: Visit) => void;
+    success: (page: PageInfo, visit: Visit) => void;
     error: (errors: ValidationErrors, visit: Visit) => void;
     exception: (exception: VisitException) => void;
     cancel: (visit: Visit) => void;
@@ -2630,7 +2596,7 @@ export type VisitException = {
     readonly type: 'server';
     readonly visit: Visit;
     readonly status: number;
-    readonly page: PageObject | undefined;
+    readonly page: PageInfo | undefined;
     readonly html: string | undefined;
 };
 // VisitMethod

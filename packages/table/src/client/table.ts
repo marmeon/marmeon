@@ -4,7 +4,8 @@
  * the filter keys and URLs they name): the browser never names a database column, and asking for anything the props do not
  * offer throws before a request goes out.
  */
-import { pageQuery, type ActionOutcome, type Confirm, type SelectionKey } from '@marmeon/http/client';
+import type { ActionOutcome, Confirm, SelectionKey } from '@marmeon/http/client';
+import { pageQuery } from '@marmeon/http/client/adapter';
 import { queryState, selection, type Selection } from '@marmeon/http/client/adapter';
 import { queryUrl, type Navigator, type QueryState } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';

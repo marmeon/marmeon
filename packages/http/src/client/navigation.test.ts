@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
 import type { PatchTarget } from './optimistic.ts';
 import { boot, FakeEntry, FakeWindow, historyFeatures, ORIGIN, page, pageResponse, PATHS, settle } from './test-window.ts';
+import { pageInfo } from '../page-support.ts';
 import { prefetch } from './features/prefetch.ts';
 import { prefetchWith } from './lazy.ts';
 
@@ -152,6 +153,11 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
     });
   });
 
+  /** The server failure of an exception, for asserting on its `page`. */
+  function failure(exception: VisitException | undefined) {
+    return exception?.type === 'server' ? exception : undefined;
+  }
+
   /** Records a navigator's events, in order. */
   function record(navigator: Navigator) {
     const events: string[] = [];
@@ -226,9 +232,36 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
 
       expect(await navigator.visit('/b', { method: 'post', data: { name: 'Ada' } })).toBeUndefined();
       expect(events).toEqual(['start post /b', 'exception server', 'finish /b']);
-      expect(errors[0]).toMatchObject({ type: 'server', status: 500, page: errorPage, html: undefined });
+      expect(errors[0]).toMatchObject({ type: 'server', status: 500, page: pageInfo(errorPage), html: undefined });
+      // @ts-expect-error `version` is a wire field: apps use `useNewVersion()` / `on('version')`
+      void failure(errors[0])!.page!.version;
+      expect(Object.keys(failure(errors[0])!.page!).sort()).toEqual(['component', 'props', 'url']);
       expect(shown).toEqual([]);
       expect(win.entries).toHaveLength(1);
+    });
+
+    it('gives callbacks and listeners the page as PageInfo — no wire fields', async () => {
+      const win = new FakeWindow(`${ORIGIN}/a`);
+      win.handler = () => pageResponse(page('/b'));
+      const { navigator } = boot(win, page('/a'));
+      const seen: object[] = [];
+      navigator.on('success', (next) => {
+        // @ts-expect-error `version` is a wire field: apps use `useNewVersion()` / `on('version')`
+        void next.version;
+        // @ts-expect-error `deferredProps` is a wire field: apps use `<Deferred>` / `<WhenVisible>`
+        void next.deferredProps;
+        seen.push(next);
+      });
+      await navigator.visit('/b', {
+        onSuccess: (next) => {
+          // @ts-expect-error `layers` is a wire field: apps use `useLayer()`
+          void next.layers;
+          seen.push(next);
+        },
+      });
+      expect(seen).toHaveLength(2);
+      for (const next of seen) expect(Object.keys(next)).not.toContain('version');
+      expect(seen[0]).toEqual(pageInfo(page('/b')));
     });
 
     it('hands plain HTML of a 5xx (a proxy, say) to the exception event instead of loading it', async () => {

@@ -273,10 +273,10 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       };
       const app = boot(win, page('/users/1', { profile: { name: 'Ada' }, other: 1 }, 'users/Show'));
       await app.navigator.visit('/users/1/edit', { layer: true });
-      const successes: string[] = [];
+      const successes: object[] = [];
       const requests = win.requests.length;
 
-      const shown = await app.layers()[0]!.visit('/users/1', { method: 'put', data: { name: 'Grace' }, onSuccess: (next) => successes.push(next.component) });
+      const shown = await app.layers()[0]!.visit('/users/1', { method: 'put', data: { name: 'Grace' }, onSuccess: (next) => successes.push(next) });
       expect(app.layers()).toEqual([]);
       expect(win.requests.slice(requests).map((request) => [request.method, request.headers[PARTIAL_DATA_HEADER]])).toEqual([
         ['PUT', undefined],
@@ -284,7 +284,9 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       ]);
       expect(app.navigator.page.props).toEqual({ profile: { name: 'Grace' }, other: 1 });
       expect(shown?.component).toBe('users/Show');
-      expect(successes).toEqual(['users/Show']);
+      expect(successes).toHaveLength(1);
+      expect(successes[0]).not.toHaveProperty('version');
+      expect(successes[0]).toMatchObject({ component: 'users/Show' });
       expect(win.current.url).toBe(`${ORIGIN}/users/1`);
     });
 
