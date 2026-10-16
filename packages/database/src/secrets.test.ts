@@ -226,6 +226,63 @@ describe.each(drivers)('secret columns on %s', (driver) => {
   });
 });
 
+describe.each(drivers)('statements the guard reads through on %s', (driver) => {
+  it('strips a select inside raw SQL, on the first query after a migration as on every later one', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH, totp_secret: 'JBSWY3DP' });
+      const read = () => sql<Record<string, unknown>>`select * from ${db.selectFrom('accounts').selectAll().as('a')}`.execute(db);
+      // A schema change leaves the metadata stale: the next query is compiled before the schema is known again.
+      await sql`alter table accounts add column note text`.execute(db);
+      for (const attempt of [read, read]) {
+        const [row] = (await attempt()).rows;
+        expect(row).toMatchObject({ email: 'ada@example.com' });
+        expect(row).not.toHaveProperty('password');
+      }
+    } finally {
+      await close();
+    }
+  });
+
+  it('refuses a function named like a placeholder but with more behind it, on cold metadata', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await expect(
+        db
+          .selectFrom('accounts as __marmeon_unresolved_t' as never)
+          .select((eb: any) => eb.fn('__marmeon_unresolved_t.email || (select password from accounts limit 1) || lower', [eb.val('')]).as('leak'))
+          .execute(),
+      ).rejects.toThrow('which is no identifier');
+    } finally {
+      await close();
+    }
+  });
+
+  it('refuses a function whose name is no identifier — it would send a subquery past the check', async () => {
+    const { connections, close } = await freshConnections(driver);
+    try {
+      await migrator(connections).migrate();
+      const db = connections.get<AccountTables>();
+      await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
+      for (let warm = 0; warm < 2; warm++) {
+        await expect(
+          db.selectFrom('accounts').select((eb) => eb.fn('(select password from accounts limit 1) || lower', [eb.val('')]).as('leak')).execute(),
+        ).rejects.toThrow('which is no identifier');
+        await expect(db.selectFrom('accounts').select('id').where((eb) => eb.fn('x) or (select 1', [])).execute()).rejects.toThrow('which is no identifier');
+      }
+      await expect(db.selectFrom('accounts').select((eb) => eb.fn.agg('(select password from accounts limit 1) || max', ['email']).as('leak')).execute()).rejects.toThrow('which is no identifier');
+      await expect(db.selectFrom('accounts').select((eb) => eb.fn.count('id').as('n')).executeTakeFirstOrThrow()).resolves.toMatchObject({ n: 1 });
+      await expect(db.selectFrom('accounts').select((eb) => eb.fn('lower', ['email']).as('e')).executeTakeFirstOrThrow()).resolves.toMatchObject({ e: 'ada@example.com' });
+    } finally {
+      await close();
+    }
+  });
+});
+
 describe.each(drivers)('schema metadata inside transactions on %s', (driver) => {
   it('is loaded on the connection a transaction holds — a first relation query inside one does not hang', async () => {
     const { connections, close } = await freshConnections(driver);

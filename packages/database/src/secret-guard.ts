@@ -9,6 +9,7 @@ import {
   SelectQueryNode,
   TableNode,
   ValuesNode,
+  type AggregateFunctionNode,
   type ColumnUpdateNode,
   type DeleteQueryNode,
   type InsertQueryNode,
@@ -54,7 +55,47 @@ interface Source {
   readonly untyped?: boolean;
 }
 
-const WRITES: ReadonlySet<string> = new Set(['InsertQueryNode', 'UpdateQueryNode', 'DeleteQueryNode', 'MergeQueryNode']);
+const FUNCTION_NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/;
+
+/** How the guard treats a statement kind: `reads` is checked as a select, `writes` as a write, the rest only for the selects inside. */
+type RootKind = 'reads' | 'writes' | 'schema' | 'raw';
+
+/**
+ * Every statement kind Kysely compiles, classified. `satisfies` makes a kind Kysely adds a compile error here, and {@link rootKind}
+ * refuses one that still gets through at runtime (a plugin's node, a newer Kysely than the types): an unknown statement is never
+ * passed on unchecked.
+ */
+const ROOTS = {
+  SelectQueryNode: 'reads',
+  InsertQueryNode: 'writes',
+  UpdateQueryNode: 'writes',
+  DeleteQueryNode: 'writes',
+  MergeQueryNode: 'writes',
+  AlterTableNode: 'schema',
+  AlterTypeNode: 'schema',
+  CreateIndexNode: 'schema',
+  CreateSchemaNode: 'schema',
+  CreateTableNode: 'schema',
+  CreateTypeNode: 'schema',
+  CreateViewNode: 'schema',
+  DropIndexNode: 'schema',
+  DropSchemaNode: 'schema',
+  DropTableNode: 'schema',
+  DropTypeNode: 'schema',
+  DropViewNode: 'schema',
+  RefreshMaterializedViewNode: 'schema',
+  // `sql` raw SQL: its text cannot be checked, only the expressions it is given.
+  RawNode: 'raw',
+} as const satisfies Record<RootOperationNode['kind'], RootKind>;
+
+/** @internal — how the secret guard treats `node`; throws for a statement kind it does not know. */
+export function rootKind(node: { readonly kind: string }): RootKind {
+  // `hasOwn`: a kind named like an Object method (`constructor`) is no entry.
+  if (!Object.hasOwn(ROOTS, node.kind)) {
+    throw new Error(`The secret guard does not know the statement ${node.kind}, so it cannot check it for secret columns — it is refused. Classify it in secret-guard.ts.`);
+  }
+  return ROOTS[node.kind as keyof typeof ROOTS];
+}
 
 /** What the guard changes: selections spelled out without secret columns, by the select (or returning) they belong to. */
 export type Spelled = ReadonlyMap<OperationNode, readonly SelectionNode[]>;
@@ -118,8 +159,9 @@ class Guard {
   }
 
   root(node: RootOperationNode): void {
-    if (node.kind === 'SelectQueryNode') this.#select(node);
-    else if (node.kind === 'InsertQueryNode' || node.kind === 'UpdateQueryNode' || node.kind === 'DeleteQueryNode' || node.kind === 'MergeQueryNode') this.#write(node);
+    const kind = rootKind(node);
+    if (kind === 'reads') this.#select(node as SelectQueryNode);
+    else if (kind === 'writes') this.#write(node as InsertQueryNode);
     else this.#scan(node);
   }
 
@@ -255,7 +297,7 @@ class Guard {
       }
       if (!SelectQueryNode.is(expression)) {
         // A statement with `returning` as a common table expression: its columns are not followed — it cannot be read from.
-        if (WRITES.has(expression.kind)) this.#write(expression as InsertQueryNode);
+        if (rootKind(expression) === 'writes') this.#write(expression as InsertQueryNode);
         else this.#scan(expression);
         ctes.set(fold(table), { names: [], secret: new Set(), known: false, untyped: true });
         continue;
@@ -426,6 +468,17 @@ class Guard {
     return output;
   }
 
+  /**
+   * Kysely sends a function's name as written, unescaped: `fn('(select …) || lower', …)` would put a subquery past this check.
+   * A name that is no identifier is refused — the connection's own placeholders are identifiers, so none is exempt. `fn.agg` is the
+   * same kind of name, in an aggregate node.
+   */
+  #named(node: FunctionNode | AggregateFunctionNode): void {
+    if (!FUNCTION_NAME.test(node.func)) {
+      throw new Error(`${this.#relation ?? 'This query'} calls a function named ${JSON.stringify(node.func)}, which is no identifier — it could hide a subquery from the check for secret columns. Use a plain function name, or sql\`…\` for anything else.`);
+    }
+  }
+
   /** The source `selectAll('name')` names — one of this select's own. */
   #own(name: string, sources: readonly Source[]): Source {
     const source = sources.find((candidate) => fold(candidate.ref) === fold(name));
@@ -447,6 +500,7 @@ class Guard {
       if (output.secret.size) this.#refuse(`${[...output.secret].join(', ')} of a subquery`);
       return;
     }
+    if (kind === 'FunctionNode' || kind === 'AggregateFunctionNode') this.#named(node as FunctionNode);
     if (kind === 'FunctionNode' && ((node as FunctionNode).func === MANY || (node as FunctionNode).func === ONE)) return this.#relationOf(node as FunctionNode);
     if (kind === 'ReferenceNode') return this.#reference(node as ReferenceNode);
     if (kind === 'ColumnNode') return this.#name((node as ColumnNode).column.name);
@@ -467,6 +521,7 @@ class Guard {
     const kind = (node as { kind?: unknown }).kind;
     if (kind === 'ValueNode' || kind === 'ValueListNode' || kind === 'PrimitiveValueListNode') return;
     if (kind === 'SelectQueryNode') return void this.#select(node as SelectQueryNode);
+    if (kind === 'FunctionNode' || kind === 'AggregateFunctionNode') this.#named(node as FunctionNode);
     if (kind === 'FunctionNode' && ((node as FunctionNode).func === MANY || (node as FunctionNode).func === ONE)) return this.#relationOf(node as FunctionNode);
     if (kind === 'ColumnUpdateNode') return this.#assigned(node as ColumnUpdateNode);
     // An insert of a merge: the table written is the merge's.

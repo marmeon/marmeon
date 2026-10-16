@@ -18,6 +18,7 @@ import {
   type CompiledQuery,
   type DeleteQueryNode,
   type Expression,
+  type InsertQueryNode,
   type Kysely,
   type KyselyPlugin,
   type OperationNode,
@@ -34,7 +35,7 @@ import {
 import type { SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, RELATION, SOFT_DELETE, SOFT_DELETE_FILTER, sourcesOf, TOUCH_COLUMN, WITH_TRASHED, type Source } from './placeholders.ts';
 import { labelOf, relationQuery, type RelationSpec, type RelationsPlugin } from './relations.ts';
-import { outputName } from './secret-guard.ts';
+import { outputName, rootKind } from './secret-guard.ts';
 
 // Placeholders for what only the schema metadata knows — whether a table has soft deletes or timestamps, which relations its
 // foreign keys describe and which columns they may load. A query is built synchronously, often before anything was loaded (the
@@ -105,6 +106,8 @@ export class SchemaResolver implements KyselyPlugin {
   }
 
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
+    // Before anything else, whatever the schema's state: a statement kind nobody classified is refused, not passed on.
+    rootKind(node);
     if (!hasPlaceholder(node)) {
       // What it reads is checked against the secret columns (`guardSecrets`) and stripped of them: with the schema it runs against.
       if (!this.#metadata.fresh && readsRows(node)) this.#deferred.add(queryId);
@@ -264,9 +267,11 @@ function refuseTaken(node: SelectQueryNode, metadata: SchemaMetadata): void {
 
 /** Whether a statement reads rows — a select, a `returning` (of a merge too), or a select inside (`insert … select`) — whose secret columns are checked. */
 function readsRows(node: RootOperationNode): boolean {
-  if (node.kind === 'SelectQueryNode') return true;
-  if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode' && node.kind !== 'MergeQueryNode') return false;
-  return node.returning !== undefined || hasSelect(node);
+  const kind = rootKind(node);
+  if (kind === 'reads') return true;
+  // A raw statement or DDL with a select inside it reads rows just the same (`sql\`select * from ${select}\``).
+  if (kind !== 'writes') return hasSelect(node);
+  return (node as InsertQueryNode).returning !== undefined || hasSelect(node);
 }
 
 function hasSelect(node: unknown): boolean {

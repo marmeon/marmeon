@@ -482,7 +482,12 @@ export default defineModule({
 
 In the `notes` module, `insertInto('users')`, `updateTable('users')` and `deleteFrom('users')` are compile errors, and a table of
 another module that is not exposed does not exist at all. Writing to `users` goes through the auth module's `UserRepository`. The
-boundary is a type: at runtime both are the same connection, and raw SQL is not checked. A module that exposes a table another
+boundary is a type: at runtime both are the same connection, and raw SQL is not checked — nor are `sql` fragments inside a builder
+(`modifyEnd`, for one), nor a plugin added to a single query with `.withPlugin()`, which runs after the check for secret columns. A
+follow-up change closes the last. `Database<'notes'>` offers only the builder's reading methods (`selectFrom`, `selectNoFrom`, `fn`,
+`case`, `dynamic`, `isTransaction`) and `insertInto`, `updateTable`, `deleteFrom` and `transaction()` for the module's own tables: no
+`schema`, `introspection` or `with()`, and no `sql` template executed against it (``sql`…`.execute(db)``) — use `Database` where a
+module needs those. A method the query builder gains later is not offered to modules until the framework has classified it. A module that exposes a table another
 module's migration created, or that no migration created, stops `db:types` with an error that says so.
 
 A repository sees every table: `Repository<'profile_links'>` is typed with all of `Tables`. To give it the module's view, pass

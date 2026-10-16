@@ -400,7 +400,7 @@ export declare class Migrator {
     markers(): Promise<SchemaMarker[]>;
 }
 // ModuleDatabase
-export type ModuleDatabase<All, Owners, Exposed, M extends string> = Omit<Kysely<ModuleTables<All, Owners, Exposed, M>>, WriteMethods> & {
+export type ModuleDatabase<All, Owners, Exposed, M extends string> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M>>, ReadMethods> & {
     insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, InsertResult>;
     updateTable<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): UpdateQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, T, UpdateResult>;
     deleteFrom<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): DeleteQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, DeleteResult>;
@@ -800,6 +800,10 @@ interface Pending {
     readonly states: readonly (string | Record<string, unknown>)[];
     readonly db: Connection<any> | undefined;
 }
+// READ_METHODS
+export declare const READ_METHODS: readonly ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynamic', 'isTransaction'];
+// ReadMethods
+type ReadMethods = (typeof READ_METHODS)[number];
 // ReadOnlyTable
 type ReadOnlyTable<T> = {
     [C in keyof T]: ColumnType<RowOf<T>[C & keyof RowOf<T>], never, never>;
@@ -853,8 +857,6 @@ type TargetOf<DB, TB, N> = RelationOf<TB, N> extends {
 } ? R : never;
 // WithResult
 type WithResult<DB, TB extends keyof DB, N, O> = Shaped<RelationOf<TB, N>, Loaded<DB, TargetOf<DB, TB, N>, O>>;
-// WriteMethods
-type WriteMethods = 'insertInto' | 'replaceInto' | 'updateTable' | 'deleteFrom' | 'mergeInto' | 'transaction' | 'startTransaction' | 'connection' | 'with' | 'withRecursive' | 'withSchema' | 'withTables' | 'withPlugin' | 'withoutPlugins';
 // Writes
 type Writes<DB, R> = R extends {
     readonly kind: 'belongsToMany';
