@@ -371,7 +371,7 @@ describe('Auth (session guard)', () => {
           headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'Firefox/140.0', 'x-forwarded-for': '203.0.113.9' },
           body: JSON.stringify({ email: ada.email, password: 'secret' }),
         },
-        { incoming: { socket: { remoteAddress } } },
+        { remoteAddress },
       );
     await post('127.0.0.1'); // the trusted proxy: the client is who it forwarded
     await post('198.51.100.7'); // no proxy of ours: its X-Forwarded-For is the client's own word
@@ -865,7 +865,7 @@ describe('remember me', () => {
       await kernel.request(
         '/who',
         { headers: { cookie: `remember_web=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
-        { incoming: { socket: { remoteAddress: '198.51.100.7' } } },
+        { remoteAddress: '198.51.100.7' },
       );
     } finally {
       vi.useRealTimers();
@@ -892,7 +892,7 @@ describe('remember me', () => {
         await kernel.request(
           path,
           { headers: { cookie: `remember_web=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
-          { incoming: { socket: { remoteAddress: '198.51.100.7' } } },
+          { remoteAddress: '198.51.100.7' },
         );
       } finally {
         vi.useRealTimers();

@@ -269,7 +269,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
           headers: { cookie: [...jar].map(([name, value]) => `${name}=${value}`).join('; '), accept: 'application/json', 'content-type': 'application/json' },
           body: JSON.stringify(json),
         },
-        remoteAddress === undefined ? undefined : { incoming: { socket: { remoteAddress } } },
+        remoteAddress === undefined ? undefined : { remoteAddress },
       );
       for (const header of response.headers.getSetCookie()) {
         const [pair, ...attributes] = header.split(';');

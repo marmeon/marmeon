@@ -4,7 +4,7 @@
 
 ## `@marmeon/log`
 
-Types from other packages: `pino`
+Types from other packages: none
 
 ### Stable
 
@@ -30,17 +30,6 @@ export declare class LogServiceProvider implements ServiceProvider {
         environment: string;
     }>[];
     register(container: Container): void;
-}
-// PinoLogger
-export declare class PinoLogger implements Logger {
-    #private;
-    constructor(logger: Pino, app?: Application, bindings?: LogContext, parent?: PinoLogger);
-    debug(message: string, context?: LogContext): void;
-    info(message: string, context?: LogContext): void;
-    warn(message: string, context?: LogContext): void;
-    error(message: string, context?: LogContext): void;
-    enabled(level: 'debug' | 'info' | 'warn' | 'error'): boolean;
-    child(bindings: LogContext): Logger;
 }
 // REDACTED_KEYS
 export { REDACTED_KEYS } from '@marmeon/core';

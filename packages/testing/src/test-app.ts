@@ -41,7 +41,7 @@ import {
   type LiveSubscription,
   type PageObject,
 } from '@marmeon/http/page';
-import { createHttpKernel, DevRequestRecorder } from '@marmeon/server';
+import { createHttpKernel, DevRequestRecorder, type HttpKernel } from '@marmeon/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail';
@@ -318,7 +318,7 @@ async function closeWhenTheTestEnds(app: TestApp): Promise<void> {
 }
 
 interface Shared {
-  readonly kernel: ReturnType<typeof createHttpKernel>;
+  readonly kernel: HttpKernel;
   readonly database: DatabaseModule | undefined;
   /** The recording mailer, unless the app has no mail or the test chose `mail: 'real'`. */
   readonly mail: MailFake | undefined;

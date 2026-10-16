@@ -349,6 +349,9 @@ for. `TRUSTED_PROXIES` names the proxies whose headers count: then the client's 
 `X-Forwarded-For`, and the request's URL takes its scheme and host from `X-Forwarded-Proto` and `X-Forwarded-Host`. The CSRF
 check compares a form's origin with that URL.
 
+The peer's address is the socket's. An adapter that runs the kernel outside `startServer()` passes it as
+`kernel.fetch(request, { remoteAddress })`, taken from the socket and never from a header.
+
 | Where the proxy is | `TRUSTED_PROXIES` |
 | --- | --- |
 | Caddy in the same Compose network, the web container publishes no port | `*`, as the template sets it |

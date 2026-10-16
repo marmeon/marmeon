@@ -72,7 +72,7 @@ describe('LimitLiveValidation', () => {
     const answers: number[] = [];
     for (let i = 1; i <= DEFAULT_LIVE_VALIDATION_LIMIT + 1; i++) {
       const { headers, ...init } = request('ada@example.com');
-      answers.push((await app.request('/api/subscribe', { ...init, headers }, { incoming: { socket: { remoteAddress: `2001:db8:1:2::${i.toString(16)}` } } })).status);
+      answers.push((await app.request('/api/subscribe', { ...init, headers }, { remoteAddress: `2001:db8:1:2::${i.toString(16)}` })).status);
     }
     expect(answers.at(-1)).toBe(429);
   });

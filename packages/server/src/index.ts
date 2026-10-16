@@ -1,6 +1,6 @@
 export { createHttpKernel, refuseUndecidedRoutes, startServer } from './kernel.ts';
 export { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
-export type { CloseOptions, HttpKernel, KernelOptions, RunningServer, ServeOptions } from './kernel.ts';
+export type { CloseOptions, HttpKernel, KernelConnection, KernelOptions, RunningServer, ServeOptions } from './kernel.ts';
 export { createDocumentRenderer, createResponseFactory, isBot, shellRenderer } from './render.ts';
 export type { DocumentRendererOptions, LayerBaseResult, PageRenderer, PageRenderOptions, RenderFailureDetails, ResponseFactoryOptions, ScopedResponseFactory } from './render.ts';
 export { DevDocument, withDevBody } from './dev-document.ts';

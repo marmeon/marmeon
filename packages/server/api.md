@@ -4,7 +4,7 @@
 
 ## `@marmeon/server`
 
-Types from other packages: `hono`, `vite`
+Types from other packages: `vite`
 
 ### Stable
 
@@ -49,9 +49,15 @@ export declare const HEAD_OUTLET = "<!--app-head-->";
 // HTML_OUTLET
 export declare const HTML_OUTLET = "<!--app-html-->";
 // HttpKernel
-export type HttpKernel = Hono & {
+export interface HttpKernel {
+    fetch(request: Request, connection?: KernelConnection): Promise<Response>;
+    request(input: string | URL | Request, init?: RequestInit, connection?: KernelConnection): Promise<Response>;
     settle(): Promise<void>;
-};
+}
+// KernelConnection
+export interface KernelConnection {
+    readonly remoteAddress?: string | undefined;
+}
 // KernelOptions
 export interface KernelOptions {
     container?: Container;
