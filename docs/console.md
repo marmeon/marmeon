@@ -306,6 +306,9 @@ The lint sees what an import says, not the file it resolves to. The `marmeon()` 
 every import of client code, also through a helper in between, and fails the build with the file and the line. The preset shows
 the common case in the editor first.
 
+In every file, tests included, the preset refuses imports of `@marmeon/<package>/internal`. Those subpaths are the framework's
+own code and can change in any release; use the package's entry.
+
 The preset also turns off the warning for unused private class members, in every class. That lets an event class carry
 `readonly #event = true`, which `make:event` writes: the field is never read, and it makes the class a type of its own. The
 [events](events.md#defining-events) page explains why. A private member your own classes no longer use is not reported either.
