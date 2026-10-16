@@ -114,7 +114,8 @@ the safe behaviour in the table.
 
 A disk driver implements `Disk` and is a `DiskDriverFactory`: it gets the options of the disk from `defineStorage()` and the
 disk's `name`, the app `root` and the `container`, and returns the disk. A disk selects its driver by name, like the built-in
-`local`, `s3` and `memory`:
+`local`, `s3` and `memory`. The built-in drivers are configured in `defineStorage()`, not constructed — their classes are not
+part of the public API; a driver of your own implements `Disk`:
 
 ```ts title="src/GcsServiceProvider.ts"
 import type { DiskDriverFactory } from '@marmeon/storage';

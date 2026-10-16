@@ -3,4 +3,5 @@
  * app imports it only to type a variable.
  */
 export { StorageFake } from './fake.ts';
-export type { FakeDisk } from './fake.ts';
+export type { FakeDisk, FakeDiskAssertions } from './fake.ts';
+export type { ExpectedContents } from './drivers/memory.ts';
