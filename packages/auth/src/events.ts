@@ -344,11 +344,12 @@ export class PasskeyRemoved {
 }
 
 /**
- * A remember-me cookie that had already been rotated was presented again: two browsers held one cookie, so one was copied. Every
+ * A remember-me cookie of a known selector was presented with a validator that is neither the current nor the just-replaced one: an
+ * old one (replaced a rotation or many rotations ago) or one never issued. Someone held the cookie, so it was copied. Every
  * remember-me token and session of the account is ended (`sessionsEnded` says whether that worked). Queueable: a queued listener gets
  * `{ userId, at, ip, userAgent, sessionsEnded }` (`at` as an ISO-8601 string) and reads the account as it is when it runs. `ip` and
- * `userAgent` belong to the request that presented the old value as the second one: the owner or whoever holds the copy (possibly the
- * thief); a mail should say so. Null outside a request. `userAgent` is client-controlled text: show a parsed browser and system
+ * `userAgent` belong to the request that presented the value: whoever holds the copy (possibly the thief) or, more rarely, the owner's
+ * browser that missed the response carrying a renewal (a cancelled load, a dropped connection); a mail should say so. Null outside a request. `userAgent` is client-controlled text: show a parsed browser and system
  * (`describeDevice`) in a mail, not the raw header. Carries no cookie value or token.
  */
 export class RememberTokenReused {

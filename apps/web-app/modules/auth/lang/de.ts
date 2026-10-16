@@ -333,14 +333,14 @@ export default {
     },
     sign_in: {
       remember_reused: {
-        subject: 'Ein „Angemeldet bleiben“-Cookie deines Kontos wurde zweimal benutzt',
+        subject: 'Ein altes oder verändertes „Angemeldet bleiben“-Cookie deines Kontos wurde gesendet',
         preview: 'Deine Sitzungen wurden vorsorglich beendet',
-        intro: 'ein „Angemeldet bleiben“-Cookie deines Kontos wurde benutzt, nachdem es schon ersetzt worden war. Es wurde also womöglich kopiert.',
+        intro: 'ein altes oder verändertes „Angemeldet bleiben“-Cookie deines Kontos wurde gesendet. Ein Browser, der jede Erneuerung des Cookies übernommen hat, sendet so eines nicht; das Cookie wurde also womöglich kopiert.',
         ended: 'Alle deine Sitzungen wurden beendet, und „Angemeldet bleiben“ wurde auf allen deinen Geräten aufgehoben.',
         not_ended: '„Angemeldet bleiben“ wurde auf allen deinen Geräten aufgehoben. Browser, die gerade angemeldet sind, bleiben es, bis sie sich abmelden oder ihre Sitzung abläuft.',
         from: ', von {ip}',
         with: ', mit {device}',
-        details: 'Die zweite Benutzung war am {at}{from}{with}. Das kann dein eigener Browser gewesen sein, der noch das alte Cookie hatte, oder wer eine Kopie davon hält; wir können es nicht unterscheiden.',
+        details: 'Das war am {at}{from}{with}. Meist heißt das, dass jemand eine Kopie des Cookies hat; auch ein Browser von dir kann ein altes senden, wenn eine Seite beim Erneuern nicht fertig geladen hat. Wir können es nicht unterscheiden.',
         device: '{browser} auf {system}',
         outro: 'Melde dich neu an. Warst du das nicht, oder teilst du diesen Computer, ändere jetzt dein Passwort.',
         outro_not_ended: 'Warst du das nicht, oder teilst du diesen Computer, ändere jetzt dein Passwort und melde dich in jedem Browser ab, den du nicht kennst.',

@@ -161,9 +161,8 @@ The owner gets a mail when a passkey is added, removed or suspended, and when a 
 hour for each account). Passkeys survive a password reset, so a reset also mails the list of passkeys the account still has: whoever
 reset the password, the owner sees what still signs in without it. `mail/PasskeyMail.ts` writes them in the account's language.
 
-The owner also gets a mail when a copied "keep me signed in" cookie was used (`RememberTokenReused`): every session and cookie of the
-account was ended, and the mail names the time, the address and a parsed browser and system. It says plainly that the request may have been the owner's own
-browser or whoever holds the copy. `mail/SignInMail.ts` writes it in the account's language.
+The owner also gets a mail when an old or forged "keep me signed in" cookie was sent (`RememberTokenReused`): every session and cookie of the
+account was ended, and the mail names the time, the address and a parsed browser and system. It says plainly that it is usually someone who holds a copy, and that a browser of the owner can also send an old cookie when a page did not finish loading as it was renewed. `mail/SignInMail.ts` writes it in the account's language.
 
 Passkeys need the relying party from `APP_URL`: open the app as exactly that address, `http://localhost:3000` while developing (not
 `127.0.0.1`). [Passkeys](passkeys.md#in-the-starter-kit) explains the rest. The kit's `marmeon auth:reset-two-factor` removes passkeys with

@@ -837,7 +837,7 @@ export class Auth {
    * committed or rolled back: a rollback brings the deleted tokens back, and `end()` deletes them again. Never throws (a provider
    * without a session key, say): this request is a guest anyway, and the error reaches the log.
    */
-  async #endSessionsOfThief(userId: string | number, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined }, announce: boolean): Promise<void> {
+  async #endSessionsOfThief(userId: string | number, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined }): Promise<void> {
     const end = async () => {
       let sessionsEnded = false;
       try {
@@ -862,7 +862,7 @@ export class Auth {
         }
       }
       // Announced only once the tokens are gone: a replay would find them and repeat the event.
-      if (announce && tokensGone) await this.#announceReuse(userId, { ...details, sessionsEnded });
+      if (tokensGone) await this.#announceReuse(userId, { ...details, sessionsEnded });
     };
     await afterRollback(end);
     await afterCommit(end);
@@ -914,7 +914,7 @@ export class Auth {
           ip: this.#request.ip,
           userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
         });
-        await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) }, result.error.reused === true);
+        await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
       }
       return undefined;
     }

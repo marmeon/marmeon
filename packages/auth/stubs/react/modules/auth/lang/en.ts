@@ -387,14 +387,14 @@ const en = {
     },
     sign_in: {
       remember_reused: {
-        subject: 'A “Keep me signed in” cookie of your account was used twice',
+        subject: 'An old or altered “Keep me signed in” cookie of your account was sent',
         preview: 'Your sessions were ended as a precaution',
-        intro: 'a “Keep me signed in” cookie of your account was used again after it had been replaced, so it may have been copied.',
+        intro: 'an old or altered “Keep me signed in” cookie of your account was sent. A browser that followed every renewal would not send one, so the cookie may have been copied.',
         ended: 'All your sessions were ended, and “Keep me signed in” was turned off on all your devices.',
         not_ended: '“Keep me signed in” was turned off on all your devices. Browsers that are signed in right now stay signed in until they sign out or their session runs out.',
         from: ', from {ip}',
         with: ', with {device}',
-        details: 'The second use was on {at}{from}{with}. That may have been your own browser, which still held the old cookie, or whoever holds a copy of it; we cannot tell which.',
+        details: 'It was sent on {at}{from}{with}. Usually that means someone holds a copy of the cookie; a browser of yours can also send an old one when a page did not finish loading as it was renewed. We cannot tell which.',
         device: '{browser} on {system}',
         outro: 'Sign in again. If this was not you, or you share this computer, change your password now.',
         outro_not_ended: 'If this was not you, or you share this computer, change your password now and sign out of every browser you do not know.',

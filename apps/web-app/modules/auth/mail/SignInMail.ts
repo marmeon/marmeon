@@ -15,9 +15,9 @@ export type SignInNotice = {
 };
 
 /**
- * To the owner when a "keep me signed in" cookie came back after it had been replaced. In the user's language. It shows a parsed
- * browser and system, never the raw `User-Agent` (the client writes that header), and says plainly that the request may have
- * been the owner's own browser or whoever holds a copy.
+ * To the owner when an old or altered "keep me signed in" cookie of the account was sent. In the user's language. It shows a
+ * parsed browser and system, never the raw `User-Agent` (the client writes that header), and says plainly that whoever holds a copy
+ * may have sent it.
  */
 export class SignInMail implements Mailable {
   readonly #user: User;
