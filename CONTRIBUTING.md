@@ -338,7 +338,7 @@ These are the maintainer's gates:
 
 1. Merge the release pull request.
 2. Start the *Release* workflow ("Run workflow") on `main`, or on the maintenance branch for a late fix of an older line.
-3. Rebuild the release commit and compare its tarballs with the staged ones (below).
+3. Run `pnpm release:verify <commit>` — it rebuilds the release commit and compares its tarballs with the staged ones (below).
 4. Approve the staged versions on npmjs.com with two-factor authentication.
 5. Publish the draft GitHub Release.
 
@@ -358,13 +358,16 @@ packed, not that the first job packed what the release commit builds — step 3 
 release, none per package) and drafts the GitHub Release with the version's changelog section as its notes.
 
 **Before approving (required):** the builds are reproducible, so a rebuild of the release commit must give the very tarballs npm
-holds. The run's log has the commit's SHA; on a clean checkout of it (`git switch --detach <commit>`) run
-`pnpm install --frozen-lockfile && pnpm run clean && pnpm build && node scripts/release-pack.ts "$(mktemp -d)/tarballs"`. Then, for
-every staged package, fetch what npm holds with `npm stage download <stage-id>` (`npm stage list` shows the ids) and compare
-`shasum -a 512` of the downloaded file with the rebuilt tarball of the same name. The log's `SHA512SUMS` (printed by the *stage*
-job) is only a pointer to the right files: the log shows what the job checked, npm holds what will go live. Any difference — or a
-staged package you cannot account for — means: do not approve. Reject the staged versions (`npm stage reject`) and look into the
-build job.
+holds. The run's log has the commit's SHA; with an `npm login` session run `pnpm release:verify <commit>`. It rebuilds the commit in
+a temporary worktree (your checkout stays as it is), downloads every staged tarball with `npm stage download`, compares the SHA-512
+of each with the rebuilt tarball of the same name, flags staged packages without a rebuild and rebuilt ones that are not staged, and
+exits 0 only when all match. That catches tarballs changed in CI (a compromised runner or action, a modified workflow), not a
+compromised dependency in the lockfile: the rebuild uses the same lockfile. The log's `SHA512SUMS` (printed by the *stage* job) is
+only a pointer to the right files: the log shows what the job checked, npm holds what will go live. Any difference — or a staged
+package you cannot account for — means: do not approve. Reject the staged versions (`npm stage reject <stage-id>`; the command prints
+the ids when the tarballs differ, otherwise `npm stage list` shows them) and look into the build job. By hand: `git switch --detach <commit>`, then
+`pnpm install --frozen-lockfile && pnpm run clean && pnpm build && node scripts/release-pack.ts "$(mktemp -d)/tarballs"`, then
+`npm stage download <stage-id>` per package (`npm stage list` shows the ids) and `shasum -a 512` against the rebuilt tarball.
 
 Anyone with write access can start the workflow; the guards are conveniences and `check-release`'s check of the workflow files
 is a review aid, not a barrier. The gate is the maintainer's two-factor approval on npm — nothing is public without it, and the
