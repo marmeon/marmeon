@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,7 @@ import {
   textRuleHits,
   textRuleWhere,
 } from './check-source.ts';
-import { parts } from './ci.ts';
+import { commandFor, parts, parseShard } from './ci.ts';
 import { checkTarball, privateRecordInTarball } from './pack-check.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 import { tempDir } from './test/temp-dir.js';
@@ -36,6 +36,47 @@ const ref = (text: string) => text.replaceAll('·', '');
 describe('pnpm run ci', () => {
   it('runs check:source', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
+  });
+
+  const part = (name: string) => parts.find((entry) => entry.name === name)!;
+  const ci = (...args: string[]) => spawnSync(process.execPath, [join(root, 'scripts/ci.ts'), ...args], { cwd: root, encoding: 'utf8' });
+
+  it('hands --shard to the test runs and to nothing else', () => {
+    expect(commandFor(part('test'), '2/3')).toEqual(['pnpm', 'run', 'test', '--shard=2/3']);
+    for (const name of ['test:pgsql', 'test:redis', 'test:s3']) expect(commandFor(part(name), '1/2')).toEqual([...part(name).command, '--shard=1/2']);
+    expect(commandFor(part('test'))).toEqual(part('test').command);
+    for (const name of ['build', 'size', 'lint']) expect(commandFor(part(name), '2/3')).toEqual(part(name).command);
+  });
+
+  it('accepts i/n from 1 with i not above n, and nothing else', () => {
+    for (const ok of ['1/1', '1/3', '3/3', '10/12']) expect(parseShard(ok), ok).toBe(ok);
+    for (const bad of ['0/3', '4/3', '1/0', 'a/b', '3', '1/', '/3', '-1/3', '1.5/3', '01/3', '1/3/3', ' 1/3', '']) expect(parseShard(bad), bad).toBeUndefined();
+  });
+
+  it('refuses a malformed --shard, and one with no test run selected, with exit 2', () => {
+    for (const bad of ['0/3', '4/3', 'a/b', '3']) {
+      const run = ci('--only', 'test', '--shard', bad);
+      expect(run.status, bad).toBe(2);
+      expect(run.stderr, bad).toContain('expected i/n');
+    }
+    const none = ci('--only', 'size', '--shard', '1/2');
+    expect(none.status).toBe(2);
+    expect(none.stderr).toContain('none is selected');
+  });
+
+  it('shows which parts --shard splits in --list', () => {
+    const lines = ci('--list').stdout.split('\n');
+    const sharded = lines.filter((line) => line.includes('(--shard)')).map((line) => line.trim().split(/\s+/)[0]);
+    expect(sharded).toEqual(['test', 'test:pgsql', 'test:redis', 'test:s3']);
+  });
+
+  it('splits the test run over three jobs in the workflow, the check job without it', () => {
+    const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+    const job = /^  test:\n([\s\S]*?)(?=^  \S)/m.exec(workflow)?.[1] ?? '';
+    const matrix = /shard:\s*\[([^\]]*)\]/.exec(job)?.[1]?.split(',').map((entry) => entry.trim());
+    expect(matrix).toEqual(['1', '2', '3']);
+    expect(job).toContain('--only build,test --shard "$SHARD/3"');
+    expect(workflow).toMatch(/--only build,typecheck,lint,size,types:check,website:check,check-release\s*$/m);
   });
 });
 
