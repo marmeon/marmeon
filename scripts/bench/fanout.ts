@@ -48,7 +48,8 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 async function measure(count: number, runs: number, live: string | undefined): Promise<Result> {
-  const module = (await import(live ? pathToFileURL(resolve(live, 'packages/live/dist/index.js')).href : '../../packages/live/src/index.ts')) as typeof import('../../packages/live/src/index.ts');
+  const load = (file: string) => import(live ? pathToFileURL(resolve(live, `packages/live/dist/${file}.js`)).href : `../../packages/live/src/${file}.ts`);
+  const module = { ...((await load('backend')) as typeof import('../../packages/live/src/backend.ts')), ...((await load('hub')) as typeof import('../../packages/live/src/hub.ts')) };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => logger };
   const backend = new module.MemoryLiveBackend();
   const hub = new module.LiveHub(backend, { heartbeat: 300, retry: 3000, maxStreams: count + 1 }, logger);

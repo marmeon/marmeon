@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CliServiceProvider, CommandRegistry, DevProcesses } from 'marmeon';
+import { CliServiceProvider, DevProcesses } from 'marmeon';
+import { CommandRegistry } from 'marmeon/internal';
 import { Clock, createApplication, Logger, resolveConfig, type Application, type Resolver } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';

@@ -9,16 +9,10 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// API_VERSION
-export declare const API_VERSION = 1;
 // AnyEntry
 export type AnyEntry = {
     [T in EntryType]: Entry<T>;
 }[EntryType];
-// BAR_SCRIPT
-export declare const BAR_SCRIPT = "/@id/@marmeon/devtools/client";
-// BASE
-export declare const BASE = "/_marmeon/devtools";
 // CommandContent
 export interface CommandContent {
     readonly command: string;
@@ -27,16 +21,6 @@ export interface CommandContent {
     readonly durationMs?: number;
     readonly error?: ErrorContent;
 }
-// DEFAULT_IGNORED_COMMANDS
-export declare const DEFAULT_IGNORED_COMMANDS: readonly string[];
-// DEFAULT_IGNORED_PATHS
-export declare const DEFAULT_IGNORED_PATHS: readonly PathPattern[];
-// DEFAULT_LIMIT
-export declare const DEFAULT_LIMIT = 50;
-// DEFAULT_MAX_AGE_HOURS
-export declare const DEFAULT_MAX_AGE_HOURS = 24;
-// DEFAULT_MAX_BYTES
-export declare const DEFAULT_MAX_BYTES: number;
 // DevtoolsClearCommand
 export declare class DevtoolsClearCommand {
     #private;
@@ -106,8 +90,6 @@ export declare class DevtoolsServiceProvider implements ServiceProvider {
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;
 }
-// DevtoolsSettings
-export declare const DevtoolsSettings: import("@marmeon/core").Token<ResolvedDevtoolsOptions>;
 // DevtoolsStore
 export interface DevtoolsStore {
     write(entries: readonly AnyEntry[]): Promise<void>;
@@ -119,11 +101,6 @@ export interface DevtoolsStore {
     usage(): Promise<StoreUsage>;
 }
 export declare const DevtoolsStore: import("@marmeon/core").Token<DevtoolsStore>;
-// DevtoolsTestOptIn
-export interface DevtoolsTestOptIn {
-    readonly store: MemoryStore;
-}
-export declare const DevtoolsTestOptIn: import("@marmeon/core").Token<DevtoolsTestOptIn>;
 // DevtoolsTester
 export declare class DevtoolsTester {
     #private;
@@ -137,8 +114,6 @@ export declare class DevtoolsTester {
     settled(): Promise<void>;
     clear(): Promise<void>;
 }
-// ENTRY_TYPES
-export declare const ENTRY_TYPES: readonly EntryType[];
 // Entry
 export interface Entry<T extends EntryType = EntryType> {
     readonly id: string;
@@ -163,11 +138,6 @@ export interface EntryContents {
     live: LiveContent;
     event: EventContent;
     command: CommandContent;
-}
-// EntryIds
-export declare class EntryIds {
-    #private;
-    next(at: number): string;
 }
 // EntryQuery
 export interface EntryQuery {
@@ -212,19 +182,6 @@ export interface ExceptionContent extends ErrorContent {
         readonly command?: string;
         readonly docs?: string;
     }[];
-}
-// FailedJobView
-export interface FailedJobView {
-    readonly id: string;
-    readonly job: string;
-    readonly connection: string;
-    readonly queue: string;
-    readonly failedAt: number;
-    readonly exception: string;
-    readonly payload: unknown;
-    readonly requestId?: string;
-    readonly retry: string;
-    readonly forget: string;
 }
 // FileStore
 export declare class FileStore implements DevtoolsStore {
@@ -278,12 +235,6 @@ export interface LogContent {
     readonly message: string;
     readonly context: Readonly<Record<string, unknown>>;
 }
-// MAIL_CSP
-export declare const MAIL_CSP: string;
-// MAX_BATCH_ENTRIES
-export declare const MAX_BATCH_ENTRIES = 1000;
-// MAX_LIMIT
-export declare const MAX_LIMIT = 1000;
 // MailContent
 export interface MailContent {
     readonly mailable: string;
@@ -332,16 +283,6 @@ export interface NotificationContent {
     readonly durationMs?: number;
     readonly error?: ErrorContent;
 }
-// PAGE_CSP
-export declare const PAGE_CSP: string;
-// PagesOptions
-export interface PagesOptions {
-    readonly app: Application;
-    readonly store: DevtoolsStore;
-    readonly redactor: Redactor;
-    readonly hosts: ReadonlySet<string>;
-    readonly maxBytes?: number;
-}
 // PathPattern
 export type PathPattern = string | RegExp;
 // PruneResult
@@ -359,47 +300,6 @@ export interface QueryContent {
     readonly durationMs: number;
     readonly slow: boolean;
     readonly error?: ErrorContent;
-}
-// QueueSnapshot
-export type QueueSnapshot = {
-    readonly available: true;
-    readonly default: string;
-    readonly connections: readonly QueueView[];
-    readonly failed: readonly FailedJobView[];
-    readonly failedTotal: number;
-    readonly failedError?: string;
-} | {
-    readonly available: false;
-    readonly reason: string;
-};
-// QueueView
-export interface QueueView {
-    readonly connection: string;
-    readonly driver: string;
-    readonly queues: readonly {
-        readonly name: string;
-        readonly size: number;
-        readonly ready?: number;
-        readonly delayed?: number;
-        readonly reserved?: number;
-    }[];
-    readonly error?: string;
-}
-// Recorder
-export declare class Recorder {
-    #private;
-    constructor({ app, store, redactor, options, solutions }: RecorderOptions);
-    start(): this;
-    settled(): Promise<void>;
-    close(): Promise<void>;
-}
-// RecorderOptions
-export interface RecorderOptions {
-    readonly app: Application;
-    readonly store: DevtoolsStore;
-    readonly redactor: Redactor;
-    readonly options: ResolvedDevtoolsOptions;
-    readonly solutions?: ErrorSolutions;
 }
 // RequestContent
 export interface RequestContent {
@@ -439,27 +339,6 @@ export interface RequestContent {
     readonly dropped?: number;
     readonly error?: ErrorContent;
 }
-// ResolvedDevtoolsOptions
-export interface ResolvedDevtoolsOptions {
-    readonly record: ReadonlySet<Watcher>;
-    readonly ignore: {
-        readonly paths: readonly PathPattern[];
-        readonly queries?: (query: {
-            readonly sql: string;
-            readonly connection: string;
-        }) => boolean;
-        readonly commands: ReadonlySet<string>;
-        readonly events: ReadonlySet<string>;
-    };
-    readonly slowQueryMs: number;
-    readonly logLevel: 'debug' | 'info' | 'warn' | 'error';
-    readonly storage: {
-        readonly driver: 'file' | 'memory';
-        readonly path: string;
-        readonly maxBytes: number;
-        readonly maxAgeHours: number;
-    };
-}
 // ScheduleContent
 export interface ScheduleContent {
     readonly task: string;
@@ -470,61 +349,16 @@ export interface ScheduleContent {
     readonly durationMs?: number;
     readonly error?: ErrorContent;
 }
-// ScheduleSnapshot
-export type ScheduleSnapshot = {
-    readonly available: true;
-    readonly tasks: readonly TaskView[];
-    readonly warning?: string;
-} | {
-    readonly available: false;
-    readonly reason: string;
-};
 // StoreUsage
 export interface StoreUsage {
     readonly bytes: number;
     readonly files: number;
     readonly entries: number;
 }
-// TaskView
-export interface TaskView {
-    readonly name: string;
-    readonly expression: string;
-    readonly timeZone: string;
-    readonly summary: string;
-    readonly next?: number;
-    readonly options: readonly string[];
-    readonly test: string;
-}
-// WATCHERS
-export declare const WATCHERS: readonly Watcher[];
 // Watcher
 export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications' | 'logs' | 'exceptions' | 'schedule' | 'live' | 'events' | 'commands';
-// barMarkup
-export declare function barMarkup({ requestId }: {
-    readonly requestId: string | undefined;
-}): string;
 // defineDevtools
 export declare function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition;
-// enableDevtoolsForTests
-export declare function enableDevtoolsForTests(container: Container): DevtoolsTester;
-// ignoresPath
-export declare function ignoresPath(patterns: readonly PathPattern[], path: string): boolean;
-// loadDevtoolsOptions
-export declare function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions>;
-// matchesEntry
-export declare function matchesEntry(entry: AnyEntry, query: EntryQuery): boolean;
-// newestFirst
-export declare function newestFirst(a: {
-    readonly at: number;
-    readonly id: string;
-}, b: {
-    readonly at: number;
-    readonly id: string;
-}): number;
-// registerDevtoolsPages
-export declare function registerDevtoolsPages(options: PagesOptions): Promise<boolean>;
-// resolveOptions
-export declare function resolveOptions(options: DevtoolsOptions | undefined, root: string): ResolvedDevtoolsOptions;
 ```
 
 ### Referenced, not exported

@@ -4,25 +4,11 @@
 
 ## `@marmeon/otel`
 
-Types from other packages: `@opentelemetry/api`
+Types from other packages: none
 
 ### Stable
 
 ```ts
-// ImportOtelApi
-export type ImportOtelApi = () => Promise<unknown>;
-// InstrumentOptions
-export interface InstrumentOptions {
-    readonly redactor: Redactor;
-    readonly logContext?: LogContextSources;
-    readonly requestHeaders?: readonly string[];
-    readonly tracerName?: string;
-    readonly trustTraceparent?: boolean;
-    readonly recordQueryValues?: boolean;
-    readonly environment?: string;
-}
-// OTEL_INSTALL
-export declare const OTEL_INSTALL = "pnpm add @opentelemetry/api@^1.9.0";
 // OtelConfig
 export declare const OtelConfig: import("@marmeon/core").ConfigDefinition<{
     disabled: boolean;
@@ -48,25 +34,6 @@ export declare class OtelServiceProvider implements ServiceProvider {
 export declare class OtelSetupError extends Error {
     name: string;
 }
-// contextPropagates
-export declare function contextPropagates(api: OtelApi): boolean;
-// instrument
-export declare function instrument(app: Application, api: OtelApi, options: InstrumentOptions): () => void;
-// loadOtelApi
-export declare function loadOtelApi(load?: ImportOtelApi): Promise<OtelApi>;
-// redactedPath
-export declare function redactedPath(path: string, pattern: string | undefined, redactor: Redactor): string;
-// sdkRegistered
-export declare function sdkRegistered(api: OtelApi): boolean;
-// traceparentOf
-export declare function traceparentOf(span: Span): string;
-```
-
-### Referenced, not exported
-
-```ts
-// OtelApi
-export type OtelApi = typeof Api;
 ```
 
 ## Environment

@@ -2,7 +2,8 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { mergeConfig, resolveConfig, type ConfigEnv, type Plugin, type UserConfig } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
-import { adapterPeers, marmeon, CLIENT_CHUNKS, PLUGIN_NAME, routesModule, SOURCE_CONDITION, virtualGlob, type MarmeonPluginApi } from './index.ts';
+import { adapterPeers, marmeon, CLIENT_CHUNKS, PLUGIN_NAME, SOURCE_CONDITION, virtualGlob, type MarmeonPluginApi } from './plugin.ts';
+import { routesModule } from './routes-module.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function tree(files: Record<string, unknown>): string {

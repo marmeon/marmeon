@@ -30,10 +30,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./error-page": {
-      "@marmeon/source": "./src/error-page/index.ts",
-      "types": "./dist/error-page/index.d.ts",
-      "default": "./dist/error-page/index.js"
+    "./internal": {
+      "@marmeon/source": "./src/internal.ts",
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
     }
   },
   "publishConfig": {
@@ -44,9 +44,9 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
-      "./error-page": {
-        "types": "./dist/error-page/index.d.ts",
-        "default": "./dist/error-page/index.js"
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },

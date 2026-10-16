@@ -39,17 +39,6 @@ export interface CommandInput {
     readonly root: string;
     readonly spawn: (...args: string[]) => Promise<number>;
 }
-// CommandRegistry
-export declare class CommandRegistry {
-    #private;
-    add(commands: readonly CommandClass[], source?: string): this;
-    get(name: string): CommandClass | undefined;
-    owner(name: string): {
-        readonly command: CommandClass;
-        readonly source: string;
-    } | undefined;
-    all(): CommandClass[];
-}
 // CommandSetupError
 export declare class CommandSetupError extends Error {
     name: string;
@@ -74,16 +63,6 @@ export declare class Output {
     error(text: string): void;
     table(header: readonly string[], rows: readonly (readonly string[])[]): void;
 }
-// parseCommandArgs
-export declare function parseCommandArgs(Command: CommandClass, argv: readonly string[]): Pick<CommandInput, 'args' | 'options'>;
-// run
-export declare function run(argv: readonly string[], root?: string): Promise<number>;
-// runCommand
-export declare function runCommand(container: Container, Command: CommandClass, argv: readonly string[], context: Pick<CommandInput, 'output' | 'root' | 'spawn'>): Promise<number>;
-// spawnMarmeon
-export declare function spawnMarmeon(root: string, args: readonly string[]): Promise<number>;
-// startMarmeon
-export declare function startMarmeon(root: string, args: readonly string[]): ChildProcess;
 ```
 
 ### Augments
@@ -108,10 +87,6 @@ Types from other packages: none
 ```ts
 // run
 export declare function run(argv: readonly string[], root?: string): Promise<number>;
-// spawnMarmeon
-export declare function spawnMarmeon(root: string, args: readonly string[]): Promise<number>;
-// startMarmeon
-export declare function startMarmeon(root: string, args: readonly string[]): ChildProcess;
 ```
 
 ## Commands

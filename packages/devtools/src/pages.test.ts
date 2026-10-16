@@ -9,10 +9,13 @@ import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail'
 import { Queue, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import { Router, type HttpContext } from '@marmeon/router';
-import { createHttpKernel, DevDocument, ServerServiceProvider } from '@marmeon/server';
+import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
+import { DevDocument } from '@marmeon/server/internal';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
-import { BASE, DevtoolsServiceProvider, DevtoolsStore, enableDevtoolsForTests, MAIL_CSP, type AnyEntry, type DevtoolsTester } from './index.ts';
+import { DevtoolsServiceProvider, DevtoolsStore, type AnyEntry, type DevtoolsTester } from './index.ts';
+import { BASE, MAIL_CSP } from './pages/index.ts';
+import { enableDevtoolsForTests } from './testing.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
 

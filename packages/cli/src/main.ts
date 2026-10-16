@@ -10,8 +10,6 @@ import { printCommandHelp, printCommandList } from './commands/list.ts';
 import { Output } from './output.ts';
 import { spawnMarmeon } from './spawn.ts';
 
-export { spawnMarmeon, startMarmeon } from './spawn.ts';
-
 const commands = channels.tracing('command.run');
 
 /** Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. */

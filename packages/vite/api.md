@@ -9,15 +9,6 @@ Types from other packages: `vite`
 ### Stable
 
 ```ts
-// BROWSER_ROUTES_FILE
-export declare const BROWSER_ROUTES_FILE = ".marmeon/routes.json";
-// CLIENT_CHUNKS
-export declare const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions;
-// CollectOptions
-export interface CollectOptions {
-    readonly sinks?: readonly RouteSink[];
-    readonly names?: readonly string[];
-}
 // MarmeonEntries
 export interface MarmeonEntries {
     client: string;
@@ -37,20 +28,6 @@ export interface MarmeonOptions {
 export interface MarmeonPluginApi {
     entries: MarmeonEntries;
 }
-// PLUGIN_NAME
-export declare const PLUGIN_NAME = "marmeon";
-// ROUTE_SINKS
-export declare const ROUTE_SINKS: readonly RouteSink[];
-// RouteReference
-export interface RouteReference {
-    readonly name: string;
-    readonly start: number;
-}
-// RouteReferenceProblem
-export interface RouteReferenceProblem {
-    readonly message: string;
-    readonly start: number;
-}
 // RouteSink
 export type RouteSink = {
     readonly module: string;
@@ -68,58 +45,8 @@ export type RouteSink = {
     readonly export: string;
     readonly kind: 'route-function';
 };
-// SERVER_MODULES
-export declare const SERVER_MODULES: readonly ServerModule[];
-// SOURCE_CONDITION
-export declare const SOURCE_CONDITION = "@marmeon/source";
-// ServerImportsOptions
-export interface ServerImportsOptions {
-    readonly pages: readonly string[];
-    readonly client: string;
-    readonly serverModules?: readonly string[];
-}
-// ServerModule
-export interface ServerModule {
-    readonly pattern: string;
-    readonly what: string;
-}
-// adapterPeers
-export declare function adapterPeers(root: string): string[];
-// collectRouteReferences
-export declare function collectRouteReferences(code: string, filename: string, options?: CollectOptions): {
-    references: RouteReference[];
-    problems: RouteReferenceProblem[];
-};
 // marmeon
 export declare function marmeon(options?: MarmeonOptions): Plugin[];
-// routesModule
-export declare function routesModule(options?: RoutesModuleOptions): Plugin;
-// serverImports
-export declare function serverImports(options: ServerImportsOptions): Plugin;
-// valueImports
-export declare function valueImports(code: string, filename: string): Omit<Edge, 'target'>[];
-// virtualGlob
-export declare function virtualGlob(name: string, pattern: string | string[], options?: {
-    eager?: boolean;
-}): Plugin;
-```
-
-### Referenced, not exported
-
-```ts
-// Edge
-interface Edge {
-    readonly target: string;
-    readonly line: number;
-    readonly column: number;
-    readonly specifier: string;
-    readonly hint: string;
-}
-// RoutesModuleOptions
-export interface RoutesModuleOptions {
-    readonly sinks?: readonly RouteSink[];
-    readonly test?: boolean;
-}
 ```
 
 ## `@marmeon/vite/client`

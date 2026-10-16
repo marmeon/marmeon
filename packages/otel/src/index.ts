@@ -2,12 +2,10 @@ import { defineConfig, defineSolutions, env, EnvironmentConfig, LogContextSource
 import { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered, type OtelApi } from './api.ts';
 import { instrument } from './tracer.ts';
 
+export { OtelSetupError } from './api.ts';
+
 // OpenTelemetry: spans from the framework's channels, through `@opentelemetry/api` only — the SDK and its
 // exporter are the app's (`bootstrap/telemetry.ts`). No auto-instrumentation, no module hooks (Node 26: DEP0205).
-export { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered } from './api.ts';
-export type { ImportOtelApi } from './api.ts';
-export { instrument, redactedPath, traceparentOf } from './tracer.ts';
-export type { InstrumentOptions } from './tracer.ts';
 
 /** `true` or `false`, in any case (as the SDK reads its own). */
 const flag = (name: string) => env.string().regex(/^(?:true|false)$/i, `${name} must be true or false.`).default('false');
@@ -32,7 +30,7 @@ export const OtelConfig = defineConfig('otel', {
   resolve: (e) => ({
     disabled: e.OTEL_SDK_DISABLED.toLowerCase() === 'true',
     requestHeaders: e.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST.map((name) => name.toLowerCase()),
-    /** Continue an incoming request's trace (`traceparent`) instead of linking it — see `InstrumentOptions.trustTraceparent`. */
+    /** Continue an incoming request's trace (`traceparent`) instead of linking it (OTEL_TRUST_TRACEPARENT, docs/observability.md#a-callers-traceparent). */
     trustTraceparent: e.OTEL_TRUST_TRACEPARENT.toLowerCase() === 'true',
     /** `url.query` with its values (masked as text) — by default only its keys leave the process. */
     recordQueryValues: e.OTEL_RECORD_QUERY_VALUES.toLowerCase() === 'true',

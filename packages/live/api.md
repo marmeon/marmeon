@@ -26,36 +26,9 @@ export interface Broadcaster {
     refresh(channel: string, options?: RefreshOptions): Promise<void>;
 }
 export declare const Broadcaster: import("@marmeon/core").Token<Broadcaster>;
-// CONNECTION_HEADER
-export { CONNECTION_HEADER } from '@marmeon/http';
-// CONNECTION_ID
-export declare const CONNECTION_ID: RegExp;
-// LIVE_PATH
-export { LIVE_PATH } from '@marmeon/http';
 // LiveBackend
 export type LiveBackend = Backend;
 export declare const LiveBackend: import("@marmeon/core").Token<Backend>;
-// LiveBroadcaster
-export declare class LiveBroadcaster implements Broadcaster {
-    #private;
-    constructor({ backend, connection, logger, recorder, app, redactor }: LiveBroadcasterDependencies);
-    refresh(channel: string, options?: RefreshOptions): Promise<void>;
-}
-// LiveBroadcasterDependencies
-export interface LiveBroadcasterDependencies {
-    readonly backend: () => LiveBackend;
-    readonly connection: string | undefined;
-    readonly logger: Logger;
-    readonly recorder?: BroadcastRecorder | undefined;
-    readonly app?: Application | undefined;
-    readonly redactor?: Redactor | undefined;
-}
-// LiveChannel
-export declare class LiveChannel implements NotificationChannel {
-    #private;
-    constructor(broadcast: Broadcaster);
-    deliver(delivery: Delivery): Promise<void>;
-}
 // LiveConfig
 export declare const LiveConfig: import("@marmeon/core").ConfigDefinition<{
     driver: "memory" | "redis";
@@ -78,30 +51,6 @@ export interface LiveEvent {
 export interface LiveHello {
     readonly seq: Readonly<Record<string, number>>;
     readonly missed?: readonly string[];
-}
-// LiveHub
-export declare class LiveHub {
-    #private;
-    constructor(backend: LiveBackend, options: LiveHubOptions, logger: Logger, closing?: AbortSignal, redactor?: Redactor);
-    get size(): number;
-    get full(): boolean;
-    streams(): readonly {
-        readonly scope: string;
-        readonly connection: string;
-        readonly channels: readonly string[];
-    }[];
-    open(request: LiveStreamRequest): Promise<Response>;
-    closeStreams(): void;
-    close(): Promise<void>;
-    get endsRemembered(): number;
-}
-// LiveHubOptions
-export interface LiveHubOptions {
-    readonly heartbeat: number;
-    readonly retry: number;
-    readonly maxStreams: number;
-    readonly maxStreamsPerSession?: number | undefined;
-    readonly maxStreamSeconds?: number | undefined;
 }
 // LiveMessage
 export type LiveMessage = {
@@ -135,12 +84,6 @@ export declare class LiveServiceProvider implements ServiceProvider {
 export declare class LiveSetupError extends Error {
     name: string;
 }
-// LiveStreamController
-export declare class LiveStreamController {
-    #private;
-    constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience?: LiveAudience, logger?: Logger, redactor?: Redactor);
-    handle(ctx: HttpContext): Promise<Response>;
-}
 // LiveStreamReader
 export declare class LiveStreamReader {
     #private;
@@ -157,79 +100,21 @@ export declare class LiveStreamReader {
     waitFor(until: number | (() => boolean), timeout?: number, what?: string): Promise<void>;
     close(): Promise<void>;
 }
-// LiveStreamRequest
-export interface LiveStreamRequest {
-    readonly channels: readonly string[];
-    readonly scope: string;
-    readonly accounts?: readonly string[] | undefined;
-    readonly checkedAt?: number | undefined;
-    readonly connection: string;
-    readonly lastEventId?: string | null | undefined;
-    readonly signal?: AbortSignal | undefined;
-}
-// LiveTokens
-export declare class LiveTokens {
-    #private;
-    constructor(keys: readonly Uint8Array[]);
-    accountScope(unkeyed: string): string;
-    accountScopes(unkeyed: string): string[];
-    sign(scope: string, channel: string): string;
-    verify(scope: string, channel: string, token: string): boolean;
-    for(scope: () => string | undefined, readOnly?: () => boolean): LiveSigner;
-}
-// MemoryLiveBackend
-export declare class MemoryLiveBackend implements LiveBackend {
-    #private;
-    constructor({ maxChannels, ttlMs, now }?: MemoryLiveOptions);
-    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
-    end(scope: string): Promise<void>;
-    seqs(channels: readonly string[]): Promise<number[]>;
-    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
-    close(): Promise<void>;
-}
-// MemoryLiveOptions
-export interface MemoryLiveOptions {
-    readonly maxChannels?: number | undefined;
-    readonly ttlMs?: number | undefined;
-    readonly now?: (() => number) | undefined;
-}
 // RecordedRefresh
 export interface RecordedRefresh {
     readonly channel: string;
     readonly only: readonly string[] | null;
     readonly connection: string | undefined;
 }
-// RedisLiveBackend
-export declare class RedisLiveBackend implements LiveBackend {
-    #private;
-    constructor({ connection, script, logger }: RedisLiveDependencies);
-    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
-    end(scope: string): Promise<void>;
-    seqs(channels: readonly string[]): Promise<number[]>;
-    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
-    close(): Promise<void>;
-}
-// RedisLiveDependencies
-export interface RedisLiveDependencies {
-    readonly connection: RedisConnection;
-    readonly script: (name: string, lua: string) => RedisScript;
-    readonly logger: Logger;
-}
 // RefreshOptions
 export interface RefreshOptions {
     readonly only?: readonly string[];
 }
-// STREAM_HEADERS
-export declare const STREAM_HEADERS: Readonly<Record<string, string>>;
-// liveKeys
-export declare function liveKeys(key: Uint8Array, previousKeys?: readonly Uint8Array[]): readonly Uint8Array[];
 // notificationsChannel
 export declare function notificationsChannel(recipient: {
     readonly type: string;
     readonly id: string | number;
 }): string;
-// parseMessage
-export declare function parseMessage(text: string): LiveMessage | undefined;
 ```
 
 ### Referenced, not exported

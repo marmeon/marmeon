@@ -14,23 +14,16 @@ import { BroadcastRecorder } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
 
-export { Broadcaster, CONNECTION_ID, LiveBroadcaster } from './broadcaster.ts';
-export type { LiveBroadcasterDependencies, RefreshOptions } from './broadcaster.ts';
-export { MemoryLiveBackend, parseMessage } from './backend.ts';
-export type { LiveMessage, MemoryLiveOptions } from './backend.ts';
-export { RedisLiveBackend } from './redis.ts';
-export type { RedisLiveDependencies } from './redis.ts';
-export { LiveHub, STREAM_HEADERS } from './hub.ts';
-export type { LiveHello, LiveHubOptions, LiveStreamRequest } from './hub.ts';
-export { LiveStreamController } from './endpoint.ts';
-export { liveKeys, LiveTokens } from './signer.ts';
+export type { LiveMessage } from './backend.ts';
+export { Broadcaster } from './broadcaster.ts';
+export type { RefreshOptions } from './broadcaster.ts';
+export type { LiveHello } from './hub.ts';
 export { LiveConfig } from './config.ts';
-export { LiveChannel, notificationsChannel } from './notifications.ts';
+export { notificationsChannel } from './notifications.ts';
 export { BroadcastRecorder } from './recorder.ts';
 export type { RecordedRefresh } from './recorder.ts';
 export { LiveStreamReader } from './test-stream.ts';
 export type { LiveEvent } from './test-stream.ts';
-export { CONNECTION_HEADER, LIVE_PATH } from '@marmeon/http';
 
 /** Where this app's hints travel — `memory` or `redis` (`LIVE_DRIVER`). */
 export type LiveBackend = Backend;

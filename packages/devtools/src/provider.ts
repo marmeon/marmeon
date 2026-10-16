@@ -101,7 +101,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     });
     // The in-page bar in every document `marmeon dev` renders: HTML the dev renderer adds to the document's head —
     // its client comes from the Vite dev server, never from a client chunk. Bound by @marmeon/server only with NODE_ENV=development.
-    const server = await import('@marmeon/server').catch(() => undefined);
+    const server = await import('@marmeon/server/internal').catch(() => undefined);
     if (server && app.container.has(server.DevDocument)) app.container.make(server.DevDocument).add(barMarkup, { at: 'head' });
   }
 

@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createServer, isRunnableDevEnvironment, type ViteDevServer } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
-import { marmeon, type MarmeonOptions } from './index.ts';
+import { marmeon, type MarmeonOptions } from './plugin.ts';
 import { valueImports } from './server-imports.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
