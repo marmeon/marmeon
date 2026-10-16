@@ -351,6 +351,9 @@ pnpm release:prepare                          # write them and print the next st
 - **A breaking release** gets the heading of its `UPGRADING.md` section and a placeholder comment naming the pull requests.
   Replace it with one entry per breaking pull request (impact, before → after, the way back) and list the anchors in
   `UPGRADING_ANCHORS` **before** the printed `git add -A` and commit; `check-release` refuses the comment.
+- **A release is refused while a deprecation is due:** every `@deprecated` tag or `deprecated()` call whose "Removed in x.y" is
+  the release's version or an earlier one is listed with its path and line. Remove the API and its `deprecated()` calls with an
+  entry in `UPGRADING.md`, or move the "Removed in" to the next breaking release. `--dry-run` refuses the same way.
 - **`.github/release-base`** holds the version and the commit the preparation started from (`<version> <sha>`). The release
   commit has to sit directly on that commit; if another pull request merged in between, the release workflow refuses with
   "main moved after the release was prepared" — merge nothing else first, or run `pnpm release:prepare` again, which rewrites the

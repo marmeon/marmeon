@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseNotes, prepare, sectionBody } from './release-prepare.ts';
@@ -98,10 +98,23 @@ function repository(version = '0.1.2', extra: { changelog?: (short: string) => s
   return { dir, read };
 }
 
+/** The files under the `src` of each package of a fixture, as the deprecation check reads them (the fixture is no git repository). */
+function sourceFiles(dir: string) {
+  const files: { path: string; text: string }[] = [];
+  const walk = (path: string) => {
+    for (const entry of readdirSync(join(dir, path), { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(`${path}/${entry.name}`);
+      else files.push({ path: `${path}/${entry.name}`, text: readFileSync(join(dir, path, entry.name), 'utf8') });
+    }
+  };
+  for (const short of SHORTS) if (existsSync(join(dir, 'packages', short, 'src'))) walk(`packages/${short}/src`);
+  return files;
+}
+
 function go(repo: { dir: string }, world: World, dryRun = false) {
   const runner = fake(world);
   const log: string[] = [];
-  const result = prepare({ root: repo.dir, run: runner.run, dryRun, log: (line) => log.push(line) });
+  const result = prepare({ root: repo.dir, run: runner.run, dryRun, files: () => sourceFiles(repo.dir), log: (line) => log.push(line) });
   return { ...runner, result, log };
 }
 
@@ -355,5 +368,41 @@ describe('prepare', () => {
     expect(log.join('\n')).toContain('Dry run');
     expect(repo.read('packages/core/package.json')).toContain('"version": "0.1.2"');
     expect(repo.read('packages/core/CHANGELOG.md')).not.toContain('0.1.3');
+  });
+});
+
+describe('prepare — deprecations that are due', () => {
+  const tag = (removedIn: string) => `export const old = 1;\n/**\n * @deprecated Use {@link next} instead. Removed in ${removedIn}; docs/forms.md#remembering-input.\n */\nexport const legacy = 2;\n`;
+  const withTag = (version: string, removedIn: string) => {
+    const repo = repository(version, { changelog: (short) => `# @marmeon/${short}\n\n## ${version}\n\nx\n` });
+    mkdirSync(join(repo.dir, 'packages/core/src'), { recursive: true });
+    writeFileSync(join(repo.dir, 'packages/core/src/legacy.ts'), tag(removedIn));
+    return repo;
+  };
+  const breaking = [`Break by @a in ${PR}/1`];
+
+  it('refuses a breaking release that a deprecation is due in, and names the file and line', () => {
+    const repo = withTag('0.4.1', '0.5');
+    const world = { previous: 'v0.4.1', generate: { default: notes({ breaking, to: '0.5.0' }) } };
+    expect(() => go(repo, world)).toThrow(/These deprecations are due in 0\.5\.0:\n  - packages\/core\/src\/legacy\.ts:3: @deprecated Use/);
+    expect(repo.read('packages/core/package.json')).toContain('"version": "0.4.1"');
+  });
+
+  it('refuses a dry run the same way', () => {
+    const repo = withTag('0.4.1', '0.5');
+    expect(() => go(repo, { previous: 'v0.4.1', generate: { default: notes({ breaking, to: '0.5.0' }) } }, true)).toThrow(/due in 0\.5\.0/);
+  });
+
+  it('refuses a deprecation that a major release removes, and allows one for a later version', () => {
+    const major = (removedIn: string) => withTag('1.2.0', removedIn);
+    const world = { previous: 'v1.2.0', generate: { default: notes({ breaking, to: '2.0.0' }) } };
+    expect(() => go(major('2.0'), world)).toThrow(/due in 2\.0\.0/);
+    expect(go(major('2.1'), world).result.version).toBe('2.0.0');
+  });
+
+  it('refuses an overdue deprecation in a patch release too, and allows one for a later version', () => {
+    const world = { previous: 'v0.4.1', generate: { default: notes({ fix: fixes, to: '0.4.2' }) } };
+    expect(() => go(withTag('0.4.1', '0.3'), world)).toThrow(/due in 0\.4\.2/);
+    expect(go(withTag('0.4.1', '0.5'), world).result.version).toBe('0.4.2');
   });
 });
