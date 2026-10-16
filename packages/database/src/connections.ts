@@ -3,7 +3,8 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { Redactor, rollBackOnErr, runTransaction, TransactionError, token, type Application, type Logger } from '@marmeon/core';
 import { messageBase, publishEnded, transactionOf } from '@marmeon/core/internal';
 import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
-import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
+import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode } from 'kysely';
+import type { Connection, Transaction } from './builder.ts';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
 // Puts the relation methods on Kysely's select builder when it loads — every connection made here offers them.
@@ -25,9 +26,9 @@ import { createSqliteDialect } from './sqlite.ts';
  * joins only. At runtime it is the same connection either way; the boundary is a type.
  */
 export type Database<M extends keyof Modules & string = never> = [M] extends [never]
-  ? Kysely<Tables>
+  ? Connection<Tables>
   : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
-export const Database = token<Kysely<Tables>>('Database');
+export const Database = token<Connection<Tables>>('Database');
 
 /** How `connections.transaction()` runs. */
 export interface TransactionOptions {
@@ -58,7 +59,7 @@ export class Connections {
   readonly #redactor: Redactor;
   readonly #instances = new Map<string, Instance>();
   /** Infrastructure handles, per connection and user. */
-  readonly #infrastructure = new Map<string, Kysely<any>>();
+  readonly #infrastructure = new Map<string, Connection<any>>();
   /** Postgres: the infrastructure's own pool, per connection. */
   readonly #pools = new Map<string, MarmeonDriver>();
   readonly #listeners = new Set<(query: QueryEvent) => void>();
@@ -73,8 +74,8 @@ export class Connections {
   }
 
   /** The connection by name (default: `default`, from `DB_CONNECTION`). Typed by `Tables` unless given its own. */
-  get<DB = Tables>(name = 'default'): Kysely<DB> {
-    return this.#instance(name).db as Kysely<DB>;
+  get<DB = Tables>(name = 'default'): Connection<DB> {
+    return this.#instance(name).db as Connection<DB>;
   }
 
   /**
@@ -107,7 +108,7 @@ export class Connections {
    * connection — there every statement inside an open transaction throws `InfrastructureTransactionError` (`usage.remedy`
    * says what to do) — never a silent join. Runs single statements only. See `docs/database.md#infrastructure-connections`.
    */
-  infrastructure<DB = any>(name = 'default', usage?: InfrastructureUsage): Kysely<DB> {
+  infrastructure<DB = any>(name = 'default', usage?: InfrastructureUsage): Connection<DB> {
     const key = `${name}\0${usage?.system ?? ''}`;
     let db = this.#infrastructure.get(key);
     if (!db) {
@@ -133,7 +134,7 @@ export class Connections {
       });
       this.#infrastructure.set(key, db);
     }
-    return db as Kysely<DB>;
+    return db as Connection<DB>;
   }
 
   /** @internal — what a connection knows about its schema (relations, markers, secret columns), as far as it is loaded. */
@@ -294,7 +295,7 @@ export class Connections {
 const queries = channels.tracing('db.query');
 
 interface Instance {
-  db: Kysely<any>;
+  db: Connection<any>;
   driver: MarmeonDriver;
   metadata: SchemaMetadata;
   file?: string;

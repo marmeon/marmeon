@@ -1,4 +1,5 @@
-import { expressionBuilder, type Selectable, type SelectQueryBuilder, type Simplify } from 'kysely';
+import { expressionBuilder, type SelectQueryBuilder, type Simplify } from 'kysely';
+import type { RowOf, SelectQuery } from './builder.ts';
 import { relationCondition, relationSelection } from './relations.ts';
 import { withTrashed as withTrashedFilter } from './schema-resolver.ts';
 import type { Relations } from './types.ts';
@@ -28,7 +29,7 @@ type RelationOf<TB, N> = { [T in TB & keyof Relations]: N extends keyof Relation
 type TargetOf<DB, TB, N> = RelationOf<TB, N> extends { readonly table: infer R extends keyof DB } ? R : never;
 
 /** What one row of a relation holds: every column but the secret ones — unless the callback selects columns of the table itself. */
-type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof Selectable<DB[T]>>] extends [never] ? Selectable<DB[T]> & O : O>;
+type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof RowOf<DB[T]>>] extends [never] ? RowOf<DB[T]> & O : O>;
 type Shaped<R, V> = R extends { readonly kind: 'hasMany' | 'belongsToMany' } ? V[] : R extends { readonly nullable: false } ? V : V | null;
 type WithResult<DB, TB extends keyof DB, N, O> = Shaped<RelationOf<TB, N>, Loaded<DB, TargetOf<DB, TB, N>, O>>;
 
@@ -36,10 +37,10 @@ type WithResult<DB, TB extends keyof DB, N, O> = Shaped<RelationOf<TB, N>, Loade
  * A row of table `T` with the relations `N` loaded as `with(name)` loads them — what `findOrFail(id, { with })` and a route binding
  * with `with` give. See `docs/queries.md#reading`.
  */
-export type WithRelations<DB, T extends keyof DB, N> = [N] extends [never] ? Selectable<DB[T]> : Simplify<Selectable<DB[T]> & { [K in N & string]: WithResult<DB, T, K, {}> }>;
+export type WithRelations<DB, T extends keyof DB, N> = [N] extends [never] ? RowOf<DB[T]> : Simplify<RowOf<DB[T]> & { [K in N & string]: WithResult<DB, T, K, {}> }>;
 
 /** A relation's query, as its callback gets it: the related table only. */
-type RelationQuery<DB, T extends keyof DB> = SelectQueryBuilder<DB, T, {}>;
+type RelationQuery<DB, T extends keyof DB> = SelectQuery<DB, T, {}>;
 
 /**
  * A relation no foreign key describes, for `withRelation()`: the rows of `table` whose `foreignKey` holds the outer row's

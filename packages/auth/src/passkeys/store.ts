@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Clock, err, ok, type Result } from '@marmeon/core';
-import { Connections, Repository, type Generated, type Selectable } from '@marmeon/database';
+import { Connections, Repository, type Generated, type RowOf } from '@marmeon/database';
 import type { SecondFactor, TwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
 
@@ -75,7 +75,7 @@ class PasskeyRows extends Repository<typeof PASSKEYS_TABLE, Tables> {
 
 const flag = (value: unknown) => value === true || value === 1 || value === '1' || value === 't';
 
-function recordOf(row: Selectable<PasskeyTable>): PasskeyRecord {
+function recordOf(row: RowOf<PasskeyTable>): PasskeyRecord {
   const transports = typeof row.transports === 'string' ? (JSON.parse(row.transports) as unknown) : row.transports;
   return {
     id: Number(row.id),

@@ -3,7 +3,7 @@ import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type Selectable, type Timestamp } from './index.ts';
+import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type RowOf, type Timestamp } from './index.ts';
 import { renderTypes } from './types-gen/render.ts';
 
 /** What `db:types` generates for the accounts fixture (checked below), next to the other fixture tables. */
@@ -256,7 +256,7 @@ declare const repository: AccountRepository;
 
 export async function secretTypes() {
   // The row type has no secret column — not as `never`, not at all.
-  type Account = Selectable<AccountTables['accounts']>;
+  type Account = RowOf<AccountTables['accounts']>;
   expectTypeOf<keyof Account>().toEqualTypeOf<'id' | 'email' | 'created_at' | 'updated_at'>();
   const found = (await repository.find(1))!;
   // @ts-expect-error — a repository's rows do not carry the hash

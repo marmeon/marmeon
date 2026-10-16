@@ -221,7 +221,7 @@ export interface TableDefinition {
     readonly name: string;
     readonly prefix: string | undefined;
     readonly authorize: ((ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
-    readonly query: (db: any, ctx: any) => SelectQueryBuilder<any, any, any>;
+    readonly query: (db: any, ctx: any) => SelectQuery<any, any, any>;
     readonly key: string;
     readonly keyType: KeyType;
     readonly columns: Readonly<Record<string, AnyColumn>>;
@@ -290,7 +290,7 @@ export interface TablePagination {
 export type TableProps<T> = T extends Table<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
 // TableQuery
 export type TableQuery = {
-    bivariance(db: Database, ctx: TableContext): SelectQueryBuilder<any, any, any>;
+    bivariance(db: Database, ctx: TableContext): SelectQuery<any, any, any>;
 }['bivariance'];
 // TableQueryError
 export declare class TableQueryError extends HttpError {
@@ -320,7 +320,7 @@ export declare class TableServiceProvider implements ServiceProvider {
 // Tables
 export declare class Tables {
     #private;
-    constructor(db: Kysely<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter);
+    constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter);
     resolve<T extends Table>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
     runAction(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown>;
     runBulk(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown>;
@@ -377,7 +377,7 @@ type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extend
 // CtxOf
 type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 // DbOf
-type DbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, any, any> ? DB : never;
+type DbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, any, any> ? DB : never;
 // FilterValue
 type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
 // HandlerProblem
@@ -389,7 +389,7 @@ type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
 // KeyType
 export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
 // OutOf
-type OutOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<any, any, infer O> ? O : {};
+type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
 // PlainColumns
 type PlainColumns<DB, TB extends keyof DB> = Extract<StringReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 // PolicyProblem
@@ -453,7 +453,7 @@ export type TableQueryValues = {
     readonly [key: string]: string | number | undefined;
 };
 // TbOf
-type TbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
+type TbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
 // ValueOf
 type ValueOf<DB, TB extends keyof DB, O, C> = C extends Column<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
 ```

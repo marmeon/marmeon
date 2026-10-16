@@ -308,7 +308,7 @@ your own.
 
 ## Transactions you control yourself
 
-The callback of `connections.transaction()` also receives the transaction as a Kysely `Transaction`, for code outside the call
+The callback of `connections.transaction()` also receives the transaction as a `Transaction`, for code outside the call
 chain. Three helpers bind to a transaction explicitly:
 
 - `repository.using(trx)` builds the repository again, working in `trx`. This is why a repository's constructor takes only

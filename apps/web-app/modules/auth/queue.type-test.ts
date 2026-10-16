@@ -1,5 +1,6 @@
 // Type guarantees of the queue — compiled by `pnpm typecheck` / `marmeon build`, never run.
 import { defineModule } from '@marmeon/core';
+import type { Connection, NewRow, Row, RowOf, Tables, Transaction } from '@marmeon/database';
 import { Queue, withoutOverlapping, type JobContext, type JobPayload } from '@marmeon/queue';
 import type { TestApp } from '@marmeon/testing';
 import { rules as r } from '@marmeon/validation';
@@ -115,4 +116,22 @@ export function UniqueAndChainAssertions(app: TestApp) {
   app.queue.assertChained([[SendWelcomeMailJob, { userId: 1 }], RebuildMemberStatsJob]);
   // @ts-expect-error — the unique key is a string
   app.queue.assertDispatched(RebuildMemberStatsJob, undefined, { unique: 1 });
+}
+
+export function BoundToATransaction(queue: Queue, trx: Transaction<Tables>, db: Connection<Tables>) {
+  queue.using(trx);
+  // @ts-expect-error — a plain connection is not a transaction: a job written through it would be queued before the work commits
+  queue.using(db);
+}
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+export function RowsByTableName(equal: Equal<Row<'users'>, RowOf<Tables['users']>>, idOptional: Equal<{} extends Pick<NewRow<'users'>, 'id'> ? true : false, true>, nameOptional: Equal<{} extends Pick<NewRow<'users'>, 'name'> ? true : false, false>) {
+  // @ts-expect-error — the table name must be one of the app's tables
+  const missing: Row<'nope'> | undefined = undefined;
+  const same: true = equal;
+  // the generated id may be left out of an insert; a column without a default may not
+  const omitted: true = idOptional;
+  const required: true = nameOptional;
+  return { same, omitted, required, missing };
 }

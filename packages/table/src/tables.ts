@@ -1,11 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
-import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
+import { cursorPaginate, outsideTransaction, paginate, sql, type Connection, type CursorEncrypter, type SelectQuery } from '@marmeon/database';
 import { isSecretSelection } from '@marmeon/database/internal';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
-import { AliasNode, IdentifierNode, type Kysely, type KyselyPlugin, type RootOperationNode, type SelectQueryBuilder } from 'kysely';
+import { AliasNode, IdentifierNode, type KyselyPlugin, type RootOperationNode } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
@@ -60,13 +60,13 @@ const ActionBody = v.object({ key: v.union([v.pipe(v.number(), v.safeInteger()),
  * base query, its policy asked again.
  */
 export class Tables {
-  readonly #db: Kysely<any>;
+  readonly #db: Connection<any>;
   readonly #gate: () => Gate;
   readonly #resolve: ClassResolver;
   readonly #router: Router;
   readonly #encrypter: () => CursorEncrypter;
 
-  constructor(db: Kysely<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter) {
+  constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter) {
     this.#db = db;
     this.#gate = gate;
     this.#resolve = resolve;
@@ -93,7 +93,7 @@ export class Tables {
     let page: TableData['page'];
     if (definition.cursor) {
       const sort = state.sort!;
-      const result = await cursorPaginate(this.#db.selectFrom(projected.as('table_rows')).selectAll() as SelectQueryBuilder<any, any, Row>, {
+      const result = await cursorPaginate(this.#db.selectFrom(projected.as('table_rows')).selectAll() as SelectQuery<any, any, Row>, {
         column: sort.column,
         key: keyName,
         cursor: state.cursor,
@@ -241,7 +241,7 @@ export class Tables {
     // Batch after batch by the key (keyset), never by OFFSET: each goes on after the last row written — in the table's order, then
     // the key — so a row deleted or added meanwhile shifts no later row out of the file or into it twice.
     const keyName = keyNameOf(definition);
-    const rows = this.#db.selectFrom(project(definition, filtered, view).as('table_rows')).selectAll() as SelectQueryBuilder<any, any, Row>;
+    const rows = this.#db.selectFrom(project(definition, filtered, view).as('table_rows')).selectAll() as SelectQuery<any, any, Row>;
     const encrypter = this.#encrypter();
     const batch = (cursor: string | null) =>
       cursorPaginate(rows, {
@@ -336,7 +336,7 @@ export class Tables {
   }
 
   /** The base query — without the values it selects for a column this request may not see (`withCount(…)` of a hidden column). */
-  #base(definition: TableDefinition, ctx: HttpContext, view: View): SelectQueryBuilder<any, any, any> {
+  #base(definition: TableDefinition, ctx: HttpContext, view: View): SelectQuery<any, any, any> {
     const query = definition.query(this.#db, ctx);
     const { selected, secret } = selectionsOf(query);
     const asked = Object.entries(definition.columns).find(([, col]) => secret.has(col.ref));
@@ -355,7 +355,7 @@ export class Tables {
   }
 
   /** The base query with the state's filters and search — on visible columns and filters only (checked before). */
-  #filtered(definition: TableDefinition, ctx: HttpContext, state: TableState, view: View): SelectQueryBuilder<any, any, any> {
+  #filtered(definition: TableDefinition, ctx: HttpContext, state: TableState, view: View): SelectQuery<any, any, any> {
     let query = this.#base(definition, ctx, view);
     const selected = selectedBy(query);
     for (const [name, value] of Object.entries(state.filters)) {
@@ -455,7 +455,7 @@ export function keyNameOf(definition: TableDefinition): string {
  * The query with the visible columns (by name) and the key selected — nothing else: a hidden column never reaches the SQL. A value the
  * base query selects itself (`withCount(…, { as })`) is in its rows already, under its name ({@link Tables.#base} left out the hidden ones).
  */
-function project(definition: TableDefinition, query: SelectQueryBuilder<any, any, any>, view: View): SelectQueryBuilder<any, any, Row> {
+function project(definition: TableDefinition, query: SelectQuery<any, any, any>, view: View): SelectQuery<any, any, Row> {
   const keyName = keyNameOf(definition);
   const keyCovered = view.columns.some(([alias, col]) => alias === keyName && (col.ref === definition.key || col.ref.endsWith(`.${keyName}`) || col.ref === keyName));
   const selected = selectedBy(query);
@@ -467,7 +467,7 @@ function project(definition: TableDefinition, query: SelectQueryBuilder<any, any
  * The names of the values a query selects itself under an alias (`withCount(…, { as })`, `eb.fn(…).as(…)`): a column of such a name
  * reads that value, and SQL refers to it by name only in `ORDER BY`. A `secret()` is never one of them: it is in `secret`.
  */
-function selectionsOf(query: SelectQueryBuilder<any, any, any>): { selected: ReadonlySet<string>; secret: ReadonlySet<string> } {
+function selectionsOf(query: SelectQuery<any, any, any>): { selected: ReadonlySet<string>; secret: ReadonlySet<string> } {
   const selected = new Set<string>();
   const secret = new Set<string>();
   for (const { selection } of query.toOperationNode().selections ?? []) {
@@ -476,7 +476,7 @@ function selectionsOf(query: SelectQueryBuilder<any, any, any>): { selected: Rea
   return { selected, secret };
 }
 
-function selectedBy(query: SelectQueryBuilder<any, any, any>): ReadonlySet<string> {
+function selectedBy(query: SelectQuery<any, any, any>): ReadonlySet<string> {
   return selectionsOf(query).selected;
 }
 
@@ -500,7 +500,7 @@ class LeaveOut implements KyselyPlugin {
 }
 
 /** Ordered by the state's sort (NULLs last, either way — the same on SQLite and Postgres), then by the key. */
-function ordered(definition: TableDefinition, query: SelectQueryBuilder<any, any, Row>, state: TableState): SelectQueryBuilder<any, any, Row> {
+function ordered(definition: TableDefinition, query: SelectQuery<any, any, Row>, state: TableState): SelectQuery<any, any, Row> {
   const direction = state.sort?.direction ?? 'asc';
   let out = query;
   if (state.sort) {

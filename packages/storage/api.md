@@ -397,7 +397,7 @@ export declare const UploadsConfig: import("@marmeon/core").ConfigDefinition<{
 export type UploadsConfig = ConfigOf<typeof UploadsConfig>;
 // UploadsOptions
 export interface UploadsOptions {
-    readonly db: () => Kysely<Tables>;
+    readonly db: () => Connection<Tables>;
     readonly disk: () => Disk;
     readonly clock: Clock;
     readonly keys: readonly Uint8Array[];

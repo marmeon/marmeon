@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, Redactor, type Container, type QueuedListenerClass } from '@marmeon/core';
 import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import { messageBase, trace } from '@marmeon/core/internal';
-import type { Kysely } from '@marmeon/database';
+import type { Transaction } from '@marmeon/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
@@ -120,7 +120,7 @@ export class QueueFake implements Queue {
     });
   }
 
-  using(_transaction: Kysely<any>): Queue {
+  using(_transaction: Transaction<any>): Queue {
     return new QueueFake(this.#container, this.#owner);
   }
 

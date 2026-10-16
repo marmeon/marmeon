@@ -1,4 +1,4 @@
-import type { Insertable, Kysely, Selectable } from 'kysely';
+import type { Connection, NewRowOf, RowOf } from './builder.ts';
 import { Connections } from './connections.ts';
 import type { Tables } from './types.ts';
 
@@ -28,8 +28,8 @@ type KnownColumns<O, Row> = { [K in Exclude<keyof O, keyof Row>]: never };
 
 export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S extends string = never> {
   readonly table: T;
-  readonly definition: (context: FactoryContext) => Attributes<Insertable<DB[T]>>;
-  readonly states: Readonly<Record<S, Partial<Insertable<DB[T]>> | ((context: FactoryContext) => Partial<Insertable<DB[T]>>)>>;
+  readonly definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>;
+  readonly states: Readonly<Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)>>;
 }
 
 /**
@@ -39,8 +39,8 @@ export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S e
  */
 export function defineFactory<T extends keyof DB & string, DB = Tables, const S extends string = never>(
   table: T,
-  definition: (context: FactoryContext) => Attributes<Insertable<DB[T]>>,
-  options: { states?: Record<S, Partial<Insertable<DB[T]>> | ((context: FactoryContext) => Partial<Insertable<DB[T]>>)> } = {},
+  definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>,
+  options: { states?: Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)> } = {},
 ): FactoryDefinition<T, DB, S> {
   return Object.freeze({ table, definition, states: options.states ?? ({} as Record<S, never>) });
 }
@@ -69,7 +69,7 @@ export class Factories {
   }
 
   /** @internal */
-  db(): Kysely<any> {
+  db(): Connection<any> {
     return this.#connections.get<any>();
   }
 }
@@ -78,7 +78,7 @@ interface Pending {
   readonly factories: Factories;
   readonly count: number | undefined;
   readonly states: readonly (string | Record<string, unknown>)[];
-  readonly db: Kysely<any> | undefined;
+  readonly db: Connection<any> | undefined;
 }
 
 /** One or many rows to make — immutable, each method returns a new one. */
@@ -98,7 +98,7 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
   }
 
   /** A named state from the definition, or attributes: `.state('admin')`, `.state({ is_admin: true })`. */
-  state(state: S | Partial<Insertable<DB[T]>>): PendingFactory<T, DB, Many, S> {
+  state(state: S | Partial<NewRowOf<DB[T]>>): PendingFactory<T, DB, Many, S> {
     if (typeof state === 'string' && !(state in this.#definition.states)) {
       throw new Error(`Factory for "${this.#definition.table}" has no state "${state}". Known: ${Object.keys(this.#definition.states).join(', ') || 'none'}.`);
     }
@@ -106,25 +106,25 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
   }
 
   /** Inside a transaction (or on another connection). */
-  using(db: Kysely<DB>): PendingFactory<T, DB, Many, S> {
-    return new PendingFactory(this.#definition, { ...this.#pending, db: db as Kysely<any> });
+  using(db: Connection<DB>): PendingFactory<T, DB, Many, S> {
+    return new PendingFactory(this.#definition, { ...this.#pending, db: db as Connection<any> });
   }
 
   /**
    * The attributes, without inserting. Related factories are not created either: their column holds the factory itself, not
    * an id — the type says so (`user_id: number | PendingFactory`), except where `overrides` set the column.
    */
-  make<O extends Partial<Insertable<DB[T]>> = {}>(
-    overrides?: O & KnownColumns<O, Insertable<DB[T]>>,
-  ): Many extends true ? MadeAttributes<Insertable<DB[T]>, O>[] : MadeAttributes<Insertable<DB[T]>, O> {
+  make<O extends Partial<NewRowOf<DB[T]>> = {}>(
+    overrides?: O & KnownColumns<O, NewRowOf<DB[T]>>,
+  ): Many extends true ? MadeAttributes<NewRowOf<DB[T]>, O>[] : MadeAttributes<NewRowOf<DB[T]>, O> {
     const rows = this.#times(() => this.#attributes(overrides ?? {}));
     return (this.#pending.count === undefined ? rows[0] : rows) as never;
   }
 
   /** Inserts and returns the stored rows (defaults and ids included). */
-  async create(overrides: Partial<Insertable<DB[T]>> = {}): Promise<Many extends true ? Selectable<DB[T]>[] : Selectable<DB[T]>> {
+  async create(overrides: Partial<NewRowOf<DB[T]>> = {}): Promise<Many extends true ? RowOf<DB[T]>[] : RowOf<DB[T]>> {
     const db = this.#pending.db ?? this.#pending.factories.db();
-    const rows: Selectable<DB[T]>[] = [];
+    const rows: RowOf<DB[T]>[] = [];
     for (const attributes of this.#times(() => this.#attributes(overrides))) {
       const values: Record<string, unknown> = {};
       for (const [column, value] of Object.entries(attributes)) {
@@ -136,7 +136,7 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
           values[column] = value;
         }
       }
-      rows.push((await db.insertInto(this.#definition.table).values(values).returningAll().executeTakeFirstOrThrow()) as Selectable<DB[T]>);
+      rows.push((await db.insertInto(this.#definition.table).values(values).returningAll().executeTakeFirstOrThrow()) as RowOf<DB[T]>);
     }
     return (this.#pending.count === undefined ? rows[0] : rows) as never;
   }
@@ -145,7 +145,7 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
     return Array.from({ length: this.#pending.count ?? 1 }, make);
   }
 
-  #attributes(overrides: Partial<Insertable<DB[T]>>): Record<string, unknown> {
+  #attributes(overrides: Partial<NewRowOf<DB[T]>>): Record<string, unknown> {
     const { factories } = this.#pending;
     const context: FactoryContext = { sequence: factories.next(this.#definition), factory: (definition) => factories.for(definition) };
     let attributes: Record<string, unknown> = { ...this.#definition.definition(context) };

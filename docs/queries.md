@@ -91,7 +91,12 @@ export class NoteSearch {
 
 `sql` is Kysely's template, so your app needs no import of Kysely itself. A value in the template, such as `${pattern}`, is sent
 as a parameter and never becomes part of the SQL text. `sql.raw()` is the exception: it puts a string into the SQL as it is, so
-never give it input. `Kysely`, `Transaction`, `Selectable`, `Insertable` and `Updateable` are exported as types too.
+never give it input.
+
+The builder's types are exported under Marmeon's names: `Connection<DB>` is a connection's builder, `Transaction<DB>` the builder inside a
+transaction and `SelectQuery<DB, TB, O>` a select that you go on with. A table's row is `Row<'notes'>`, `NewRow<'notes'>` and
+`RowUpdate<'notes'>`, named by the table in `Tables`. A table that is not in `Tables`, such as a package's own, takes its type
+instead: `RowOf<NoteTable>`, `NewRowOf<NoteTable>` and `RowUpdateOf<NoteTable>`.
 
 Kysely's own documentation covers the builder: joins, subqueries, `onConflict`, `returning` and the rest. What Marmeon adds is
 on this page.

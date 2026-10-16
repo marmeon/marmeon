@@ -1,4 +1,4 @@
-import type { Insertable, Kysely, Selectable, Updateable } from 'kysely';
+import type { Connection, NewRowOf, RowOf, RowUpdateOf } from './builder.ts';
 import type { Relation } from './introspection.ts';
 import type { SchemaMetadata } from './metadata.ts';
 import type { Exact } from './repository.ts';
@@ -12,7 +12,7 @@ import type { Relations } from './types.ts';
 type RelationOf<T, N> = T extends keyof Relations ? (N extends keyof Relations[T] ? Relations[T][N] : never) : never;
 
 /** Whether `DB` lets its user write table `X` — a module's view of another module's table can be read only. */
-type CanWrite<DB, X> = X extends keyof DB ? ([keyof Updateable<DB[X]>] extends [never] ? false : true) : false;
+type CanWrite<DB, X> = X extends keyof DB ? ([keyof RowUpdateOf<DB[X]>] extends [never] ? false : true) : false;
 
 /** A belongsToMany writes its pivot and reads its related table; a hasMany or a hasOne writes its related table. */
 type Writes<DB, R> = R extends { readonly kind: 'belongsToMany'; readonly table: infer X; readonly pivot: infer P }
@@ -33,13 +33,13 @@ export type WritableRelationName<DB, T> = T extends keyof Relations
 
 /** The value a belongsToMany's links hold of the related row: its key, usually `id`. */
 type TargetKey<DB, R> = R extends { readonly table: infer X extends keyof DB; readonly targetKey: infer K }
-  ? K extends keyof Selectable<DB[X]>
-    ? Selectable<DB[X]>[K]
+  ? K extends keyof RowOf<DB[X]>
+    ? RowOf<DB[X]>[K]
     : never
   : never;
 
 /** A new row of a hasMany or a hasOne: what an insert into its table takes, without the foreign key the relation sets. */
-type NewRelated<DB, X extends keyof DB, F> = Omit<Insertable<DB[X]>, F & string>;
+type NewRelated<DB, X extends keyof DB, F> = Omit<NewRowOf<DB[X]>, F & string>;
 
 /** The links of one row's belongsToMany. See `docs/queries.md#writing-through-relations`. */
 export interface LinkWriter<K> {
@@ -56,9 +56,9 @@ export interface LinkWriter<K> {
 /** The rows of one row's hasMany or hasOne. See `docs/queries.md#writing-through-relations`. */
 export interface RelatedWriter<DB, X extends keyof DB, F> {
   /** Inserts a related row with the foreign key set, and returns it as stored — without its secret columns. */
-  create<V extends NewRelated<DB, X, F>>(values: Exact<V, NewRelated<DB, X, F>>): Promise<Selectable<DB[X]>>;
+  create<V extends NewRelated<DB, X, F>>(values: Exact<V, NewRelated<DB, X, F>>): Promise<RowOf<DB[X]>>;
   /** Inserts the related rows in one transaction, and returns them in their order. */
-  createMany<V extends NewRelated<DB, X, F>>(values: readonly Exact<V, NewRelated<DB, X, F>>[]): Promise<Selectable<DB[X]>[]>;
+  createMany<V extends NewRelated<DB, X, F>>(values: readonly Exact<V, NewRelated<DB, X, F>>[]): Promise<RowOf<DB[X]>[]>;
 }
 
 /** What `relation(id, name)` writes: the links of a belongsToMany, or the rows of a hasMany or a hasOne. */
@@ -80,7 +80,7 @@ export interface WriteContext {
    * Runs `work` in a transaction of the repository — with the loaded metadata and a reader of the row's `column` (`undefined` when
    * there is no row, or it is soft-deleted).
    */
-  run<R>(work: (db: Kysely<any>, key: (column: string) => Promise<{ value: unknown } | undefined>, metadata: SchemaMetadata) => Promise<R>): Promise<R>;
+  run<R>(work: (db: Connection<any>, key: (column: string) => Promise<{ value: unknown } | undefined>, metadata: SchemaMetadata) => Promise<R>): Promise<R>;
   /** The error for a row that is not there (a 404). */
   missing(): Error;
 }
@@ -94,7 +94,7 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
   const label = `relation('${name}')`;
 
   /** `nothing`: what a write of an empty list answers — after the parent row was found, so a missing one is a 404 either way. */
-  const write = <R>(method: Method, work: (db: Kysely<any>, relation: Relation, key: unknown, metadata: SchemaMetadata) => Promise<R>, nothing?: { readonly value: R }): Promise<R> =>
+  const write = <R>(method: Method, work: (db: Connection<any>, relation: Relation, key: unknown, metadata: SchemaMetadata) => Promise<R>, nothing?: { readonly value: R }): Promise<R> =>
     context.run(async (db, key, metadata) => {
       const relation = metadata.relations.get(table)?.get(name);
       if (!relation) {
@@ -112,7 +112,7 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     });
 
   /** The related rows among `ids` that are there and not soft-deleted — the only ones a link may point at. */
-  const refuseGone = async (db: Kysely<any>, relation: Relation, key: unknown, method: Method, ids: readonly unknown[]) => {
+  const refuseGone = async (db: Connection<any>, relation: Relation, key: unknown, method: Method, ids: readonly unknown[]) => {
     if (ids.length === 0) return;
     const found = await db.selectFrom(relation.table).select(relation.targetKey).where(relation.targetKey, 'in', ids).where(softDeleteFilter(relation.table)).execute();
     const there = new Set(found.map((target) => same((target as Record<string, unknown>)[relation.targetKey])));
@@ -126,11 +126,11 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     }
   };
 
-  const linked = async (db: Kysely<any>, relation: Relation, key: unknown): Promise<unknown[]> =>
+  const linked = async (db: Connection<any>, relation: Relation, key: unknown): Promise<unknown[]> =>
     (await db.selectFrom(relation.pivot!).select(relation.relatedKey!).where(relation.foreignKey, '=', key).execute()).map((link) => (link as Record<string, unknown>)[relation.relatedKey!]);
 
   /** Inserts the links, and returns the ids it linked: a link another transaction made meanwhile is left alone (the pivot is unique). */
-  const link = async (db: Kysely<any>, relation: Relation, key: unknown, ids: readonly unknown[]): Promise<unknown[]> => {
+  const link = async (db: Connection<any>, relation: Relation, key: unknown, ids: readonly unknown[]): Promise<unknown[]> => {
     if (ids.length === 0) return [];
     const inserted = await db
       .insertInto(relation.pivot!)
@@ -142,7 +142,7 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     return ids.filter((id) => linkedNow.has(same(id)));
   };
 
-  const insert = async (db: Kysely<any>, relation: Relation, key: unknown, method: Method, values: object, metadata: SchemaMetadata): Promise<unknown> => {
+  const insert = async (db: Connection<any>, relation: Relation, key: unknown, method: Method, values: object, metadata: SchemaMetadata): Promise<unknown> => {
     // SQLite reads `POST_ID` as `post_id` and keeps the first of two values for one column — the caller's. Postgres tells them apart,
     // so a spelling the table has as a column of its own is left alone.
     const columns = metadata.kinds.get(relation.table);

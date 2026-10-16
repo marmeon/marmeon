@@ -1,6 +1,5 @@
-// Kysely's SQL template, so apps write raw SQL without depending on Kysely themselves.
-export { sql } from 'kysely';
-export type { Insertable, Kysely, Selectable, Transaction, Updateable } from 'kysely';
+export { sql } from './builder.ts';
+export type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 export { Connections, Database } from './connections.ts';
 export type { QueryEvent, TransactionOptions } from './connections.ts';
 // The ambient transaction context lives in core — the queue, events and the HTTP kernel use it without depending

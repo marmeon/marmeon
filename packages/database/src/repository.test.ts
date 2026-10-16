@@ -3,9 +3,9 @@ import type { Generated } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections, type Selectable } from './index.ts';
+import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections, type RowOf } from './index.ts';
 
-type Row = Selectable<FixtureTables['users']>;
+type Row = RowOf<FixtureTables['users']>;
 
 // `users` has soft deletes and timestamps — its migration says so (`softDeletes()`, `timestamps()`); `articles` neither.
 class UserRepository extends Repository<'users', FixtureTables> {

@@ -1,6 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Clock } from '@marmeon/core';
-import { sql, type Kysely } from '@marmeon/database';
+import { sql, type Connection } from '@marmeon/database';
 import { HttpError, ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
@@ -55,7 +55,7 @@ export interface TargetRequest {
 
 export interface UploadsOptions {
   /** The infrastructure connection of `temporary_uploads` — resolved on first use. */
-  readonly db: () => Kysely<Tables>;
+  readonly db: () => Connection<Tables>;
   /** The private disk of temporary uploads. */
   readonly disk: () => Disk;
   readonly clock: Clock;
@@ -271,7 +271,7 @@ export class TemporaryUploads {
   }
 
   async #insertWithinLimits(
-    db: Kysely<Tables>,
+    db: Connection<Tables>,
     row: { id: string; session: string; route: string; field: string; disk: string; name: string; maxBytes: number; size: number; charge: number; now: number },
   ): Promise<{ numAffectedRows: bigint }> {
     const { maxOpen, maxOpenBytes, maxOpenTotalBytes } = this.#options;
@@ -290,7 +290,7 @@ export class TemporaryUploads {
   }
 
   /** Whether the open uploads of `session` (and of all) stand over a limit once `count` more files and `bytes` more bytes are added. */
-  async #over(db: Kysely<Tables>, session: string, count: number, bytes: number, now: number): Promise<'session' | 'total' | undefined> {
+  async #over(db: Connection<Tables>, session: string, count: number, bytes: number, now: number): Promise<'session' | 'total' | undefined> {
     const { maxOpen, maxOpenBytes, maxOpenTotalBytes } = this.#options;
     const open = sql`consumed_at is null and expires_at > ${now}`;
     const mine = await sql<{ files: number | string; bytes: number | string | null }>`
@@ -303,7 +303,7 @@ export class TemporaryUploads {
   }
 
   /** The 429 of a target over a limit: `Retry-After` is when the first open upload that counts expires. */
-  async #tooMany(db: Kysely<Tables>, session: string, size: number, now: number): Promise<HttpError> {
+  async #tooMany(db: Connection<Tables>, session: string, size: number, now: number): Promise<HttpError> {
     const over = (await this.#over(db, session, 1, size, now)) ?? 'total';
     const oldest = await sql<{ at: number | string | null }>`
       select min(expires_at) as at from ${sql.table(UPLOADS_TABLE)}
