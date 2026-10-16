@@ -72,13 +72,20 @@ export interface Queue {
 }
 export const Queue = token<Queue>('Queue');
 
-/** A queue connection as configured: which driver, its default queue, and (for `database`/`redis`) how long a claim holds. */
+/**
+ * A queue connection as configured: which driver, its default queue, and (for every driver but `sync`) how long a claim holds.
+ * `custom` is a driver that a provider brings (`static queueDrivers`); its queue and `retryAfter` are those its factory returned.
+ */
 export type QueueConnectionOptions =
   | { readonly driver: 'sync'; readonly queue: string }
-  | { readonly driver: 'database' | 'redis'; readonly queue: string; readonly connection: string; readonly retryAfter: number };
+  | { readonly driver: 'database' | 'redis'; readonly queue: string; readonly connection: string; readonly retryAfter: number }
+  | { readonly driver: 'custom'; readonly queue: string; readonly retryAfter: number };
 
 export interface QueueManagerDependencies {
-  readonly connections: Readonly<Record<string, QueueConnectionOptions>>;
+  /** The options of a connection, `undefined` when there is none of that name. */
+  readonly connection: (name: string) => QueueConnectionOptions | undefined;
+  /** The names of all connections, for the message of an unknown one. */
+  readonly connectionNames: () => readonly string[];
   readonly default: string;
   readonly registry: JobRegistry;
   /** The driver of a (non-sync) connection — built once per connection. */
@@ -174,7 +181,7 @@ export class QueueManager implements Queue {
       payloads: pending.map(([, payload]) => payload),
       encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
       connection,
-      queue: options.queue ?? this.#deps.connections[connection]?.queue ?? '',
+      queue: options.queue ?? this.#deps.connection(connection)?.queue ?? '',
       delay,
       ...(options.unique === undefined ? {} : { unique: String(options.unique) }),
       jobIds: [],
@@ -319,8 +326,8 @@ export class QueueManager implements Queue {
   }
 
   #connection(name: string): QueueConnectionOptions {
-    const options = this.#deps.connections[name];
-    if (!options) throw new QueueError(`The queue connection "${name}" is not configured. Known: ${Object.keys(this.#deps.connections).join(', ')}.`);
+    const options = this.#deps.connection(name);
+    if (!options) throw new QueueError(`The queue connection "${name}" is not configured. Known: ${this.#deps.connectionNames().join(', ')}.`);
     return options;
   }
 }

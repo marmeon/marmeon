@@ -122,6 +122,12 @@ at start from the `.d.ts` files, for the classes that the package's entry and it
 must be a class or a token, as the [service container](container.md#constructor-injection) page explains. A class in a `browser`
 glob gets no list, so no injection code reaches a client bundle.
 
+## Drivers
+
+A package can bring a driver for a service that selects its drivers by name, such as a queue driver for SQS. It lists a factory in
+a static record of its provider, such as `static queueDrivers = { sqs }`, and the app selects it with an environment variable. The
+[drivers](drivers.md) page lists the records, the names a driver may take and the checks at the start.
+
 ## Commands
 
 A package lists its commands as `static commands` on its provider. The CLI collects them while the app registers, before anything

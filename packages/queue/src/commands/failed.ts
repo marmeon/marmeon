@@ -79,9 +79,14 @@ export class QueueRetryCommand {
         code = 1;
         continue;
       }
-      // Its connection, if it still keeps jobs — else the default one.
-      const known = this.#connections.names().includes(job.connection) && this.#connections.options(job.connection).driver !== 'sync';
-      const connection = known ? job.connection : this.#connections.default;
+      // Its connection, if it still keeps jobs — else the default one; a connection that no longer exists at all is no place to guess.
+      const named = this.#connections.find(job.connection);
+      if (!named) {
+        output.error(`The failed job ${job.uuid} came from the queue connection "${job.connection}", which is not configured. Known: ${this.#connections.names().join(', ')}.`);
+        code = 1;
+        continue;
+      }
+      const connection = named.driver !== 'sync' ? job.connection : this.#connections.default;
       await this.#connections.driver(connection).push(job.queue, job.payload, 0);
       await store.forget(job.uuid);
       output.success(`Queued ${job.job} (${job.uuid}) again on ${connection}/${job.queue}`);

@@ -1,23 +1,27 @@
 import { defineConfig, env, type ConfigOf, type Resolver } from '@marmeon/core';
 import type { QueueConnectionOptions } from './queue.ts';
 
+/** A driver's name: what `QUEUE_CONNECTION` and `QUEUE_FAILED_DRIVER` accept besides the built-in ones, once a provider brings it. */
+const driverName = () => env.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a driver name: lowercase letters, digits and dashes');
+
 const seconds = (name: string) => env.integer(`${name} must be a number of seconds`).min(1).default(90);
 
 /**
  * The queue connections: `sync` runs a job at once, in the dispatching process; `database` keeps jobs in the `jobs`
- * table, `redis` in Redis. `retryAfter` must be longer than any job's `timeout` plus the worker's `--stop-timeout`, or a
- * second worker would claim a job still running — `queue:work` refuses to start otherwise. See `docs/queues.md#configuration`.
+ * table, `redis` in Redis; a provider can bring more (`static queueDrivers`, `docs/drivers.md#queue-drivers-and-failed-job-stores`). `retryAfter` must be longer
+ * than any job's `timeout` plus the worker's `--stop-timeout`, or a second worker would claim a job still running —
+ * `queue:work` refuses to start otherwise. See `docs/queues.md#configuration`.
  */
 export const QueueConfig = defineConfig('queue', {
   env: env({
-    QUEUE_CONNECTION: env.in(['sync', 'database', 'redis']).default('database'),
+    QUEUE_CONNECTION: driverName().default('database'),
     DB_QUEUE_CONNECTION: env.string().default('default'),
     DB_QUEUE: env.string().default('default'),
     DB_QUEUE_RETRY_AFTER: seconds('DB_QUEUE_RETRY_AFTER'),
     REDIS_QUEUE_CONNECTION: env.string().default('default'),
     REDIS_QUEUE: env.string().default('default'),
     REDIS_QUEUE_RETRY_AFTER: seconds('REDIS_QUEUE_RETRY_AFTER'),
-    QUEUE_FAILED_DRIVER: env.in(['database', 'null']).default('database'),
+    QUEUE_FAILED_DRIVER: driverName().default('database'),
     /** The database connection of `failed_jobs` (default: DB_QUEUE_CONNECTION). */
     QUEUE_FAILED_CONNECTION: env.string().optional(),
   }),
@@ -28,7 +32,7 @@ export const QueueConfig = defineConfig('queue', {
       redis: { driver: 'redis', queue: e.REDIS_QUEUE, connection: e.REDIS_QUEUE_CONNECTION, retryAfter: e.REDIS_QUEUE_RETRY_AFTER },
     };
     return {
-      default: e.QUEUE_CONNECTION as string,
+      default: e.QUEUE_CONNECTION,
       connections,
       failed: { driver: e.QUEUE_FAILED_DRIVER, connection: e.QUEUE_FAILED_CONNECTION ?? e.DB_QUEUE_CONNECTION },
     };

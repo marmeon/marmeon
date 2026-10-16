@@ -54,6 +54,12 @@ export interface FailedJobStore {
     flush(): Promise<number>;
     prune(before: number): Promise<number>;
 }
+// FailedJobStoreContext
+export interface FailedJobStoreContext {
+    readonly container: Resolver;
+}
+// FailedJobStoreFactory
+export type FailedJobStoreFactory = (context: FailedJobStoreContext) => FailedJobStore;
 // JobClass
 export type JobClass = JobStatics & (new (...args: any[]) => JobInstance);
 // JobContext
@@ -284,11 +290,17 @@ export declare const QueueConfig: import("@marmeon/core").ConfigDefinition<{
     default: string;
     connections: Record<string, QueueConnectionOptions>;
     failed: {
-        driver: "database" | "null";
+        driver: string;
         connection: string;
     };
 }>;
 export type QueueConfig = ConfigOf<typeof QueueConfig>;
+// QueueConnection
+export interface QueueConnection {
+    readonly driver: QueueDriver;
+    readonly queue: string;
+    readonly retryAfter: number;
+}
 // QueueConnectionOptions
 export type QueueConnectionOptions = {
     readonly driver: 'sync';
@@ -298,14 +310,20 @@ export type QueueConnectionOptions = {
     readonly queue: string;
     readonly connection: string;
     readonly retryAfter: number;
+} | {
+    readonly driver: 'custom';
+    readonly queue: string;
+    readonly retryAfter: number;
 };
 // QueueConnections
 export declare class QueueConnections {
     #private;
     constructor(container: Container, config: QueueConfig);
+    verify(): void;
     get default(): string;
     names(): string[];
     options(name: string): QueueConnectionOptions;
+    find(name: string): QueueConnectionOptions | undefined;
     driver(name: string): QueueDriver;
     failed(): FailedJobStore;
     runner(): JobRunner;
@@ -334,6 +352,14 @@ export interface QueueDriver {
     using?(transaction: Kysely<any>): QueueDriver;
     joinsTransaction?(): Promise<boolean>;
 }
+// QueueDriverContext
+export interface QueueDriverContext {
+    readonly name: string;
+    readonly container: Resolver;
+    readonly clock: Clock;
+}
+// QueueDriverFactory
+export type QueueDriverFactory = (context: QueueDriverContext) => QueueConnection;
 // QueueError
 export declare class QueueError extends Error {
     name: string;
@@ -399,7 +425,7 @@ export declare class QueueServiceProvider implements ServiceProvider {
         default: string;
         connections: Record<string, import("./queue.ts").QueueConnectionOptions>;
         failed: {
-            driver: "database" | "null";
+            driver: string;
             connection: string;
         };
     }>[];
@@ -574,6 +600,11 @@ export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~stand
 // @marmeon/core.ModuleDefinition
 interface ModuleDefinition {
     readonly jobs?: readonly JobClass[];
+}
+// @marmeon/core.ServiceProviderClass
+interface ServiceProviderClass {
+    readonly queueDrivers?: Readonly<Record<string, QueueDriverFactory>>;
+    readonly failedJobDrivers?: Readonly<Record<string, FailedJobStoreFactory>>;
 }
 ```
 

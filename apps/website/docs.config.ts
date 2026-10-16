@@ -111,6 +111,7 @@ export default defineDocs({
         { slug: 'realtime', label: 'Real-time Updates' },
         { slug: 'scheduling', label: 'Task Scheduling' },
         { slug: 'tables', label: 'Data Tables' },
+        { slug: 'drivers', label: 'Drivers' },
         { slug: 'package-development', label: 'Package Development' },
       ],
     },

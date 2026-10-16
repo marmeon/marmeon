@@ -5,6 +5,7 @@ import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
 import { QueueHealthCheck } from './health.ts';
 import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
+import type { FailedJobStoreFactory, QueueDriverFactory } from './driver.ts';
 import type { JobClass } from './job.ts';
 import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
 import { Queue, QueueManager } from './queue.ts';
@@ -13,7 +14,23 @@ import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
 export { QueueConfig, queueTablesConnection } from './config.ts';
 export { QueueHealthCheck } from './health.ts';
 export { QueueConnections } from './connections.ts';
-export type { FailedJob, FailedJobStore, JobRecord, QueueCounts, QueueDriver, QueuedJob, QueuedPush, ReleaseOptions, ReservedJob, UniqueRecord } from './driver.ts';
+export type {
+  FailedJob,
+  FailedJobStore,
+  FailedJobStoreContext,
+  FailedJobStoreFactory,
+  JobRecord,
+  QueueConnection,
+  QueueCounts,
+  QueueDriver,
+  QueueDriverContext,
+  QueueDriverFactory,
+  QueuedJob,
+  QueuedPush,
+  ReleaseOptions,
+  ReservedJob,
+  UniqueRecord,
+} from './driver.ts';
 export { JobEvent, JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased } from './events.ts';
 export type { JobEvents } from './events.ts';
 export type {
@@ -48,6 +65,16 @@ declare module '@marmeon/core' {
     /** The module's jobs — classes with `static job`, `static schema` and `handle()`. A worker runs only registered jobs. */
     readonly jobs?: readonly JobClass[];
   }
+
+  interface ServiceProviderClass {
+    /**
+     * Queue drivers this provider brings, by name — `QUEUE_CONNECTION=<name>` selects one. A built-in name (`sync`, `database`,
+     * `redis`) or a name another provider brings stops the start. See `docs/drivers.md#queue-drivers-and-failed-job-stores`.
+     */
+    readonly queueDrivers?: Readonly<Record<string, QueueDriverFactory>>;
+    /** Failed-job stores this provider brings, by name — `QUEUE_FAILED_DRIVER=<name>` selects one. Same rules as `queueDrivers`. */
+    readonly failedJobDrivers?: Readonly<Record<string, FailedJobStoreFactory>>;
+  }
 }
 
 /**
@@ -79,7 +106,8 @@ export class QueueServiceProvider implements ServiceProvider {
       const config = c.make(QueueConfig);
       const connections = c.make(QueueConnections);
       return new QueueManager({
-        connections: config.connections,
+        connection: (name) => connections.find(name),
+        connectionNames: () => connections.names(),
         default: config.default,
         registry: c.make(JobRegistry),
         driver: (name) => connections.driver(name),
@@ -100,9 +128,11 @@ export class QueueServiceProvider implements ServiceProvider {
     const registry = app.container.make(JobRegistry);
     const config = app.container.make(QueueConfig);
 
+    // An unknown driver name, or a built-in name a provider takes, stops the start — with the names there are.
+    const connections = app.container.make(QueueConnections);
+    connections.verify();
     // A driver whose package is missing fails the start with what to install — not the first dispatch.
-    const used = config.connections[config.default];
-    if (!used) throw new QueueSetupError(`QUEUE_CONNECTION=${config.default} is not a configured queue connection.`);
+    const used = connections.options(config.default);
     const databases = [...(used.driver === 'database' ? [used.connection] : []), ...(config.failed.driver === 'database' ? [config.failed.connection] : [])];
     if (databases.length > 0) {
       const database = await importDatabase(used.driver === 'database' ? 'QUEUE_CONNECTION=database' : 'QUEUE_FAILED_DRIVER=database (set it to null without a database)');
@@ -118,9 +148,9 @@ export class QueueServiceProvider implements ServiceProvider {
         throw new QueueSetupError('QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
       }
       // An unknown Redis connection name fails here, with the known ones; a missing client with what to install.
-      const connections = app.container.make(redis.RedisConnections);
-      connections.options(used.connection);
-      await connections.verify();
+      const redisConnections = app.container.make(redis.RedisConnections);
+      redisConnections.options(used.connection);
+      await redisConnections.verify();
     }
     // Every event with a queued listener can be queued, names are unique, `static queue` is sane — or the start fails.
     const queuedListeners = app.container.make(QueuedListeners);

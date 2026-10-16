@@ -133,8 +133,8 @@ export class Application {
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
-      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length && !declaredCommands(Provider)) {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions or static commands.`);
+      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length && !declaredCommands(Provider) && !declaredDrivers(Provider)) {
+        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, ${DRIVER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`);
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -178,6 +178,17 @@ export class Application {
 
 /** Set by the primary of `marmeon start --workers=N` for its workers: the boot's warnings were said once, by the primary. */
 export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
+
+/** The statics a package's provider lists drivers in — each service package adds its own through declaration merging. */
+const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers'] as const;
+
+/** Whether `Provider` brings drivers of any service: a non-empty record in one of the {@link DRIVER_STATICS}. */
+function declaredDrivers(Provider: ServiceProviderClass): boolean {
+  return DRIVER_STATICS.some((key) => {
+    const record = (Provider as unknown as Record<string, unknown>)[key];
+    return typeof record === 'object' && record !== null && Object.keys(record).length > 0;
+  });
+}
 
 /** Whether `Provider` lists commands — a static list the marmeon CLI declares on `ServiceProviderClass`. */
 function declaredCommands(Provider: ServiceProviderClass): boolean {
