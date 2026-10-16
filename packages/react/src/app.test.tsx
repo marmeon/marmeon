@@ -405,6 +405,53 @@ describe('usePage returns the page info', () => {
   });
 });
 
+describe('useRouter resolves with the page info', () => {
+  const results: unknown[] = [];
+  function Navigation({ children }: { children: ReactNode }) {
+    const router = useRouter<{ name: string }>();
+    return (
+      <div>
+        <button
+          data-testid="go"
+          onClick={async () => {
+            const visited = await router.visit('/b');
+            // @ts-expect-error — the build version is a protocol field
+            void visited?.version;
+            // @ts-expect-error — deferred props are a protocol field
+            void visited?.deferredProps;
+            results.push(visited);
+          }}
+        />
+        <button
+          data-testid="again"
+          onClick={async () => {
+            const reloaded = await router.reload();
+            // @ts-expect-error — the build version is a protocol field
+            void reloaded?.version;
+            results.push(reloaded);
+          }}
+        />
+        {children}
+      </div>
+    );
+  }
+
+  it('hands out the curated fields from visit() and reload(), not the wire format', async () => {
+    results.length = 0;
+    server = (url) => respond({ ...page('Plain', new URL(url, location.href).pathname, { name: 'Ada' }), route: 'b', locale: 'de', csrf: 'token', epoch: 'e1' });
+    await mount(page('Plain', '/plain'), { layout: () => Navigation });
+    await click('go');
+    await settle();
+    await click('again');
+    await settle();
+    expect(results).toHaveLength(2);
+    for (const result of results) {
+      expect(Object.keys(result as object).sort()).toEqual(['component', 'locale', 'props', 'route', 'url']);
+    }
+    expect(results[0]).toEqual({ component: 'app/Plain', props: { name: 'Ada' }, url: '/b', route: 'b', locale: 'de' });
+  });
+});
+
 describe('deferred and optional props', () => {
   it('renders the page with the fallback first, then the deferred prop the browser loads after mount', async () => {
     let release!: () => void;

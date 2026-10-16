@@ -146,9 +146,11 @@ export default function Search({ results }: PageProps<SearchNotesController>) {
 }
 ```
 
-- **`visit(url, options)`** takes the link options above, plus `method`, `data` and `headers`. It resolves with the page, or with
-  `undefined` when the visit did not land.
-- **`reload(options)`** asks the server for the page on screen again, keeping the scroll position and the component state.
+- **`visit(url, options)`** takes the link options above, plus `method`, `data` and `headers`. It resolves with the page's
+  `PageInfo` (the same fields `usePage()` returns; `route`, `locale`, `query` and `flash` are present only when the page has them).
+  It resolves with `undefined` when the visit did not land: it was cancelled or superseded by another visit, `confirm` or a
+  guard refused it, or it ended in a network or server exception.
+- **`reload(options)`** asks the server for the page on screen again, keeping the scroll position and the component state. It resolves like `visit()`.
 - **`prefetch(url)`** fetches a page ahead.
 - **`on(event, listener)`** listens to every visit and returns the function that stops listening. The events are `start`,
   `progress`, `success`, `error` (the answer brought validation errors), `exception` (offline or a server error), `cancel`,

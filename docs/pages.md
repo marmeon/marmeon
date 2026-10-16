@@ -179,7 +179,7 @@ as long as the page is, so it is safe in a dependency list.
 | `flash` | The flash messages the page delivered. See [flash messages](#flash-messages). |
 
 Nothing else is there. What the client needs to keep the page current, such as the build version or the props still to load,
-stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`.
+stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`. `router.visit()` and `router.reload()` resolve with the same fields.
 
 ## The document head
 

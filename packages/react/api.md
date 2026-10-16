@@ -63,8 +63,6 @@ export type ActionSubmitOptions<N extends string, RequiresParams extends boolean
 };
 // ActiveMatch
 export type ActiveMatch = '*' | BrowserRouteName | NamePrefixes<BrowserRouteName>;
-// Backdrop
-export declare function Backdrop(): import("react").JSX.Element;
 // CheckFormElementRoute
 export type CheckFormElementRoute<N extends string> = CheckBrowserRouteName<N> extends N ? N extends keyof Routes ? [MethodOf<N>] extends ['get'] ? [RouteQueryOf<N>] extends [never] ? `'${N}' is a GET route without a query schema — a form's fields would go into its URL; give its controller \`static request = defineRequest({ query })\`, or send it with a <Link>` : N : N : N : CheckBrowserRouteName<N>;
 // CheckedPatch
@@ -123,8 +121,6 @@ export interface DeferredProps<T = unknown> {
     fallback?: ReactNode;
     children: ReactNode | (() => ReactNode);
 }
-// ErrorPage
-export declare function ErrorPage({ status, title, message, exception }: ErrorPageProps): import("react").JSX.Element;
 // FieldName
 export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends 4 ? never : {
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
@@ -466,15 +462,13 @@ export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
 export type RouteFunction = <const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, ...args: RouteArgs<N>) => string;
 // Router
 export interface Router<T = unknown> {
-    visit(url: string, options?: TypedVisitOptions<T>): Promise<PageObject | undefined>;
-    reload(options?: ReloadOptions<T>): Promise<PageObject | undefined>;
+    visit(url: string, options?: TypedVisitOptions<T>): Promise<PageInfo | undefined>;
+    reload(options?: ReloadOptions<T>): Promise<PageInfo | undefined>;
     prefetch(url: string, options?: PrefetchOptions): Promise<void>;
     on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
     optimistic<R extends object>(patch: ((props: PatchedProps<T>) => R) & NoInfer<CheckedPatch<R, PatchedProps<T>>>): OptimisticUpdate;
     reloading<const I extends readonly BrowserRouteNameInput[] = []>(options?: ReloadingOptions<T, I>): readonly Reloading[];
 }
-// SHORT_PENDING_DELAY
-export declare const SHORT_PENDING_DELAY = 150;
 // SetQueryState
 export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
 // TitleTemplate
@@ -537,10 +531,6 @@ export interface WhenVisibleProps<T = unknown> {
 }
 // createMarmeonApp
 export declare function createMarmeonApp({ resolve, rootId, title, routes, layout, messages, progress, layer, confirm, tabSync, viewTransition, onRecoverableError }: CreateMarmeonAppOptions): Promise<void>;
-// layoutsOf
-export declare function layoutsOf(page: PageComponent, name: string, defaultLayout?: DefaultLayout): readonly Layout[];
-// pagesAround
-export declare function pagesAround(current: number, last: number, window: number): (number | null)[];
 // progressBar
 export { progressBar } from '@marmeon/http/client';
 // resolveModulePages
