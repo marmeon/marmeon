@@ -63,7 +63,7 @@ pnpm dev               # the web app (apps/web-app) on http://localhost:3000 —
 pnpm run ci            # every check CI runs: build, typecheck, lint, the test suites, sizes, types, docs, tarballs, image, release
 ```
 
-`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 15 parts (`pnpm run ci --list`;
+`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 16 parts (`pnpm run ci --list`;
 [The repository](#the-repository) names them); some of them: `pnpm run ci --only test,lint`. `pack:smoke` and `image` need the
 package store, the registry and Docker — without them they are reported as skipped, which is not green.
 
@@ -94,7 +94,7 @@ apps/blank-app    an app without modules: what create-marmeon --minimal writes (
 examples/*        demos on the starter kit, each an overlay (files, edits, commands) that pack:smoke applies to its kit app and runs
 apps/website      the documentation as a Marmeon app: docs/*.md and the policies at the root (pnpm website:dev; apps/website/Dockerfile, deploy/website)
 docs              the documentation's pages, in the order apps/website/docs.config.ts lists them
-scripts/ci.ts     pnpm run ci — its 15 parts, from the build to the release rules (below)
+scripts/ci.ts     pnpm run ci — its 16 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 scripts/test      the test suite's temporary directory per run and tempDir() — the repository's own, not exported by a package
                   (pnpm test fails when a test leaves an entry behind)
@@ -111,6 +111,7 @@ pnpm website:dev       # the docs on http://localhost:3970
 pnpm website:image     # the docs' image (apps/website/Dockerfile): built, run read-only and behind Caddy (deploy/website) — part of `image`
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
 pnpm pack:smoke        # create-marmeon from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
+pnpm api:check         # every package's public surface against its api.md (after a build); pnpm api:update rewrites the files
 pnpm template:sync     # apps/blank-app → the template of create-marmeon (a test fails while they differ)
 pnpm release:prepare   # the next version, changelogs and upgrade-guide heading from the merged pull requests (below); pnpm check-release checks the release rules
 pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome under style-src 'self': 0 CSP violations (never a gate)
@@ -120,10 +121,10 @@ pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome und
 signs in over HTTP and visits the guest and signed-in pages, a layer by deep link and by click, and a failing visit — in headless
 Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <path>` or `CHROME`).
 
-`pnpm run ci` runs 15 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
+`pnpm run ci` runs 16 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
 and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle limits —
-[The size budget](#the-size-budget)), `types:check` (the apps' generated route and table types are current), `website:check`,
+[The size budget](#the-size-budget)), `types:check` (the apps' generated route and table types are current), `api:check` (each package's `api.md` matches its built declarations — [The API snapshot](#the-api-snapshot)), `website:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-release`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `--shard i/n` runs one n-th
@@ -326,6 +327,31 @@ version. Nobody writes a changelog entry: the release notes are made from the pu
   individual commits on GitHub. Merge commits and rebase merges are switched off.
 - **Only release preparation writes the `CHANGELOG.md` files and the package versions;** a pull request that edits them is sent
   back at review. A breaking change's entry in the upgrade guide is written there too ([The upgrade guide](#the-upgrade-guide)).
+
+### The API snapshot
+
+Every package with an entry point has a `packages/<name>/api.md`: its public surface as the built `.d.ts` files emit it, so a
+change to what an app can import shows in the pull request's diff. `pnpm api:check` (part of `pnpm run ci`, after the build)
+fails on any difference; `pnpm api:update` builds and rewrites the files — commit them with the change that caused it. A
+conflict in an `api.md` is never merged by hand: take either side, run `pnpm api:update`, commit.
+
+Per entry point (every subpath of `exports` with `types`, except `./internal`) the file lists each exported declaration without
+its comments, sorted by name: **Stable**; **Referenced, not exported** — the local helper types and `@internal` exports that a
+public signature names, because their shape is public too; **Augments** — `declare module` and `declare global` blocks of the
+files the entry reaches (a file belongs to the first entry that reaches it); **Experimental** — what is tagged `@experimental`.
+Members and declarations tagged `@internal` are left out, a `@deprecated` declaration carries a `// @deprecated` line, and a
+re-export from another package is the `export … from` statement (its declaration is in that package's snapshot). Below the
+entry's heading, "Types from other packages" names the libraries whose types the entry's declarations mention.
+
+A class, function, constant or enum that an entry exports only as a type (`export type { Foo }`) carries a `// type-only` line:
+an app can no longer `new` it. A public signature must not name a type of another package's `./internal` (no snapshot holds
+its shape), and an entry cannot export a module of its own package as a namespace; `pnpm api:check` reports both. A
+`FOREIGN_TYPES` entry that no entry point of its package uses any more is reported, so it gets deleted with the change that
+made it unnecessary.
+
+An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `scripts/api.ts` lists for its package (Node's
+built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the
+app installs, or the change that removes it. Add an entry only for a peer, and give a type of your own to anything else.
 
 ### The upgrade guide
 

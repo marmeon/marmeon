@@ -40,6 +40,12 @@ describe('pnpm run ci', () => {
     expect(parts.find((part) => part.name === 'check:source')?.command).toEqual(['pnpm', 'run', 'check:source']);
   });
 
+  it('runs api:check after the build', () => {
+    const entry = parts.find((candidate) => candidate.name === 'api:check');
+    expect(entry?.command).toEqual(['pnpm', 'run', 'api:check']);
+    expect(entry?.after).toEqual(['build']);
+  });
+
   const part = (name: string) => parts.find((entry) => entry.name === name)!;
   const ci = (...args: string[]) => spawnSync(process.execPath, [join(root, 'scripts/ci.ts'), ...args], { cwd: root, encoding: 'utf8' });
 
@@ -78,7 +84,7 @@ describe('pnpm run ci', () => {
     const matrix = /shard:\s*\[([^\]]*)\]/.exec(job)?.[1]?.split(',').map((entry) => entry.trim());
     expect(matrix).toEqual(['1', '2', '3']);
     expect(job).toContain('--only build,test --shard "$SHARD/3"');
-    expect(workflow).toMatch(/--only build,typecheck,lint,size,types:check,website:check,check-release\s*$/m);
+    expect(workflow).toMatch(/--only build,typecheck,lint,size,types:check,api:check,website:check,check-release\s*$/m);
   });
 
   it('splits test:pgsql over two shard jobs behind an aggregator that keeps the name test:pgsql', () => {
