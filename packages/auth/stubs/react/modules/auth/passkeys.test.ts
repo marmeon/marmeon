@@ -428,7 +428,7 @@ describe('the mails about passkeys', { timeout: 30_000 }, () => {
   });
 
   describe('about a failed sign-in', () => {
-    const failed = (userId: number, ip: string | null = '203.0.113.7') => ({ userId, ip, userAgent: null });
+    const failed = (userId: number, ip: string | null = '203.0.113.7') => ({ userId, at: new Date().toISOString(), ip, userAgent: null });
 
     it('is sent at most once an hour for an account', async () => {
       const ada = await app.factory(UserFactory).create();

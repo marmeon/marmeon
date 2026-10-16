@@ -302,22 +302,26 @@ export class PasskeyRegistered {
 
 /**
  * Someone presented a passkey of this account for a passwordless sign-in and failed — a wrong signature, or a user handle that is not the
- * account's. For "was this you?" mails and audit logs; the client learns nothing of it. Queueable: `{ userId, ip, userAgent }`.
+ * account's. For "was this you?" mails and audit logs; the client learns nothing of it. Queueable: `{ userId, at, ip, userAgent }` (`at` as an
+ * ISO-8601 string; a payload queued without it counts as having happened when it is read).
  */
 export class PasskeySignInFailed {
   static readonly event = 'auth.passkey-sign-in-failed';
   static readonly schema = v.object({
     userId,
+    at: v.optional(instant, () => new Date().toISOString()),
     ip: v.nullable(v.string()),
     userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
   });
   readonly #event = true;
   readonly user: AuthUser;
+  readonly at: Date;
   readonly ip: string | null;
   readonly userAgent: string | null;
 
-  constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+  constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}, at = new Date()) {
     this.user = user;
+    this.at = at;
     this.ip = details.ip ?? null;
     this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
   }

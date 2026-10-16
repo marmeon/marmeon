@@ -41,6 +41,18 @@ const MAX_NAME_LENGTH = 100;
 /** Passkeys per account: more is no use, and every one adds to what `excludeCredentials` and the list carry. */
 const MAX_PASSKEYS = 20;
 
+/** The challenge a response was signed for (from its `clientDataJSON`), or `undefined` when it does not carry one. */
+function signedChallenge(response: AuthenticationResponseJSON): string | undefined {
+  try {
+    const raw = (response as { response?: { clientDataJSON?: unknown } } | null)?.response?.clientDataJSON;
+    if (typeof raw !== 'string') return undefined;
+    const challenge = (JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as { challenge?: unknown } | null)?.challenge;
+    return typeof challenge === 'string' ? challenge : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Why a passkey ceremony did not count. `clone-suspected`: the passkey's counter did not move forward, it may have been copied. */
 export type PasskeyError =
   | { readonly kind: 'no-challenge' }
@@ -326,16 +338,22 @@ export class Passkeys implements SecondFactorPasskeys {
   /**
    * Confirms sudo mode (`confirmedPassword()`) with a passkey of the signed-in account from `confirmOptions()`, like a typed password
    * would: the verified response (user verification required) is the proof, the challenge works once. The session gets a new id and
-   * counts as having proven a second factor. A wrong answer fires `TwoFactorChallengeFailed` with `during: 'confirm'`. Throttled per account (ten a minute). Needs a signed-in user.
+   * counts as having proven a second factor. A wrong answer to the open challenge fires `TwoFactorChallengeFailed` with `during: 'confirm'`; an answer to a challenge that was replaced is `expired` and fires nothing. Throttled per account (ten a minute). Needs a signed-in user.
    */
   async confirm(response: AuthenticationResponseJSON): Promise<Result<void, PasskeyError>> {
     const user = await this.#requireUser('confirm');
     const id = idOf(user);
     const key = `passkey-confirm:${id}`;
     if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfter: Math.max(1, await this.#limiter.availableIn(key)) });
-    const checked = await this.#check(response, 'confirm', id);
+    // No open challenge, or an answer signed for another one (a second tab, a double click), is not judged: the owner's own correct passkey can meet it.
+    const challenge = await this.#takeChallenge('confirm', id);
+    if (!challenge.ok) return err(challenge.error);
+    // Such an answer can never succeed, and staying silent only hides answers that were never judged; the client starts again.
+    const signed = signedChallenge(response);
+    if (signed !== undefined && signed !== challenge.value) return err({ kind: 'expired' });
+    const checked = await this.#answer(response, challenge.value, id);
     if (!checked.ok) {
-      // An answer that was given and failed, not a missing, used or expired challenge: the owner may want to know. The client learns nothing more.
+      // An answer that was given and failed: the owner may want to know. The client learns nothing more.
       if (checked.error.kind === 'invalid' || checked.error.kind === 'clone-suspected') {
         await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }));
       }
@@ -473,7 +491,7 @@ export class Passkeys implements SecondFactorPasskeys {
         this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
       } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
-        await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }));
+        await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }, new Date(this.#clock.now())));
       }
       return err(verified.error);
     }
