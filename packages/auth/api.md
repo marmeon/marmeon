@@ -1369,13 +1369,20 @@ interface SessionData {
 
 ## `@marmeon/auth/passkeys`
 
-Types from other packages: `@simplewebauthn/server`
+Types from other packages: none
 
 ### Stable
 
 ```ts
 // AuthenticationResponseJSON
-export type { AuthenticationResponseJSON } from '@simplewebauthn/server';
+export interface AuthenticationResponseJSON {
+    id: Base64URLString;
+    rawId: Base64URLString;
+    response: AuthenticatorAssertionResponseJSON;
+    authenticatorAttachment?: AuthenticatorAttachment;
+    clientExtensionResults: AuthenticationExtensionsClientOutputsJSON;
+    type: PublicKeyCredentialType;
+}
 // PASSKEYS_TABLE
 export declare const PASSKEYS_TABLE = "passkeys";
 // PasskeyConfig
@@ -1516,6 +1523,30 @@ export declare class Passkeys implements SecondFactorPasskeys {
         readonly kind: 'not-found';
     } | PasswordThrottled>>;
 }
+// PublicKeyCredentialCreationOptionsJSON
+export interface PublicKeyCredentialCreationOptionsJSON {
+    rp: PublicKeyCredentialRpEntity;
+    user: PublicKeyCredentialUserEntityJSON;
+    challenge: Base64URLString;
+    pubKeyCredParams: PublicKeyCredentialParameters[];
+    timeout?: number;
+    excludeCredentials?: PublicKeyCredentialDescriptorJSON[];
+    authenticatorSelection?: AuthenticatorSelectionCriteria;
+    hints?: PublicKeyCredentialHint[];
+    attestation?: AttestationConveyancePreference;
+    attestationFormats?: string[];
+    extensions?: AuthenticationExtensionsClientInputsJSON;
+}
+// PublicKeyCredentialRequestOptionsJSON
+export interface PublicKeyCredentialRequestOptionsJSON {
+    challenge: Base64URLString;
+    timeout?: number;
+    rpId?: string;
+    allowCredentials?: PublicKeyCredentialDescriptorJSON[];
+    userVerification?: UserVerificationRequirement;
+    hints?: PublicKeyCredentialHint[];
+    extensions?: AuthenticationExtensionsClientInputsJSON;
+}
 // RegisterError
 export type RegisterError = {
     readonly kind: 'no-challenge';
@@ -1534,7 +1565,14 @@ export type RegisterError = {
     readonly kind: 'signed-out';
 };
 // RegistrationResponseJSON
-export type { RegistrationResponseJSON } from '@simplewebauthn/server';
+export interface RegistrationResponseJSON {
+    id: Base64URLString;
+    rawId: Base64URLString;
+    response: AuthenticatorAttestationResponseJSON;
+    authenticatorAttachment?: AuthenticatorAttachment;
+    clientExtensionResults: AuthenticationExtensionsClientOutputsJSON;
+    type: PublicKeyCredentialType;
+}
 ```
 
 ### Referenced, not exported
@@ -1592,6 +1630,8 @@ export type AttemptError = {
     readonly kind: 'two-factor-required';
     readonly factors: readonly SecondFactor[];
 };
+// AttestationConveyancePreference
+export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | 'enterprise';
 // Auth
 export declare class Auth {
     #private;
@@ -1665,6 +1705,60 @@ export type AuthUser = UserOf<AuthTypes>;
 export type AuthUserId = AuthUser extends {
     readonly id: infer Id;
 } ? Id : string | number;
+// AuthenticationExtensionsClientInputsJSON
+export interface AuthenticationExtensionsClientInputsJSON {
+    credProps?: boolean;
+}
+// AuthenticationExtensionsClientOutputsJSON
+export interface AuthenticationExtensionsClientOutputsJSON {
+    appid?: boolean;
+    appidExclude?: boolean;
+    credProps?: {
+        rk?: boolean;
+    };
+    largeBlob?: {
+        supported?: boolean;
+        blob?: Base64URLString;
+        written?: boolean;
+    };
+    prf?: {
+        enabled?: boolean;
+        results?: AuthenticationExtensionsPRFValuesJSON;
+    };
+    remoteClientDataJSON?: boolean;
+}
+// AuthenticationExtensionsPRFValuesJSON
+export interface AuthenticationExtensionsPRFValuesJSON {
+    first: Base64URLString;
+    second?: Base64URLString;
+}
+// AuthenticatorAssertionResponseJSON
+export interface AuthenticatorAssertionResponseJSON {
+    clientDataJSON: Base64URLString;
+    authenticatorData: Base64URLString;
+    signature: Base64URLString;
+    userHandle?: Base64URLString;
+}
+// AuthenticatorAttachment
+export type AuthenticatorAttachment = 'platform' | 'cross-platform';
+// AuthenticatorAttestationResponseJSON
+export interface AuthenticatorAttestationResponseJSON {
+    clientDataJSON: Base64URLString;
+    attestationObject: Base64URLString;
+    authenticatorData?: Base64URLString;
+    transports?: string[];
+    publicKeyAlgorithm?: number;
+    publicKey?: Base64URLString;
+}
+// AuthenticatorSelectionCriteria
+export interface AuthenticatorSelectionCriteria {
+    authenticatorAttachment?: AuthenticatorAttachment;
+    residentKey?: ResidentKeyRequirement;
+    requireResidentKey?: boolean;
+    userVerification?: UserVerificationRequirement;
+}
+// Base64URLString
+export type Base64URLString = string;
 // CLAIM_ACCOUNT
 export declare const CLAIM_ACCOUNT: unique symbol;
 // COMPLETE_PENDING
@@ -1772,6 +1866,32 @@ export interface PendingView {
     readonly failures: number;
     readonly remember: boolean;
 }
+// PublicKeyCredentialDescriptorJSON
+export interface PublicKeyCredentialDescriptorJSON {
+    type: PublicKeyCredentialType;
+    id: Base64URLString;
+    transports?: string[];
+}
+// PublicKeyCredentialHint
+export type PublicKeyCredentialHint = 'security-key' | 'client-device' | 'hybrid';
+// PublicKeyCredentialParameters
+export interface PublicKeyCredentialParameters {
+    type: PublicKeyCredentialType;
+    alg: number;
+}
+// PublicKeyCredentialRpEntity
+export interface PublicKeyCredentialRpEntity {
+    name: string;
+    id?: string;
+}
+// PublicKeyCredentialType
+export type PublicKeyCredentialType = 'public-key';
+// PublicKeyCredentialUserEntityJSON
+export interface PublicKeyCredentialUserEntityJSON {
+    id: Base64URLString;
+    name: string;
+    displayName: string;
+}
 // READ_PENDING
 export declare const READ_PENDING: unique symbol;
 // RECORD_PENDING_FAILURE
@@ -1809,6 +1929,8 @@ export interface RememberedDevice {
     readonly createdAt: Date;
     readonly fingerprint: string | undefined;
 }
+// ResidentKeyRequirement
+export type ResidentKeyRequirement = 'discouraged' | 'preferred' | 'required';
 // SIGN_IN_VERIFIED
 export declare const SIGN_IN_VERIFIED: unique symbol;
 // SIGN_OUT_OTHER_DEVICES
@@ -1939,6 +2061,8 @@ export interface UserProvider<U = AuthUser> {
     }>;
 }
 export declare const UserProvider: Token<UserProvider>;
+// UserVerificationRequirement
+export type UserVerificationRequirement = 'discouraged' | 'preferred' | 'required';
 // VERIFY_SECOND_FACTOR
 export declare const VERIFY_SECOND_FACTOR: unique symbol;
 // missing
