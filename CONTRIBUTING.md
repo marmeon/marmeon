@@ -504,7 +504,8 @@ sources; these are the rules that span several files.
 
 ### The entry points of `@marmeon/core`
 
-Besides its main entry and the documented `@marmeon/core/diagnostics` and `@marmeon/core/dev`, the core has three entry points
+Besides its main entry and the documented `@marmeon/core/diagnostics`, `@marmeon/core/dev` and `@marmeon/core/deprecation`
+(`deprecated()` without the rest of the core, for client code), the core has three entry points
 that only the framework imports:
 
 | Import | What |

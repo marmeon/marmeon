@@ -2,6 +2,7 @@
 // HTTP concerns live in @marmeon/http.
 export { Container, ContainerError } from './container.ts';
 export type { ContainerErrorDetails, ContainerErrorReason, Factory, InjectionWarning, Resolver } from './container.ts';
+export { deprecated } from './deprecation.ts';
 export { defineSolutions, ErrorSolutions } from './solutions.ts';
 export type { Solution, SolutionContext, SolutionDefinition } from './solutions.ts';
 export { coreSolutions } from './core-solutions.ts';
