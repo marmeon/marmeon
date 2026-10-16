@@ -1,17 +1,23 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 
 // Server rendering in tests: through the app's Vite setup, so markup and <Head> are testable.
+let server: SsrServer;
 let app: TestApp;
 let ada: User, alan: User;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000); // Vite starts once for the file — seconds on a busy machine
+afterAll(() => server?.close());
+
 beforeEach(async () => {
-  app = await createTestApp(application, { database: 'refresh', seed: true, ssr: true });
+  app = await createTestApp(application, { database: 'refresh', seed: true, ssr: true, ssrServer: server });
   const users: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
   [ada, alan] = users as [User, User];
-}, 30_000); // each test starts its own Vite server — seconds on a busy machine
+});
 
 const page = { headers: { accept: 'text/html' } };
 
