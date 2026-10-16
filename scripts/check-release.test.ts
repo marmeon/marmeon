@@ -39,6 +39,14 @@ const anchors = {
   '0.2.0': ['medium-a-change-of-020'],
 } as const satisfies typeof UPGRADING_ANCHORS;
 
+/** The full `action@<sha> # vX.Y.Z` reference a workflow pins an action to, so tests follow a version bump. */
+function pinOf(workflow: string, action: string): string {
+  const name = action.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`${name}@[0-9a-f]{40} # v[\\w.]+`).exec(workflow);
+  if (!match) throw new Error(`no pinned ${action} in the workflow`);
+  return match[0];
+}
+
 /** The problems found against those wanted — both in the message: Vitest shortens the lists in its own ("[ Array(1) ]"). */
 function expectProblems(problems: readonly string[], wanted: readonly string[]): void {
   const list = (items: readonly string[]) => (items.length === 0 ? 'nothing' : items.join(' | '));
@@ -329,6 +337,10 @@ describe('check', () => {
 
 describe('checkWorkflow — the release run', () => {
   const real = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
+  const setupNode = pinOf(real, 'actions/setup-node');
+  const checkoutPin = pinOf(real, 'actions/checkout');
+  const pnpmPin = pinOf(real, 'pnpm/action-setup');
+  const pnpmSha = pnpmPin.split(' ')[0]!;
   const draft = /gh release create .*--draft.*/.exec(real)![0];
   /** Where the staging job and the release job start: before them is the workflow's top and the build job. */
   const cutStage = real.indexOf('\n  stage:\n');
@@ -467,8 +479,8 @@ describe('checkWorkflow — the release run', () => {
         expect(problemsOf(mutated(off, version, part))).toContain('without "package-manager-cache: false"');
         expect(problemsOf(mutated(off, `${version}\n          package-manager-cache: true`, part))).toContain('without "package-manager-cache: false"');
       }
-      const setup = '      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        with:\n          node-version-file: .nvmrc\n          package-manager-cache: false # the action\'s default restores a pnpm store by itself\n';
-      const named = '      - name: node\n        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        with:\n          node-version-file: .nvmrc\n';
+      const setup = '      - uses: ' + setupNode + '\n        with:\n          node-version-file: .nvmrc\n          package-manager-cache: false # the action\'s default restores a pnpm store by itself\n';
+      const named = '      - name: node\n        uses: ' + setupNode + '\n        with:\n          node-version-file: .nvmrc\n';
       expect(problemsOf(mutated(setup, named, 'build'))).toContain('without "package-manager-cache: false"');
       expect(problemsOf(mutated(setup, named.replace('with:', 'env:\n          package-manager-cache: false\n        with:'), 'release'))).toContain('without "package-manager-cache: false"');
       expect(problemsOf(mutated(setup, named + '          package-manager-cache: false\n', 'release'))).not.toContain('package-manager-cache');
@@ -625,12 +637,12 @@ describe('checkWorkflow — the release run', () => {
       for (const command of commands) {
         expect(problemsOf(mutated(installStep, `      - run: ${command}\n${installStep}`)), command).toContain('checks out or moves the tree after the guard');
       }
-      expect(problemsOf(mutated(installStep, `      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n${installStep}`))).toContain('checks out or moves the tree after the guard');
+      expect(problemsOf(mutated(installStep, `      - uses: ${checkoutPin}\n${installStep}`))).toContain('checks out or moves the tree after the guard');
       expect(problemsOf(mutated(installStep, `      - run: |\n          echo hi\n          git checkout main\n${installStep}`))).toContain('checks out or moves the tree after the guard');
     });
 
     it('allows only run steps after the guard', () => {
-      expect(problemsOf(mutated(installStep, `      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n${installStep}`))).toContain('uses an action after the guard');
+      expect(problemsOf(mutated(installStep, `      - uses: ${setupNode}\n${installStep}`))).toContain('uses an action after the guard');
     });
 
     it('wants the checkout with the whole history', () => {
@@ -675,7 +687,7 @@ describe('checkWorkflow — the release run', () => {
     const wanted = 'stages with exactly';
 
     it('has no checkout, because the repository’s code would run next to the token', () => {
-      const checkout = '      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n        with:\n          persist-credentials: false\n';
+      const checkout = '      - uses: ' + checkoutPin + '\n        with:\n          persist-credentials: false\n';
       const first = '      - uses: actions/download-artifact';
       expect(problemsOf(mutated(first, `${checkout}${first}`, 'stage'))).toContain('the job "stage" checks out the repository');
       expect(problemsOf(mutated(first, `${checkout}${first}`, 'stage'))).toContain('has exactly three steps');
@@ -691,7 +703,7 @@ describe('checkWorkflow — the release run', () => {
 
     it('uses no action but the download of the artifact and setup-node', () => {
       const first = '      - uses: actions/download-artifact';
-      expect(problemsOf(mutated(first, `      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0\n${first}`, 'stage'))).toContain('the job "stage" uses pnpm/action-setup@');
+      expect(problemsOf(mutated(first, `      - uses: ${pnpmPin}\n${first}`, 'stage'))).toContain('the job "stage" uses pnpm/action-setup@');
       expect(problemsOf(mutated(first, `      - uses: actions/cache@${'a'.repeat(40)}\n${first}`, 'stage'))).toContain('the job "stage" uses actions/cache@');
     });
 
@@ -798,13 +810,13 @@ describe('checkWorkflow — the release run', () => {
     });
 
     it('installs nothing and uses nothing but actions/* — setup-node without a cache', () => {
-      const setup = '      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        with:\n          node-version-file: .nvmrc\n';
+      const setup = '      - uses: ' + setupNode + '\n        with:\n          node-version-file: .nvmrc\n';
       const afterSetup = (step: string) => mutated(setup, `${setup}${step}`, 'release');
       expect(problemsOf(afterSetup('      - run: pnpm install --frozen-lockfile\n'))).toContain('installs or runs a package');
       expect(problemsOf(afterSetup('      - run: npx something\n'))).toContain('installs or runs a package');
-      expect(problemsOf(afterSetup('      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413\n'))).toContain('the job "release" uses pnpm/action-setup');
+      expect(problemsOf(afterSetup('      - uses: ' + pnpmSha + '\n'))).toContain('the job "release" uses pnpm/action-setup');
       expect(problemsOf(afterSetup('      - uses: actions/cache@v4\n'))).toContain('the job "release" uses actions/cache@v4');
-      expect(problemsOf(afterSetup('      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n        with:\n          persist-credentials: false\n'))).toContain('the job "release" uses actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09');
+      expect(problemsOf(afterSetup('      - uses: ' + checkoutPin + '\n        with:\n          persist-credentials: false\n'))).toContain(`the job "release" uses ${checkoutPin.split(' ')[0]}`);
     });
 
     it('has exactly four steps: the checkout, setup-node, the tag, the draft', () => {
@@ -836,7 +848,7 @@ describe('checkWorkflow — the release run', () => {
     it('reaches the tag and draft steps only', () => {
       expect(problemsOf(mutated(installStep, `${installStep.trimEnd()}\n        env:\n          ${token}\n`))).toContain('github.token outside the release job\'s tag and draft steps');
       expect(problemsOf(mutated(stagingStep, stagingStep.replace('        env:\n', `        env:\n          ${token}\n`)))).toContain('github.token outside');
-      expect(problemsOf(mutated('      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        with:\n          node-version-file: .nvmrc\n', `      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0\n        env:\n          ${token}\n        with:\n          node-version-file: .nvmrc\n`, 'release'))).toContain('github.token outside');
+      expect(problemsOf(mutated('      - uses: ' + setupNode + '\n        with:\n          node-version-file: .nvmrc\n', `      - uses: ${setupNode}\n        env:\n          ${token}\n        with:\n          node-version-file: .nvmrc\n`, 'release'))).toContain('github.token outside');
     });
 
     it('is no job-level or workflow-level env', () => {
@@ -865,7 +877,7 @@ describe('checkCiWorkflow — the pins of ci.yml', () => {
   });
 
   it('refuses an action on a tag, whichever way the key is written', () => {
-    const pinned = /actions\/checkout@[0-9a-f]{40} # v5\.1\.0/;
+    const pinned = pinOf(real, 'actions/checkout');
     expect(problemsOf(real.replace(pinned, 'actions/checkout@v5'))).toContain('"actions/checkout@v5" is not pinned to a commit');
     expect(problemsOf(real.replace(/uses: actions\/checkout@[0-9a-f]{40}/, '"uses": actions/checkout@v5'))).toContain('is not pinned to a commit');
     expect(problemsOf(real.replace(/uses: actions\/checkout@[0-9a-f]{40}/, 'uses : actions/checkout@main'))).toContain('is not pinned to a commit');
@@ -891,6 +903,7 @@ describe('checkCiWorkflow — the pins of ci.yml', () => {
 
 describe('checkLabelWorkflow — the release label check', () => {
   const real = readFileSync(join(root, '.github/workflows/pr-label.yml'), 'utf8');
+  const checkoutPin = pinOf(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'), 'actions/checkout');
 
   function repositoryWithLabelWorkflow(workflow: string): string {
     const directory = repositoryWith(unreleased);
@@ -936,7 +949,7 @@ describe('checkLabelWorkflow — the release label check', () => {
   });
 
   it('refuses a checkout, any action, a secret and the token', () => {
-    const checkout = '    steps:\n      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0\n';
+    const checkout = '    steps:\n      - uses: ' + checkoutPin + '\n';
     expect(problemsOf(mutated('    steps:\n', checkout))).toContain('a "uses:" step');
     expect(problemsOf(mutated('    steps:\n', '    steps:\n      - uses: someone/else@v1\n'))).toContain('a "uses:" step');
     expect(problemsOf(mutated('          CATEGORIES:', '          TOKEN: ${{ secrets.TOKEN }}\n          CATEGORIES:'))).toContain('a secret or the token');
