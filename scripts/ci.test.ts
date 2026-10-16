@@ -78,6 +78,23 @@ describe('pnpm run ci', () => {
     expect(job).toContain('--only build,test --shard "$SHARD/3"');
     expect(workflow).toMatch(/--only build,typecheck,lint,size,types:check,website:check,check-release\s*$/m);
   });
+
+  it('splits test:pgsql over two shard jobs behind an aggregator that keeps the name test:pgsql', () => {
+    const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+    const shards = /^  pgsql-shards:\n([\s\S]*?)(?=^  \S)/m.exec(workflow)?.[1] ?? '';
+    expect(/shard:\s*\[([^\]]*)\]/.exec(shards)?.[1]?.split(',').map((entry) => entry.trim())).toEqual(['1', '2']);
+    expect(shards).toContain('name: test:pgsql (${{ matrix.shard }}/2)');
+    expect(shards).toContain('--only build,test:pgsql --no-compose --shard "$SHARD/2"');
+    expect(shards).toMatch(/^ {6}pgsql:\n/m); // each shard has its own Postgres service
+    const aggregate = /^  pgsql:\n([\s\S]*?)(?=^  \S|(?![\s\S]))/m.exec(workflow)?.[1] ?? '';
+    expect(aggregate).toContain('name: test:pgsql\n');
+    expect(aggregate).toContain('needs: pgsql-shards');
+    expect(aggregate).toMatch(/^ {4}if: always\(\)$/m);
+    expect(aggregate).toContain('RESULT: ${{ needs.pgsql-shards.result }}');
+    expect(aggregate).toContain('test "$RESULT" = success');
+    expect(aggregate).not.toMatch(/uses:/);
+    expect(aggregate.replace(/^\s*RESULT: .*$/m, '')).not.toContain('${{');
+  });
 });
 
 describe('check:source — the old name is gone', () => {
