@@ -96,10 +96,10 @@ export type ReloadOptions<T = unknown> = Omit<TypedVisitOptions<T>, 'method' | '
 
 /** Programmatic navigation, from {@link useRouter}. */
 export interface Router<T = unknown> {
-  /** Resolves with the page the visit ended on (undefined if it did not end on one — see `Navigator.visit`). */
-  visit(url: string, options?: TypedVisitOptions<T>): Promise<PageObject | undefined>;
+  /** Resolves with the {@link PageInfo} of the page the visit ended on (undefined if it did not end on one). */
+  visit(url: string, options?: TypedVisitOptions<T>): Promise<PageInfo | undefined>;
   /** The current page again from the server, keeping scroll position and component state — `reload({ only: ['stats'] })`. */
-  reload(options?: ReloadOptions<T>): Promise<PageObject | undefined>;
+  reload(options?: ReloadOptions<T>): Promise<PageInfo | undefined>;
   /**
    * Fetches a page ahead of the visit — GET only, kept in memory for `cacheFor` ms (default 30 s); a visit of that
    * URL then shows it at once. What `<Link prefetch>` does on hover.
@@ -121,8 +121,11 @@ export interface Router<T = unknown> {
  * @internal What the hooks read: the page (or the layer) around them and how to navigate from it. A layer brings its own patches
  * and reloads; the page's are its history entry's — `useRouter()` makes them, attaching the optimistic patches on first use.
  */
-export interface RouterValue extends Omit<Router, 'optimistic' | 'reloading'>, Partial<Pick<Router, 'optimistic' | 'reloading'>> {
+export interface RouterValue extends Omit<Router, 'visit' | 'reload' | 'optimistic' | 'reloading'>, Partial<Pick<Router, 'optimistic' | 'reloading'>> {
   page: PageObject;
+  /** {@link Router.visit}, resolving with the page object — `useRouter()` turns it into the app's `PageInfo`. */
+  visit(url: string, options?: TypedVisitOptions): Promise<PageObject | undefined>;
+  reload(options?: ReloadOptions): Promise<PageObject | undefined>;
   /** The navigator — null while rendering on the server (for the hooks of this package). */
   navigator(): Navigator | null;
   /** Page components by name — `<Island>` renders its region's view with it. */
@@ -242,6 +245,8 @@ export function usePage<TProps extends object = {}>(): PageInfo<SharedProps & TP
   return useMemo(() => pageInfo<SharedProps & TProps>(page), [page]);
 }
 
+const infoOf = (page: PageObject | undefined): PageInfo | undefined => (page ? pageInfo(page) : undefined);
+
 /**
  * Programmatic navigation: `const { visit, reload, on } = useRouter(); visit('/users/2')`. Given the page's
  * controller (or props), the props of a partial reload are checked against the page:
@@ -252,7 +257,7 @@ export function usePage<TProps extends object = {}>(): PageInfo<SharedProps & TP
  * ```
  */
 export function useRouter<T = unknown>(): Router<T> {
-  const { visit, reload, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
+  const { visit: visitPage, reload: reloadPage, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
   const routes = useContext(RoutesContext);
   // The page's patches and reloads are those of its history entry — never in its props in memory. The optimistic patches
   // attach on first use: an app that never patches the page carries none of their code (a layer brings its own).
@@ -265,6 +270,9 @@ export function useRouter<T = unknown>(): Router<T> {
       ownReloading ? ownReloading(options as never) : reloadsOf((spec) => ({ target: pagePatches(navigator()), spec }), navigator()?.regionOwner ?? null, routes, options as Parameters<typeof reloadsOf>[3]),
     [ownReloading, navigator, routes],
   );
+  // The app sees the page's info, never the wire object the navigator resolves with.
+  const visit = useCallback(async (url: string, options?: VisitOptions) => infoOf(await visitPage(url, options)), [visitPage]);
+  const reload = useCallback(async (options?: ReloadOptions) => infoOf(await reloadPage(options)), [reloadPage]);
   return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as Router<T>, [visit, reload, prefetch, on, optimistic, reloading]);
 }
 
