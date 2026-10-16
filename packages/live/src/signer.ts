@@ -25,15 +25,19 @@ export class LiveTokens {
   }
 
   /**
-   * The scope under which the streams of an account are filed and closed — and the only form that crosses the live backend: an
-   * HMAC of the account's unkeyed scope, so what the backend carries (Redis messages, its logs) names no account to someone who
-   * only reads it. The backend itself is trusted: whoever can publish to it can close every account's streams (`'*'`) or replay a scope.
+   * The scope of an account under the current key: an HMAC of the account's unkeyed scope. See `accountScopes` for what
+   * crosses the live backend.
    */
   accountScope(unkeyed: string): string {
     return accountDigest(this.#keys[0]!, unkeyed);
   }
 
-  /** The scope under every key (the current one first): an end is published under each, so a rollout of `APP_KEY` misses no process. */
+  /**
+   * The scope under every key (the current one first). An end is published under each, and a stream is filed under each, so a
+   * rollout of `APP_KEY` misses no process in either direction: whichever key a process announces with, the streams of a process on another key hear it.
+   * Only these keyed forms cross the live backend, so what it carries (Redis messages, its logs) names no account to someone who only reads it.
+   * The backend itself is trusted: whoever can publish to it can close every account's streams (`'*'`) or replay a scope.
+   */
   accountScopes(unkeyed: string): string[] {
     return this.#keys.map((key) => accountDigest(key, unkeyed));
   }

@@ -176,7 +176,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const redactor = container.make(Redactor);
       container.make(session.SessionEndings).listenAccounts(async (scope) => {
         try {
-          // One message per key (`APP_KEY` and the previous ones): a process still filing under another key of a rollout hears it too.
+          // One message per key (`APP_KEY` and the previous ones): streams are filed under every key too, so a process on another key of a rollout hears it, whichever way round.
           const scopes = scope === '*' ? ['*'] : container.make(LiveTokens).accountScopes(scope);
           for (const keyed of scopes) await container.make(LiveBackend).end(keyed);
         } catch (error) {

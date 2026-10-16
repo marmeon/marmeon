@@ -35,7 +35,7 @@ function hubOf(backend: LiveBackend = new MemoryLiveBackend(), options: Partial<
 }
 
 async function open(hub: LiveHub, channels: string[], { scope = ADA, connection = 'tab-a-0001', lastEventId, account }: { scope?: string; connection?: string; lastEventId?: string; account?: string } = {}) {
-  const reader = new LiveStreamReader(await hub.open({ channels, scope, connection, lastEventId, account }));
+  const reader = new LiveStreamReader(await hub.open({ channels, scope, connection, lastEventId, accounts: account === undefined ? undefined : [account] }));
   cleanups.push(() => reader.close());
   cleanups.push(() => void everyHint.push(...reader.hints));
   return reader;
@@ -389,6 +389,47 @@ describe('the stream — hints, never data', () => {
     await Promise.all([grace.waitFor(1), guest.waitFor(1)]);
   });
 
+  it('a rollout of `APP_KEY`: an end announced under either key closes the streams of a process on the other, each once', async () => {
+    const k0 = liveKeys(new Uint8Array(32).fill(1));
+    const k1 = liveKeys(new Uint8Array(32).fill(2), [new Uint8Array(32).fill(1)]);
+    // `from` announces the end the way the live wiring does (one message per key it knows), `to` has the streams.
+    for (const [from, to] of [[k0, k1], [k1, k0], [k1, k1]] as const) {
+      const backend = new MemoryLiveBackend();
+      const hub = hubOf(backend);
+      const process = new LiveTokens(to);
+      const reader = new LiveStreamController(hub, process, 20, () => ADA, { check: async () => ({ kind: 'account', scope: 'acct-1' }) });
+      const stream = new LiveStreamReader(await reader.handle({ request: new Request(`http://app.test/_marmeon/live?connection=tab-a-0001&c=${encodeURIComponent(`${process.sign(ADA, 'users.1')}.users.1`)}`) } as never));
+      cleanups.push(() => stream.close());
+      await stream.hello();
+      for (const keyed of new LiveTokens(from).accountScopes('acct-1')) await backend.end(keyed);
+      await stream.closed;
+      expect(stream.events.map((each) => each.event)).toEqual(['hello']);
+      expect(hub.size).toBe(0);
+    }
+  });
+
+  it('a stream filed under two scopes is closed once by `*` and leaves every index', async () => {
+    const backend = new MemoryLiveBackend();
+    const hub = hubOf(backend);
+    const reader = await open(hub, ['users.1'], { connection: 'tab-a-0001', scope: 'session-a' });
+    const both = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', accounts: ['a:new', 'a:old'], connection: 'tab-b-0001' }));
+    cleanups.push(() => both.close());
+    await Promise.all([reader.hello(), both.hello()]);
+    const close = vi.spyOn(OpenStream.prototype, 'reconnect');
+    try {
+      await backend.end('*');
+      await both.closed;
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(hub.size).toBe(1);
+      // Neither scope names the stream any more: a later end finds nothing to close.
+      await backend.end('a:old');
+      await backend.end('a:new');
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      close.mockRestore();
+    }
+  });
+
   it('every account ended (\'*\'): every account\'s streams close, a guest\'s stays', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
@@ -426,17 +467,17 @@ describe('the stream — hints, never data', () => {
     await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
     const checkedAt = Date.now();
     await backend.end('a:ada');
-    const stale = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-a', account: 'a:ada', checkedAt, connection: 'tab-s-0001' }));
+    const stale = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-a', accounts: ['a:ada'], checkedAt, connection: 'tab-s-0001' }));
     cleanups.push(() => stale.close());
     await stale.closed;
     expect(stale.events.map((each) => each.event)).toEqual(['hello']);
     // Asked after the end: it stands.
-    const later = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', account: 'a:ada', checkedAt: Date.now() + 1, connection: 'tab-t-0001' }));
+    const later = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', accounts: ['a:ada'], checkedAt: Date.now() + 1, connection: 'tab-t-0001' }));
     cleanups.push(() => later.close());
     await later.hello();
     // `*` counts as well.
     await backend.end('*');
-    const star = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-c', account: 'a:eve', checkedAt: Date.now() - 5, connection: 'tab-u-0001' }));
+    const star = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-c', accounts: ['a:eve'], checkedAt: Date.now() - 5, connection: 'tab-u-0001' }));
     cleanups.push(() => star.close());
     await star.closed;
   });

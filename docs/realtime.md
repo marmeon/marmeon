@@ -170,7 +170,9 @@ with `Retry-After: 5` meanwhile, and tabs that connect again later catch up.
   and ask their browsers to connect again after one to ten seconds; each browser is then checked as above, so the ones still signed in
   keep their stream (the device that changed the password included) and the others get `end`. A guest's stream is never closed this way.
   Streams are filed under a scope keyed from `APP_KEY`, so what the live backend carries (Redis included) names no account to
-  someone who only reads it. The backend itself is trusted: whoever can publish to it can close streams. Every stream also closes after
+  someone who only reads it. During a rotation of `APP_KEY` (the new key first, the old one in `APP_PREVIOUS_KEYS`) a stream is filed
+  and an end is announced under every key the process knows, so an end announced by a process still on the old key closes the
+  streams of one on the new key, and the other way round. The backend itself is trusted: whoever can publish to it can close streams. Every stream also closes after
   `LIVE_MAX_STREAM_SECONDS` (15 minutes) and is checked again, which bounds every ending that was not announced. With
   `LIVE_DRIVER=memory` a command in the console reaches no running server: its streams close at the latest by then.
   The announcement is internal to `@marmeon/auth` and `@marmeon/session`: an app with its own `LiveAudience` gets the streams'
