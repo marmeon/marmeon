@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkApiLabelWorkflow, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkApiLabelWorkflow, checkCanaryWorkflow, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -1151,5 +1151,110 @@ describe('checkReleaseConfig', () => {
     writeFileSync(join(edited, '.github/release.yml'), `${readFileSync(join(root, '.github/release.yml'), 'utf8')}# my own category\n`);
     expectProblems(checkReleaseConfig(edited), ['.github/release.yml: missing or out of date — run node scripts/release-rules.ts']);
     expect(checkReleaseConfig(repositoryWith(unreleased))).toHaveLength(1);
+  });
+});
+
+describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
+  const real = readFileSync(join(root, '.github/workflows/kysely-canary.yml'), 'utf8');
+
+  function repositoryWithCanary(workflow: string): string {
+    const directory = repositoryWith(unreleased);
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true });
+    writeFileSync(join(directory, '.github/workflows/kysely-canary.yml'), workflow);
+    return directory;
+  }
+  /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
+  function mutated(from: string, to: string): string {
+    const result = real.replace(from, to);
+    expect(result, `the mutation of ${from} changed nothing`).not.toBe(real);
+    return result;
+  }
+  const problemsOf = (workflow: string) => checkCanaryWorkflow(repositoryWithCanary(workflow)).join('\n');
+  const build = "      - if: steps.kysely.outputs.run == 'true'\n        run: pnpm build\n";
+
+  it('passes the repository’s workflow', () => {
+    expectProblems(checkCanaryWorkflow(root), []);
+  });
+
+  it('refuses a missing workflow', () => {
+    expect(checkCanaryWorkflow(repositoryWith(unreleased)).join()).toContain('is missing');
+  });
+
+  it('refuses a pull request, a push and any other event, and wants the schedule', () => {
+    for (const event of ['pull_request', 'push', 'pull_request_target']) {
+      expect(problemsOf(mutated('  workflow_dispatch:\n', `  workflow_dispatch:\n  ${event}:\n`))).toContain('exactly schedule and workflow_dispatch');
+    }
+    expect(problemsOf(mutated("  schedule:\n    - cron: '17 5 * * 1'\n", ''))).toContain('exactly schedule and workflow_dispatch');
+  });
+
+  it('wants empty workflow permissions and nothing but contents: read in the job', () => {
+    expect(problemsOf(mutated('permissions: {}', 'permissions:\n  contents: read'))).toContain('must be "{}"');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: write\n'))).toContain('more than "contents: read"');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: read\n      id-token: write\n'))).toContain('more than "contents: read"');
+    expect(problemsOf(mutated('    permissions:\n      contents: read\n', ''))).toContain('must say "permissions: contents: read"');
+  });
+
+  it('wants every action pinned by its full SHA', () => {
+    expect(problemsOf(mutated('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', 'actions/checkout@v7'))).toContain('is not pinned to a commit');
+    expect(problemsOf(mutated('pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413', 'pnpm/action-setup@ea17c68'))).toContain('is not pinned to a commit');
+  });
+
+  it('refuses a cache action, saving or restoring, and any other action', () => {
+    const sha = '55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
+    expect(problemsOf(mutated(build, `      - uses: actions/cache@${sha}\n        with:\n          path: x\n          key: y\n${build}`))).toContain('only actions/checkout');
+    expect(problemsOf(mutated(build, `      - uses: actions/cache/save@${sha}\n${build}`))).toContain('only actions/checkout');
+    expect(problemsOf(mutated(build, `      - uses: actions/cache/restore@${sha}\n${build}`))).toContain('only actions/checkout');
+    expect(problemsOf(mutated(build, `      - uses: somebody/else@0123456789abcdef0123456789abcdef01234567\n${build}`))).toContain('only actions/checkout');
+  });
+
+  it('wants the checkout to leave no credentials behind', () => {
+    expect(problemsOf(mutated('          persist-credentials: false\n', ''))).toContain('without "persist-credentials: false"');
+    expect(problemsOf(mutated('          persist-credentials: false\n', '          persist-credentials: true\n'))).toContain('without "persist-credentials: false"');
+  });
+
+  it('wants setup-node without a cache', () => {
+    expect(problemsOf(mutated('          package-manager-cache: false\n', ''))).toContain('"package-manager-cache: false"');
+    expect(problemsOf(mutated('          package-manager-cache: false\n', '          package-manager-cache: false\n          cache: pnpm\n'))).toContain('no "cache:"');
+  });
+
+  it('refuses a secret and the token', () => {
+    const env = (line: string) => mutated('        env:\n          VERSION', `        env:\n          ${line}\n          VERSION`);
+    expect(problemsOf(env('TOKEN: ${{ secrets.TOKEN }}'))).toContain('a secret or the token');
+    expect(problemsOf(env('TOKEN: ${{ github.token }}'))).toContain('a secret or the token');
+    expect(problemsOf(env('TOKEN: ${{ secrets.GITHUB_TOKEN }}'))).toContain('a secret or the token');
+  });
+
+  it('refuses a cache input of any action, pnpm/action-setup included', () => {
+    const pnpmSetup = 'pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413';
+    expect(problemsOf(mutated(`${pnpmSetup} # v6.1.0, the version from "packageManager"\n`, `${pnpmSetup}\n        with:\n          cache: true\n`))).toContain('may not read or write a cache');
+    expect(problemsOf(mutated(`${pnpmSetup} # v6.1.0, the version from "packageManager"\n`, `${pnpmSetup}\n        with:\n          cache_save: true\n`))).toContain('may not read or write a cache');
+    expect(problemsOf(mutated('package-manager-cache: false', 'package-manager-cache: true'))).toContain('may not read or write a cache');
+  });
+
+  it('refuses an override of the release-age gate and the trust policy', () => {
+    const update = 'pnpm -r --filter "./packages/*" update "kysely@$VERSION"';
+    for (const override of ['--config.minimum-release-age=0', '--config.trust-policy=off', '--minimum-release-age=0', 'minimumReleaseAge=0', 'trustPolicy: off']) {
+      expect(problemsOf(mutated(update, `${update} ${override}`)), override).toContain('an override of the release-age gate');
+    }
+    expect(problemsOf(mutated('        env:\n          VERSION', '        env:\n          pnpm_config_minimum_release_age: 0\n          VERSION'))).toContain('an override of the release-age gate');
+    expect(problemsOf(mutated(update, `pnpm config set minimum-release-age 0 && ${update}`))).toContain('an override of the release-age gate');
+  });
+
+  it('refuses a script that changes pnpm-workspace.yaml but not one that reads it', () => {
+    const update = 'pnpm -r --filter "./packages/*" update "kysely@$VERSION"';
+    for (const write of ["sed -i '/^minimum/d' pnpm-workspace.yaml", "sed -ni '1p' pnpm-workspace.yaml", 'echo x > pnpm-workspace.yaml', 'echo x >> pnpm-workspace.yaml', 'rm pnpm-workspace.yaml', 'tee pnpm-workspace.yaml </dev/null']) {
+      expect(problemsOf(mutated(update, `${write}\n          ${update}`).replace('run: ' + write, 'run: |\n          ' + write)), write).toContain('changes pnpm-workspace.yaml');
+    }
+    expect(problemsOf(mutated(update, `cat pnpm-workspace.yaml\n          ${update}`))).not.toContain('changes pnpm-workspace.yaml');
+  });
+
+  it('allows no expression but a step output', () => {
+    const env = (line: string) => mutated('        env:\n          VERSION', `        env:\n          ${line}\n          VERSION`);
+    expect(problemsOf(env('CTX: ${{ toJSON(github) }}'))).toContain('only ${{ steps.<id>.outputs.<name> }} is allowed');
+    expect(problemsOf(env('OS: ${{ runner.os }}'))).toContain('only ${{ steps.<id>.outputs.<name> }} is allowed');
+  });
+
+  it('refuses an expression inside a script', () => {
+    expect(problemsOf(mutated('update "kysely@$VERSION"', 'update "kysely@${{ steps.kysely.outputs.version }}"'))).toContain('an expression inside a run script');
   });
 });

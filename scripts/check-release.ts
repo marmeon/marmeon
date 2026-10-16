@@ -7,7 +7,7 @@
  * GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
- * reads a checkout, installs nothing, holds no token) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
+ * reads a checkout, installs nothing, holds no token), `.github/workflows/kysely-canary.yml` (the scheduled Kysely canary: no token, no cache, no pull request) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
  *
  * Each rule in full: CONTRIBUTING.md, "Pull requests and releases".
  */
@@ -639,6 +639,84 @@ export function checkLabelWorkflow(repository: string): string[] {
   return problems;
 }
 
+/** Every indented `permissions:` of a workflow — a block of `scope: level` lines or an inline value — as the grants it lists. */
+function grantsOf(code: string): string[] {
+  return [...code.matchAll(/^([ \t]+)permissions:[ \t]*(\S.*)?$/gm)].flatMap((match) => {
+    if (match[2] !== undefined) return [match[2].trim()];
+    const own: string[] = [];
+    for (const line of code.slice(match.index + match[0].length).split('\n').slice(1)) {
+      if (line.trim() === '' || line.length - line.trimStart().length <= match[1]!.length) break;
+      own.push(line.trim());
+    }
+    return own;
+  });
+}
+
+/**
+ * The Kysely canary runs the newest Kysely, which nobody has pinned or reviewed, on a schedule: it holds no token and no secret,
+ * writes no cache (a cache it saved would reach the normal CI) and never runs for a pull request or a push.
+ */
+export function checkCanaryWorkflow(repository: string): string[] {
+  const where = 'kysely-canary.yml';
+  const file = join(repository, '.github/workflows/kysely-canary.yml');
+  if (!existsSync(file)) return [`${where}: .github/workflows/kysely-canary.yml is missing`];
+  const problems: string[] = [];
+  const code = readFileSync(file, 'utf8').replace(/(^|\s)#.*$/gm, '$1');
+
+  const events = eventsOf(code);
+  if (events?.slice().sort().join() !== 'schedule,workflow_dispatch') {
+    problems.push(`${where}: "on:" must be exactly schedule and workflow_dispatch (found ${events?.join(', ') || 'no event block'}) — a pull request or a push would run the unreviewed version with its trigger`);
+  }
+  if (!/^permissions:\s*\{\}\s*$/m.test(code)) problems.push(`${where}: the workflow's "permissions:" must be "{}" — only the job reads the contents`);
+  const grants = grantsOf(code);
+  const extra = grants.filter((grant) => grant !== 'contents: read');
+  if (extra.length > 0) problems.push(`${where}: a job asks for more than "contents: read" (${extra.join(', ')}) — the checkout is all it needs`);
+  if (!grants.includes('contents: read')) problems.push(`${where}: the job must say "permissions: contents: read" — the checkout needs it, and the workflow's own permissions are empty`);
+
+  for (const [, action] of code.matchAll(/["']?\buses["']?\s*:\s*["']?([^\s"']+)/g)) {
+    if (!/@[0-9a-f]{40}$/.test(action!)) problems.push(`${where}: "${action}" is not pinned to a commit — every action is pinned by its full SHA`);
+    if (!/^(?:actions\/(?:checkout|setup-node)|pnpm\/action-setup)@/.test(action!)) {
+      problems.push(`${where}: "${action}" — only actions/checkout, actions/setup-node and pnpm/action-setup; no action may save a cache here`);
+    }
+  }
+  for (const chunk of code.split(/^(?=\s*- )/m)) {
+    if (/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/checkout@/m.test(chunk) && !/^\s*persist-credentials:\s*false\s*$/m.test(chunk)) {
+      problems.push(`${where}: an actions/checkout step without "persist-credentials: false" — the token would stay in the checkout`);
+    }
+    if (/^\s*(?:- )?["']?uses["']?\s*:\s*actions\/setup-node@/m.test(chunk)) {
+      const withBlock = /^(\s*)with:\s*\n((?:\1\s+\S.*(?:\n|$))*)/m.exec(chunk)?.[2] ?? '';
+      if (!/^\s*package-manager-cache:\s*false\s*$/m.test(withBlock) || /^\s*cache:/m.test(withBlock)) {
+        problems.push(`${where}: an actions/setup-node step needs "package-manager-cache: false" and no "cache:" — the run must not touch a cache`);
+      }
+    }
+  }
+  if (/\bsecrets\b|\bgithub\s*(?:\.\s*token\b|\[\s*['"]token)|GITHUB_TOKEN/.test(code)) problems.push(`${where}: a secret or the token — the canary must hold none`);
+  for (const script of runScripts(code)) {
+    if (script.includes('${{')) problems.push(`${where}: an expression inside a run script ("${script.trim().split('\n')[0]}") — pass it through env:`);
+  }
+  // The workflow may read pnpm-workspace.yaml (the age gate) but not change it: a deleted setting would be an override with no flag in it.
+  for (const script of runScripts(code)) {
+    for (const line of script.split('\n').filter((candidate) => candidate.includes('pnpm-workspace'))) {
+      if (/>\s*\S*pnpm-workspace|\bsed\b[^|;&]*\s(?:-[a-zA-Z]*i|--in-place)|\b(?:tee|rm|mv|cp|truncate|ed|install|ln)\s|\b(?:perl|ruby|python3?)\b[^|;&]*\s-[a-zA-Z]*i/.test(line)) {
+        problems.push(`${where}: a run script changes pnpm-workspace.yaml ("${line.trim()}") — the canary may read the repository's settings, never weaken them`);
+      }
+    }
+  }
+  // The only value an expression may carry is a step's output (the resolved version); `github`, `env`, `runner` … stay out.
+  for (const [expression] of code.matchAll(/\$\{\{[\s\S]*?\}\}/g)) {
+    if (!/^\$\{\{\s*steps\.[\w-]+\.outputs\.[\w-]+\s*\}\}$/.test(expression)) problems.push(`${where}: the expression "${expression}" — only \${{ steps.<id>.outputs.<name> }} is allowed`);
+  }
+  // Any key about a cache (an action's `cache` input too: pnpm/action-setup can restore and save one), except the setup-node switch that turns it off.
+  for (const [, key, value] of code.matchAll(/^\s*(?:- )?["']?([\w-]*cache[\w-]*)["']?\s*:\s*(.*)$/gm)) {
+    if (!(key === 'package-manager-cache' && value!.trim() === 'false')) problems.push(`${where}: "${key}: ${value!.trim()}" — the canary may not read or write a cache`);
+  }
+  // The age gate and the trust policy of pnpm-workspace.yaml are why an install of an unreviewed version is safe at all.
+  if (/(?:minimum-?release-?age|trust-?policy)\w*\s*[:=]|--config\.|--(?:minimum|trust)|(?:npm|pnpm)_config_|\bconfig\s+set\b/i.test(code)) {
+    problems.push(`${where}: an override of the release-age gate, the trust policy or another pnpm setting — the install keeps the repository's settings`);
+  }
+  return problems;
+}
+
 /** The API label check: it checks out untrusted code, so it holds no token, installs nothing and runs one script of node-only imports. */
 export function checkApiLabelWorkflow(repository: string): string[] {
   const where = 'api-label.yml';
@@ -656,16 +734,8 @@ export function checkApiLabelWorkflow(repository: string): string[] {
     problems.push(`${where}: the pull_request types must be [${LABEL_EVENT_TYPES.join(', ')}] — the check has to follow every push and every label change`);
   }
   if (!/^permissions:\s*\{\}\s*$/m.test(code)) problems.push(`${where}: the workflow's "permissions:" must be "{}" — only the job reads the contents`);
-  // Every indented `permissions:` — a block of `scope: level` lines or an inline value — may grant `contents: read` and nothing else.
-  const grants = [...code.matchAll(/^([ \t]+)permissions:[ \t]*(\S.*)?$/gm)].flatMap((match) => {
-    if (match[2] !== undefined) return [match[2].trim()];
-    const own: string[] = [];
-    for (const line of code.slice(match.index + match[0].length).split('\n').slice(1)) {
-      if (line.trim() === '' || line.length - line.trimStart().length <= match[1]!.length) break;
-      own.push(line.trim());
-    }
-    return own;
-  });
+  // Every job's `permissions:` may grant `contents: read` and nothing else.
+  const grants = grantsOf(code);
   const extra = grants.filter((grant) => grant !== 'contents: read');
   if (extra.length > 0) problems.push(`${where}: a job asks for more than "contents: read" (${extra.join(', ')}) — the checkout is all it needs`);
   if (!grants.includes('contents: read')) problems.push(`${where}: the job must say "permissions: contents: read" — the checkout needs it, and the workflow's own permissions are empty`);
@@ -757,6 +827,7 @@ export function check(repository: string = root): string[] {
     ...checkCiWorkflow(repository),
     ...checkLabelWorkflow(repository),
     ...checkApiLabelWorkflow(repository),
+    ...checkCanaryWorkflow(repository),
     ...checkReleaseConfig(repository),
     ...checkTrust(repository),
     ...checkUpgrading(repository, UPGRADING_ANCHORS, packages[0]?.manifest.version),
@@ -777,7 +848,7 @@ if (import.meta.main) {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     const guide = Object.keys(UPGRADING_ANCHORS).length === 0 ? 'UPGRADING.md (no entry yet)' : `${upgrading} UPGRADING entries`;
     console.log(
-      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, .github/release.yml, ` +
+      `check-release: ${packages.length} packages at ${packages[0]?.manifest.version}, their changelogs, release.yml, pr-label.yml, api-label.yml, kysely-canary.yml, .github/release.yml, ` +
         `npm-trust.sh, ${guide} and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }
