@@ -6,7 +6,7 @@
  *   pnpm api:usage @marmeon/core --files     # and the files that import each name
  *   pnpm api:usage @marmeon/core --json      # the same as JSON
  *
- * The names come from the checked-in `api.md` (no build needed), the imports from the repository's files (`.ts`, `.tsx`, `.md`).
+ * The names come from the checked-in `api.md` (no build needed), the imports from the repository's files (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.md`).
  * The suggestion is only a first guess: whether a public signature names an export, or an app implements it, the reader checks.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -36,6 +36,8 @@ export interface NameUsage {
   readonly kit: string[];
   /** The code of other packages, by package directory. */
   readonly siblings: Record<string, string[]>;
+  /** The `bin/` launchers of other packages, by package directory: they may not import an internal subpath. */
+  readonly launchers: Record<string, string[]>;
   /** Tests anywhere (and fixtures). */
   readonly tests: string[];
   /** The entry points of other packages that re-export the name. */
@@ -60,6 +62,14 @@ const STATEMENT = /\b(?:import|export)\s+(?:type\s+)?([\w$\s{},*]*?)\s*\bfrom\s*
 /** `import('x')`, with the member when it is read directly: `import('x').Foo`. */
 const DYNAMIC = /\bimport\(\s*(['"])([^'"\n]+)\1\s*\)(?:\.([\w$]+))?/g;
 
+/** `const { a, b: c } = await import('x')` and `= require('x')`: the names are taken from the module like a named import. */
+const DESTRUCTURED = /\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:await\s+)?(?:import|require)\(\s*(['"])([^'"\n]+)\2\s*\)/g;
+/** `require('x')`, with the member when it is read directly. */
+const REQUIRE = /\brequire\(\s*(['"])([^'"\n]+)\1\s*\)(?:\.([\w$]+))?/g;
+/** Files that are no source of ours: build output, installed packages, what the framework generates. */
+const NOT_SOURCE = /(^|\/)(?:dist|node_modules|\.marmeon)\//;
+const CODE_FILE = /\.(?:[cm]?[jt]sx?|md)$/;
+
 /** The name a `{ … }` item takes from the module: `type A as B` is `A`. */
 function importedName(part: string): string {
   return part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]!.trim();
@@ -78,18 +88,27 @@ export function importsOf(text: string): Import[] {
     else if (/^[\w$]+$/.test(outside)) names.push('default');
     if (names.length > 0) found.push({ specifier, names });
   }
-  for (const match of text.matchAll(DYNAMIC)) found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined });
+  // A destructured import is read as names; what is left of the text is checked for whole and member imports.
+  const rest = text.replace(DESTRUCTURED, (_, clause: string, _quote: string, specifier: string) => {
+    // `a: b` and `a = 1` take `a`; a `...rest` or a computed key takes the module as a whole.
+    const parts = clause.split(',').map((part) => part.trim().split(/\s*[:=]\s*/)[0]!.trim()).filter((part) => part !== '');
+    const whole = parts.some((part) => !/^[\w$]+$/.test(part));
+    found.push({ specifier, names: whole || parts.length === 0 ? undefined : parts });
+    return '';
+  });
+  for (const match of rest.matchAll(DYNAMIC)) found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined });
+  for (const match of rest.matchAll(REQUIRE)) found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined });
   return found;
 }
 
 const TEST_FILE = /\.test\.|\.type-test\.|(^|\/)__fixtures__\//;
 const SHIPPED = /^packages\/[^/]+\/(?:stubs|template)\//;
 
-type Kind = { kind: 'docs' | 'apps' | 'kit' | 'test' } | { kind: 'sibling'; directory: string };
+type Kind = { kind: 'docs' | 'apps' | 'kit' | 'test' } | { kind: 'sibling' | 'launcher'; directory: string };
 
 /** Which group a file belongs to; `undefined` for what does not count (the package's own code and tests, scripts, the root). */
 function classify(path: string, ownDirectory: string): Kind | undefined {
-  if (path.startsWith('scripts/')) return undefined;
+  if (path.startsWith('scripts/') || NOT_SOURCE.test(path)) return undefined;
   const own = path.startsWith(`packages/${ownDirectory}/`);
   const shipped = SHIPPED.test(path);
   if (TEST_FILE.test(path)) return own && !shipped ? undefined : { kind: 'test' };
@@ -98,6 +117,9 @@ function classify(path: string, ownDirectory: string): Kind | undefined {
   if (path.startsWith('apps/') || path.startsWith('examples/')) return { kind: 'apps' };
   const directory = /^packages\/([^/]+)\/src\//.exec(path)?.[1];
   if (directory !== undefined && !own) return { kind: 'sibling', directory };
+  // A `bin/` launcher is framework code, but check:source lets only a package's `src/` import an internal subpath.
+  const launcher = /^packages\/([^/]+)\/bin\//.exec(path)?.[1];
+  if (launcher !== undefined && !own) return { kind: 'launcher', directory: launcher };
   return undefined;
 }
 
@@ -133,7 +155,7 @@ export function mentionsOf(text: string, known: ReadonlySet<string>, elsewhere: 
   return found;
 }
 
-type Groups = Pick<NameUsage, 'mentioned' | 'docs' | 'apps' | 'kit' | 'siblings' | 'tests' | 'reexportedBy'>;
+type Groups = Pick<NameUsage, 'mentioned' | 'docs' | 'apps' | 'kit' | 'siblings' | 'launchers' | 'tests' | 'reexportedBy'>;
 
 function suggest(name: string, usage: Groups, wholeImports: readonly string[], testingEntry: boolean, alsoIn: readonly string[]): Pick<NameUsage, 'suggestion' | 'reason'> {
   let result = decide(name, usage, testingEntry);
@@ -152,6 +174,7 @@ function decide(name: string, usage: Groups, testingEntry: boolean): Pick<NameUs
   }
   if (usage.mentioned.length > 0 && usage.docs.length === 0 && usage.apps.length === 0 && usage.kit.length === 0) return { suggestion: 'keep', reason: 'docs name it without an import — check the entry' };
   if (usage.docs.length > 0 || usage.apps.length > 0 || usage.kit.length > 0) return { suggestion: 'keep', reason: 'docs, an app or the kit use it' };
+  if (Object.keys(usage.launchers).length > 0) return { suggestion: 'keep', reason: "a package's launcher imports it; launchers may not import an internal subpath (check:source)" };
   if (usage.reexportedBy.length > 0) return { suggestion: 'keep', reason: 're-exported by another public entry' };
   if (siblings.length > 0) return { suggestion: 'internal', reason: `only ${siblings.join(', ')} use it` };
   if (appTests.length > 0) return { suggestion: 'keep', reason: 'only app tests use it — a test helper (testing) or part of the API?' };
@@ -206,7 +229,7 @@ export function usageOf(entry: string, repository: string = root, files: readonl
   const wholeImports = new Set<string>();
   const mentions = new Map<string, Set<string>>();
   for (const { path, text } of files) {
-    if (!/\.(?:tsx?|md)$/.test(path) || !classify(path, own.directory)) continue;
+    if (!CODE_FILE.test(path) || !classify(path, own.directory)) continue;
     if (classify(path, own.directory)!.kind === 'docs') {
       const elsewhere = new Set(importsOf(text).filter((statement) => statement.specifier !== entry).flatMap((statement) => statement.names ?? []));
       for (const name of mentionsOf(text, known, elsewhere)) mentions.set(name, (mentions.get(name) ?? new Set()).add(path));
@@ -234,10 +257,11 @@ export function usageOf(entry: string, repository: string = root, files: readonl
     for (const item of pkg.items.filter(isExport)) if (item.entry !== entry && known.has(item.name)) exportedBy.set(item.name, (exportedBy.get(item.name) ?? new Set()).add(item.entry));
   }
   const result = names.map((name): NameUsage => {
-    const usage: Groups = { mentioned: [...(mentions.get(name) ?? [])].sort(), docs: [], apps: [], kit: [], siblings: {}, tests: [], reexportedBy: [...(reexports.get(name) ?? [])].sort() };
+    const usage: Groups = { mentioned: [...(mentions.get(name) ?? [])].sort(), docs: [], apps: [], kit: [], siblings: {}, launchers: {}, tests: [], reexportedBy: [...(reexports.get(name) ?? [])].sort() };
     for (const path of [...(importers.get(name) ?? [])].sort()) {
       const kind = classify(path, own.directory)!;
       if (kind.kind === 'sibling') (usage.siblings[kind.directory] ??= []).push(path);
+      else if (kind.kind === 'launcher') (usage.launchers[kind.directory] ??= []).push(path);
       else if (kind.kind === 'docs') usage.docs.push(path);
       else if (kind.kind === 'apps') usage.apps.push(path);
       else if (kind.kind === 'kit') usage.kit.push(path);
@@ -268,10 +292,11 @@ export function renderUsage(usage: EntryUsage, withFiles = false): string {
       if (name.apps.length > 0) parts.push(`apps ${name.apps.length}`);
       if (name.kit.length > 0) parts.push(`kit ${name.kit.length}`);
       for (const [directory, list] of Object.entries(name.siblings)) parts.push(`${directory} ${list.length}`);
+      for (const [directory, list] of Object.entries(name.launchers)) parts.push(`${directory} launcher ${list.length}`);
       if (name.tests.length > 0) parts.push(`tests ${name.tests.length}`);
       if (name.reexportedBy.length > 0) parts.push(`re-exported by ${name.reexportedBy.join(', ')}`);
       lines.push(`  ${name.name}${parts.length > 0 ? `  — ${parts.join(' · ')}` : ''}`);
-      if (withFiles) for (const path of [...name.docs, ...name.mentioned, ...name.apps, ...name.kit, ...Object.values(name.siblings).flat(), ...name.tests]) lines.push(`      ${path}`);
+      if (withFiles) for (const path of [...name.docs, ...name.mentioned, ...name.apps, ...name.kit, ...Object.values(name.siblings).flat(), ...Object.values(name.launchers).flat(), ...name.tests]) lines.push(`      ${path}`);
     }
   }
   if (usage.wholeImports.length > 0) lines.push('', `Imported as a whole (the names they use are not known): ${usage.wholeImports.join(', ')}`);
