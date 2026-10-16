@@ -94,7 +94,7 @@ export class InstantVisits {
 }
 
 /** Instant visits as a feature: the placeholder while the page loads. Keeps no data — only where the page under it was scrolled. */
-export const instant = defineFeature('instant', (host) => {
+export const instant = /* @__PURE__ */ defineFeature('instant', (host) => {
   const visits = new InstantVisits(host);
   host.on('start', (visit) => visits.start(visit));
   host.on('position', () => visits.leaving);

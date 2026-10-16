@@ -6,7 +6,8 @@
  * bulk actions (the actions feature, then the table's prop reloaded — replacing what the page had) and an export URL. No UI framework.
  */
 import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
-import { loadHistoryFallback, Navigator, selection } from '@marmeon/http/client';
+import { selection } from '@marmeon/http/client/adapter';
+import { loadHistoryFallback, Navigator } from '@marmeon/http/client/adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TableController, tableStatus, type TableData } from './index.ts';
 

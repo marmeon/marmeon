@@ -359,7 +359,7 @@ Experimental has three forms, one source each: a whole entry point or package th
 snapshot takes out of its declaration and lists as the item `<Declaration>.<member>`; one command through `static experimental
 = true` on its class (`marmeon list` and `--help` say so). Experimental variables and commands stand in a section `## Experimental`
 of the package. `pnpm api:check` fails unless `docs/releases.md` › "What is public API" › "Experimental" names every experimental
-entry point (`@marmeon/x/y`), package and command (`marmeon tinker`) as inline code in a list item, and names nothing else. `api label` does not
+entry point (`@marmeon/x/y`), package and command (`marmeon tinker`) as inline code in a list item, and names nothing else. The helper types an experimental entry names but does not export are listed apart under "Experimental, referenced (not exported)", so a name nobody can import stays visible. `api label` does not
 enforce Experimental, but moving something from Stable to Experimental removes it from the stable surface: label it `breaking`.
 
 A class, function, constant or enum that an entry exports only as a type (`export type { Foo }`) carries a `// type-only` line:
@@ -663,7 +663,10 @@ The tests next to the kit's stubs (`packages/auth/stubs/react/modules/*/`) do no
 
 A UI adapter — `@marmeon/react` is the one there is — is a rendering layer. Everything else lives in the UI-free client core,
 `@marmeon/http/client`: the protocol, the history, the in-memory page cache, background requests and every security invariant.
-`packages/http/src/client/adapter.test.ts` is the proof: a complete adapter in plain DOM visits, goes back and forward, loads
+What an adapter builds on is `@marmeon/http/client/adapter` (experimental as a whole); `@marmeon/http/client` keeps what an app uses —
+the `hooks` and `tabSync` handles for `useFeature()` (typed `FeatureHandle`), `xsrfToken` and the types an adapter re-exports. Adapter code and the browser parts of other
+packages import the core from these two entries only, never from `@marmeon/http/internal`; a name an adapter lacks goes into
+`/client/adapter`. `packages/http/src/client/adapter.test.ts` is the proof, written against the two entries: a complete adapter in plain DOM visits, goes back and forward, loads
 deferred props, reloads partially, follows a 409, and drives islands, layers, actions with their optimistic patches, flash
 messages, the navigation guard, live validation, instant visits, remembered state and tab sync between two tabs — with no UI
 framework anywhere. New protocol, visit, region or cache logic goes into the core first, with its case in that test, then into
@@ -692,7 +695,7 @@ An adapter provides:
 
 `@marmeon/react` has no provider: `"marmeon": { "browser": ["src/**"] }` marks every source as browser code, so discovery
 registers nothing for it and `marmeon package:build` embeds no injection lists. A test bundles it for the browser and fails on any module
-outside its own sources, the client core, `@marmeon/http/page`, `@marmeon/http/protocol` and `@marmeon/router/url`, and on any npm package but React.
+outside its own sources, the client core and its adapter entry, `@marmeon/http/page`, `@marmeon/http/protocol` and `@marmeon/router/url`, and on any npm package but React.
 
 ### Client features
 

@@ -19,4 +19,4 @@ export interface QueryStateFeature {
 }
 
 /** Typed URL state: `navigator.use(queryState).create({ only: ['people'], debounce: 300 })`. */
-export const queryState = defineFeature('queryState', (host): QueryStateFeature => ({ create: (options, target) => new QueryState(target ?? host.navigator, options, target !== undefined) }));
+export const queryState = /* @__PURE__ */ defineFeature('queryState', (host): QueryStateFeature => ({ create: (options, target) => new QueryState(target ?? host.navigator, options, target !== undefined) }));

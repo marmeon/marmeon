@@ -8,7 +8,8 @@
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../protocol.ts';
-import { assertQueryPage, linkQuery, Navigator, pageQuery, queryState, queryUrl, withoutDefaults } from './index.ts';
+import { assertQueryPage, linkQuery, Navigator, queryState, queryUrl, withoutDefaults } from './adapter.ts';
+import { pageQuery } from './index.ts';
 
 const DEFAULTS = { q: '', sort: 'name' };
 const PEOPLE = ['Ada Lovelace', 'Alan Turing', 'Grace Hopper', 'Hedy Lamarr'];

@@ -14,4 +14,4 @@ export interface RememberFeature {
 }
 
 /** Remembered state: `navigator.use(remember).of(owner.entry)`. */
-export const remember = defineFeature('remember', (host): RememberFeature => ({ of: (entry) => host.entry(REMEMBERED, entry) }));
+export const remember = /* @__PURE__ */ defineFeature('remember', (host): RememberFeature => ({ of: (entry) => host.entry(REMEMBERED, entry) }));

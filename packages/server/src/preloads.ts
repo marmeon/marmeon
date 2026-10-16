@@ -1,6 +1,6 @@
 import { escapeHtml } from '@marmeon/core';
 import type { PageObject } from '@marmeon/http';
-import { pageName } from '@marmeon/http/page';
+import { pageName } from '@marmeon/http/internal';
 
 /** One chunk of Vite's `manifest.json` — the fields the server reads. */
 export interface ManifestChunk {

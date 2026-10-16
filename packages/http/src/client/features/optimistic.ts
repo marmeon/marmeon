@@ -111,7 +111,7 @@ export class PagePatches {
  * patches (`visit({ optimistic })`, a form's) shows them until its answer lands, and rolls them back when it fails — the core
  * does that, for patches of any target (a layer and an island keep their own).
  */
-export const optimistic = defineFeature('optimistic', (host) => {
+export const optimistic = /* @__PURE__ */ defineFeature('optimistic', (host) => {
   const patches = new PagePatches(host);
   host.on('paint', (key, page) => patches.paint(key, page));
   return patches;

@@ -1,4 +1,4 @@
-import { loadUploads } from '@marmeon/http/client';
+import { loadUploads } from '@marmeon/http/client/adapter';
 import type { Upload } from '@marmeon/http/page';
 import { useCallback, useEffect, useRef, type InputHTMLAttributes } from 'react';
 import { useRouterContext } from './app.tsx';

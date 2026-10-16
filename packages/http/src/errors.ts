@@ -1,6 +1,6 @@
 import { Logger, Redactor, token, type Translator } from '@marmeon/core';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, statusText, ValidationError } from '@marmeon/router';
-import { ERROR_PAGE, type ErrorPageProps } from './page.ts';
+import { ERROR_PAGE, type ErrorPageProps } from './page-support.ts';
 import { PAGE_HEADER } from './protocol.ts';
 import { RedirectResult } from './redirect.ts';
 import { view } from './view.ts';

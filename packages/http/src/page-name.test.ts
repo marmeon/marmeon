@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageName } from './page.ts';
+import { pageName } from './page-support.ts';
 
 describe('pageName', () => {
   it('names only the views of the app’s own modules', () => {

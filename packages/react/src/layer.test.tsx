@@ -14,7 +14,7 @@ import { useLayer, type LayerState } from './layer.tsx';
 import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
-import { loadHistoryFallback } from '@marmeon/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 
 // happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];

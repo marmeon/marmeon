@@ -1,25 +1,5 @@
-import {
-  defaultFormEntries,
-  fieldPath,
-  firstErrors,
-  FORM_METHOD_FIELD,
-  FORM_TOKEN_FIELD,
-  formEntries,
-  formObject,
-  isSensitiveRememberField,
-  linkQuery,
-  liveValidationOnFirstUse,
-  resolveRoute,
-  restoreFormEntries,
-  sameEntries,
-  sensitiveControl,
-  type Confirm,
-  type LooksLikePassword,
-  type FormLiveValidation,
-  type VisitMethod,
-  type VisitOptions,
-  type VisitProgress,
-} from '@marmeon/http/client';
+import { defaultFormEntries, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, linkQuery, liveValidationOnFirstUse, restoreFormEntries, sameEntries, sensitiveControl, type FormLiveValidation } from '@marmeon/http/client/adapter';
+import { isSensitiveRememberField, resolveRoute, type Confirm, type LooksLikePassword, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, ParamsOf, RouteQueryOf, Routes } from '@marmeon/http/page';
 import {
   useCallback,

@@ -6,13 +6,6 @@
 
 Types from other packages: none
 
-### Referenced, not exported
-
-```ts
-// DEFINITION
-declare const DEFINITION: unique symbol;
-```
-
 ### Experimental
 
 ```ts
@@ -366,6 +359,13 @@ export interface StoreUsage {
 export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications' | 'logs' | 'exceptions' | 'schedule' | 'live' | 'events' | 'commands';
 // defineDevtools
 export declare function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition;
+```
+
+### Experimental, referenced (not exported)
+
+```ts
+// DEFINITION
+declare const DEFINITION: unique symbol;
 ```
 
 ## `@marmeon/devtools/client`

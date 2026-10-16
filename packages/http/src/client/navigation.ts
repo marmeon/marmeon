@@ -15,8 +15,9 @@ import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } 
 import { PropLoader } from './deferred.ts';
 import { DocumentChange } from './document-change.ts';
 import { VisitEmitter, type Visit, type VisitCallbacks, type VisitEvent, type VisitEvents, type VisitProgress } from './events.ts';
-import { emptySlot, emptySlots, type EntryStack, type Feature, type FeatureHook, type FeatureHooks, type PendingVisit, type Slot, type VisitPart } from './feature.ts';
-import type { NavigationGuard } from './features/guard.ts';
+import type { FeatureHandle } from './handle.ts';
+import { emptySlot, emptySlots, featureOf, type EntryStack, type Feature, type FeatureHook, type FeatureHooks, type PendingVisit, type Slot, type VisitPart } from './feature.ts';
+import type { IgnoredGuard } from './features/guard.ts';
 import type { InstantVisit } from './features/instant.ts';
 import type { DevtoolsGlobal } from './features/devtools.ts';
 import type { LayerStack } from './features/layers.ts';
@@ -38,7 +39,7 @@ export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
 export { DEFAULT_LEAVE_MESSAGE } from './confirm.ts';
 export { DEFAULT_NEW_VERSION_MESSAGE } from './document-change.ts';
 export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitProgress, VersionChange } from './events.ts';
-export type { NavigationGuard } from './features/guard.ts';
+export type { IgnoredGuard, NavigationGuard } from './features/guard.ts';
 export type { InstantVisit } from './features/instant.ts';
 export type { PrefetchOptions } from './features/prefetch.ts';
 export type { RevalidateOnBack } from './features/revalidate-on-back.ts';
@@ -115,7 +116,7 @@ export interface VisitOptions extends VisitCallbacks {
    * Leaves unsaved changes without asking (the navigation guard): `true` past every guard — a form's own submit passes
    * its guard (`useForm(…, { guard })` does), so the others still ask.
    */
-  ignoreGuards?: true | readonly NavigationGuard[];
+  ignoreGuards?: true | readonly IgnoredGuard[];
   /**
    * Keep the URL of the page on screen, though the request went elsewhere — "load more" with `data: { cursor }`: a reload
    * starts the list over instead of showing one later page alone.
@@ -244,7 +245,7 @@ export interface NavigatorOptions {
    * The features to attach from the start — default: none. An adapter attaches each where it is used
    * (`navigator.use(feature)`, or `navigator.load(loader)` on first use).
    */
-  features?: readonly Feature[] | undefined;
+  features?: readonly FeatureHandle<unknown>[] | undefined;
   /**
    * How the layers load when the server answers with one and nothing attached them yet — default {@link loadLayers}. An
    * adapter loads its own layer UI with it, and uses the same loader where layers open, so the navigator knows it is loaded.
@@ -434,7 +435,8 @@ export class Navigator {
    * Attaches a feature: its setup runs once per navigator — the first call — and what it returned comes back on every
    * call. What adapters use of a feature they get from here (`useFeature(islands)` in React).
    */
-  use<API>(feature: Feature<API>): API {
+  use<API>(handle: FeatureHandle<API>): API {
+    const feature = featureOf(handle);
     if (!this.#features.has(feature)) {
       const outer = this.#order;
       this.#order = feature.order ?? Infinity;

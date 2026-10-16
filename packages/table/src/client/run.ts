@@ -2,7 +2,9 @@
  * A table's row or bulk action as an action request, then the table's prop reloaded. A chunk of its own, loaded with a table's
  * first run: a page that only shows a table carries neither the actions feature nor the page's reloads.
  */
-import { actions, optimistic, type ActionOutcome, type Confirm, type Navigator } from '@marmeon/http/client';
+import type { ActionOutcome, Confirm } from '@marmeon/http/client';
+import { actions, optimistic } from '@marmeon/http/client/adapter';
+import type { Navigator } from '@marmeon/http/client/adapter';
 
 export interface TableRun {
   readonly url: string;

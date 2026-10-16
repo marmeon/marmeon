@@ -1,20 +1,5 @@
-import {
-  FORM_METHOD_FIELD,
-  FORM_TOKEN_FIELD,
-  HOVER_PREFETCH_DELAY,
-  isCurrentLink,
-  linkQuery,
-  loadInstant,
-  prefetchTriggers,
-  prefetchUrlOf,
-  resolveRoute,
-  visitUrlOf,
-  type Confirm,
-  type PrefetchTrigger,
-  type ViewTransitionOption,
-  type VisitMethod,
-  type VisitOptions,
-} from '@marmeon/http/client';
+import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY, isCurrentLink, linkQuery, loadInstant, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
+import { resolveRoute, type Confirm, type PrefetchTrigger, type ViewTransitionOption, type VisitMethod, type VisitOptions } from '@marmeon/http/client';
 import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { loadLayers, useRouterContext, type PartialReloadOptions } from './app.tsx';

@@ -1,5 +1,6 @@
-import type { Navigator } from '@marmeon/http/client';
-import { scriptJson, type DeferredResult, type RegionResult } from '@marmeon/http/page';
+import type { Navigator } from '@marmeon/http/client/adapter';
+import type { DeferredResult, RegionResult } from '@marmeon/http/page';
+import { scriptJson } from '@marmeon/http/client/adapter';
 import { createContext, Suspense, use, useContext, useEffect, useId, useState } from 'react';
 
 /**

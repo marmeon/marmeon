@@ -46,6 +46,11 @@
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     },
+    "./client/adapter": {
+      "@marmeon/source": "./src/client/adapter.ts",
+      "types": "./dist/client/adapter.d.ts",
+      "default": "./dist/client/adapter.js"
+    },
     "./internal": {
       "@marmeon/source": "./src/internal.ts",
       "types": "./dist/internal.d.ts",
@@ -71,6 +76,10 @@
       "./client": {
         "types": "./dist/client/index.d.ts",
         "default": "./dist/client/index.js"
+      },
+      "./client/adapter": {
+        "types": "./dist/client/adapter.d.ts",
+        "default": "./dist/client/adapter.js"
       },
       "./internal": {
         "types": "./dist/internal.d.ts",
@@ -110,11 +119,15 @@
     "browser": [
       "src/client/**",
       "src/page.ts",
+      "src/page-support.ts",
       "src/protocol.ts",
       "src/sensitive-fields.ts",
       "src/upload-header.ts",
       "src/live-protocol.ts",
       "src/tab-sync-protocol.ts"
+    ],
+    "experimental": [
+      "./client/adapter"
     ]
   }
 }

@@ -1,6 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LAYER_BACKDROP, type FlashMessage } from '../page.ts';
+import type { FlashMessage } from '../page.ts';
+import { LAYER_BACKDROP } from '../page-support.ts';
 import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, type RegionObject } from '../protocol.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
@@ -27,6 +28,7 @@ import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
 import { visitUrlOf } from './links.ts';
+import { Navigator } from './navigation.ts';
 import { islands, type IslandsFeature } from './features/islands.ts';
 import { REMEMBERED } from './remember.ts';
 import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, type FakeEventSource } from './test-window.ts';
@@ -212,12 +214,16 @@ const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember,
 
 /**
  * Live props are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
- * channel — the matrix records that very object (its setup swapped while a tab is stocked), not a wrapper the core would not know.
+ * channel. A feature is frozen, so the matrix cannot swap its setup: it hands `use` the recording stand-in for that very
+ * feature instead, wherever the core attaches it.
  */
 function recordInPlace(feature: Feature, into: Recorded[]): () => void {
-  const setup = feature.setup;
-  (feature as { setup: Feature['setup'] }).setup = recorded({ ...feature, setup }, into).setup;
-  return () => void ((feature as { setup: Feature['setup'] }).setup = setup);
+  const stand = recorded(feature, into);
+  const use = Navigator.prototype.use;
+  const spy = vi.spyOn(Navigator.prototype, 'use').mockImplementation(function (this: Navigator, handle: Parameters<Navigator['use']>[0]) {
+    return use.call(this, handle === feature ? stand : handle);
+  } as Navigator['use']);
+  return () => spy.mockRestore();
 }
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */

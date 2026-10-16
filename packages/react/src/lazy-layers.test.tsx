@@ -5,10 +5,8 @@ import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/prot
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadHistoryFallback } from '@marmeon/http/client';
 
 // happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
-const HISTORY = [await loadHistoryFallback()];
 
 /**
  * Layers as a chunk of their own: the core loads them — with the React layer stack, one round trip —
@@ -97,6 +95,9 @@ const loadedLate = () => info.mock.calls.filter(([message]) => String(message).i
 async function mount(initial: PageObject) {
   const { MarmeonApp, resolve } = await freshApp();
   const { createRoot } = await import('react-dom/client');
+  // From the same fresh modules as the app: a feature of another copy of the core is none of this navigator's.
+  const { loadHistoryFallback } = await import('@marmeon/http/client/adapter');
+  const HISTORY = [await loadHistoryFallback()];
   const Component = await resolve(initial.component);
   root = createRoot($('#app')!);
   await act(async () => root!.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));

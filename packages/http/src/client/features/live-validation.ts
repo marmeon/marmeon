@@ -18,7 +18,7 @@ export interface LiveValidationFeature {
   form(url: string, options: Omit<LiveValidationOptions, 'send'>): LiveValidation;
 }
 
-export const liveValidation = defineFeature('liveValidation', (host): LiveValidationFeature => {
+export const liveValidation = /* @__PURE__ */ defineFeature('liveValidation', (host): LiveValidationFeature => {
   const actions = actionHost(host);
   const validate = (url: string, request: LiveValidationRequest) => sendLiveValidation(actions, url, request);
   return { validate, form: (url, options) => new LiveValidation({ ...options, send: (request) => validate(url, request) }) };

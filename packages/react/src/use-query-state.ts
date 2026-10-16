@@ -1,4 +1,6 @@
-import { assertQueryPage, pageQuery, queryState, resolveRoute, type QueryState, type QueryStateOptions, type QueryUpdate } from '@marmeon/http/client';
+import { assertQueryPage, type QueryState } from '@marmeon/http/client/adapter';
+import { pageQuery, resolveRoute, type QueryStateOptions, type QueryUpdate } from '@marmeon/http/client';
+import { queryState } from '@marmeon/http/client/adapter';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, Routes, RouteQueryOf } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouterContext, type PartialReloadOptions } from './app.tsx';

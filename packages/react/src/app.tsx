@@ -1,33 +1,8 @@
-import {
-  loadInstant,
-  loadPageMessages,
-  markBusy,
-  Navigator,
-  laterTarget,
-  loadOptimistic,
-  pageLocale,
-  prefetchWith,
-  RegionOwner,
-  TitleRegistry,
-  type ConfirmAnswer,
-  type ConfirmRequest,
-  type Feature,
-  type Layer,
-  type LayerStack as LayersFeature,
-  type OptimisticUpdate,
-  type PatchTarget,
-  type PrefetchOptions,
-  type Reloading,
-  type RegionOwner as RegionOwnerType,
-  type ProgressIndicator,
-  type TitleTemplate,
-  type ViewTransitionOption,
-  type VisitException,
-  type VisitEvent,
-  type VisitEvents,
-  type VisitOptions,
-} from '@marmeon/http/client';
-import { matchesPath, pageInfo, type BrowserRouteNameInput, type CheckIslandRouteName, type PageInfo, type PageProps, type RouteManifest, type SharedProps } from '@marmeon/http/page';
+import type { FeatureHandle } from '@marmeon/http/client';
+import { loadInstant, loadPageMessages, markBusy, Navigator, laterTarget, loadOptimistic, pageLocale, prefetchWith, RegionOwner, TitleRegistry, type Feature, type Layer, type LayerStack as LayersFeature, type PatchTarget, type RegionOwner as RegionOwnerType } from '@marmeon/http/client/adapter';
+import type { ConfirmAnswer, ConfirmRequest, OptimisticUpdate, PrefetchOptions, Reloading, ProgressIndicator, TitleTemplate, ViewTransitionOption, VisitException, VisitEvent, VisitEvents, VisitOptions } from '@marmeon/http/client';
+import type { BrowserRouteNameInput, CheckIslandRouteName, PageInfo, PageProps, RouteManifest, SharedProps } from '@marmeon/http/page';
+import { matchesPath, pageInfo } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
 import type { Catalog, MessageLoader } from '@marmeon/i18n/messages';
 import {
@@ -242,11 +217,11 @@ export function useRouterContext(): RouterValue {
 }
 
 /**
- * A feature of the client core — what an adapter component uses of it, `useFeature(islands).region(…)`:
+ * A feature of the client core — what an adapter component uses of it, `useFeature(hooks).on(…)`:
  * attached to the app's navigator on first use, once per navigator (`navigator.use`). In the browser only — there is no
  * navigator while rendering on the server.
  */
-export function useFeature<API>(feature: Feature<API>): API {
+export function useFeature<API>(feature: FeatureHandle<API>): API {
   const navigator = useRouterContext().navigator();
   if (!navigator) {
     throw new Error(

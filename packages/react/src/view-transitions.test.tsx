@@ -7,7 +7,7 @@
  * `startTransition`, so nothing a transition changes (Suspense, the order of a placeholder and its page, the scroll, the guard, the
  * render's promise) changes. With it, the render's promise still resolves only once the page is committed.
  */
-import { loadHistoryFallback, loadInstant, type Navigator } from '@marmeon/http/client';
+import { loadHistoryFallback, loadInstant, type Navigator } from '@marmeon/http/client/adapter';
 import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { Suspense, use, ViewTransition, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

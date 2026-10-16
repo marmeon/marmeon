@@ -1,14 +1,6 @@
-import {
-  hasServerMarkup,
-  loadHistoryFallback,
-  loadPageMessages,
-  loadTabSync,
-  readInitialPage,
-  rootElement,
-  type DevtoolsGlobal,
-  type Feature,
-  type TitleTemplate,
-} from '@marmeon/http/client';
+import { hasServerMarkup, loadHistoryFallback, loadPageMessages, loadTabSync, readInitialPage, rootElement, type Feature } from '@marmeon/http/client/adapter';
+import type { TitleTemplate } from '@marmeon/http/client';
+import type { DevtoolsGlobal } from '@marmeon/http/client/adapter';
 import type { RouteManifest } from '@marmeon/http/page';
 import type { MessageLoader } from '@marmeon/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';

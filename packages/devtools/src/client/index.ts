@@ -6,7 +6,7 @@
  * Loaded before the app's entry, it sets the dev hook (`__MARMEON_DEVTOOLS_HOOK__`): when the app makes its navigator, the bar
  * attaches its data feature to it and shows itself — plain DOM in a shadow root, bottom right (`Alt+Shift+D`).
  */
-import type { DevtoolsGlobal } from '@marmeon/http/client';
+import type { DevtoolsGlobal } from '@marmeon/http/client/adapter';
 import { DevtoolsBar } from './bar.ts';
 import { installDevtoolsHook } from './hook.ts';
 

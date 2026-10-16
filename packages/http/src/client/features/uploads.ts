@@ -77,7 +77,7 @@ async function failure(response: Response, field: string): Promise<string> {
   }
 }
 
-export const uploads = defineFeature('uploads', (host): UploadsFeature => {
+export const uploads = /* @__PURE__ */ defineFeature('uploads', (host): UploadsFeature => {
   let next = 0;
   const all = () => host.document(UPLOADS);
 

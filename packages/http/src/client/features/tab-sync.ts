@@ -8,6 +8,7 @@
 import { DOCUMENT_HEADER, SESSION_PATH, TAB_SYNC_CHANNEL, type TabSyncMessage } from '../../tab-sync-protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
+import type { FeatureHandle } from '../handle.ts';
 import { isHistoryState, newKey } from '../history.ts';
 import { notify } from '../notify.ts';
 
@@ -49,7 +50,7 @@ interface TabSyncState {
   checking?: Promise<void> | undefined;
 }
 
-const STATE = slot<TabSyncState>(
+const STATE = /* @__PURE__ */ slot<TabSyncState>(
   'tab-sync',
   () => ({}),
   (state) => {
@@ -71,7 +72,7 @@ export function isTabSyncMessage(data: unknown): data is TabSyncMessage {
 /**
  * The tab-sync feature. Its hooks run after the guard's (order 9): a Back/Forward the guard stops never reaches it.
  */
-export const tabSync = defineFeature(
+export const tabSync = /* @__PURE__ */ defineFeature(
   'tabSync',
   (host: FeatureHost): TabSync => {
     const { window: win, history } = host;
@@ -230,3 +231,6 @@ export const tabSync = defineFeature(
   },
   9,
 );
+
+/** Tab sync as an app passes it to its adapter: `useFeature(tabSync).on('epoch', …)`. See docs/client-features.md#tab-sync. */
+export const tabSyncHandle: FeatureHandle<TabSync> = tabSync;

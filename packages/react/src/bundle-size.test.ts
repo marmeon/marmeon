@@ -364,7 +364,7 @@ describe('no injection metadata in the browser', () => {
 
   it('the browser lists in package.json cover every module a browser entry bundles', async () => {
     const entries = [
-      `import * as client from '@marmeon/http/client';\nimport * as page from '@marmeon/http/page';\nglobalThis.__keep = { client, page };\n`,
+      `import * as client from '@marmeon/http/client';\nimport * as adapter from '@marmeon/http/client/adapter';\nimport * as page from '@marmeon/http/page';\nglobalThis.__keep = { client, adapter, page };\n`,
       `import * as react from '@marmeon/react';\nimport * as messages from '@marmeon/i18n/messages';\nglobalThis.__keep = { react, messages };\n`,
     ];
     const modules = (await Promise.all(entries.map((entry) => appBundle(entry, { external: /^react(-dom)?(\/|$)/ })))).flatMap((built) => built.modules);

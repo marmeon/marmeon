@@ -6,19 +6,6 @@
 
 Types from other packages: none
 
-### Referenced, not exported
-
-```ts
-// LiveBackend
-export interface LiveBackend {
-    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
-    end(scope: string): Promise<void>;
-    seqs(channels: readonly string[]): Promise<number[]>;
-    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
-    close(): Promise<void>;
-}
-```
-
 ### Augments
 
 ```ts
@@ -137,6 +124,19 @@ export declare function notificationsChannel(recipient: {
     readonly type: string;
     readonly id: string | number;
 }): string;
+```
+
+### Experimental, referenced (not exported)
+
+```ts
+// LiveBackend
+export interface LiveBackend {
+    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
+    end(scope: string): Promise<void>;
+    seqs(channels: readonly string[]): Promise<number[]>;
+    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
+    close(): Promise<void>;
+}
 ```
 
 ## Experimental

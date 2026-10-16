@@ -9,7 +9,7 @@
  * :root { --marmeon-progress-color: #e11d48; --marmeon-progress-height: 2px; }
  * ```
  */
-import type { Navigator } from './navigation.ts';
+import type { VisitEvents } from './events.ts';
 
 export interface ProgressOptions {
   /** Milliseconds before the bar shows — fast visits never show it. Default 250. */
@@ -23,11 +23,16 @@ export const DEFAULT_PROGRESS_DELAY = 250;
 /** The attribute on the bar's element (for styles and tests). */
 export const PROGRESS_ATTRIBUTE = 'data-marmeon-progress';
 
+/** What a progress indicator listens to: the navigator's `start`, `progress` and `finish` events. */
+export interface ProgressSource {
+  on<E extends 'start' | 'progress' | 'finish'>(event: E, listener: VisitEvents[E]): () => void;
+}
+
 /**
  * A progress indicator an adapter starts with its navigator: attached to the navigator's visit events, it returns the
  * function that removes it. `progressBar(options)` is the core's; an app may pass its own.
  */
-export type ProgressIndicator = (navigator: Pick<Navigator, 'on'>) => () => void;
+export type ProgressIndicator = (navigator: ProgressSource) => () => void;
 
 /** The progress bar as an adapter's indicator: `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`. */
 export function progressBar(options: ProgressOptions = {}): ProgressIndicator {
@@ -35,7 +40,7 @@ export function progressBar(options: ProgressOptions = {}): ProgressIndicator {
 }
 
 /** Shows a progress bar while the navigator's requests run. Returns the function that removes it. */
-export function showProgress(navigator: Pick<Navigator, 'on'>, { delay = DEFAULT_PROGRESS_DELAY, color = '#4f46e5' }: ProgressOptions = {}, doc: Document = document): () => void {
+export function showProgress(navigator: ProgressSource, { delay = DEFAULT_PROGRESS_DELAY, color = '#4f46e5' }: ProgressOptions = {}, doc: Document = document): () => void {
   let running = 0;
   let element: HTMLElement | undefined;
   /** The bar of the last visit, fading out. */

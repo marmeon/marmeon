@@ -3,7 +3,8 @@
  * app's data it shows is read from the data feature's slots when it renders and kept nowhere else; `sessionStorage` holds
  * only whether the panel is open and which tab — never props.
  */
-import type { DevtoolsFeature, Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client';
+import type { DevtoolsFeature } from '@marmeon/http/client/adapter';
+import type { Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
 import type { AnyEntry, RequestContent } from '../entry.ts';
 import { h, json, jsonBytes, size, STYLES, type Child } from './dom.ts';

@@ -8,12 +8,7 @@ export { isJsonResult } from './json.ts';
 export { isIslandResult } from './island.ts';
 export { isCloseLayerResult, isLayerResult } from './layer.ts';
 export { isRedirectResult } from './redirect.ts';
-export {
-  ERROR_PAGE,
-  LAYER_BACKDROP,
-  pageName,
-  scriptJson,
-} from './page.ts';
+export { ERROR_PAGE, LAYER_BACKDROP, pageName, scriptJson } from './page-support.ts';
 export {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,

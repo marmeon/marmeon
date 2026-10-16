@@ -1,5 +1,5 @@
+import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/client/adapter';
 import { isDevelopment, type VisitException } from '@marmeon/http/client';
-import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/page';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorPage } from './error-page.tsx';
 import type { PageComponent, ResolvePage } from './pages.ts';

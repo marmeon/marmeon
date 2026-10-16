@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/" }
-import { Navigator, type DevtoolsGlobal } from '@marmeon/http/client';
+import type { DevtoolsGlobal } from '@marmeon/http/client/adapter';
+import { Navigator } from '@marmeon/http/client/adapter';
 import { PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
 import { act, Suspense } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -174,7 +175,7 @@ describe('createMarmeonApp — tab sync', () => {
   it('tabSync: false leaves it out — and its chunk is never loaded', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const use = vi.spyOn(Navigator.prototype, 'use');
-    const lazy = await import('@marmeon/http/client');
+    const lazy = await import('@marmeon/http/client/adapter');
     const sent = page({ name: 'Ada', lastLoginAt: at.toISOString() });
     serve(sent, await ssr(sent));
     await act(async () => {

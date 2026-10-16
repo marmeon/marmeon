@@ -727,7 +727,7 @@ export function snapshotPackage(
     if (typeof types !== 'string') continue;
     const entry = subpath === '.' ? pkg.name : `${pkg.name}${subpath.slice(1)}`;
     const collected = collectEntry(declarations, entry, join(pkg.dir, types), claimed, pkg.dir);
-    items.push(...collected.items.map((item) => (item.section === 'stable' && (scope === true || scope?.has(entry)) ? { ...item, section: 'experimental' as const } : item)));
+    items.push(...collected.items.map((item) => (scope === true || scope?.has(entry) ? (item.section === 'stable' ? { ...item, section: 'experimental' as const } : item.section === 'referenced' ? { ...item, section: 'experimentalReferenced' as const } : item) : item)));
     foreign.set(entry, [...collected.foreign].sort());
     for (const name of [...collected.foreign].sort()) {
       used.add(name);

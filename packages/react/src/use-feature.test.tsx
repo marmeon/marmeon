@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
-import { defineFeature, loadHistoryFallback, type Navigator } from '@marmeon/http/client';
+import { defineFeature, loadHistoryFallback, type Navigator } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';

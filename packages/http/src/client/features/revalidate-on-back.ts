@@ -66,7 +66,7 @@ export class BackRevalidation {
  * shows its page, layer or island from memory. Keeps nothing. Attached by the adapter where views can declare it (React: the
  * pages of `resolveModulePages`).
  */
-export const revalidateOnBack = defineFeature('revalidateOnBack', (host) => {
+export const revalidateOnBack = /* @__PURE__ */ defineFeature('revalidateOnBack', (host) => {
   const back = new BackRevalidation(host, host.options.revalidateOnBack);
   host.on('declared', back.region);
   host.on('restored', (page, key, layer) => {

@@ -8,6 +8,7 @@ import type { ValidationErrors } from '../../page.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, type PendingVisit } from '../feature.ts';
 import type { VisitMethod, VisitOptions } from '../navigation.ts';
+import type { FeatureHandle } from '../handle.ts';
 import { notify } from '../notify.ts';
 
 /** A visit about to start — `before`'s event. */
@@ -79,7 +80,7 @@ function beforeVisit(visit: PendingVisit): BeforeVisit {
  * The hook API as a feature: `before` hangs on the visit pipeline first (order 0, before the guard asks about unsaved
  * changes — a visit an app stops asks nothing), `invalid` on the visits' `error` event.
  */
-export const hooks = defineFeature(
+export const hooks = /* @__PURE__ */ defineFeature(
   'hooks',
   (host: FeatureHost): ClientHooks => {
     const listeners: { [E in HookEvent]: Set<HookEvents[E]> } = { before: new Set(), invalid: new Set() };
@@ -100,3 +101,6 @@ export const hooks = defineFeature(
   },
   0,
 );
+
+/** The client hook API as an app passes it to its adapter: `useFeature(hooks).on('before', …)`. See docs/client-features.md#the-client-hook-api. */
+export const hooksHandle: FeatureHandle<ClientHooks> = hooks;

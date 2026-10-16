@@ -587,7 +587,7 @@ describe('what is experimental', () => {
       'experimental::demo:run',
       'experimental:@marmeon/demo/b:b',
       'experimental:@marmeon/demo:a',
-      'referenced:@marmeon/demo:Helper',
+      'experimentalReferenced:@marmeon/demo:Helper',
     ]);
     expect(find(items, 'augments', '@marmeon/core.ApplicationDefinition')?.text).toContain('extra?: 1;');
     expect(experimental).toEqual(['@marmeon/demo']);
@@ -601,6 +601,13 @@ describe('what is experimental', () => {
       'stable:a',
     ]);
     expect(experimental).toEqual(['@marmeon/demo/b']);
+  });
+
+  it('lists the helper types an experimental entry names under a heading of their own', () => {
+    const files = { ...two, 'b.d.ts': 'interface Shape {\n    x: 1;\n}\nexport declare const b: (s: Shape) => void;\n' };
+    const { items } = withManifest(files, ['./b']);
+    expect(items.filter((item) => item.entry === '@marmeon/demo/b').map((item) => `${item.section}:${item.name}`).sort()).toEqual(['experimental:b', 'experimentalReferenced:Shape']);
+    expect(items.filter((item) => item.entry === '@marmeon/demo').map((item) => `${item.section}:${item.name}`)).toContain('referenced:Helper');
   });
 
   it('refuses a subpath that is no entry or is ./internal', () => {

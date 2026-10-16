@@ -28,6 +28,28 @@ describe('navigator.use — a feature attaches once per navigator', () => {
     expect(setup).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses a handle defineFeature did not make — its setup never runs', () => {
+    const { navigator } = tab();
+    const setup = vi.fn(() => ({}));
+    const forged = { name: 'forged', setup } as unknown as Parameters<typeof navigator.use>[0];
+    expect(() => navigator.use(forged)).toThrow(TypeError);
+    expect(() => navigator.use({ name: 'plain' })).toThrow(/Not a feature of the client core: plain/);
+    expect(() => navigator.use(Object.create(defineFeature('real', () => 1)))).toThrow(TypeError);
+    expect(() => navigator.use(null as never)).toThrow(TypeError);
+    expect(setup).not.toHaveBeenCalled();
+  });
+
+  it('a feature cannot be changed after it was made — no setup of its own through a genuine handle', () => {
+    const { navigator } = tab();
+    const feature = defineFeature('fixed', () => ({ ok: true }));
+    const evil = vi.fn(() => ({ ok: false }));
+    expect(() => {
+      (feature as { setup: unknown }).setup = evil;
+    }).toThrow(TypeError);
+    expect(navigator.use(feature)).toEqual({ ok: true });
+    expect(evil).not.toHaveBeenCalled();
+  });
+
   it('a hook registered in setup runs once per event, however often the feature is used', async () => {
     const { navigator } = tab();
     const writes = vi.fn();

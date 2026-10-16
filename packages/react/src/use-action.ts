@@ -1,4 +1,6 @@
-import { actions, resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading, type Submission } from '@marmeon/http/client';
+import type { Submission } from '@marmeon/http/client/adapter';
+import { resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading } from '@marmeon/http/client';
+import { actions } from '@marmeon/http/client/adapter';
 import type {
   ActionBodyOf,
   ActionDataOf,

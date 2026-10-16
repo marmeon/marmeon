@@ -1,18 +1,6 @@
-import {
-  createPoll,
-  islands,
-  pageQuery,
-  regionInitial,
-  resolveRoute,
-  type OptimisticUpdate,
-  type PropsPatch,
-  type Region,
-  type RegionFailure,
-  type Reloading,
-  type ReloadSpec,
-  type RegionSnapshot,
-  type RegionStatus,
-} from '@marmeon/http/client';
+import { regionInitial, type PropsPatch, type Region, type ReloadSpec, type RegionSnapshot } from '@marmeon/http/client/adapter';
+import { createPoll, pageQuery, resolveRoute, type OptimisticUpdate, type RegionFailure, type Reloading, type RegionStatus } from '@marmeon/http/client';
+import { islands } from '@marmeon/http/client/adapter';
 import type {
   BrowserRouteNameInput,
   CheckIslandRouteName,
@@ -26,7 +14,7 @@ import type {
 import type {
   RegionObject,
 } from '@marmeon/http/protocol';
-import { scriptJson } from '@marmeon/http/page';
+import { scriptJson } from '@marmeon/http/client/adapter';
 import {
   createContext,
   createElement,

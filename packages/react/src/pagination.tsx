@@ -1,4 +1,5 @@
-import { pageQuery, queryUrl } from '@marmeon/http/client';
+import { queryUrl } from '@marmeon/http/client/adapter';
+import { pageQuery } from '@marmeon/http/client';
 import type { PaginationMeta } from '@marmeon/http/page';
 import type { PageObject } from '@marmeon/http/protocol';
 import type { ReactNode } from 'react';

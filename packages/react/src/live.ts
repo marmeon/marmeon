@@ -1,4 +1,4 @@
-import { loadLive, type LiveUpdates } from '@marmeon/http/client';
+import { loadLive, type LiveUpdates } from '@marmeon/http/client/adapter';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 

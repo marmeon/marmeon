@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, progressIndicator, useRouter } from './app.tsx';
 import { progressBar, type ProgressIndicator } from './index.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
-import { loadHistoryFallback } from '@marmeon/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 
 // happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];

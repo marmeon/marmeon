@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LAYER_BACKDROP } from '../page.ts';
+import { LAYER_BACKDROP } from '../page-support.ts';
 import { LAYER_CLOSE_HEADER, LOCATION_HEADER, MAX_LAYER_DEPTH, PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../protocol.ts';
 import { isHistoryState } from './navigation.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle } from './test-window.ts';
