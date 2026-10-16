@@ -8,7 +8,7 @@ import { pageQuery, type ActionOutcome, type Confirm, type SelectionKey } from '
 import { queryState, selection, type Selection } from '@marmeon/http/client/adapter';
 import { queryUrl, type Navigator, type QueryState } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
-import { sortValue, type SortDirection, type TableActionResult, type TableData } from './index.ts';
+import type { SortDirection, TableActionResult, TableData } from './index.ts';
 
 /** Any table's props. */
 // oxlint-disable-next-line typescript/no-explicit-any -- the type parameters of the props, whatever they are
@@ -56,12 +56,15 @@ function refuse(code: `[marmeon:${string}]`, table: string, explanation: string 
   throw new Error(`${code} ${explanation || table}`);
 }
 
+/** The sort value of a column: `name` ascending, `-name` descending. */
+const sortValue = (column: string, direction: SortDirection) => (direction === 'desc' ? `-${column}` : column);
+
 const list = (names: readonly string[]) => (names.length > 0 ? names.join(', ') : 'nothing');
 
 /**
  * The page prop that holds table `data`: the same object, or — after an optimistic patch copied the props — the table of the same name.
  */
-export function propOf(page: Pick<PageObject, 'props'>, data: Pick<AnyTableData, 'name' | 'columns'>): string | undefined {
+function propOf(page: Pick<PageObject, 'props'>, data: Pick<AnyTableData, 'name' | 'columns'>): string | undefined {
   const entries = Object.entries(page.props);
   return (
     entries.find(([, value]) => value === data)?.[0] ??

@@ -260,7 +260,7 @@ type IslandSource = {
     handle: (...args: never[]) => unknown;
 };
 // LiveModule
-type LiveModule = typeof import('@marmeon/live');
+type LiveModule = typeof import('@marmeon/live') & typeof import('@marmeon/live/testing');
 // MultipartValue
 type MultipartValue = string | Blob | readonly (string | Blob)[];
 // Shared

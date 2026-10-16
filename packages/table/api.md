@@ -653,17 +653,8 @@ export interface TableStatusInfo {
 export declare function exportUrl<T extends AnyTableData>(data: T, name: ExportOf<T>): string;
 // keyOf
 export declare function keyOf(data: Pick<AnyTableData, 'key'>, row: object): SelectionKey;
-// parseSort
-export declare function parseSort<C extends string>(value: string): {
-    column: C;
-    direction: SortDirection;
-};
-// propOf
-export declare function propOf(page: Pick<PageObject, 'props'>, data: Pick<AnyTableData, 'name' | 'columns'>): string | undefined;
 // sortUrl
 export declare function sortUrl<T extends AnyTableData>(data: T, column: SortableOf<T>, page: Pick<PageObject, 'url' | 'query' | 'queryDefaults'>): string;
-// sortValue
-export declare function sortValue(column: string, direction: SortDirection): string;
 // tableStatus
 export declare function tableStatus(info: TableStatusInfo): string;
 ```

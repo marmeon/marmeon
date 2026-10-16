@@ -4,4 +4,4 @@
  * @internal
  */
 export { Recorder } from './recorder.ts';
-export { enableDevtoolsForTests } from './testing.ts';
+export { enableDevtoolsForTests } from './test-opt-in.ts';

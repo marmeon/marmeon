@@ -27,4 +27,3 @@ export type { FileStoreOptions } from './file-store.ts';
 export { DevtoolsServiceProvider } from './provider.ts';
 export { DevtoolsStore, MemoryStore } from './store.ts';
 export type { EntryQuery, EntryTail, PruneResult, StoreUsage } from './store.ts';
-export { DevtoolsTester } from './testing.ts';

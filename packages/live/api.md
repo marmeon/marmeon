@@ -18,18 +18,6 @@ interface NotificationChannelMap {
 ### Experimental
 
 ```ts
-// BroadcastRecorder
-export declare class BroadcastRecorder {
-    #private;
-    refreshed(channel?: string): readonly RecordedRefresh[];
-    assertRefreshed(channel: string, { only, times }?: {
-        only?: readonly string[] | null;
-        times?: number;
-    }): this;
-    assertNotRefreshed(channel: string): this;
-    assertNothingRefreshed(): this;
-    clear(): void;
-}
 // Broadcaster
 export interface Broadcaster {
     refresh(channel: string, options?: RefreshOptions): Promise<void>;
@@ -50,12 +38,6 @@ export declare const LiveConfig: import("@marmeon/core").ConfigDefinition<{
     maxChannels: number;
 }>;
 export type LiveConfig = ConfigOf<typeof LiveConfig>;
-// LiveEvent
-export interface LiveEvent {
-    readonly event: string;
-    readonly id?: string | undefined;
-    readonly data: unknown;
-}
 // LiveHello
 export interface LiveHello {
     readonly seq: Readonly<Record<string, number>>;
@@ -93,6 +75,55 @@ export declare class LiveServiceProvider implements ServiceProvider {
 export declare class LiveSetupError extends Error {
     name: string;
 }
+// RefreshOptions
+export interface RefreshOptions {
+    readonly only?: readonly string[];
+}
+// notificationsChannel
+export declare function notificationsChannel(recipient: {
+    readonly type: string;
+    readonly id: string | number;
+}): string;
+```
+
+### Experimental, referenced (not exported)
+
+```ts
+// LiveBackend
+export interface LiveBackend {
+    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
+    end(scope: string): Promise<void>;
+    seqs(channels: readonly string[]): Promise<number[]>;
+    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
+    close(): Promise<void>;
+}
+```
+
+## `@marmeon/live/testing`
+
+Types from other packages: none
+
+### Experimental
+
+```ts
+// BroadcastRecorder
+export declare class BroadcastRecorder {
+    #private;
+    refreshed(channel?: string): readonly RecordedRefresh[];
+    assertRefreshed(channel: string, { only, times }?: {
+        only?: readonly string[] | null;
+        times?: number;
+    }): this;
+    assertNotRefreshed(channel: string): this;
+    assertNothingRefreshed(): this;
+    clear(): void;
+}
+// LiveEvent
+export interface LiveEvent {
+    readonly event: string;
+    readonly id?: string | undefined;
+    readonly data: unknown;
+}
 // LiveStreamReader
 export declare class LiveStreamReader {
     #private;
@@ -115,27 +146,15 @@ export interface RecordedRefresh {
     readonly only: readonly string[] | null;
     readonly connection: string | undefined;
 }
-// RefreshOptions
-export interface RefreshOptions {
-    readonly only?: readonly string[];
-}
-// notificationsChannel
-export declare function notificationsChannel(recipient: {
-    readonly type: string;
-    readonly id: string | number;
-}): string;
 ```
 
 ### Experimental, referenced (not exported)
 
 ```ts
-// LiveBackend
-export interface LiveBackend {
-    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
-    end(scope: string): Promise<void>;
-    seqs(channels: readonly string[]): Promise<number[]>;
-    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
-    close(): Promise<void>;
+// LiveHello
+export interface LiveHello {
+    readonly seq: Readonly<Record<string, number>>;
+    readonly missed?: readonly string[];
 }
 ```
 

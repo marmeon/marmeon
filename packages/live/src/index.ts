@@ -20,10 +20,6 @@ export type { RefreshOptions } from './broadcaster.ts';
 export type { LiveHello } from './hub.ts';
 export { LiveConfig } from './config.ts';
 export { notificationsChannel } from './notifications.ts';
-export { BroadcastRecorder } from './recorder.ts';
-export type { RecordedRefresh } from './recorder.ts';
-export { LiveStreamReader } from './test-stream.ts';
-export type { LiveEvent } from './test-stream.ts';
 
 /** Where this app's hints travel — `memory` or `redis` (`LIVE_DRIVER`). */
 export type LiveBackend = Backend;

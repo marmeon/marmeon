@@ -38,10 +38,10 @@ import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail/testing';
 import type { NotificationFake } from '@marmeon/notifications/testing';
-import type { BroadcastRecorder, LiveStreamReader } from '@marmeon/live';
+import type { BroadcastRecorder, LiveStreamReader } from '@marmeon/live/testing';
 import type { QueueFake } from '@marmeon/queue/testing';
 import type { StorageFake } from '@marmeon/storage/testing';
-import type { DevtoolsTester } from '@marmeon/devtools';
+import type { DevtoolsTester } from '@marmeon/devtools/testing';
 import type { ScheduleTester } from '@marmeon/scheduler/testing';
 import type { FactoryDefinition, PendingFactory, RowOf, Tables } from '@marmeon/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
@@ -413,12 +413,12 @@ async function importStorage(): Promise<(typeof import('@marmeon/storage') & typ
   }
 }
 
-type LiveModule = typeof import('@marmeon/live');
+type LiveModule = typeof import('@marmeon/live') & typeof import('@marmeon/live/testing');
 
 /** @marmeon/live is an optional peer, like the session. */
 async function importLive(): Promise<LiveModule | undefined> {
   try {
-    return await import('@marmeon/live');
+    return { ...(await import('@marmeon/live')), ...(await import('@marmeon/live/testing')) };
   } catch {
     return undefined;
   }

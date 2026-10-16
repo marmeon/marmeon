@@ -101,19 +101,6 @@ export interface DevtoolsStore {
     usage(): Promise<StoreUsage>;
 }
 export declare const DevtoolsStore: import("@marmeon/core").Token<DevtoolsStore>;
-// DevtoolsTester
-export declare class DevtoolsTester {
-    #private;
-    constructor(container: Container, store: MemoryStore);
-    get store(): MemoryStore;
-    entries<T extends EntryType>(type: T): Entry<T>[];
-    entries(): AnyEntry[];
-    batch(id: string): AnyEntry[];
-    assertRecorded<T extends EntryType>(type: T, predicate?: (content: EntryContents[T], entry: Entry<T>) => boolean): Entry<T>;
-    assertNotRecorded<T extends EntryType>(type: T, predicate?: (content: EntryContents[T], entry: Entry<T>) => boolean): this;
-    settled(): Promise<void>;
-    clear(): Promise<void>;
-}
 // Entry
 export interface Entry<T extends EntryType = EntryType> {
     readonly id: string;
@@ -372,45 +359,269 @@ declare const DEFINITION: unique symbol;
 
 Types from other packages: none
 
+## `@marmeon/devtools/testing`
+
+Types from other packages: none
+
 ### Experimental
 
 ```ts
-// Attached
-export interface Attached {
-    readonly navigator: Navigator;
-    readonly api: DevtoolsFeature;
-}
-// BarOptions
-export interface BarOptions {
-    readonly navigator: Navigator;
-    readonly api: DevtoolsFeature;
-    readonly parent?: HTMLElement;
-    readonly window?: Window;
-}
-// BarTab
-export type BarTab = (typeof TABS)[number];
-// DevtoolsBar
-export declare class DevtoolsBar {
+// DevtoolsTester
+export declare class DevtoolsTester {
     #private;
-    readonly host: HTMLElement;
-    readonly root: ShadowRoot;
-    constructor({ navigator, api, parent, window: win }: BarOptions);
-    get open(): boolean;
-    get tab(): BarTab;
-    toggle(open?: boolean): void;
-    show(tab: BarTab): void;
-    showRequest(requestId: string): void;
-    destroy(): void;
-    render(): void;
+    constructor(container: Container, store: MemoryStore);
+    get store(): MemoryStore;
+    entries<T extends EntryType>(type: T): Entry<T>[];
+    entries(): AnyEntry[];
+    batch(id: string): AnyEntry[];
+    assertRecorded<T extends EntryType>(type: T, predicate?: (content: EntryContents[T], entry: Entry<T>) => boolean): Entry<T>;
+    assertNotRecorded<T extends EntryType>(type: T, predicate?: (content: EntryContents[T], entry: Entry<T>) => boolean): this;
+    settled(): Promise<void>;
+    clear(): Promise<void>;
 }
-// SHORTCUT
-export declare const SHORTCUT = "Alt+Shift+D";
-// STATE_KEY
-export declare const STATE_KEY = "marmeon-devtools";
-// TABS
-export declare const TABS: readonly ['visits', 'page', 'layers', 'optimistic', 'server', 'ssr'];
-// installDevtoolsHook
-export declare function installDevtoolsHook(target: DevtoolsGlobal, onAttach: (attached: Attached) => void): () => void;
+```
+
+### Experimental, referenced (not exported)
+
+```ts
+// AnyEntry
+export type AnyEntry = {
+    [T in EntryType]: Entry<T>;
+}[EntryType];
+// CommandContent
+export interface CommandContent {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly exitCode?: number;
+    readonly durationMs?: number;
+    readonly error?: ErrorContent;
+}
+// DevtoolsStore
+export interface DevtoolsStore {
+    write(entries: readonly AnyEntry[]): Promise<void>;
+    list(query?: EntryQuery): Promise<AnyEntry[]>;
+    get(id: string): Promise<AnyEntry | undefined>;
+    since(cursor?: number): Promise<EntryTail>;
+    clear(): Promise<void>;
+    prune(): Promise<PruneResult>;
+    usage(): Promise<StoreUsage>;
+}
+export declare const DevtoolsStore: import("@marmeon/core").Token<DevtoolsStore>;
+// Entry
+export interface Entry<T extends EntryType = EntryType> {
+    readonly id: string;
+    readonly type: T;
+    readonly at: number;
+    readonly batch: string;
+    readonly requestId?: string;
+    readonly jobId?: string;
+    readonly tags: readonly string[];
+    readonly content: EntryContents[T];
+}
+// EntryContents
+export interface EntryContents {
+    request: RequestContent;
+    query: QueryContent;
+    job: JobContent;
+    mail: MailContent;
+    notification: NotificationContent;
+    log: LogContent;
+    exception: ExceptionContent;
+    schedule: ScheduleContent;
+    live: LiveContent;
+    event: EventContent;
+    command: CommandContent;
+}
+// EntryQuery
+export interface EntryQuery {
+    readonly type?: EntryType | readonly EntryType[];
+    readonly batch?: string;
+    readonly requestId?: string;
+    readonly jobId?: string;
+    readonly tag?: string | readonly string[];
+    readonly search?: string;
+    readonly before?: string;
+    readonly limit?: number;
+}
+// EntryTail
+export interface EntryTail {
+    readonly entries: AnyEntry[];
+    readonly cursor: number;
+}
+// EntryType
+export type EntryType = keyof EntryContents;
+// ErrorContent
+export interface ErrorContent {
+    readonly class: string;
+    readonly message: string;
+    readonly stack?: string;
+}
+// EventContent
+export interface EventContent {
+    readonly name: string;
+    readonly class: string;
+    readonly payload: unknown;
+    readonly listeners: readonly string[];
+}
+// ExceptionContent
+export interface ExceptionContent extends ErrorContent {
+    readonly in: 'request' | 'job' | 'schedule' | 'command';
+    readonly status?: number;
+    readonly method?: string;
+    readonly path?: string;
+    readonly solutions: readonly {
+        readonly title: string;
+        readonly text: string;
+        readonly command?: string;
+        readonly docs?: string;
+    }[];
+}
+// JobContent
+export interface JobContent {
+    readonly status: 'queued' | 'done' | 'failed' | 'released' | 'discarded';
+    readonly name: string;
+    readonly queue: string;
+    readonly connection: string;
+    readonly attempt?: number;
+    readonly kind?: 'dispatch' | 'bulk' | 'chain';
+    readonly delay?: number;
+    readonly unique?: string;
+    readonly payload?: unknown;
+    readonly originRequestId?: string;
+    readonly durationMs?: number;
+    readonly error?: ErrorContent;
+}
+// LiveContent
+export interface LiveContent {
+    readonly channel: string;
+    readonly only: readonly string[] | null;
+    readonly durationMs?: number;
+    readonly error?: ErrorContent;
+}
+// LogContent
+export interface LogContent {
+    readonly level: 'debug' | 'info' | 'warn' | 'error';
+    readonly message: string;
+    readonly context: Readonly<Record<string, unknown>>;
+}
+// MailContent
+export interface MailContent {
+    readonly mailable: string;
+    readonly mode: 'send' | 'queue' | 'worker';
+    readonly from?: string;
+    readonly to: readonly string[];
+    readonly cc: readonly string[];
+    readonly bcc: readonly string[];
+    readonly subject?: string;
+    readonly html?: string;
+    readonly text?: string;
+    readonly attachments: readonly {
+        readonly filename: string;
+        readonly bytes: number;
+        readonly contentType?: string;
+    }[];
+    readonly durationMs?: number;
+    readonly error?: ErrorContent;
+}
+// MemoryStore
+export declare class MemoryStore implements DevtoolsStore {
+    #private;
+    constructor(options?: {
+        maxEntries?: number;
+    });
+    all(): readonly AnyEntry[];
+    write(entries: readonly AnyEntry[]): Promise<void>;
+    list(query?: EntryQuery): Promise<AnyEntry[]>;
+    get(id: string): Promise<AnyEntry | undefined>;
+    since(cursor?: number): Promise<EntryTail>;
+    clear(): Promise<void>;
+    prune(): Promise<PruneResult>;
+    usage(): Promise<StoreUsage>;
+}
+// NotificationContent
+export interface NotificationContent {
+    readonly notification: string;
+    readonly id: string;
+    readonly recipient: {
+        readonly type: string;
+        readonly id: string | number;
+    };
+    readonly queued: boolean;
+    readonly channels?: readonly string[];
+    readonly outcome?: 'delivered' | 'gone' | 'delivered-before';
+    readonly durationMs?: number;
+    readonly error?: ErrorContent;
+}
+// PruneResult
+export interface PruneResult {
+    readonly files: number;
+    readonly bytes: number;
+}
+// QueryContent
+export interface QueryContent {
+    readonly connection: string;
+    readonly driver: string;
+    readonly sql: string;
+    readonly parameters: readonly unknown[];
+    readonly sensitive: boolean;
+    readonly durationMs: number;
+    readonly slow: boolean;
+    readonly error?: ErrorContent;
+}
+// RequestContent
+export interface RequestContent {
+    readonly method: string;
+    readonly url: string;
+    readonly path: string;
+    readonly route?: string;
+    readonly routePath?: string;
+    readonly controller?: string;
+    readonly status?: number;
+    readonly durationMs?: number;
+    readonly location?: string;
+    readonly reload?: string;
+    readonly region?: string;
+    readonly inProcess: boolean;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly query: Readonly<Record<string, string | readonly string[]>>;
+    readonly input?: unknown;
+    readonly page?: {
+        readonly kind: 'page' | 'layer' | 'island';
+        readonly component: string;
+        readonly props: Readonly<Record<string, number>>;
+        readonly bytes: number;
+        readonly only?: readonly string[];
+        readonly except?: readonly string[];
+        readonly deferred?: Readonly<Record<string, readonly string[]>>;
+        readonly shared?: readonly string[];
+        readonly optional?: readonly string[];
+    };
+    readonly ssr?: {
+        readonly component: string;
+        readonly durationMs?: number;
+        readonly streamed?: boolean;
+        readonly complete: boolean;
+        readonly failed?: boolean;
+    };
+    readonly dropped?: number;
+    readonly error?: ErrorContent;
+}
+// ScheduleContent
+export interface ScheduleContent {
+    readonly task: string;
+    readonly minute: number;
+    readonly reason: 'due' | 'catch-up' | 'test';
+    readonly outcome?: 'ran' | 'skipped' | 'failed';
+    readonly skipped?: string;
+    readonly durationMs?: number;
+    readonly error?: ErrorContent;
+}
+// StoreUsage
+export interface StoreUsage {
+    readonly bytes: number;
+    readonly files: number;
+    readonly entries: number;
+}
 ```
 
 ## Experimental
