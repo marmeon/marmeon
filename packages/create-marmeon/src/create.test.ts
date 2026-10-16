@@ -1,8 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { stripVTControlCharacters } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
@@ -377,51 +376,3 @@ describe('the starter kit’s own files', () => {
     expect(kit.replace(dialog, '')).toBe(base);
   });
 });
-
-/**
- * The starter kit as a user gets it: the template and the home module, then the app's own `make:auth` and `migrate` —
- * type-checked, linted with the app's preset, and its tests (auth, home, system) pass. The framework from the workspace (the
- * blank app's node_modules); `pnpm pack:smoke` does the same from the tarballs, outside the monorepo.
- */
-it(
-  'the starter kit works: make:auth, migrate, typecheck, lint and its tests pass',
-  async () => {
-    const cwd = workspace();
-    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
-    const root = join(cwd, 'kit');
-    symlinkSync(join(blank, 'node_modules'), join(root, 'node_modules'), 'dir');
-    const env = { ...process.env };
-    for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV') delete env[key];
-    const { DB_CONNECTION: _connection, DB_URL: _url, ...sqliteEnv } = env;
-    // Plain text whatever the CI colours: the assertions match the child Vitest's summary.
-    const run = (command: string, args: string[], extra: Record<string, string> = {}, base = env) => {
-      const result = spawnSync(command, args, { cwd: root, env: { ...base, NO_COLOR: '1', FORCE_COLOR: '0', ...extra }, encoding: 'utf8', timeout: 240_000 });
-      return { code: result.status, out: stripVTControlCharacters(`${result.stdout}${result.stderr}`) };
-    };
-    // As the scaffolder runs them after the install: NODE_ENV from the app's .env (development).
-    const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], {}, sqliteEnv);
-    expect(marmeon('make:auth')).toMatchObject({ code: 0, out: expect.stringContaining('Wrote bootstrap/routes.ts') });
-    expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'home': { method: 'get'; path: '/'; controller: typeof ShowHomeController };");
-    // The order counts: at equal specificity the module's class rules must come after the kit's base rules.
-    const client = readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8');
-    expect(client.match(/styles\/app\.css/g)).toHaveLength(1);
-    expect(client.indexOf('../styles/app.css')).toBeGreaterThan(client.indexOf('@marmeon/react/styles.css'));
-    expect(client.indexOf('../styles/app.css')).toBeLessThan(client.indexOf('modules/auth/auth.css'));
-    expect(marmeon('migrate')).toMatchObject({ code: 0, out: expect.stringContaining('Environment: development (APP_ENV=local, NODE_ENV from .env)') });
-    const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
-    expect(typecheck.out).toBe('');
-    expect(typecheck.code).toBe(0);
-    expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
-    // The first test boots the whole app cold: slower than Vitest's default 5 s on a loaded machine.
-    const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose', '--testTimeout=30000'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
-    expect(tests.out).toContain('modules/home/home.test.ts');
-    // The app's dialog in the page's language: the guard's question — and tab sync's — in German too.
-    expect(tests.out).toContain('modules/home/confirm.test.ts');
-    // The failing tests by name — the message (Vitest shortens a long output it prints).
-    const failed = tests.out.split('\n').filter((line) => /^\s*(×|FAIL)/.test(line)).join('\n');
-    expect(tests.out, `the kit's tests failed:\n${failed}`).toMatch(/Tests\s+\d+ passed \(\d+\)/);
-    expect(tests.out, `the kit's tests failed:\n${failed}`).not.toMatch(/Tests\s+\d+ failed/);
-    expect(tests.code).toBe(0);
-  },
-  300_000,
-);
