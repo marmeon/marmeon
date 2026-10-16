@@ -329,7 +329,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
       // Both values of the switch: the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
       const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
-      expect(ran('registration', 'private registration — the default')).toBe(6);
+      expect(ran('registration', 'private registration — the default')).toBe(8);
       expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(5);
       expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(8);
       expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(2);

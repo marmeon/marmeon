@@ -288,6 +288,31 @@ describe('registration', () => {
     app.mail.assertNotQueued(VerifyEmailMail);
   });
 
+  it('mails the owner of a known address at most once an hour — five sign-ups, one mail, the same answer each time', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const answers = [];
+    for (const email of ['ada@example.com', 'ADA@example.com', ' ada@example.com ', 'Ada@Example.com', 'ada@example.com']) {
+      answers.push(await register({ email }).assertRedirect('/register/sent'));
+    }
+    for (const each of answers) expect([each.status, each.headers.get('location'), each.body]).toEqual([answers[0]!.status, answers[0]!.headers.get('location'), answers[0]!.body]);
+    await app.queue.work();
+    app.mail.assertQueuedCount(AccountExistsMail, 1);
+    app.travel({ minutes: 61 });
+    await register({ email: 'ada@example.com' }).assertRedirect('/register/sent');
+    await app.queue.work();
+    app.mail.assertQueuedCount(AccountExistsMail, 2);
+  });
+
+  it('lets the retry send the note when queueing the mail failed — a failure does not use up the hour', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const job = app.make(SendAccountExistsMailJob);
+    const queue = vi.spyOn(app.make(Mailer), 'queue').mockRejectedValueOnce(new Error('mail queue down'));
+    await expect(job.handle({ email: 'ada@example.com', locale: 'en' })).rejects.toThrow('mail queue down');
+    queue.mockRestore();
+    await job.handle({ email: 'ada@example.com', locale: 'en' });
+    app.mail.assertQueuedCount(AccountExistsMail, 1);
+  });
+
   it('answers a new and a known address byte for byte alike — status, headers, body; no cookie either way', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const answer = (response: { status: number; headers: Headers; body: string }) => ({

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { RateLimiter } from '@marmeon/cache';
 import { Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import type { JobPayload } from '@marmeon/queue';
@@ -10,7 +12,8 @@ import { UserRepository } from '../UserRepository.ts';
 /**
  * Private registration: someone signed up with the address of an existing account. The request only queues this job —
  * as a new account's request queues its verification mail — so both answers take the same time; here the mail is composed in
- * the account's language, with links from APP_URL. The address is a personal datum: the payload is encrypted.
+ * the account's language, with links from APP_URL. At most one mail goes to an address an hour: sign-ups with a stranger's
+ * address must not make the kit a mail cannon. The registrant sees the same answer either way. The address is a personal datum: the payload is encrypted.
  */
 export class SendAccountExistsMailJob {
   static readonly job = 'auth.send-account-exists-mail';
@@ -23,20 +26,30 @@ export class SendAccountExistsMailJob {
   readonly #translators: Translators;
   readonly #router: Router;
   readonly #app: AppConfig;
+  readonly #limiter: RateLimiter;
 
-  constructor(users: UserRepository, mailer: Mailer, translators: Translators, router: Router, app: AppConfig) {
+  constructor(users: UserRepository, mailer: Mailer, translators: Translators, router: Router, app: AppConfig, limiter: RateLimiter) {
     this.#users = users;
     this.#mailer = mailer;
     this.#translators = translators;
     this.#router = router;
     this.#app = app;
+    this.#limiter = limiter;
   }
 
   async handle(payload: JobPayload<typeof SendAccountExistsMailJob>): Promise<void> {
     const user = await this.#users.findByEmail(payload.email);
     if (!user) return; // deleted meanwhile
+    // Keyed on the stored (normalized) address, hashed: no plain address in the cache. A refused attempt sends nothing and says nothing.
+    const key = `account-exists-mail:${createHash('sha256').update(user.email).digest('hex')}`;
+    if (!(await this.#limiter.attempt(key, 1, 3600))) return;
     const link = (route: 'auth.login' | 'auth.password.request') => new URL(this.#router.url(route), this.#app.url).href;
     const t = this.#translators.for(user.locale ?? payload.locale);
-    await this.#mailer.queue(new AccountExistsMail(user, link('auth.login'), link('auth.password.request'), t), { queue: 'mail' });
+    try {
+      await this.#mailer.queue(new AccountExistsMail(user, link('auth.login'), link('auth.password.request'), t), { queue: 'mail' });
+    } catch (error) {
+      await this.#limiter.clear(key); // nothing was sent: the retry of the job may still send the note
+      throw error;
+    }
   }
 }

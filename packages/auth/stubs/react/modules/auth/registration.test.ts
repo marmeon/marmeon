@@ -1,7 +1,7 @@
 import { Registered } from '@marmeon/auth';
-import type { Mailable } from '@marmeon/mail';
+import { Mailer, type Mailable } from '@marmeon/mail';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
@@ -57,6 +57,31 @@ describe('private registration — the default', { timeout: 30_000 }, () => {
     app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
     app.mail.assertQueued(AccountExistsMail, (_mail, message) => message.to[0]!.address === ada.email && message.text.includes('/forgot-password'));
     app.mail.assertNotQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === ada.email);
+  });
+
+  it('mails the owner of a known address at most once an hour — five sign-ups, one mail, the same answer each time', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const answers = [];
+    for (const email of ['ada@example.com', 'ADA@example.com', ' ada@example.com ', 'Ada@Example.com', 'ada@example.com']) {
+      answers.push(await register(email).assertRedirect('/register/sent'));
+    }
+    for (const each of answers) expect([each.status, each.headers.get('location'), each.body]).toEqual([answers[0]!.status, answers[0]!.headers.get('location'), answers[0]!.body]);
+    await app.queue.work();
+    app.mail.assertQueuedCount(AccountExistsMail, 1);
+    app.travel({ minutes: 61 });
+    await register('ada@example.com').assertRedirect('/register/sent');
+    await app.queue.work();
+    app.mail.assertQueuedCount(AccountExistsMail, 2);
+  });
+
+  it('lets the retry send the note when queueing the mail failed — a failure does not use up the hour', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const job = app.make(SendAccountExistsMailJob);
+    const queue = vi.spyOn(app.make(Mailer), 'queue').mockRejectedValueOnce(new Error('mail queue down'));
+    await expect(job.handle({ email: 'ada@example.com', locale: 'en' })).rejects.toThrow('mail queue down');
+    queue.mockRestore();
+    await job.handle({ email: 'ada@example.com', locale: 'en' });
+    app.mail.assertQueuedCount(AccountExistsMail, 1);
   });
 
   it('takes as long for a known address as for a new one — the password is hashed either way', async () => {
