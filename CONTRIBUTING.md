@@ -270,7 +270,7 @@ checked over every file of the repository — tracked, or new and not ignored. E
     `@deprecated Use {@link isSensitiveRememberField}. Removed in 0.5; docs/forms.md#remembering-input.` Each
     `deprecated(id, message, removeIn)` call has three string literals: an id `<package>.<name>` whose package is the file's and
     that no other call uses, the message, and `removeIn` as `major.minor`. The version must lie after the current one — otherwise it
-    is a typo or overdue. [Package development](docs/package-development.md#deprecating-an-api) shows both.
+    is a typo or overdue. From 1.0 on it is a major version (`Removed in 2.0`). [Package development](docs/package-development.md#deprecating-an-api) shows both.
 
 11. **Only the framework's packages import the query builder**: no code file outside `packages/<name>/src/` (apps, the
     template, stubs, scripts, the templates of `make:*`, the edits of an example) names `kysely` as a quoted module specifier —

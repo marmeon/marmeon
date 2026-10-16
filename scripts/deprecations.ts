@@ -145,8 +145,12 @@ export function deprecationProblems(found: readonly Deprecation[], currentVersio
       }
       if (deprecation.literals && (deprecation.removeIn === undefined || !VERSION.test(deprecation.removeIn))) wrong.push('removeIn is "major.minor"');
     }
-    if (deprecation.removeIn !== undefined && VERSION.test(deprecation.removeIn) && !removalIsAfter(deprecation.removeIn, currentVersion)) {
-      wrong.push(`it is removed in ${deprecation.removeIn}, which is not after the current version ${currentVersion} — a typo, or overdue`);
+    if (deprecation.removeIn !== undefined && VERSION.test(deprecation.removeIn)) {
+      if (!removalIsAfter(deprecation.removeIn, currentVersion)) {
+        wrong.push(`it is removed in ${deprecation.removeIn}, which is not after the current version ${currentVersion} — a typo, or overdue`);
+      } else if (Number(currentVersion.split('.')[0]) >= 1 && !deprecation.removeIn.endsWith('.0')) {
+        wrong.push(`from 1.0 on an API goes in a major release: Removed in ${Number(currentVersion.split('.')[0]) + 1}.0`);
+      }
     }
     if (wrong.length > 0) problems.push(`${where} — ${wrong.join('; ')}`);
   }
