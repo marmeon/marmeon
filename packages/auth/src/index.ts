@@ -26,25 +26,23 @@ import { UserProvider } from './user.ts';
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
-export { Auth, AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
+export { Auth } from './auth.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
-export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
+export { AuthConfig } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
 export type { LoginVia, EverySessionEndedInput, EverySessionEndedPayload, LoginInput, LoginPayload, PasskeyCloneSuspectedPayload, PasskeyRegisteredPayload, PasskeyRemovedInput, PasskeyRemovedPayload, PasskeySignInFailedInput, PasskeySignInFailedPayload, RecoveryCodeUsedPayload, RecoveryCodesGeneratedPayload, RegisteredPayload, RememberTokenReusedInput, RememberTokenReusedPayload, TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload, TwoFactorDisabledPayload, TwoFactorEnabledPayload } from './events.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
-export type { PasswordResetTokenTable } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
 export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
 export { combineFactors, TwoFactorState } from './two-factor/state.ts';
 export type { SecondFactor } from './two-factor/state.ts';
-export { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE, TwoFactorStore } from './two-factor/store.ts';
-export type { RecoveryCodeTable, TwoFactorTable } from './two-factor/store.ts';
-export type { RememberedDevice, RememberTokenError, RememberTokenTable } from './remember.ts';
+export { TwoFactorStore } from './two-factor/store.ts';
+export type { RememberedDevice, RememberTokenError } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
-export { MakeAuthCommand, STUBS } from './make-auth.ts';
+export { MakeAuthCommand } from './make-auth.ts';
 export { EndAllSessionsCommand } from './end-all-sessions.ts';
 export { PruneTokensCommand } from './prune-tokens.ts';
 export { describeDevice } from './device.ts';
@@ -52,27 +50,17 @@ export type { DeviceDescription } from './device.ts';
 export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 export { clearPasswordCheck, takePasswordCheck } from './password-throttle.ts';
 export type { PasswordCheckScope, PasswordThrottled } from './password-throttle.ts';
-export { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
-export type { SignIn, SignInRecord, SignInsTable, SignInWindow } from './sign-ins.ts';
+export { DatabaseSignIns, SignInStore } from './sign-ins.ts';
+export type { SignIn, SignInRecord, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';
-export { EmailVerification, emailHash, verified } from './verification.ts';
+export { EmailVerification, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
 export type { PasswordRuleOptions } from './rules.ts';
-export { authenticatedSession, authenticatedToken, softAuthenticator, twoFactorCode } from './testing.ts';
-export type { SoftAssertion, SoftAuthenticatorConfig, SoftOptions, SoftOverrides, SoftRegistration } from './testing.ts';
-export { ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
-export type { AccessToken, AccessTokenTable, WithToken } from './tokens.ts';
+export { AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
+export type { AccessToken, WithToken } from './tokens.ts';
 export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
-export {
-  argon2Available,
-  DEFAULT_HASHER_OPTIONS,
-  HASH_LIMITS,
-  HashError,
-  Hasher,
-  MAX_PASSWORD_BYTES,
-  PasswordHasher,
-} from './hashing.ts';
+export { HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher } from './hashing.ts';
 export type { Argon2Options, HashDriver, HasherOptions, PasswordHash, ScryptOptions } from './hashing.ts';
 
 const whole = (fallback: number, [min, max]: readonly [number, number]) => env.integer().min(min).max(max).default(fallback);

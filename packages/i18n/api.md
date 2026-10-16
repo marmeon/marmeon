@@ -9,8 +9,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// APP_NAMESPACE
-export declare const APP_NAMESPACE = "app";
 // Catalog
 export declare class Catalog {
     #private;
@@ -67,20 +65,8 @@ export declare class I18nServiceProvider implements ServiceProvider {
 export type KeyOf<T> = T extends string ? never : {
     [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${KeyOf<T[K]>}`;
 }[keyof T & Segment];
-// LANGUAGE_TAG
-export declare const LANGUAGE_TAG: RegExp;
 // LangFiles
 export type LangFiles = Readonly<Record<string, () => Promise<unknown>>>;
-// LocaleFormats
-export declare class LocaleFormats {
-    #private;
-    readonly locale: string;
-    constructor(locale: string);
-    number(options?: Intl.NumberFormatOptions): Intl.NumberFormat;
-    date(options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormat;
-    plural(type: Intl.PluralRuleType): Intl.PluralRules;
-    relative(options?: Intl.RelativeTimeFormatOptions): Intl.RelativeTimeFormat;
-}
 // LocalePreference
 export interface LocalePreference {
     preferredLocale(): string | null | undefined | Promise<string | null | undefined>;
@@ -130,21 +116,6 @@ export type MessagesOf<N extends string> = N extends keyof Translations ? Transl
 export type Namespace = [keyof Translations] extends [never] ? string : keyof Translations & string;
 // ParamsOf
 export type ParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
-// Part
-export type Part = string | {
-    readonly kind: 'pound';
-} | {
-    readonly kind: 'value';
-    readonly name: string;
-} | {
-    readonly kind: 'number' | 'date' | 'time';
-    readonly name: string;
-    readonly style: string;
-} | {
-    readonly kind: 'plural' | 'selectordinal' | 'select';
-    readonly name: string;
-    readonly branches: Readonly<Record<string, readonly Part[]>>;
-};
 // SetLocale
 export declare class SetLocale {
     #private;
@@ -176,10 +147,6 @@ export interface Translator extends TranslatorContract {
     forLocale(locale: string | null | undefined): Translator;
 }
 export declare const Translator: Token<Translator>;
-// TranslatorOptions
-export interface TranslatorOptions {
-    readonly locales: () => readonly string[];
-}
 // Translators
 export declare class Translators {
     #private;
@@ -188,38 +155,12 @@ export declare class Translators {
     get default(): Translator;
     get locales(): readonly string[];
 }
-// baseLanguage
-export declare function baseLanguage(locale: string): string | undefined;
 // createMessageLoader
 export declare function createMessageLoader(files: LangFiles, { fallback }?: {
     fallback?: string;
 }): MessageLoader;
 // createTranslate
 export declare function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N>;
-// createTranslator
-export declare function createTranslator(catalog: Catalog, locale: () => string, { locales }: TranslatorOptions): Translator;
-// formatMessage
-export declare function formatMessage(message: string, params?: Readonly<Record<string, unknown>>, locale?: string): string;
-// formatParts
-export declare function formatParts(parts: readonly Part[], params: Readonly<Record<string, unknown>>, formats: LocaleFormats, pound?: number): string;
-// isLanguageTag
-export declare function isLanguageTag(value: unknown): value is string;
-// langFileOf
-export declare function langFileOf(path: string): {
-    namespace: string;
-    locale: string;
-} | undefined;
-// loadLangFiles
-export declare function loadLangFiles(root: string, catalog: Catalog, locales: Locales): Promise<{
-    loaded: string[];
-    skipped: string[];
-}>;
-// negotiateLocale
-export declare function negotiateLocale(header: string | null | undefined, supported: readonly string[]): string | undefined;
-// parseMessage
-export declare function parseMessage(message: string): readonly Part[];
-// supportedLocale
-export declare function supportedLocale(value: unknown, supported: readonly string[]): string | undefined;
 // trans
 export declare function trans<K extends TranslationKey | (string & {})>(key: CheckTranslationKey<K>, params?: Partial<ParamsOf<MessageOf<K>>>): (issue: object) => string;
 ```
@@ -275,8 +216,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// APP_NAMESPACE
-export declare const APP_NAMESPACE = "app";
 // Catalog
 export declare class Catalog {
     #private;
@@ -295,8 +234,6 @@ export declare class Catalog {
 }
 // CheckKey
 export type CheckKey<K extends string, T, N extends string> = K extends KeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, KeyOf<T> & string>}`;
-// CheckTranslationKey
-export type CheckTranslationKey<K extends string> = string extends TranslationKey ? K : K extends TranslationKey ? K : K extends `${infer N}.${infer P}` ? N extends keyof Translations ? `'${P}' is not a key of the ${N} messages${Suggest<P, KeyOf<Translations[N]> & string>}` : `'${N}' is not a namespace of messages — namespaces are module names (modules/<module>/lang/en.ts) and 'app' (lang/en.ts)` : `'${K}' is not a translation key — keys are '<namespace>.<path>', e.g. 'auth.login.title'`;
 // Formatter
 export interface Formatter {
     readonly locale: string;
@@ -309,20 +246,8 @@ export interface Formatter {
 export type KeyOf<T> = T extends string ? never : {
     [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${KeyOf<T[K]>}`;
 }[keyof T & Segment];
-// LANGUAGE_TAG
-export declare const LANGUAGE_TAG: RegExp;
 // LangFiles
 export type LangFiles = Readonly<Record<string, () => Promise<unknown>>>;
-// LocaleFormats
-export declare class LocaleFormats {
-    #private;
-    readonly locale: string;
-    constructor(locale: string);
-    number(options?: Intl.NumberFormatOptions): Intl.NumberFormat;
-    date(options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormat;
-    plural(type: Intl.PluralRuleType): Intl.PluralRules;
-    relative(options?: Intl.RelativeTimeFormatOptions): Intl.RelativeTimeFormat;
-}
 // MessageAt
 export type MessageAt<T, P extends string> = P extends `${infer Head}.${infer Rest}` ? MessageAt<Prop<T, Head>, Rest> : Prop<T, P>;
 // MessageError
@@ -336,8 +261,6 @@ export interface MessageLoader {
         fallback?: string;
     }): Promise<Catalog>;
 }
-// MessageOf
-export type MessageOf<K extends string> = K extends `${infer N}.${infer P}` ? N extends keyof Translations ? MessageAt<Translations[N], P> : string : string;
 // MessageSyntaxError
 export declare class MessageSyntaxError extends SyntaxError {
     name: string;
@@ -356,21 +279,6 @@ export type MessagesOf<N extends string> = N extends keyof Translations ? Transl
 export type Namespace = [keyof Translations] extends [never] ? string : keyof Translations & string;
 // ParamsOf
 export type ParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
-// Part
-export type Part = string | {
-    readonly kind: 'pound';
-} | {
-    readonly kind: 'value';
-    readonly name: string;
-} | {
-    readonly kind: 'number' | 'date' | 'time';
-    readonly name: string;
-    readonly style: string;
-} | {
-    readonly kind: 'plural' | 'selectordinal' | 'select';
-    readonly name: string;
-    readonly branches: Readonly<Record<string, readonly Part[]>>;
-};
 // Translate
 export interface Translate<N extends string = Namespace> {
     <K extends KeyOf<MessagesOf<N>> | (string & {})>(key: CheckKey<K, MessagesOf<N>, N>, ...params: TranslateArgs<MessageAt<MessagesOf<N>, K>>): string;
@@ -381,38 +289,15 @@ export interface Translate<N extends string = Namespace> {
 }
 // TranslateArgs
 export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends ParamsOf<M> ? [params?: ParamsOf<M>] : [params: ParamsOf<M>];
-// TranslationKey
-export type TranslationKey = [keyof Translations] extends [never] ? string : {
-    [N in keyof Translations & string]: `${N}.${KeyOf<Translations[N]>}`;
-}[keyof Translations & string];
 // Translations
 export interface Translations {
 }
-// baseLanguage
-export declare function baseLanguage(locale: string): string | undefined;
 // createMessageLoader
 export declare function createMessageLoader(files: LangFiles, { fallback }?: {
     fallback?: string;
 }): MessageLoader;
 // createTranslate
 export declare function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N>;
-// formatMessage
-export declare function formatMessage(message: string, params?: Readonly<Record<string, unknown>>, locale?: string): string;
-// formatParts
-export declare function formatParts(parts: readonly Part[], params: Readonly<Record<string, unknown>>, formats: LocaleFormats, pound?: number): string;
-// isLanguageTag
-export declare function isLanguageTag(value: unknown): value is string;
-// langFileOf
-export declare function langFileOf(path: string): {
-    namespace: string;
-    locale: string;
-} | undefined;
-// negotiateLocale
-export declare function negotiateLocale(header: string | null | undefined, supported: readonly string[]): string | undefined;
-// parseMessage
-export declare function parseMessage(message: string): readonly Part[];
-// supportedLocale
-export declare function supportedLocale(value: unknown, supported: readonly string[]): string | undefined;
 ```
 
 ### Referenced, not exported

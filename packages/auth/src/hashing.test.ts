@@ -1,6 +1,7 @@
 import { createApplication } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { AuthServiceProvider, DEFAULT_HASHER_OPTIONS, HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher, type HasherOptions, type PasswordHash } from './index.ts';
+import { AuthServiceProvider, HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher, type HasherOptions, type PasswordHash } from './index.ts';
+import { DEFAULT_HASHER_OPTIONS } from './hashing.ts';
 
 /** Cheap costs: these tests are about behaviour, not strength (the app does the same in `.env.test`). */
 const cheap: HasherOptions = { driver: 'argon2id', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } };

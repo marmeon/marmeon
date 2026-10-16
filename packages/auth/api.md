@@ -9,22 +9,6 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// ACCESS_TOKEN_TABLE
-export declare const ACCESS_TOKEN_TABLE = "personal_access_tokens";
-// AUTH_SESSION_KEYS
-export declare const AUTH_SESSION_KEYS: {
-    readonly id: "_auth_id";
-    readonly password: '_auth_password';
-    readonly confirmedAt: '_auth_confirmed_at';
-    readonly viaRemember: '_auth_via_remember';
-    readonly signedInAt: '_auth_signed_in_at';
-    readonly rememberUntil: '_auth_remember_until';
-    readonly pending: '_auth_pending';
-    readonly twoFactorAt: '_auth_two_factor_at';
-    readonly signIn: '_auth_sign_in';
-    readonly throttleKey: '_auth_throttle_key';
-    readonly typedPassword: '_auth_typed_password';
-};
 // Abilities
 export type Abilities<K extends string> = {
     [N in K]: boolean;
@@ -61,18 +45,6 @@ export interface AccessTokenStore {
     revokeEveryone?(): Promise<number>;
 }
 export declare const AccessTokenStore: import("@marmeon/core").Token<AccessTokenStore>;
-// AccessTokenTable
-export interface AccessTokenTable {
-    id: Generated<number>;
-    user_id: number | string;
-    name: string;
-    token_hash: Secret<string>;
-    abilities: JsonColumn;
-    last_used_at: string | Date | null;
-    expires_at: string | Date | null;
-    created_at: Generated<string | Date>;
-    updated_at: Generated<string | Date>;
-}
 // AccountSessions
 export declare class AccountSessions {
     #private;
@@ -229,8 +201,6 @@ export interface Credentials<U = AuthUser> {
     readonly passwordHash: PasswordHash | null;
     readonly sessionKey?: string | null;
 }
-// DEFAULT_HASHER_OPTIONS
-export declare const DEFAULT_HASHER_OPTIONS: HasherOptions;
 // DatabaseAccessTokens
 export declare class DatabaseAccessTokens implements AccessTokenStore {
     #private;
@@ -413,22 +383,6 @@ export declare class Gate {
     abilities<P extends object, const K extends string>(resource: NoInfer<ResourceOf<P, Projectable<P, K>>>, policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[]): Projection<Abilities<K>>;
     withAbilities<P extends object, const K extends string, T extends ResourceOf<P, Projectable<P, K>>>(rows: readonly T[], policy: PolicyClass<P>, names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[]): Projection<WithAbilities<T, K>[]>;
 }
-// HASH_LIMITS
-export declare const HASH_LIMITS: {
-    readonly argon2: {
-        readonly memory: readonly [1024, 262144];
-        readonly time: readonly [1, 16];
-        readonly parallelism: readonly [1, 16];
-    };
-    readonly scrypt: {
-        readonly cost: readonly [10, 20];
-        readonly blockSize: readonly [1, 32];
-        readonly parallelism: readonly [1, 16];
-    };
-    readonly scryptMemory: number;
-    readonly salt: readonly [8, 64];
-    readonly hash: readonly [16, 64];
-};
 // HashConfig
 export declare const HashConfig: import("@marmeon/core").ConfigDefinition<{
     driver: "argon2id" | "scrypt";
@@ -557,8 +511,6 @@ export declare class NoStoreWhenSignedIn {
 }
 // PASSWORD_RESET_TABLE
 export declare const PASSWORD_RESET_TABLE = "password_reset_tokens";
-// PRIVATE_REGISTRATION_OFF_WARNING
-export declare const PRIVATE_REGISTRATION_OFF_WARNING: string;
 // PasskeyCloneSuspected
 export declare class PasskeyCloneSuspected {
     #private;
@@ -694,12 +646,6 @@ export interface PasswordResetTokenStore {
     forgetEveryone?(): Promise<number>;
 }
 export declare const PasswordResetTokenStore: import("@marmeon/core").Token<PasswordResetTokenStore>;
-// PasswordResetTokenTable
-export interface PasswordResetTokenTable {
-    email: string;
-    token_hash: Secret<string>;
-    created_at: string | Date;
-}
 // PasswordRuleOptions
 export interface PasswordRuleOptions {
     readonly min?: number;
@@ -776,19 +722,8 @@ export declare class PruneTokensCommand {
     constructor(resets: PasswordResetTokenStore, remember: RememberTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig?: SessionConfig, signIns?: SignInTracker);
     handle({ options, output }: CommandInput): Promise<number>;
 }
-// RECOVERY_CODES_TABLE
-export declare const RECOVERY_CODES_TABLE = "two_factor_recovery_codes";
 // REMEMBER_TABLE
 export declare const REMEMBER_TABLE = "remember_tokens";
-// RecoveryCodeTable
-export interface RecoveryCodeTable {
-    id: Generated<number>;
-    user_id: number | string;
-    code_hash: Secret<string>;
-    used_at: string | Date | null;
-    created_at: Generated<string | Date>;
-    updated_at: Generated<string | Date>;
-}
 // RecoveryCodeUsed
 export declare class RecoveryCodeUsed {
     #private;
@@ -879,20 +814,6 @@ export interface RememberTokenStore {
     forgetEveryone?(): Promise<number>;
 }
 export declare const RememberTokenStore: import("@marmeon/core").Token<RememberTokenStore>;
-// RememberTokenTable
-export interface RememberTokenTable {
-    id: Generated<number>;
-    user_id: number | string;
-    selector: string;
-    validator_hash: Secret<string>;
-    previous_validator_hash: Secret<string | null>;
-    rotated_at: string | Date | null;
-    last_used_at: string | Date | null;
-    expires_at: string | Date;
-    account_fingerprint: string | null;
-    created_at: Generated<string | Date>;
-    updated_at: Generated<string | Date>;
-}
 // RememberedDevice
 export interface RememberedDevice {
     readonly userId: number | string;
@@ -909,12 +830,6 @@ export type ResourcelessAbility<P> = {
 }[AbilityOf<P>];
 // ResourcesOf
 export type ResourcesOf<P, K extends keyof P> = P[K] extends (user: AuthUser, ...resources: infer R) => unknown ? R : never;
-// SEEN_GRANULARITY_SECONDS
-export declare const SEEN_GRANULARITY_SECONDS = 300;
-// SIGN_INS_TABLE
-export declare const SIGN_INS_TABLE = "sign_ins";
-// STUBS
-export declare const STUBS: string;
 // ScryptOptions
 export interface ScryptOptions {
     readonly cost: number;
@@ -973,82 +888,6 @@ export interface SignInWindow {
     readonly idleSeconds: number;
     readonly maxSeconds: number;
 }
-// SignInsTable
-export interface SignInsTable {
-    id: string;
-    user_id: number | string;
-    user_agent: string | null;
-    remember_selector: string | null;
-    remember_until: string | Date | null;
-    signed_in_at: string | Date;
-    last_seen_at: string | Date;
-    created_at: Generated<string | Date>;
-    updated_at: Generated<string | Date>;
-}
-// SoftAssertion
-export interface SoftAssertion {
-    id: string;
-    rawId: string;
-    type: 'public-key';
-    clientExtensionResults: Record<string, never>;
-    response: {
-        clientDataJSON: string;
-        authenticatorData: string;
-        signature: string;
-        userHandle?: string;
-    };
-}
-// SoftAuthenticatorConfig
-export interface SoftAuthenticatorConfig {
-    origin: string;
-    rpId: string;
-    algorithm?: 'ES256' | 'EdDSA' | 'RS256';
-    rsa?: {
-        modulusLength?: number;
-        publicExponent?: number;
-    };
-    userVerified?: boolean;
-    synced?: boolean;
-}
-// SoftOptions
-export interface SoftOptions {
-    challenge: string;
-    user?: {
-        id: string;
-    };
-    allowCredentials?: readonly {
-        id: string;
-    }[];
-}
-// SoftOverrides
-export interface SoftOverrides {
-    origin?: string;
-    rpId?: string;
-    challenge?: string;
-    userVerified?: boolean;
-    userPresent?: boolean;
-    backupEligible?: boolean;
-    crossOrigin?: boolean;
-    signCount?: number;
-    credentialIdLength?: number;
-    transports?: unknown[];
-    badSignature?: boolean;
-    attestation?: 'none' | 'packed';
-}
-// SoftRegistration
-export interface SoftRegistration {
-    id: string;
-    rawId: string;
-    type: 'public-key';
-    clientExtensionResults: Record<string, never>;
-    response: {
-        clientDataJSON: string;
-        attestationObject: string;
-        transports: string[];
-    };
-}
-// TWO_FACTOR_TABLE
-export declare const TWO_FACTOR_TABLE = "two_factor_authentications";
 // TwoFactorChallengeFailed
 export declare class TwoFactorChallengeFailed {
     #private;
@@ -1132,16 +971,6 @@ export declare class TwoFactorStore implements TwoFactorState {
     }): Promise<void>;
     removeAll(userId: number | string): Promise<void>;
 }
-// TwoFactorTable
-export interface TwoFactorTable {
-    id: Generated<number>;
-    user_id: number | string;
-    secret: Secret<string>;
-    confirmed_at: string | Date | null;
-    last_used_step: number | null;
-    created_at: Generated<string | Date>;
-    updated_at: Generated<string | Date>;
-}
 // UserOf
 export type UserOf<Types> = Types extends {
     user: infer U extends {
@@ -1200,15 +1029,9 @@ export interface WithToken {
 export declare function abilities(...required: string[]): MiddlewareClass<WithToken, {}>;
 // allow
 export declare function allow(): PolicyResponse;
-// argon2Available
-export declare function argon2Available(): boolean;
 // authenticate
 export declare function authenticate(guard: 'api'): MiddlewareClass<{}, Authenticated & WithToken>;
 export declare function authenticate<const N extends RouteNameInput = never>(options?: AuthenticateOptions<N>): MiddlewareClass<{}, Authenticated>;
-// authenticatedSession
-export declare function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>>;
-// authenticatedToken
-export declare function authenticatedToken(container: Container, user: AuthUser, abilities?: readonly string[]): Promise<string>;
 // can
 export declare function can<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resource: ResourcesOf<P, K> extends [] ? [] : [resource: `"${K}" needs its resource: a bound route parameter's name, or (ctx) => resource`]): (ctx: HttpContext<Authenticated>, resolve: ClassResolver) => Promise<boolean>;
 export declare function can<P extends object, K extends AbilityOf<P>, const N extends string>(policy: PolicyClass<P>, ability: K, param: N): (ctx: HttpContext<Authenticated, {
@@ -1227,8 +1050,6 @@ export declare function deny(message?: string): PolicyResponse;
 export declare function denyAsNotFound(): PolicyResponse;
 // describeDevice
 export declare function describeDevice(userAgent: string | undefined): DeviceDescription;
-// emailHash
-export declare function emailHash(email: string): string;
 // guest
 export declare function guest(home?: string): MiddlewareClass<{}, {}>;
 // parseAccessToken
@@ -1238,20 +1059,10 @@ export declare function parseAccessToken(plainText: string, prefix: string): {
 } | undefined;
 // password
 export declare function password({ min, messages }?: PasswordRuleOptions): Rule<string, string>;
-// sessionFingerprint
-export declare function sessionFingerprint(credentials: Credentials): string;
-// softAuthenticator
-export declare function softAuthenticator(config: SoftAuthenticatorConfig): {
-    readonly credentialIds: string[];
-    register(options: SoftOptions, overrides?: SoftOverrides): SoftRegistration;
-    authenticate(options: SoftOptions, overrides?: SoftOverrides): SoftAssertion;
-};
 // takePasswordCheck
 export declare function takePasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope, userId: number | string): Promise<PasswordThrottled | undefined>;
 // tokenCan
 export declare function tokenCan(token: AccessToken, ability: string): boolean;
-// twoFactorCode
-export declare function twoFactorCode(secret: string, at?: Date): string;
 // verified
 export declare function verified<const N extends RouteNameInput = never>(options?: VerifiedOptions<N>): MiddlewareClass<{
     readonly user: VerifiableUser;
@@ -1945,6 +1756,111 @@ export declare const VERIFY_SECOND_FACTOR: unique symbol;
 declare const missing: unique symbol;
 // passwordHash
 declare const passwordHash: unique symbol;
+```
+
+## `@marmeon/auth/testing`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// SoftAssertion
+export interface SoftAssertion {
+    id: string;
+    rawId: string;
+    type: 'public-key';
+    clientExtensionResults: Record<string, never>;
+    response: {
+        clientDataJSON: string;
+        authenticatorData: string;
+        signature: string;
+        userHandle?: string;
+    };
+}
+// SoftAuthenticatorConfig
+export interface SoftAuthenticatorConfig {
+    origin: string;
+    rpId: string;
+    algorithm?: 'ES256' | 'EdDSA' | 'RS256';
+    rsa?: {
+        modulusLength?: number;
+        publicExponent?: number;
+    };
+    userVerified?: boolean;
+    synced?: boolean;
+}
+// SoftOptions
+export interface SoftOptions {
+    challenge: string;
+    user?: {
+        id: string;
+    };
+    allowCredentials?: readonly {
+        id: string;
+    }[];
+}
+// SoftOverrides
+export interface SoftOverrides {
+    origin?: string;
+    rpId?: string;
+    challenge?: string;
+    userVerified?: boolean;
+    userPresent?: boolean;
+    backupEligible?: boolean;
+    crossOrigin?: boolean;
+    signCount?: number;
+    credentialIdLength?: number;
+    transports?: unknown[];
+    badSignature?: boolean;
+    attestation?: 'none' | 'packed';
+}
+// SoftRegistration
+export interface SoftRegistration {
+    id: string;
+    rawId: string;
+    type: 'public-key';
+    clientExtensionResults: Record<string, never>;
+    response: {
+        clientDataJSON: string;
+        attestationObject: string;
+        transports: string[];
+    };
+}
+// authenticatedSession
+export declare function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>>;
+// authenticatedToken
+export declare function authenticatedToken(container: Container, user: AuthUser, abilities?: readonly string[]): Promise<string>;
+// softAuthenticator
+export declare function softAuthenticator(config: SoftAuthenticatorConfig): {
+    readonly credentialIds: string[];
+    register(options: SoftOptions, overrides?: SoftOverrides): SoftRegistration;
+    authenticate(options: SoftOptions, overrides?: SoftOverrides): SoftAssertion;
+};
+// twoFactorCode
+export declare function twoFactorCode(secret: string, at?: Date): string;
+```
+
+### Referenced, not exported
+
+```ts
+// AuthTypes
+export interface AuthTypes {
+}
+// AuthTypesNotDeclared
+export interface AuthTypesNotDeclared {
+    readonly [missing]: 'Declare the user type: declare module "@marmeon/auth" { interface AuthTypes { user: User } }';
+}
+// AuthUser
+export type AuthUser = UserOf<AuthTypes>;
+// UserOf
+export type UserOf<Types> = Types extends {
+    user: infer U extends {
+        readonly id: string | number;
+    };
+} ? U : AuthTypesNotDeclared;
+// missing
+declare const missing: unique symbol;
 ```
 
 ## `@marmeon/auth/two-factor`

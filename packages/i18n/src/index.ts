@@ -12,9 +12,10 @@ import { isLanguageTag, negotiateLocale, supportedLocale } from './locale.ts';
 import { createTranslator, CurrentLocale, Translator } from './translator.ts';
 import type { CheckTranslationKey, MessageOf, ParamsOf, TranslationKey } from './types.ts';
 
-export * from './messages.ts';
-export { createTranslator, CurrentLocale, Translator } from './translator.ts';
-export type { TranslatorOptions } from './translator.ts';
+export { Catalog, createMessageLoader, createTranslate, MessageError, MessageSyntaxError } from './messages.ts';
+export type { CheckKey, Formatter, KeyOf, LangFiles, MessageAt, MessageLoader, Messages, MessagesOf, MessageTree, Namespace, ParamsOf, Translate, TranslateArgs, Translations } from './messages.ts';
+export { CurrentLocale, Translator } from './translator.ts';
+export type { CheckTranslationKey, MessageOf, TranslationKey } from './types.ts';
 
 declare module '@marmeon/session' {
   interface SessionData {
@@ -232,7 +233,7 @@ async function langFiles(root: string): Promise<string[]> {
  * Loads the app's language files into `catalog` — the locales `locales` accepts (all, unless `APP_LOCALES` names
  * them; a file for another locale is skipped). The paths come from the app's folders, never from a request.
  */
-export async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): Promise<{ loaded: string[]; skipped: string[] }> {
+async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): Promise<{ loaded: string[]; skipped: string[] }> {
   const loaded: string[] = [];
   const skipped: string[] = [];
   for (const path of await langFiles(root)) {

@@ -7,9 +7,10 @@ import { CsrfProtection, Session, SessionEndings, SessionServiceProvider, sessio
 import { accountScope } from '@marmeon/session/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
+import { COMPLETE_PENDING, SIGN_IN_VERIFIED, AUTH_SESSION_KEYS } from './auth.ts';
 import { NewPassword } from './new-password.ts';
-import { AccountSessions, Auth, PasswordChanged, AUTH_SESSION_KEYS, AuthServiceProvider, RememberTokenStore, DatabaseRememberTokens, DatabaseSignIns, Hasher, SIGN_INS_TABLE, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
+import { AccountSessions, Auth, PasswordChanged, AuthServiceProvider, RememberTokenStore, DatabaseRememberTokens, DatabaseSignIns, Hasher, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
+import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };

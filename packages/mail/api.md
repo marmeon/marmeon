@@ -14,12 +14,6 @@ export type Address = string | {
     readonly address: string;
     readonly name?: string;
 };
-// ArrayTransport
-export declare class ArrayTransport implements MailTransport {
-    readonly messages: MailMessage[];
-    send(message: MailMessage): Promise<void>;
-    clear(): void;
-}
 // Attachment
 export interface Attachment {
     readonly filename: string;
@@ -57,16 +51,6 @@ export interface Envelope {
 }
 // Html
 export { Html } from '@marmeon/core';
-// LOG_MAILER_WARNING
-export declare const LOG_MAILER_WARNING: string;
-// LogTransport
-export declare class LogTransport implements MailTransport {
-    #private;
-    constructor(logger: Logger);
-    send(message: MailMessage): Promise<void>;
-}
-// MJML_INSTALL
-export declare const MJML_INSTALL = "pnpm add mjml@^5";
 // MailConfig
 export declare const MailConfig: import("@marmeon/core").ConfigDefinition<{
     mailer: "array" | "log" | "smtp";
@@ -95,30 +79,6 @@ export interface MailContent {
 // MailError
 export declare class MailError extends Error {
     name: string;
-}
-// MailFake
-export declare class MailFake implements Mailer {
-    #private;
-    constructor(from?: Address, app?: Application);
-    send(mailable: Mailable): Promise<MailMessage>;
-    queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
-    queued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): {
-        mail: M;
-        message: MailMessage;
-        options: QueueMailOptions;
-    }[];
-    assertQueued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): this;
-    assertQueuedCount<M extends Mailable>(Class: MailableClass<M>, count: number): this;
-    assertNotQueued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): this;
-    assertNothingQueued(): this;
-    sent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): {
-        mail: M;
-        message: MailMessage;
-    }[];
-    assertSent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): this;
-    assertSentCount<M extends Mailable>(Class: MailableClass<M>, count: number): this;
-    assertNotSent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): this;
-    assertNothingSent(): this;
 }
 // MailMessage
 export interface MailMessage {
@@ -153,16 +113,6 @@ export interface MailPreviewContext {
     make<T>(key: Key<T>): T;
     readonly locale: string | undefined;
 }
-// MailPreviews
-export declare class MailPreviews {
-    #private;
-    constructor(root: string, container: Container, from: Address);
-    all(): Promise<Map<string, PreviewableMail>>;
-    index(): Promise<Response>;
-    show(name: string, url: URL): Promise<Response>;
-}
-// MailQueue
-export type MailQueue = (payload: QueuedMailPayload, options: QueueMailOptions) => Promise<unknown>;
 // MailServiceProvider
 export declare class MailServiceProvider implements ServiceProvider {
     #private;
@@ -212,113 +162,140 @@ export declare class Mjml extends Html {
 export declare class MjmlError extends Error {
     name: string;
 }
-// PreviewableMail
-export interface PreviewableMail {
-    readonly name: string;
-    preview(context: MailPreviewContext): Mailable | Promise<Mailable>;
-}
 // QueueMailOptions
 export interface QueueMailOptions {
     readonly queue?: string;
     readonly delay?: number | Duration;
     readonly connection?: string;
 }
-// QueuedMailAddress
-export interface QueuedMailAddress {
-    address: string;
-    name?: string | undefined;
-}
-// QueuedMailMessage
-export interface QueuedMailMessage {
-    from: QueuedMailAddress;
-    to: QueuedMailAddress[];
-    cc: QueuedMailAddress[];
-    bcc: QueuedMailAddress[];
-    replyTo?: QueuedMailAddress | undefined;
-    subject: string;
-    html: string;
-    text: string;
-    attachments: {
-        filename: string;
-        content: string;
-        encoding: 'utf8' | 'base64';
-        contentType?: string | undefined;
-    }[];
-    headers: Record<string, string>;
-}
-// QueuedMailPayload
-export interface QueuedMailPayload {
-    mailable: string;
-    message: QueuedMailMessage;
-}
-// SendQueuedMail
-export declare class SendQueuedMail {
-    #private;
-    static readonly job = "marmeon.mail";
-    static readonly schema: StandardSchemaV1<QueuedMailPayload>;
-    static readonly encrypted = true;
-    static readonly tries = 5;
-    static readonly backoff: number[];
-    static readonly timeout = 30;
-    constructor(transport: MailTransport, app?: Application);
-    handle(payload: QueuedMailPayload, _job: JobContext): Promise<void>;
-}
-// SmtpOptions
-export interface SmtpOptions {
-    readonly host: string;
-    readonly port: number;
-    readonly secure: boolean;
-    readonly requireTls?: boolean;
-    readonly username?: string;
-    readonly password?: string;
-}
-// SmtpTransport
-export declare class SmtpTransport implements MailTransport {
-    #private;
-    constructor(options: SmtpOptions);
-    send(message: MailMessage): Promise<void>;
-    close(): Promise<void>;
-}
-// TransportMailer
-export declare class TransportMailer implements Mailer {
-    #private;
-    constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue, app?: Application);
-    send(mailable: Mailable): Promise<MailMessage>;
-    queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
-}
 // calendarEvent
 export declare function calendarEvent(event: CalendarEvent): Attachment;
 // compose
 export declare function compose(mailable: Mailable, defaultFrom: Address): Promise<MailMessage>;
-// escapeHtml
-export { escapeHtml } from '@marmeon/core';
-// findMailPreviews
-export declare function findMailPreviews(root: string): Promise<Map<string, PreviewableMail>>;
 // fromHtml
 export declare function fromHtml(body: Html, text?: string): MailContent;
 // fromMjml
 export declare function fromMjml(source: Mjml, options?: {
     text?: string;
 }): Promise<MailContent>;
-// fromQueued
-export declare function fromQueued(queued: QueuedMailMessage): MailMessage;
 // html
 export { html } from '@marmeon/core';
 // mjml
 export declare function mjml(strings: TemplateStringsArray, ...values: unknown[]): Mjml;
 // raw
 export { raw } from '@marmeon/core';
-// textFromHtml
-export declare function textFromHtml(markup: string): string;
-// toQueued
-export declare function toQueued(message: MailMessage): QueuedMailMessage;
+```
+
+## `@marmeon/mail/testing`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// MailFake
+export declare class MailFake implements Mailer {
+    #private;
+    constructor(from?: Address, app?: Application);
+    send(mailable: Mailable): Promise<MailMessage>;
+    queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
+    queued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): {
+        mail: M;
+        message: MailMessage;
+        options: QueueMailOptions;
+    }[];
+    assertQueued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): this;
+    assertQueuedCount<M extends Mailable>(Class: MailableClass<M>, count: number): this;
+    assertNotQueued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): this;
+    assertNothingQueued(): this;
+    sent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): {
+        mail: M;
+        message: MailMessage;
+    }[];
+    assertSent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): this;
+    assertSentCount<M extends Mailable>(Class: MailableClass<M>, count: number): this;
+    assertNotSent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): this;
+    assertNothingSent(): this;
+}
 ```
 
 ### Referenced, not exported
 
 ```ts
+// Address
+export type Address = string | {
+    readonly address: string;
+    readonly name?: string;
+};
+// Attachment
+export interface Attachment {
+    readonly filename: string;
+    readonly content: string | Uint8Array;
+    readonly contentType?: string;
+}
+// Envelope
+export interface Envelope {
+    readonly to: Address | readonly Address[];
+    readonly subject: string;
+    readonly from?: Address;
+    readonly cc?: Address | readonly Address[];
+    readonly bcc?: Address | readonly Address[];
+    readonly replyTo?: Address;
+    readonly headers?: Readonly<Record<string, string>>;
+}
+// MailContent
+export interface MailContent {
+    readonly html: string;
+    readonly text: string;
+}
+// MailMessage
+export interface MailMessage {
+    readonly from: {
+        readonly address: string;
+        readonly name?: string;
+    };
+    readonly to: readonly {
+        readonly address: string;
+        readonly name?: string;
+    }[];
+    readonly cc: readonly {
+        readonly address: string;
+        readonly name?: string;
+    }[];
+    readonly bcc: readonly {
+        readonly address: string;
+        readonly name?: string;
+    }[];
+    readonly replyTo?: {
+        readonly address: string;
+        readonly name?: string;
+    };
+    readonly subject: string;
+    readonly html: string;
+    readonly text: string;
+    readonly attachments: readonly Attachment[];
+    readonly headers: Readonly<Record<string, string>>;
+}
+// Mailable
+export interface Mailable {
+    envelope(): Envelope | Promise<Envelope>;
+    content(): MailContent | Html | Promise<MailContent | Html>;
+    attachments?(): readonly Attachment[] | Promise<readonly Attachment[]>;
+}
 // MailableClass
 type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
+// Mailer
+export interface Mailer {
+    send(mailable: Mailable): Promise<MailMessage>;
+    queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
+}
+export declare const Mailer: import("@marmeon/core").Token<Mailer>;
+// QueueMailOptions
+export interface QueueMailOptions {
+    readonly queue?: string;
+    readonly delay?: number | Duration;
+    readonly connection?: string;
+}
 ```
 
 ## Environment

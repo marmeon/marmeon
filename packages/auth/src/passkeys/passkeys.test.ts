@@ -27,11 +27,10 @@ import {
   TwoFactorState,
   TwoFactorStore,
   UserProvider,
-  softAuthenticator,
-  twoFactorCode,
   type Credentials,
   type PasswordHash,
 } from '../index.ts';
+import { softAuthenticator, twoFactorCode } from '../testing.ts';
 import { twoFactor } from '../two-factor/middleware.ts';
 import { NoTwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE } from '../two-factor/store.ts';

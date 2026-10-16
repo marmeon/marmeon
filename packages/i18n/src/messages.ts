@@ -1,31 +1,16 @@
 /**
- * The browser-safe core of `@marmeon/i18n` — messages, the ICU subset, formatting, locale negotiation and the
- * loader of language files. No server code: UI adapters (`useTranslation` in @marmeon/react) build on this.
+ * The browser-safe core of `@marmeon/i18n` — the message catalog, translating one namespace and the loader of language
+ * files. No server code: UI adapters (`useTranslation` in @marmeon/react) build on this.
  */
 import { Catalog, type Formatter } from './catalog.ts';
 import type { CheckKey, KeyOf, MessageAt, MessageTree, Namespace, TranslateArgs, Translations } from './types.ts';
 
 export { Catalog, MessageError } from './catalog.ts';
 export type { Formatter } from './catalog.ts';
-export { formatMessage, formatParts, LocaleFormats, MessageSyntaxError, parseMessage } from './format.ts';
-export type { Part } from './format.ts';
-export { baseLanguage, isLanguageTag, LANGUAGE_TAG, negotiateLocale, supportedLocale } from './locale.ts';
-export { APP_NAMESPACE, createMessageLoader, langFileOf } from './loader.ts';
+export { MessageSyntaxError } from './format.ts';
+export { createMessageLoader } from './loader.ts';
 export type { LangFiles, MessageLoader } from './loader.ts';
-export type {
-  CheckKey,
-  CheckTranslationKey,
-  KeyOf,
-  MessageAt,
-  MessageOf,
-  Messages,
-  MessageTree,
-  Namespace,
-  ParamsOf,
-  TranslateArgs,
-  TranslationKey,
-  Translations,
-} from './types.ts';
+export type { CheckKey, KeyOf, MessageAt, Messages, MessageTree, Namespace, ParamsOf, TranslateArgs, Translations } from './types.ts';
 
 /** The messages of namespace `N` — its source file's type, once declared in `Translations`. */
 export type MessagesOf<N extends string> = N extends keyof Translations ? Translations[N] : MessageTree;

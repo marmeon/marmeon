@@ -332,7 +332,7 @@ export class MailAboutFailedPasskeySignIn {
 browser would send, with ES256, EdDSA or RS256 keys. Give it your relying party, hand it the options the server returned, and post the result back:
 
 ```ts title="modules/auth/passkeys.test.ts"
-import { softAuthenticator, type SoftOptions } from '@marmeon/auth';
+import { softAuthenticator, type SoftOptions } from '@marmeon/auth/testing';
 import { createTestApp } from '@marmeon/testing';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';

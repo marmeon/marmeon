@@ -1,4 +1,4 @@
-import { softAuthenticator, twoFactorCode } from '@marmeon/auth';
+import { softAuthenticator, twoFactorCode } from '@marmeon/auth/testing';
 import { RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';

@@ -2,26 +2,24 @@ import { createServer, type Server } from 'node:net';
 import { ConsoleLogger, createApplication, Logger, type Container, type LogContext } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
-  ArrayTransport,
   compose,
   fromHtml,
   html,
-  LOG_MAILER_WARNING,
-  LogTransport,
   MailError,
   mjml,
   MjmlError,
   Mailer,
-  MailFake,
   MailServiceProvider,
   MailTransport,
   raw,
-  SmtpTransport,
-  textFromHtml,
   type Mailable,
   type MailContent,
   type MailMessage,
 } from './index.ts';
+import { ArrayTransport, LogTransport, SmtpTransport } from './transports.ts';
+import { LOG_MAILER_WARNING } from './config.ts';
+import { MailFake } from './fake.ts';
+import { textFromHtml } from './html.ts';
 
 class WelcomeMail implements Mailable {
   readonly #name: string;

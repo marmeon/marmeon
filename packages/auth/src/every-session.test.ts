@@ -23,13 +23,13 @@ import {
   EverySessionEnded,
   PasswordResetTokenStore,
   RememberTokenStore,
-  SIGN_INS_TABLE,
   SignInStore,
   TwoFactorState,
   UserProvider,
   type AuthUser,
   type Credentials,
 } from './index.ts';
+import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { REMEMBER_TABLE } from './remember.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 

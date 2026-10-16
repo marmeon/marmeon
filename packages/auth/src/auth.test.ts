@@ -9,7 +9,6 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   AccessTokenStore,
   Auth,
-  AUTH_SESSION_KEYS,
   authenticate,
   AuthConfig,
   AuthServiceProvider,
@@ -30,6 +29,7 @@ import {
   type PasswordHash,
   type UserOf,
 } from './index.ts';
+import { AUTH_SESSION_KEYS } from './auth.ts';
 import { COMPLETE_PENDING, READ_PENDING, sessionFingerprint } from './auth.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';

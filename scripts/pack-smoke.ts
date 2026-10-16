@@ -519,19 +519,31 @@ function checkRegistration(privately: boolean) {
 }
 
 /**
- * The production install sends a mail over SMTP — nodemailer is a dependency of @marmeon/mail, the app never names it. A
- * local server without TLS, so `requireTls: false` (MAIL_REQUIRE_TLS=false, as for Mailpit).
+ * The production install sends a mail over SMTP — nodemailer is a dependency of @marmeon/mail, the app never names it. The child
+ * boots an app as an app does, through the public API: `createApplication` with the `MailServiceProvider` and no `env`, so the
+ * mail settings come from the process environment (`MAIL_MAILER=smtp`; a local server without TLS, so `MAIL_REQUIRE_TLS=false`,
+ * as for Mailpit). The `Mailer` sends one mail and `shutdown()` closes the transport.
  */
 async function checkSmtp(smoke: Smoke): Promise<void> {
   const server = await smtpServer();
   try {
     const script =
-      "import { compose, SmtpTransport } from '@marmeon/mail';\n" +
-      `const transport = new SmtpTransport({ host: '127.0.0.1', port: ${server.port}, secure: false, requireTls: false });\n` +
-      "await transport.send(await compose({ envelope: () => ({ to: 'ada@example.com', subject: 'Smoke' }), content: () => ({ html: '<p>Hello</p>', text: 'Hello' }) }, 'app@example.com'));\n" +
-      'await transport.close();\n';
+      "import { createApplication } from '@marmeon/core';\n" +
+      "import { Mailer, MailServiceProvider } from '@marmeon/mail';\n" +
+      'const app = await createApplication({ root: process.cwd(), providers: [MailServiceProvider], discover: false });\n' +
+      "await app.container.make(Mailer).send({ envelope: () => ({ to: 'ada@example.com', subject: 'Smoke' }), content: () => ({ html: '<p>Hello</p>', text: 'Hello' }) });\n" +
+      'await app.shutdown();\n';
+    const env = {
+      ...smoke.env,
+      MAIL_MAILER: 'smtp',
+      MAIL_HOST: '127.0.0.1',
+      MAIL_PORT: String(server.port),
+      MAIL_SECURE: 'false',
+      MAIL_REQUIRE_TLS: 'false',
+      MAIL_FROM_ADDRESS: 'app@example.com',
+    };
     // Asynchronously: the SMTP server lives in this process (spawnSync would block it).
-    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { cwd: smoke.app, env: smoke.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { cwd: smoke.app, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout!.on('data', (chunk) => (output += chunk));
     child.stderr!.on('data', (chunk) => (output += chunk));

@@ -144,45 +144,6 @@ export interface UniqueOptions<Ctx = any> extends ExistsOptions<Ctx> {
     readonly ignore?: (ctx: Ctx) => unknown;
     readonly ignoreColumn?: string;
 }
-// VALIDATION_TEXTS
-export declare const VALIDATION_TEXTS: {
-    readonly required: 'The {attribute} field is required.';
-    readonly string: 'The {attribute} field must be a string.';
-    readonly number: 'The {attribute} field must be a number.';
-    readonly integer: 'The {attribute} field must be an integer.';
-    readonly boolean: 'The {attribute} field must be true or false.';
-    readonly accepted: 'The {attribute} field must be accepted.';
-    readonly object: 'The {attribute} field must be an object.';
-    readonly array: 'The {attribute} field must be a list.';
-    readonly in: 'The selected {attribute} is invalid.';
-    readonly union: 'The {attribute} field is invalid.';
-    readonly custom: 'The {attribute} field is invalid.';
-    readonly min: {
-        readonly string: 'The {attribute} field must be at least {min} characters.';
-        readonly number: 'The {attribute} field must be at least {min}.';
-        readonly array: 'The {attribute} field must have at least {min} items.';
-    };
-    readonly max: {
-        readonly string: 'The {attribute} field must not be longer than {max} characters.';
-        readonly number: 'The {attribute} field must not be greater than {max}.';
-        readonly array: 'The {attribute} field must not have more than {max} items.';
-    };
-    readonly between: {
-        readonly string: 'The {attribute} field must be between {min} and {max} characters.';
-        readonly number: 'The {attribute} field must be between {min} and {max}.';
-        readonly array: 'The {attribute} field must have between {min} and {max} items.';
-    };
-    readonly email: 'The {attribute} field must be a valid email address.';
-    readonly url: 'The {attribute} field must be a valid URL.';
-    readonly uuid: 'The {attribute} field must be a valid UUID.';
-    readonly regex: 'The {attribute} field format is invalid.';
-    readonly date: 'The {attribute} field must be a valid date.';
-    readonly iso_timestamp: 'The {attribute} field must be a valid date and time.';
-    readonly confirmed: 'The {attribute} does not match.';
-    readonly unique: 'The {attribute} has already been taken.';
-    readonly exists: 'The selected {attribute} is invalid.';
-    readonly port: 'The {attribute} field must be a port number from 1 to 65535.';
-};
 // metaOf
 export declare function metaOf(rule: unknown, key: symbol): unknown;
 // rules

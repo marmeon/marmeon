@@ -1,4 +1,4 @@
-import { softAuthenticator, twoFactorCode } from '@marmeon/auth';
+import { softAuthenticator, twoFactorCode } from '@marmeon/auth/testing';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

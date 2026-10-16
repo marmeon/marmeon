@@ -1,4 +1,5 @@
-import { twoFactorCode, TwoFactorStore } from '@marmeon/auth';
+import { TwoFactorStore } from '@marmeon/auth';
+import { twoFactorCode } from '@marmeon/auth/testing';
 import { Encrypter } from '@marmeon/encryption';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

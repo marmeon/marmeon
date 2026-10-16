@@ -4,7 +4,7 @@ import { resolveConfig, type Resolver } from '@marmeon/core';
 import type { Migration } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { MakeNotificationsTableCommand, NOTIFICATIONS_MIGRATION } from './commands.ts';
-import { NotificationConfig } from './index.ts';
+import { NotificationConfig } from './config.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function app(): string {

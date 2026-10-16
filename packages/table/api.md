@@ -38,8 +38,6 @@ export declare class BulkAction<H extends BulkActionClass = BulkActionClass, P =
 export type BulkActionClass<R = any, C = any> = new (...args: any[]) => {
     handle(rows: readonly R[], ctx: C): unknown;
 };
-// CSV_BOM
-export declare const CSV_BOM = "\uFEFF";
 // CheckActions
 export type CheckActions<Row, Actions> = {
     [N in keyof Actions]: Actions[N] extends RowAction<infer H, infer P, infer K> ? [HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, false> | PolicyProblem<P, K, Row, N & string>> : unknown;
@@ -96,8 +94,6 @@ export interface CursorPage {
     readonly perPageOptions: readonly number[];
     readonly nextCursor: string | null;
 }
-// DEFAULT_BULK_MAX
-export declare const DEFAULT_BULK_MAX = 1000;
 // Filter
 export declare class Filter<R extends string = string, T extends 'select' | 'dateRange' = 'select' | 'dateRange', O extends string = string> {
     readonly ref: R;
@@ -110,8 +106,6 @@ export declare class Filter<R extends string = string, T extends 'select' | 'dat
 }
 // KeyName
 export type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
-// MAX_SEARCH
-export declare const MAX_SEARCH = 100;
 // OffsetPage
 export interface OffsetPage {
     readonly type: 'offset';
@@ -174,34 +168,11 @@ export interface Table<Row extends object = any, Ctx = any, C extends string = s
     readonly definition: TableDefinition;
     readonly query: TableQuerySchema<QV>;
 }
-// TableActionController
-export declare class TableActionController extends Controller {
-    #private;
-    constructor(tables: Tables);
-    handle(ctx: HttpContext<{}, {
-        tableAction: string;
-    }>): Promise<unknown>;
-}
 // TableActionEntry
 export interface TableActionEntry<A extends string = string> {
     readonly name: A;
     readonly url: string;
     readonly confirm: boolean;
-}
-// TableActionResult
-export interface TableActionResult<D = unknown> {
-    readonly done: number;
-    readonly skipped: number;
-    readonly missing: number;
-    readonly data?: D;
-}
-// TableBulkController
-export declare class TableBulkController extends Controller {
-    #private;
-    constructor(tables: Tables);
-    handle(ctx: HttpContext<{}, {
-        tableBulk: string;
-    }>): Promise<unknown>;
 }
 // TableBulkEntry
 export interface TableBulkEntry<B extends string = string> {
@@ -262,8 +233,6 @@ export interface TableDefinition {
     readonly bulk: Readonly<Record<string, AnyBulkAction>>;
     readonly exports: Readonly<Record<string, TableExport>>;
 }
-// TableEndpointKind
-export type TableEndpointKind = 'action' | 'bulk' | 'export';
 // TableExport
 export declare class TableExport {
     readonly format: 'csv';
@@ -273,14 +242,6 @@ export declare class TableExport {
     max(rows: number): TableExport;
     authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
     authorize(check: VisibilityCheck): TableExport;
-}
-// TableExportController
-export declare class TableExportController extends Controller {
-    #private;
-    constructor(tables: Tables);
-    handle(ctx: HttpContext<{}, {
-        tableExport: string;
-    }>): Promise<Response>;
 }
 // TableExportEntry
 export interface TableExportEntry<E extends string = string> {
@@ -356,18 +317,6 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
 export declare class TableServiceProvider implements ServiceProvider {
     register(container: Container): void;
 }
-// TableState
-export interface TableState {
-    readonly sort: {
-        readonly column: string;
-        readonly direction: 'asc' | 'desc';
-    } | undefined;
-    readonly page: number;
-    readonly perPage: number;
-    readonly cursor: string | undefined;
-    readonly search: string;
-    readonly filters: Readonly<Record<string, string>>;
-}
 // Tables
 export declare class Tables {
     #private;
@@ -394,10 +343,6 @@ export declare function action<H extends RowActionClass>(handler: H): RowAction<
 export declare function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unknown, never>;
 // column
 export declare function column<const R extends string>(ref: R): Column<R, false, false, false>;
-// csvCell
-export declare function csvCell(value: unknown): string;
-// csvLine
-export declare function csvLine(values: readonly unknown[]): string;
 // defineTable
 export declare function defineTable<Q extends TableQuery, const Cols extends Record<string, AnyColumn>, const K extends string, const Filters extends Record<string, AnyFilter> = {}, const Sort extends string = never, Actions extends Record<string, AnyRowAction> = {}, Bulk extends Record<string, AnyBulkAction> = {}, Exports extends Record<string, TableExport> = {}, const P extends string = '', const Pg extends TablePagination = {}>(input: TableInput<Q, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<Q, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 // exportCsv
@@ -407,15 +352,6 @@ export declare const filter: {
     select<const R extends string, const O extends string>(ref: R, options: readonly [O, ...O[]]): Filter<R, 'select', O>;
     dateRange<const R extends string>(ref: R): Filter<R, 'dateRange', never>;
 };
-// parseState
-export declare function parseState(definition: TableDefinition, query: Iterable<[string, unknown]>): TableState;
-// queryKeys
-export declare function queryKeys(definition: TableDefinition): TableQueryKeys & {
-    filter: (name: string) => string;
-    filterPrefix: string;
-};
-// stateQuery
-export declare function stateQuery(definition: TableDefinition, state: TableState): Record<string, string>;
 // tableRoutes
 export declare function tableRoutes<R extends Route<any, any, any>, T extends Table>(Route: R, table: T & CheckRegistrar<R, T>): void;
 ```

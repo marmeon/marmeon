@@ -10,7 +10,8 @@ import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore } from '@marmeon/session';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
-import { AccountSessions, Auth, authenticate, AuthServiceProvider, Hasher, sessionFingerprint, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { AccountSessions, Auth, authenticate, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { sessionFingerprint } from './auth.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
