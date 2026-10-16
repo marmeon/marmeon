@@ -125,6 +125,7 @@ does not pass `devtools: true`, also in one that runs as development. The
 | `storage` | `'fake'` | `'real'` keeps the configured disks instead of disks in memory. |
 | `events` | `'real'` | Every event is recorded. `'fake'` runs no listener, and a list of event classes holds back only theirs. |
 | `ssr` | `false` | `true` renders pages on the server through the app's Vite setup. `'stream'` streams them as for a browser. |
+| `ssrServer` | none | A Vite server from `startSsrServer()`, shared by the test apps of a file ([one Vite server per file](testing-pages.md#one-vite-server-per-file)). Needs `ssr`. |
 | `debug` | `false` | `true` turns on the development error handling for this test app. |
 | `devtools` | `false` | `true` records what the app does into memory, readable as `app.devtools`. |
 

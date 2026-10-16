@@ -1,16 +1,22 @@
-import { UserRepository, type User } from '#modules/auth';
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { UserFactory, UserRepository, type User } from '#modules/auth';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
 // Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 // Islands in the SSR stream: resolved in-process while the page renders — rendered completely here, as for a bot.
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 let app: TestApp;
 let ada: User, alan: User;
 beforeEach(async () => {
-  app = await createTestApp(application, { database: 'refresh', seed: true, ssr: true, env: { DASHBOARD_ADMINS: 'ada@example.com' } });
+  app = await createTestApp(application, { database: 'refresh', seed: true, ssr: true, ssrServer: server, env: { DASHBOARD_ADMINS: 'ada@example.com' } });
   const users: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
   [ada, alan] = users as [User, User];
 });
@@ -19,6 +25,17 @@ const document = { headers: { accept: 'text/html' } };
 /** The data blocks of the islands in a document, parsed. */
 const islandsIn = (html: string) =>
   [...html.matchAll(/<script type="application\/json" id="marmeon-island-[^"]*">(.*?)<\/script>/g)].map(([, json]) => JSON.parse(json!) as { status: string; region?: { component: string; props: Record<string, unknown> } });
+
+describe('test apps that share the Vite server', () => {
+  it('render what is theirs: the signed-in user of one app is nowhere in the next one’s page', async () => {
+    const probe = await app.factory(UserFactory).create({ name: 'Leak Probe', email: 'leak-probe@example.com' });
+    await app.actingAs(probe).get('/dashboard', document).assertOk().assertServerRendered().assertSee(probe.name);
+    await app.close();
+
+    const next = await createTestApp(application, { database: 'refresh', ssr: true, ssrServer: server });
+    await next.get('/login', document).assertOk().assertServerRendered().assertDontSee(probe.name).assertDontSee(probe.email);
+  }, ciTimeout);
+});
 
 describe('the dashboard, rendered on the server with its islands', () => {
   it('has every eager island in the HTML — with its data, for the browser to show without a request — and hydrates', async () => {

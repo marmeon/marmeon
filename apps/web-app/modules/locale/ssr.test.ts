@@ -1,16 +1,23 @@
 import { UserFactory } from '#modules/auth';
 import { ProfileLinkFactory } from '../user-profile/factories/ProfileLinkFactory.ts';
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
 // Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 // Server rendering with the language files: the SSR entry loads the page's locale before rendering (streaming).
+// One Vite server for the file: each test still gets its own app, but none starts Vite again.
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
 let app: TestApp;
 beforeEach(async () => {
-  app = await createTestApp(application, { database: 'refresh', ssr: true });
+  app = await createTestApp(application, { database: 'refresh', ssr: true, ssrServer: server });
 });
 
 const html = (language: string) => ({ headers: { accept: 'text/html', 'accept-language': language } });

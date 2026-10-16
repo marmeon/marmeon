@@ -54,7 +54,7 @@ import type { ScheduleTester } from '@marmeon/scheduler';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@marmeon/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
-import { SSR_TEST_HEADER, TestSsr } from './ssr.ts';
+import { checkSsrServer, SSR_TEST_HEADER, TestSsr, type SsrServer } from './ssr.ts';
 import { TestResponse, type PageNameOf, type PageSource, type PropsOf } from './response.ts';
 
 export interface TestAppOptions {
@@ -114,6 +114,11 @@ export interface TestAppOptions {
    */
   ssr?: boolean | 'stream';
   /**
+   * Render through this Vite server instead of starting one for the app — `await startSsrServer(application)` in `beforeAll`.
+   * Needs `ssr`. See docs/testing-pages.md#one-vite-server-per-file.
+   */
+  ssrServer?: SsrServer;
+  /**
    * Development error handling, as `marmeon dev` has it: a page request that fails with a 5xx gets the development
    * error page (code, request, route, queries and log of the request, solutions), JSON errors carry the exception and a
    * `solution`. Off by default — tests see the error page production shows.
@@ -158,6 +163,10 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
  * ```
  */
 export async function createTestApp(definition: ApplicationOptions, options: TestAppOptions = {}): Promise<TestApp> {
+  if (options.ssrServer) {
+    if (!options.ssr) throw new Error("createTestApp(…, { ssrServer }) needs ssr: true (or ssr: 'stream').");
+    checkSsrServer(options.ssrServer, definition.root);
+  }
   const session = await importSession();
   const database = await importDatabase();
   const mail = options.mail === 'real' ? undefined : await importMail();
@@ -244,7 +253,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     if (options.ssr) {
       // The SSR entry imports `virtual:marmeon/routes`, which `marmeon route:types` writes — maybe never yet in this checkout.
       writeAppBrowserRoutes(application);
-      ssr = await TestSsr.start(definition.root, { stream: options.ssr === 'stream' });
+      ssr = await TestSsr.start(definition.root, { stream: options.ssr === 'stream', ...(options.ssrServer ? { server: options.ssrServer } : {}) });
     }
   } catch (error) {
     await application.shutdown();
