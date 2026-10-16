@@ -1,10 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { CACHE_MIGRATION } from '@marmeon/cache';
 import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
@@ -13,8 +12,10 @@ import { describe, expect, it } from 'vitest';
 import { MINUTE } from './time.ts';
 
 // The real `marmeon schedule:work` / `schedule:run` in the fixture app (`__fixtures__/app`), several at once — what a
-// deployment with a scheduler on every server does. The fixture's clock runs ahead by FIXTURE_CLOCK_OFFSET, so a test
-// places the next minute boundary a few seconds after the processes are up instead of waiting up to a minute.
+// deployment with a scheduler on every server does. The fixture's clock reads FIXTURE_CLOCK_AT at its first read — the
+// worker's loop, right after it logged that it runs — so a test places a minute boundary half a second later (LEAD)
+// instead of waiting up to a minute. Two schedulers that must tick at one moment (the cross-process lock race) wait on a
+// gate file at that first read, whatever their boot time, and start their clocks together when the test writes it.
 
 const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
@@ -156,11 +157,30 @@ function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule
   return handle;
 }
 
-/** A clock offset that puts a minute boundary (`minute`, or the next one) `inMs` real milliseconds from now. */
-function boundaryIn(inMs: number, minute?: number): { offset: number; minute: number } {
-  const at = Date.now() + inMs;
-  const target = minute ?? Math.ceil(at / MINUTE) * MINUTE;
-  return { offset: target - at, minute: target };
+/** How long before the boundary the fixture's clock reads `FIXTURE_CLOCK_AT`. */
+const LEAD = 500;
+/**
+ * The fixture clock (`FIXTURE_CLOCK_AT`) that puts the minute boundary `minute` — by default the next one — `LEAD` ms
+ * after the first read (after the release of the gate, for gated processes).
+ */
+function boundary(minute = Math.ceil(Date.now() / MINUTE) * MINUTE): { clock: Record<string, string>; minute: number } {
+  return { clock: { FIXTURE_CLOCK_AT: String(minute - LEAD) }, minute };
+}
+
+/** A gate for processes that must start their clocks together: they block at their first clock read until `release()`. */
+function gate(): { env: Record<string, string>; release(): void; remove(): void } {
+  const directory = mkdtempSync(join(tmpdir(), 'marmeon-schedule-gate-'));
+  const file = join(directory, 'real');
+  return {
+    env: { FIXTURE_CLOCK_GATE: file },
+    // The real instant at which the clocks read FIXTURE_CLOCK_AT: shortly ahead, so that every process woken by the file
+    // has read its clock before the boundary. Renamed into place, so a process never sees half a number.
+    release() {
+      writeFileSync(`${file}.tmp`, String(Date.now() + 300));
+      renameSync(`${file}.tmp`, file);
+    },
+    remove: () => rmSync(directory, { recursive: true, force: true }),
+  };
 }
 
 async function stop(...processes: SchedulerProcess[]): Promise<void> {
@@ -168,22 +188,25 @@ async function stop(...processes: SchedulerProcess[]): Promise<void> {
   for (const process of processes) expect(await process.exited()).toBe(0);
 }
 
-// Concurrent: each test waits for a minute boundary of its own clock.
+// Concurrent: each test sets the clocks of its own processes.
 describe.concurrent.each(kinds)('schedule:work on %s', (kind) => {
   it('two schedulers, a task onOneServer(): it runs once in the minute — not once per scheduler', { timeout: 60_000 }, async () => {
     const { target, drop } = await freshTarget(kind);
     const started: SchedulerProcess[] = [];
+    const gated = gate();
     try {
-      const { offset, minute } = boundaryIn(10_000);
-      const shared = { ...env(target), FIXTURE_ONE_SERVER: '1', FIXTURE_CLOCK_OFFSET: String(offset) };
+      const { clock, minute } = boundary();
+      const shared = { ...env(target), FIXTURE_ONE_SERVER: '1', LOG_LEVEL: 'debug', ...clock, ...gated.env };
       const one = start(started, 'schedule:work', shared);
       const two = start(started, 'schedule:work', shared);
       await Promise.all([one.waitFor(/Running the schedule every minute/), two.waitFor(/Running the schedule every minute/)]);
+      gated.release();
       // Both ticked the boundary (each logs the run it started or the lock it found taken).
-      await sleep(Math.max(0, minute - (Date.now() + offset)) + 2500);
+      await Promise.all([one.waitFor(/Running record|Skipped record: another server runs it/), two.waitFor(/Running record|Skipped record: another server runs it/)]);
       await stop(one, two);
       expect(await ran(target)).toEqual([{ task: 'record', minute, pid: expect.any(Number) }]);
     } finally {
+      gated.remove();
       kill(started);
       await drop();
     }
@@ -194,13 +217,15 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
   it('without onOneServer() each scheduler runs the task — the control of the test above', { timeout: 60_000 }, async () => {
     const { target, drop } = await freshTarget('sqlite');
     const started: SchedulerProcess[] = [];
+    const gated = gate();
     try {
-      const { offset, minute } = boundaryIn(10_000);
-      const shared = { ...env(target), FIXTURE_CLOCK_OFFSET: String(offset) };
+      const { clock, minute } = boundary();
+      const shared = { ...env(target), ...clock, ...gated.env };
       const one = start(started, 'schedule:work', shared);
       const two = start(started, 'schedule:work', shared);
       await Promise.all([one.waitFor(/Running the schedule every minute/), two.waitFor(/Running the schedule every minute/)]);
-      await sleep(Math.max(0, minute - (Date.now() + offset)) + 2500);
+      gated.release();
+      await Promise.all([one.waitFor(/Running record/), two.waitFor(/Running record/)]);
       await stop(one, two);
       const rows = await ran(target);
       expect(rows.map((row) => [row.task, row.minute])).toEqual([
@@ -209,6 +234,7 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
       ]);
       expect(new Set(rows.map((row) => row.pid)).size).toBe(2);
     } finally {
+      gated.remove();
       kill(started);
       await drop();
     }
@@ -219,16 +245,14 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     const started: SchedulerProcess[] = [];
     try {
       // The first scheduler ticks one minute, then stops.
-      const first = boundaryIn(10_000);
-      const before = start(started, 'schedule:work', { ...env(target), FIXTURE_CLOCK_OFFSET: String(first.offset), FIXTURE_MISSED: String(new Date(first.minute + 5 * MINUTE).getUTCMinutes()) });
-      await before.waitFor(/Running the schedule every minute/);
-      await sleep(Math.max(0, first.minute - (Date.now() + first.offset)) + 2500);
+      const first = boundary();
+      const before = start(started, 'schedule:work', { ...env(target), ...first.clock, FIXTURE_MISSED: String(new Date(first.minute + 5 * MINUTE).getUTCMinutes()) });
+      await before.waitFor(/Running record/);
       await stop(before);
       // Ten minutes later (by the app's clock) it starts again: its next tick is eleven minutes after the last one.
-      const back = boundaryIn(10_000, first.minute + 11 * MINUTE);
-      const after = start(started, 'schedule:work', { ...env(target), FIXTURE_CLOCK_OFFSET: String(back.offset), FIXTURE_MISSED: String(new Date(first.minute + 5 * MINUTE).getUTCMinutes()) });
-      await after.waitFor(/Running the schedule every minute/);
-      await sleep(Math.max(0, back.minute - (Date.now() + back.offset)) + 2500);
+      const back = boundary(first.minute + 11 * MINUTE);
+      const after = start(started, 'schedule:work', { ...env(target), ...back.clock, FIXTURE_MISSED: String(new Date(first.minute + 5 * MINUTE).getUTCMinutes()) });
+      await Promise.all([after.waitFor(/Running missed — missed while/), after.waitFor(/Running record/)]);
       await stop(after);
       expect((await ran(target)).map((row) => [row.task, row.minute])).toEqual([
         ['record', first.minute],
@@ -246,9 +270,8 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     const { target, drop } = await freshTarget('sqlite');
     const started: SchedulerProcess[] = [];
     try {
-      // Not across a minute boundary: both runs tick the same minute.
-      if (60_000 - (Date.now() % 60_000) < 8000) await sleep(60_000 - (Date.now() % 60_000) + 500);
-      const shared = { ...env(target), FIXTURE_ONE_SERVER: '1' };
+      // Not across a minute boundary: both runs start in the middle of a minute of the app's clock and tick that one.
+      const shared = { ...env(target), FIXTURE_ONE_SERVER: '1', FIXTURE_CLOCK_AT: String(boundary().minute + MINUTE / 2) };
       const one = start(started, 'schedule:run', shared);
       const two = start(started, 'schedule:run', shared);
       expect([await one.exited(), await two.exited()]).toEqual([0, 0]);
