@@ -5,8 +5,8 @@ An app without modules — what `create-marmeon --minimal` writes ([create-marme
 `_package.json`, a standalone `tsconfig.json`, empty `APP_KEY`s; this README stays here), and a test fails while the two differ.
 Edit it here, then sync. The starter kit is this app plus the home module and `marmeon make:auth`.
 
-It is also what `marmeon make:auth` is tested against (`packages/auth/src/make-auth.test.ts`): the test copies it, generates the
-auth module, migrates, type-checks and runs the generated tests (on Postgres too with `pnpm test:pgsql`). Keep it minimal: it
+It is also what `marmeon make:auth` is tested against (`packages/auth/src/make-auth.test.ts`): the test copies it and generates the
+auth module; migrate, type-check, lint, the generated tests and the build run on the starter kit (`packages/create-marmeon/src/kit.test.ts`). Keep it minimal: it
 stands for a new project — with `marmeon` as a dependency (production runs `marmeon start`), the devtools as a dev
 dependency, a first test (`modules/system/system.test.ts`, `GET /up`) and `pnpm test`; `.env.example` with
 `NODE_ENV=development` (this machine's environment for every `marmeon` command — never deployed) and a `storage/` skeleton
