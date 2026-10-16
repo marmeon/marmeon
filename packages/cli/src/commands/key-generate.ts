@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generateKey } from '@marmeon/encryption';
 import type { CommandInput } from '../command.ts';
@@ -17,7 +17,8 @@ export class KeyGenerateCommand {
   static options = { show: { type: 'boolean' }, force: { type: 'boolean' } } as const;
   static boots = false;
 
-  handle({ options, output, root }: CommandInput): number {
+  handle(input: CommandInput): number {
+    const { options, output, root } = input;
     const key = generateKey();
     if (options.show === true) {
       output.line(key);
@@ -25,8 +26,11 @@ export class KeyGenerateCommand {
     }
 
     const file = join(root, '.env');
-    if (!existsSync(file) && existsSync(join(root, '.env.example'))) copyFileSync(join(root, '.env.example'), file);
-    const env = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    const example = join(root, '.env.example');
+    // A new file starts as a copy of the example's text — not of its mode.
+    const existed = existsSync(file);
+    const exposed = existed && process.platform !== 'win32' && (statSync(file).mode & 0o077) !== 0;
+    const env = existed ? readFileSync(file, 'utf8') : existsSync(example) ? readFileSync(example, 'utf8') : '';
     const line = /^APP_KEY=(.*)$/m.exec(env);
 
     if (line && line[1]!.trim() !== '' && options.force !== true) {
@@ -44,7 +48,28 @@ export class KeyGenerateCommand {
         ? next.replace(/^APP_PREVIOUS_KEYS=.*$/m, `APP_PREVIOUS_KEYS=${keys.join(',')}`)
         : next.replace(/^APP_KEY=.*$/m, (current) => `${current}\nAPP_PREVIOUS_KEYS=${keys.join(',')}`);
     }
-    writeFileSync(file, next);
+    // The key signs sessions and cookies: `.env` is for its owner only (Windows has no such mode). An existing file is
+    // tightened before the key goes in, so the key is never written into a readable file.
+    if (!existed) {
+      try {
+        writeFileSync(file, next, { flag: 'wx', mode: 0o600 });
+      } catch (error) {
+        // Created by someone else in the meantime: start over on the existing file.
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return this.handle(input);
+        throw error;
+      }
+    } else {
+      if (exposed) {
+        try {
+          chmodSync(file, 0o600);
+        } catch (error) {
+          output.error(`.env is readable by others and could not be made private (${(error as Error).message}). Fix its mode or owner, then run the command again.`);
+          return 1;
+        }
+        output.line('Made .env readable by its owner only.');
+      }
+      writeFileSync(file, next);
+    }
     output.success('Application key set in .env.');
     if (old !== '') output.line('The old key moved to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links stay valid. Set both on every server.');
     return 0;

@@ -24,9 +24,12 @@ function app(files: Record<string, string>): string {
   return root;
 }
 
+/** A global ignore file of the machine must not hide a missing entry of the app's own. */
+const NO_GLOBAL_IGNORE = { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.excludesFile', GIT_CONFIG_VALUE_0: '/dev/null' };
+
 function makeDocker(cwd: string, ...args: string[]) {
   const { MARMEON_CHILD: _child, ...parent } = process.env;
-  const result = spawnSync(process.execPath, [bin, 'make:docker', ...args], { cwd, encoding: 'utf8', env: { ...parent, NO_COLOR: '1' } });
+  const result = spawnSync(process.execPath, [bin, 'make:docker', ...args], { cwd, encoding: 'utf8', env: { ...parent, ...NO_GLOBAL_IGNORE, NO_COLOR: '1' } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr, file: (name: string) => readFileSync(join(cwd, name), 'utf8') };
 }
 
@@ -99,6 +102,26 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(again.code).toBe(1);
     expect(again.stderr).toContain('Dockerfile, .dockerignore, compose.production.yaml already exist (use --force to overwrite).');
     expect(makeDocker(root, '--force').code).toBe(0);
+  });
+
+  it('warns about an .env.production that git does not ignore', () => {
+    const root = pnpmApp();
+    const env = { ...process.env, ...NO_GLOBAL_IGNORE };
+    spawnSync('git', ['init', '--quiet'], { cwd: root, env });
+    writeFileSync(join(root, '.env.production'), 'APP_KEY=\n');
+    const warned = makeDocker(root);
+    expect(warned.code).toBe(0);
+    expect(warned.stderr + warned.stdout).toContain('.env.production holds secrets and git does not ignore it: add `.env*`, `!.env.example` and `!.env.test`');
+
+    spawnSync('git', ['add', '-f', '.env.production'], { cwd: root, env });
+    const committed = makeDocker(root, '--force');
+    expect(committed.stderr + committed.stdout).toContain('.env.production is committed to git');
+    spawnSync('git', ['rm', '--cached', '--quiet', '.env.production'], { cwd: root, env });
+
+    writeFileSync(join(root, '.gitignore'), '.env*\n!.env.example\n');
+    const quiet = makeDocker(root, '--force');
+    expect(quiet.code).toBe(0);
+    expect(quiet.stderr + quiet.stdout).not.toContain('git does not ignore it');
   });
 
   it('pins the tested pnpm when the app names none — the version the repository runs', () => {

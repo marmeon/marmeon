@@ -41,7 +41,14 @@ A new app has three such files:
 | `.env.example` | yes | The common settings with a comment each, and no key. A colleague copies it to start. |
 | `.env.test` | yes | What the tests run with: a test key, sessions and cache in memory, a database in memory. |
 
-`marmeon key:generate` writes a fresh `APP_KEY` into `.env`. When there is no `.env` yet, it copies `.env.example` first.
+`.env.test` is committed, so put no real credentials in it.
+
+A new app's `.gitignore` lists `.env*`, then `!.env.example` and `!.env.test`, so every other file, such as `.env.production`
+or `.env.local`, stays out of git. Keep it that way: those files hold secrets.
+
+`marmeon key:generate` writes a fresh `APP_KEY` into `.env`. When there is no `.env` yet, it copies `.env.example` first and
+creates the file readable by its owner only. A `.env` that others could read is tightened to the same, and the command says so.
+`marmeon make:docker` warns when a `.env.production` exists and git does not ignore it.
 
 The app parses the files when it starts and leaves `process.env` as it is. The one exception is `NODE_ENV`, described below. So
 read a setting through a config definition, not through `process.env`: only the definition sees the values from `.env`.

@@ -170,7 +170,19 @@ describe('create-marmeon — the app', () => {
     expect(key('one', '.env.test')).not.toBe(key('two', '.env.test'));
     expect(key('one', '.env.test')).not.toBe(key('one', '.env'));
     expect(statSync(join(cwd, 'one/.env')).mode & 0o777).toBe(0o600);
-    expect(readFileSync(join(cwd, 'one/.gitignore'), 'utf8')).toMatch(/^\.env$/m);
+    expect(readFileSync(join(cwd, 'one/.gitignore'), 'utf8')).toMatch(/^\.env\*$/m);
+  });
+
+  it('ignores every .env file of a new app except .env.example and .env.test', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['ignored', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
+    const app = join(cwd, 'ignored');
+    // A global ignore file of the machine must not hide a missing entry.
+    const env = { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.excludesFile', GIT_CONFIG_VALUE_0: '/dev/null' };
+    expect(spawnSync('git', ['init', '--quiet'], { cwd: app, env }).status).toBe(0);
+    const ignored = (file: string) => spawnSync('git', ['check-ignore', '--quiet', file], { cwd: app, env }).status === 0;
+    for (const file of ['.env', '.env.production', '.env.local', '.env.staging']) expect(ignored(file), file).toBe(true);
+    for (const file of ['.env.example', '.env.test']) expect(ignored(file), file).toBe(false);
   });
 
   it('the starter kit adds the home module, registered — and names the generators when it does not install', async () => {
