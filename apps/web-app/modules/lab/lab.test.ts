@@ -1,7 +1,7 @@
 import { Logger, type LogContext } from '@marmeon/core';
-import { createTestApp } from '@marmeon/testing';
+import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
 import { readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { LabConfig } from './config.ts';
 import type { SendDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
@@ -12,9 +12,11 @@ function recordingLogger(entries: { level: string; message: string; context: Log
   return { debug: log('debug'), info: log('info'), warn: log('warn'), error: log('error'), child: (more) => recordingLogger(entries, { ...bindings, ...more }) };
 }
 
+let server: SsrServer;
+
 async function lab() {
   const entries: { level: string; message: string; context: LogContext }[] = [];
-  const app = await createTestApp(application, { ssr: true, env: { LAB_PAGES: 'true' }, override: (container) => container.instance(Logger, recordingLogger(entries)) });
+  const app = await createTestApp(application, { ssr: true, ssrServer: server, env: { LAB_PAGES: 'true' }, override: (container) => container.instance(Logger, recordingLogger(entries)) });
   return { app, entries };
 }
 
@@ -23,6 +25,7 @@ const page = { headers: { accept: 'text/html' } };
 // The first server render of a process pays for starting Vite, transforming React and the app's views, and loading the
 // modules — seconds on a loaded machine, more than a test's 5 s. A hook has its own time; afterwards each test pays for its own work.
 beforeAll(async () => {
+  server = await startSsrServer(application);
   const { app } = await lab();
   try {
     await app.get('/lab/client-only', page).assertOk();
@@ -30,6 +33,7 @@ beforeAll(async () => {
     await app.close();
   }
 }, 60_000);
+afterAll(() => server?.close());
 
 describe('the SSR lab', () => {
   it('a page that reads `window` while rendering still works: sent without markup for the browser to render, the error logged', async () => {
