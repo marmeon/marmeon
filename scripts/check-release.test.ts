@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { frameworkPackages } from './packages.ts';
-import { check, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
+import { check, checkApiLabelWorkflow, checkChangelogs, checkCiWorkflow, checkLabelWorkflow, checkReleaseConfig, checkTrust, checkUpgrading, checkVersion, checkWorkflow, CHANGESETS_UNTIL, runScripts, UPGRADING_ANCHORS } from './check-release.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -1015,6 +1015,119 @@ describe('checkLabelWorkflow — the release label check', () => {
     it.skipIf(hasJq)('needs jq to run the shipped script', () => {
       expect.fail('jq is not installed: the label script was not run');
     });
+  });
+});
+
+describe('checkApiLabelWorkflow — the API label check', () => {
+  const real = readFileSync(join(root, '.github/workflows/api-label.yml'), 'utf8');
+
+  /** A repository with the real workflow and scripts, the workflow replaced by `workflow` and a script by `scripts`. */
+  function repositoryWithApi(workflow: string, scripts: Record<string, string> = {}): string {
+    const directory = repositoryWith(unreleased);
+    mkdirSync(join(directory, '.github/workflows'), { recursive: true });
+    mkdirSync(join(directory, 'scripts'), { recursive: true });
+    writeFileSync(join(directory, '.github/workflows/api-label.yml'), workflow);
+    for (const name of ['api-label.ts', 'api-snapshot.ts']) {
+      writeFileSync(join(directory, 'scripts', name), scripts[name] ?? readFileSync(join(root, 'scripts', name), 'utf8'));
+    }
+    return directory;
+  }
+  /** The real workflow with `from` replaced — a mutation that did not change anything is a broken test, not a pass. */
+  function mutated(from: string, to: string): string {
+    const result = real.replace(from, to);
+    expect(result, `the mutation of ${from} changed nothing`).not.toBe(real);
+    return result;
+  }
+  const problemsOf = (workflow: string, scripts?: Record<string, string>) => checkApiLabelWorkflow(repositoryWithApi(workflow, scripts)).join('\n');
+  const realScript = (name: string) => readFileSync(join(root, 'scripts', name), 'utf8');
+
+  it('passes the repository’s workflow', () => {
+    expectProblems(checkApiLabelWorkflow(root), []);
+  });
+
+  it('refuses a missing workflow and a missing script', () => {
+    expect(checkApiLabelWorkflow(repositoryWith(unreleased)).join()).toContain('is missing');
+    const directory = repositoryWithApi(real);
+    rmSync(join(directory, 'scripts/api-label.ts'));
+    expect(checkApiLabelWorkflow(directory).join()).toContain('scripts/api-label.ts is missing');
+  });
+
+  it('refuses pull_request_target and any further event', () => {
+    expect(problemsOf(mutated('  pull_request:\n', '  pull_request_target:\n'))).toContain('exactly the pull_request event');
+    expect(problemsOf(mutated('on:\n', 'on:\n  push:\n'))).toContain('exactly the pull_request event');
+  });
+
+  it('wants every type, and no other', () => {
+    expect(problemsOf(mutated('reopened, ', ''))).toContain('the pull_request types must be');
+    expect(problemsOf(mutated('unlabeled]', 'unlabeled, edited]'))).toContain('the pull_request types must be');
+  });
+
+  it('wants permissions: {} on top and nothing but contents: read in the job', () => {
+    expect(problemsOf(mutated('permissions: {}', 'permissions: write-all'))).toContain('must be "{}"');
+    expect(problemsOf(mutated('permissions: {}', 'permissions:\n  contents: read'))).toContain('must be "{}"');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: write\n'))).toContain('more than "contents: read" (contents: write)');
+    expect(problemsOf(mutated('      contents: read\n', '      contents: read\n      id-token: write\n'))).toContain('(id-token: write)');
+    expect(problemsOf(mutated('    permissions:\n      contents: read\n', '    permissions: write-all\n'))).toContain('(write-all)');
+    expect(problemsOf(mutated('    permissions:\n      contents: read\n', ''))).toContain('must say "permissions: contents: read"');
+  });
+
+  it('wants every action pinned by SHA and only the checkout and setup-node', () => {
+    expect(problemsOf(mutated(/actions\/checkout@[0-9a-f]{40}/.exec(real)![0], 'actions/checkout@v7'))).toContain('"actions/checkout@v7" is not pinned');
+    expect(problemsOf(mutated(/actions\/setup-node@[0-9a-f]{40}/.exec(real)![0], 'actions/setup-node@v7'))).toContain('"actions/setup-node@v7" is not pinned');
+    const pinned = '      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413\n      - uses: actions/setup-node';
+    expect(problemsOf(mutated('      - uses: actions/setup-node', pinned))).toContain('only actions/checkout and actions/setup-node');
+  });
+
+  it('wants persist-credentials: false and fetch-depth: 0 on the checkout', () => {
+    expect(problemsOf(mutated('          persist-credentials: false\n', ''))).toContain('without "persist-credentials: false"');
+    expect(problemsOf(mutated('          persist-credentials: false\n', '          persist-credentials: true\n'))).toContain('without "persist-credentials: false"');
+    expect(problemsOf(mutated('          fetch-depth: 0\n', ''))).toContain('"fetch-depth: 0"');
+  });
+
+  it('wants setup-node without a cache', () => {
+    expect(problemsOf(mutated('          package-manager-cache: false\n', ''))).toContain('"package-manager-cache: false"');
+    expect(problemsOf(mutated('          package-manager-cache: false\n', '          package-manager-cache: false\n          cache: pnpm\n'))).toContain('no "cache:"');
+  });
+
+  it('refuses a package manager in a script, an install, and any other script', () => {
+    const step = (run: string) => mutated('        run: node scripts/api-label.ts\n', `        run: ${run}\n`);
+    expect(problemsOf(step('pnpm install && node scripts/api-label.ts'))).toContain('a package manager in a run script');
+    expect(problemsOf(step('npm ci'))).toContain('a package manager in a run script');
+    expect(problemsOf(step('corepack enable'))).toContain('a package manager in a run script');
+    expect(problemsOf(step('node scripts/other.ts'))).toContain('a run script other than');
+    expect(problemsOf(mutated('        run: node scripts/api-label.ts\n', '        run: node scripts/api-label.ts\n      - run: pnpm install\n'))).toContain('exactly one run script');
+  });
+
+  it('refuses an expression inside a script', () => {
+    expect(problemsOf(mutated('        run: node scripts/api-label.ts\n', '        run: node scripts/api-label.ts ${{ github.head_ref }}\n'))).toContain('an expression inside a run script');
+    expect(problemsOf(mutated('        run: node scripts/api-label.ts\n', '        run: |\n          echo "${{ github.event.pull_request.title }}"\n          node scripts/api-label.ts\n'))).toContain('an expression inside a run script');
+  });
+
+  it('refuses a secret and the token', () => {
+    const env = (line: string) => mutated('        run: node', `          ${line}\n        run: node`);
+    expect(problemsOf(env('TOKEN: ${{ secrets.TOKEN }}'))).toContain('a secret or the token');
+    expect(problemsOf(env('TOKEN: ${{ github.token }}'))).toContain('a secret or the token');
+    expect(problemsOf(env('TOKEN: ${{ github["token"] }}'))).toContain('a secret or the token');
+    expect(problemsOf(env('ALL: ${{ toJSON(secrets) }}'))).toContain('a secret or the token');
+    expect(problemsOf(mutated('    steps:\n', '    steps:\n      - name: x # GITHUB_TOKEN\n        run: true\n'))).not.toContain('a secret or the token');
+  });
+
+  it('wants the labels and the base commit in env from the event and the job named after the required check', () => {
+    expect(problemsOf(mutated('toJSON(github.event.pull_request.labels.*.name)', 'toJSON(github.event.pull_request.title)'))).toContain('LABELS must be');
+    expect(problemsOf(mutated('        run: node', '          BASE_SHA: ${{ github.event.pull_request.base.sha }}\n        run: node'))).toContain('first parent');
+    expect(problemsOf(mutated('name: api label', 'name: label'))).toContain('named "api label"');
+  });
+
+  it('lets the script load only node:* and its snapshot module', () => {
+    const label = realScript('api-label.ts');
+    const withImport = (line: string) => `${line}\n${label}`;
+    expect(problemsOf(real, { 'api-label.ts': withImport("import { parse } from 'oxc-parser';") })).toContain('imports "oxc-parser"');
+    expect(problemsOf(real, { 'api-label.ts': withImport("import { frameworkPackages } from './packages.ts';") })).toContain('imports "./packages.ts"');
+    expect(problemsOf(real, { 'api-label.ts': withImport("export { x } from 'left-pad';") })).toContain('imports "left-pad"');
+    expect(problemsOf(real, { 'api-label.ts': withImport("await import('hono');") })).toContain('imports "hono"');
+    expect(problemsOf(real, { 'api-label.ts': withImport("import 'side-effect';") })).toContain('imports "side-effect"');
+    expect(problemsOf(real, { 'api-snapshot.ts': `import { x } from './packages.ts';\n${realScript('api-snapshot.ts')}` })).toContain('scripts/api-snapshot.ts imports "./packages.ts"');
+    expect(problemsOf(real, { 'api-snapshot.ts': `import { x } from './api-label.ts';\n${realScript('api-snapshot.ts')}` })).toContain('scripts/api-snapshot.ts imports "./api-label.ts"');
   });
 });
 

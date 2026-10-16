@@ -364,6 +364,17 @@ Exit codes cannot be read from the code; tests secure them. A config whose `env`
 the docs, apps, kit files, neighbour packages and tests that import it outside the package, with a first guess — `keep`,
 `testing`, `internal` or `drop` — for where the export belongs; `--files` names the importing files, `--json` prints the data.
 
+A pull request that changes an `api.md` needs matching labels. The check "api label" (`.github/workflows/api-label.yml`,
+`scripts/api-label.ts`) compares the merge commit GitHub builds for the pull request with its first parent, `Experimental`
+items left out — so what merged into the base meanwhile is not counted as its change. A **removed** entry needs `breaking`; a
+removed `Referenced, not exported` item counts as a change, since an app cannot import it by name. A **changed** entry needs
+`breaking`, or `api-compatible` when no app breaks — a loosened parameter, or a constructor that is only exported as a type
+(core's `EnvString` and its kin), which no app can call anyway; `api-compatible` never covers a removal. A **new** entry needs
+a release label other than `docs` and `internal`. Environment variables and commands are entries like any other. The check
+reminds and does not protect — a pull request runs its own copy of the workflow, the review is the protection — and it runs on
+untrusted code, so it holds no token and installs nothing: `pnpm check-release` keeps that shape, down to the files the script
+may import.
+
 ### The upgrade guide
 
 `UPGRADING.md` has a section `## Upgrading to <version> from <version>` for every breaking release. `pnpm check-release` (a part
