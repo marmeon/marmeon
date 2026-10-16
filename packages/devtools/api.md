@@ -578,3 +578,25 @@ export declare const TABS: readonly ['visits', 'page', 'layers', 'optimistic', '
 // installDevtoolsHook
 export declare function installDevtoolsHook(target: DevtoolsGlobal, onAttach: (attached: Attached) => void): () => void;
 ```
+
+## Environment
+
+```ts
+// APP_ENV
+`APP_ENV` — optional
+// APP_URL
+`APP_URL` — optional
+// DEVTOOLS_ENABLED
+`DEVTOOLS_ENABLED` — optional
+// NODE_ENV
+`NODE_ENV` — optional
+```
+
+## Commands
+
+```ts
+// devtools:clear
+marmeon devtools:clear
+// devtools:prune
+marmeon devtools:prune
+```

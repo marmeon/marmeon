@@ -8,11 +8,12 @@
  *
  * The snapshot is read from the emitted `.d.ts` files with oxc-parser: per entry point (not `./internal`) every exported
  * declaration without its comments, and the types a public declaration names without exporting them. `@internal` declarations
- * and members are left out, `@experimental` ones listed apart. The format: `scripts/api-snapshot.ts`.
+ * and members are left out, `@experimental` ones listed apart. The Environment and Commands sections come from the built
+ * `dist/*.js` of the providers, which are imported (nothing boots). The format: `scripts/api-snapshot.ts`.
  */
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 import { LIBRARY } from './check-source.ts';
@@ -540,6 +541,104 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
   return { items, foreign };
 }
 
+/** Where `EnvSchema` hands out its variables (`packages/core/src/config/env.ts`). */
+const ENV_FIELDS = Symbol.for('marmeon.env.fields');
+
+interface EnvField {
+  readonly '~env': (raw: string | undefined, name: string) => { readonly value?: unknown; readonly problem?: string };
+}
+interface CommandShape {
+  readonly command: string;
+  readonly usage?: string;
+  readonly options?: Readonly<Record<string, { readonly type?: string; readonly short?: string; readonly multiple?: boolean }>>;
+}
+
+/** What a missing variable is: its default as JSON, `required` or `optional`. */
+function defaultOf(name: string, field: EnvField): string {
+  const read = field['~env'](undefined, name);
+  if (read.problem !== undefined) return '— required';
+  return read.value === undefined ? '— optional' : `= \`${JSON.stringify(read.value)}\``;
+}
+
+/** One `--option (type)` line per option, sorted. The description is no part of it: its wording is no API. */
+function commandItem(Command: CommandShape): ApiItem {
+  const options = Object.entries(Command.options ?? {})
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, option]) => {
+      const more = [option.type ?? 'boolean', ...(option.short ? [`short ${option.short}`] : []), ...(option.multiple ? ['multiple'] : [])];
+      return `--${name} (${more.join(', ')})`;
+    });
+  const head = `marmeon ${Command.command}${Command.usage ? ` ${Command.usage}` : ''}`;
+  return { entry: '', section: 'commands', name: Command.command, text: [head, ...options].join('\n') };
+}
+
+/**
+ * The environment variables and commands of a package, read from its built code: the providers its manifest lists
+ * (`marmeon.providers`) with their `static config` and `static commands`, and the CLI's built-in commands. Nothing boots —
+ * the modules are only imported, with `NODE_ENV=test`.
+ */
+export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: ApiItem[]; problems: string[] }> {
+  const items: ApiItem[] = [];
+  const problems: string[] = [];
+  const names = ((pkg.manifest.marmeon as { providers?: string[] } | undefined)?.providers ?? []) as string[];
+  const isCli = pkg.name === 'marmeon';
+  if (names.length === 0 && !isCli) return { items, problems };
+
+  const main = ((pkg.manifest.exports as Record<string, { default?: string }> | undefined)?.['.']?.default ?? './dist/index.js');
+  const before = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  try {
+    // Only a module that cannot be imported hints at a missing build; any other failure names its provider or config below.
+    const load = async (file: string): Promise<Record<string, any> | undefined> => {
+      try {
+        return await import(pathToFileURL(join(pkg.dir, file)).href);
+      } catch (error) {
+        problems.push(`${pkg.name}: cannot import ${file} to read its environment variables and commands (${(error as Error).message}) — run pnpm build first`);
+        return undefined;
+      }
+    };
+    const module = names.length > 0 ? await load(main) : {};
+    if (module === undefined) return { items, problems };
+    const commands: CommandShape[] = [];
+    const variables = new Map<string, { config: string; value: string }[]>();
+    for (const name of names) {
+      const Provider = module[name] as { config?: readonly { name: string; env: Record<symbol, Record<string, EnvField> | undefined> }[]; commands?: readonly CommandShape[] } | undefined;
+      if (Provider === undefined) {
+        problems.push(`${pkg.name} lists the provider ${name}, but its entry point does not export it`);
+        continue;
+      }
+      for (const config of Provider.config ?? []) {
+        const fields = typeof config.env === 'object' && config.env !== null ? config.env[ENV_FIELDS] : undefined;
+        if (fields === undefined) {
+          problems.push(`${pkg.name}: the env of the config ${config.name} is not made by env({ … }) — the snapshot cannot read its variables`);
+          continue;
+        }
+        try {
+          for (const [variable, field] of Object.entries(fields)) {
+            variables.set(variable, [...(variables.get(variable) ?? []), { config: config.name, value: defaultOf(variable, field) }]);
+          }
+        } catch (error) {
+          problems.push(`${pkg.name}: reading the variables of the config ${config.name} (provider ${name}) failed: ${(error as Error).message}`);
+        }
+      }
+      commands.push(...(Provider.commands ?? []));
+    }
+    if (isCli) commands.push(...(((await load('dist/built-in.js'))?.BUILT_IN ?? []) as CommandShape[]));
+
+    for (const [variable, definitions] of variables) {
+      // One item per variable, so a second definition that reads it the same way changes nothing; differing ones name their definition.
+      const values = [...new Set(definitions.map(({ value }) => value))];
+      const text = values.length === 1 ? values[0]! : definitions.map(({ config, value }) => `${value} (${config})`).join('; ');
+      items.push({ entry: '', section: 'environment', name: variable, text: `\`${variable}\` ${text}` });
+    }
+    for (const Command of commands) items.push(commandItem(Command));
+  } finally {
+    if (before === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = before;
+  }
+  return { items, problems };
+}
+
 export interface PackageToSnapshot {
   /** `@marmeon/http`, or `marmeon`. */
   readonly name: string;
@@ -548,10 +647,10 @@ export interface PackageToSnapshot {
 }
 
 /** The `api.md` of a package, or none when it has no entry point with types; plus the problems met on the way. */
-export function snapshotPackage(pkg: PackageToSnapshot, allowedForeign: readonly string[]): { markdown?: string; problems: string[] } {
+export function snapshotPackage(pkg: PackageToSnapshot, allowedForeign: readonly string[], runtime: readonly ApiItem[] = []): { markdown?: string; problems: string[] } {
   const declarations = new Declarations();
   const problems: string[] = [];
-  const items: ApiItem[] = [];
+  const items: ApiItem[] = [...runtime];
   const foreign = new Map<string, readonly string[]>();
   const claimed = new Set<string>();
   const used = new Set<string>();
@@ -600,12 +699,15 @@ export interface ApiRun {
 }
 
 /** Compares (or, with `write`, rewrites) the `api.md` of every package under `root`. */
-export function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>> } = {}): ApiRun {
+export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>> } = {}): Promise<ApiRun> {
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
   for (const pkg of frameworkPackages(root)) {
-    const { markdown, problems } = snapshotPackage(pkg, allowed[pkg.short] ?? []);
+    const { items: runtime, problems: runtimeProblems } = await runtimeItems(pkg);
+    const snapshot = snapshotPackage(pkg, allowed[pkg.short] ?? [], runtime);
+    const markdown = snapshot.markdown;
+    const problems = [...snapshot.problems, ...runtimeProblems];
     const file = join(pkg.dir, 'api.md');
     const shown = relative(root, file).split('\\').join('/');
     if (problems.length > 0) {
@@ -640,14 +742,14 @@ export function runApi(root: string, options: { write?: boolean; allowed?: Reado
     }
     lines.push(`  run pnpm api:update and commit ${shown}`);
   }
-  if (!failed && !options.write) lines.push('api: every api.md matches the built declarations');
+  if (!failed && !options.write) lines.push('api: every api.md matches the built declarations, environment variables and commands');
   return { code: failed ? 1 : 0, lines };
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({ options: { write: { type: 'boolean', default: false } } });
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const run = runApi(root, { write: values.write });
+  const run = await runApi(root, { write: values.write });
   for (const line of run.lines) console.log(line);
   process.exit(run.code);
 }

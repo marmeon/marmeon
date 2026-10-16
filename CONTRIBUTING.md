@@ -353,6 +353,13 @@ An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `sc
 built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the
 app installs, or the change that removes it. Add an entry only for a peer, and give a type of your own to anything else.
 
+The same file ends with the package's **Environment** and **Commands**, read from the built code of the providers its
+`package.json` lists under `marmeon.providers` (`static config`, `static commands`) and, for the CLI, its built-in commands.
+A variable shows its default as JSON, or `required`, or `optional`; a default that only a config's `resolve` sets is not
+seen. A command shows its usage and its sorted options with their types — never its description, whose wording is no API.
+Exit codes cannot be read from the code; tests secure them. A config whose `env` is not made by `env({ … })` fails
+`pnpm api:check`, because its variables cannot be listed.
+
 ### The upgrade guide
 
 `UPGRADING.md` has a section `## Upgrading to <version> from <version>` for every breaking release. `pnpm check-release` (a part

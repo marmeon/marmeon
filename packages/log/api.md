@@ -49,3 +49,16 @@ export declare function createPinoLogger(config: LogOptions, destination?: NodeJ
 // redact
 export { redact } from '@marmeon/core';
 ```
+
+## Environment
+
+```ts
+// APP_ENV
+`APP_ENV` — optional
+// LOG_FORMAT
+`LOG_FORMAT` — optional
+// LOG_LEVEL
+`LOG_LEVEL` = `"info"`
+// NODE_ENV
+`NODE_ENV` — optional
+```

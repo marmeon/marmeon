@@ -441,3 +441,28 @@ export interface SnippetLine {
     readonly current: boolean;
 }
 ```
+
+## Environment
+
+```ts
+// ASSET_VERSION
+`ASSET_VERSION` — optional
+// HEALTH_PATH
+`HEALTH_PATH` = `"/up"`
+// HOST
+`HOST` = `"127.0.0.1"`
+// KEEP_ALIVE_TIMEOUT
+`KEEP_ALIVE_TIMEOUT` = `65`
+// MAX_BODY_SIZE
+`MAX_BODY_SIZE` = `"8m"`
+// NODE_ENV
+`NODE_ENV` — optional
+// PORT
+`PORT` = `3000`
+// SHUTDOWN_DELAY
+`SHUTDOWN_DELAY` = `0`
+// SSR_ENABLED
+`SSR_ENABLED` = `"true"`
+// TRUSTED_PROXIES
+`TRUSTED_PROXIES` = `[]`
+```

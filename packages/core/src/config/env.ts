@@ -227,6 +227,9 @@ interface CrossCheck<Out> {
   readonly message: EnvMessage<Out>;
 }
 
+/** Where an `EnvSchema` hands out its variables: a registered symbol, so a script outside the package finds it without importing `internal`. */
+const ENV_FIELDS: unique symbol = Symbol.for('marmeon.env.fields');
+
 /** The schema `env({ … })` makes — a Standard Schema; `.check()` adds a rule between variables. */
 export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> implements StandardSchemaV1<In, Out> {
   readonly #fields: Fields;
@@ -237,6 +240,14 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
     this.#fields = fields;
     this.#checks = checks;
     this['~standard'] = { version: 1, vendor: 'marmeon', validate: (value) => this.#validate(value) };
+  }
+
+  /**
+   * The variables of the schema by name, frozen: the building blocks, never a value.
+   * @internal Read by the repository's API snapshot (`scripts/api.ts`) to list each package's variables and their defaults.
+   */
+  get [ENV_FIELDS](): Fields {
+    return Object.freeze({ ...this.#fields });
   }
 
   /**

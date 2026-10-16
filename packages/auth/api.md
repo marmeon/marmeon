@@ -2387,3 +2387,68 @@ declare const missing: unique symbol;
 // passwordHash
 declare const passwordHash: unique symbol;
 ```
+
+## Environment
+
+```ts
+// APP_NAME
+`APP_NAME` — optional
+// AUTH_PASSWORD_TIMEOUT
+`AUTH_PASSWORD_TIMEOUT` = `900`
+// AUTH_PRIVATE_REGISTRATION
+`AUTH_PRIVATE_REGISTRATION` = `"true"`
+// AUTH_REMEMBER_COOKIE
+`AUTH_REMEMBER_COOKIE` = `"remember_web"`
+// AUTH_REMEMBER_DAYS
+`AUTH_REMEMBER_DAYS` = `30`
+// AUTH_RESET_EXPIRE
+`AUTH_RESET_EXPIRE` = `60`
+// AUTH_RESET_THROTTLE
+`AUTH_RESET_THROTTLE` = `60`
+// AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE
+`AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` = `"false"`
+// AUTH_SESSION_MAX_HOURS
+`AUTH_SESSION_MAX_HOURS` = `24`
+// AUTH_TOKEN_PREFIX
+`AUTH_TOKEN_PREFIX` = `"marmeon_"`
+// AUTH_UNVERIFIED_DAYS
+`AUTH_UNVERIFIED_DAYS` = `7`
+// HASH_ARGON_MEMORY
+`HASH_ARGON_MEMORY` = `19456`
+// HASH_ARGON_PARALLELISM
+`HASH_ARGON_PARALLELISM` = `1`
+// HASH_ARGON_TIME
+`HASH_ARGON_TIME` = `2`
+// HASH_DRIVER
+`HASH_DRIVER` = `"argon2id"`
+// HASH_SCRYPT_BLOCK_SIZE
+`HASH_SCRYPT_BLOCK_SIZE` = `8`
+// HASH_SCRYPT_COST
+`HASH_SCRYPT_COST` = `17`
+// HASH_SCRYPT_PARALLELISM
+`HASH_SCRYPT_PARALLELISM` = `1`
+// NODE_ENV
+`NODE_ENV` — optional
+```
+
+## Commands
+
+```ts
+// auth:end-all-sessions
+marmeon auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]
+--api-tokens (boolean)
+--force (boolean)
+--keep-api-tokens (boolean)
+--keep-reset-tokens (boolean)
+--reset-tokens (boolean)
+// auth:prune-tokens
+marmeon auth:prune-tokens [--hours=0]
+--hours (string)
+// make:auth
+marmeon make:auth [--adapter=react] [--force]
+--adapter (string)
+--force (boolean)
+// make:sign-ins-table
+marmeon make:sign-ins-table [--module=system]
+--module (string, short m)
+```

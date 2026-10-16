@@ -449,3 +449,14 @@ type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) e
 // ValueOf
 type ValueOf<Type extends string> = Type extends 'plural' | 'selectordinal' | 'number' ? number : Type extends 'date' | 'time' ? Date | number | string : Type extends 'select' ? string : string | number;
 ```
+
+## Environment
+
+```ts
+// APP_FALLBACK_LOCALE
+`APP_FALLBACK_LOCALE` = `"en"`
+// APP_LOCALE
+`APP_LOCALE` = `"en"`
+// APP_LOCALES
+`APP_LOCALES` = `[]`
+```

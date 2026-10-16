@@ -68,3 +68,16 @@ export declare function traceparentOf(span: Span): string;
 // OtelApi
 export type OtelApi = typeof Api;
 ```
+
+## Environment
+
+```ts
+// OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST
+`OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` = `[]`
+// OTEL_RECORD_QUERY_VALUES
+`OTEL_RECORD_QUERY_VALUES` = `"false"`
+// OTEL_SDK_DISABLED
+`OTEL_SDK_DISABLED` = `"false"`
+// OTEL_TRUST_TRACEPARENT
+`OTEL_TRUST_TRACEPARENT` = `"false"`
+```

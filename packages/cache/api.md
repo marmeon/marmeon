@@ -271,3 +271,28 @@ export declare function clientKey(ip: string | undefined): string;
 // throttle
 export declare function throttle(name: string): MiddlewareClass<{}, {}>;
 ```
+
+## Environment
+
+```ts
+// CACHE_CONNECTION
+`CACHE_CONNECTION` = `"default"`
+// CACHE_DRIVER
+`CACHE_DRIVER` = `"file"`
+// CACHE_PATH
+`CACHE_PATH` = `"storage/framework/cache"`
+// CACHE_PREFIX
+`CACHE_PREFIX` = `""`
+```
+
+## Commands
+
+```ts
+// cache:clear
+marmeon cache:clear
+// cache:prune
+marmeon cache:prune
+// make:cache-table
+marmeon make:cache-table [--module=system]
+--module (string, short m)
+```

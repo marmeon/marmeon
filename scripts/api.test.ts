@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, runApi, snapshotPackage } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, runApi, runtimeItems, snapshotPackage } from './api.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { INTERNAL } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -11,12 +11,13 @@ import { tempDir } from './test/temp-dir.js';
 const repository = fileURLToPath(new URL('..', import.meta.url));
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
-function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }) {
+function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }, extra: Record<string, unknown> = {}) {
   const root = tempDir('marmeon-api-');
   const dir = join(root, 'packages/demo');
   const manifest = {
     name: '@marmeon/demo',
     version: '0.0.0',
+    ...extra,
     exports: Object.fromEntries(Object.entries(exports).map(([subpath, file]) => [subpath, { types: `./dist/${file}`, default: `./dist/${file.replace(/\.d\.ts$/, '.js')}` }])),
   };
   mkdirSync(dir, { recursive: true });
@@ -377,26 +378,26 @@ describe('pnpm api:check', () => {
     return { root, run: (more = options) => runApi(root, more) };
   };
 
-  it('writes api.md with --write and then finds nothing to say', () => {
+  it('writes api.md with --write and then finds nothing to say', async () => {
     const { root, run: runIn } = run({ 'index.d.ts': 'export declare const a: 1;\n' });
-    expect(runIn({ write: true })).toEqual({ code: 0, lines: ['wrote packages/demo/api.md'] });
+    expect(await runIn({ write: true })).toEqual({ code: 0, lines: ['wrote packages/demo/api.md'] });
     expect(readFileSync(join(root, 'packages/demo/api.md'), 'utf8')).toContain('// a');
-    expect(runIn({}).code).toBe(0);
+    expect((await runIn({})).code).toBe(0);
   });
 
-  it('fails on an api.md that is missing, and says how to make it', () => {
-    const result = run({ 'index.d.ts': 'export declare const a: 1;\n' }).run();
+  it('fails on an api.md that is missing, and says how to make it', async () => {
+    const result = await run({ 'index.d.ts': 'export declare const a: 1;\n' }).run();
     expect(result.code).toBe(1);
     expect(result.lines.join('\n')).toContain('packages/demo/api.md is missing');
     expect(result.lines.join('\n')).toContain('run pnpm api:update and commit packages/demo/api.md');
   });
 
-  it('fails on a stale api.md, naming what was removed, changed and added', () => {
+  it('fails on a stale api.md, naming what was removed, changed and added', async () => {
     const { root, run: runIn } = run({ 'index.d.ts': 'export declare const a: 1;\nexport declare const b: 1;\nexport declare function f(x: number): void;\n' });
-    runIn({ write: true });
+    await runIn({ write: true });
     const file = join(root, 'packages/demo/dist/index.d.ts');
     writeFileSync(file, 'export declare const a: 1;\nexport declare const c: 1;\nexport declare function f(x: string): void;\n');
-    const result = runIn({});
+    const result = await runIn({});
     expect(result.code).toBe(1);
     const text = result.lines.join('\n');
     expect(text).toContain('removed: b');
@@ -405,47 +406,161 @@ describe('pnpm api:check', () => {
     expect(text).toContain('run pnpm api:update and commit packages/demo/api.md');
   });
 
-  it('names at most ten names per kind', () => {
+  it('names at most ten names per kind', async () => {
     const many = (count: number) => Array.from({ length: count }, (_, index) => `export declare const n${String(index).padStart(2, '0')}: 1;`).join('\n');
     const { root, run: runIn } = run({ 'index.d.ts': 'export declare const keep: 1;\n' });
-    runIn({ write: true });
+    await runIn({ write: true });
     writeFileSync(join(root, 'packages/demo/dist/index.d.ts'), `export declare const keep: 1;\n${many(13)}\n`);
-    const text = runIn({}).lines.join('\n');
+    const text = (await runIn({})).lines.join('\n');
     expect(text).toContain('n09');
     expect(text).not.toContain('n10');
     expect(text).toContain('3 more');
   });
 
-  it('fails on the api.md of a package that has no entry point with types any more, and --write removes it', () => {
+  it('fails on the api.md of a package that has no entry point with types any more, and --write removes it', async () => {
     const { root, run: runIn } = run({ 'index.d.ts': 'export declare const a: 1;\n' });
-    runIn({ write: true });
+    await runIn({ write: true });
     writeFileSync(join(root, 'packages/demo/package.json'), JSON.stringify({ name: '@marmeon/demo', version: '0.0.0', exports: {} }));
-    const stale = runIn({});
+    const stale = await runIn({});
     expect(stale.code).toBe(1);
     expect(stale.lines.join('\n')).toContain('packages/demo/api.md is out of date — the package has no entry point with types any more');
-    expect(runIn({ write: true })).toEqual({ code: 0, lines: ['removed packages/demo/api.md'] });
+    expect(await runIn({ write: true })).toEqual({ code: 0, lines: ['removed packages/demo/api.md'] });
     expect(existsSync(join(root, 'packages/demo/api.md'))).toBe(false);
-    expect(runIn({}).code).toBe(0);
+    expect((await runIn({})).code).toBe(0);
   });
 
-  it('builds clean before api:update rewrites the files', () => {
+  it('builds clean before api:update rewrites the files', async () => {
     const scripts = JSON.parse(readFileSync(join(repository, 'package.json'), 'utf8')).scripts as Record<string, string>;
     expect(scripts['api:update']).toContain('package:build packages/* --clean');
     expect(scripts['api:update']).toContain('scripts/api.ts --write');
   });
 
-  it('fails with "run pnpm build first" when there is no dist/', () => {
+  it('fails with "run pnpm build first" when there is no dist/', async () => {
     const { root } = demo({});
-    const result = runApi(root);
+    const result = await runApi(root);
     expect(result.code).toBe(1);
     expect(result.lines.join('\n')).toContain('run pnpm build first');
   });
 
-  it('fails on a package outside the allowlist, and passes once it is listed', () => {
+  it('fails on a package outside the allowlist, and passes once it is listed', async () => {
     const { root } = demo({ 'index.d.ts': "export declare function f(app: import('hono').Hono): void;\n" });
-    expect(runApi(root).code).toBe(1);
-    expect(runApi(root, { write: true, allowed: { demo: ['hono'] } }).code).toBe(0);
-    expect(runApi(root, { allowed: { demo: ['hono'] } }).code).toBe(0);
+    expect((await runApi(root)).code).toBe(1);
+    expect((await runApi(root, { write: true, allowed: { demo: ['hono'] } })).code).toBe(0);
+    expect((await runApi(root, { allowed: { demo: ['hono'] } })).code).toBe(0);
+  });
+});
+
+describe('environment variables and commands', () => {
+  /** A package with one provider: `config` lists its config definitions, `commands` its command classes (JavaScript source). */
+  async function read(config: string, commands = '[]') {
+    const { dir, manifest } = demo(
+      {
+        'index.d.ts': 'export declare const a: 1;\n',
+        'index.js': `
+          const fields = (variables) => ({ name: 'demo', env: { [Symbol.for('marmeon.env.fields')]: variables } });
+          const required = { '~env': (_, name) => ({ problem: name + ' is required.' }) };
+          const optional = { '~env': () => ({ value: undefined }) };
+          const given = (value) => ({ '~env': () => ({ value }) });
+          export class DemoServiceProvider {
+            static config = [${config}];
+            static commands = ${commands};
+          }
+        `,
+      },
+      { '.': 'index.d.ts' },
+      { marmeon: { providers: ['DemoServiceProvider'] } },
+    );
+    return runtimeItems({ name: '@marmeon/demo', dir, manifest });
+  }
+  const pair = (before: string, after: string, commands: readonly [string, string] = ['[]', '[]']) => Promise.all([read(before, commands[0]), read(after, commands[1])]);
+
+  it('lists a default as JSON, a required variable and an optional one', async () => {
+    const { items, problems } = await read("fields({ PORT: given(3000), HOSTS: given(['a', 'b']), SECRET: required, MAYBE: optional })");
+    expect(problems).toEqual([]);
+    expect(items.map((item) => [item.section, item.name, item.text])).toEqual([
+      ['environment', 'PORT', '`PORT` = `3000`'],
+      ['environment', 'HOSTS', '`HOSTS` = `["a","b"]`'],
+      ['environment', 'SECRET', '`SECRET` — required'],
+      ['environment', 'MAYBE', '`MAYBE` — optional'],
+    ]);
+  });
+
+  it('shows a changed default as changed and a removed variable as removed', async () => {
+    const [before, after] = await pair('fields({ PORT: given(3000), GONE: given(1) })', 'fields({ PORT: given(3001) })');
+    const changes = compareSnapshots(before.items, after.items);
+    expect(changes.changed.map(({ after: item }) => item.name)).toEqual(['PORT']);
+    expect(changes.removed.map((item) => item.name)).toEqual(['GONE']);
+    expect(changes.added).toEqual([]);
+  });
+
+  it('keeps one item for a variable that a second definition reads the same way', async () => {
+    const [one, two] = await pair('fields({ APP_URL: optional })', "fields({ APP_URL: optional }), { ...fields({ APP_URL: optional }), name: 'second' }");
+    expect(two.items).toEqual(one.items);
+    expect(compareSnapshots(one.items, two.items)).toEqual({ removed: [], changed: [], added: [] });
+  });
+
+  it('names the definitions when two read a variable differently', async () => {
+    const { items } = await read("fields({ APP_URL: optional }), { ...fields({ APP_URL: given('x') }), name: 'second' }");
+    expect(items.map((item) => item.text)).toEqual(['`APP_URL` — optional (demo); = `"x"` (second)']);
+  });
+
+  it('names the config or the provider when reading fails', async () => {
+    const throwing = "{ name: 'bad', env: { [Symbol.for('marmeon.env.fields')]: { X: { '~env': () => { throw new Error('boom'); } } } } }";
+    expect((await read(throwing)).problems.join('\n')).toContain('reading the variables of the config bad (provider DemoServiceProvider) failed: boom');
+    expect((await read("{ name: 'odd', env: 5 }")).problems.join('\n')).toContain('the env of the config odd is not made by env({ … })');
+  });
+
+  it('reports a provider the manifest lists but the entry point does not export', async () => {
+    const { dir, manifest } = demo({ 'index.d.ts': 'export declare const a: 1;\n', 'index.js': 'export class Other {}\n' }, { '.': 'index.d.ts' }, { marmeon: { providers: ['Missing'] } });
+    const { problems } = await runtimeItems({ name: '@marmeon/demo', dir, manifest });
+    expect(problems).toEqual(['@marmeon/demo lists the provider Missing, but its entry point does not export it']);
+  });
+
+  it('asks for a build only when the entry point cannot be imported', async () => {
+    const { dir, manifest } = demo({ 'index.d.ts': 'export declare const a: 1;\n' }, { '.': 'index.d.ts' }, { marmeon: { providers: ['P'] } });
+    expect((await runtimeItems({ name: '@marmeon/demo', dir, manifest })).problems.join('\n')).toContain('run pnpm build first');
+  });
+
+  it('reports a config whose env is not made by env({ … })', async () => {
+    const { problems } = await read("{ name: 'plain', env: {} }");
+    expect(problems.join('\n')).toContain('the env of the config plain is not made by env({ … })');
+  });
+
+  const command = (options: string, description = 'Does a thing.') =>
+    `[class DemoCommand { static command = 'demo:run'; static description = '${description}'; static usage = '<Name>'; static options = ${options}; }]`;
+
+  it('lists a command with its usage and its sorted options, without the description', async () => {
+    const { items } = await read('', command("{ zeta: { type: 'string', short: 'z' }, alpha: { type: 'boolean' }, many: { type: 'string', multiple: true } }"));
+    expect(items).toEqual([
+      { entry: '', section: 'commands', name: 'demo:run', text: 'marmeon demo:run <Name>\n--alpha (boolean)\n--many (string, multiple)\n--zeta (string, short z)' },
+    ]);
+  });
+
+  it('shows a removed option as changed, and a new description as no change', async () => {
+    const [before, after] = await pair('', '', [command("{ a: { type: 'boolean' }, b: { type: 'boolean' } }"), command("{ a: { type: 'boolean' } }")]);
+    expect(compareSnapshots(before.items, after.items).changed.map(({ after: item }) => item.name)).toEqual(['demo:run']);
+    const [same, reworded] = await pair('', '', [command("{ a: { type: 'boolean' } }"), command("{ a: { type: 'boolean' } }", 'Now words differ.')]);
+    expect(compareSnapshots(same.items, reworded.items)).toEqual({ removed: [], changed: [], added: [] });
+  });
+
+  it('writes both sections after the entry points, and reads them back', async () => {
+    const { dir, manifest } = demo(
+      {
+        'index.d.ts': 'export declare const a: 1;\n',
+        'index.js': `export class P { static config = [{ name: 'x', env: { [Symbol.for('marmeon.env.fields')]: { X: { '~env': () => ({ value: 1 }) } } } }]; static commands = [class C { static command = 'x:run'; static options = {}; }]; }`,
+      },
+      { '.': 'index.d.ts' },
+      { marmeon: { providers: ['P'] } },
+    );
+    const { items } = await runtimeItems({ name: '@marmeon/demo', dir, manifest });
+    const { markdown } = snapshotPackage({ name: '@marmeon/demo', dir, manifest }, [], items);
+    expect(markdown).toMatch(/## Environment\n\n```ts\n\/\/ X\n`X` = `1`\n```\n\n## Commands\n\n```ts\n\/\/ x:run\nmarmeon x:run\n```\n$/);
+    expect(parseSnapshot(markdown!).filter((item) => item.entry === '')).toEqual(items);
+  });
+
+  it('leaves a package without providers alone', async () => {
+    const { dir, manifest } = demo({ 'index.d.ts': 'export declare const a: 1;\n' });
+    expect(await runtimeItems({ name: '@marmeon/demo', dir, manifest })).toEqual({ items: [], problems: [] });
   });
 });
 
@@ -455,7 +570,8 @@ describe('the repository', () => {
     return Object.values(exports).every((conditions) => conditions.types === undefined || existsSync(join(pkg.dir, conditions.types)));
   });
 
-  it.skipIf(!built)('has an api.md for every package that matches the built declarations', () => {
-    expect(runApi(repository).lines).toEqual(['api: every api.md matches the built declarations']);
-  });
+  // Reads the declarations of all packages and imports their built code: 2.3 s alone, 4.1 s with six runs side by side — too close to the default 5 s for a slow runner.
+  it.skipIf(!built)('has an api.md for every package that matches the built declarations', async () => {
+    expect((await runApi(repository)).lines).toEqual(['api: every api.md matches the built declarations, environment variables and commands']);
+  }, 30_000);
 });

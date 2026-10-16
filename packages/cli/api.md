@@ -113,3 +113,94 @@ export declare function spawnMarmeon(root: string, args: readonly string[]): Pro
 // startMarmeon
 export declare function startMarmeon(root: string, args: readonly string[]): ChildProcess;
 ```
+
+## Commands
+
+```ts
+// build
+marmeon build [--no-typecheck]
+--no-typecheck (boolean)
+// discover
+marmeon discover
+// key:generate
+marmeon key:generate
+--force (boolean)
+--show (boolean)
+// make:command
+marmeon make:command <Name> --module=<module> [--no-register]
+--force (boolean)
+--module (string, short m)
+--no-register (boolean)
+// make:controller
+marmeon make:controller <Name> --module=<module> [--view] [--request]
+--force (boolean)
+--module (string, short m)
+--request (boolean)
+--view (boolean)
+// make:docker
+marmeon make:docker [--caddy|--nginx] [--systemd] [--force]
+--caddy (boolean)
+--force (boolean)
+--nginx (boolean)
+--systemd (boolean)
+// make:event
+marmeon make:event <Name> --module=<module>
+--force (boolean)
+--module (string, short m)
+// make:job
+marmeon make:job <Name> --module=<module> [--no-register]
+--force (boolean)
+--module (string, short m)
+--no-register (boolean)
+// make:lint-config
+marmeon make:lint-config [--boundaries] [--force]
+--boundaries (boolean)
+--force (boolean)
+// make:listener
+marmeon make:listener <Name> --event=<Event> --module=<module> [--no-register]
+--event (string, short e)
+--force (boolean)
+--module (string, short m)
+--no-register (boolean)
+// make:middleware
+marmeon make:middleware <Name> --module=<module>
+--force (boolean)
+--module (string, short m)
+// make:migration
+marmeon make:migration <snake_case_name> --module=<module> [--no-register]
+--force (boolean)
+--module (string, short m)
+--no-register (boolean)
+// make:module
+marmeon make:module <name> [--no-register]
+--force (boolean)
+--no-register (boolean)
+// make:notification
+marmeon make:notification <Name> --module=<module> [--no-register]
+--force (boolean)
+--module (string, short m)
+--no-register (boolean)
+// make:seeder
+marmeon make:seeder <Name> --module=<module> [--no-register]
+--force (boolean)
+--module (string, short m)
+--no-register (boolean)
+// modules:check
+marmeon modules:check
+// package:build
+marmeon package:build [package directories…] [--clean]
+--clean (boolean)
+// route:list
+marmeon route:list
+// route:types
+marmeon route:types [--check]
+--check (boolean)
+// serve
+marmeon serve [--workers=N]
+--workers (string)
+// tinker
+marmeon tinker [--sandbox] [--execute "<code>"] [--no-history]
+--execute (string, short e)
+--no-history (boolean)
+--sandbox (boolean)
+```

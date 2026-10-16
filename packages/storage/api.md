@@ -625,3 +625,34 @@ interface UploadRow {
     consumed_at: number | string | null;
 }
 ```
+
+## Environment
+
+```ts
+// UPLOADS_CONNECTION
+`UPLOADS_CONNECTION` = `"default"`
+// UPLOADS_DISK
+`UPLOADS_DISK` = `"uploads"`
+// UPLOADS_LIFETIME
+`UPLOADS_LIFETIME` = `120`
+// UPLOADS_MAX_OPEN
+`UPLOADS_MAX_OPEN` = `20`
+// UPLOADS_MAX_OPEN_MB
+`UPLOADS_MAX_OPEN_MB` = `1024`
+// UPLOADS_MAX_OPEN_TOTAL_MB
+`UPLOADS_MAX_OPEN_TOTAL_MB` = `10240`
+// UPLOADS_SEND_WITHIN
+`UPLOADS_SEND_WITHIN` = `15`
+```
+
+## Commands
+
+```ts
+// make:uploads-table
+marmeon make:uploads-table [--module=system]
+--module (string, short m)
+// uploads:prune
+marmeon uploads:prune [--hours=24] [--force]
+--force (boolean)
+--hours (string)
+```

@@ -109,3 +109,14 @@ interface ClientModule {
     createClient(options: Record<string, unknown>): Client;
 }
 ```
+
+## Environment
+
+```ts
+// APP_NAME
+`APP_NAME` = `"marmeon"`
+// REDIS_PREFIX
+`REDIS_PREFIX` — optional
+// REDIS_URL
+`REDIS_URL` = `"redis://127.0.0.1:6379"`
+```
