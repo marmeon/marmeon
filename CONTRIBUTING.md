@@ -69,10 +69,9 @@ package store, the registry and Docker — without them they are reported as ski
 
 - **Tests** come with the change — type guarantees as `@ts-expect-error` tests, behaviour in Vitest, a feature shown in
   `apps/web-app` (principle 9).
-- **The bundle-size limits only go down** (`packages/react/size-budget.json`) — raising one is the maintainers' decision, and
-  new bytes are paid for by savings first. A saving lowers a limit to the new size + 0.5 KB
-  (`MARMEON_SIZE_BUDGET=update pnpm test packages/react`, `… pnpm size`); extra cost eats that reserve, which is never refilled
-  ([The size budget](#the-size-budget)).
+- **Bundle sizes are reported, not limited:** the `size` check puts a table of the client bundles, this branch against its base
+  commit, into the job summary and fails only when a build or measurement breaks. A maintainer decides per pull request whether
+  its growth is worth it; say in the description what the bytes buy ([The bundle sizes](#the-bundle-sizes)).
 - **Tests leave nothing behind:** every run gets its own temporary directory (`TMPDIR`), and `pnpm test` fails with a list when a
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
   removes them when the test, or the file, is done.
@@ -123,8 +122,8 @@ Chrome under a second `style-src 'self'` policy; it needs Chrome (`--chrome <pat
 
 `pnpm run ci` runs 16 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `check:source` ([below](#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis`
-and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle limits —
-[The size budget](#the-size-budget)), `types:check` (the apps' generated route and table types are current), `api:check` (each package's `api.md` matches its built declarations — [The API snapshot](#the-api-snapshot)), `website:check`,
+and `test:s3` against this repository's containers (`compose.yaml`, started as needed), `size` (the bundle sizes against the base commit —
+[The bundle sizes](#the-bundle-sizes)), `types:check` (the apps' generated route and table types are current), `api:check` (each package's `api.md` matches its built declarations — [The API snapshot](#the-api-snapshot)), `website:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-release`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `--shard i/n` runs one n-th
@@ -680,9 +679,9 @@ once, flash, deferred, merged and streamed props; a visit's own `confirm` and it
 entry on screen. The devtools' hook (`globalThis.__MARMEON_DEVTOOLS_HOOK__`) is called only under an inline positive `NODE_ENV`
 check, so a production build drops the calls.
 
-### The size budget
+### The bundle sizes
 
-`packages/react/size-budget.json` holds a limit per scenario in KB gzip of the initial download, measured in Vite's app mode
+`pnpm size` reports each scenario in KB gzip of the initial download, measured in Vite's app mode
 against `dist/` — minified, with production defines, without React, i18n and Vite's preload helper:
 
 | Scenario | What |
@@ -690,17 +689,18 @@ against `dist/` — minified, with production defines, without React, i18n and V
 | `core` | the client core as an adapter uses it: the navigator, the document, links, forms, routes, titles, messages |
 | `emptyApp` | `createMarmeonApp` alone — an app without a page |
 | `minimalApp` | `createMarmeonApp`, `Link`, `useForm`, `usePage`, `Head` |
-| `everything` | all of `@marmeon/react`'s main entry; a ceiling, not a ratchet |
+| `everything` | all of `@marmeon/react`'s main entry |
 | `table` | `createMarmeonApp` and `useTable` |
-| `blank-app`, `web-app`, `docs` (`appsGzipKB`) | the real apps' client builds: the marginal cost of core and adapter in their initial load |
+| `blank-app`, `web-app`, `website` | the real apps' client builds: the marginal cost of core and adapter in their initial load (React and the app's code do not move it) |
 
-- `bundle-size.test.ts` (part of `pnpm test`; run `pnpm build` first) fails when a scenario grows over its limit, and when it is
-  more than 0.6 KB under it, until the limit follows. `MARMEON_SIZE_BUDGET=update` lowers limits in place to the measured
-  size + 0.5 KB and never raises one. Raising a limit is the maintainers' decision; the commit that raises it gives the reason.
-- The same test is the **leak test**: every feature has markers (its modules) and must be in a bundle only with its own import —
-  a lazy one only in a lazy chunk. `stillLeaking` is `[]` in every scenario.
-- `pnpm size` attributes every byte of the scenarios and the real apps to its module (source maps) and checks the apps against
-  `appsGzipKB`; `pnpm size web-app` lists every module.
+- `pnpm size` prints the table; the `size` check measures this commit and the pull request's base commit (a worktree of it,
+  installed from the lockfile and built) and writes base, this commit and the delta into the job summary. There is no limit: it
+  fails when a build or a measurement breaks, never for a size. `pnpm size --base <ref>` does the same locally (an install and a
+  build of that ref).
+- `bundle-size.test.ts` is also the **leak test**: every feature has markers (its modules) and must be in a bundle only with its own import —
+  a lazy one only in a lazy chunk.
+- `pnpm size web-app` (or a scenario name) attributes every byte to its module (source maps) and gives the marginal cost of core
+  and adapter.
 - `marmeon()` splits an app's first download into a `vendor` and an `index` chunk (`CLIENT_CHUNKS` of `@marmeon/vite`), initial
   modules only; the scenarios are built the same way.
 

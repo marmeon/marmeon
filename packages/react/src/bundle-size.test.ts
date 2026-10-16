@@ -1,17 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   appBundle,
   appClientBuild,
   appEntry,
-  BUDGET_WHERE,
-  budgetProblem,
   kb,
-  loweredLimit,
-  lowerLimits,
   PACKAGES,
-  readBudget,
   SCENARIOS,
   tableEntry,
   type AppBundle,
@@ -19,15 +14,13 @@ import {
 } from './__fixtures__/bundle.ts';
 
 /**
- * What a browser downloads for the client core and the React adapter: sizes held by a ratchet and a
- * leak test per feature. Built as an app builds them (Vite app mode, production, minified) against the packages'
+ * What a browser downloads for the client core and the React adapter: a leak test per feature. Built as an app builds them (Vite app mode, production, minified) against the packages'
  * `dist/` — run `pnpm build` first. React and i18n are not counted.
  *
- * `packages/react/size-budget.json` holds the limits and the features that still leak; both only shrink. For the
- * attribution of every byte to its module, and the real apps, run `pnpm size`.
+ * The sizes are reported, not limited: for a table of them against the base commit, and the attribution of every byte to
+ * its module, run `pnpm size`.
  */
 
-const budget = readBudget();
 type LeakScenario = 'core' | 'emptyApp' | 'minimalApp';
 
 /**
@@ -162,8 +155,6 @@ function devtoolsIn({ modules, lazyModules, code, lazyCode }: AppBundle): string
 }
 
 const bundles = new Map<string, AppBundle>();
-const lowered: Partial<Record<Scenario, number>> = {};
-const update = process.env.MARMEON_SIZE_BUDGET === 'update';
 
 beforeAll(async () => {
   const entries: [string, string][] = [
@@ -174,46 +165,26 @@ beforeAll(async () => {
   await Promise.all(entries.map(async ([name, entry]) => bundles.set(name, await appBundle(entry))));
 }, 60_000);
 
-afterAll(() => {
-  if (update && Object.keys(lowered).length > 0) lowerLimits(lowered);
-});
-
 const bundle = (name: string): AppBundle => {
   const found = bundles.get(name);
   if (!found) throw new Error(`No bundle "${name}" — did the build fail?`);
   return found;
 };
 
-describe('the client bundle stays within its budget (a ratchet)', () => {
-  it.each(Object.keys(SCENARIOS) as Scenario[])('%s', (name) => {
-    const line = budget.gzipKB[name];
-    expect(line, `${BUDGET_WHERE} has no limit for "${name}"`).toBeDefined();
-    const size = kb(bundle(name).gzip);
-    // update: a saving lowers the limit to the size + the reserve; a size over its limit stays red — never raised.
-    const lower = update ? loweredLimit(size, line) : undefined;
-    if (lower !== undefined) lowered[name] = lower;
-    const problem = budgetProblem(name, size, lower === undefined ? line : { ...line, limit: lower });
-    // The whole message as the assertion's (Vitest shortens the value it prints).
-    expect(problem, problem).toBeUndefined();
-  });
-
-  it('the budget file only names scenarios this test builds', () => {
-    expect(Object.keys(budget.gzipKB).sort()).toEqual(Object.keys(SCENARIOS).sort());
-    expect(Object.keys(budget.stillLeaking).sort()).toEqual(['core', 'emptyApp', 'minimalApp']);
+describe('every scenario can be measured', () => {
+  it.each(Object.keys(SCENARIOS) as Scenario[])('%s builds into a download with a size', (name) => {
+    expect(kb(bundle(name).gzip)).toBeGreaterThan(1);
   });
 });
 
 describe('an app holds only the features it uses (leak test)', () => {
-  // `stillLeaking` lists what is in there without being used. A new leak fails, and so does a listed one that is gone —
-  // then take it off the list.
+  // Nothing is in there without being used.
   it.each(['core', 'emptyApp', 'minimalApp'] as const)('%s', (name) => {
     const leaking = featuresIn(bundle(name)).filter((feature) => !USES[name].includes(feature));
-    expect(leaking, `Features in "${name}" it does not use — update stillLeaking.${name} in ${BUDGET_WHERE} only when one is gone`).toEqual(
-      sorted(budget.stillLeaking[name]),
-    );
+    expect(leaking, `Features in "${name}" it does not use`).toEqual([]);
   });
 
-  // In none of these unless it is used — whatever stillLeaking says (a feature may not come back onto that list).
+  // In none of these unless it is used.
   it.each(EXTRACTED)('%s is in no scenario that does not use it', (feature) => {
     for (const name of ['core', 'emptyApp', 'minimalApp'] as const) {
       if (USES[name].includes(feature)) continue;
@@ -379,7 +350,7 @@ describe('an app holds only the features it uses (leak test)', () => {
     const { use, brings = [], lazy = false }: { use: { base: LeakScenario }; brings?: readonly string[]; lazy?: boolean } = FEATURES[feature];
     const built = bundle(`feature:${feature}`);
     // A feature loaded on first use comes with its component, but in a chunk of its own — not in the first download.
-    expect(featuresIn(built)).toEqual(sorted([...USES[use.base], ...budget.stillLeaking[use.base], ...(lazy ? [] : [feature]), ...brings]));
+    expect(featuresIn(built)).toEqual(sorted([...USES[use.base], ...(lazy ? [] : [feature]), ...brings]));
     if (lazy) expect(featuresIn(built, true)).toContain(feature);
   });
 });
