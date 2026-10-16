@@ -220,7 +220,7 @@ async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify
         prune: (days) => tokens.prune(days),
         ...(options.noRebind ? {} : { rebind: (userId: number | string, cookie: string, fingerprint: string) => tokens.rebind!(userId, cookie, fingerprint) }),
       });
-      if (options.totp) container.instance(TwoFactorState, { factors: async () => ['totp'], enabledSince: async () => undefined });
+      if (options.totp) container.instance(TwoFactorState, { factors: async () => ['totp'], enabledSince: async () => undefined, removeAll: async () => {} });
     },
   });
   await application.container.make(Migrator).migrate();
