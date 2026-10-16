@@ -1,4 +1,4 @@
-# Releases: started by hand, staged by pnpm with trusted publishing — and never live without a maintainer.
+# Releases: started by hand, staged with trusted publishing — and never live without a maintainer.
 #
 # Start it with "Run workflow" from `main` (any version above npm's latest) or from a maintenance branch (`0.<minor>.x` below 1.0,
 # `<major>.x` from 1.0 on) for a late fix of an older line. Anyone with write access can start it; the gate is the maintainer's
@@ -6,28 +6,35 @@
 # is the release commit: the branch's last change to the changelogs or to .github/release-base (the merged release pull request of
 # `pnpm release:prepare`). Later merges go into the next release.
 #
-# Two jobs, so that no step ever holds the OIDC token and the write token together:
+# Three jobs, so that no step holds the OIDC token together with code of the repository or of its dependencies, or together with the
+# write token:
 #
-#   stage    (id-token: write, contents: read) — runs the repository's scripts
+#   build    (contents: read, no id-token) — runs the repository's scripts and its dependencies' code
 #     1. scripts/release-guard.ts, before anything is installed: the branch, the release commit (checked out, detached — every later
 #        step works on it and none may switch away), one version, v<version> not tagged, the version on no package of npm, the
 #        release base, and the dist-tag (`latest`, or `latest-<line>` for a late fix of an older line).
 #     2. The checks: a clean build, the content rules, publint, attw, the release rules. No cache is restored: a store written by
 #        another workflow could carry code into this job.
-#     3. `pnpm stage publish -r` with that dist-tag — every package is STAGED on npm (OIDC, no token anywhere; provenance from this
-#        workflow). Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor authentication
-#        (npm stage approve). The trusted-publisher configuration of every package allows staging only (scripts/npm-trust.sh).
+#     3. scripts/release-pack.ts: `pnpm pack` of every package, and SHA512SUMS naming each tarball. The hash of SHA512SUMS is the
+#        job's output `sums`; the tarballs and SHA512SUMS are uploaded as the artifact `tarballs` (kept for a day).
+#   stage    (id-token: write, contents: read) — installs nothing, checks out nothing, runs no script of the repository
+#     4. Downloads the artifact, checks SHA512SUMS against the output `sums` and the tarballs against SHA512SUMS, then
+#        `npm stage publish` of exactly the tarballs SHA512SUMS names, with the dist-tag (OIDC, no token anywhere; provenance from
+#        this workflow). Nothing is public until a maintainer approves the staged versions on npmjs.com with two-factor
+#        authentication (npm stage approve). The trusted-publisher configuration of every package allows staging only
+#        (scripts/npm-trust.sh). The job prints SHA512SUMS: the maintainer rebuilds the release commit and compares before approving.
 #   release  (contents: write, no id-token) — installs nothing and runs no repository code but the notes script
-#     4. The tag v<version> on the release commit, and a draft GitHub Release with the notes of the changelog — a draft, never
+#     5. The tag v<version> on the release commit, and a draft GitHub Release with the notes of the changelog — a draft, never
 #        public: the maintainer publishes it after approving on npm.
 #
 # Never start it again after a run that staged: the tag guard only helps once the tag exists, and a staged version is invisible to
 # `npm view`. What to do with a failed or rejected run: CONTRIBUTING.md › "Pull requests and releases" › "When a run fails".
 #
 # scripts/check-release.ts (a part of `pnpm run ci`) checks this file as a review aid, not as a barrier: dispatch only, the
-# guard first and nothing switching away from the release commit after it, id-token only where the packages are staged, the write
-# token only in the release job's last two steps, every action pinned by full SHA, no npm publish, no token, no cache, a GitHub
-# Release only as a draft, no expression inside a script.
+# guard first and nothing switching away from the release commit after it, id-token only in the job that stages — which has no
+# checkout, no pnpm and runs nothing but the hash checks and `npm stage publish` — the write token only in the release job's last
+# two steps, every action pinned by full SHA, no npm publish, no token, no cache, a GitHub Release only as a draft, no expression
+# inside a script.
 name: Release
 
 on:
@@ -41,18 +48,18 @@ permissions:
   contents: read
 
 jobs:
-  stage:
-    name: stage the packages on npm
-    # Trusted publishing needs a GitHub-hosted runner.
+  build:
+    name: build the tarballs
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      id-token: write # OIDC: trusted publishing and provenance
     outputs:
       commit: ${{ steps.guard.outputs.commit }}
       version: ${{ steps.guard.outputs.version }}
       latest: ${{ steps.guard.outputs.latest }}
+      dist-tag: ${{ steps.guard.outputs.dist-tag }}
+      sums: ${{ steps.pack.outputs.sums }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -69,21 +76,76 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The tarballs as they will be staged: a clean build, the content rules, publint, attw — and the release rules.
       - run: pnpm run ci --only build,pack:check,check-release
-      # Staged, not published: every package waits for a maintainer's approval with 2FA on npmjs.com. pnpm's git checks want a
-      # branch; the guard has checked the release commit instead, and the tree must still be exactly that commit.
-      - name: stage the packages
+      # Packed and hashed here, staged by the next job: the tree must still be exactly the release commit the guard checked out.
+      - id: pack
+        name: pack the tarballs
         env:
           COMMIT: ${{ steps.guard.outputs.commit }}
-          DIST_TAG: ${{ steps.guard.outputs.dist-tag }}
         run: |
           test "$(git rev-parse HEAD)" = "$COMMIT"
           status=$(git status --porcelain)
           test -z "$status"
-          pnpm run release:stage --no-git-checks --tag "$DIST_TAG"
+          node scripts/release-pack.ts "$RUNNER_TEMP/tarballs"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tarballs
+          path: ${{ runner.temp }}/tarballs
+          retention-days: 1
+          if-no-files-found: error
+
+  stage:
+    name: stage the packages on npm
+    needs: build
+    # Trusted publishing needs a GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # OIDC: trusted publishing and provenance
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tarballs
+          path: ${{ runner.temp }}/tarballs
+      # npm 11.15 or later stages. Keep the version the one in .nvmrc (the Node that built the tarballs): check-release compares them.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 26.10.0
+          package-manager-cache: false # the action's default restores a pnpm store by itself
+      # Staged, not published: every package waits for a maintainer's approval with 2FA on npmjs.com. Only the files SHA512SUMS names
+      # are staged, and only after the build job's hash of SHA512SUMS and the hash of every tarball matched.
+      - name: stage the tarballs
+        env:
+          TARBALLS: ${{ runner.temp }}/tarballs
+          SUMS: ${{ needs.build.outputs.sums }}
+          VERSION: ${{ needs.build.outputs.version }}
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
+          # No npmrc of the user or the machine: npm reads a registry, a proxy and TLS settings from them. Two different paths that do
+          # not exist (npm refuses the same file as user and as global config).
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/no-userconfig
+          NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/no-globalconfig
+        run: |
+          set -o pipefail
+          [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\.[0-9]+)?)?$ ]]
+          mkdir "$RUNNER_TEMP/empty"
+          cd "$TARBALLS"
+          printf '%s  SHA512SUMS\n' "$SUMS" | sha512sum --check --strict -
+          sha512sum --check --strict SHA512SUMS
+          # The artifact holds SHA512SUMS and the files it names, nothing else (no dotfile, no directory): npm would read a .npmrc.
+          expected=$( { echo ./SHA512SUMS; awk '{ print "./" $2 }' SHA512SUMS; } | sort )
+          found=$(find . -mindepth 1 | sort)
+          test "$expected" = "$found"
+          cat SHA512SUMS
+          # npm runs in an empty directory, so it finds no project npmrc; the tarballs are named by absolute path.
+          cd "$RUNNER_TEMP/empty"
+          while read -r _ name; do
+            test "${name%-"$VERSION".tgz}" != "$name"
+            npm stage publish "$TARBALLS/$name" --provenance --access public --tag="$DIST_TAG" < /dev/null
+          done < "$TARBALLS/SHA512SUMS"
 
   release:
     name: tag and draft the release
-    needs: stage
+    needs: [build, stage]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -91,7 +153,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ needs.stage.outputs.commit }}
+          ref: ${{ needs.build.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -100,8 +162,8 @@ jobs:
       - name: tag the release commit
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.stage.outputs.version }}
-          COMMIT: ${{ needs.stage.outputs.commit }}
+          VERSION: ${{ needs.build.outputs.version }}
+          COMMIT: ${{ needs.build.outputs.commit }}
         run: |
           set -o pipefail
           test "$(git rev-parse HEAD)" = "$COMMIT"
@@ -124,8 +186,8 @@ jobs:
       - name: draft the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.stage.outputs.version }}
-          LATEST: ${{ needs.stage.outputs.latest }}
+          VERSION: ${{ needs.build.outputs.version }}
+          LATEST: ${{ needs.build.outputs.latest }}
         run: |
           node scripts/release-notes.ts "$VERSION" > "$RUNNER_TEMP/release-notes.md"
           gh release create "v$VERSION" --draft --verify-tag --title "v$VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --latest="$LATEST"

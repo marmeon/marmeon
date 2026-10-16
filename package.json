@@ -32,7 +32,6 @@
     "csp:probe": "node scripts/csp-probe.ts",
     "release:prepare": "node scripts/release-prepare.ts",
     "check-release": "node scripts/check-release.ts",
-    "release:stage": "pnpm stage publish -r --provenance --access public",
     "ci": "node scripts/ci.ts"
   },
   "devDependencies": {
