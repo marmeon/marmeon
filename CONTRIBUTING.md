@@ -360,6 +360,10 @@ seen. A command shows its usage and its sorted options with their types — neve
 Exit codes cannot be read from the code; tests secure them. A config whose `env` is not made by `env({ … })` fails
 `pnpm api:check`, because its variables cannot be listed.
 
+`pnpm api:usage <entry>` (for example `pnpm api:usage @marmeon/core`) lists, per export of an entry point from its `api.md`,
+the docs, apps, kit files, neighbour packages and tests that import it outside the package, with a first guess — `keep`,
+`testing`, `internal` or `drop` — for where the export belongs; `--files` names the importing files, `--json` prints the data.
+
 ### The upgrade guide
 
 `UPGRADING.md` has a section `## Upgrading to <version> from <version>` for every breaking release. `pnpm check-release` (a part
