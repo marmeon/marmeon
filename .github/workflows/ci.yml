@@ -1,5 +1,6 @@
-# The same parts as `pnpm run ci` (scripts/ci.ts) — the tests in three shards, one job per suite that needs a database, one for the
-# tarballs, one for the image, so they run side by side on their own runners. Locally `pnpm run ci` runs them all, one after the other.
+# The same parts as `pnpm run ci` (scripts/ci.ts) — the tests in three shards, one job per suite that needs a database (Postgres in
+# two shards behind one check, test:pgsql), one for the tarballs, one for the image, so they run side by side on their own runners.
+# Locally `pnpm run ci` runs them all, one after the other.
 name: CI
 
 on:
@@ -146,10 +147,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run ci --only build,image
 
-  pgsql:
-    name: test:pgsql
+  pgsql-shards:
+    # Two shards, each with a Postgres of its own. The aggregator below keeps the name "test:pgsql" that a required check lists.
+    name: test:pgsql (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     services:
       # As in compose.yaml (marmeon-pgsql): the port and credentials test:pgsql uses.
       pgsql:
@@ -184,7 +190,24 @@ jobs:
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run ci --only build,test:pgsql --no-compose
+      # The shard through the environment, never as an expression inside the script.
+      - env:
+          SHARD: ${{ matrix.shard }}
+        run: pnpm run ci --only build,test:pgsql --no-compose --shard "$SHARD/2"
+
+  pgsql:
+    # Fails unless both shards passed (a skipped or cancelled shard counts as a failure); no checkout, no actions.
+    name: test:pgsql
+    needs: pgsql-shards
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULT: ${{ needs.pgsql-shards.result }}
+        run: |
+          echo "test:pgsql shards: $RESULT"
+          test "$RESULT" = success
 
   redis:
     name: test:redis

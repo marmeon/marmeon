@@ -100,7 +100,7 @@ scripts/test      the test suite's temporary directory per run and tempDir() —
                   (pnpm test fails when a test leaves an entry behind)
 deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next
-.github           workflows/ (ci.yml: pnpm run ci in seven jobs; release.yml: started by hand, staged publishing; pr-label.yml: the release label
+.github           workflows/ (ci.yml: pnpm run ci in parallel jobs; release.yml: started by hand, staged publishing; pr-label.yml: the release label
                   check), release.yml (the notes' categories, generated) and release-base (the commit a release was prepared from)
 ```
 
@@ -128,8 +128,10 @@ and `test:s3` against this repository's containers (`compose.yaml`, started as n
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `--shard i/n` runs one n-th
 of the files of the selected test parts (Vitest's `--shard`; with no test part selected it is an error). `ci.yml` splits the parts
-into seven jobs that run side by side (the checks, the tests as three shards `test (1/3)` to `test (3/3)`, the tarballs, the image,
-Postgres, Redis, S3); a shard builds for itself, and a job's name is what a required check of the repository would list.
+into jobs that run side by side (the checks, the tests as three shards `test (1/3)` to `test (3/3)`, the tarballs, the image,
+Postgres as two shards `test:pgsql (1/2)` and `(2/2)`, Redis, S3); a shard builds for itself, and a job's name is what a required
+check of the repository would list. The job `test:pgsql` only waits for both Postgres shards and fails unless they passed, so the
+name a required check lists stays the same.
 
 ### The test suites against real services
 
