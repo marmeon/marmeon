@@ -154,8 +154,7 @@ export function AppLayout({ children }: LayoutProps) {
 }
 ```
 
-`usePage()` returns the page on screen: its `component`, `props`, `url`, `locale` and `flash`. Inside a layer it returns the
-layer's page. The props are typed by `interface SharedProps`, which the middleware declares. The
+The props are typed by `interface SharedProps`, which the middleware declares. The
 [responses](responses.md#shared-props) page shows how to share a prop.
 
 Share what pages show. Shared props are part of every page's HTML and JSON, so a user's `name` and whether they are `verified`
@@ -163,6 +162,24 @@ belong there, their database id does not. A page that needs more asks its contro
 
 Declare shared props as optional and render without them. A path that matches no route passes no group's middleware, so its 404
 page has no shared props, yet it still renders inside the default layout.
+
+### Reading the page
+
+`usePage()` returns the page on screen as a `PageInfo`. Inside a layer it returns the layer's page. The object is the same for
+as long as the page is, so it is safe in a dependency list.
+
+| Field | Holds |
+|---|---|
+| `component` | The view's name, `user-profile/Show`. |
+| `props` | The controller's props and the shared ones. |
+| `url` | The page's path and query. |
+| `route` | The name of the route that answered. Absent for an error page. |
+| `locale` | The page's language, one of the app's supported locales. |
+| `query` | The page's parsed query. Absent for a route without a query schema. |
+| `flash` | The flash messages the page delivered. See [flash messages](#flash-messages). |
+
+Nothing else is there. What the client needs to keep the page current, such as the build version or the props still to load,
+stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`.
 
 ## The document head
 

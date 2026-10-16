@@ -34,7 +34,7 @@ import {
   type FormHTMLAttributes,
   type ReactNode,
 } from 'react';
-import { usePage, useRouterContext } from './app.tsx';
+import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
 import { RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
@@ -177,8 +177,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     onFinish,
     ...attributes
   } = props as FormProps<string> & { params?: Record<string, string | number> };
-  const page = usePage();
-  const { visit } = useRouterContext();
+  const { visit, page } = useRouterContext();
   const manifest = useContext(RoutesContext);
   const target = resolveRoute(manifest, route as string, params);
   const method = target.method.toLowerCase() as VisitMethod;

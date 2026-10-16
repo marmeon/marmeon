@@ -367,6 +367,8 @@ export type PageComponent = ComponentType<any> & {
     revalidateOnBack?: boolean | readonly string[];
     placeholder?: ComponentType<any>;
 };
+// PageInfo
+export type { PageInfo } from '@marmeon/http/page';
 // PageLayer
 export type PageLayer = LayerVariant | LayerFrame;
 // PageLayout
@@ -570,9 +572,7 @@ export declare function useLocale(): {
 // useNewVersion
 export declare function useNewVersion(): NewVersion | undefined;
 // usePage
-export declare function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'> & {
-    props: SharedProps & TProps;
-};
+export declare function usePage<TProps extends object = {}>(): PageInfo<SharedProps & TProps>;
 // usePending
 export declare function usePending<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, { delay }?: UsePendingOptions): boolean;
 // usePendingSubmissions

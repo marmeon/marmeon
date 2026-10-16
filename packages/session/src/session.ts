@@ -285,8 +285,9 @@ export class Session {
    * The CSRF token of this session — made the first time something needs it (a session that never hands one out never
    * draws one) and handed out: a new session whose token an app puts into a response itself is saved,
    * so the token is still valid when the browser sends it back. Pages do not need to: `PageObject.csrf` (what `<Form>`
-   * renders, `usePage().csrf`) carries the token of a session that is kept anyway, and a guest's forms pass without one by
-   * the browser's word (Fetch Metadata, Origin). So a guest's page creates no session.
+   * renders) carries the token of a session that is kept anyway — a script reads the `XSRF-TOKEN` cookie with
+   * `xsrfToken()` of `@marmeon/http/client` — and a guest's forms pass without one by the browser's word (Fetch
+   * Metadata, Origin). So a guest's page creates no session.
    */
   token(): string {
     this.#ensureStarted();

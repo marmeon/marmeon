@@ -17,7 +17,7 @@ import {
 } from '@marmeon/http/client';
 import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
-import { loadLayers, usePage, useRouterContext, type PartialReloadOptions } from './app.tsx';
+import { loadLayers, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 
 export type { PrefetchTrigger } from '@marmeon/http/client';
@@ -220,7 +220,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       : {}),
   };
 
-  const page = usePage();
+  const { page } = useRouterContext();
   const target =
     route === undefined
       ? undefined

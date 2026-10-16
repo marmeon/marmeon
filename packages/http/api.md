@@ -2998,6 +2998,16 @@ export declare const PARTIAL_DATA_HEADER = "x-marmeon-partial-data";
 export declare const PARTIAL_EXCEPT_HEADER = "x-marmeon-partial-except";
 // PURPOSE_HEADER
 export declare const PURPOSE_HEADER = "purpose";
+// PageInfo
+export interface PageInfo<TProps = ViewProps> {
+    readonly component: string;
+    readonly props: TProps;
+    readonly url: string;
+    readonly route?: string;
+    readonly locale?: string;
+    readonly query?: Readonly<Record<string, unknown>>;
+    readonly flash?: readonly FlashMessage[];
+}
 // PageObject
 export interface PageObject {
     component: string;
@@ -3185,6 +3195,8 @@ export declare function isPageObject(value: unknown): value is PageObject;
 export declare function isPrefetch(request: Request): boolean;
 // matchesPath
 export { matchesPath } from '@marmeon/router/url';
+// pageInfo
+export declare function pageInfo<TProps = ViewProps>(page: PageObject): PageInfo<TProps>;
 // pageName
 export declare function pageName(path: string): string | undefined;
 // regionOf
