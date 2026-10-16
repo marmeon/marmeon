@@ -44,6 +44,8 @@ export const parts: readonly Part[] = [
   { name: 'test:s3', command: pnpm('test:s3'), shardable: true, services: ['s3'], after: ['build'] },
   { name: 'size', command: pnpm('size'), after: ['build'] },
   { name: 'types:check', command: pnpm('types:check') },
+  // The public surface of every package against its checked-in api.md (scripts/api.ts), read from the built declarations.
+  { name: 'api:check', command: pnpm('api:check'), after: ['build'] },
   // The website: its production build, started on a free port and asked by a smoke test (scripts/website.ts).
   { name: 'website:check', command: pnpm('website:check'), after: ['build'] },
   // The tarballs: a clean build, pnpm pack of every package, the content rules, publint and attw.

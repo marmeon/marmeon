@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   check:
-    name: build, typecheck, lint, size, types:check, website:check, check-release
+    name: build, typecheck, lint, size, types:check, api:check, website:check, check-release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -45,7 +45,7 @@ jobs:
         with:
           path: ${{ steps.store.outputs.path }}
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: pnpm run ci --only build,typecheck,lint,size,types:check,website:check,check-release
+      - run: pnpm run ci --only build,typecheck,lint,size,types:check,api:check,website:check,check-release
 
   test:
     # Vitest's --shard splits the files into thirds; each runner builds for itself (about ten seconds, less than waiting for an artifact).

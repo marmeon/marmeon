@@ -32,6 +32,8 @@
     "csp:probe": "node scripts/csp-probe.ts",
     "release:prepare": "node scripts/release-prepare.ts",
     "release:verify": "node scripts/release-verify.ts",
+    "api:check": "node scripts/api.ts",
+    "api:update": "marmeon package:build packages/* --clean && node scripts/api.ts --write",
     "check-release": "node scripts/check-release.ts",
     "ci": "node scripts/ci.ts"
   },
