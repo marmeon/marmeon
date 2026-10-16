@@ -1,4 +1,4 @@
-import { defineConfig, env, type ConfigDefinition, type InferOutput, type StandardSchemaV1 } from '@marmeon/core';
+import { defineConfig, env, type ConfigDefinition, type InferOutput, type Resolver, type StandardSchemaV1 } from '@marmeon/core';
 import type { Disk, PrivateDisk, PublicDisk, Visibility } from './disk.ts';
 
 interface DiskBase {
@@ -42,7 +42,43 @@ export interface MemoryDiskOptions extends DiskBase {
   readonly url?: string;
 }
 
-export type DiskOptions = LocalDiskOptions | S3DiskOptions | MemoryDiskOptions;
+/**
+ * The disk drivers by name, each with its options. A package that brings a driver (`static diskDrivers` on its provider)
+ * adds its own through declaration merging; the options carry what the driver needs and no `driver` key:
+ *
+ * ```ts
+ * declare module '@marmeon/storage' { interface DiskDrivers { gcs: { readonly bucket: string } } }
+ * ```
+ *
+ * Then `defineStorage({ disks: { media: { driver: 'gcs', bucket: 'files' } } })` is checked: a missing `bucket` is a type error.
+ * Every disk has `visibility` and `url` on top, whatever its driver. See `docs/drivers.md#disk-drivers`.
+ */
+export interface DiskDrivers {
+  local: LocalDiskOptions;
+  s3: S3DiskOptions;
+  memory: MemoryDiskOptions;
+}
+
+/** The options of one disk: the options of its driver, discriminated by `driver`. */
+export type DiskOptions = {
+  [K in keyof DiskDrivers]: DiskDrivers[K] & DiskBase & { readonly driver: K; readonly url?: string | undefined };
+}[keyof DiskDrivers];
+
+/** What a disk driver's factory is given besides the disk's options. */
+export interface DiskDriverContext {
+  /** The disk's name in the configuration — the `name` of the {@link Disk} the factory returns. */
+  readonly name: string;
+  /** The app root, for a driver that keeps files relative to it. */
+  readonly root: string;
+  /** For what the driver needs from the app (its own configuration, the clock, the logger). */
+  readonly container: Resolver;
+}
+
+/**
+ * Creates the disk `context.name` from its options. The disk's `visibility` must be the configured one and its `name` the
+ * disk's; a private disk's `temporaryUrl()` must be signed and expire. See `docs/drivers.md#disk-drivers`.
+ */
+export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => Disk;
 
 /** The resolved configuration: the default disk's name and every disk. */
 export interface StorageOptions<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> {

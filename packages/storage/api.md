@@ -36,6 +36,21 @@ export interface Disk {
     list(directory?: string, options?: ListOptions): Promise<string[]>;
     url(key: string): string;
     temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
+    close?(): Promise<void>;
+}
+// DiskDriverContext
+export interface DiskDriverContext {
+    readonly name: string;
+    readonly root: string;
+    readonly container: Resolver;
+}
+// DiskDriverFactory
+export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => Disk;
+// DiskDrivers
+export interface DiskDrivers {
+    local: LocalDiskOptions;
+    s3: S3DiskOptions;
+    memory: MemoryDiskOptions;
 }
 // DiskFor
 export type DiskFor<N extends string> = Configured extends {
@@ -50,7 +65,12 @@ export type DiskName = Configured extends {
 // DiskNameInput
 export type DiskNameInput = DiskName | (string & {});
 // DiskOptions
-export type DiskOptions = LocalDiskOptions | S3DiskOptions | MemoryDiskOptions;
+export type DiskOptions = {
+    [K in keyof DiskDrivers]: DiskDrivers[K] & DiskBase & {
+        readonly driver: K;
+        readonly url?: string | undefined;
+    };
+}[keyof DiskDrivers];
 // ExpectedContents
 export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
     contentType: string;
@@ -426,6 +446,10 @@ export declare function diskAttachment(disk: Disk, key: string, options?: {
     content: Uint8Array;
     contentType: string;
 }>;
+// normalizeDirectory
+export declare function normalizeDirectory(directory: string): string;
+// normalizeKey
+export declare function normalizeKey(key: string): string;
 // serveFile
 export declare function serveFile(disk: Disk, key: string, request: Request, options: ServeOptions): Promise<Response>;
 // upload
@@ -510,6 +534,15 @@ interface UploadRow {
 }
 ```
 
+### Augments
+
+```ts
+// @marmeon/core.ServiceProviderClass
+interface ServiceProviderClass {
+    readonly diskDrivers?: Readonly<Record<string, DiskDriverFactory>>;
+}
+```
+
 ## `@marmeon/storage/testing`
 
 Types from other packages: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
@@ -562,10 +595,25 @@ export interface Disk {
     list(directory?: string, options?: ListOptions): Promise<string[]>;
     url(key: string): string;
     temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
+    close?(): Promise<void>;
 }
 // DiskBase
 interface DiskBase {
     readonly visibility?: Visibility;
+}
+// DiskDriverContext
+export interface DiskDriverContext {
+    readonly name: string;
+    readonly root: string;
+    readonly container: Resolver;
+}
+// DiskDriverFactory
+export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => Disk;
+// DiskDrivers
+export interface DiskDrivers {
+    local: LocalDiskOptions;
+    s3: S3DiskOptions;
+    memory: MemoryDiskOptions;
 }
 // DiskFor
 export type DiskFor<N extends string> = Configured extends {
@@ -580,7 +628,12 @@ export type DiskName = Configured extends {
 // DiskNameInput
 export type DiskNameInput = DiskName | (string & {});
 // DiskOptions
-export type DiskOptions = LocalDiskOptions | S3DiskOptions | MemoryDiskOptions;
+export type DiskOptions = {
+    [K in keyof DiskDrivers]: DiskDrivers[K] & DiskBase & {
+        readonly driver: K;
+        readonly url?: string | undefined;
+    };
+}[keyof DiskDrivers];
 // ExpectedContents
 export type ExpectedContents = string | Uint8Array | ((contents: Uint8Array, file: {
     contentType: string;
@@ -697,6 +750,8 @@ export interface StorageDependencies {
     readonly clock: Clock;
     readonly temporaryUrls: TemporaryUrls;
     readonly loadS3?: ImportS3;
+    readonly drivers?: ReadonlyMap<string, DiskDriverFactory>;
+    readonly container?: Resolver;
 }
 // StorageManager
 export declare class StorageManager implements Storage {
@@ -706,6 +761,7 @@ export declare class StorageManager implements Storage {
     get defaultDisk(): string;
     disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
     named(name: string): Disk;
+    verify(): void;
     options(name: string): DiskOptions;
     protected build(name: string, options: DiskOptions): Disk;
     protected memory(name: string, options: DiskOptions): MemoryDisk;

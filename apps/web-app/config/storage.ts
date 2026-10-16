@@ -23,6 +23,8 @@ export const AppStorage = defineStorage({
     // Uploads wait here (UPLOADS_DISK) until a form checked and stored them — the avatar, then, on `public`. Private, and
     // outside the public root (a startup error otherwise): nothing anyone uploaded is served before its form accepted it.
     uploads: { driver: 'local', root: 'storage/app/uploads' },
+    // A disk of a driver the app brings itself (modules/system/ScratchDiskServiceProvider.ts): files in memory, at most `capacity`.
+    scratch: { driver: 'scratch', capacity: 100 },
     s3: {
       driver: 's3',
       bucket: e.S3_BUCKET,
