@@ -1,6 +1,7 @@
 /**
  * The first step of the release workflow: finds the release commit, checks it out, and refuses a run from the wrong ref or for a
- * version that is already tagged or on npm. Hands the commit, version, dist-tag and the draft's latest flag to the workflow.
+ * version that is already tagged or on npm. Hands the commit, version, dist-tag and the draft's latest and prerelease flags to the workflow.
+ * The dist-tag follows from the checked version alone (`releaseTarget`): `next` for a release candidate, never `latest`.
  *
  * Side effect: `git checkout --detach <release commit>`. Every later step of the workflow works on that commit, not on the head of
  * the branch the workflow was started on, so a pull request merged after the release is never shipped unreviewed.
@@ -14,7 +15,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameworkPackages } from './packages.ts';
-import { MAIN, maintenanceLine, isPlainVersion, isReleaseFile, parseReleaseBase, RELEASE_BASE, releaseCommit, releaseSection, releaseTarget, spawnRunner, type Runner } from './release-rules.ts';
+import { MAIN, maintenanceLine, isReleaseFile, parseReleaseBase, parseVersion, RELEASE_BASE, releaseCommit, releaseSection, releaseTarget, spawnRunner, type Runner } from './release-rules.ts';
 
 /** npm's error code for a package or version that does not exist (spelled so `check:source` does not read it as a decision number). */
 const NOT_FOUND = `E${404}`;
@@ -41,6 +42,7 @@ export interface GuardResult {
   readonly version?: string;
   readonly distTag?: string;
   readonly markLatest?: boolean;
+  readonly prerelease?: boolean;
 }
 
 /** What `npm view --json` said: the parsed value, npm's error code, or neither (network failure, server error, broken output). */
@@ -101,7 +103,7 @@ export function guard({ root, refType, branch, run }: GuardContext): GuardResult
     return { problems: [`The packages do not share one version — ${byVersion.join('; ')}.`], commit };
   }
   const version = versions[0]!;
-  if (!isPlainVersion(version)) return { problems: [`"${version}" is not a plain x.y.z version; prereleases are not released.`], commit };
+  if (parseVersion(version) === undefined) return { problems: [`"${version}" is not an x.y.z or x.y.z-rc.N version; other prereleases are not released.`], commit };
 
   try {
     releaseSection(root, version);
@@ -135,7 +137,7 @@ export function guard({ root, refType, branch, run }: GuardContext): GuardResult
   const tag = run('git', ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/v${version}`]);
   if (tag.status === 0) {
     problems.push(
-      `v${version} exists — nothing was prepared since it (pnpm release:prepare), or this version was staged already: approve or reject it on npmjs.com; a rejected version is replaced by the next patch.`,
+      `v${version} exists — nothing was prepared since it (pnpm release:prepare), or this version was staged already: approve or reject it on npmjs.com; a rejected version is replaced by the next patch (a candidate: the next one, --rc).`,
     );
   } else if (tag.status !== 2) {
     problems.push(`Could not look up tag v${version} on origin (exit ${tag.status ?? 'signal'}): ${tag.stderr.trim()}`);
@@ -158,13 +160,13 @@ export function guard({ root, refType, branch, run }: GuardContext): GuardResult
 
   const target = releaseTarget({ branch, version, latest });
   if (!target.ok) return { problems: [target.problem], commit, version };
-  return { problems, commit, version, distTag: target.distTag, markLatest: target.markLatest };
+  return { problems, commit, version, distTag: target.distTag, markLatest: target.markLatest, prerelease: target.prerelease };
 }
 
 /** The lines the workflow reads from `$GITHUB_OUTPUT`; only a guard without problems has any. */
 export function outputLines(result: GuardResult): string[] {
-  if (result.problems.length > 0 || !result.commit || !result.version || !result.distTag || result.markLatest === undefined) return [];
-  return [`commit=${result.commit}`, `version=${result.version}`, `dist-tag=${result.distTag}`, `latest=${result.markLatest}`];
+  if (result.problems.length > 0 || !result.commit || !result.version || !result.distTag || result.markLatest === undefined || result.prerelease === undefined) return [];
+  return [`commit=${result.commit}`, `version=${result.version}`, `dist-tag=${result.distTag}`, `latest=${result.markLatest}`, `prerelease=${result.prerelease}`];
 }
 
 if (import.meta.main) {
@@ -183,5 +185,5 @@ if (import.meta.main) {
   }
   appendFileSync(outputFile, `${lines.join('\n')}\n`);
   const subject = run('git', ['log', '-1', '--format=%h %s', result.commit!]).stdout.trim();
-  console.log(`release-guard: releasing ${result.version} from ${subject} with dist-tag ${result.distTag}${result.markLatest ? ' (marked latest)' : ''}.`);
+  console.log(`release-guard: releasing ${result.version} from ${subject} with dist-tag ${result.distTag}${result.markLatest ? ' (marked latest)' : ''}${result.prerelease ? ' (a prerelease)' : ''}.`);
 }

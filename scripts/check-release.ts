@@ -4,7 +4,7 @@
  * after 0.1.2), `.github/workflows/release.yml` (read-only by default; the build job packs and hashes the tarballs after
  * `pack:check` without an OIDC token; `id-token: write` only in the job that stages them, which checks out and installs nothing and
  * verifies the hashes before `npm stage publish`; never `npm publish`, a plain `pnpm publish` or an npm token; a
- * GitHub Release only as a draft, and the draft is there), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
+ * GitHub Release only as a draft, and the draft is there; the dist-tag and the prerelease flag come from the release guard's outputs alone, a candidate is staged as `next` only), `scripts/npm-trust.sh` (staged publishing only), the policies (LICENSE, DCO,
  * SECURITY.md, the deprecation policy) and `UPGRADING.md` bound to the packages' version ({@link UPGRADING_ANCHORS}),
  * `.github/workflows/pr-label.yml` (the release label check, token-free), `.github/workflows/api-label.yml` (the API label check:
  * reads a checkout, installs nothing, holds no token) and `.github/release.yml` (what the release rules generate). Besides: actionlint over the workflows when it is installed (a note, never a failure).
@@ -228,6 +228,12 @@ export function checkWorkflow(repository: string): string[] {
   if (events?.join() !== 'workflow_dispatch') {
     problems.push(`${where}: "on:" holds ${events === undefined ? 'no block of events' : events.join(', ') || 'nothing'} — only workflow_dispatch: a release is started by hand, by someone with write access`);
   }
+  // The dist-tag and the prerelease flag follow from the version the guard checked, never from what the person starting the run types.
+  if (/\binputs\b/.test(code)) problems.push(`${where}: a workflow input — the dist-tag (--tag) and the prerelease flag come from the release-guard outputs alone, nothing the person starting the run types`);
+  for (const line of joined(code).split('\n')) {
+    if (/(?<![\w-])--tag(?!="\$DIST_TAG"(?=\s|$))/.test(line) && !/^\s*#/.test(line)) problems.push(`${where}: "${line.trim()}" sets a --tag other than --tag="$DIST_TAG" — the dist-tag is the guard's output`);
+    if (/(?<![\w-])--prerelease(?!="\$PRERELEASE"(?=\s|$))/.test(line) && !/^\s*#/.test(line)) problems.push(`${where}: "${line.trim()}" sets a --prerelease other than --prerelease="$PRERELEASE" — the flag is the guard's output`);
+  }
   if (/\bsecrets\b/.test(code)) problems.push(`${where}: a secret — the release needs none (the write token is github.token, the staging uses OIDC)`);
   if (/^\s*(?:- )?cache:|\bactions\/cache\b/m.test(code)) problems.push(`${where}: a cache — a store another workflow wrote could carry code into the job that holds the OIDC token`);
   // setup-node restores a pnpm store by itself when package.json names pnpm (`package-manager-cache` defaults to true), without any `cache:` key.
@@ -342,7 +348,8 @@ export function checkWorkflow(repository: string): string[] {
       }
       const wanted = [
         'set -o pipefail',
-        '[[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]]',
+        // A candidate is staged under `next` and nothing else; every other version under `latest` or `latest-<line>`, never `next`.
+        'if [[ "$VERSION" == *-rc.* ]]; then [[ "$DIST_TAG" == next ]] || { echo "::error::a release candidate goes out under next only"; exit 1; }; else [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]] || { echo "::error::a release goes out under latest or latest-<line>, never next"; exit 1; }; fi',
         'mkdir "$RUNNER_TEMP/empty"',
         'cd "$TARBALLS"',
         "printf '%s  SHA512SUMS\\n' \"$SUMS\" | sha512sum --check --strict -",
@@ -373,7 +380,7 @@ export function checkWorkflow(repository: string): string[] {
       if ((body.match(/^\s*env:/gm) ?? []).length !== 1) problems.push(`${where}: the job "${name}" has an env: besides the one of the staging step — a job or other step could set NODE_OPTIONS or a proxy for npm`);
     }
     if (builds) {
-      for (const key of ['commit', 'version', 'latest', 'dist-tag']) {
+      for (const key of ['commit', 'version', 'latest', 'prerelease', 'dist-tag']) {
         if (!new RegExp(`^\\s+outputs:\\s*\\n(?:\\s+\\w[\\w-]*:.*\\n)*?\\s+${key}:\\s*\\$\\{\\{\\s*steps\\.guard\\.outputs\\.${key}\\s*\\}\\}\\s*$`, 'm').test(body)) {
           problems.push(`${where}: the job "${name}" hands the guard's "${key}" on as an output (steps.guard.outputs.${key}) — the staging and the release job work on it`);
         }
@@ -467,6 +474,9 @@ export function checkWorkflow(repository: string): string[] {
         if (!/\s--verify-tag(?=\s|$)/.test(draftLine) || /\s--target\b/.test(draftLine)) problems.push(`${where}: the job "${name}" drafts with --verify-tag and without --target — the draft belongs to the tag on the release commit`);
         if (!/\s--latest="\$LATEST"/.test(draftLine) || !env(draftStep, 'LATEST', needs('latest'))) {
           problems.push(`${where}: the job "${name}" drafts with --latest="$LATEST" from the build job's output (${needs('latest')}) — a late fix of an older line is not the latest release`);
+        }
+        if (!/\s--prerelease="\$PRERELEASE"(?=\s|$)/.test(draftLine) || !env(draftStep, 'PRERELEASE', needs('prerelease'))) {
+          problems.push(`${where}: the job "${name}" drafts with --prerelease="$PRERELEASE" from the build job's output (${needs('prerelease')}) — a release candidate is a prerelease, a release is not`);
         }
         if (!DRAFT.test(draftLine)) problems.push(`${where}: the job "${name}" drafts the GitHub release (gh release create … --draft)`);
       }

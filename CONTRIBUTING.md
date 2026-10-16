@@ -459,9 +459,9 @@ These are the maintainer's gates:
 The run releases the **release commit** — the last commit of the branch that changed a package's `CHANGELOG.md` or
 `.github/release-base` — not the branch head, so whatever merged after it goes into the next release. The first job (`build`,
 `contents: read`, **no** OIDC token) runs `scripts/release-guard.ts` before anything is installed: the
-branch, the release commit (checked out, detached), one plain `x.y.z` version, the same changelog section in every package,
+branch, the release commit (checked out, detached), one `x.y.z` or `x.y.z-rc.N` version, the same changelog section in every package,
 `v<version>` not yet tagged, the version on no package of npm, the release base, the release commit changing release files only
-and the dist-tag. Then `pnpm run ci --only build,pack:check,check-release`, and `scripts/release-pack.ts` packs every package
+and the dist-tag (a release candidate: `main` only, above npm's `latest`). Then `pnpm run ci --only build,pack:check,check-release`, and `scripts/release-pack.ts` packs every package
 (`pnpm pack`) and writes `SHA512SUMS`; the tarballs and `SHA512SUMS` leave the job as an artifact (kept for a day), the hash of
 `SHA512SUMS` as its output. The second job (`stage`, `id-token: write`, the only job in the `npm-release` environment) checks out nothing, installs nothing and runs no script
 of the repository or of a dependency, so the code that runs in the first job never meets the OIDC token. It downloads the artifact, checks `SHA512SUMS` against the output and every tarball
@@ -469,7 +469,7 @@ against `SHA512SUMS`, and only then stages the tarballs `SHA512SUMS` names with 
 no token in the repository; provenance) and prints `SHA512SUMS`. The hashes show that the staged files are the ones the first job
 packed, not that the first job packed what the release commit builds — step 3 closes that gap. The third job (`release`,
 `contents: write`, installs nothing) tags `v<version>` on the release commit (one tag per
-release, none per package) and drafts the GitHub Release with the version's changelog section as its notes.
+release, none per package) and drafts the GitHub Release with the version's changelog section as its notes (a prerelease for a release candidate).
 
 **Before approving (required):** the builds are reproducible, so a rebuild of the release commit must give the very tarballs npm
 holds. The run's log has the commit's SHA; with an `npm login` session run `pnpm release:verify <commit>`. It rebuilds the commit in
@@ -515,7 +515,7 @@ and the deprecation policy in the README.
 - **The release pull request is merged, the workflow not started:** run `pnpm release:prepare` again — for the same version it
   rebuilds the section from the previous tag to `HEAD` — and merge that small release pull request; its merge is the new release
   commit.
-- **Staged, not yet approved:** reject the staged versions on npmjs.com and release the next patch.
+- **Staged, not yet approved:** reject the staged versions on npmjs.com and release the next patch (a candidate: the next one, `--rc`).
 - **Released:** the next patch. A broken version is never unpublished; it is deprecated (`npm deprecate 'marmeon@0.2.1' 'Broken:
   use 0.2.2'`, for every package of the release).
 
@@ -526,7 +526,7 @@ and the deprecation policy in the README.
 - **A hash check of the `stage` job is red** (before its first `npm stage publish`; the log says which line failed): nothing was
   staged, but the artifact is not what the `build` job hashed — do not re-run, look into the run, and start a new one.
 - **The "stage the tarballs" step is red after a hash check passed:** treat it as possibly partly staged. Never re-run it:
-  reject whatever was staged on npmjs.com and release the next patch.
+  reject whatever was staged on npmjs.com and release the next patch (a candidate: the next one, `--rc`).
 - **The tag step or the draft step failed after staging:** use **"Re-run failed jobs"** on the run. It repeats only the `release`
   job with the `build` job's outputs; nothing is staged again, a tag that already stands on the release commit is kept, and the
   draft is created. **Never "Re-run all jobs"**, and never start a new run after one that staged: a staged version is invisible
@@ -541,7 +541,7 @@ and the deprecation policy in the README.
   git tag -a v<version> <commit> -m v<version>
   git push origin refs/tags/v<version>
   node scripts/release-notes.ts <version> > "$notes"
-  gh release create v<version> --draft --verify-tag --title v<version> --notes-file "$notes"   # plus --latest=false for a maintenance release
+  gh release create v<version> --draft --verify-tag --title v<version> --notes-file "$notes"   # plus --latest=false for a maintenance release, --prerelease for a candidate
   ```
 
 ### Maintenance releases
@@ -557,6 +557,18 @@ it, `latest-<line>` (`latest-0.1`, `latest-1`) and the draft is not marked lates
 releases below `latest`, and a version equal to `latest` is refused. An app on an old line installs the exact version, or
 `pnpm add @marmeon/core@latest-0.1`. The section of a maintenance release reaches `main`'s changelogs with `main`'s next
 `pnpm release:prepare`.
+
+### Release candidates
+
+A release candidate (`x.y.z-rc.N`, prepared with `pnpm release:prepare --rc`) goes through the same workflow, staging and approval,
+but only from `main` and only under the dist-tag `next`: never `latest`. Its draft GitHub Release is marked a prerelease, not the
+latest release. `scripts/release-guard.ts` picks the dist-tag and the prerelease flag from the checked version alone
+(`releaseTarget` in `scripts/release-rules.ts`); the workflow has no input, and `check-release` refuses one. The staging job checks
+the pair again: a version with `-rc.` is staged as `next` only, any other version never as `next`. A candidate must be above npm's
+`latest`; the release itself, `x.y.z`, is an ordinary release and takes `latest` from the candidates. To try one:
+`pnpm add @marmeon/core@next`. The first release of a package is a plain `x.y.z`: on a first publish npm points `latest` at the version
+whatever the tag, so the guard refuses a candidate while npm has no `latest`. After `x.y.z` ships, `next` still points at the last
+candidate (below `latest`) until a maintainer moves or removes it (`npm dist-tag add|rm`, with two-factor authentication).
 
 ### The tarballs
 

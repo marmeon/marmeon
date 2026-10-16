@@ -80,8 +80,45 @@ describe('guard on a fake runner', () => {
   it('passes on main for the next version and hands over commit, version, dist-tag and the latest flag', () => {
     const root = fixture('0.1.3');
     const result = guard({ root, ...onMain, run: fakeRun(none) });
-    expect(result).toEqual({ problems: [], commit: COMMIT, version: '0.1.3', distTag: 'latest', markLatest: true });
-    expect(outputLines(result)).toEqual([`commit=${COMMIT}`, 'version=0.1.3', 'dist-tag=latest', 'latest=true']);
+    expect(result).toEqual({ problems: [], commit: COMMIT, version: '0.1.3', distTag: 'latest', markLatest: true, prerelease: false });
+    expect(outputLines(result)).toEqual([`commit=${COMMIT}`, 'version=0.1.3', 'dist-tag=latest', 'latest=true', 'prerelease=false']);
+  });
+
+  it('releases a candidate on main under next, as a prerelease and not as latest', () => {
+    const result = guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun(none, '0.9.3') });
+    expect(result).toEqual({ problems: [], commit: COMMIT, version: '1.0.0-rc.1', distTag: 'next', markLatest: false, prerelease: true });
+    expect(outputLines(result)).toEqual([`commit=${COMMIT}`, 'version=1.0.0-rc.1', 'dist-tag=next', 'latest=false', 'prerelease=true']);
+    const first = guard({ root: fixture('1.0.0-rc.2'), ...onMain, run: fakeRun(none, 'not-found') });
+    expect(first.problems.join('\n')).toContain('first release is a plain x.y.z');
+    expect(outputLines(first)).toEqual([]);
+  });
+
+  it('releases the version after its candidates as latest', () => {
+    const result = guard({ root: fixture('1.0.0'), ...onMain, run: fakeRun(none, '0.9.3') });
+    expect(result).toMatchObject({ problems: [], distTag: 'latest', markLatest: true, prerelease: false });
+  });
+
+  it('gives a candidate no other dist-tag whatever npm says its latest is, and refuses it off main', () => {
+    for (const latest of ['0.9.3', '0.1.2'] as const) {
+      expect(guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun(none, latest) })).toMatchObject({ distTag: 'next', markLatest: false });
+    }
+    for (const branch of ['1.x', '0.1.x']) {
+      const refused = guard({ root: fixture('1.0.0-rc.1'), refType: 'branch', branch, run: fakeRun(none, '0.9.3') });
+      expect(refused.problems.join('\n')).toContain('from main only');
+      expect(refused.distTag).toBeUndefined();
+      expect(outputLines(refused)).toEqual([]);
+    }
+    const below = guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun(none, '1.0.0') });
+    expect(below.problems.join('\n')).toContain('not above latest 1.0.0');
+    expect(outputLines(below)).toEqual([]);
+  });
+
+  it('checks a candidate like a release: its tag and its versions on npm', () => {
+    const tagged = guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun({ answers: { 'git ls-remote --exit-code --tags origin refs/tags/v1.0.0-rc.1': { status: 0 } } }, '0.9.3') });
+    expect(tagged.problems.join('\n')).toContain('v1.0.0-rc.1 exists');
+    const onNpm = guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun({ answers: { 'npm view @marmeon/mail@1.0.0-rc.1 version --json': { status: 0, stdout: '"1.0.0-rc.1"' } } }, '0.9.3') });
+    expect(onNpm.problems.join('\n')).toContain('@marmeon/mail@1.0.0-rc.1 is already on npm');
+    expect(outputLines(onNpm)).toEqual([]);
   });
 
   it('takes the dist-tag from releaseTarget for a maintenance release under a newer latest', () => {
@@ -122,7 +159,11 @@ describe('guard on a fake runner', () => {
     writePackage(root, 'mail', '@marmeon/mail', '0.1.2');
     expect(guard({ root, ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('do not share one version');
     expect(guard({ root: fixture('0.1.3-beta.1'), ...onMain, run: fakeRun(none) }).problems.join('\n')).toContain('prereleases are not released');
-    expect(guard({ root: fixture('1.0.0-rc.1'), ...onMain, run: fakeRun(none) }).problems).toEqual(['"1.0.0-rc.1" is not a plain x.y.z version; prereleases are not released.']);
+    for (const prerelease of ['1.0.0-beta.1', '1.0.0-rc', '1.0.0-rc.0', '1.0.0-rc.1.1', '1.0.0-rc.1+build']) {
+      const result = guard({ root: fixture(prerelease), ...onMain, run: fakeRun(none) });
+      expect(result.problems).toEqual([`"${prerelease}" is not an x.y.z or x.y.z-rc.N version; other prereleases are not released.`]);
+      expect(outputLines(result)).toEqual([]);
+    }
   });
 
   it('refuses a shallow clone, a branch without a release commit and a failing checkout, and stops there', () => {

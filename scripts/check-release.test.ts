@@ -437,6 +437,13 @@ describe('checkWorkflow — the release run', () => {
       expect(problemsOf(mutated(' --latest="$LATEST"', ''))).toContain('--latest="$LATEST"');
       expect(problemsOf(mutated('LATEST: ${{ needs.build.outputs.latest }}', 'LATEST: true'))).toContain('--latest="$LATEST"');
     });
+
+    it('wants --prerelease="$PRERELEASE" from the build job’s output, so only the guard decides', () => {
+      const wanted = 'drafts with --prerelease="$PRERELEASE"';
+      expect(problemsOf(mutated(' --prerelease="$PRERELEASE"', ''))).toContain(wanted);
+      expect(problemsOf(mutated(' --prerelease="$PRERELEASE"', ' --prerelease=false'))).toContain(wanted);
+      expect(problemsOf(mutated('PRERELEASE: ${{ needs.build.outputs.prerelease }}', 'PRERELEASE: false'))).toContain(wanted);
+    });
   });
 
   describe('the trigger and the whole file', () => {
@@ -675,7 +682,7 @@ describe('checkWorkflow — the release run', () => {
     });
 
     it('wants the guard’s commit, version, latest and dist-tag and the pack step’s sums as outputs', () => {
-      for (const key of ['commit', 'version', 'latest', 'dist-tag']) {
+      for (const key of ['commit', 'version', 'latest', 'prerelease', 'dist-tag']) {
         expect(problemsOf(mutated(`      ${key}: \${{ steps.guard.outputs.${key} }}\n`, '', 'build')), key).toContain(`hands the guard's "${key}" on`);
       }
       expect(problemsOf(mutated('      sums: ${{ steps.pack.outputs.sums }}\n', '', 'build'))).toContain('hands the hash of SHA512SUMS on as the output "sums"');
@@ -780,9 +787,25 @@ describe('checkWorkflow — the release run', () => {
     });
 
     it('validates the dist-tag before any npm call and passes it as --tag="$DIST_TAG"', () => {
-      expect(problemsOf(mutated('          [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]]\n', '', 'stage'))).toContain(wanted);
+      const check = '          if [[ "$VERSION" == *-rc.* ]]; then [[ "$DIST_TAG" == next ]] || { echo "::error::a release candidate goes out under next only"; exit 1; }; else [[ "$DIST_TAG" =~ ^latest(-[0-9]+(\\.[0-9]+)?)?$ ]] || { echo "::error::a release goes out under latest or latest-<line>, never next"; exit 1; }; fi\n';
+      expect(problemsOf(mutated(check, '', 'stage'))).toContain(wanted);
       expect(problemsOf(mutated('^latest(-[0-9]+(\\.[0-9]+)?)?$', '^.*$', 'stage'))).toContain(wanted);
+      // A candidate may only be staged under next, and nothing else may be: both halves of the check are pinned.
+      expect(problemsOf(mutated('[[ "$DIST_TAG" == next ]] ||', '[[ "$DIST_TAG" =~ ^(next|latest)$ ]] ||', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('"$VERSION" == *-rc.*', '"$VERSION" == *-beta.*', 'stage'))).toContain(wanted);
+      expect(problemsOf(mutated('^latest(-[0-9]+(\\.[0-9]+)?)?$', '^(latest|next)(-[0-9]+(\\.[0-9]+)?)?$', 'stage'))).toContain(wanted);
       expect(problemsOf(mutated('--tag="$DIST_TAG"', '--tag "$DIST_TAG"', 'stage'))).toContain(wanted);
+    });
+
+    it('takes the dist-tag and the prerelease flag from the guard, never from a workflow input or a literal', () => {
+      const input = 'on:\n  workflow_dispatch:\n    inputs:\n      tag:\n        description: the dist-tag\n';
+      expect(problemsOf(real.replace('on:\n  workflow_dispatch:\n', input).replace('DIST_TAG: ${{ needs.build.outputs.dist-tag }}', 'DIST_TAG: ${{ inputs.tag }}'))).toContain('a workflow input');
+      expect(problemsOf(real.replace('on:\n  workflow_dispatch:\n', input))).toContain('a workflow input');
+      expect(problemsOf(mutated('DIST_TAG: ${{ needs.build.outputs.dist-tag }}', 'DIST_TAG: ${{ github.event.inputs.tag }}', 'stage'))).toContain('a workflow input');
+      expect(problemsOf(mutated('--tag="$DIST_TAG"', '--tag=next', 'stage'))).toContain('sets a --tag other than');
+      expect(problemsOf(mutated(' --prerelease="$PRERELEASE"', ' --prerelease'))).toContain('sets a --prerelease other than');
+      expect(problemsOf(mutated(' --prerelease="$PRERELEASE"', ' --prerelease="${{ github.event.inputs.pre }}"'))).toContain('sets a --prerelease other than');
+      expect(problemsOf(mutated(' --prerelease="$PRERELEASE"', ' --prerelease="$PRERELEASE" --tag latest'))).toContain('sets a --tag other than');
     });
 
     it('allows the step no other variable, and no env on the job, the workflow or another step', () => {
