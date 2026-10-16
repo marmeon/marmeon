@@ -6,23 +6,7 @@ import type { Selectable } from 'kysely';
 import { defineRoutes } from '@marmeon/router';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import {
-  Connections,
-  Factories,
-  Repository,
-  type RepositoryClass,
-  type RowOf,
-  Database,
-  defineConnection,
-  defineMigration,
-  type Decimal,
-  type Generated as DbGenerated,
-  type JsonColumn,
-  type ModuleDatabase,
-  type QueryEvent,
-  type Tables,
-  type Timestamp,
-} from './index.ts';
+import { Connections, Factories, Repository, Database, defineConnection, defineMigration, type Decimal, type Generated as DbGenerated, type JsonColumn, type ModuleDatabase, type QueryEvent, type Tables, type Timestamp } from './index.ts';
 
 // Type guarantees — checked by the compiler (`pnpm typecheck`); the test body only runs trivially.
 interface Shop {
@@ -168,10 +152,7 @@ class Mislabeled extends Repository<'users', FixtureTables> {
 
 it('types repositories by their table', () => void (async (users: Users) => {
   expectTypeOf(users.findOrFail(1)).resolves.toEqualTypeOf<Selectable<FixtureTables['users']>>();
-  expectTypeOf<RowOf<Users>>().toEqualTypeOf<Selectable<FixtureTables['users']>>();
   expectTypeOf(users.using).returns.toEqualTypeOf<Users>();
-  const ok: RepositoryClass<Users> = Users;
-  void ok;
   await users.insert({ name: 'Ada', email: 'ada@example.com', created_at: new Date() });
 
   // @ts-expect-error — the id is a number
@@ -187,9 +168,6 @@ it('types repositories by their table', () => void (async (users: Users) => {
   await users.update(1, body);
   // @ts-expect-error — the same for insert
   await users.insert({ ...body, email: 'a@x' });
-  // @ts-expect-error — `static table` names another table than Repository<'users'>
-  const mislabeled: RepositoryClass<Mislabeled> = Mislabeled;
-  void mislabeled;
 }));
 
 it('types factories against the insert type of their table', () => void (async (factories: Factories) => {

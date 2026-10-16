@@ -4,15 +4,7 @@ import { defineRoutes } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import {
-  Repository,
-  type LinkWriter,
-  type ModuleTables,
-  type RelatedWriter,
-  type RelationWriter,
-  type WithRelations,
-  type WritableRelationName,
-} from './index.ts';
+import { Repository, type LinkWriter, type ModuleTables, type RelatedWriter, type RelationWriter, type WithRelations, type WritableRelationName } from './index.ts';
 
 class Posts extends Repository<'posts', FixtureTables> {
   static table = 'posts' as const;

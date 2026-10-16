@@ -14,7 +14,7 @@ export class MakeNotificationsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database');
+    const { publishMigration } = await import('@marmeon/database/internal');
     return publishMigration(input, { name: 'create_notifications_table', table: 'notifications', contents: readFileSync(NOTIFICATIONS_MIGRATION, 'utf8') });
   }
 }

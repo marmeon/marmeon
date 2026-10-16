@@ -452,11 +452,3 @@ export interface RepositoryBindingWith<DB, T extends keyof DB> extends RouteBind
   readonly value: WithRelations<DB, T, this['with'][number]>;
 }
 
-/** A repository class: `static table` must name the same table as `Repository<'…'>` — checked wherever the class is passed. */
-export type RepositoryClass<R extends Repository<any, any> = Repository<any, any>> = (abstract new (...args: any[]) => R) & {
-  readonly table: TableOf<R>;
-};
-/** The table a repository instance is typed for. */
-export type TableOf<R> = R extends Repository<infer T, any> ? T : never;
-/** The row type a repository reads. */
-export type RowOf<R> = R extends Repository<infer T, infer DB> ? Selectable<DB[T]> : never;

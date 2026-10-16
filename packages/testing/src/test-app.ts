@@ -200,7 +200,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
           'each test works in one transaction of one app.',
       );
     }
-    worker = await workerDatabase(database, definition.root, env);
+    worker = await workerDatabase(definition.root, env);
     env = { ...env, ...worker.env };
   } else if (options.seed) {
     throw new Error("createTestApp(…, { seed: true }) seeds a refreshed database: add database: 'refresh'.");

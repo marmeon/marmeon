@@ -3,7 +3,8 @@ import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, Repository, renderTypes, secret, sql, type Connections, type Generated, type Secret, type Selectable, type Timestamp } from './index.ts';
+import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type Selectable, type Timestamp } from './index.ts';
+import { renderTypes } from './types-gen/render.ts';
 
 /** What `db:types` generates for the accounts fixture (checked below), next to the other fixture tables. */
 interface AccountTables extends FixtureTables {

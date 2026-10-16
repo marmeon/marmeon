@@ -24,40 +24,33 @@ export type {
   Tables,
   Timestamp,
 } from './types.ts';
-export { DatabaseConfig, DEFAULT_INFRASTRUCTURE_POOL_MAX, defineConnection, describeConnection } from './config.ts';
+export { defineConnection } from './config.ts';
 export type { ConnectionDefinition, ConnectionDefinitionOptions, ConnectionOptions, PostgresConnection } from './config.ts';
 export { DatabaseConnectionError } from './driver.ts';
 export { InfrastructureTransactionError } from './infrastructure.ts';
 export type { InfrastructureUsage } from './infrastructure.ts';
 export { failOnDuplicate, isUniqueViolation, missingTable, uniqueViolationColumns } from './errors.ts';
-export { databaseSolutions } from './solutions.ts';
 export { DatabaseHealthCheck } from './health.ts';
 export { DatabaseServiceProvider } from './provider.ts';
 export { DbShowCommand } from './commands/db-show.ts';
 export { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 export { DbTypesCommand } from './commands/db-types.ts';
 export { DbSeedCommand } from './commands/db-seed.ts';
-export { publishMigration, SYSTEM_MODULE } from './commands/publish-migration.ts';
 export { defineFactory, Factories, PendingFactory } from './factories.ts';
 export type { FactoryContext, FactoryDefinition, MadeAttributes } from './factories.ts';
 export { Seeding } from './seeders.ts';
 export type { SeedContext, Seeder, SeederClass } from './seeders.ts';
 export { defineMigration } from './migrations/migration.ts';
-export { TypeGenerator, TYPES_FILE } from './types-gen/generator.ts';
-export { columnType, renderTypes } from './types-gen/render.ts';
-export type { Rendered, SchemaSnapshot } from './types-gen/render.ts';
+export { TypeGenerator } from './types-gen/generator.ts';
+export type { Rendered } from './types-gen/render.ts';
 export type { Migration } from './migrations/migration.ts';
-export { MARKERS_TABLE, Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from './migrations/migrator.ts';
-export { SchemaMetadata } from './metadata.ts';
-export type { ColumnKind } from './metadata.ts';
+export { Migrator } from './migrations/migrator.ts';
 export { secret } from './secrets.ts';
-export { isSecretSelection } from './secret-guard.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
 export type { SchemaMarker } from './introspection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
-export { RelationsPlugin } from './relations.ts';
 // Puts `with()`, `withCount()`, `whereHas()`, `withRelation()` and `withTrashed()` on Kysely's select builder — at runtime (this import) and in the types.
 import './chain.ts';
 export type { RelationDefinition, RelationName, WithRelations } from './chain.ts';
@@ -65,5 +58,4 @@ export type { LinkWriter, RelatedWriter, RelationWriter, WritableRelationName } 
 export { cursorPaginate, InvalidCursorError, pageQuery, paginate } from './pagination.ts';
 export type { CheckPageRequest, CursorEncrypter, CursorOptions, CursorPaginated, PageMeta, PageRequest, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
-export type { Exact, KeyOf, RepositoryBindingWith, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
-export { adaptNodeSqlite } from './sqlite.ts';
+export type { Exact, KeyOf, RepositoryBindingWith } from './repository.ts';

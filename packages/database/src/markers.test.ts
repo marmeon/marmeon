@@ -1,7 +1,8 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { MARKERS_TABLE, Migrator, type Connections } from './index.ts';
+import { Migrator, type Connections } from './index.ts';
+import { MARKERS_TABLE } from './migrations/migrator.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [

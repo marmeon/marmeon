@@ -131,7 +131,7 @@ describe('where the worker databases live', () => {
 
   it('puts the SQLite file inside the app, one per worker — never in the shared temporary directory', async () => {
     const root = tempDir('marmeon-testing-db-');
-    const worker = await workerDatabase(await import('@marmeon/database'), root, env);
+    const worker = await workerDatabase(root, env);
     expect(worker.key).toBe(join(root, 'storage', 'framework', 'testing', `database-${process.env.VITEST_POOL_ID ?? '0'}.sqlite`));
     expect(worker.env.DB_DATABASE).toBe(worker.key);
   });
@@ -150,7 +150,7 @@ describe('where the worker databases live', () => {
   });
 
   it('names a Postgres database as before: the configured one, with _test_, the root’s hash and the worker', async () => {
-    const worker = await workerDatabase(await import('@marmeon/database'), '/some/app', {
+    const worker = await workerDatabase('/some/app', {
       ...env,
       DB_CONNECTION: 'pgsql',
       DB_URL: 'postgres://u:p@localhost:5432/shop',
