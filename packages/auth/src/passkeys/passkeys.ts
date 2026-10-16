@@ -15,7 +15,7 @@ import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/p
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
 import { TwoFactorStore } from '../two-factor/store.ts';
-import { idOf, UserProvider, type AuthUser } from '../user.ts';
+import { idOf, UserProvider, type AuthUser, type Credentials } from '../user.ts';
 import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
 import { PasskeyConfig } from './config.ts';
 import { PasskeyStore, type PasskeyRecord } from './store.ts';
@@ -200,7 +200,8 @@ export class Passkeys implements SecondFactorPasskeys {
     const recoveryCodes = first ? generateRecoveryCodes() : null;
 
     // Before the factor exists, so that a failure after this point leaves it off and the other devices out — never the factor on and an old session alive.
-    if (first) await this.#auth[SIGN_OUT_OTHER_DEVICES](password!);
+    // `false`: this device's remember-me cookie was a copy, and everything of the account is ended, this session too.
+    if (first && !(await this.#auth[SIGN_OUT_OTHER_DEVICES](password!))) return err({ kind: 'signed-out' });
     const created = await this.#connections.transaction(async () => {
       // First, so the account's row is locked until the commit: a session that ended meanwhile stores no passkey.
       if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);
@@ -271,8 +272,10 @@ export class Passkeys implements SecondFactorPasskeys {
   async signIn(response: AuthenticationResponseJSON, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, PasskeyError>> {
     const wait = await this.#waitForSignIn();
     if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
-    const checked = await this.#check(response, 'sign-in');
-    const signedIn = checked.ok ? await this.#auth[SIGN_IN_VERIFIED](checked.value.userId, options) : undefined;
+    const account: { credentials?: Credentials | undefined } = {};
+    const checked = await this.#check(response, 'sign-in', undefined, account);
+    // Only the account state the assertion was checked against is signed in: a reset or an ending in between makes it `expired` (and so `invalid` here).
+    const signedIn = checked.ok && account.credentials !== undefined ? await this.#auth[SIGN_IN_VERIFIED](checked.value.userId, options, account.credentials) : undefined;
     if (checked.ok && signedIn?.ok) return ok(signedIn.value);
     // Counted: a failure of any kind (not a success — many people sign in from behind one address).
     await this.#limiter.hit(this.#signInKey(), SIGN_IN_WINDOW.seconds);
@@ -425,10 +428,10 @@ export class Passkeys implements SecondFactorPasskeys {
    * its credential id and must belong to `expectedUser` (a second factor) — a passwordless response needs its user handle instead. The sign
    * count is written only for a response that passed everything, and only if no other request moved it meanwhile.
    */
-  async #check(response: AuthenticationResponseJSON, purpose: ChallengePurpose, expectedUser?: number | string): Promise<Result<PasskeyRecord, PasskeyError>> {
+  async #check(response: AuthenticationResponseJSON, purpose: ChallengePurpose, expectedUser?: number | string, account?: { credentials?: Credentials | undefined }): Promise<Result<PasskeyRecord, PasskeyError>> {
     const taken = await this.#takeChallenge(purpose, expectedUser);
     if (!taken.ok) return err(taken.error);
-    return this.#answer(response, taken.value, expectedUser);
+    return this.#answer(response, taken.value, expectedUser, account);
   }
 
   /**
@@ -444,7 +447,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /** The answer step: the passkey, the signature and flags, the sign count — for a challenge already taken. */
-  async #answer(response: AuthenticationResponseJSON, challenge: string, expectedUser?: number | string): Promise<Result<PasskeyRecord, PasskeyError>> {
+  async #answer(response: AuthenticationResponseJSON, challenge: string, expectedUser?: number | string, account?: { credentials?: Credentials | undefined }): Promise<Result<PasskeyRecord, PasskeyError>> {
     const purposeIsSignIn = expectedUser === undefined;
     const credentialId = typeof (response as { id?: unknown } | null)?.id === 'string' ? response.id : '';
     const record = credentialId === '' ? undefined : await this.#store.findByCredentialId(credentialId);
@@ -452,6 +455,8 @@ export class Passkeys implements SecondFactorPasskeys {
     // A passkey proves its own account only: one of another account never completes this sign-in.
     if (expectedUser !== undefined && String(record.userId) !== String(expectedUser)) return err({ kind: 'invalid' });
 
+    // The account as it stands before the assertion is verified: what a passwordless sign-in then binds (`SIGN_IN_VERIFIED`).
+    if (account !== undefined) account.credentials = await this.#users.findById(record.userId as never);
     const verified = await verifyAuthentication(
       response,
       { ...this.#config.relyingParty(), challenge, discoverable: purposeIsSignIn },

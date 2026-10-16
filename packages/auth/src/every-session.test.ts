@@ -511,7 +511,7 @@ describe.each(databaseDrivers)('DatabaseRememberTokens.forgetEveryone() on %s', 
       const clock = new TestClock();
       clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
       const store = new DatabaseRememberTokens(connections, clock);
-      await store.create(1, new Date(clock.now() + 86_400_000));
+      await store.create(1, new Date(clock.now() + 86_400_000), 'fingerprint');
       const future = new Date(clock.now() + 30 * 86_400_000);
       await connections
         .get<any>()

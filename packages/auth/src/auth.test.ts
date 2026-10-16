@@ -31,7 +31,7 @@ import {
   type PasswordHash,
   type UserOf,
 } from './index.ts';
-import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
+import { COMPLETE_PENDING, READ_PENDING, sessionFingerprint } from './auth.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { SignInTracker } from './sign-ins.ts';
@@ -651,10 +651,10 @@ describe('remember me', () => {
     });
 
     it('with 0 a cookie issued earlier signs nobody in and its token is deleted', async () => {
-      const { add, browser, application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
+      const { add, users, browser, application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
       await add(ada);
       // A token a higher value issued: valid by its row, encrypted like the app's own cookie.
-      const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000));
+      const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000), sessionFingerprint((await users.findById(1))!));
       const cookie = encodeURIComponent(await application.container.make(Encrypter).encrypt(raw, 'cookie:remember_web'));
       expect(await tokenCount(application)).toBe(1);
       const reopened = browser(new Map([['remember_web', cookie]]));
@@ -1052,7 +1052,7 @@ describe('remember me', () => {
     users.rows.delete(1);
     expect(await (await browser(new Map([['remember_web', laptop.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: null });
     // A cookie the app did not encrypt is not even read.
-    const plain = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 60_000));
+    const plain = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 60_000), 'fingerprint');
     expect(await (await browser(new Map([['remember_web', plain]])).send('/who')).json()).toMatchObject({ id: null });
   });
 });

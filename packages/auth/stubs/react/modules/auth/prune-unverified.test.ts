@@ -66,7 +66,7 @@ describe('pruning accounts whose address was never confirmed — the default', {
     const young = await made(5, false, { email: 'young@example.com' });
     const session = await signIn(old); // it may sign in — and sees only the notice (private registration)
     for (const user of [old, confirmed]) {
-      await app.make(RememberTokenStore).create(user.id, new Date(app.clock.now() + 30 * DAY));
+      await app.make(RememberTokenStore).create(user.id, new Date(app.clock.now() + 30 * DAY), 'fingerprint');
       await app.make(AccessTokenStore).create(user.id, 'cli', { expiresIn: '365d' });
       await app.make(PasswordResetTokenStore).create(user.email, 0);
     }

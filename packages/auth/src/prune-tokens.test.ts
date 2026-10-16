@@ -27,14 +27,14 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     // Two hours ago: a reset token (expired after 60 minutes), a remember-me token for one hour, API tokens for one hour.
     clock.travel({ hours: -2 });
     await resets.create('old@example.com', 0);
-    const oldCookie = await remember.create(1, new Date(clock.now() + 3_600_000));
+    const oldCookie = await remember.create(1, new Date(clock.now() + 3_600_000), 'fp');
     const expired = await access.create(1, 'expired an hour ago', { expiresIn: '1h' });
     const justExpired = await access.create(1, 'expired a minute ago', { expiresIn: '119m' });
     clock.travel({ hours: 2 });
     // Valid now: a fresh reset token, a remember-me token for 30 days, API tokens with and without expiry.
     const fresh = await resets.create('fresh@example.com', 0);
     const freshToken = fresh.ok ? fresh.value : '';
-    const cookie = await remember.create(2, new Date(clock.now() + 30 * 86_400_000));
+    const cookie = await remember.create(2, new Date(clock.now() + 30 * 86_400_000), 'fp');
     const valid = await access.create(2, 'valid', { expiresIn: '1h' });
     const forever = await access.create(2, 'no expiry');
 
@@ -70,7 +70,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     const clock = new TestClock();
     clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
     const remember = new DatabaseRememberTokens(connections, clock);
-    await remember.create(1, new Date(clock.now() + 86_400_000));
+    await remember.create(1, new Date(clock.now() + 86_400_000), 'fp');
     clock.travel({ minutes: 1 });
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };

@@ -11,6 +11,7 @@ import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/sessio
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountSessions, authenticate, authenticatedSession, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, twoFactorCode, type Credentials, type PasswordHash } from '../index.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
+import { sessionFingerprint } from '../auth.ts';
 import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
@@ -395,6 +396,19 @@ describe('TwoFactor: setting up', () => {
     expect(await booted.browser(cookie(thisDevice)).tf('who')).toEqual({ id: null });
   });
 
+  it('answers signed-out, not an error, when this device\'s remember-me cookie turns out to be a copy while the factor is confirmed', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login(ada.email, 'secret', true);
+    const setup = await b.tf('begin');
+    // Somebody else rotated the cookie, and the owner's validator is past the grace window.
+    await booted.browser(new Map([['remember_web', b.jar.get('remember_web')!]])).tf('who');
+    await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ ok: false, kind: 'signed-out' });
+    expect(await b.tf('who')).toEqual({ id: null });
+    expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
+  });
+
   it('a remember-me token made between signing out the other devices and switching the factor on is refused by its date', async () => {
     const booted = await boot();
     const { secret: key } = await (async () => {
@@ -405,7 +419,7 @@ describe('TwoFactor: setting up', () => {
       const confirm = booted.store.confirm.bind(booted.store);
       let raced: string | undefined;
       vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000));
+        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), sessionFingerprint((await booted.users.findById(1))!));
         await new Promise((resolve) => setTimeout(resolve, 10));
         return confirm(...args);
       });
@@ -426,7 +440,7 @@ describe('TwoFactor: setting up', () => {
     const confirm = booted.store.confirm.bind(booted.store);
     let raced: string | undefined;
     vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000));
+      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), sessionFingerprint((await booted.users.findById(1))!));
       return confirm(...args); // the clock is frozen: created_at and confirmed_at are the same instant
     });
     expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);

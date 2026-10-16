@@ -98,7 +98,8 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 `Credentials` is `{ user, passwordHash }`: the hash travels next to the user, never inside it, so it cannot reach a page by
 accident. A user who cannot sign in with a password has `passwordHash: null`. `Credentials` may also carry a `sessionKey`, a value of
 the account that ends its other sessions when it changes, as [signing out without a password](#signing-out-other-devices-without-a-password)
-explains. `findForLogin()` gets what the person typed after
+explains. Both `findById()` and `findForLogin()` must return it: a `findForLogin()` that leaves out a key `findById()` returns makes
+`attempt()` throw, and a bad sign-in is not what it reports. `findForLogin()` gets what the person typed after
 the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Until a provider is
 bound, the first use of `UserProvider` throws an error that says how to bind one.
 
@@ -213,6 +214,10 @@ nobody in. Without a source of factors bound (see [Setting up](two-factor-authen
 configured ones, `attempt()` hashes the password again and stores the new hash. It also notes the time, so the password counts as
 just confirmed for [sudo mode](#sudo-mode).
 
+A password reset, a new password or [an ending of every session](#ending-every-session-of-a-user) that lands while the password is
+still being checked ends that sign-in too: `attempt()` answers `invalid-credentials`, like for a wrong password, and a new attempt
+checks the new state.
+
 The limit is counted before the password is checked, in one atomic step: guesses sent at the same moment cannot all slip under
 it. Five failed attempts a minute for one address from one client lock it for the rest of the minute; a client is its IPv4
 address or its IPv6 /64 ([`clientKey()`](rate-limiting.md#keys-and-the-clients-address)). The starter kit also puts a `login-client`
@@ -325,7 +330,29 @@ the boot.
 The cookie is consulted when the session has no user, and when the session's [sign-in has reached its limit](#how-long-a-sign-in-lasts). It holds a selector and a secret validator. The `remember_tokens`
 table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. A table of your
 own needs what the starter kit's migration gives it: a unique `selector` of up to 32 characters, the validator hashes as
-64-character `secret()` columns, and `user_id` with `cascadeOnDelete()`, so a deleted user's tokens go with the account.
+64-character `secret()` columns, a nullable `account_fingerprint` of up to 64 characters, and `user_id` with `cascadeOnDelete()`, so a
+deleted user's tokens go with the account.
+
+An app made before the column existed adds it with a migration, and runs it before the new code serves requests: until the column
+is there, a request with a remember-me cookie and no session fails with a database error.
+
+```ts title="modules/auth/migrations/2026_10_15_120000_add_account_fingerprint_to_remember_tokens_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => schema.alter('remember_tokens', (table) => table.string('account_fingerprint', 64).nullable()),
+  down: (schema) => schema.alter('remember_tokens', (table) => table.dropColumn('account_fingerprint')),
+});
+```
+
+A token is bound to the account state the sign-in verified: it stores the same fingerprint a session keeps (a SHA-256 of the
+account's id, password hash and session key, never the hash itself), and a cookie signs in only while the account still has that
+fingerprint. A reset, a new password, a new session key or an ending of the account's sessions therefore refuses every token made
+before it, even one a sign-in wrote a moment after the account changed. A refused token is deleted and the request is a guest, like
+an invalid one. A token without a fingerprint, such as a row from before the column existed, is refused: when you add the column,
+the cookies of existing devices stop working once and the users sign in again. The device that stays signed in when
+`updateSessionKey()` or `logoutOtherDevices()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs, say)
+changes the password hash and so the fingerprint: it refuses the remember-me cookies of the user's other devices, not only their sessions.
 
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
   value within 10 seconds of the rotation still passes.
@@ -345,7 +372,9 @@ own needs what the starter kit's migration gives it: a unique `selector` of up t
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
-To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(maxAgeDays)` must delete the tokens that expired and those made `maxAgeDays` days ago or earlier (every token with `0`). When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's tokens; deleting them and deciding which request reports are one atomic step (one `DELETE … RETURNING`, say), so that a failed statement deletes nothing and the next replay reports the theft again. The window that remains is a process that dies, or an `AccountSessions.end()` that fails (it is logged), between the deletion and ending the sessions: the tokens are gone, the sessions of the thief are not, until they expire. `reused: true` means the presented validator was the one just replaced by a rotation; it is information only. An older validator, or one that was never issued, presented with a known selector is a copy as well (the selector is random), and every `stolen` dispatches `RememberTokenReused`. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`.
+To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `create()` receives the fingerprint, and
+`consume()` must return it as `fingerprint` (kept over every rotation); a store that drops it makes every cookie useless. The optional
+`rebind(userId, cookie, fingerprint)` replaces it for the device that stays signed in; it checks the validator of the cookie like `consume()` does (the current one, or the previous one inside the grace window) and answers a `Result`: `err({ kind: 'stolen', userId, reused })` for a stale validator, after deleting the user's tokens, and `invalid` for an unknown row. `logoutOtherDevices()` and `updateSessionKey()` then end every session of the account, as at a copied cookie, and keep no token. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(maxAgeDays)` must delete the tokens that expired and those made `maxAgeDays` days ago or earlier (every token with `0`). When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's tokens; deleting them and deciding which request reports are one atomic step (one `DELETE … RETURNING`, say), so that a failed statement deletes nothing and the next replay reports the theft again. The window that remains is a process that dies, or an `AccountSessions.end()` that fails (it is logged), between the deletion and ending the sessions: the tokens are gone, the sessions of the thief are not, until they expire. `reused: true` means the presented validator was the one just replaced by a rotation; it is information only. An older validator, or one that was never issued, presented with a known selector is a copy as well (the selector is random), and every `stolen` dispatches `RememberTokenReused`. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`.
 
 ## Sudo mode
 

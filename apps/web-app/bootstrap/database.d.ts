@@ -110,6 +110,7 @@ declare module '@marmeon/database' {
       expires_at: Timestamp;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
+      account_fingerprint: string | null;
     };
     /** Owned by `system`. */
     sessions: {
