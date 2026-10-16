@@ -7,12 +7,15 @@
  *   pnpm release:prepare --dry-run   # print the version and the section, write nothing
  *
  * It can run again for the same version as long as `v<version>` is not tagged: the section is made anew from the last tag to
- * `HEAD`, so a fix merged after the release pull request goes into a second, small one. See CONTRIBUTING.md, "Pull requests and
- * releases". Imports nothing but `node:*` and the neighbouring scripts.
+ * `HEAD`, so a fix merged after the release pull request goes into a second, small one. A release is refused while a
+ * deprecation names that version or an earlier one in "Removed in". See CONTRIBUTING.md, "Pull requests and releases". Imports
+ * nothing but `node:*` and the neighbouring scripts.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { repositoryFiles } from './check-source.ts';
+import { findDeprecations, removalIsAfter } from './deprecations.ts';
 import { REPOSITORY } from './npm-trust.ts';
 import { frameworkPackages } from './packages.ts';
 import {
@@ -37,6 +40,7 @@ import {
   spawnRunner,
   UNLABELLED,
 } from './release-rules.ts';
+import type { SourceFile } from './source-files.ts';
 
 export interface Notes {
   /** The bullet lines (without their marker) per titled category. */
@@ -119,6 +123,8 @@ export interface PrepareOptions {
   readonly root: string;
   readonly run: Runner;
   readonly dryRun: boolean;
+  /** The repository's files, read for the deprecations; defaults to what git lists in `root`. */
+  readonly files?: () => Iterable<SourceFile>;
   readonly log: (line: string) => void;
 }
 
@@ -139,7 +145,7 @@ function pullRequest(line: string): string {
 }
 
 /** Prepares the release of the pull requests merged since the last tag; throws an `Error` saying what to do when it must not. */
-export function prepare({ root, run, dryRun, log }: PrepareOptions): Prepared {
+export function prepare({ root, run, dryRun, files = () => repositoryFiles(root), log }: PrepareOptions): Prepared {
   const git = (...args: string[]) => run('git', args);
   const fail = (message: string): never => {
     throw new Error(message);
@@ -202,6 +208,13 @@ export function prepare({ root, run, dryRun, log }: PrepareOptions): Prepared {
   if (version !== bumpVersion(previous, 'patch')) {
     notes = generate(version);
     if (judge(notes) !== bump) fail('The labels changed while the notes were generated: run this again.');
+  }
+  const due = findDeprecations(files()).filter((found) => found.removeIn !== undefined && !removalIsAfter(found.removeIn, version));
+  if (due.length > 0) {
+    fail(
+      `These deprecations are due in ${version}:\n${due.map((found) => `  - ${found.path}:${found.line}: ${found.text}`).join('\n')}\n` +
+        'Remove them (and their deprecated() calls) with an entry in the upgrade guide, or move their "Removed in" to the next breaking release.',
+    );
   }
   const breaking = notes.entries.get('breaking') ?? [];
   const features = notes.entries.get('feature') ?? [];
