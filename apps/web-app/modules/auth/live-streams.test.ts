@@ -201,6 +201,28 @@ describe('a live stream that is open when its account\'s sign-ins end', () => {
     await mine.hello();
   });
 
+  it('a copied "keep me signed in" cookie that is used closes the account\'s streams; the browser is told `end` when it connects again', async () => {
+    const { ada, bob, bobs, open } = await twoAccounts();
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' }, headers: { 'user-agent': FIREFOX } });
+    const session = login.cookie('marmeon_session')!;
+    const remember = login.cookie('remember_web')!;
+    const channels = await followed(session, ada.public_id);
+    const onSession = await open(session, ada, 'tab-r-0001');
+    const onBob = await open(bobs, bob, 'tab-b-0001');
+
+    await app.withCookie('remember_web', remember).get('/dashboard').assertOk(); // the copy is used first and rotates it
+    app.travel({ seconds: 61 });
+    await app.withCookie('remember_web', remember).get('/dashboard'); // the owner's stale value comes back
+
+    await onSession.closed;
+    expect(eventsOf(onSession)).toEqual(['hello']);
+    const again = await browser(session).live(channels, { connection: 'tab-r-0002' });
+    await again.closed;
+    expect(eventsOf(again)).toEqual(['end']);
+    const state = await Promise.race([onBob.closed.then(() => 'closed'), new Promise((resolve) => setTimeout(() => resolve('open'), 100))]);
+    expect(state).toBe('open');
+  });
+
   it('deleting the account closes its streams, and the browser is refused when it connects again', async () => {
     const { ada, phone, open } = await twoAccounts();
     const channels = await followed(phone, ada.public_id);

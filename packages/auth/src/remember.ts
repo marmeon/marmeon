@@ -58,7 +58,7 @@ export type RememberTokenError =
 export interface RememberTokenStore {
   /** A new token for `userId`; returns the cookie value. */
   create(userId: number | string, expiresAt: Date): Promise<string>;
-  /** Checks a cookie value and rotates it — an `err` for unknown, malformed or expired tokens (`invalid`) and for a copied cookie (`stolen`). The revocation of a `stolen` token and the deletion of an expired one must commit even inside a transaction that returns the err (`commitAnyway`). */
+  /** Checks a cookie value and rotates it — an `err` for unknown, malformed or expired tokens (`invalid`) and for a copied cookie (`stolen`). Deleting every token of the account and choosing the one request that reports `stolen` must be one atomic step: a failed statement deletes nothing, so the next replay reports it again. The revocation of a `stolen` token and the deletion of an expired one must commit even inside a transaction that returns the err (`commitAnyway`). */
   consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
   /**
    * Whether the token of this cookie is still stored (found by its selector, the validator is not checked); `false` for a
@@ -144,11 +144,12 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     if (row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash) && this.#clock.now() - rotatedAt < GRACE_MS) {
       return ok({ userId: row.user_id, cookie: undefined, expiresAt, createdAt: new Date(row.created_at) }); // the other tab's response carries the new cookie
     }
-    // A validator that is neither current nor just rotated: someone else used this cookie first. Only the request whose delete
-    // removes the token reports it; parallel replays find it gone and are plain invalid ones, so the owner is told once.
-    const removed = await db.deleteFrom(REMEMBER_TABLE).where('id', '=', row.id).executeTakeFirst();
-    if (removed.numDeletedRows === 0n) return commitAnyway(err({ kind: 'invalid' }));
-    await this.forgetUser(row.user_id);
+    // A validator that is neither current nor just rotated: someone else used this cookie first. Deleting every token of the account
+    // and deciding who reports it are one statement: if it fails, nothing is deleted and the next replay starts over. Only the
+    // request whose statement removed this row reports; parallel replays find it gone and are plain invalid ones, so the owner is
+    // told once. No `outsideTransaction()`: SQLite has one connection.
+    const removed = await db.deleteFrom(REMEMBER_TABLE).where('user_id', '=', row.user_id).returning('id').execute();
+    if (!removed.some((token) => token.id === row.id)) return commitAnyway(err({ kind: 'invalid' }));
     const reused = row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash);
     // The revocation must survive an ambient transaction that would roll back on an err.
     return commitAnyway(err({ kind: 'stolen', userId: row.user_id, reused }));
