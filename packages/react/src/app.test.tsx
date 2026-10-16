@@ -155,6 +155,10 @@ const shown = async (selector: string) => {
   for (let tries = 0; tries < 200 && !$(selector); tries++) await settle();
   return $(selector);
 };
+/** The deferred request goes out only after its loader chunk has arrived. */
+const requested = async (requests: unknown[]) => {
+  for (let tries = 0; tries < 200 && requests.length === 0; tries++) await settle();
+};
 
 describe('persistent layouts', () => {
   it('keeps the layout mounted across navigations: its state survives', async () => {
@@ -350,6 +354,7 @@ describe('deferred and optional props', () => {
     };
     await mount({ ...page('Profile', '/a', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
     await click('count');
+    await requested(requests);
 
     // On screen without it — the request for it is out.
     expect($('[data-testid="loading"]')).not.toBeNull();
