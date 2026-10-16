@@ -2,59 +2,68 @@
 // Client code (views, layouts, the client entry) imports controllers, repositories, providers and module entries only with
 // `import type`: a value import bundles server code into the browser. The marmeon() Vite plugin refuses that too (resolved
 // paths, also indirect imports); this catches it in the editor.
+// No file imports @marmeon/<package>/internal — the framework's own code, not API; tests included.
 // Unused private class members are no warning, in any class: `readonly #event = true` (make:event) makes an event a type of its own and is never read.
 // --boundaries (opt-in): a module imports another module only through its entry (#modules/<name>). oxlint matches the
 // import as text, so there is one override per folder depth; tests may reach into any module.
 {
   "ignorePatterns": ["node_modules/**", "dist/**"],
-  "rules": { "typescript/no-import-type-side-effects": "error", "no-unused-private-class-members": "off" },
+  "rules": { "typescript/no-import-type-side-effects": "error", "no-unused-private-class-members": "off", "no-restricted-imports": ["error", { "patterns": [{ "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }] }] },
   "overrides": [
     {
       "files": ["modules/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../*/**", "!../*/index.*", "!../../**", "../../modules/*/**", "!../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../*/**", "!../*/index.*", "!../../**", "../../modules/*/**", "!../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../*/**", "!../../*/index.*", "!../../../**", "../../../modules/*/**", "!../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../*/**", "!../../*/index.*", "!../../../**", "../../../modules/*/**", "!../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../../*/**", "!../../../*/index.*", "!../../../../**", "../../../../modules/*/**", "!../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../../*/**", "!../../../*/index.*", "!../../../../**", "../../../../modules/*/**", "!../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../../../*/**", "!../../../../*/index.*", "!../../../../../**", "../../../../../modules/*/**", "!../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../../../*/**", "!../../../../*/index.*", "!../../../../../**", "../../../../../modules/*/**", "!../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../../../../*/**", "!../../../../../*/index.*", "!../../../../../../**", "../../../../../../modules/*/**", "!../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../../../../*/**", "!../../../../../*/index.*", "!../../../../../../**", "../../../../../../modules/*/**", "!../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*/*/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../../../../../*/**", "!../../../../../../*/index.*", "!../../../../../../../**", "../../../../../../../modules/*/**", "!../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../../../../../*/**", "!../../../../../../*/index.*", "!../../../../../../../**", "../../../../../../../modules/*/**", "!../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*/*/*/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../../../../../../*/**", "!../../../../../../../*/index.*", "!../../../../../../../../**", "../../../../../../../../modules/*/**", "!../../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../../../../../../*/**", "!../../../../../../../*/index.*", "!../../../../../../../../**", "../../../../../../../../modules/*/**", "!../../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["modules/*/*/*/*/*/*/*/*/*"],
       "rules": { "no-restricted-imports": ["error", { "patterns": [
-        { "group": ["../../../../../../../../*/**", "!../../../../../../../../*/index.*", "!../../../../../../../../../**", "../../../../../../../../../modules/*/**", "!../../../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." }
+        { "group": ["../../../../../../../../*/**", "!../../../../../../../../*/index.*", "!../../../../../../../../../**", "../../../../../../../../../modules/*/**", "!../../../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -63,7 +72,8 @@
         { "group": ["../../*/**", "!../../*/index.*", "!../../../**", "../../../modules/*/**", "!../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -72,7 +82,8 @@
         { "group": ["../../../*/**", "!../../../*/index.*", "!../../../../**", "../../../../modules/*/**", "!../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -81,7 +92,8 @@
         { "group": ["../../../../*/**", "!../../../../*/index.*", "!../../../../../**", "../../../../../modules/*/**", "!../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -90,7 +102,8 @@
         { "group": ["../../../../../*/**", "!../../../../../*/index.*", "!../../../../../../**", "../../../../../../modules/*/**", "!../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -99,7 +112,8 @@
         { "group": ["../../../../../../*/**", "!../../../../../../*/index.*", "!../../../../../../../**", "../../../../../../../modules/*/**", "!../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -108,7 +122,8 @@
         { "group": ["../../../../../../../*/**", "!../../../../../../../*/index.*", "!../../../../../../../../**", "../../../../../../../../modules/*/**", "!../../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -117,7 +132,8 @@
         { "group": ["../../../../../../../../*/**", "!../../../../../../../../*/index.*", "!../../../../../../../../../**", "../../../../../../../../../modules/*/**", "!../../../../../../../../../modules/*/index.*"], "message": "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries)." },
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
@@ -125,12 +141,15 @@
       "rules": { "no-restricted-imports": ["error", { "patterns": [
         { "group": ["**/controllers/**"], "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
         { "regex": "(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
-        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." }
+        { "regex": "^#modules/", "allowTypeImports": true, "message": "Client code (views, layouts, the client entry) imports server code — controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import bundles it, and everything it imports, into the browser." },
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
       ] }] }
     },
     {
       "files": ["**/*.test.*", "**/*.type-test.*"],
-      "rules": { "no-restricted-imports": "off" }
+      "rules": { "no-restricted-imports": ["error", { "patterns": [
+        { "regex": "^@marmeon/[^/]+/internal(?:/|$)", "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue." }
+      ] }] }
     }
   ]
 }

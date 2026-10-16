@@ -148,6 +148,11 @@ Nothing stops a module from importing a file inside another module, until you as
 --boundaries` writes the lint preset with one more rule: a module imports another module only through its entry. The lint then
 refuses `import { NoteRepository } from '../../notes/NoteRepository.ts'`.
 
+The preset also forbids `@marmeon/<package>/internal` in every file of the app, tests included. Those subpaths are the
+framework's own code, not API, and can change in any release. Use the package's entry; if you need something only an internal
+subpath has, open an issue. To add the rule to an existing preset, run `marmeon make:lint-config --force` (with `--boundaries` if you use it; it rewrites
+the file, so carry your own changes over) or add the pattern by hand.
+
 ## Discovery
 
 The framework's packages register themselves. A package that opts in with a `"marmeon"` field in its `package.json` has its

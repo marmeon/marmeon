@@ -130,6 +130,35 @@ describe('marmeon make:lint-config', () => {
     ]);
   });
 
+  it("forbids @marmeon/<package>/internal in every file, tests included — the pattern is in the top-level rule and in every override", () => {
+    const patternsOf = (rules: Record<string, unknown>) => (rules['no-restricted-imports'] as [string, { patterns: { regex?: string }[] }])[1].patterns;
+    for (const boundaries of [false, true]) {
+      const config = lintConfig({ boundaries }) as { rules: Record<string, unknown>; overrides: { files: string[]; rules: Record<string, unknown> }[] };
+      for (const rules of [config.rules, ...config.overrides.map((override) => override.rules)]) {
+        expect(patternsOf(rules).map((pattern) => pattern.regex)).toContain('^@marmeon/[^/]+/internal(?:/|$)');
+      }
+    }
+  });
+
+  for (const boundaries of [false, true]) {
+    it(`oxlint fails an import of an internal subpath in modules, tests and the client entry, not of an entry (boundaries: ${boundaries})`, () => {
+      const root = app({
+        'modules/auth/x.ts': "import { x } from '@marmeon/http/internal';\nexport const y = x;\n",
+        'modules/auth/x.test.ts': "import { x } from '@marmeon/http/internal';\nexport const y = x;\n",
+        'modules/auth/views/V.tsx': "import { x } from '@marmeon/core/internal/deep';\nexport const y = x;\n",
+        'bootstrap/client.tsx': "import { x } from '@marmeon/http/internal';\nexport const y = x;\n",
+        'modules/auth/fine.ts': "import { a } from '@marmeon/http';\nimport { b } from '@marmeon/http/client';\nimport { c } from '@marmeon/internals';\nexport const y = [a, b, c];\n",
+      });
+      generate(root, { boundaries });
+      expect(lint(root)).toEqual([
+        'bootstrap/client.tsx:1 eslint(no-restricted-imports)',
+        'modules/auth/views/V.tsx:1 eslint(no-restricted-imports)',
+        'modules/auth/x.test.ts:1 eslint(no-restricted-imports)',
+        'modules/auth/x.ts:1 eslint(no-restricted-imports)',
+      ]);
+    });
+  }
+
   it('covers as many folder levels as the app has, at least eight', () => {
     const depthOf = (config: Record<string, unknown>) => (config.overrides as { files: string[] }[]).filter((override) => /^modules\/\*\/(\*\/)*\*$/.test(override.files[0]!)).length;
     expect(depthOf(lintConfig({ boundaries: true }))).toBe(8);

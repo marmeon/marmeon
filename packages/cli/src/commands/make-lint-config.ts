@@ -17,6 +17,9 @@ const CLIENT_MESSAGE =
 const BOUNDARY_MESSAGE =
   "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries).";
 
+const INTERNAL_MESSAGE =
+  "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue.";
+
 type Pattern = { group?: string[]; regex?: string; allowTypeImports?: boolean; message: string };
 type Override = { files: string[]; rules: Record<string, unknown> };
 
@@ -26,6 +29,9 @@ const CLIENT_PATTERNS: Pattern[] = [
   { regex: '(?:Repository|ServiceProvider)(?:\\.[cm]?[jt]sx?)?$', allowTypeImports: true, message: CLIENT_MESSAGE },
   { regex: '^#modules/', allowTypeImports: true, message: CLIENT_MESSAGE },
 ];
+
+/** No file of the app — tests included — imports a package's `./internal` subpath. */
+const INTERNAL_PATTERN: Pattern = { regex: '^@marmeon/[^/]+/internal(?:/|$)', message: INTERNAL_MESSAGE };
 
 /**
  * From a file `depth` folders below its module (`modules/<name>/` is depth 0), `../` × (depth + 1) reaches `modules/`: the
@@ -47,24 +53,25 @@ const levels = (depth: number) => '*/'.repeat(depth);
  * `import type { X }` — it would load the module otherwise (`verbatimModuleSyntax`). `boundaries` (opt-in):
  * a module imports another one only through its entry. oxlint matches specifiers as text, and a later override replaces an
  * earlier one's options for the same rule — so the boundary rule has one override per folder depth, and client files get
- * both rules in theirs.
+ * both rules in theirs. No file, tests included, imports `@marmeon/<package>/internal`: that pattern is in every
+ * list, and tests get it alone.
  */
 export function lintConfig({ boundaries = false, depth = MIN_DEPTH }: { boundaries?: boolean; depth?: number } = {}): Record<string, unknown> {
   const overrides: Override[] = [];
   if (boundaries) {
-    for (let level = 0; level < depth; level++) overrides.push({ files: [`modules/*/${levels(level)}*`], rules: restrict([boundaryPattern(level)]) });
+    for (let level = 0; level < depth; level++) overrides.push({ files: [`modules/*/${levels(level)}*`], rules: restrict([boundaryPattern(level), INTERNAL_PATTERN]) });
     // Client files inside a module: both rules (views/ and layouts/ are depth 1).
     for (let level = 1; level < depth; level++) {
       overrides.push({
         files: [`modules/*/views/${levels(level - 1)}*`, `modules/*/layouts/${levels(level - 1)}*`],
-        rules: restrict([boundaryPattern(level), ...CLIENT_PATTERNS]),
+        rules: restrict([boundaryPattern(level), ...CLIENT_PATTERNS, INTERNAL_PATTERN]),
       });
     }
-    overrides.push({ files: CLIENT_FILES.filter((files) => !files.startsWith('modules/')), rules: restrict(CLIENT_PATTERNS) });
-    // Tests reach into any module (factories, jobs, controllers' types).
-    overrides.push({ files: TEST_FILES, rules: { 'no-restricted-imports': 'off' } });
+    overrides.push({ files: CLIENT_FILES.filter((files) => !files.startsWith('modules/')), rules: restrict([...CLIENT_PATTERNS, INTERNAL_PATTERN]) });
+    // Tests reach into any module (factories, jobs, controllers' types), but not into the framework's internals.
+    overrides.push({ files: TEST_FILES, rules: restrict([INTERNAL_PATTERN]) });
   } else {
-    overrides.push({ files: CLIENT_FILES, rules: restrict(CLIENT_PATTERNS) });
+    overrides.push({ files: CLIENT_FILES, rules: restrict([...CLIENT_PATTERNS, INTERNAL_PATTERN]) });
   }
   // oxlint reports nothing from node_modules or dist then, even without a .gitignore. (It still walks them: only a .gitignore —
   // which every app has — or --ignore-pattern keeps it out; through pnpm's links that walk takes half a minute.)
@@ -72,7 +79,7 @@ export function lintConfig({ boundaries = false, depth = MIN_DEPTH }: { boundari
   // event a type of its own and is never read, and the rule cannot tell that field from another.
   return {
     ignorePatterns: ['node_modules/**', 'dist/**'],
-    rules: { 'typescript/no-import-type-side-effects': 'error', 'no-unused-private-class-members': 'off' },
+    rules: { 'typescript/no-import-type-side-effects': 'error', 'no-unused-private-class-members': 'off', ...restrict([INTERNAL_PATTERN]) },
     overrides,
   };
 }
@@ -92,7 +99,7 @@ function deepestModuleFolder(root: string): number {
 
 export class MakeLintConfigCommand {
   static command = 'make:lint-config';
-  static description = 'Create .oxlintrc.json: client code imports server code as types only (--boundaries: modules through their entry)';
+  static description = 'Create .oxlintrc.json: client code imports server code as types only (--boundaries: modules through their entry), no @marmeon/*/internal';
   static usage = '[--boundaries] [--force]';
   static options = { boundaries: { type: 'boolean' }, force: { type: 'boolean' } } as const;
   static boots = false;
@@ -110,6 +117,7 @@ export class MakeLintConfigCommand {
       '// Client code (views, layouts, the client entry) imports controllers, repositories, providers and module entries only with',
       '// `import type`: a value import bundles server code into the browser. The marmeon() Vite plugin refuses that too (resolved',
       '// paths, also indirect imports); this catches it in the editor.',
+      "// No file imports @marmeon/<package>/internal — the framework's own code, not API; tests included.",
       '// Unused private class members are no warning, in any class: `readonly #event = true` (make:event) makes an event a type of its own and is never read.',
       ...(boundaries
         ? [
