@@ -124,3 +124,34 @@ describe('removalIsAfter', () => {
     expect(removalIsAfter('0.3', '0.4.0')).toBe(false);
   });
 });
+
+describe('from 1.0 on', () => {
+  const at = (version: string, text: string) => deprecationProblems(findDeprecations([{ path: 'packages/http/src/x.ts', text }]), version);
+  const removedIn = (version: string) => tag(`Use {@link y}. Removed in ${version}; docs/forms.md#remembering-input.`);
+
+  it('keeps x.y before 1.0', () => {
+    expect(at('0.9.0', removedIn('0.10'))).toEqual([]);
+  });
+
+  it('wants a major version in "Removed in"', () => {
+    expect(at('1.0.0', removedIn('1.2'))[0]).toContain('Removed in 2.0');
+    expect(at('1.0.0', removedIn('2.0'))).toEqual([]);
+    expect(at('1.4.2', removedIn('2.0'))).toEqual([]);
+    expect(at('1.4.2', removedIn('1.5'))).toHaveLength(1);
+    expect(at('1.0.0-rc.1', removedIn('1.1'))).toHaveLength(1);
+    expect(at('1.0.0-rc.1', removedIn('2.0'))).toEqual([]);
+  });
+
+  it('refuses a major that is not in the future, with one problem', () => {
+    expect(at('1.0.0', removedIn('1.0'))).toEqual([expect.stringContaining('not after the current version')]);
+    expect(at('1.4.2', removedIn('1.2'))[0]).not.toContain('major release');
+    expect(at('1.4.2', removedIn('1.2'))[0]).toContain('not after the current version');
+    expect(at('2.1.0', removedIn('2.0'))).toHaveLength(1);
+    expect(at('2.1.0', removedIn('3.0'))).toEqual([]);
+  });
+
+  it('holds deprecated() calls to it as well', () => {
+    expect(at('1.0.0', call("'http.x'", "'Use y.'", "'1.2'"))[0]).toContain('Removed in 2.0');
+    expect(at('1.0.0', call("'http.x'", "'Use y.'", "'2.0'"))).toEqual([]);
+  });
+});
