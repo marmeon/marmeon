@@ -10,18 +10,23 @@ import {
   fromLine,
   formatChangelog,
   isBreakingRelease,
+  isPlainVersion,
   isReleaseFile,
   lineOf,
   maintenanceLine,
   parseChangelog,
   parseVersion,
+  rcOf,
   releaseCommit,
   releaseConfig,
+  releaseOf,
   releaseSection,
   releaseTarget,
   spawnRunner,
   UNLABELLED,
   upgradesFrom,
+  compareVersions,
+  withRc,
 } from './release-rules.ts';
 import { tempDir } from './test/temp-dir.js';
 
@@ -53,12 +58,44 @@ describe('versions', () => {
     expect(bumpVersion('1.2.3', bumpFor('1.2.3', none))).toBe('1.2.4');
   });
 
-  it.each(['0.1', '01.2.3', '0.2.0-beta.1', 'v0.1.2', '1.2.3.4', ' 1.2.3', '1.2.3\n'])('refuses %j', (text) => {
+  it.each(['0.1', '01.2.3', '0.2.0-beta.1', '1.0.0-beta.1', '1.0.0-alpha.1', '1.0.0-rc', '1.0.0-rc.0', '1.0.0-rc.01', '1.0.0-rc.1.2', '1.0.0-rc.1+build', '1.0.0-RC.1', 'v0.1.2', '1.2.3.4', ' 1.2.3', '1.2.3\n'])('refuses %j', (text) => {
     expect(parseVersion(text)).toBeUndefined();
   });
 
-  it('parses a plain version', () => {
+  it('parses a plain version and a release candidate', () => {
     expect(parseVersion('0.1.2')).toEqual([0, 1, 2]);
+    expect(parseVersion('1.0.0-rc.2')).toEqual([1, 0, 0, 2]);
+    expect(isPlainVersion('1.0.0')).toBe(true);
+    expect(isPlainVersion('1.0.0-rc.2')).toBe(false);
+    expect(rcOf('1.0.0-rc.2')).toBe(2);
+    expect(rcOf('1.0.0')).toBeUndefined();
+    expect(releaseOf('1.0.0-rc.2')).toBe('1.0.0');
+    expect(releaseOf('0.4.1')).toBe('0.4.1');
+    expect(withRc('1.0.0', 3)).toBe('1.0.0-rc.3');
+    expect(() => withRc('1.0.0-rc.1', 2)).toThrow('already');
+    expect(() => withRc('1.0.0', 0)).toThrow('not a release candidate number');
+  });
+
+  it('orders a candidate below its release and above the candidates before it', () => {
+    expect(compareVersions('1.0.0-rc.2', '1.0.0')).toBeLessThan(0);
+    expect(compareVersions('1.0.0', '1.0.0-rc.2')).toBeGreaterThan(0);
+    expect(compareVersions('1.0.0-rc.2', '1.0.0-rc.10')).toBeLessThan(0);
+    expect(compareVersions('1.0.0-rc.3', '1.0.0-rc.3')).toBe(0);
+    expect(compareVersions('1.0.0-rc.9', '0.9.3')).toBeGreaterThan(0);
+    expect(compareVersions('0.10.0-rc.1', '1.0.0-rc.1')).toBeLessThan(0);
+    expect(compareVersions('0.9.3', '1.0.0-rc.1')).toBeLessThan(0);
+  });
+
+  it('bumps a release, not a candidate', () => {
+    expect(bumpVersion('0.9.3', 'major')).toBe('1.0.0');
+    expect(() => bumpVersion('1.0.0-rc.1', 'patch')).toThrow('release candidate');
+  });
+
+  it('counts a candidate as no breaking release, and as its release for the line', () => {
+    expect(isBreakingRelease('1.0.0-rc.1')).toBe(false);
+    expect(isBreakingRelease('0.5.0-rc.1')).toBe(false);
+    expect(lineOf('1.0.0-rc.1')).toBe('1');
+    expect(lineOf('0.5.0-rc.1')).toBe('0.5');
   });
 
   it.each(['0.2.0', '1.0.0', '2.0.0'])('%s is a breaking release', (version) => expect(isBreakingRelease(version)).toBe(true));
@@ -130,6 +167,8 @@ describe('releaseTarget', () => {
     ['0.x', '0.1.3', '0.1.2', ['0.x', '0.1.3', '0.1.x']],
     ['1.2.x', '1.2.5', '2.0.0', ['1.2.x', '1.2.5', '1.x']],
     ['main', '0.2.0-beta.1', '0.1.2', ['main', '0.2.0-beta.1', 'x.y.z']],
+    ['main', '1.0.0-rc.1', '0.9.3', ['main', '1.0.0-rc.1', 'x.y.z']],
+    ['main', '1.0.0', '1.0.0-rc.1', ['main', '1.0.0', '1.0.0-rc.1']],
     ['main', '0.2.1', '0.2.0-beta.1', ['main', '0.2.1', '0.2.0-beta.1']],
     ['0.2.x', '0.2.1', '0.1.03', ['0.2.x', '0.2.1', '0.1.03']],
   ];
@@ -228,6 +267,13 @@ describe('changelogs', () => {
   it('refuses a heading that is not a version, showing a trailing space', () => {
     expect(() => parseChangelog('# core\n\n## Unreleased\n')).toThrow('line 3');
     expect(() => parseChangelog('# core\n\n## 0.1.3 \n')).toThrow('"## 0.1.3 "');
+  });
+
+  it('reads the heading of a release candidate', () => {
+    const text = '# core\n\n## 1.0.0-rc.1\n\n- A\n\n## 0.9.3\n';
+    expect(parseChangelog(text).sections.map((section) => section.version)).toEqual(['1.0.0-rc.1', '0.9.3']);
+    expect(formatChangelog(parseChangelog(text))).toBe(text);
+    expect(() => parseChangelog('# core\n\n## 1.0.0-beta.1\n')).toThrow('line 3');
   });
 
   it.each([['CRLF', '# core\r\n\r\n## 0.1.3\r\n\r\n- A\r\n'], ['a last heading without a newline', '# core\n\n## 0.1.3\n\n- A\n\n## 0.1.2']])(

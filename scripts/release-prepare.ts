@@ -5,10 +5,13 @@
  *
  *   pnpm release:prepare             # write the files and print the next steps
  *   pnpm release:prepare --dry-run   # print the version and the section, write nothing
+ *   pnpm release:prepare --rc        # a release candidate, x.y.z-rc.N, of the version the labels ask for
+ *   pnpm release:prepare --major     # from 0.x only: make 1.0.0 whatever the labels ask for (with --rc: 1.0.0-rc.1)
  *
  * It can run again for the same version as long as `v<version>` is not tagged: the section is made anew from the last tag to
  * `HEAD`, so a fix merged after the release pull request goes into a second, small one. A release is refused while a
- * deprecation names that version or an earlier one in "Removed in". See CONTRIBUTING.md, "Pull requests and releases". Imports
+ * deprecation names that version or an earlier one in "Removed in" — the version is settled first, so a candidate is refused for
+ * what its release would be refused for. See CONTRIBUTING.md, "Pull requests and releases". Imports
  * nothing but `node:*` and the neighbouring scripts.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,6 +30,7 @@ import {
   formatReleaseBase,
   formatChangelog,
   isBreakingRelease,
+  isPlainVersion,
   type Label,
   lineOf,
   maintenanceLine,
@@ -35,10 +39,13 @@ import {
   parseReleaseBase,
   parseVersion,
   RELEASE_BASE,
+  rcOf,
   releaseCommit,
+  releaseOf,
   type Runner,
   spawnRunner,
   UNLABELLED,
+  withRc,
 } from './release-rules.ts';
 import type { SourceFile } from './source-files.ts';
 
@@ -123,6 +130,10 @@ export interface PrepareOptions {
   readonly root: string;
   readonly run: Runner;
   readonly dryRun: boolean;
+  /** Make a release candidate, `x.y.z-rc.N`, instead of the release. */
+  readonly rc?: boolean;
+  /** Make 1.0.0 from a 0.x release, whatever the labels ask for. */
+  readonly major?: boolean;
   /** The repository's files, read for the deprecations; defaults to what git lists in `root`. */
   readonly files?: () => Iterable<SourceFile>;
   readonly log: (line: string) => void;
@@ -130,7 +141,10 @@ export interface PrepareOptions {
 
 export interface Prepared {
   readonly version: string;
+  /** The last release (not a candidate) the version builds on. */
   readonly previous: string;
+  /** The tag the notes start from: `previous`, or the last candidate when this is a further one. */
+  readonly since: string;
   readonly bump: Bump;
   readonly section: string;
 }
@@ -145,7 +159,7 @@ function pullRequest(line: string): string {
 }
 
 /** Prepares the release of the pull requests merged since the last tag; throws an `Error` saying what to do when it must not. */
-export function prepare({ root, run, dryRun, files = () => repositoryFiles(root), log }: PrepareOptions): Prepared {
+export function prepare({ root, run, dryRun, rc = false, major = false, files = () => repositoryFiles(root), log }: PrepareOptions): Prepared {
   const git = (...args: string[]) => run('git', args);
   const fail = (message: string): never => {
     throw new Error(message);
@@ -163,17 +177,29 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
     fail(`HEAD is not origin/${branch}: pull or push first — the release notes are generated from the pushed branch.`);
   }
 
-  const described = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*');
+  if (major && branchLine !== undefined) fail(`--major makes 1.0.0 from main; ${branch} releases its own line only.`);
+  const described = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', '--exclude', 'v*-rc.*');
   const previous = described.status === 0 ? described.stdout.trim().slice(1) : '';
-  if (!parseVersion(previous)) fail(`No release tag v<x.y.z> is reachable from ${branch}${described.stderr ? `: ${described.stderr.trim()}` : ''}.`);
+  if (!parseVersion(previous) || rcOf(previous) !== undefined) {
+    fail(`No release tag v<x.y.z> is reachable from ${branch}${described.stderr ? `: ${described.stderr.trim()}` : ''}.`);
+  }
+  if (major && !previous.startsWith('0.')) fail(`--major makes 1.0.0 from a 0.x release, not from ${previous}: from 1.0 on the labels decide.`);
+  // The last tag of any kind: a candidate tagged since the release is what the next candidate (or the release) follows.
+  const describedAny = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*');
+  const lastTag = describedAny.status === 0 ? describedAny.stdout.trim().slice(1) : previous;
+  if (!parseVersion(lastTag)) fail(`The last tag "v${lastTag}" is not a v<x.y.z> or v<x.y.z-rc.N> version.`);
+  // Candidates already tagged for a release above `previous`: the release they lead to is the target of this run.
+  const series = rcOf(lastTag) !== undefined && compareVersions(lastTag, previous) > 0 ? { target: releaseOf(lastTag), last: rcOf(lastTag)! } : undefined;
+  if (rc && branchLine !== undefined) fail(`Release candidates are made on main: they go out under one dist-tag, and ${branch} would move it below main's.`);
+  let since = rc ? lastTag : previous;
 
   const packages = frameworkPackages(root);
   const versions = new Set(packages.map((pkg) => pkg.manifest.version));
   if (versions.size !== 1) fail(`The packages do not share one version: ${[...versions].join(', ')}.`);
   const current = [...versions][0]!;
-  if (!parseVersion(current)) fail(`The packages' version "${current}" is not a plain x.y.z version.`);
-  const order = compareVersions(current, previous);
-  if (order < 0) fail(`The packages are at ${current}, below the last tag v${previous}.`);
+  if (!parseVersion(current)) fail(`The packages' version "${current}" is not an x.y.z or x.y.z-rc.N version.`);
+  const order = compareVersions(current, lastTag);
+  if (order < 0) fail(`The packages are at ${current}, below the last tag v${lastTag}.`);
   if (order > 0) {
     const tagged = git('ls-remote', '--tags', 'origin', `refs/tags/v${current}`);
     if (tagged.status !== 0) fail(`Could not ask origin for the tag v${current}: ${tagged.stderr.trim()}`);
@@ -183,7 +209,7 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
   const generate = (tag: string): Notes => {
     const result = run('gh', [
       'api', '--method', 'POST', `repos/${REPOSITORY}/releases/generate-notes`,
-      '-f', `tag_name=v${tag}`, '-f', `target_commitish=${branch}`, '-f', `previous_tag_name=v${previous}`, '--jq', '.body',
+      '-f', `tag_name=v${tag}`, '-f', `target_commitish=${branch}`, '-f', `previous_tag_name=v${since}`, '--jq', '.body',
     ]);
     if (result.status !== 0) fail(`gh api generate-notes failed: ${result.stderr.trim()}`);
     return parseNotes(result.stdout);
@@ -194,20 +220,31 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
       fail(`Label these pull requests (breaking, feature, fix, docs or internal) and run this again:\n${candidate.unlabelled.map((line) => `  - ${line}`).join('\n')}`);
     }
     const found = candidate.entries.get('breaking') ?? [];
-    if (![...candidate.entries.values()].some((lines) => lines.length > 0)) fail(`Nothing to release since v${previous}: no merged pull request carries a release label.`);
+    if (![...candidate.entries.values()].some((lines) => lines.length > 0)) fail(`Nothing to release since v${since}: no merged pull request carries a release label.`);
     if (branchLine !== undefined && found.length > 0) {
       fail(`${branch} releases ${branchLine} fixes only, but these pull requests are breaking:\n${found.map((line) => `  - ${line}`).join('\n')}`);
     }
     return bumpFor(previous, { breaking: found.length > 0, feature: (candidate.entries.get('feature') ?? []).length > 0 });
   };
-  let notes = generate(bumpVersion(previous, 'patch'));
-  const bump = judge(notes);
-  const version = bumpVersion(previous, bump);
+  const guess = bumpVersion(previous, 'patch');
+  let notes = generate(guess);
+  const asked = judge(notes);
+  // What the labels ask for, unless --major or the candidates already tagged settle it: those stay on their release.
+  const labelled = bumpVersion(previous, asked);
+  // Candidates that cannot lead to what --major or the labels now ask for are replaced: the version starts over, their sections stay.
+  const outgrown = series !== undefined && (major ? series.target !== '1.0.0' : compareVersions(labelled, series.target) > 0);
+  const live = outgrown ? undefined : series;
+  const target = major ? '1.0.0' : live ? live.target : labelled;
+  const version = rc ? withRc(target, live ? live.last + 1 : 1) : target;
+  // The first candidate of a release has the notes since the release, not since a replaced candidate.
+  const restarted = rc && !live && since !== previous;
+  if (restarted) since = previous;
+  const bump: Bump = target.split('.')[0] !== previous.split('.')[0] ? 'major' : target.split('.')[1] !== previous.split('.')[1] ? 'minor' : 'patch';
   if (branchLine !== undefined && lineOf(version) !== branchLine) fail(`${version} is not a ${branchLine} version: ${branch} releases its own line only.`);
   // The compare link in the notes names the tag the release will get; a pull request labelled in between must not change the answer.
-  if (version !== bumpVersion(previous, 'patch')) {
+  if (version !== guess || restarted) {
     notes = generate(version);
-    if (judge(notes) !== bump) fail('The labels changed while the notes were generated: run this again.');
+    if (judge(notes) !== asked) fail('The labels changed while the notes were generated: run this again.');
   }
   const due = findDeprecations(files()).filter((found) => found.removeIn !== undefined && !removalIsAfter(found.removeIn, version));
   if (due.length > 0) {
@@ -223,12 +260,13 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
   }
   const body = sectionBody(notes);
 
+  // A candidate gets no upgrade guide heading: its release does.
   const breakingRelease = isBreakingRelease(version);
   const upgradingFile = join(root, 'UPGRADING.md');
   const upgrading = existsSync(upgradingFile) ? readFileSync(upgradingFile, 'utf8') : undefined;
   let hasUpgradingSection = false;
   for (const match of upgrading?.matchAll(UPGRADING_HEADING) ?? []) {
-    if (match[1] === version) hasUpgradingSection = true;
+    if (match[1] === releaseOf(version)) hasUpgradingSection = true;
     else if (compareVersions(match[1]!, previous) > 0) {
       fail(`UPGRADING.md has "${match[0]}", but this preparation makes ${version}: move its entries into the section of ${version} by hand, then delete it.`);
     }
@@ -255,11 +293,11 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
 
   const unreachable =
     branch === MAIN
-      ? git('tag', '--list', 'v[0-9]*', '--no-merged', 'HEAD').stdout.split('\n').map((tag) => tag.trim()).filter((tag) => parseVersion(tag.slice(1)))
+      ? git('tag', '--list', 'v[0-9]*', '--no-merged', 'HEAD').stdout.split('\n').map((tag) => tag.trim()).filter((tag) => isPlainVersion(tag.slice(1)))
       : [];
 
   const results = changelogs.map(({ pkg, file, changelog }) => {
-    const sections = changelog.sections.filter((section) => compareVersions(section.version, previous) <= 0);
+    const sections = changelog.sections.filter((section) => compareVersions(section.version, lastTag) <= 0);
     const ending = changelog.sections[0]?.ending ?? '\n';
     for (const tag of unreachable) {
       if (sections.some((section) => section.version === tag.slice(1))) continue;
@@ -277,19 +315,32 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
 
   let upgradingText: string | undefined;
   if (breakingRelease && !hasUpgradingSection) {
-    const placeholder = `<!-- One entry per breaking pull request: ${breaking.map(pullRequest).join(', ')} — then list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts. -->`;
+    const placeholder =
+      breaking.length > 0
+        ? `<!-- One entry per breaking pull request: ${breaking.map(pullRequest).join(', ')} — then list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts. -->`
+        : `<!-- No pull request since v${previous} is labelled breaking. Write the entries an app needs to upgrade (impact, before → after, the way back) — then list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts. -->`;
     const section = `## Upgrading to ${version} from ${previous}\n\n${placeholder}\n\n`;
     const text = upgrading ?? '# Upgrading\n\n';
     const first = text.search(/^## Upgrading to /m);
     upgradingText = first === -1 ? `${text.replace(/\s*$/, '\n')}\n${section.trimEnd()}\n` : `${text.slice(0, first)}${section}${text.slice(first)}`;
   }
 
-  const why = breaking.length > 0 ? `breaking: ${breaking.map(pullRequest).join(', ')}` : features.length > 0 ? 'no breaking pull request' : 'fixes and documentation only';
-  log(`Version ${version} (${bump}; ${why}), from v${previous}.`);
+  const why =
+    bump === 'major' && breaking.length === 0
+      ? 'a major release, and no merged pull request is breaking'
+      : breaking.length > 0
+        ? `breaking: ${breaking.map(pullRequest).join(', ')}`
+        : features.length > 0
+          ? 'no breaking pull request'
+          : 'fixes and documentation only';
+  if (outgrown) {
+    log(`The candidates since v${previous} (up to v${lastTag}) were for ${series!.target}; ${major ? '--major' : 'the labels'} ask for ${target}, so they are replaced: their changelog sections stay.`);
+  }
+  log(`Version ${version} (${bump}; ${why}), from v${previous}${since !== previous ? `, notes since the candidate v${since}` : ''}.`);
   log(`\n## ${version}\n\n${body}\n`);
   if (dryRun) {
     log('Dry run: nothing written.');
-    return { version, previous, bump, section: body };
+    return { version, previous, since, bump, section: body };
   }
 
   if (version !== current) {
@@ -305,7 +356,7 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
   if (upgradingText !== undefined) writeFileSync(upgradingFile, upgradingText);
   log(`Wrote ${version} to ${packages.length} package.json files and CHANGELOGs${upgradingText !== undefined ? ' and the heading in UPGRADING.md' : ''}.`);
   if (upgradingText !== undefined) {
-    log('Replace the placeholder under it with one entry per breaking pull request and list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts.');
+    log(`Replace the placeholder under it with ${breaking.length > 0 ? 'one entry per breaking pull request' : 'the entries an app needs'} and list their anchors in UPGRADING_ANCHORS of scripts/check-release.ts.`);
   }
   log(
     [
@@ -322,13 +373,20 @@ export function prepare({ root, run, dryRun, files = () => repositoryFiles(root)
       'When the version changed since the open pull request (for example 0.1.3 to 0.2.0), close the old release pull request and open a new one.',
     ].join('\n'),
   );
-  return { version, previous, bump, section: body };
+  return { version, previous, since, bump, section: body };
 }
 
 if (import.meta.main) {
   const root = fileURLToPath(new URL('..', import.meta.url));
   try {
-    prepare({ root, run: spawnRunner(root), dryRun: process.argv.includes('--dry-run'), log: (line) => console.log(line) });
+    prepare({
+      root,
+      run: spawnRunner(root),
+      dryRun: process.argv.includes('--dry-run'),
+      rc: process.argv.includes('--rc'),
+      major: process.argv.includes('--major'),
+      log: (line) => console.log(line),
+    });
   } catch (error) {
     console.error(`release-prepare: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;

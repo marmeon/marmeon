@@ -408,6 +408,16 @@ pnpm release:prepare                          # write them and print the next st
   it. Every published package gets the version and the same `## <version>` section on top of its `CHANGELOG.md` —
   `### Breaking changes`, `### Features`, `### Fixes`, `### Documentation`, new contributors, the full-changelog link. Sections of
   maintenance releases that `main` does not hold yet are carried over from their tags.
+- **1.0 and release candidates:** `pnpm release:prepare --major` makes `1.0.0` from a 0.x release whatever the labels ask for
+  (from 1.0 on it is refused: the labels decide); it says whether a merged pull request is `breaking`. `--rc` makes a release
+  candidate `x.y.z-rc.N` of the version the labels (or `--major`) ask for: the first run `-rc.1`, a run after `v<x.y.z>-rc.1` is
+  tagged `-rc.2`, and so on, for the same release. When the labels (or `--major`) come to ask for a higher release than the
+  candidates lead to, they replace them: the version starts over (`--rc` at `-rc.1`), the log names the replaced candidates and
+  their changelog sections stay. Candidates are made on `main` only. A run without `--rc` after a candidate makes the release itself. A
+  candidate has its own changelog section, with the notes since the previous candidate; the release's section covers everything
+  since the last release, and the candidates' sections stay below it. Only the release gets the `UPGRADING.md` heading. The
+  deprecation check below sees the version already (`--major --rc` is refused for what `1.0.0` would be refused for). Other
+  prereleases (`beta`, `alpha`) are not supported.
 - **A breaking release** gets the heading of its `UPGRADING.md` section and a placeholder comment naming the pull requests.
   Replace it with one entry per breaking pull request (impact, before → after, the way back) and list the anchors in
   `UPGRADING_ANCHORS` **before** the printed `git add -A` and commit; `check-release` refuses the comment.
