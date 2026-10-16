@@ -51,6 +51,26 @@ describe('the imports of a file', () => {
     expect(importsOf("const x = (await import('m')).y; type T = import('m').Foo;")).toContainEqual({ specifier: 'm', names: ['Foo'] });
   });
 
+  it('reads a destructured dynamic import and require as named imports', () => {
+    const text = [
+      "const { a, b: renamed, c = 1 } = await import('m');",
+      "const { d } = require('m');",
+      "let { ...all } = await import('m');",
+      "const { a, ...others } = require('m');",
+      "const { ['b']: x } = await import('m');",
+      "const lib = require('n'); const e = require('o').Foo;",
+    ].join('\n');
+    expect(importsOf(text)).toEqual([
+      { specifier: 'm', names: ['a', 'b', 'c'] },
+      { specifier: 'm', names: ['d'] },
+      { specifier: 'm', names: undefined },
+      { specifier: 'm', names: undefined },
+      { specifier: 'm', names: undefined },
+      { specifier: 'n', names: undefined },
+      { specifier: 'o', names: ['Foo'] },
+    ]);
+  });
+
   it('does not take prose or other code for an import', () => {
     expect(importsOf('We import data from the server; export const x = 1;\nreturn value from y;')).toEqual([]);
   });
@@ -201,6 +221,30 @@ describe('what the suggestions leave out', () => {
     ])!;
     expect(usage.names.find((entry) => entry.name === 'unused')).toMatchObject({ suggestion: 'drop', tests: [] });
     expect(usage.names.find((entry) => entry.name === 'docs')).toMatchObject({ suggestion: 'keep', docs: ['UPGRADING.md'] });
+  });
+
+  it('counts the bin/ launcher of another package as a keep, in plain JavaScript too', () => {
+    const usage = usageOf('@marmeon/demo', repository(), [
+      file('packages/other/bin/x.js', "import { neighbour } from '@marmeon/demo';"),
+      file('packages/other/bin/y.mjs', "const { used } = await import('@marmeon/demo');"),
+      file('packages/other/bin/z.cjs', "const { MailFake } = require('@marmeon/demo');"),
+      file('packages/demo/bin/own.js', "import { unused } from '@marmeon/demo';"),
+    ])!;
+    const find = (name: string) => usage.names.find((entry) => entry.name === name);
+    expect(find('neighbour')).toMatchObject({ suggestion: 'keep', launchers: { other: ['packages/other/bin/x.js'] }, siblings: {} });
+    expect(find('neighbour')!.reason).toContain('check:source');
+    expect(find('used')).toMatchObject({ suggestion: 'keep', launchers: { other: ['packages/other/bin/y.mjs'] } });
+    expect(find('MailFake')!.launchers).toEqual({ other: ['packages/other/bin/z.cjs'] });
+    expect(find('unused')).toMatchObject({ suggestion: 'drop' });
+  });
+
+  it('leaves out build output and installed packages', () => {
+    const usage = usageOf('@marmeon/demo', repository(), [
+      file('packages/other/dist/index.js', "import { unused } from '@marmeon/demo';"),
+      file('apps/web-app/node_modules/x/index.js', "import { unused } from '@marmeon/demo';"),
+      file('apps/web-app/dist/server.js', "import { unused } from '@marmeon/demo';"),
+    ])!;
+    expect(usage.names.find((entry) => entry.name === 'unused')).toMatchObject({ suggestion: 'drop', apps: [], siblings: {} });
   });
 
   it('warns on drop and internal while an app imports the entry as a whole', () => {
