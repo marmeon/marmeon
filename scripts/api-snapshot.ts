@@ -3,13 +3,13 @@
  * (and nothing from the repository's dependencies): a workflow may load this file without installing anything.
  *
  * One file per package: the header, then a section per entry point (its types from other packages, then the `Stable`,
- * `Referenced, not exported`, `Augments` and `Experimental` declarations), then the package's `Environment`, `Commands` and `Experimental` (the experimental variables and commands; the `##` heading tells it
+ * `Referenced, not exported`, `Augments`, `Experimental` and `Experimental, referenced (not exported)` declarations), then the package's `Environment`, `Commands` and `Experimental` (the experimental variables and commands; the `##` heading tells it
  * from the `###` one of an entry point).
  * Every section is one `ts` block; each item starts with a `// <name>` line in column 0, followed by its declaration without
  * comments. Items are sorted by name, so the file does not depend on the order of the source.
  */
 
-export type ApiSection = 'stable' | 'referenced' | 'augments' | 'experimental' | 'environment' | 'commands';
+export type ApiSection = 'stable' | 'referenced' | 'augments' | 'experimental' | 'experimentalReferenced' | 'environment' | 'commands';
 
 export interface ApiItem {
   /** The import specifier of the entry point (`@marmeon/http/page`); empty for the package-wide sections `environment`, `commands` and `experimental`. */
@@ -34,6 +34,7 @@ const ENTRY_SECTIONS: readonly [ApiSection, string][] = [
   ['referenced', 'Referenced, not exported'],
   ['augments', 'Augments'],
   ['experimental', 'Experimental'],
+  ['experimentalReferenced', 'Experimental, referenced (not exported)'],
 ];
 /** The package-wide sections: a `##` heading of their own, after the entry points. */
 const PACKAGE_SECTIONS: readonly [ApiSection, string][] = [

@@ -46,7 +46,7 @@ export function labelProblems(changes: ApiChanges, labels: readonly string[], wh
   return problems;
 }
 
-const stable = (items: readonly ApiItem[]) => items.filter((item) => item.section !== 'experimental');
+const stable = (items: readonly ApiItem[]) => items.filter((item) => item.section !== 'experimental' && item.section !== 'experimentalReferenced');
 
 function git(...args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

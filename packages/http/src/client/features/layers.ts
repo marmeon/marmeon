@@ -5,7 +5,8 @@
  * screen in a slot of the document, each layer entry's place in the stack in a slot of the entry — both emptied by the core.
  */
 import { atOrigin } from '../request.ts';
-import { LAYER_BACKDROP, type FlashMessage } from '../../page.ts';
+import type { FlashMessage } from '../../page.ts';
+import { LAYER_BACKDROP } from '../../page-support.ts';
 import type { LayerClose } from '../../protocol.ts';
 import { LAYER_CLOSE_HEADER, MAX_LAYER_DEPTH, REGION_HEADER, type PageObject } from '../../protocol.ts';
 import { updatePage } from '../cache.ts';
@@ -568,7 +569,7 @@ export class LayerStack implements LayerHost {
  * a deep link stacks them over their base. Writes its own position into history entries (`layer`: a depth and keys). Loaded
  * on demand (`loadLayers`): by the core when the server answers with a layer, by an adapter where one opens.
  */
-export const layers = defineFeature('layers', (host) => {
+export const layers = /* @__PURE__ */ defineFeature('layers', (host) => {
   const stack = new LayerStack(host);
   host.history.field('layer', isLayerPosition);
   host.on('response', (response, visit, event) => (response.headers.get(LAYER_CLOSE_HEADER) === 'true' ? stack.closed(visit.from, response, event, visit.options) : undefined));

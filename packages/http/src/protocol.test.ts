@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import * as adapter from './client/adapter.ts';
 import * as page from './page.ts';
 import * as protocol from './protocol.ts';
 import type { PageObject, RegionObject } from './protocol.ts';
@@ -18,12 +19,10 @@ describe('@marmeon/http/protocol', () => {
     expect(exported.filter((name) => name.endsWith('_HEADER'))).toEqual([]);
     expect(exported).not.toContain('PAGE_SCRIPT_ID');
     expect(exported).not.toContain('isPageObject');
-    expect(exported).toContain('pageInfo');
-    expect(exported).toContain('LAYER_BACKDROP');
   });
 
   it('types the wire objects the page side builds on', () => {
-    expectTypeOf(page.pageInfo).parameter(0).toEqualTypeOf<PageObject>();
+    expectTypeOf(adapter.pageInfo).parameter(0).toEqualTypeOf<PageObject>();
     expectTypeOf<RegionObject>().toEqualTypeOf<Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>>();
   });
 });

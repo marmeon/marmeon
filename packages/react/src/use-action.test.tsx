@@ -9,7 +9,7 @@ import { MarmeonApp, useRouter } from './app.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useAction, usePendingSubmissions } from './use-action.ts';
 import { Link } from './link.tsx';
-import { loadHistoryFallback } from '@marmeon/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 
 // happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 const HISTORY = [await loadHistoryFallback()];

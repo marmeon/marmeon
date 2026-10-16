@@ -1,4 +1,5 @@
-import type { Layer, LayerCloseOptions } from '@marmeon/http/client';
+import type { Layer } from '@marmeon/http/client/adapter';
+import type { LayerCloseOptions } from '@marmeon/http/client';
 import type { PageObject } from '@marmeon/http/protocol';
 import { createContext, useContext, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 

@@ -264,7 +264,7 @@ function readPackages(repository: string): PackageSnapshot[] {
 }
 
 /** The sections whose declarations an app sees: an item of these names the types it uses. */
-const PUBLIC_SECTIONS: ReadonlySet<ApiItem['section']> = new Set(['stable', 'referenced', 'augments', 'experimental']);
+const PUBLIC_SECTIONS: ReadonlySet<ApiItem['section']> = new Set(['stable', 'referenced', 'augments', 'experimental', 'experimentalReferenced']);
 
 /**
  * The identifiers in a declaration's text that can be references: no members (`a.Name`), parts of longer words (`PageObjectLike`),

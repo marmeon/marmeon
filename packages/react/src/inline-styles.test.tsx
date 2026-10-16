@@ -2,7 +2,8 @@
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
 import type { RouteManifest } from '@marmeon/http/page';
 import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
-import { loadHistoryFallback, type VisitException } from '@marmeon/http/client';
+import type { VisitException } from '@marmeon/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 import { act, type CSSProperties } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup, renderToString } from 'react-dom/server';

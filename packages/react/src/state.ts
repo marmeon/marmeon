@@ -1,4 +1,5 @@
-import { guard as guardFeature, type NavigationGuard } from '@marmeon/http/client';
+import type { NavigationGuard } from '@marmeon/http/client/adapter';
+import { guard as guardFeature } from '@marmeon/http/client/adapter';
 import type { BrowserRouteNameInput, CheckBrowserRouteName } from '@marmeon/http/page';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';

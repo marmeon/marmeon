@@ -1,4 +1,4 @@
-import type { ErrorPageProps } from '@marmeon/http/page';
+import type { ErrorPageProps } from '@marmeon/http/client/adapter';
 
 /**
  * Built-in error page, used until the app provides `modules/errors/views/Error.tsx` — loaded on demand, a chunk of its own.

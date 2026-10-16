@@ -5,7 +5,8 @@
  * anywhere — the client core, a dozen lines that render a page as text, and the bar beside it. What it records comes from the
  * core's own requests; what it shows of the server comes from the devtools' JSON API.
  */
-import { devtools, islands, Navigator, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client';
+import { devtools, islands, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client/adapter';
+import { Navigator } from '@marmeon/http/client/adapter';
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevtoolsBar, SHORTCUT, STATE_KEY } from './bar.ts';

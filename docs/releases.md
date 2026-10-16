@@ -120,6 +120,9 @@ is still listed in the package's `api.md`, under **Experimental**, so a change s
 `breaking` label is not required for it. Build on it only when you can follow the releases. What is experimental today:
 
 - `@marmeon/devtools`
+- `@marmeon/http/client/adapter`: the interface a UI adapter builds on (the navigator, regions and layers, the feature wiring,
+  loading the first page). It stays experimental until a second adapter exists. What an app uses of the client core (`hooks`, `tabSync`, `xsrfToken`) stays in
+  `@marmeon/http/client`.
 - `@marmeon/live`
 - `@marmeon/otel`
 - `@marmeon/table`
@@ -127,10 +130,9 @@ is still listed in the package's `api.md`, under **Experimental**, so a change s
 - `@marmeon/react/table-tanstack`
 - `marmeon tinker`
 
-The message types of the diagnostics channels in `@marmeon/core` (the channel names stay stable), the devtools feature of
-`@marmeon/http/client` and its types, the options `pages` and `lang` of the Vite plugin, and the members of `@marmeon/testing`
-that follow an experimental package (`devtools`, `broadcast`, `live` of the test app) are experimental too, one by one; their
-declarations say so.
+The message types of the diagnostics channels in `@marmeon/core` (the channel names stay stable), the options `pages` and
+`lang` of the Vite plugin, and the members of `@marmeon/testing` that follow an experimental package (`devtools`,
+`broadcast`, `live` of the test app) are experimental too, one by one; their declarations say so.
 
 ### When a union grows
 

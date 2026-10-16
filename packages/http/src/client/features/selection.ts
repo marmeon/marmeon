@@ -108,7 +108,7 @@ export interface SelectionFeature {
 }
 
 /** Row selection: `navigator.use(selection).of('members', owner.entry)`. */
-export const selection = defineFeature(
+export const selection = /* @__PURE__ */ defineFeature(
   'selection',
   (host): SelectionFeature => ({
     of: (table, entry) => {

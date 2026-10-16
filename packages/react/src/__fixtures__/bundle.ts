@@ -384,14 +384,17 @@ export function entryOf(specifier: string, names: readonly string[]): string {
 
 /** The client core as an adapter uses it at least: the navigator, the document, links, forms, routes, titles, messages. */
 const CORE = [
-  ...['DEFAULT_PAGE_CACHE_SIZE', 'isHistoryState', 'mergePage', 'Navigator', 'SCROLL_REGION_ATTRIBUTE', 'xsrfToken'],
-  ...['hasServerMarkup', 'isDevelopment', 'readInitialPage', 'rootElement'],
-  ...['isCurrentLink', 'matchesRouteName', 'visitUrlOf'],
+  ...['isHistoryState', 'mergePage', 'Navigator'],
+  ...['hasServerMarkup', 'readInitialPage', 'rootElement'],
+  ...['isCurrentLink', 'visitUrlOf'],
   ...['defaultFormEntries', 'dirtyPaths', 'fieldPath', 'firstErrors', 'formEntries', 'formObject', 'isDirtyPath', 'restoreFormEntries', 'sameEntries'],
-  ...['resolveRoute', 'defaultTitle', 'TitleRegistry', 'loadPageMessages', 'pageLocale'],
+  ...['defaultTitle', 'TitleRegistry', 'loadPageMessages', 'pageLocale'],
 ];
-/** An entry with the client core and `names` from it. */
-export const coreEntry = (...names: string[]) => entryOf('@marmeon/http/client', [...CORE, ...names]);
+/** An entry with the client core: what an app uses of `@marmeon/http/client`, and `CORE` and `names` from `@marmeon/http/client/adapter`. */
+export const coreEntry = (...names: string[]) => {
+  const adapter = [...CORE, ...names];
+  return `import { isDevelopment, resolveRoute, xsrfToken } from '@marmeon/http/client';\nimport { ${adapter.join(', ')} } from '@marmeon/http/client/adapter';\nglobalThis.__keep = { isDevelopment, resolveRoute, xsrfToken, ${adapter.join(', ')} };\n`;
+};
 /** An entry with `createMarmeonApp` and `names` from `@marmeon/react`. */
 export const appEntry = (...names: string[]) => entryOf('@marmeon/react', ['createMarmeonApp', ...names]);
 

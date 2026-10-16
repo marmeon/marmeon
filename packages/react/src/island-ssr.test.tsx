@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/dashboard" }
-import { scriptJson, type DeferredResult, type RegionResult, type RouteManifest } from '@marmeon/http/page';
+import type { DeferredResult, RegionResult, RouteManifest } from '@marmeon/http/page';
+import { scriptJson } from '@marmeon/http/client/adapter';
 import { PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
 import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

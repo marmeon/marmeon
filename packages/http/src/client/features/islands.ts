@@ -77,7 +77,7 @@ export interface IslandsFeature {
  * requests. The owners of the entries on screen are the core's; the regions live on them (`owner.live`, closed with them), and
  * what they loaded in the entries' slots (`REGIONS`, emptied by the core).
  */
-export const islands = defineFeature('islands', (host): IslandsFeature => {
+export const islands = /* @__PURE__ */ defineFeature('islands', (host): IslandsFeature => {
   const sent = regionTransport(host);
   // An island that follows live channels — loaded, or streamed with the page: the core's live feature follows them too.
   const transport: RegionTransport = { request: (url, headers, signal) => sent.request(url, headers, signal).then((response) => (response.kind === 'region' && follow(host.navigator, response.region), response)) };

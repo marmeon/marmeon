@@ -9,12 +9,8 @@
  * framework anywhere. A Vue (or Svelte, or Solid) adapter is this plus components.
  */
 // happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there.
-import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  scriptJson,
-  type RegionResult,
-} from '../page.ts';
+import type { RegionResult } from '../page.ts';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
@@ -38,32 +34,35 @@ import {
   guard,
   hasServerMarkup,
   instant,
-  isHistoryState,
   islands,
-  liveValidationOnFirstUse,
-  loadPageMessages,
-  Navigator,
   optimistic,
-  prefetchWith,
-  PROGRESS_ATTRIBUTE,
   queryState,
-  readInitialPage,
-  regionInitial,
   remember,
   revalidateOnBack,
+  isHistoryState,
+  liveValidationOnFirstUse,
+  loadHistoryFallback,
+  loadPageMessages,
+  loadSensitiveFields,
+  Navigator,
+  prefetchWith,
+  PROGRESS_ATTRIBUTE,
+  readInitialPage,
+  regionInitial,
   rootElement,
+  scriptJson,
   showProgress,
   visitUrlOf,
-  tabSync,
   type PageMessages,
   type RegionOwner,
-} from './index.ts';
+} from './adapter.ts';
+import { tabSync } from './index.ts';
 import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import { FakeChannels, FakeWindow } from './test-window.ts';
-import { loadSensitiveFields } from './remember.ts';
 
 // The rules that tell sensitive fields load on first use; these tests write and read at once.
 await loadSensitiveFields();
+const historyFallback = await loadHistoryFallback();
 
 /** The whole adapter: the hydration entry, rendering a page object, the progress bar. */
 async function createTextApp(rootId = 'app') {

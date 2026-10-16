@@ -20,7 +20,7 @@ const indexOf = (state: unknown): number | undefined => {
   return typeof index === 'number' ? index : undefined;
 };
 
-export const historyFallback = defineFeature(
+export const historyFallback = /* @__PURE__ */ defineFeature(
   'history',
   (host) => {
     const { window: win, history } = host;

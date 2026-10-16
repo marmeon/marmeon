@@ -1,5 +1,7 @@
-import { revalidateOnBack, type Feature } from '@marmeon/http/client';
-import { ERROR_PAGE, LAYER_BACKDROP, pageName, type InstantProps, type IslandProps, type PageProps } from '@marmeon/http/page';
+import type { Feature } from '@marmeon/http/client/adapter';
+import { revalidateOnBack } from '@marmeon/http/client/adapter';
+import type { InstantProps, IslandProps, PageProps } from '@marmeon/http/page';
+import { ERROR_PAGE, LAYER_BACKDROP, pageName } from '@marmeon/http/client/adapter';
 import type { ComponentType, ReactNode } from 'react';
 import { Backdrop } from './backdrop.tsx';
 import type { PageLayer } from './layer.tsx';

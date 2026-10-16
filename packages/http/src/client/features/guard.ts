@@ -16,11 +16,15 @@ import type { Layer } from '../layer.ts';
  * question (`beforeunload`). `layer`: the layer it is in — only what takes that layer (or the page beneath) off the screen
  * asks; without one, it is the page's.
  */
-export interface NavigationGuard {
-  /** What to ask (the browser's `beforeunload` question has its own words). */
-  readonly message?: string;
+export interface NavigationGuard extends IgnoredGuard {
   /** The layer it is in (undefined: the page). */
   readonly layer?: Layer;
+}
+
+/** A guard as a visit names it in `ignoreGuards` (what `useBlocker` returned) — its question and whether it guards right now. */
+export interface IgnoredGuard {
+  /** What to ask (the browser's `beforeunload` question has its own words). */
+  readonly message?: string;
   /** Whether it guards right now (default: while registered). */
   active?(): boolean;
 }
@@ -142,7 +146,7 @@ export class Guards {
  * Back/Forward it stops, says what is unsaved to the core (a postponed new build, closing a layer) and the browser's own question. Holds no
  * data — only the guards the app registers.
  */
-export const guard = defineFeature('guard', (host) => {
+export const guard = /* @__PURE__ */ defineFeature('guard', (host) => {
   const guards = new Guards(host);
   host.on('visit', (visit) => guards.check(visit));
   host.on('unsaved', (leaving, ignore) => guards.blocking(leaving, ignore));

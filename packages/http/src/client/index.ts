@@ -1,117 +1,34 @@
 /**
- * `@marmeon/http/client` — the UI-free client core. Everything a UI adapter needs that is not rendering:
- * visits and their events, 409/hard page changes, XSRF, the history and the in-memory page cache, regions
- * (islands) and layers with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
- * scroll restoration, the progress bar, the first page, route URLs and the page's messages. It may use DOM APIs, but no UI framework — and it never imports server code
- * (only `../page.ts` and `../protocol.ts`, the shared page contract and protocol). The adapter contract is in CONTRIBUTING.md, "The client core and its adapters".
+ * `@marmeon/http/client` — the app's side of the UI-free client core: the handles `useFeature()` takes (`hooks`, `tabSync`),
+ * `xsrfToken`, polling, the progress bar and the types an adapter re-exports to its app. It may use DOM APIs, but no UI
+ * framework — and it never imports server code (only `../page.ts` and `../protocol.ts`, the shared page contract and protocol).
+ * What a UI adapter builds on, the navigator and the features it attaches, is in `@marmeon/http/client/adapter`; the contract is
+ * in CONTRIBUTING.md, "The client core and its adapters".
  */
-export {
-  DEFAULT_LEAVE_MESSAGE,
-  DEFAULT_NEW_VERSION_MESSAGE,
-  DEFAULT_PAGE_CACHE_SIZE,
-  isHistoryState,
-  mergePage,
-  Navigator,
-  SCROLL_REGION_ATTRIBUTE,
-  xsrfToken,
-} from './navigation.ts';
-export type {
-  HistoryState,
-  InstantVisit,
-  NavigationGuard,
-  NavigatorOptions,
-  NavigatorWindow,
-  PrefetchOptions,
-  RenderOptions,
-  RevalidateOnBack,
-  ScrollPosition,
-  ScrollRegion,
-  ViewTransitionLike,
-  ViewTransitionOption,
-  Visit,
-  VisitCallbacks,
-  VisitEvent,
-  VisitEvents,
-  VisitException,
-  VisitMethod,
-  VisitOptions,
-  VisitProgress,
-  VersionChange,
-} from './navigation.ts';
-export { optimistic, PagePatches } from './features/optimistic.ts';
-export { Actions, Submissions } from './action.ts';
-export { actions } from './features/actions.ts';
-export type { ActionsFeature } from './features/actions.ts';
-export { defineFeature, slot } from './feature.ts';
-export type { EntryStack, Feature, FeatureHook, FeatureHooks, FeatureHost, PendingVisit, Slot, VisitPart } from './feature.ts';
-export type { PositionCheck } from './history.ts';
-export { OnceStore } from './once.ts';
-export { isSensitiveRememberField, loadSensitiveFields, NEVER_REMEMBERED_FIELD, REMEMBERED, Remembered, rememberable, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
-export type { LooksLikePassword, LooksSensitive } from '../sensitive-fields.ts';
-export { remember } from './features/remember.ts';
-export type { RememberFeature } from './features/remember.ts';
-export { markBusy } from './busy.ts';
-export { DEFAULT_PROGRESS_DELAY, PROGRESS_ATTRIBUTE, progressBar, showProgress } from './progress.ts';
-export { accepted, confirmRequest, nativeConfirm } from './confirm.ts';
-export type { Confirm, ConfirmAnswer, ConfirmHandler, ConfirmOptions, ConfirmRequest, NativeDialogs } from './confirm.ts';
-export { FlashChannel, flashOfResponse, takeFlash } from './flash.ts';
-export type { FlashListener } from './flash.ts';
-export type { ProgressIndicator, ProgressOptions } from './progress.ts';
+export { hooksHandle as hooks } from './features/hooks.ts';
+export { tabSyncHandle as tabSync } from './features/tab-sync.ts';
+export type { FeatureHandle } from './handle.ts';
+export { xsrfToken } from './navigation.ts';
 export { createPoll } from './poll.ts';
-export type { Poll, PollDocument, PollOptions } from './poll.ts';
-export { hasServerMarkup, isDevelopment, readInitialPage, rootElement } from './document.ts';
-export { loadPageMessages, pageLocale } from './messages.ts';
-export type { PageMessages } from './messages.ts';
+export { progressBar } from './progress.ts';
+export { accepted } from './confirm.ts';
+export { isDevelopment } from './document.ts';
 export { resolveRoute } from './routes.ts';
-export { DEFAULT_PREFETCH_CACHE_FOR, HOVER_PREFETCH_DELAY, isCurrentLink, matchesRouteName, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
-export type { LinkClick, PrefetchSetting, PrefetchTrigger } from './links.ts';
-export { defaultFormEntries, dirtyPaths, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, isDirtyPath, restoreFormEntries, sameEntries, sensitiveControl } from './forms.ts';
-export type { FormEntries } from './forms.ts';
-export { defaultTitle, TitleRegistry } from './title.ts';
+export { pageQuery } from './query.ts';
+export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
+export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from './confirm.ts';
+export type { ProgressIndicator, ProgressOptions, ProgressSource } from './progress.ts';
+export type { Poll, PollOptions, PollDocument } from './poll.ts';
+export type { PrefetchOptions, ViewTransitionOption, Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress, InstantVisit, VersionChange } from './navigation.ts';
+export type { PrefetchTrigger } from './links.ts';
 export type { TitleTemplate } from './title.ts';
-export { ownedRegion, Region, regionId, regionInitial } from './region.ts';
-export { RegionOwner, REGIONS } from './owner.ts';
-export type { LiveRegion } from './owner.ts';
-export { islands } from './features/islands.ts';
-export { follow, loadLive } from './load-live.ts';
-export { live, LIVE_MAX_WAIT, LIVE_QUIET, LIVE_RETRY_REFUSED } from './features/live.ts';
-export type { LiveFeature, LiveUpdates } from './features/live.ts';
-export type { IslandsFeature } from './features/islands.ts';
-export { Layer, MAX_LAYER_DEPTH } from './layer.ts';
-export { layers, LayerStack } from './features/layers.ts';
-export type { LayerCloseOptions, LayerControl, LayerHost } from './layer.ts';
-export type { KeptRegion, RegionInitial, RegionFailure, RegionReloadOptions, RegionResponse, RegionSnapshot, RegionStatus, RegionTransport } from './region.ts';
-export { linkQuery, pageQuery, queryUrl, withoutDefaults } from './query.ts';
-export { assertQueryPage, QueryState } from './query-state.ts';
-export { queryState } from './features/query-state.ts';
-export { Selection, SELECTIONS, selection } from './features/selection.ts';
-export type { SelectionFeature, SelectionKey } from './features/selection.ts';
-export type { QueryStateFeature } from './features/query-state.ts';
-export type { QueryStateOptions, QueryStateTarget, QueryUpdate } from './query-state.ts';
-export type { ActionException, ActionHost, ActionMethod, ActionOptions, ActionOutcome, Submission } from './action.ts';
-export { PatchQueue, Revalidations } from './optimistic.ts';
-export { applyPatches, rollBack } from './patches.ts';
-export { DEFAULT_LIVE_VALIDATION_DEBOUNCE, isSensitiveField, LiveValidation, liveValidationData, SENSITIVE_FIELD, sendLiveValidation } from './live-validation.ts';
-export { liveValidation } from './features/live-validation.ts';
-export type { LiveValidationFeature } from './features/live-validation.ts';
-export { prefetch, Prefetches } from './features/prefetch.ts';
-export { BackRevalidation, revalidateOnBack } from './features/revalidate-on-back.ts';
-export { instant, InstantVisits } from './features/instant.ts';
-export { guard, Guards } from './features/guard.ts';
-export { hooks } from './features/hooks.ts';
-export type { BeforeVisit, ClientHooks, HookEvent, HookEvents, InvalidAnswer } from './features/hooks.ts';
-// Development only: what the devtools' in-page bar records — attached by its client alone, never by an app.
-export { devtools, devtoolsReports, TIMELINE_LIMIT } from './features/devtools.ts';
-export type { DevtoolsFeature, DevtoolsGlobal, DevtoolsHook, HydrationIssue, PatchSnapshot, TimelineEntry, TimelineKind, TimelineOutcome } from './features/devtools.ts';
-export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadLiveValidation, loadOptimistic, loadPrefetch, loadTabSync, loadViewTransitions, prefetchWith } from './lazy.ts';
-export { viewTransitions } from './features/view-transitions.ts';
-export type { ViewTransitions } from './features/view-transitions.ts';
-export { DEFAULT_SESSION_CHANGED_MESSAGE, isTabSyncMessage, tabSync } from './features/tab-sync.ts';
-export type { EpochChange, EpochOrigin, TabSync } from './features/tab-sync.ts';
-export { loadUploads } from './load-uploads.ts';
-export { uploads } from './features/uploads.ts';
-export type { UploadRequest, UploadsFeature } from './features/uploads.ts';
-export type { FormLiveValidation } from './lazy.ts';
-export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';
-export type { OptimisticUpdate, PatchTarget, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
-export type { DeclaredOnBack } from './region.ts';
+export type { LayerCloseOptions } from './layer.ts';
+export type { RegionFailure, RegionStatus } from './region.ts';
+export type { ActionException, ActionMethod, ActionOptions, ActionOutcome } from './action.ts';
+export type { OptimisticUpdate, Reloading, PropsPatch, PatchTarget, ReloadSpec } from './optimistic.ts';
+export type { QueryStateOptions, QueryUpdate } from './query-state.ts';
+export type { SelectionKey } from './features/selection.ts';
+export type { LooksLikePassword, LooksSensitive } from '../sensitive-fields.ts';
+export type { ClientHooks, HookEvents, BeforeVisit, InvalidAnswer } from './features/hooks.ts';
+export type { TabSync, EpochChange, EpochOrigin } from './features/tab-sync.ts';
+export type { IgnoredGuard } from './features/guard.ts';

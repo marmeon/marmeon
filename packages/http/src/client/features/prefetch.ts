@@ -157,7 +157,7 @@ function prefetchKey(url: string, layer: boolean): string {
  * Prefetching as a feature: a plain GET visit takes the page fetched ahead (or waits for it), a write drops them all. What it
  * fetched lives in its slot of the document — gone when the document is left (signing out).
  */
-export const prefetch = defineFeature('prefetch', (host) => {
+export const prefetch = /* @__PURE__ */ defineFeature('prefetch', (host) => {
   const prefetches = new Prefetches(host);
   host.on('write', () => prefetches.flush());
   host.on('start', (visit) => {

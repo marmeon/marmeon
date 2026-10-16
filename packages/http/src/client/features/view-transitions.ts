@@ -28,7 +28,7 @@ const ENTERED = slot(
 const typesOf = (option: ViewTransitionOption | 'adapter' | 'react' | undefined): readonly string[] | undefined =>
   option === true || typeof option === 'string' ? [] : option ? (option.types ?? []) : undefined;
 
-export const viewTransitions = defineFeature(
+export const viewTransitions = /* @__PURE__ */ defineFeature(
   'viewTransitions',
   (host) => {
     const { window: win, options } = host;

@@ -42,7 +42,7 @@ async function bundled(entry: string, external: RegExp[] = []): Promise<{ module
 }
 
 /** The shared page contract and the router's URL builder — the only code outside `client/` the browser core may run. */
-const SHARED = ['http/src/page.ts', 'http/src/protocol.ts', 'http/src/sensitive-fields.ts','http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
+const SHARED = ['http/src/page.ts', 'http/src/page-support.ts', 'http/src/protocol.ts', 'http/src/sensitive-fields.ts','http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
 
 describe('@marmeon/http/client is browser-safe', () => {
   it('bundles nothing but the client core, the page contract and URL building — no server code, no Node built-ins', async () => {
@@ -51,7 +51,14 @@ describe('@marmeon/http/client is browser-safe', () => {
     const outside = modules.filter((id) => !id.startsWith('http/src/client/') && !SHARED.includes(id));
     expect(outside).toEqual([]);
     // The core itself is in there (the check above is not vacuous).
-    expect(modules).toEqual(expect.arrayContaining(['http/src/client/index.ts', 'http/src/client/navigation.ts', 'http/src/page.ts', 'http/src/protocol.ts']));
+    expect(modules).toEqual(expect.arrayContaining(['http/src/client/index.ts', 'http/src/client/features/hooks.ts']));
+  }, 30_000);
+
+  it('the adapter entry (@marmeon/http/client/adapter) is browser-safe too', async () => {
+    const { modules, externals } = await bundled(fileURLToPath(new URL('./adapter.ts', import.meta.url)));
+    expect(externals).toEqual([]);
+    expect(modules.filter((id) => !id.startsWith('http/src/client/') && !SHARED.includes(id))).toEqual([]);
+    expect(modules).toEqual(expect.arrayContaining(['http/src/client/adapter.ts', 'http/src/client/navigation.ts', 'http/src/page-support.ts']));
   }, 30_000);
 
   it('the page protocol (@marmeon/http/protocol) is browser-safe too', async () => {

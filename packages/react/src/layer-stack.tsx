@@ -1,4 +1,4 @@
-import { layers } from '@marmeon/http/client';
+import { layers } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
 import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { RegionOwnerContext, reloadsOf, RouterContext, type RouterValue } from './app.tsx';

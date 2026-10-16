@@ -73,15 +73,18 @@ export class DeclarationReader {
         case 'ExportNamedDeclaration':
           if (node.source) {
             const target = this.#relative(file, node.source.value);
-            if (target) {
+            // `export type { Guards } from …` makes no value: a class exported so cannot be injected, there is nothing to import at runtime.
+            if (target && node.exportKind !== 'type') {
               const targetExports = this.read(target).exports;
               for (const specifier of node.specifiers) {
+                if (specifier.exportKind === 'type') continue;
                 const location = targetExports.get(specifier.local.name ?? specifier.local.value);
                 if (location) info.exports.set(specifier.exported.name ?? specifier.exported.value, location);
               }
             }
           } else if (!node.declaration) {
             for (const specifier of node.specifiers) {
+              if (node.exportKind === 'type' || specifier.exportKind === 'type') continue;
               info.exports.set(specifier.exported.name ?? specifier.exported.value, { file, name: specifier.local.name });
             }
           } else {

@@ -9,6 +9,7 @@
  * so a feature cannot leak what it holds past a sign-out. Its own wiring (listeners, flags) is no data and may live in `setup`.
  */
 import type { PageObject } from '../protocol.ts';
+import type { FeatureHandle } from './handle.ts';
 import type { Visit } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';
 import type { HistoryState, NavigateEvent } from './history.ts';
@@ -22,7 +23,7 @@ import type { Scroll } from './scroll.ts';
 export type { FeatureHost } from './core.ts';
 
 /** A feature of the client core: `setup` runs once per navigator and returns what adapters use of it. */
-export interface Feature<API = unknown> {
+export interface Feature<API = unknown> extends FeatureHandle<API> {
   readonly name: string;
   setup(host: FeatureHost): API;
   /**
@@ -34,9 +35,21 @@ export interface Feature<API = unknown> {
   readonly order?: number;
 }
 
+/** The features `defineFeature` made: a handle that is none of them never reaches `setup`. */
+const made = new WeakMap<object, Feature>();
+
 /** A feature — `defineFeature('islands', (host) => ({ region: … }), 7)`. */
 export function defineFeature<API>(name: string, setup: (host: FeatureHost) => API, order?: number): Feature<API> {
-  return { name, setup, order };
+  const feature: Feature<API> = Object.freeze({ name, setup, order });
+  made.set(feature, feature);
+  return feature;
+}
+
+/** The feature behind a handle. Throws for an object `defineFeature` did not make. */
+export function featureOf<API>(handle: FeatureHandle<API>): Feature<API> {
+  const feature = typeof handle === 'object' && handle !== null ? made.get(handle) : undefined;
+  if (!feature) throw new TypeError(`Not a feature of the client core: ${String((handle as { name?: unknown } | null)?.name ?? handle)}. Features come from defineFeature().`);
+  return feature as Feature<API>;
 }
 
 /**

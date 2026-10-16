@@ -293,6 +293,18 @@ The provider reads it from `app.modules`. A setting of the whole app goes into `
 A page name with `::` (`package::Page`) belongs to a package: an app's page files may not contain it, and
 `marmeon route:types` fails when one does (see [where pages live](pages.md#where-pages-live)).
 
+## Writing a UI adapter
+
+A UI adapter renders pages; the client core does the rest (the protocol, history, the page cache, requests and every security
+invariant). `@marmeon/http/client/adapter` is what an adapter builds on: the `Navigator`, regions and layers, `defineFeature`, reading the
+first page, the form and link helpers and the page helpers. It is [experimental](releases.md#experimental) until a second adapter
+exists, so it can change in any minor version. `@marmeon/http/client` keeps what an app uses (the `hooks` and `tabSync` handles for
+`useFeature()`, `xsrfToken`, the types an adapter re-exports) and does not change with it.
+
+Browser code of a package imports the core only from these two entries, and never from `@marmeon/http/internal`: that one is server
+code. The contract of an adapter, what it has to provide and the test that proves it, is in
+[CONTRIBUTING.md](../CONTRIBUTING.md#the-client-core-and-its-adapters).
+
 ## Deprecating an API
 
 Remove an API in two steps: first mark it deprecated in a release, then delete it in the next major version. Mark it twice, in

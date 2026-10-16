@@ -1,7 +1,8 @@
-import { defaultTitle, type TitleRegistry, type TitleTemplate } from '@marmeon/http/client';
+import { defaultTitle, type TitleRegistry } from '@marmeon/http/client/adapter';
+import type { TitleTemplate } from '@marmeon/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 
-export { defaultTitle } from '@marmeon/http/client';
+export { defaultTitle } from '@marmeon/http/client/adapter';
 export type { TitleTemplate } from '@marmeon/http/client';
 
 /** Server rendering: where `<Head>`s record themselves for the document head. */

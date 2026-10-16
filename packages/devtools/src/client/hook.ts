@@ -3,7 +3,8 @@
  * navigator is made — the bar attaches its data feature (`devtools` of `@marmeon/http/client`) there — and with what only it
  * sees: optimistic patches, and hydration errors from the React adapter. Those calls exist in development builds only.
  */
-import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal, type DevtoolsHook, type Navigator } from '@marmeon/http/client';
+import { devtools, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client/adapter';
+import { devtoolsReports, type DevtoolsHook, type Navigator } from '@marmeon/http/client/adapter';
 
 /** A navigator the bar attached to, with what it records of it. */
 export interface Attached {

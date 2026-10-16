@@ -28,7 +28,7 @@ describe('preloads against a real build', { timeout: 60_000 }, () => {
       'index.html': '<!doctype html><html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>',
       'bootstrap/client.ts': [
         "import pages from 'virtual:marmeon/pages';",
-        "import { loadHistoryFallback, loadTabSync } from '@marmeon/http/client';",
+        "import { loadHistoryFallback, loadTabSync } from '@marmeon/http/client/adapter';",
         'const navigation = (window as { navigation?: unknown }).navigation;',
         'void loadTabSync();',
         'if (!navigation) void loadHistoryFallback();',

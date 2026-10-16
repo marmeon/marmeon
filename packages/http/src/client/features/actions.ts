@@ -15,7 +15,7 @@ export interface ActionsFeature {
   submissions(): Submissions;
 }
 
-export const actions = defineFeature('actions', (host): ActionsFeature => {
+export const actions = /* @__PURE__ */ defineFeature('actions', (host): ActionsFeature => {
   const actionsHost = actionHost(host);
   // The actions and route forms under way — a slot of the document. Whether one of a route is under way is `isPending`'s too.
   const listed = slot('submissions', () => {

@@ -299,7 +299,7 @@ function errorsOf(body: unknown): ValidationErrors | undefined {
  *
  * @experimental
  */
-export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsFeature => {
+export const devtools = /* @__PURE__ */ defineFeature('devtools', (host: FeatureHost): DevtoolsFeature => {
   const win = host.window as { fetch: FeatureHost['window']['fetch']; EventSource?: new (url: string) => EventSource };
   const listeners = new Set<() => void>();
   let queued = false;

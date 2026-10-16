@@ -1,4 +1,6 @@
-import { remember, type LooksLikePassword, type LooksSensitive, type Remembered } from '@marmeon/http/client';
+import type { Remembered } from '@marmeon/http/client/adapter';
+import type { LooksLikePassword, LooksSensitive } from '@marmeon/http/client';
+import { remember } from '@marmeon/http/client/adapter';
 import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 import { useIslandScope } from './island-scope.ts';

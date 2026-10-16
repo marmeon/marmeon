@@ -551,7 +551,7 @@ export declare function useAction<const N extends BrowserRouteNameInput>(name: C
 // useBlocker
 export declare function useBlocker({ when, message }: UseBlockerOptions): void;
 // useFeature
-export declare function useFeature<API>(feature: Feature<API>): API;
+export declare function useFeature<API>(feature: FeatureHandle<API>): API;
 // useFlash
 export declare function useFlash<const K extends string>(key: CheckFlashKey<K>, handler: FlashHandler<K & FlashKey>): void;
 // useForm
@@ -981,7 +981,19 @@ export declare function useTable<T extends AnyTableData>(data: T, options?: UseT
 
 Types from other packages: `@tanstack/react-table`, `react`
 
-### Referenced, not exported
+### Experimental
+
+```ts
+// ToTanStackOptions
+export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
+    readonly features: F;
+    readonly columns?: readonly ColumnDef<F, RowOf<T>>[];
+}
+// toTanStack
+export declare function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, RowOf<T>>;
+```
+
+### Experimental, referenced (not exported)
 
 ```ts
 // CheckboxProps
@@ -1055,16 +1067,4 @@ export interface TableColumnView<T extends AnyTableData> extends Omit<TableColum
     } | undefined;
     toggleSort(): void;
 }
-```
-
-### Experimental
-
-```ts
-// ToTanStackOptions
-export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
-    readonly features: F;
-    readonly columns?: readonly ColumnDef<F, RowOf<T>>[];
-}
-// toTanStack
-export declare function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, RowOf<T>>;
 ```

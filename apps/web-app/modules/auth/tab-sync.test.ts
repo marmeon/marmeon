@@ -1,6 +1,7 @@
 import { DOCUMENT_HEADER, SESSION_PATH } from '@marmeon/http';
 import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
-import { loadHistoryFallback, Navigator, tabSync, type NavigatorWindow } from '@marmeon/http/client';
+import { tabSync } from '@marmeon/http/client';
+import { loadHistoryFallback, Navigator, type NavigatorWindow } from '@marmeon/http/client/adapter';
 import { createHttpKernel } from '@marmeon/server';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';

@@ -81,7 +81,7 @@ export interface LiveFeature {
   readonly connection: string;
 }
 
-export const live = defineFeature('live', (host): LiveFeature => {
+export const live = /* @__PURE__ */ defineFeature('live', (host): LiveFeature => {
   const win = host.window;
   const doc = win.document;
   // Not crypto.randomUUID(): that needs a secure context (a page over plain HTTP on another host than localhost has none).

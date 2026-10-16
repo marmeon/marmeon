@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConfirmRequest } from './confirm.ts';
+import { defineFeature } from './feature.ts';
 import { guard } from './features/guard.ts';
 import { tabSync } from './features/tab-sync.ts';
 import { HistoryWriter } from './history.ts';
@@ -235,7 +236,7 @@ describe('tab sync writes its epoch through the history writer — no wrapping',
     const { navigator } = boot(win, { ...page('/a'), epoch: 'e1' }, { features: [tabSync] });
     await navigator.visit('/b');
     expect(win.entries.map((entry) => JSON.parse(entry.state).epoch), 'an entry without its epoch').toEqual(['e1', 'e1']);
-    const host = navigator.use({ name: 'peek', setup: (given) => given }) as { history: HistoryWriter };
+    const host = navigator.use(defineFeature('peek', (given) => given)) as { history: HistoryWriter };
     expect(Object.hasOwn(host.history, 'push') || Object.hasOwn(host.history, 'replace')).toBe(false);
     expect(host.history.push).toBe(HistoryWriter.prototype.push);
   });
