@@ -6,7 +6,29 @@
 
 Types from other packages: none
 
-### Stable
+### Referenced, not exported
+
+```ts
+// LiveBackend
+export interface LiveBackend {
+    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
+    end(scope: string): Promise<void>;
+    seqs(channels: readonly string[]): Promise<number[]>;
+    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
+    close(): Promise<void>;
+}
+```
+
+### Augments
+
+```ts
+// @marmeon/notifications.NotificationChannelMap
+interface NotificationChannelMap {
+    live: {};
+}
+```
+
+### Experimental
 
 ```ts
 // BroadcastRecorder
@@ -117,29 +139,7 @@ export declare function notificationsChannel(recipient: {
 }): string;
 ```
 
-### Referenced, not exported
-
-```ts
-// LiveBackend
-export interface LiveBackend {
-    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
-    end(scope: string): Promise<void>;
-    seqs(channels: readonly string[]): Promise<number[]>;
-    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
-    close(): Promise<void>;
-}
-```
-
-### Augments
-
-```ts
-// @marmeon/notifications.NotificationChannelMap
-interface NotificationChannelMap {
-    live: {};
-}
-```
-
-## Environment
+## Experimental
 
 ```ts
 // LIVE_DRIVER

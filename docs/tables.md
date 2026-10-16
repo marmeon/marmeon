@@ -2,6 +2,8 @@
 
 ## Introduction
 
+This package is experimental, and so are `@marmeon/react/table` and `@marmeon/react/table-tanstack`: they can change in any minor release. See [the release policy](releases.md#experimental).
+
 A list that people sort, filter, page through, tick rows in, act on and download is where the classic leaks of a web app live: a
 hidden column that still travels in the props, a sort parameter that reaches `ORDER BY`, a bulk action that takes another tenant's
 ids, a cell that a spreadsheet runs as a formula. A data table handles them once. You write **one definition** per table on the

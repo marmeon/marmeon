@@ -2,6 +2,8 @@
 
 ## Introduction
 
+`@marmeon/live` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
+
 When something changes, the other tabs that show it should follow: another user added a link to a profile, a notification
 arrived, an administrator removed a row. A page **follows a channel**, and when something changes the server sends the channel a
 **hint**. Every tab that follows the channel then reloads the props it named, through the page's own route, as a partial reload.

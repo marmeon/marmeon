@@ -50,12 +50,18 @@ export interface MarmeonPluginApi {
 export interface MarmeonOptions {
   /** Entries relative to the app root — override only if the app keeps them elsewhere. */
   entries?: Partial<MarmeonEntries>;
-  /** Page components, as a glob relative to the app root (`virtual:marmeon/pages`). Default `modules/*\/views/**\/*.tsx`.
-   * Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. See docs/vite.md#options. */
+  /**
+   * Page components, as a glob relative to the app root (`virtual:marmeon/pages`). Default `modules/*\/views/**\/*.tsx`.
+   * Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. See docs/vite.md#options.
+   *
+   * @experimental The route types read the default pattern, so a custom glob is only half supported; it may change in a minor release.
+   */
   pages?: string | string[];
   /**
    * Language files, as a glob relative to the app root (`virtual:marmeon/lang`, one chunk per file — the browser loads
    * only the page's locale). Default `modules/*\/lang/*.ts` and `lang/*.ts` (namespace `app`).
+   *
+   * @experimental `@marmeon/i18n` reads only `lang/` and `modules/*\/lang/` on the server, so a custom glob reaches the browser but not the server's translator; this may change in a minor release.
    */
   lang?: string | string[];
   /**

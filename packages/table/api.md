@@ -6,7 +6,109 @@
 
 Types from other packages: `kysely`
 
-### Stable
+### Referenced, not exported
+
+```ts
+// ActionOptions
+interface ActionOptions {
+    readonly authorization?: RowAuthorization | undefined;
+    readonly visibility?: Visibility | undefined;
+    readonly confirm?: boolean;
+    readonly max?: number;
+}
+// CheckKeyColumn
+export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? StringReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
+// CheckRegistrar
+type CheckRegistrar<R, T> = T extends Table<any, infer Ctx> ? (RegistrarContext<R> extends Ctx ? T : {
+    readonly 'the table needs more of the request than these routes have — register them on the registrar of its page, after its middleware (authenticate(), …)': Ctx;
+}) : T;
+// ColumnProblem
+type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends StringReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
+// CtxOf
+type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
+// DbOf
+type DbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, any, any> ? DB : never;
+// FilterValue
+type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
+// HandlerProblem
+type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
+    handle(first: infer First, ...rest: any[]): unknown;
+} ? (Bulk extends true ? readonly Row[] : Row) extends First ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}` : never;
+// KeyPrefix
+type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
+// KeyType
+export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
+// OutOf
+type OutOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<any, any, infer O> ? O : {};
+// PlainColumns
+type PlainColumns<DB, TB extends keyof DB> = Extract<StringReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
+// PolicyProblem
+type PolicyProblem<P, K extends string, Row, Name extends string> = [P] extends [unknown] ? unknown extends P ? never : K extends AbilityOf<P> ? Row extends ResourceOf<P, K> ? never : `'${Name}': ${K}(user, row) of its policy takes another row than the table's (${JoinNames<keyof Row & string>})` : `'${Name}': '${K}' is not an ability of its policy — it has ${JoinNames<AbilityOf<P>>}` : never;
+// Problem
+type Problem<M extends string> = {
+    readonly [K in M]: true;
+};
+// QueryValuesOf
+export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<([SortableNames<Cols>] extends [never] ? {} : {
+    readonly [K in `${KeyPrefix<P>}sort`]: SortableNames<Cols> | `-${SortableNames<Cols>}`;
+}) & (Pg extends {
+    readonly cursor: true;
+} ? {
+    readonly [K in `${KeyPrefix<P>}cursor`]?: string;
+} : {
+    readonly [K in `${KeyPrefix<P>}page`]: number;
+}) & {
+    readonly [K in `${KeyPrefix<P>}per_page`]: SizesOf<Pg>;
+} & ([SearchableNames<Cols>] extends [never] ? {} : {
+    readonly [K in `${KeyPrefix<P>}search`]: string;
+}) & {
+    readonly [N in keyof Filters & string as `${KeyPrefix<P>}filter[${N}]`]?: FilterValue<Filters[N]>;
+}>;
+// RegistrarContext
+type RegistrarContext<R> = R extends Route<infer TState, infer TParams, infer TBindings> ? Omit<HttpContext<TState, Omit<TParams, keyof TBindings> & TBindings>, 'query'> : never;
+// ScalarKey
+type ScalarKey = string | number;
+// SearchableNames
+type SearchableNames<Cols> = {
+    [A in keyof Cols]: Cols[A] extends Column<string, boolean, true> ? A : never;
+}[keyof Cols];
+// Selected
+type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColumns<DB, TB>>;
+// SelectedProblem
+type SelectedProblem<DB, TB extends keyof DB, O, A, C> = C extends Column<infer R extends string, boolean, infer Q> ? R extends Selected<DB, TB, O> ? A extends R ? Q extends true ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE)` : never : `'${A & string}' reads '${R}', a value the query selects — name the column '${R}': ${R}: column('${R}')` : never : never;
+// Simplify
+type Simplify<T> = {
+    [K in keyof T]: T[K];
+} & {};
+// SizesOf
+type SizesOf<Pg> = Pg extends {
+    readonly perPage: infer S;
+} ? (S extends readonly (infer N)[] ? N : S) : 25 | 50 | 100;
+// SortableForEveryone
+type SortableForEveryone<Cols> = {
+    [A in keyof Cols]: Cols[A] extends Column<string, true, boolean, false> ? A : never;
+}[keyof Cols] & string;
+// SortableNames
+type SortableNames<Cols> = {
+    [A in keyof Cols]: Cols[A] extends Column<string, true> ? A : never;
+}[keyof Cols] & string;
+// TABLE_TYPES
+declare const TABLE_TYPES: unique symbol;
+// TableOf
+type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = Table<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof Cols & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
+    [A in keyof Cols as Cols[A] extends Column<string, true> ? A : never]: 0;
+} & string>;
+// TableQueryValues
+export type TableQueryValues = {
+    readonly [key: string]: string | number | undefined;
+};
+// TbOf
+type TbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
+// ValueOf
+type ValueOf<DB, TB extends keyof DB, O, C> = C extends Column<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
+```
+
+### Experimental
 
 ```ts
 // AnyBulkAction
@@ -356,113 +458,11 @@ export declare const filter: {
 export declare function tableRoutes<R extends Route<any, any, any>, T extends Table>(Route: R, table: T & CheckRegistrar<R, T>): void;
 ```
 
-### Referenced, not exported
-
-```ts
-// ActionOptions
-interface ActionOptions {
-    readonly authorization?: RowAuthorization | undefined;
-    readonly visibility?: Visibility | undefined;
-    readonly confirm?: boolean;
-    readonly max?: number;
-}
-// CheckKeyColumn
-export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? StringReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
-// CheckRegistrar
-type CheckRegistrar<R, T> = T extends Table<any, infer Ctx> ? (RegistrarContext<R> extends Ctx ? T : {
-    readonly 'the table needs more of the request than these routes have — register them on the registrar of its page, after its middleware (authenticate(), …)': Ctx;
-}) : T;
-// ColumnProblem
-type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends StringReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
-// CtxOf
-type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
-// DbOf
-type DbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, any, any> ? DB : never;
-// FilterValue
-type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
-// HandlerProblem
-type HandlerProblem<H, Row, Name extends string, Bulk extends boolean> = H extends new (...args: any[]) => {
-    handle(first: infer First, ...rest: any[]): unknown;
-} ? (Bulk extends true ? readonly Row[] : Row) extends First ? never : `'${Name}': its handler's handle(${Bulk extends true ? 'rows' : 'row'}, ctx) takes other rows than the table's — they have ${JoinNames<keyof Row & string>}` : never;
-// KeyPrefix
-type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
-// KeyType
-export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
-// OutOf
-type OutOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<any, any, infer O> ? O : {};
-// PlainColumns
-type PlainColumns<DB, TB extends keyof DB> = Extract<StringReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
-// PolicyProblem
-type PolicyProblem<P, K extends string, Row, Name extends string> = [P] extends [unknown] ? unknown extends P ? never : K extends AbilityOf<P> ? Row extends ResourceOf<P, K> ? never : `'${Name}': ${K}(user, row) of its policy takes another row than the table's (${JoinNames<keyof Row & string>})` : `'${Name}': '${K}' is not an ability of its policy — it has ${JoinNames<AbilityOf<P>>}` : never;
-// Problem
-type Problem<M extends string> = {
-    readonly [K in M]: true;
-};
-// QueryValuesOf
-export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<([SortableNames<Cols>] extends [never] ? {} : {
-    readonly [K in `${KeyPrefix<P>}sort`]: SortableNames<Cols> | `-${SortableNames<Cols>}`;
-}) & (Pg extends {
-    readonly cursor: true;
-} ? {
-    readonly [K in `${KeyPrefix<P>}cursor`]?: string;
-} : {
-    readonly [K in `${KeyPrefix<P>}page`]: number;
-}) & {
-    readonly [K in `${KeyPrefix<P>}per_page`]: SizesOf<Pg>;
-} & ([SearchableNames<Cols>] extends [never] ? {} : {
-    readonly [K in `${KeyPrefix<P>}search`]: string;
-}) & {
-    readonly [N in keyof Filters & string as `${KeyPrefix<P>}filter[${N}]`]?: FilterValue<Filters[N]>;
-}>;
-// RegistrarContext
-type RegistrarContext<R> = R extends Route<infer TState, infer TParams, infer TBindings> ? Omit<HttpContext<TState, Omit<TParams, keyof TBindings> & TBindings>, 'query'> : never;
-// ScalarKey
-type ScalarKey = string | number;
-// SearchableNames
-type SearchableNames<Cols> = {
-    [A in keyof Cols]: Cols[A] extends Column<string, boolean, true> ? A : never;
-}[keyof Cols];
-// Selected
-type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColumns<DB, TB>>;
-// SelectedProblem
-type SelectedProblem<DB, TB extends keyof DB, O, A, C> = C extends Column<infer R extends string, boolean, infer Q> ? R extends Selected<DB, TB, O> ? A extends R ? Q extends true ? `'${R}' is a value the query selects — it can be shown and sorted by, not searched (the search runs in the query's WHERE)` : never : `'${A & string}' reads '${R}', a value the query selects — name the column '${R}': ${R}: column('${R}')` : never : never;
-// Simplify
-type Simplify<T> = {
-    [K in keyof T]: T[K];
-} & {};
-// SizesOf
-type SizesOf<Pg> = Pg extends {
-    readonly perPage: infer S;
-} ? (S extends readonly (infer N)[] ? N : S) : 25 | 50 | 100;
-// SortableForEveryone
-type SortableForEveryone<Cols> = {
-    [A in keyof Cols]: Cols[A] extends Column<string, true, boolean, false> ? A : never;
-}[keyof Cols] & string;
-// SortableNames
-type SortableNames<Cols> = {
-    [A in keyof Cols]: Cols[A] extends Column<string, true> ? A : never;
-}[keyof Cols] & string;
-// TABLE_TYPES
-declare const TABLE_TYPES: unique symbol;
-// TableOf
-type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = Table<RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>, CtxOf<Q>, keyof Cols & string, keyof Filters & string, keyof Actions & string, keyof Bulk & string, keyof Exports & string, QueryValuesOf<P, Cols, Filters, Pg>, keyof {
-    [A in keyof Cols as Cols[A] extends Column<string, true> ? A : never]: 0;
-} & string>;
-// TableQueryValues
-export type TableQueryValues = {
-    readonly [key: string]: string | number | undefined;
-};
-// TbOf
-type TbOf<Q> = Q extends (...args: any[]) => SelectQueryBuilder<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
-// ValueOf
-type ValueOf<DB, TB extends keyof DB, O, C> = C extends Column<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
-```
-
 ## `@marmeon/table/client`
 
 Types from other packages: none
 
-### Stable
+### Experimental
 
 ```ts
 // ActionOf
