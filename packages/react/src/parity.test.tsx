@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 import { loadHistoryFallback, remember, type Navigator, type RegionOwner } from '@marmeon/http/client';
-import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, type PageObject, type RouteManifest } from '@marmeon/http/page';
+import type { RouteManifest } from '@marmeon/http/page';
+import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { act, useContext } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

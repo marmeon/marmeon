@@ -34,7 +34,7 @@ describe('@marmeon/devtools/client is browser-safe', () => {
     })) as Rolldown.RolldownOutput[];
     const modules = output.flatMap(({ output: chunks }) => chunks.flatMap((chunk) => (chunk.type === 'chunk' ? chunk.moduleIds.filter((id) => !id.startsWith('\0')).map((id) => relative(packages, id).replaceAll('\\', '/')) : [])));
     expect([...externals]).toEqual([]);
-    const shared = ['http/src/page.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'router/src/url.ts'];
+    const shared = ['http/src/page.ts', 'http/src/protocol.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'router/src/url.ts'];
     expect(modules.filter((id) => !id.startsWith('devtools/src/client/') && !id.startsWith('http/src/client/') && !shared.includes(id))).toEqual([]);
     expect(modules).toEqual(expect.arrayContaining(['devtools/src/client/index.ts', 'devtools/src/client/bar.ts', 'http/src/client/features/devtools.ts']));
   }, 30_000);

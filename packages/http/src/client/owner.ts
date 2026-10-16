@@ -5,7 +5,7 @@
  * live regions, `live`), remembered state (`entry`). Closing it aborts what is under way and lets go of what is live.
  */
 import type { KeptRegion, RegionReloadOptions } from './region.ts';
-import type { RegionObject } from '../page.ts';
+import type { RegionObject } from '../protocol.ts';
 import type { Reloading, ReloadSpec } from './optimistic.ts';
 import { slot } from './feature.ts';
 

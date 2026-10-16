@@ -5,7 +5,9 @@
  * screen in a slot of the document, each layer entry's place in the stack in a slot of the entry — both emptied by the core.
  */
 import { atOrigin } from '../request.ts';
-import { LAYER_BACKDROP, LAYER_CLOSE_HEADER, MAX_LAYER_DEPTH, REGION_HEADER, type FlashMessage, type LayerClose, type PageObject } from '../../page.ts';
+import { LAYER_BACKDROP, type FlashMessage } from '../../page.ts';
+import type { LayerClose } from '../../protocol.ts';
+import { LAYER_CLOSE_HEADER, MAX_LAYER_DEPTH, REGION_HEADER, type PageObject } from '../../protocol.ts';
 import { updatePage } from '../cache.ts';
 import type { FeatureHost, PlaceOptions } from '../core.ts';
 import type { Visit, VisitCallbacks } from '../events.ts';

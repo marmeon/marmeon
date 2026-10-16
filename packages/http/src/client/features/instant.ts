@@ -3,7 +3,7 @@
  * stays the navigator's (and its entry the current one) until then — a visit that ends without its page shows it again. Its
  * code loads where an instant link renders (`loadInstant` in `lazy.ts`): a visit before then shows no placeholder.
  */
-import type { PageObject } from '../../page.ts';
+import type { PageObject } from '../../protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, type PendingVisit, type VisitPart } from '../feature.ts';
 import type { Scroll } from '../scroll.ts';

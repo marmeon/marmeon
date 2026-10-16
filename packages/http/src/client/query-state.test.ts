@@ -7,7 +7,7 @@
 // happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there.
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../page.ts';
+import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../protocol.ts';
 import { assertQueryPage, linkQuery, Navigator, pageQuery, queryState, queryUrl, withoutDefaults } from './index.ts';
 
 const DEFAULTS = { q: '', sort: 'name' };

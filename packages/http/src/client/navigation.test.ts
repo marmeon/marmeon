@@ -1,4 +1,4 @@
-import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../page.ts';
+import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../protocol.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
 import type { PatchTarget } from './optimistic.ts';

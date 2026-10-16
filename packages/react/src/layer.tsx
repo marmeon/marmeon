@@ -1,5 +1,5 @@
 import type { Layer, LayerCloseOptions } from '@marmeon/http/client';
-import type { PageObject } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import { createContext, useContext, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 
 /*
@@ -33,7 +33,7 @@ export type PageLayer = LayerVariant | LayerFrame;
 export interface LayerState {
   /**
    * Rendered as a layer — false for the same view rendered as a page: its controller answered without `.layer()`, or the
-   * answer would have opened a layer beyond the tenth (`MAX_LAYER_DEPTH` of `@marmeon/http/page`). A link without `layer` opens a layer all the same.
+   * answer would have opened a layer beyond the tenth (`MAX_LAYER_DEPTH` of `@marmeon/http/protocol`). A link without `layer` opens a layer all the same.
    */
   readonly isLayer: boolean;
   /** 1 for the first layer over the page, 2 for one over that … — 0 for a page. */

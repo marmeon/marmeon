@@ -1,5 +1,6 @@
 import { pageQuery, queryUrl } from '@marmeon/http/client';
-import type { PageObject, PaginationMeta } from '@marmeon/http/page';
+import type { PaginationMeta } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import type { ReactNode } from 'react';
 import { useRouterContext } from './app.tsx';
 import { Link } from './link.tsx';

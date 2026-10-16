@@ -1,4 +1,5 @@
-import type { DeferredResult, PageObject, RegionResult } from '@marmeon/http/page';
+import type { DeferredResult, RegionResult } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import type { ApplicationDefinition } from '@marmeon/core';
 import type { PageRenderer } from '@marmeon/server';
 import { createViteDevRenderer } from '@marmeon/server/internal';

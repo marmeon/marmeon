@@ -1,5 +1,6 @@
 import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteLookup, RouteNameInput } from '@marmeon/router';
-import { LAYER_CLOSE_HEADER, regionOf, type LayerClose } from './page.ts';
+import type { LayerClose } from './protocol.ts';
+import { LAYER_CLOSE_HEADER, regionOf } from './protocol.ts';
 import { RedirectResult, type Flasher } from './redirect.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 import { carryFlash, serializedFlash, withFlashMethod, type FlashMethod } from './flash.ts';

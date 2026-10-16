@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../page.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../protocol.ts';
 import { Navigator } from './navigation.ts';
 import type { RegionOwner } from './owner.ts';
 import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';

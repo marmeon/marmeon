@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Connections, InfrastructureTransactionError, Migrator } from '@marmeon/database';
-import { UPLOAD_HEADER } from '@marmeon/http/page';
+import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@marmeon/storage';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';

@@ -1,6 +1,6 @@
 import { token } from '@marmeon/core';
 import type { HttpContext, Next } from '@marmeon/router';
-import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, VERSION_HEADER } from './page.ts';
+import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, VERSION_HEADER } from './protocol.ts';
 
 /** The current build's asset version — set by the server kernel; null means "do not check" (development). */
 export interface AssetVersion {

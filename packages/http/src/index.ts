@@ -15,7 +15,7 @@ export {
   isPageObject,
   isPrefetch,
   regionOf,
-} from './page.ts';
+} from './protocol.ts';
 export { always, deepMerge, defer, merge, mergeOf, once, optional, propKind, resolveProp } from './props.ts';
 export type {
   AlwaysProp,
@@ -40,8 +40,9 @@ export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export { addFlash } from './flash.ts';
 export type { FlashEntry, FlashMethod } from './flash.ts';
 export type { CheckFlashKey, CheckUploadField, FlashData, FlashKey, FlashMessage, FlashValue, Upload, UploadField, UploadToken } from './page.ts';
-export type { LiveHint, LiveSubscription } from './page.ts';
-export type { CheckViewName, DeferredResult, ErrorPageProps, InstantProps, LayerClose, OnceInfo, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export type { LiveHint, LiveSubscription } from './protocol.ts';
+export type { CheckViewName, DeferredResult, ErrorPageProps, InstantProps, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export type { OnceInfo, LayerClose, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus } from './protocol.ts';
 export { browserRoutes, staticView } from './browser-routes.ts';
 export type { BrowserRoute, BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';

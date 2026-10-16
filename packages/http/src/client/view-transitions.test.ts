@@ -5,7 +5,7 @@
  * the Navigation API's path and on the History fallback's.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import { guard } from './features/guard.ts';
 import { loadViewTransitions } from './lazy.ts';
 import { Navigator, type ViewTransitionOption } from './navigation.ts';

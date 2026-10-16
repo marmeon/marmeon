@@ -177,7 +177,7 @@ in the `package.json` of `@marmeon/http`:
   "name": "@marmeon/http",
   "marmeon": {
     "providers": ["HttpServiceProvider"],
-    "browser": ["src/client/**", "src/page.ts", "src/upload-header.ts", "src/live-protocol.ts", "src/tab-sync-protocol.ts"]
+    "browser": ["src/client/**", "src/page.ts", "src/protocol.ts", "src/upload-header.ts", "src/live-protocol.ts", "src/tab-sync-protocol.ts"]
   }
 }
 ```

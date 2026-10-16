@@ -8,7 +8,7 @@
  * the session cookie changed under this one — drops everything kept, and the server, seeing a scope that is not the
  * session's, sends them anyway. A full load (sign-in, sign-out, a new build, a language switch) starts with nothing.
  */
-import { ONCE_HEADER, ONCE_SCOPE_HEADER, type PageObject } from '../page.ts';
+import { ONCE_HEADER, ONCE_SCOPE_HEADER, type PageObject } from '../protocol.ts';
 import { slot } from './feature.ts';
 
 interface Kept {

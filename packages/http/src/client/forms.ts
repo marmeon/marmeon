@@ -1,4 +1,4 @@
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 
 /**
  * The first validation message per field of a page — the server sends a list per field (the shared `errors` prop,

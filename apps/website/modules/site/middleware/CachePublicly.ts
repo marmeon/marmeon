@@ -10,7 +10,7 @@ import {
   PURPOSE_HEADER,
   REGION_HEADER,
   VERSION_HEADER,
-} from '@marmeon/http/page';
+} from '@marmeon/http/protocol';
 import { SiteConfig } from '../../../config/site.ts';
 
 /**

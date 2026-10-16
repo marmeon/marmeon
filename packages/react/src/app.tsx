@@ -27,7 +27,8 @@ import {
   type VisitEvents,
   type VisitOptions,
 } from '@marmeon/http/client';
-import { matchesPath, pageInfo, type BrowserRouteNameInput, type CheckIslandRouteName, type PageInfo, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@marmeon/http/page';
+import { matchesPath, pageInfo, type BrowserRouteNameInput, type CheckIslandRouteName, type PageInfo, type PageProps, type RouteManifest, type SharedProps } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import type { Catalog, MessageLoader } from '@marmeon/i18n/messages';
 import {
   addTransitionType,

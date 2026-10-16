@@ -2,7 +2,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@marmeon/core';
 import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@marmeon/http';
 import { LOCATION_HEADER, PAGE_HEADER } from '@marmeon/http/internal';
-import { UPLOAD_HEADER } from '@marmeon/http/page';
+import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';

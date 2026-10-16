@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, type PageObject } from '../page.ts';
+import { LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, type PageObject } from '../protocol.ts';
 import type { ConfirmRequest } from './confirm.ts';
 import { defaultFormEntries, fieldPath, formObject, restoreFormEntries } from './forms.ts';
 import { remember } from './features/remember.ts';

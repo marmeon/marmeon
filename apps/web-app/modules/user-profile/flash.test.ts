@@ -1,5 +1,5 @@
 import { UserRepository, type User } from '#modules/auth';
-import { FLASH_WAITING_HEADER } from '@marmeon/http/page';
+import { FLASH_WAITING_HEADER } from '@marmeon/http/protocol';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';

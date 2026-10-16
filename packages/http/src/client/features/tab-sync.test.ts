@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PageObject } from '../../page.ts';
+import type { PageObject } from '../../protocol.ts';
 import { DOCUMENT_HEADER, SESSION_PATH } from '../../tab-sync-protocol.ts';
 import type { Feature } from '../feature.ts';
 import { guard } from './guard.ts';

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ACTION_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, VALIDATE_HEADER, type PageObject } from '../../page.ts';
+import { ACTION_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, VALIDATE_HEADER, type PageObject } from '../../protocol.ts';
 import { boot, FakeWindow, ORIGIN, page, settle, withActions, type FakeEventSource } from '../test-window.ts';
 import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal, type TimelineEntry } from './devtools.ts';
 import { islands } from './islands.ts';

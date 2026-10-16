@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from './page.ts';
+import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from './protocol.ts';
 import { partialReloadOf, resolvePageProps } from './page-props.ts';
 import { always, deepMerge, defer, merge, optional } from './props.ts';
 import { SharedData } from './shared-data.ts';

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/members" }
-import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/page';
+import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
 import type { TableData } from '@marmeon/table/client';
 import { rowPaginationFeature, rowSelectionFeature, rowSortingFeature, tableFeatures, useTable as useTanStackTable } from '@tanstack/react-table';
 import { act } from 'react';

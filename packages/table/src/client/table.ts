@@ -5,7 +5,7 @@
  * offer throws before a request goes out.
  */
 import { pageQuery, queryState, queryUrl, selection, type ActionOutcome, type Confirm, type Navigator, type QueryState, type Selection, type SelectionKey } from '@marmeon/http/client';
-import type { PageObject } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import { sortValue, type SortDirection, type TableActionResult, type TableData } from './index.ts';
 
 /** Any table's props. */

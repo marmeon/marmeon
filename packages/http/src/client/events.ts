@@ -3,7 +3,8 @@
  * or `cancel`, and always `finish` — per visit (`onStart`, …) and for every request (`navigator.on`). Plus `flash` and
  * `version`.
  */
-import type { FlashMessage, PageObject, ValidationErrors } from '../page.ts';
+import type { FlashMessage, ValidationErrors } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { VisitMethod } from './navigation.ts';
 import { call, notify } from './notify.ts';
 

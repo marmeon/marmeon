@@ -1,5 +1,7 @@
 import type { DeepPartial, FieldOf, IslandNameOf, IslandPropsOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
-import type { CheckFlashKey, FlashValue, LayerClose, RegionOutcomeStatus } from '@marmeon/http/page';
+import type { CheckFlashKey, FlashValue } from '@marmeon/http/page';
+import type { LayerClose } from '@marmeon/http/protocol';
+import type { RegionOutcomeStatus } from '@marmeon/http/protocol';
 
 type Assertions = {
   [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];

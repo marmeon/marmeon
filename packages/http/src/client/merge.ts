@@ -2,7 +2,7 @@
  * Merging partial reloads into what a page (or a region) has — `merge()`, `deepMerge()`, `matchOn()` and deferred props —
  * and the other ways a loaded page is shaped before it lands: only some props (`pick`), deferred ones kept, the query kept.
  */
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { ReloadSpec } from './optimistic.ts';
 
 /**

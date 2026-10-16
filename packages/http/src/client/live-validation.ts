@@ -8,7 +8,8 @@
  * (`/password/i`) are never sent — not even in the body: a strength rule or a confirmation is checked when the form is sent.
  * Files neither (they go with the submit).
  */
-import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, VALIDATE_HEADER, VALIDATED_HEADER, type ValidationErrors } from '../page.ts';
+import type { ValidationErrors } from '../page.ts';
+import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
 import type { ActionException, ActionHost, ActionMethod } from './action.ts';
 import { notify } from './notify.ts';
 

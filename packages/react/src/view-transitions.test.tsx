@@ -8,7 +8,7 @@
  * render's promise) changes. With it, the render's promise still resolves only once the page is committed.
  */
 import { loadHistoryFallback, loadInstant, type Navigator } from '@marmeon/http/client';
-import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/page';
+import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { Suspense, use, ViewTransition, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

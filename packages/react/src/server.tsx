@@ -1,4 +1,5 @@
-import type { PageObject, RouteManifest, SsrRender } from '@marmeon/http/page';
+import type { RouteManifest, SsrRender } from '@marmeon/http/page';
+import type { PageObject } from '@marmeon/http/protocol';
 import type { MessageLoader } from '@marmeon/i18n/messages';
 import { cloneElement, type ReactElement } from 'react';
 import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';

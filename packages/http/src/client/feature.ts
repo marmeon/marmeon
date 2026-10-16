@@ -8,7 +8,7 @@
  * itself: an entry's when memory lets go of it, and all of them when the document is left (signing in or out, a new build),
  * so a feature cannot leak what it holds past a sign-out. Its own wiring (listeners, flags) is no data and may live in `setup`.
  */
-import type { PageObject } from '../page.ts';
+import type { PageObject } from '../protocol.ts';
 import type { Visit } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';
 import type { HistoryState, NavigateEvent } from './history.ts';

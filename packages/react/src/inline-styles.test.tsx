@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
-import { PAGE_HEADER, type PageObject, type RouteManifest } from '@marmeon/http/page';
+import type { RouteManifest } from '@marmeon/http/page';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
 import { loadHistoryFallback, type VisitException } from '@marmeon/http/client';
 import { act, type CSSProperties } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type LiveSubscription, type PageObject } from '../page.ts';
+import { PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type LiveSubscription, type PageObject } from '../protocol.ts';
 import { islands } from './features/islands.ts';
 import { LIVE_QUIET } from './features/live.ts';
 import { mergePage } from './merge.ts';

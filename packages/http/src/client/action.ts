@@ -7,7 +7,8 @@
  * run as for a form. Its answer is never cached (the server sends `no-store`, the request asks for none) and never followed
  * when it redirects. An action after signing out (401, 419) ends as an `exception`: shown, never retried by itself.
  */
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type FlashMessage, type ValidationErrors } from '../page.ts';
+import type { FlashMessage, ValidationErrors } from '../page.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER } from '../protocol.ts';
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
 import { notify } from './notify.ts';

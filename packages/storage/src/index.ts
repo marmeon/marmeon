@@ -173,10 +173,10 @@ export class StorageServiceProvider implements ServiceProvider {
     checkS3Sdk(options, uploads.disk);
 
     let http: typeof import('@marmeon/http') | undefined;
-    let page: typeof import('@marmeon/http/page') | undefined;
+    let page: typeof import('@marmeon/http/protocol') | undefined;
     try {
       http = await import('@marmeon/http');
-      page = await import('@marmeon/http/page');
+      page = await import('@marmeon/http/protocol');
     } catch (error) {
       if ((error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     }

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/" }
 import { Navigator, type DevtoolsGlobal } from '@marmeon/http/client';
-import { PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/page';
+import { PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
 import { act, Suspense } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMarmeonApp } from './client.tsx';

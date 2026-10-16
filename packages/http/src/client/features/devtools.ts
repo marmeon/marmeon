@@ -7,6 +7,9 @@
  * `__MARMEON_DEVTOOLS_HOOK__`, whose calls a production build drops. What it holds is the server's data — only in slots of the
  * document, emptied when the document is left, never in `history.state` or any storage.
  */
+import type {
+  ValidationErrors,
+} from '../../page.ts';
 import {
   ACTION_HEADER,
   LOCATION_HEADER,
@@ -19,8 +22,7 @@ import {
   RELOAD_HEADER,
   UPLOAD_HEADER,
   VALIDATE_HEADER,
-  type ValidationErrors,
-} from '../../page.ts';
+} from '../../protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot, type PendingVisit } from '../feature.ts';
 import type { Navigator } from '../navigation.ts';

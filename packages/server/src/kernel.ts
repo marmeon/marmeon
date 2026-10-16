@@ -40,7 +40,7 @@ import {
   VERSION_HEADER,
   partialReloadOf,
 } from '@marmeon/http/internal';
-import { UPLOAD_HEADER } from '@marmeon/http/page';
+import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import {
   CookieJar,
   editableResponse,

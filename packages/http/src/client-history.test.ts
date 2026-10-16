@@ -1,7 +1,7 @@
 import type { HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
-import { LOCATION_HEADER, PAGE_HEADER } from './page.ts';
+import { LOCATION_HEADER, PAGE_HEADER } from './protocol.ts';
 
 const ctx = (method: string, path: string, headers: Record<string, string> = {}) =>
   ({ request: new Request(`http://app.test${path}`, { method, headers }) }) as unknown as HttpContext;

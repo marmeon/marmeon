@@ -1,5 +1,5 @@
 import { RateLimiter } from '@marmeon/cache';
-import { ACTION_REDIRECT_HEADER, VALIDATED_HEADER } from '@marmeon/http/page';
+import { ACTION_REDIRECT_HEADER, VALIDATED_HEADER } from '@marmeon/http/protocol';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';

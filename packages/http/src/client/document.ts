@@ -1,4 +1,4 @@
-import { isPageObject, PAGE_SCRIPT_ID, type PageObject } from '../page.ts';
+import { isPageObject, PAGE_SCRIPT_ID, type PageObject } from '../protocol.ts';
 
 /**
  * The page the server rendered — the JSON in `<script id="marmeon-page" type="application/json">` (in the document

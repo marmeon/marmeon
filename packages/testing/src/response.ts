@@ -1,4 +1,15 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
+import type {
+  CheckFlashKey,
+  CheckViewName,
+  FlashMessage,
+  FlashValue,
+  FormOf,
+  IslandOf,
+  IslandProps,
+  PageProps,
+  ViewOf,
+} from '@marmeon/http/page';
 import {
   ACTION_REDIRECT_HEADER,
   FLASH_HEADER,
@@ -8,20 +19,11 @@ import {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   VALIDATED_HEADER,
-  type CheckFlashKey,
-  type CheckViewName,
-  type FlashMessage,
-  type FlashValue,
-  type FormOf,
-  type IslandOf,
-  type IslandProps,
   type LayerClose,
   type PageObject,
-  type PageProps,
   type RegionObject,
   type RegionOutcomeStatus,
-  type ViewOf,
-} from '@marmeon/http/page';
+} from '@marmeon/http/protocol';
 import type { AuthUser } from '@marmeon/auth';
 import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';

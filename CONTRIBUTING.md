@@ -654,7 +654,7 @@ An adapter provides:
 
 `@marmeon/react` has no provider: `"marmeon": { "browser": ["src/**"] }` marks every source as browser code, so discovery
 registers nothing for it and `marmeon package:build` embeds no injection lists. A test bundles it for the browser and fails on any module
-outside its own sources, the client core, `@marmeon/http/page` and `@marmeon/router/url`, and on any npm package but React.
+outside its own sources, the client core, `@marmeon/http/page`, `@marmeon/http/protocol` and `@marmeon/router/url`, and on any npm package but React.
 
 ### Client features
 

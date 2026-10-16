@@ -9,12 +9,16 @@ export { isIslandResult } from './island.ts';
 export { isCloseLayerResult, isLayerResult } from './layer.ts';
 export { isRedirectResult } from './redirect.ts';
 export {
+  ERROR_PAGE,
+  LAYER_BACKDROP,
+  pageName,
+  scriptJson,
+} from './page.ts';
+export {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
-  ERROR_PAGE,
   FLASH_HEADER,
   FLASH_WAITING_HEADER,
-  LAYER_BACKDROP,
   LAYER_CLOSE_HEADER,
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
@@ -32,9 +36,7 @@ export {
   VALIDATE_HEADER,
   VALIDATED_HEADER,
   VERSION_HEADER,
-  pageName,
-  scriptJson,
-} from './page.ts';
+} from './protocol.ts';
 export { heldOnceProps, partialReloadOf, propOrigins, resolvePageProps } from './page-props.ts';
 export { flashOf, serializedFlash } from './flash.ts';
 export { BROWSER_ROUTES_FILE, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
