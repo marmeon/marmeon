@@ -139,9 +139,27 @@ into six jobs that run side by side (the checks, the tarballs, the image, Postgr
 ```sh
 pnpm test:pgsql   # MARMEON_TEST_PGSQL_URL, DB_CONNECTION=pgsql and DB_URL → postgres://marmeon:secret@localhost:55432/marmeon
 pnpm test:redis   # MARMEON_TEST_REDIS_URL=redis://127.0.0.1:56379
-pnpm test:s3      # MARMEON_TEST_S3_ENDPOINT=http://127.0.0.1:56333 — packages/storage only
+pnpm test:s3      # MARMEON_TEST_S3_ENDPOINT=http://127.0.0.1:56333
                   # (MARMEON_TEST_S3_KEY / MARMEON_TEST_S3_SECRET default to the compose identity)
 ```
+
+Each of them runs only the test files that use its service, not the whole suite again. `scripts/test/services.ts` derives the
+selection from the source — nothing is listed or marked by hand — and `vitest.config.ts` makes one Vitest project per set of
+services (`plain`, `pgsql`, `pgsql+redis`, …; `pnpm test:pgsql` is `pnpm test --project '*pgsql*'`, and a path filter still
+narrows it). A file is selected for a service by the files it reaches through relative imports (never through a package
+specifier, so import a `__fixtures__` file relatively; the selection throws on a package specifier that names `__fixtures__`):
+
+- **Postgres**: a file reads `MARMEON_TEST_PGSQL_URL`; a test or helper file (anything in `apps/`, `scripts/`, `__fixtures__/`,
+  `test-helpers/`, `*.test-support.ts` or a test) builds a `database: 'refresh'` app; the test lives in an app that depends on
+  `@marmeon/database` (`DB_CONNECTION` from the environment wins over the app's `.env`); a test or helper starts a nested Vitest
+  (its refresh tests inherit `DB_CONNECTION`).
+- **Redis** and **S3**: a file reads `MARMEON_TEST_REDIS_URL` or `MARMEON_TEST_S3_ENDPOINT`.
+
+Each project gets tripwire values for the services its files were not selected for: `DB_CONNECTION=pgsql` with a Postgres URL, a Redis URL and an S3
+endpoint on `not-selected-for-test-….invalid` hosts (which never resolve), so a file that reaches a service the rules do not
+see fails in the plain `pnpm test` instead of silently dropping out of the service runs. An error that names
+`not-selected-for-test-pgsql.invalid` (or `-redis`, `-s3`) means exactly that: import the helper relatively, or extend the
+rule in `scripts/test/services.ts` — do not change the test.
 
 With `DB_CONNECTION=pgsql` and `DB_URL` in the environment, refreshed test apps of any app use Postgres: the role needs the
 right to create databases (one per worker, next to the configured one). Run `test:pgsql` for every change to the database,
