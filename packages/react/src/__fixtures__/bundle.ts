@@ -9,12 +9,15 @@ import { gzipSync } from 'node:zlib';
 import { build, type InlineConfig, type Rolldown } from 'vite';
 
 /**
- * Bundle measurements for the size budget, the leak test and `pnpm size`: Vite's **app** mode as `marmeon build` runs it
+ * Bundle measurements for the leak test and `pnpm size`: Vite's **app** mode as `marmeon build` runs it
  * (not `lib` mode, which leaves ES libraries partly unminified), production defines, minified, gzip level 9 per chunk.
  */
 
-/** `packages/` — module ids are reported relative to it (`http/dist/client/navigation.js`). */
-export const PACKAGES = realpathSync(fileURLToPath(new URL('../../../', import.meta.url)));
+/**
+ * `packages/` — module ids are reported relative to it (`http/dist/client/navigation.js`). `MARMEON_MEASURE_PACKAGES` points it
+ * at another checkout's `packages/`: how `pnpm size --base` measures the base commit with this checkout's script.
+ */
+export const PACKAGES = realpathSync(process.env.MARMEON_MEASURE_PACKAGES ?? fileURLToPath(new URL('../../../', import.meta.url)));
 
 /** Not part of the measurement: React comes from the app, i18n only when the app translates (an optional peer). */
 export const EXTERNAL = /^(react|react-dom|@marmeon\/i18n)(\/|$)/;
@@ -61,6 +64,10 @@ export interface AppBundle {
   };
 }
 
+/** The measurement's app directory for the checkout whose `packages/` is `packages`. */
+export const bundleDirectory = (packages: string): string =>
+  join(realpathSync(tmpdir()), `marmeon-bundle-${createHash('sha256').update(packages).digest('hex').slice(0, 12)}`);
+
 let workspace: string | undefined;
 
 /**
@@ -70,7 +77,7 @@ let workspace: string | undefined;
  */
 function appDirectory(): string {
   if (workspace) return workspace;
-  const dir = join(realpathSync(tmpdir()), `marmeon-bundle-${createHash('sha256').update(PACKAGES).digest('hex').slice(0, 12)}`);
+  const dir = bundleDirectory(PACKAGES);
   mkdirSync(join(dir, 'node_modules', '@marmeon'), { recursive: true });
   const link = (target: string, path: string) => {
     try {
@@ -392,7 +399,7 @@ export const appEntry = (...names: string[]) => entryOf('@marmeon/react', ['crea
 export const tableEntry = (...extra: string[]) =>
   `${appEntry()}import { useTable } from '@marmeon/react/table';\n${extra.join('')}globalThis.__table = useTable;\n`;
 
-/** The measured scenarios; `size-budget.json` holds a limit for each. */
+/** The measured scenarios; `pnpm size` reports each. */
 export const SCENARIOS = {
   /** The client core alone. */
   core: coreEntry(),
@@ -407,84 +414,5 @@ export const SCENARIOS = {
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
 
-/** A scenario's line in `size-budget.json`, in KB gzip. */
-export interface BudgetLine {
-  /** The ratchet: the size may not grow over it, and it only ever goes down. */
-  readonly limit: number;
-  /** A ceiling, not a ratchet: no request to lower it when the size shrinks (totals that may shift between chunks). */
-  readonly ceiling?: boolean;
-}
-
-export interface Budget {
-  readonly gzipKB: Readonly<Record<Scenario, BudgetLine>>;
-  /** The client core and the React adapter in an app's initial chunks (`pnpm size`; their attributed share). */
-  readonly appsGzipKB: Readonly<Record<string, BudgetLine>>;
-  readonly stillLeaking: Readonly<Record<'core' | 'emptyApp' | 'minimalApp', readonly string[]>>;
-}
-
-export const BUDGET_FILE = fileURLToPath(new URL('../../size-budget.json', import.meta.url));
-export const BUDGET_WHERE = 'packages/react/size-budget.json';
-export const readBudget = (): Budget => JSON.parse(readFileSync(BUDGET_FILE, 'utf8')) as Budget;
-
-/**
- * Lowers limits in place, so the file keeps its layout: `"emptyApp": { "limit": 14.08` → `"emptyApp": { "limit": 13.95`. Never
- * raises one — a limit that would go up stays as it is.
- */
-export function lowerLimits(limits: Readonly<Record<string, number>>, file = BUDGET_FILE): void {
-  let text = readFileSync(file, 'utf8');
-  for (const [name, limit] of Object.entries(limits)) {
-    text = text.replace(new RegExp(`("${name}":\\s*\\{\\s*"limit":\\s*)([\\d.]+)`), (whole, head: string, current: string) =>
-      limit < Number(current) ? `${head}${limit.toFixed(2)}` : whole,
-    );
-  }
-  writeFileSync(file, text);
-}
-
-/**
- * The reserve above the measured size that every limit keeps: a saving lowers a limit to the new
- * size + 0.5, extra cost eats the reserve and is never refilled.
- */
-export const RESERVE_KB = 0.5;
-/**
- * A size this far under its limit asks for a lower limit — a ratchet only holds if it follows every gain. More than the reserve
- * (0.6 > 0.5): a limit at measured + 0.5 holds, one with a hidden extra reserve (over measured + 0.6) fails.
- */
-export const SHRINK_KB = 0.6;
-/** The rule, for the messages. */
-export const BUDGET_RULE =
-  `limits only go down; a limit is the measured size + ${RESERVE_KB} KB at most — MARMEON_SIZE_BUDGET=update lowers it ` +
-  'to that after a saving and never raises one; extra cost eats the reserve, which is never refilled';
-
-export const kb = (bytes: number): number => Math.round((bytes / 1024) * 100) / 100;
-
-/** The limit for a size of `size` KB: `size` plus the reserve, to 0.01 KB. */
-export function limitFor(size: number): number {
-  return Math.round((size + RESERVE_KB) * 100) / 100;
-}
-
-/**
- * What `MARMEON_SIZE_BUDGET=update` writes for a size of `size` KB: its {@link limitFor} when that is lower than the line's limit,
- * otherwise `undefined` — the limit stays (a ceiling is never moved, and no limit ever goes up).
- */
-export function loweredLimit(size: number, line: BudgetLine): number | undefined {
-  if (line.ceiling) return undefined;
-  const limit = limitFor(size);
-  return limit < line.limit ? limit : undefined;
-}
-
-/** Why `size` (KB gzip) breaks its budget line — or `undefined` when it holds. */
-export function budgetProblem(name: string, size: number, line: BudgetLine): string | undefined {
-  if (size > line.limit) {
-    return (
-      `${name} grew to ${size} KB gzip, over its limit of ${line.limit} KB (${BUDGET_WHERE}). ` +
-      `Find what grew (\`pnpm size\` attributes every byte to its module) instead of raising the limit (${BUDGET_RULE}).`
-    );
-  }
-  if (!line.ceiling && size < Math.round((line.limit - SHRINK_KB) * 100) / 100) {
-    return (
-      `${name} shrank to ${size} KB gzip, more than ${SHRINK_KB} KB under its limit of ${line.limit} KB — lower it in ${BUDGET_WHERE} ` +
-      `to ${limitFor(size).toFixed(2)} so the gain is kept (or run with MARMEON_SIZE_BUDGET=update; ${BUDGET_RULE}).`
-    );
-  }
-  return undefined;
-}
+/** Bytes as KB, to 0.01. */
+export const kb =(bytes: number): number => Math.round((bytes / 1024) * 100) / 100;

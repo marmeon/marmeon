@@ -30,7 +30,7 @@ the same time — they share their databases.
   `NODE_ENV` is checked positively (`=== 'development' || === 'test'`, or `environment.isDevelopment()`), never
   `!== 'production'`; no Valibot import outside `packages/*/src`; no comparisons with other frameworks in docs, stubs or
   messages. Details: CONTRIBUTING.md › "Rules over the source".
-- **Bundle-size limits only go down** (`packages/react/size-budget.json`).
+- **Bundle sizes are reported, not limited**: the `size` check lists them against the base commit in the job summary; a maintainer weighs each pull request's growth.
 - **Public API, env default or command changed** → its page under `docs/` in the same commit; a change an app can notice
   a breaking change → its entry in `UPGRADING.md`, written when the release is prepared (`pnpm release:prepare`); say in the PR
   description what an app has to do.
