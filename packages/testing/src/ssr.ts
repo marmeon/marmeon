@@ -1,4 +1,5 @@
 import type { DeferredResult, PageObject, RegionResult } from '@marmeon/http/page';
+import type { ApplicationOptions } from '@marmeon/core';
 import { createViteDevRenderer, type PageRenderer } from '@marmeon/server';
 
 /** Marks a test request, so the SSR errors of exactly that request reach its response. */
@@ -15,6 +16,58 @@ export interface SsrOutcome {
    * hydrates. The response itself is the shell plus the late parts with their scripts, never equal to a complete render.
    */
   readonly rendered?: string | undefined;
+}
+
+/**
+ * One Vite dev server for a test file's server-rendered apps, started with {@link startSsrServer}: pass it as
+ * `createTestApp(…, { ssr: true, ssrServer })`. See docs/testing-pages.md#one-vite-server-per-file.
+ */
+export interface SsrServer {
+  /** The app's root directory the server was started for. */
+  readonly root: string;
+  /** Stops the server — in `afterAll`. Test apps still using it can no longer render. */
+  close(): Promise<void>;
+}
+
+interface SsrServerState {
+  readonly root: string;
+  readonly renderer: PageRenderer;
+  closed: boolean;
+}
+
+/** The renderer behind each {@link SsrServer}, kept out of the public shape. */
+const servers = new WeakMap<SsrServer, SsrServerState>();
+
+/**
+ * Starts one Vite dev server (through the app's `vite.config.ts`, as `marmeon dev` does) that every server-rendered test app
+ * of a file can share: start it in `beforeAll`, close it in `afterAll`. See docs/testing-pages.md#one-vite-server-per-file.
+ */
+export async function startSsrServer(application: ApplicationOptions): Promise<SsrServer> {
+  const { vite, renderer } = await createViteDevRenderer({ root: application.root });
+  const state: SsrServerState = { root: application.root, renderer, closed: false };
+  let closing: Promise<void> | undefined;
+  const server: SsrServer = Object.freeze({
+    root: application.root,
+    close: () => {
+      state.closed = true;
+      return (closing ??= vite.close());
+    },
+  });
+  servers.set(server, state);
+  return server;
+}
+
+/** Throws unless `server` is a running server made for the app at `root` — checked before a test app boots, and again when it renders. */
+export function checkSsrServer(server: SsrServer, root: string): void {
+  usable(server, root);
+}
+
+function usable(server: SsrServer, root: string): SsrServerState {
+  const state = servers.get(server);
+  if (!state) throw new Error('createTestApp(…, { ssrServer }): not a server made by startSsrServer().');
+  if (state.closed) throw new Error('The SSR server was closed — start it in beforeAll and close it in afterAll.');
+  if (state.root !== root) throw new Error(`createTestApp(…, { ssrServer }): the server was started for ${state.root}, the app's root is ${root}.`);
+  return state;
 }
 
 /** What one render resolved while it streamed — the browser renders the same again from it, never asking again. */
@@ -95,7 +148,13 @@ export class TestSsr {
     };
   }
 
-  static async start(root: string, options: { stream?: boolean } = {}): Promise<TestSsr> {
+  static async start(root: string, options: { stream?: boolean; server?: SsrServer } = {}): Promise<TestSsr> {
+    const { server } = options;
+    if (server) {
+      const state = usable(server, root);
+      // The shared Vite outlives this app: closing the app only drops its own error and island bookkeeping.
+      return new TestSsr(state.renderer, async () => {}, options);
+    }
     const { vite, renderer } = await createViteDevRenderer({ root });
     return new TestSsr(renderer, () => vite.close(), options);
   }

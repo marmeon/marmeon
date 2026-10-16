@@ -221,6 +221,34 @@ timing. An island with `load="visible"` is never rendered on the server. The fir
 the page's modules, which takes a moment. A test file with many rendering tests can share one app made in `beforeAll` and closed
 in `afterAll`, at the price that its tests share one database transaction.
 
+### One Vite server per file
+
+Every `ssr: true` test app starts its own Vite server, which costs seconds. `startSsrServer(application)` starts one that all the
+test apps of a file share, so each test keeps its own app, database transaction and session:
+
+```ts title="modules/notes/ssr.test.ts"
+import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
+import { afterAll, beforeAll, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+}, 30_000);
+afterAll(() => server?.close());
+
+it('renders a note on the server', async () => {
+  const app = await createTestApp(application, { database: 'refresh', ssr: true, ssrServer: server });
+  await app.get('/notes/1', { headers: { accept: 'text/html' } }).assertServerRendered();
+});
+```
+
+- Closing a test app never closes the server. Close it in `afterAll`; a test app made on a closed server throws.
+- `ssrServer` needs `ssr`, and the server must come from the same application (the same `root`). Both throw otherwise.
+- Render errors and resolved islands belong to the request that caused them, never to another test app.
+- The server keeps the modules it has loaded, as `marmeon dev` does. A test that changes the state of a view module, such as a
+  module-level cache, starts a server of its own.
+
 ### Streaming
 
 `ssr: 'stream'` answers as for a browser: the page's frame first, then the islands and deferred props that were not ready, in the
