@@ -863,7 +863,7 @@ export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
 
 Types from other packages: `react`
 
-### Stable
+### Experimental
 
 ```ts
 // ActionOf
@@ -981,18 +981,6 @@ export declare function useTable<T extends AnyTableData>(data: T, options?: UseT
 
 Types from other packages: `@tanstack/react-table`, `react`
 
-### Stable
-
-```ts
-// ToTanStackOptions
-export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
-    readonly features: F;
-    readonly columns?: readonly ColumnDef<F, RowOf<T>>[];
-}
-// toTanStack
-export declare function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, RowOf<T>>;
-```
-
 ### Referenced, not exported
 
 ```ts
@@ -1067,4 +1055,16 @@ export interface TableColumnView<T extends AnyTableData> extends Omit<TableColum
     } | undefined;
     toggleSort(): void;
 }
+```
+
+### Experimental
+
+```ts
+// ToTanStackOptions
+export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
+    readonly features: F;
+    readonly columns?: readonly ColumnDef<F, RowOf<T>>[];
+}
+// toTanStack
+export declare function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, RowOf<T>>;
 ```

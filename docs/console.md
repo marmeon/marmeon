@@ -212,6 +212,8 @@ its own. The [task scheduling](scheduling.md#commands) page covers the schedule.
 
 ## Tinker
 
+`marmeon tinker` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
+
 `marmeon tinker` opens a REPL with the booted app. It is Node's own REPL: `await` works at the top level, input may span several
 lines, and you type TypeScript with the same erasable syntax as the app's files:
 

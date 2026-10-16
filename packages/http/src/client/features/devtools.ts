@@ -28,7 +28,11 @@ import { defineFeature, slot, type PendingVisit } from '../feature.ts';
 import type { Navigator } from '../navigation.ts';
 import { notify } from '../notify.ts';
 
-/** What kind of request a timeline entry is. */
+/**
+ * What kind of request a timeline entry is.
+ *
+ * @experimental
+ */
 export type TimelineKind =
   /** The document itself (a full load) — seeded by the bar from what the server rendered. */
   | 'document'
@@ -53,7 +57,11 @@ export type TimelineKind =
   /** A hint on the live stream — no request of its own: what it reloads follows as a `background` visit or an island's reload. */
   | 'live';
 
-/** How a request ended. */
+/**
+ * How a request ended.
+ *
+ * @experimental
+ */
 export type TimelineOutcome =
   | 'ok'
   /** Validation errors came back (a form sent back, a 422). */
@@ -69,7 +77,11 @@ export type TimelineOutcome =
   /** A visit that took a page fetched ahead — no request of its own. */
   | 'prefetched';
 
-/** One request (or hint) of the timeline — oldest first. Fields fill in as its answer comes. */
+/**
+ * One request (or hint) of the timeline — oldest first. Fields fill in as its answer comes.
+ *
+ * @experimental
+ */
 export interface TimelineEntry {
   readonly id: number;
   readonly kind: TimelineKind;
@@ -106,7 +118,11 @@ export interface TimelineEntry {
   readonly hinted?: readonly string[] | null;
 }
 
-/** One optimistic patch as it was shown: the props it changed — before, and as the patch showed them. */
+/**
+ * One optimistic patch as it was shown: the props it changed — before, and as the patch showed them.
+ *
+ * @experimental
+ */
 export interface PatchSnapshot {
   readonly id: number;
   /** The timeline entry of the action or visit it went with. */
@@ -120,7 +136,11 @@ export interface PatchSnapshot {
   state: 'shown' | 'committed' | 'removed';
 }
 
-/** An error React recovered from while hydrating — a mismatch, or a part that failed on the server. */
+/**
+ * An error React recovered from while hydrating — a mismatch, or a part that failed on the server.
+ *
+ * @experimental
+ */
 export interface HydrationIssue {
   readonly at: number;
   /** The page it happened on. */
@@ -134,6 +154,8 @@ export interface HydrationIssue {
 /**
  * The dev hook — `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set by the devtools' client before the app starts. The core and the
  * React adapter call it only under `process.env.NODE_ENV === 'development' || … === 'test'` (gone from a production build), each method optional.
+ *
+ * @experimental
  */
 export interface DevtoolsHook {
   /** A navigator was made — the bar attaches {@link devtools} to it. */
@@ -150,12 +172,20 @@ export interface DevtoolsHook {
   recoverable(error: unknown, component: string, server: boolean): void;
 }
 
-/** Where the dev hook is (`globalThis`) — the shape the core reads it with. */
+/**
+ * Where the dev hook is (`globalThis`) — the shape the core reads it with.
+ *
+ * @experimental
+ */
 export interface DevtoolsGlobal {
   __MARMEON_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
 }
 
-/** What the bar uses of the feature. Its lists are the slots' — empty again once the document is left. */
+/**
+ * What the bar uses of the feature. Its lists are the slots' — empty again once the document is left.
+ *
+ * @experimental
+ */
 export interface DevtoolsFeature {
   /** Every request and hint, oldest first (the last {@link TIMELINE_LIMIT}). */
   readonly timeline: readonly TimelineEntry[];
@@ -185,7 +215,11 @@ export interface DevtoolsFeature {
   readonly record: Omit<DevtoolsHook, 'navigator'> & { document(url: string, requestId: string | undefined): void };
 }
 
-/** How many timeline entries are kept — the oldest go first. */
+/**
+ * How many timeline entries are kept — the oldest go first.
+ *
+ * @experimental
+ */
 export const TIMELINE_LIMIT = 300;
 /** How many patches and hydration errors are kept. */
 const LIST_LIMIT = 100;
@@ -262,6 +296,8 @@ function errorsOf(body: unknown): ValidationErrors | undefined {
  * The devtools' data, as a feature: attached by the devtools' client through the dev hook, never by an app. It wraps
  * the window's `fetch` and `EventSource` (to see every request and live hint), hangs on the visit pipeline (`start`: what a visit
  * asked for), and keeps what it saw in slots of the document only.
+ *
+ * @experimental
  */
 export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsFeature => {
   const win = host.window as { fetch: FeatureHost['window']['fetch']; EventSource?: new (url: string) => EventSource };
@@ -524,6 +560,8 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
  * The dev hook's reports, handed to the feature `api()` returns (the navigator's the bar attached to) — what the devtools' client
  * sets as `__MARMEON_DEVTOOLS_HOOK__`, with its own `navigator`. Reports before a navigator (a hydration error while the first
  * page hydrates) wait for it — at most a few.
+ *
+ * @experimental
  */
 export function devtoolsReports(api: () => DevtoolsFeature | undefined): Omit<DevtoolsHook, 'navigator'> & { flush(): void } {
   const early: (() => void)[] = [];

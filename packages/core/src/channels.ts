@@ -7,7 +7,11 @@ import { channel as plainChannel, tracingChannel, type TracingChannel } from 'no
 import type { Application } from './application.ts';
 import { currentJob, currentRequest, currentTask } from './request-context.ts';
 
-/** What every message carries. */
+/**
+ * What every message carries.
+ *
+ * @experimental
+ */
 export interface MessageBase {
   /** The application the message is about — `channels.subscribe(app, …)` passes on only its own. */
   readonly app: Application;
@@ -21,7 +25,11 @@ export interface MessageBase {
   readonly task?: string;
 }
 
-/** What a traced operation knows once it ended — set before the `end` (and `error`) handlers run. */
+/**
+ * What a traced operation knows once it ended — set before the `end` (and `error`) handlers run.
+ *
+ * @experimental
+ */
 export interface Ended {
   /** How long it took (ms). */
   durationMs?: number;
@@ -29,7 +37,11 @@ export interface Ended {
   error?: unknown;
 }
 
-/** `tracing:marmeon:http.request` — one request through the kernel, from the request id to the response's headers. */
+/**
+ * `tracing:marmeon:http.request` — one request through the kernel, from the request id to the response's headers.
+ *
+ * @experimental
+ */
 export interface HttpRequestMessage extends MessageBase, Ended {
   readonly requestId: string;
   readonly method: string;
@@ -64,7 +76,11 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   input?: Readonly<Record<string, unknown>>;
 }
 
-/** What a request answered with when it was a page (a view, a layer) or an island: its view, and how big each prop was. */
+/**
+ * What a request answered with when it was a page (a view, a layer) or an island: its view, and how big each prop was.
+ *
+ * @experimental
+ */
 export interface PageSummary {
   /** The view (`users/Show`). */
   readonly component: string;
@@ -84,7 +100,11 @@ export interface PageSummary {
   readonly kind: 'page' | 'layer' | 'island';
 }
 
-/** `tracing:marmeon:db.query` — one statement, published once it finished (Kysely reports queries afterwards). */
+/**
+ * `tracing:marmeon:db.query` — one statement, published once it finished (Kysely reports queries afterwards).
+ *
+ * @experimental
+ */
 export interface DbQueryMessage extends MessageBase, Ended {
   /** The connection's name (`default`). */
   readonly connection: string;
@@ -98,7 +118,11 @@ export interface DbQueryMessage extends MessageBase, Ended {
   durationMs: number;
 }
 
-/** `tracing:marmeon:queue.dispatch` — one `dispatch()`, `bulk()` or `chain()` of the `Queue`. */
+/**
+ * `tracing:marmeon:queue.dispatch` — one `dispatch()`, `bulk()` or `chain()` of the `Queue`.
+ *
+ * @experimental
+ */
 export interface QueueDispatchMessage extends MessageBase, Ended {
   readonly kind: 'dispatch' | 'bulk' | 'chain';
   /** The jobs' names (`static job`), in order. */
@@ -122,7 +146,11 @@ export interface QueueDispatchMessage extends MessageBase, Ended {
   traceparent?: string;
 }
 
-/** `tracing:marmeon:queue.job` — one attempt of a job (in a worker, the `sync` connection, or a test's `app.queue.work()`). */
+/**
+ * `tracing:marmeon:queue.job` — one attempt of a job (in a worker, the `sync` connection, or a test's `app.queue.work()`).
+ *
+ * @experimental
+ */
 export interface QueueJobMessage extends MessageBase, Ended {
   readonly job: string;
   /** This job's id. */
@@ -143,7 +171,11 @@ export interface QueueJobMessage extends MessageBase, Ended {
   outcome?: 'done' | 'discarded' | 'released' | 'failed';
 }
 
-/** `tracing:marmeon:schedule.task` — one run of a scheduled task. */
+/**
+ * `tracing:marmeon:schedule.task` — one run of a scheduled task.
+ *
+ * @experimental
+ */
 export interface ScheduleTaskMessage extends MessageBase, Ended {
   readonly task: string;
   /** The minute it was due (epoch ms). */
@@ -154,7 +186,11 @@ export interface ScheduleTaskMessage extends MessageBase, Ended {
   skipped?: string;
 }
 
-/** `tracing:marmeon:mail.send` — a mail sent now, queued (composed now, sent by a worker), or sent by that worker. */
+/**
+ * `tracing:marmeon:mail.send` — a mail sent now, queued (composed now, sent by a worker), or sent by that worker.
+ *
+ * @experimental
+ */
 export interface MailSendMessage extends MessageBase, Ended {
   /** The mailable's class name. */
   readonly mailable: string;
@@ -173,7 +209,11 @@ export interface MailSendMessage extends MessageBase, Ended {
   attachments?: { readonly filename: string; readonly bytes: number; readonly contentType?: string }[];
 }
 
-/** `tracing:marmeon:notification.send` — one notification for one recipient: queued (`send`) or delivered (`sendNow`, the worker). */
+/**
+ * `tracing:marmeon:notification.send` — one notification for one recipient: queued (`send`) or delivered (`sendNow`, the worker).
+ *
+ * @experimental
+ */
 export interface NotificationSendMessage extends MessageBase, Ended {
   /** `static notification`. */
   readonly notification: string;
@@ -186,14 +226,22 @@ export interface NotificationSendMessage extends MessageBase, Ended {
   outcome?: 'delivered' | 'gone' | 'delivered-before';
 }
 
-/** `tracing:marmeon:live.refresh` — a live hint going out (after its commit). */
+/**
+ * `tracing:marmeon:live.refresh` — a live hint going out (after its commit).
+ *
+ * @experimental
+ */
 export interface LiveRefreshMessage extends MessageBase, Ended {
   readonly channel: string;
   /** The props it names; `null`: every prop each follower follows. */
   readonly only: readonly string[] | null;
 }
 
-/** `tracing:marmeon:render.ssr` — server rendering of a page, until its shell (or, for a bot, the whole page) is ready. */
+/**
+ * `tracing:marmeon:render.ssr` — server rendering of a page, until its shell (or, for a bot, the whole page) is ready.
+ *
+ * @experimental
+ */
 export interface SsrRenderMessage extends MessageBase, Ended {
   /** The page's view. */
   readonly component: string;
@@ -203,7 +251,11 @@ export interface SsrRenderMessage extends MessageBase, Ended {
   streamed?: boolean;
 }
 
-/** `tracing:marmeon:command.run` — one `marmeon <command>` run in its own process (not a scheduled one: that is a task). */
+/**
+ * `tracing:marmeon:command.run` — one `marmeon <command>` run in its own process (not a scheduled one: that is a task).
+ *
+ * @experimental
+ */
 export interface CommandRunMessage extends MessageBase, Ended {
   /** Its name: `migrate`, `db:seed`. */
   readonly command: string;
@@ -213,7 +265,11 @@ export interface CommandRunMessage extends MessageBase, Ended {
   exitCode?: number;
 }
 
-/** `marmeon:event` — an app event dispatched through the `EventDispatcher` (also one a test's `EventFake` holds back). */
+/**
+ * `marmeon:event` — an app event dispatched through the `EventDispatcher` (also one a test's `EventFake` holds back).
+ *
+ * @experimental
+ */
 export interface EventDispatchMessage extends MessageBase {
   /** The event object — raw: redact before recording. */
   readonly event: object;
@@ -223,7 +279,11 @@ export interface EventDispatchMessage extends MessageBase {
   readonly listeners: readonly string[];
 }
 
-/** `marmeon:log` — a log entry as written, at any level (the logger's level does not filter it). */
+/**
+ * `marmeon:log` — a log entry as written, at any level (the logger's level does not filter it).
+ *
+ * @experimental
+ */
 export interface LogMessage extends MessageBase {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
   readonly message: string;
@@ -231,7 +291,11 @@ export interface LogMessage extends MessageBase {
   readonly context: Readonly<Record<string, unknown>>;
 }
 
-/** `marmeon:exception` — an error a request ended in, on its way to the `ExceptionHandler`. */
+/**
+ * `marmeon:exception` — an error a request ended in, on its way to the `ExceptionHandler`.
+ *
+ * @experimental
+ */
 export interface ExceptionMessage extends MessageBase {
   readonly error: unknown;
   /** What the client gets: an `HttpError`'s status, 422 for invalid input, else 500. */
@@ -240,7 +304,11 @@ export interface ExceptionMessage extends MessageBase {
   readonly path: string;
 }
 
-/** The traced operations and their messages. Packages may add their own through declaration merging. */
+/**
+ * The traced operations and their messages. Packages may add their own through declaration merging.
+ *
+ * @experimental
+ */
 export interface TracingMessages {
   'http.request': HttpRequestMessage;
   'db.query': DbQueryMessage;
@@ -254,7 +322,11 @@ export interface TracingMessages {
   'command.run': CommandRunMessage;
 }
 
-/** The plain channels (one message, nothing traced) and their messages. */
+/**
+ * The plain channels (one message, nothing traced) and their messages.
+ *
+ * @experimental
+ */
 export interface EventMessages {
   log: LogMessage;
   exception: ExceptionMessage;
@@ -264,7 +336,11 @@ export interface EventMessages {
 export type TracingName = keyof TracingMessages & string;
 export type EventName = keyof EventMessages & string;
 export type ChannelName = TracingName | EventName;
-/** The message of a channel: `ChannelMessage<'db.query'>`. */
+/**
+ * The message of a channel: `ChannelMessage<'db.query'>`.
+ *
+ * @experimental
+ */
 export type ChannelMessage<N extends ChannelName> = N extends TracingName ? TracingMessages[N] : N extends EventName ? EventMessages[N] : never;
 
 /** What a subscriber of a traced operation hears. */
@@ -326,7 +402,11 @@ function guarded<M>(name: string, handler: ((message: M) => void) | undefined, a
   };
 }
 
-/** What `channels.subscribe` takes for a channel: `{ start?, end?, error? }` for a traced one, one function for a plain one. */
+/**
+ * What `channels.subscribe` takes for a channel: `{ start?, end?, error? }` for a traced one, one function for a plain one.
+ *
+ * @experimental
+ */
 export type ChannelHandlers<N extends ChannelName> = N extends TracingName ? TracingHandlers<TracingMessages[N]> : (message: ChannelMessage<N>) => void;
 
 function subscribe<N extends ChannelName>(app: Application, name: N, handlers: ChannelHandlers<N>): () => void;

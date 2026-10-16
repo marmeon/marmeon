@@ -21,6 +21,7 @@ export const TINKER_HISTORY = 'storage/framework/tinker_history';
  */
 export class TinkerCommand {
   static command = 'tinker';
+  static experimental = true;
   static description = 'Interact with the application (a REPL; --sandbox rolls back, --execute runs code)';
   static usage = '[--sandbox] [--execute "<code>"] [--no-history]';
   static options = {

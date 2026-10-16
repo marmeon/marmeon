@@ -15,8 +15,6 @@ export interface MarmeonOptions {
         client?: string;
         ssr?: string;
     };
-    pages?: string | string[];
-    lang?: string | string[];
     routeSinks?: readonly RouteSink[];
     serverModules?: readonly string[];
     test?: boolean;
@@ -41,6 +39,15 @@ export type RouteSink = {
 };
 // marmeon
 export declare function marmeon(options?: MarmeonOptions): Plugin[];
+```
+
+### Experimental
+
+```ts
+// MarmeonOptions.lang
+lang?: string | string[];
+// MarmeonOptions.pages
+pages?: string | string[];
 ```
 
 ## `@marmeon/vite/client`

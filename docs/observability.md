@@ -2,6 +2,8 @@
 
 ## Introduction
 
+The channel names are stable. The shape of their messages and `@marmeon/otel` are experimental: they can change in any minor release. See [the release policy](releases.md#experimental).
+
 The framework reports what it does: every request, query, job, mail, notification, live hint, scheduled run, command, log entry,
 exception and event. It publishes these reports on channels of Node's `node:diagnostics_channel`, and the framework's tools
 listen in, among others the [devtools](devtools.md) and the `Server-Timing` header while you develop, and OpenTelemetry in

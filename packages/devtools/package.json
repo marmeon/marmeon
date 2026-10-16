@@ -76,6 +76,7 @@
     "build": "tsc -b"
   },
   "marmeon": {
+    "experimental": true,
     "providers": [
       "DevtoolsServiceProvider"
     ],

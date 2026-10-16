@@ -2,6 +2,8 @@
 
 ## Introduction
 
+`@marmeon/devtools` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
+
 While you develop, the devtools record what your app does: requests, queries, jobs, mails, notifications, log entries,
 exceptions, scheduled runs, live hints, events and commands. They show it at `/_marmeon/devtools`, and a small bar at the bottom
 right of every page shows the requests of that page. Values that look like secrets, such as a password, a token or a link's

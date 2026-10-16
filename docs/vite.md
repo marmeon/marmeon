@@ -118,6 +118,8 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | `test` | `false` | For `vitest.config.ts`. |
 | `viteEnv` | `false` | Keep Vite's own handling of `.env` files and `VITE_*` variables. See [Environment variables](#environment-variables). |
 
+The options `pages` and `lang` are experimental: they can change in any minor release. See [the release policy](releases.md#experimental).
+
 ## Environment variables
 
 Vite normally reads the `.env` files of the app's folder and writes every `VITE_*` variable that client code reads through

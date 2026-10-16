@@ -6,7 +6,14 @@
 
 Types from other packages: none
 
-### Stable
+### Referenced, not exported
+
+```ts
+// DEFINITION
+declare const DEFINITION: unique symbol;
+```
+
+### Experimental
 
 ```ts
 // AnyEntry
@@ -361,18 +368,11 @@ export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications
 export declare function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition;
 ```
 
-### Referenced, not exported
-
-```ts
-// DEFINITION
-declare const DEFINITION: unique symbol;
-```
-
 ## `@marmeon/devtools/client`
 
 Types from other packages: none
 
-### Stable
+### Experimental
 
 ```ts
 // Attached
@@ -413,7 +413,7 @@ export declare const TABS: readonly ['visits', 'page', 'layers', 'optimistic', '
 export declare function installDevtoolsHook(target: DevtoolsGlobal, onAttach: (attached: Attached) => void): () => void;
 ```
 
-## Environment
+## Experimental
 
 ```ts
 // APP_ENV
@@ -424,11 +424,6 @@ export declare function installDevtoolsHook(target: DevtoolsGlobal, onAttach: (a
 `DEVTOOLS_ENABLED` — optional
 // NODE_ENV
 `NODE_ENV` — optional
-```
-
-## Commands
-
-```ts
 // devtools:clear
 marmeon devtools:clear
 // devtools:prune
