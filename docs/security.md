@@ -276,4 +276,5 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the
   table's routes.
 - Update the framework's packages together and read [UPGRADING.md](../UPGRADING.md). Security fixes go to the latest minor
-  version, as the [releases](releases.md#node-and-security-fixes) page explains.
+  version (and, from 1.0 on, to the previous major for 12 months), as the [releases](releases.md#which-versions-get-fixes) page
+  explains.

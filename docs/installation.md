@@ -18,7 +18,8 @@ when you start the app.
 ## Requirements
 
 You need **Node.js 26.10** or newer. Marmeon runs your TypeScript directly on Node, without a compile step, and relies on what
-recent Node versions provide for that. An older Node stops the creator before it writes a single file.
+recent Node versions provide for that. An older Node stops the creator before it writes a single file. [Supported platforms](releases.md#supported-platforms) says
+which Node, TypeScript and library versions Marmeon supports and how that changes.
 
 You also need a package manager. Marmeon is built and tested with **pnpm 12**, and a new app pins the exact version in its
 `package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well, with `--npm`.

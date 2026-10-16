@@ -39,13 +39,57 @@ installs it by name (`pnpm add @marmeon/core@latest-0.1`, then the same for the 
 
 Breaking changes come only in a major version, except for a [security hardening](#what-is-public-api). A feature to be
 removed is [deprecated](#deprecations) first, in a minor version, and goes in the next major version, with its entry in the
-upgrade guide. What is outside the [public API](#what-is-public-api) is outside this promise. How long a major version gets
-fixes is decided with 1.0.
+upgrade guide. What is outside the [public API](#what-is-public-api) is outside this promise. [Which versions get
+fixes](#which-versions-get-fixes) is a separate question.
 
-### Node and security fixes
+## Which versions get fixes
 
-Marmeon needs Node 26.10 or newer. A new minimum version of Node is a breaking change. Security fixes go to the latest minor
-version. The [security policy](../SECURITY.md) explains how to report a vulnerability.
+Before 1.0, fixes are promised only for the latest 0.x minor version; a maintenance release for an older line is possible but not
+promised. From 1.0 on, the current major version gets them in its latest minor version. The previous major version still gets
+**security fixes for 12 months** after the next major version is released, as patches on its last minor version, published under
+the dist-tag `latest-<major>` like [any older line](#before-10).
+
+Once 1.0.0 is released, 0.x gets no fixes at all. It never had a support window, and the way forward is the section "0.x to 1.0"
+of the [upgrade guide](../UPGRADING.md).
+
+| Version | Fixes | Security fixes |
+|---|---|---|
+| Current major | latest minor version | latest minor version |
+| Previous major | no | 12 months after the next major is released |
+| Older majors | no | no |
+| 0.x, before 1.0 | latest minor version | latest minor version |
+| Older 0.x minors | no | no |
+| 0.x, after 1.0.0 | no | no |
+
+The [security policy](../SECURITY.md) explains how to report a vulnerability.
+
+## Supported platforms
+
+A "major version" in this section means the next breaking release: a major version from 1.0 on, a minor version before.
+
+### Node
+
+Marmeon supports the LTS lines of Node from 26 on. Today that means Node 26.10 or newer (`engines` in every package). The rules
+for changing it:
+
+- A line is dropped only after its end of life, and only in a major version.
+- Within a line, the minimum version rises in a minor version only for a security fix in Node.
+- Supporting a new LTS line is a minor change.
+
+### TypeScript and ES modules
+
+An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `erasableSyntaxOnly`, `verbatimModuleSyntax` and a
+`lib` with `ESNext.Temporal`. The packages are ES modules only; there is no CommonJS build.
+
+### Libraries the framework builds on
+
+- **Peers**: React, React DOM, Vite, Vitest, the OpenTelemetry API, TanStack Table, and the drivers an app picks (`pg`, `mjml`, the
+  AWS SDK). Supporting one more major version of a peer is a minor change; dropping a major version is a major change.
+- **Kysely**: you write Kysely's builder through `@marmeon/database` and never import the `kysely` package. It is an exact
+  dependency of the framework, not a peer. The shape of the builder (methods, `eb`, result types) is public API: a Kysely update
+  that changes it comes only in a Marmeon major version, with an entry in the [upgrade guide](../UPGRADING.md). An update an app
+  does not notice comes in a minor version, with a `Low` entry there. Security fixes of Kysely are taken into every supported
+  line.
 
 ## What is public API
 
