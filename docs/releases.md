@@ -134,6 +134,8 @@ The message types of the diagnostics channels in `@marmeon/core` (the channel na
 `lang` of the Vite plugin, and the members of `@marmeon/testing` that follow an experimental package (`devtools`,
 `broadcast`, `live` of the test app) are experimental too, one by one; their declarations say so.
 
+So is `features` of `ResolvePage` in `@marmeon/react`, which names a type of `@marmeon/http/client/adapter`.
+
 ### When a union grows
 
 A new member of a union, such as a string value, a field of an event like `via`, or a message of a diagnostics channel, is a
