@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, runApi, runtimeItems, snapshotPackage } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, runApi, runtimeItems, snapshotPackage, stabilityProblems } from './api.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { INTERNAL } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -718,6 +718,163 @@ describe('what is experimental', () => {
     expect(markdown).toMatch(/## Commands\n\n```ts\n\/\/ x:stay\nmarmeon x:stay\n```\n\n## Experimental\n\n```ts\n\/\/ x:run\nmarmeon x:run\n```\n$/);
     expect(experimental).toEqual(['marmeon x:run']);
     expect(parseSnapshot(markdown!).filter((item) => item.entry === '')).toHaveLength(2);
+  });
+});
+
+describe('stable items that name experimental types', () => {
+  interface Fixture {
+    readonly exports: Record<string, string>;
+    readonly experimental?: unknown;
+    readonly files: Record<string, string>;
+  }
+  /** Packages side by side under one root, each `packages/<directory>` with its `dist/` files, named `@marmeon/<directory>`. */
+  const monorepo = (packages: Record<string, Fixture>) => {
+    const root = tempDir('marmeon-api-');
+    for (const [directory, { exports, experimental, files }] of Object.entries(packages)) {
+      const dir = join(root, 'packages', directory);
+      const manifest = {
+        name: `@marmeon/${directory}`,
+        version: '0.0.0',
+        ...(experimental === undefined ? {} : { marmeon: { experimental } }),
+        exports: Object.fromEntries(Object.entries(exports).map(([subpath, file]) => [subpath, { types: `./dist/${file}` }])),
+      };
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest));
+      for (const [name, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(dir, 'dist', name)), { recursive: true });
+        writeFileSync(join(dir, 'dist', name), text);
+      }
+    }
+    return root;
+  };
+  const problemsOf = (packages: Record<string, Fixture>) => {
+    const root = monorepo(packages);
+    return Object.fromEntries(stabilityProblems(frameworkPackages(root), root));
+  };
+  /** `@marmeon/demo`: a stable entry `.` and an experimental `./adapter` that exports `Feature`. */
+  const demoWith = (index: string, more: Partial<Fixture> = {}) =>
+    problemsOf({
+      demo: {
+        exports: { '.': 'index.d.ts', './adapter': 'adapter.d.ts' },
+        experimental: ['./adapter'],
+        ...more,
+        files: { 'adapter.d.ts': 'export interface Feature {\n    on(): void;\n}\n', ...more.files, 'index.d.ts': `import type { Feature } from './adapter.ts';\n${index}` },
+      },
+    });
+  const advice = 'mark it @experimental, or name a stable type';
+  const again = 're-export it from an experimental entry point, or stop re-exporting it';
+
+  it('reports a stable declaration that names a type only an experimental entry exports', () => {
+    expect(demoWith('export declare function use(feature: Feature): void;\n')).toEqual({
+      '@marmeon/demo': [`@marmeon/demo › use names Feature, which is experimental (exported by @marmeon/demo/adapter; declared in packages/demo/dist/adapter.d.ts): ${advice}`],
+    });
+  });
+
+  it('names the member, and the helper type the name stands in', () => {
+    const problems = demoWith('interface Helper {\n    feature: Feature;\n}\nexport declare class App {\n    constructor(helper: Helper);\n}\n');
+    expect(problems['@marmeon/demo']).toEqual([
+      `@marmeon/demo › App.constructor names Feature (through Helper), which is experimental (exported by @marmeon/demo/adapter; declared in packages/demo/dist/adapter.d.ts): ${advice}`,
+    ]);
+  });
+
+  it('reports every member that names it, also through the same helper type', () => {
+    const problems = demoWith('interface Helper {\n    feature: Feature;\n}\nexport interface Options {\n    a: Feature;\n    b: Feature;\n    c: Helper;\n    d: Helper;\n}\n');
+    expect(problems['@marmeon/demo']!.map((problem) => problem.split(' names ')[0])).toEqual(['a', 'b', 'c', 'd'].map((member) => `@marmeon/demo › Options.${member}`));
+  });
+
+  it('walks a helper type that names itself once', () => {
+    const problems = demoWith('interface Tree {\n    children: Tree[];\n    feature: Feature;\n}\nexport declare function use(tree: Tree): void;\n');
+    expect(problems['@marmeon/demo']).toEqual([expect.stringMatching(/^@marmeon\/demo › use names Feature \(through Tree\), /)]);
+  });
+
+  it('lets an @experimental member name it, and the experimental entry itself', () => {
+    const files = { 'adapter.d.ts': 'export interface Feature {\n    on(): void;\n}\nexport declare function attach(feature: Feature): void;\n' };
+    expect(demoWith('export interface Options {\n    path: string;\n    /** @experimental */\n    features?: Feature[];\n}\n', { files })).toEqual({});
+  });
+
+  it('lets it pass once a stable entry exports it too', () => {
+    expect(demoWith("export declare function use(feature: Feature): void;\nexport type { Feature } from './adapter.ts';\n")).toEqual({});
+  });
+
+  it('reports a declaration marked @experimental that a stable one names', () => {
+    const problems = problemsOf({ demo: { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': '/** @experimental */\nexport interface Beta {\n    a: 1;\n}\nexport type Names = keyof Beta;\n' } } });
+    expect(problems['@marmeon/demo']).toEqual([`@marmeon/demo › Names names Beta, which is experimental (exported by @marmeon/demo (@experimental); declared in packages/demo/dist/index.d.ts): ${advice}`]);
+  });
+
+  it('reports an augmentation a stable entry reaches', () => {
+    const problems = demoWith("declare module '@marmeon/core' {\n    interface ApplicationDefinition {\n        feature?: Feature;\n    }\n}\nexport declare const a: 1;\n");
+    expect(problems['@marmeon/demo']).toEqual([
+      `@marmeon/demo › @marmeon/core.ApplicationDefinition.feature names Feature, which is experimental (exported by @marmeon/demo/adapter; declared in packages/demo/dist/adapter.d.ts): ${advice}`,
+    ]);
+  });
+
+  describe('across packages', () => {
+    const live: Fixture = { exports: { './testing': 'testing.d.ts' }, experimental: true, files: { 'testing.d.ts': "export interface Recorder {\n    calls: number;\n}\nexport * from './more.ts';\n", 'more.d.ts': 'export declare const more: 1;\n' } };
+
+    it('follows a name of another package to its declaration', () => {
+      const problems = problemsOf({ live, testing: { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': "import type { Recorder } from '@marmeon/live/testing';\nexport declare class TestApp {\n    constructor(recorder: Recorder);\n}\n" } } });
+      expect(problems).toEqual({
+        '@marmeon/testing': [`@marmeon/testing › TestApp.constructor names Recorder, which is experimental (exported by @marmeon/live/testing; declared in packages/live/dist/testing.d.ts): ${advice}`],
+      });
+    });
+
+    it('follows `import()` types and namespace imports', () => {
+      const index = "import * as live from '@marmeon/live/testing';\nexport declare function a(r: live.Recorder): void;\nexport declare function b(r: import('@marmeon/live/testing').Recorder): void;\n";
+      expect(problemsOf({ live, testing: { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': index } } })['@marmeon/testing']).toHaveLength(2);
+    });
+
+    it('reports a re-export of an experimental type or entry from a stable entry', () => {
+      const index = "export type { Recorder } from '@marmeon/live/testing';\nexport * from '@marmeon/live/testing';\n";
+      expect(problemsOf({ live, testing: { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': index } } })['@marmeon/testing']).toEqual([
+        `@marmeon/testing › * from @marmeon/live/testing re-exports @marmeon/live/testing, which is experimental: ${again}`,
+        `@marmeon/testing › Recorder re-exports Recorder, which is experimental (exported by @marmeon/live/testing; declared in packages/live/dist/testing.d.ts): ${again}`,
+      ]);
+    });
+
+    it('follows `export *` and `export * as` between packages', () => {
+      const bridge: Fixture = { exports: { '.': 'index.d.ts' }, experimental: true, files: { 'index.d.ts': "export * from '@marmeon/live/testing';\nexport * as recording from '@marmeon/live/testing';\n" } };
+      const index = "import type { Recorder, recording } from '@marmeon/bridge';\nexport declare function a(r: Recorder): void;\nexport declare function b(r: recording.Recorder): void;\n";
+      const problems = problemsOf({ live, bridge, testing: { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': index } } })['@marmeon/testing'];
+      expect(problems!.map((problem) => problem.split(',')[0])).toEqual(['@marmeon/testing › a names Recorder', '@marmeon/testing › b names Recorder']);
+    });
+
+    it('follows them through a file of the package', () => {
+      const files = {
+        'bridge.d.ts': "export * from '@marmeon/live/testing';\nexport * as rec from '@marmeon/live/testing';\n",
+        'index.d.ts': "import type { Recorder, rec } from './bridge.ts';\nexport declare function a(r: Recorder): void;\nexport declare function b(r: rec.Recorder): void;\n",
+      };
+      const problems = problemsOf({ live, testing: { exports: { '.': 'index.d.ts' }, files } })['@marmeon/testing'];
+      expect(problems!.map((problem) => problem.split(',')[0])).toEqual(['@marmeon/testing › a names Recorder', '@marmeon/testing › b names Recorder']);
+    });
+
+    it('reports a whole experimental entry point that a stable item names or re-exports through a namespace', () => {
+      const bridge: Fixture = { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': "export * as recording from '@marmeon/live/testing';\n" } };
+      const index = "import type { recording } from '@marmeon/bridge';\nexport declare const a: typeof recording;\nexport { recording } from '@marmeon/bridge';\n";
+      expect(problemsOf({ live, bridge, testing: { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': index } } })['@marmeon/testing']).toEqual([
+        '@marmeon/testing › a names the whole of @marmeon/live/testing, which is experimental: name a stable type',
+        `@marmeon/testing › recording re-exports @marmeon/live/testing, which is experimental: ${again}`,
+      ]);
+    });
+
+    it('ends on packages whose stars export each other', () => {
+      const star = (others: string[]): Fixture => ({ exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': others.map((other) => `export * from '@marmeon/${other}';\n`).join('') } });
+      const fillers = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`filler${index}`, { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': 'export declare const x: 1;\n' } }]));
+      const user: Fixture = { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': "import type { Missing } from '@marmeon/a';\nexport declare function f(m: Missing): void;\n" } };
+      expect(problemsOf({ ...fillers, a: star(['b', 'c']), b: star(['a', 'c']), c: star(['a', 'b']), user })).toEqual({});
+    });
+
+    it('lets an experimental package name it, and a library pass', () => {
+      const devtools: Fixture = { exports: { '.': 'index.d.ts' }, experimental: true, files: { 'index.d.ts': "import type { Recorder } from '@marmeon/live/testing';\nexport declare function show(r: Recorder): void;\n" } };
+      const stable: Fixture = { exports: { '.': 'index.d.ts' }, files: { 'index.d.ts': "import type { Hono } from 'hono';\nexport declare function f(app: Hono): void;\n" } };
+      expect(problemsOf({ live, devtools, stable })).toEqual({});
+    });
+  });
+
+  it('fails pnpm api:check, under the package that names the type', async () => {
+    const { root } = demo({ 'index.d.ts': "import type { Feature } from './adapter.ts';\nexport declare function use(feature: Feature): void;\n", 'adapter.d.ts': 'export interface Feature {}\n' }, { '.': 'index.d.ts', './adapter': 'adapter.d.ts' }, { marmeon: { experimental: ['./adapter'] } });
+    const run = await runApi(root, { write: true });
+    expect(run.code).toBe(1);
+    expect(run.lines.slice(0, 2)).toEqual(['@marmeon/demo:', `  @marmeon/demo › use names Feature, which is experimental (exported by @marmeon/demo/adapter; declared in packages/demo/dist/adapter.d.ts): ${advice}`]);
   });
 });
 
