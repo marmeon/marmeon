@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { createApplication, Logger } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, InvalidCursorError, sql } from '@marmeon/database';
 import { Encrypter } from '@marmeon/encryption';
@@ -382,6 +383,18 @@ describe('without a queue in the app', () => {
       await expect(application.container.make(Notifications).send(ada, Welcome, { code: 'x' })).rejects.toThrow(/needs @marmeon\/queue/);
     } finally {
       await application.shutdown();
+    }
+  });
+});
+
+describe('the payload of marmeon.notification as the queue keeps it', () => {
+  it('reads every fixture of the format', async () => {
+    const directory = new URL('./__fixtures__/formats/queued-notification/', import.meta.url);
+    const names = readdirSync(directory);
+    expect(names).toContain('v1.json');
+    for (const name of names) {
+      const result = await SendQueuedNotification.schema['~standard'].validate(JSON.parse(readFileSync(new URL(name, directory), 'utf8')));
+      expect(result.issues, name).toBeUndefined();
     }
   });
 });

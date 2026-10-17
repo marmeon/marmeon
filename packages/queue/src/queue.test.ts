@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Clock, createApplication, currentLogContext, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -8,12 +9,14 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
 import { checkTimeouts } from './connections.ts';
-import type { QueueDriver } from './driver.ts';
+import type { JobRecord, QueueDriver } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
+import { parseMember } from './drivers/redis.ts';
 import { QueueFake } from './fake.ts';
-import { JobQueued, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
+import type { JobEvent } from './events.ts';
+import { JobFailed, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
 import { JobRegistry, QueueSetupError } from './registry.ts';
-import { JobPayloadError, JobRunner } from './runner.ts';
+import { cipherContext, JobPayloadError, JobRunner, nextInChain, parseRecord, RECORD_READERS } from './runner.ts';
 import { JobStuckError, Worker } from './worker.ts';
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
@@ -160,7 +163,7 @@ function worker(application: Application, driver = new MemoryQueueDriver({ clock
 
 async function push(application: Application, driver: MemoryQueueDriver, job: string, data: unknown, extra: Record<string, unknown> = {}): Promise<string> {
   const uuid = crypto.randomUUID();
-  await driver.push('default', JSON.stringify({ uuid, job, data, tries: 1, backoff: [], dispatchedAt: application.container.make(Clock).now(), ...extra }), 0);
+  await driver.push('default', JSON.stringify({ v: 1, uuid, job, data, tries: 1, backoff: [], dispatchedAt: application.container.make(Clock).now(), ...extra }), 0);
   return uuid;
 }
 
@@ -388,36 +391,38 @@ describe('the worker', () => {
     expect(await failed.all()).toMatchObject([{ uuid: failing, exception: expect.stringContaining('Error: the account is gone') }]);
   });
 
-  it('fails a payload that cannot run at once: no job record, a payload the schema rejects, a forged plaintext for an encrypted job, a ciphertext it cannot read', async () => {
+  it('fails a payload that cannot run at once: no job record, a forged plaintext for an encrypted job, a ciphertext it cannot read', async () => {
     await using application = await app();
     const { driver, failed, worker: w } = worker(application);
     await driver.push('default', 'not json', 0);
-    await push(application, driver, 'test.welcome', { userId: 'x' }, { tries: 5 });
     await push(application, driver, 'test.reset-link', { email: 'a@b.c', token: 't' }, { tries: 5 });
     await push(application, driver, 'test.reset-link', 'v1.garbage', { tries: 5, encrypted: true });
-    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 4, failed: 4, released: 0 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 3, failed: 3, released: 0 });
     const exceptions = (await failed.all()).map((job) => job.exception.split('\n')[0]).toReversed();
     expect(exceptions).toEqual([
       'Error: The payload is not a job record (expected JSON with "job" and "data").',
-      'Error: The payload no longer matches the schema of test.welcome: userId: Invalid type: Expected number but received "x"',
       'Error: test.reset-link takes an encrypted payload (static encrypted), but this one is plain — not queued by this app.',
       expect.stringMatching(/^Error: The encrypted payload of test\.reset-link cannot be decrypted \(was APP_KEY changed\?\)/),
     ]);
     expect(application.seen.entries).toEqual([]);
   });
 
-  it('releases a job it does not know with the backoff it was dispatched with (a rolling deploy), then fails it', async () => {
+  it('holds a job it does not know, whatever its tries, and fails it once no worker took it in six hours (a rolling deploy)', async () => {
     await using application = await app();
     application.clock.freeze();
     const { driver, failed, worker: w } = worker(application);
-    await push(application, driver, 'test.from-the-next-release', {}, { tries: 2, backoff: [20] });
-    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, released: 1 });
-    application.clock.travel({ seconds: 20 });
+    const id = await push(application, driver, 'test.from-the-next-release', {}, { tries: 1 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, released: 1, failed: 0 });
+    // The attempt is given back: waiting for a worker that knows the job does not use up its tries.
+    expect(driver.entries()).toMatchObject([{ attempts: 0, availableAt: application.clock.now() + 15_000 }]);
+    application.clock.travel({ hours: 6 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
+    application.clock.travel({ seconds: 301 });
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1 });
-    expect((await failed.all())[0]!.exception).toMatch(/^Error: No job named "test\.from-the-next-release" is registered in this app/);
+    expect(await failed.all()).toMatchObject([{ uuid: id, job: 'test.from-the-next-release', exception: expect.stringMatching(/^Error: No job named "test\.from-the-next-release" is registered in this app.*No worker could run it within 6 hours/s) }]);
   });
 
-  it('traces an attempt that cannot run on queue.job — an unknown name, a poisoned payload — ending with its error, its log in the job\'s context', async () => {
+  it('traces an attempt that cannot run on queue.job — a job held for a worker that knows it, a poisoned payload — ending with its error, its log in the job\'s context', async () => {
     const lines: { message: string; context: Record<string, unknown> }[] = [];
     const logger: Logger = { debug() {}, info() {}, warn: (message, context = {}) => void lines.push({ message, context: { ...currentLogContext(), ...context } }), error: (message, context = {}) => void lines.push({ message, context: { ...currentLogContext(), ...context } }), child: () => logger };
     await using application = await app({ logger });
@@ -431,19 +436,18 @@ describe('the worker', () => {
     const off = channels.subscribe(application, 'queue.job', { end: (message) => void ended.push(message) });
     try {
       const unknown = await push(application, driver, 'test.from-the-next-release', { token: 't0k3n' }, { tries: 2, backoff: [0], requestId: 'req-9' });
-      const poisoned = await push(application, driver, 'test.welcome', { userId: 'x' });
-      expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 3, released: 1, failed: 2 });
+      const poisoned = await push(application, driver, 'test.reset-link', { email: 'a@b.c', token: 't' });
+      expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 2, released: 1, failed: 1 });
       expect(ended.map(({ job, jobId, attempt, originRequestId, payload, error }) => ({ job, jobId, attempt, originRequestId, payload, error: (error as Error).message.split(' (')[0] }))).toEqual([
         { job: 'test.from-the-next-release', jobId: unknown, attempt: 1, originRequestId: 'req-9', payload: { token: 't0k3n' }, error: 'No job named "test.from-the-next-release" is registered in this app' },
-        { job: 'test.from-the-next-release', jobId: unknown, attempt: 2, originRequestId: 'req-9', payload: { token: 't0k3n' }, error: 'No job named "test.from-the-next-release" is registered in this app' },
-        { job: 'test.welcome', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: { userId: 'x' }, error: expect.stringMatching(/^The payload no longer matches the schema of test\.welcome/) },
+        { job: 'test.reset-link', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: { email: 'a@b.c', token: 't' }, error: expect.stringMatching(/^test\.reset-link takes an encrypted payload/) },
       ]);
       // The worker's lines about it carry the job's context — what the recorder files them under.
-      expect(lines.map(({ context }) => context.jobId)).toEqual([unknown, unknown, poisoned]);
+      expect(lines.map(({ context }) => context.jobId)).toEqual([unknown, poisoned]);
     } finally {
       off();
     }
-    expect(await failed.all()).toHaveLength(2);
+    expect(await failed.all()).toHaveLength(1);
   });
 
   it('names a queue nobody takes — jobs ready at two looks in a row, none running — once, as a warning (a worker without --queue=mail)', async () => {
@@ -456,7 +460,7 @@ describe('the worker', () => {
     const container = application.container;
     const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
     const w = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock: container.make(Clock), logger });
-    const job = (queue: string) => driver.push(queue, JSON.stringify({ uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId: 1 }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
+    const job = (queue: string) => driver.push(queue, JSON.stringify({ v: 1, uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId: 1 }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
     await job('mail');
     await job('mail');
     // A queue another worker takes: its job is running (claimed) — not named.
@@ -527,7 +531,7 @@ describe('the worker', () => {
         return key === 'reserveAny' ? undefined : typeof value === 'function' ? value.bind(target) : value;
       },
     }) as QueueDriver;
-    const job = (queue: string, userId: number) => driver.push(queue, JSON.stringify({ uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
+    const job = (queue: string, userId: number) => driver.push(queue, JSON.stringify({ v: 1, uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
     for (const userId of [1, 2, 3]) await job('default', userId);
     await job('mail', 100);
     const { worker: w } = worker(application, driver as MemoryQueueDriver);
@@ -685,3 +689,339 @@ export function typeChecks(queue: Queue): void {
   }
   void queue.dispatch(NullableJob, { user: null });
 }
+
+const FORMATS = new URL('./__fixtures__/formats/', import.meta.url);
+const fixtures = (format: string) => readdirSync(new URL(`${format}/`, FORMATS)).map((name) => ({ name, text: readFileSync(new URL(`${format}/${name}`, FORMATS), 'utf8') }));
+
+describe('the version of the job record', () => {
+  /** Reads a version 2 as a version 1 — what a later release's reader does for the version it replaces. */
+  async function withSyntheticReader<T>(run: () => Promise<T> | T): Promise<T> {
+    RECORD_READERS[2] = (value, depth) => RECORD_READERS[1]!({ ...value, v: 1 }, depth);
+    try {
+      return await run();
+    } finally {
+      delete RECORD_READERS[2];
+    }
+  }
+  const raw = (driver: MemoryQueueDriver, record: Record<string, unknown>) => driver.push('default', JSON.stringify(record), 0);
+  const base = (application: Application, extra: Record<string, unknown> = {}) => ({ uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId: 1 }, tries: 3, backoff: [], dispatchedAt: application.container.make(Clock).now(), ...extra });
+
+  it('reads every fixture of the format and runs it', async () => {
+    const files = fixtures('job-record');
+    expect(files.map(({ name }) => name)).toContain('v1.json');
+    for (const { name, text } of files) expect(parseRecord(text), name).toMatchObject({ kind: 'record', record: { v: 1 } });
+    const parsed = (name: string) => (parseRecord(files.find((file) => file.name === name)!.text) as { record: { chain?: unknown[]; unique?: unknown; encrypted?: true } }).record;
+    expect(parsed('v1-chain.json').chain).toHaveLength(2);
+    expect(parsed('v1-unique.json').unique).toMatchObject({ until: 'processing' });
+    expect(parsed('v1-encrypted.json').encrypted).toBe(true);
+
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    for (const { text } of files) await driver.push('default', text, 0);
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 6, failed: 0, released: 0 });
+    expect(await failed.all()).toEqual([]);
+    expect(driver.entries()).toEqual([]);
+    expect(application.seen.entries.map(({ payload }) => payload)).toEqual(
+      expect.arrayContaining([{ userId: 7 }, { userId: 1 }, { userId: 2 }, { userId: 3 }, { email: 'ada@example.com', token: 'reset-token' }]),
+    );
+  });
+
+  it('reads the member of the redis driver around the payload it does not look into', () => {
+    const text = fixtures('redis-member')[0]!.text;
+    const member = parseMember(text);
+    expect(member).toMatchObject({ id: '5b0e1c2a-7d3f-4e9b-8a61-2c4d6e8f0a13', attempts: 1 });
+    expect(parseRecord(member.payload)).toMatchObject({ kind: 'record', record: { job: 'test.welcome' } });
+  });
+
+  it('writes the version on every record it queues — also on the links of a chain', async () => {
+    await using application = await app();
+    const queue = application.container.make(Queue);
+    await queue.chain([[WelcomeJob, { userId: 1 }], [WelcomeJob, { userId: 2 }]]);
+    const rows = (await sql<{ payload: string }>`select payload from jobs`.execute(application.container.make(Connections).get())).rows;
+    const record = JSON.parse(rows[0]!.payload);
+    expect([record.v, record.chain[0].v]).toEqual([1, 1]);
+  });
+
+  it('keeps one reader per version: a registered version 2 is read next to 1, a version 3 is foreign', async () => {
+    const text = (value: unknown) => JSON.stringify({ uuid: 'u', job: 'test.welcome', data: {}, dispatchedAt: 5, v: value });
+    expect(parseRecord(text(2)).kind).toBe('foreign');
+    await withSyntheticReader(() => {
+      expect(parseRecord(text(1)).kind).toBe('record');
+      expect(parseRecord(text(2))).toMatchObject({ kind: 'record', record: { v: 1 } });
+      expect(parseRecord(text(3))).toMatchObject({ kind: 'foreign', envelope: { v: 3, uuid: 'u', job: 'test.welcome', dispatchedAt: 5 } });
+    });
+  });
+
+  it('holds a record of a newer version: it never runs, the attempt is given back, the pause grows with its age', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, failed, worker: w } = worker(application);
+    const now = application.clock.now();
+    const id = crypto.randomUUID();
+    await raw(driver, base(application, { v: 2, uuid: id, tries: 1, dispatchedAt: now - 400_000, restriction: 'only-for-admins' }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, released: 1, failed: 0 });
+    expect(driver.entries()).toMatchObject([{ attempts: 0, availableAt: now + 100_000 }]);
+    application.clock.travel({ seconds: 100 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1 });
+    // Older again: a longer pause, at most five minutes.
+    application.clock.travel({ hours: 3 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1 });
+    expect(driver.entries()).toMatchObject([{ attempts: 0, availableAt: application.clock.now() + 300_000 }]);
+    expect(application.seen.entries).toEqual([]);
+    expect(await failed.all()).toEqual([]);
+    // Six hours after it was dispatched nobody took it: failed with its reason and its payload, under its own id.
+    application.clock.travel({ hours: 4 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
+    const [entry] = await failed.all();
+    expect(entry).toMatchObject({ uuid: id, job: 'test.welcome', exception: expect.stringMatching(/version 2.*No worker could run it within 6 hours/s) });
+    expect(JSON.parse(entry!.payload)).toMatchObject({ v: 2, restriction: 'only-for-admins' });
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it('stamps a job released with a backoff, so a worker that cannot read it yet holds it instead of failing it', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, failed, worker: w } = worker(application);
+    const now = application.clock.now();
+    const hours = 8 * 3600;
+    // Dispatched long ago and retried with a backoff of eight hours.
+    await push(application, driver, 'test.flaky', { failUntil: 9 }, { tries: 3, backoff: [hours], dispatchedAt: now - 20 * 3_600_000 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1 });
+    expect(JSON.parse(driver.entries()[0]!.payload).availableAt).toBe(now + hours * 1000);
+    application.clock.travel({ seconds: hours });
+    // The next worker is of a release that does not know the job: the time it waited is counted from the end of the backoff.
+    const entry = driver.entries()[0]!;
+    const unknown = JSON.stringify({ ...JSON.parse(entry.payload), job: 'test.from-the-next-release' });
+    const other = worker(application);
+    await other.driver.push('default', unknown, 0);
+    expect(await other.worker.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
+    expect(await failed.all()).toEqual([]);
+    expect(await other.failed.all()).toEqual([]);
+  });
+
+  it('runs a held record once a worker reads its version', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, failed, worker: w } = worker(application);
+    await raw(driver, base(application, { v: 2 }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1 });
+    application.clock.travel({ seconds: 15 });
+    await withSyntheticReader(async () => {
+      expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, released: 0, failed: 0 });
+    });
+    expect(application.seen.entries).toHaveLength(1);
+    expect(await failed.all()).toEqual([]);
+  });
+
+  it('fails a newer record whose dispatch time cannot be read at once — it cannot be held for six hours', async () => {
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    await raw(driver, { v: 2, uuid: crypto.randomUUID(), job: 'test.welcome', data: {}, dispatchedAt: 'yesterday' });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1, released: 0 });
+    expect((await failed.all())[0]!.exception).toMatch(/dispatch time cannot be read/);
+  });
+
+  it('holds a job it does not know, or one whose payload its schema rejects (a newer enum member), however few tries it has — and warns once', async () => {
+    const lines: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, error() {}, warn: (message) => void lines.push(message), child: () => logger };
+    await using application = await app({ logger });
+    application.clock.freeze();
+    const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const failed = new MemoryFailedJobStore();
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
+    const w = new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger });
+    await push(application, driver, 'test.choosy', { choice: 'archive' }, { tries: 1 });
+    await push(application, driver, 'test.not-here', {}, { tries: 1 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 2, released: 2, failed: 0 });
+    application.clock.travel({ seconds: 60 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 2 });
+    expect(driver.entries()).toHaveLength(2);
+    expect(lines.filter((line) => line.startsWith('Holding'))).toHaveLength(2);
+    expect(lines.find((line) => line.startsWith('Holding test.choosy'))).toContain('no longer matches the schema');
+    expect(await failed.all()).toEqual([]);
+  });
+
+  it('fails a record without a version at once, with the reason and its payload — it never runs', async () => {
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    const record = base(application, { tries: 5 });
+    await raw(driver, record);
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1, released: 0 });
+    const [entry] = await failed.all();
+    expect(entry!.exception).toMatch(/before job records carried a version.*docs\/queues\.md#deploying-while-jobs-wait/s);
+    expect(JSON.parse(entry!.payload)).toEqual(record);
+    expect(entry).toMatchObject({ uuid: record.uuid, job: 'test.welcome' });
+    expect(application.seen.entries).toEqual([]);
+    expect(driver.entries()).toEqual([]);
+  });
+
+  it.each([['"1"', '1'], ['1.5', 1.5], ['-1', -1], ['0', 0], ['null', null], ['true', true], ['a huge number', 1e300]])('never runs a record whose version is %s', async (_label, version) => {
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    await raw(driver, base(application, { v: version, tries: 5 }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1, released: 0 });
+    expect((await failed.all())[0]!.exception).toMatch(/not a positive integer/);
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it('fails a record whose chain has a link it cannot read, and runs no part of the chain', async () => {
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    for (const link of [{ job: 'test.welcome', data: { userId: 2 } }, { v: 'x', job: 'test.welcome', data: { userId: 2 } }, 'a string']) {
+      await raw(driver, { ...base(application, { v: 1 }), chain: [link] });
+    }
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 3, failed: 3, released: 0 });
+    expect((await failed.all()).map((job) => job.exception.split('\n')[0])).toEqual(expect.arrayContaining([expect.stringMatching(/^Error: Link 1 of the record's chain cannot be read/)]));
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it('reads an unknown "until" of a unique lock as "done" — the lock is held longer, never shorter', () => {
+    const record = { v: 1, uuid: 'u', job: 'test.welcome', data: {}, unique: { lock: 'l', key: 'k', for: 60, until: 'later' } };
+    expect(parseRecord(JSON.stringify(record))).toMatchObject({ kind: 'record', record: { unique: { until: 'done' } } });
+  });
+
+  it('still gives up on a job that comes back more often than it has tries (its worker dies during each attempt)', async () => {
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    const payload = JSON.stringify(base(application, { v: 1, tries: 2 }));
+    expect(await w.process({ id: 'x', queue: 'default', payload, attempts: 3, reservedAt: 0 })).toBe('failed');
+    expect((await failed.all())[0]!.exception).toMatch(/attempted 2 times without finishing/);
+    expect(application.seen.entries).toEqual([]);
+    expect(driver.entries()).toEqual([]);
+  });
+
+  it('tells a listener of each hold: JobReleased with reason "unknown", the pause and the attempt', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
+    const events: JobEvent[] = [];
+    const w = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock: container.make(Clock), logger: silent, events: async (event) => void events.push(event) });
+    const now = application.clock.now();
+    const id = crypto.randomUUID();
+    await raw(driver, base(application, { v: 2, uuid: id, dispatchedAt: now - 400_000 }));
+    await w.run({ queues: ['default'], stopWhenEmpty: true });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toBeInstanceOf(JobReleased);
+    expect(events[0]).toMatchObject({ jobId: id, job: 'test.welcome', queue: 'default', connection: 'memory', reason: 'unknown', delay: 100, attempt: 1 });
+  });
+
+  it('counts the time a record is held from when it could be claimed: a delay over six hours, a late link of a chain, a retried job', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, failed, worker: w } = worker(application);
+    const now = application.clock.now();
+    // Dispatched seven hours ago for now (a delay), or put back on the queue now: not old yet.
+    await raw(driver, base(application, { v: 2, dispatchedAt: now - 7 * 3_600_000, availableAt: now }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
+    // Without it the same record has waited seven hours.
+    await raw(driver, base(application, { v: 2, dispatchedAt: now - 7 * 3_600_000 }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
+    expect(await failed.all()).toHaveLength(1);
+  });
+
+  it('stamps the time a record could first be claimed: at the push (with its delay), for the next link of a chain', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const queue = application.container.make(Queue);
+    const now = application.clock.now();
+    await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 7200 });
+    await queue.chain([[WelcomeJob, { userId: 2 }], [WelcomeJob, { userId: 3 }]]);
+    const { rows } = await sql<{ payload: string }>`select payload from jobs order by id`.execute(application.container.make(Connections).get());
+    expect(rows.map((row) => JSON.parse(row.payload).availableAt)).toEqual([now + 7_200_000, now]);
+    const head = parseRecord(rows[1]!.payload) as { record: JobRecord };
+    expect(JSON.parse(nextInChain(head.record, now + 5)!)).toMatchObject({ job: 'test.welcome', data: { userId: 3 }, availableAt: now + 5 });
+  });
+
+  it('fails a newer record at once whose dispatch or availability lies more than five minutes ahead of the clock, or that has no id', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, failed, worker: w } = worker(application);
+    const now = application.clock.now();
+    await raw(driver, base(application, { v: 2, dispatchedAt: now + 10 * 60_000 }));
+    await raw(driver, base(application, { v: 2, availableAt: now + 10 * 60_000 }));
+    await raw(driver, { v: 2, job: 'test.welcome', data: {}, dispatchedAt: now });
+    await raw(driver, base(application, { v: 2, dispatchedAt: now + 60_000 }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 4, failed: 3, released: 1 });
+    expect((await failed.all()).map((job) => job.exception.split('\n')[0]).toReversed()).toEqual([
+      expect.stringMatching(/dispatch time cannot be read/),
+      expect.stringMatching(/dispatch time cannot be read/),
+      expect.stringMatching(/no readable id/),
+    ]);
+  });
+
+  it('labels the failure of a record without a version with the id and name it claims, tells JobFailed and frees its unique lock only when it names one', async () => {
+    await using application = await app();
+    const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
+    const events: JobEvent[] = [];
+    const failed = new MemoryFailedJobStore();
+    const w = new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger: silent, events: async (event) => void events.push(event) });
+    const id = crypto.randomUUID();
+    await raw(driver, base(application, { uuid: id, job: 'test.welcome' }));
+    await driver.push('default', 'not json', 0);
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 2 });
+    const rows = await failed.all();
+    expect(rows.map((job) => job.job)).toEqual(['?', 'test.welcome']);
+    expect(rows[1]!.uuid).toBe(id);
+    expect(events.filter((event) => event instanceof JobFailed).map((event) => event.jobId)).toEqual([id, rows[0]!.uuid]);
+
+    const unique = { lock: 'queue:unique:test.welcome:k', key: 'k', for: 60, until: 'done' };
+    expect(parseRecord(JSON.stringify({ uuid: 'u', job: 'j', data: {}, unique }))).toMatchObject({ kind: 'invalid', identity: { uuid: 'u', job: 'j', unique } });
+    expect(parseRecord(JSON.stringify({ uuid: 'u', job: 'j', data: {}, unique: { lock: 3 } }))).toMatchObject({ kind: 'invalid', identity: { uuid: 'u', job: 'j' } });
+    expect((parseRecord(JSON.stringify({ uuid: 'u', job: 'j', data: {}, unique: { lock: 3 } })) as { identity: object }).identity).not.toHaveProperty('unique');
+    expect(parseRecord('[1]')).toEqual({ kind: 'invalid', reason: expect.any(String) });
+  });
+
+  it('warns once about a job it holds, remembering the thousand newest', async () => {
+    const lines: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, error() {}, warn: (message) => void lines.push(message), child: () => logger };
+    await using application = await app({ logger });
+    application.clock.freeze();
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
+    const w = new Worker({ driver: new MemoryQueueDriver({ clock: container.make(Clock) }), connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock: container.make(Clock), logger });
+    const reserved = (n: number) => ({ id: `j${n}`, queue: 'default', attempts: 1, reservedAt: 0, payload: JSON.stringify(base(application, { v: 2, uuid: `u${n}` })) });
+    for (let n = 1; n <= 1001; n++) await w.process(reserved(n));
+    expect(lines).toHaveLength(1001);
+    await w.process(reserved(1001));
+    expect(lines).toHaveLength(1001);
+    // The oldest was forgotten for the newest, so it is told again.
+    await w.process(reserved(1));
+    expect(lines).toHaveLength(1002);
+  });
+
+  it('refuses a chain nested deeper than a thousand links', () => {
+    let record: Record<string, unknown> = { v: 1, uuid: 'u', job: 'test.welcome', data: {} };
+    for (let depth = 0; depth < 1001; depth++) record = { v: 1, uuid: 'u', job: 'test.welcome', data: {}, chain: [record] };
+    expect(parseRecord(JSON.stringify(record))).toMatchObject({ kind: 'invalid', reason: expect.stringMatching(/chain is nested deeper than 1000/) });
+    let shallow: Record<string, unknown> = { v: 1, uuid: 'u', job: 'test.welcome', data: {} };
+    for (let depth = 0; depth < 50; depth++) shallow = { v: 1, uuid: 'u', job: 'test.welcome', data: {}, chain: [shallow] };
+    expect(parseRecord(JSON.stringify(shallow)).kind).toBe('record');
+  });
+
+  it('fails a record instead of crashing when preparing it throws', async () => {
+    await using application = await app();
+    const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const failed = new MemoryFailedJobStore();
+    const runner = { prepare: async () => Promise.reject(new Error('the registry broke')) } as unknown as JobRunner;
+    const w = new Worker({ driver, connection: 'memory', runner, failed, clock: application.container.make(Clock), logger: silent });
+    expect(await w.process({ id: 'x', queue: 'default', payload: '{}', attempts: 1, reservedAt: 0 })).toBe('failed');
+    expect((await failed.all())[0]!.exception).toMatch(/could not be prepared: the registry broke/);
+  });
+
+  it('binds an encrypted payload to the record version: under the context of no version it does not decrypt', async () => {
+    expect(cipherContext('test.reset-link')).toBe('queue:v1:test.reset-link');
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    const encrypter = application.container.make((await import('@marmeon/encryption')).Encrypter);
+    const data = await encrypter.encrypt(JSON.stringify({ email: 'a@b.c', token: 't' }), 'queue:test.reset-link');
+    await raw(driver, base(application, { v: 1, job: 'test.reset-link', data, encrypted: true }));
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
+    expect((await failed.all())[0]!.exception).toMatch(/cannot be decrypted/);
+    expect(application.seen.entries).toEqual([]);
+  });
+});

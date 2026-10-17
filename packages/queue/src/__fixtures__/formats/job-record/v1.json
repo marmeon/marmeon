@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "uuid": "6f1c2d4e-0b7a-4c1e-9a52-3d8f7e1a0b11",
+  "job": "test.welcome",
+  "data": {
+    "userId": 7
+  },
+  "tries": 3,
+  "backoff": [
+    10,
+    60
+  ],
+  "dispatchedAt": 1790000000000,
+  "availableAt": 1790000060000,
+  "requestId": "req-42",
+  "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+}

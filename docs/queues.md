@@ -355,11 +355,13 @@ A job can also end an attempt on its own:
 
 Some jobs can never succeed, and they fail at once, after one attempt:
 
-- a payload that no longer matches the schema, after a deploy changed it,
-- a payload that cannot be decrypted, or a plain payload for an encrypted job.
+- a payload that cannot be decrypted, or a plain payload for an encrypted job,
+- a record that is no job record, has no version, or has a chain with a link the worker cannot read.
 
-A job whose name the worker does not know, as during a rolling deploy, goes back with its backoff until its tries are used up, and
-fails then. A job claimed more often than its `tries`, because its worker died each time, fails instead of coming back forever.
+A job the worker cannot read, but a worker of another release perhaps can, does not fail: it waits. That is a record of a newer
+version, a job whose name the worker does not know, and a payload the job's schema rejects, as after a deploy that widened it.
+See [Deploying while jobs wait](#deploying-while-jobs-wait). A job claimed more often than its `tries`, because its worker died
+each time, fails instead of coming back forever.
 
 ### Failed jobs
 
@@ -373,6 +375,34 @@ fails then. A job claimed more often than its `tries`, because its worker died e
 | `queue:size [queue…] [--connection=…]` | Counts the jobs per queue. |
 
 Schedule `queue:prune-failed`, as the [task scheduling](scheduling.md#housekeeping-commands) page shows.
+
+### Deploying while jobs wait
+
+Every job record carries a version, `v`, in the payload column. A worker runs a record only when it understands all of it, and
+it puts back what it does not:
+
+| The record | What a worker does |
+| --- | --- |
+| Version newer than the worker reads | Never runs it, never reads more than its id, name and time. Puts it back untouched. |
+| Names a job the worker does not know | Puts it back. A worker of the release that has the job takes it. |
+| Payload the job's schema rejects | Puts it back. A newer release may have widened the schema, for example with a new enum member. |
+| No version, or a version that is not a positive whole number | Fails it at once, with the reason. Its payload stays in the failed jobs for reading, and it never runs. |
+| A chain with a link the worker cannot read | Fails the whole record at once. No part of the chain runs. |
+
+A record that waits goes back with its attempt given back, so waiting does not use up its `tries`, and with a pause of a quarter
+of the time it has been claimable, at least 15 seconds and at most five minutes. That time starts when the job could first run:
+its dispatch, the end of its `delay`, its turn in a chain, or the moment `queue:retry` queued it again. The worker logs a warning
+once per job and process, and sends `JobReleased` with `reason: 'unknown'`. Six hours on, a record nobody took fails, with the reason
+and its payload. A record without a readable id or time, or with a time more than five minutes ahead of the worker's clock, cannot
+be held and fails at once. Watch `queue:failed` after a deploy.
+
+`queue:retry` refuses every failed job whose record this release cannot read at all, as one without a version, with a chain that has
+a broken link, or that is no job record: queued again, it would fail the same way. Retry a job that failed because it waited too
+long once a worker that can read it is running. The devtools show no payload for such a record, and no retry command.
+
+The version only grows with a change that an older worker would misread, such as a field that restricts the job. Fields a worker
+does not know are ignored, and a new one never takes anything away from a job. An `until` of a unique job that a worker does not
+know is read as `done`: the lock is held longer, never shorter.
 
 ## Unique jobs
 
@@ -475,7 +505,7 @@ Every step of a job is an event of the app's event dispatcher:
 | --- | --- |
 | `error` | The attempt threw, and the job has tries left. |
 | `job` | The job or a middleware asked for it, with `job.release()` or `withoutOverlapping()`. |
-| `unknown` | The worker has no class for the job's name, as during a rolling deploy. |
+| `unknown` | The worker cannot read the job, as during a rolling deploy: a newer record version, no class for its name, or a payload its schema rejects. The attempt is given back. |
 | `stopping` | The worker stops, and the running job goes back for another worker. |
 | `busy` | `job.once()` found its key running in another attempt. The attempt is given back, so it does not use up a try. |
 

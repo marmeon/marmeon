@@ -393,6 +393,9 @@ store:
 | Database | SQLite across machines | Postgres |
 | Uploads and files | the local disks across machines | an S3 disk |
 
+Jobs that wait while you deploy are held, not lost: a worker puts back a job it cannot read yet, and a newer worker takes it.
+[Deploying while jobs wait](queues.md#deploying-while-jobs-wait) says how long and what to watch.
+
 On one machine, the Compose file shares one `storage` volume between web, worker and scheduler, so SQLite and the `file` drivers
 work there. Limits on live streams count per process: with four servers, a session may hold its limit of streams in each.
 

@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "uuid": "a0000000-0000-4000-8000-000000000001",
+  "job": "test.welcome",
+  "data": {
+    "userId": 1
+  },
+  "tries": 1,
+  "backoff": [],
+  "dispatchedAt": 1790000000000,
+  "chain": [
+    {
+      "v": 1,
+      "uuid": "a0000000-0000-4000-8000-000000000002",
+      "job": "test.welcome",
+      "data": {
+        "userId": 2
+      },
+      "tries": 1,
+      "backoff": [],
+      "dispatchedAt": 1790000000000
+    },
+    {
+      "v": 1,
+      "uuid": "a0000000-0000-4000-8000-000000000003",
+      "job": "test.welcome",
+      "data": {
+        "userId": 3
+      },
+      "tries": 1,
+      "backoff": [],
+      "dispatchedAt": 1790000000000
+    }
+  ]
+}

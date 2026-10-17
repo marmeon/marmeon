@@ -7,7 +7,7 @@ import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type 
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
 import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './locks.ts';
 import { backoffOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
-import { cipherContext, delaySeconds, nextInChain, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
+import { cipherContext, delaySeconds, nextInChain, RECORD_VERSION, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
 
 /**
  * Settings of one queued record that the framework's own jobs take from elsewhere — a queued listener's `tries` and
@@ -255,8 +255,9 @@ export class QueueManager implements Queue {
     }
 
     const driver = this.#driver(name);
+    const availableAt = this.#deps.clock.now() + Math.round(delay * 1000);
     const push = async () => {
-      for (const { serialized } of prepared) await driver.push(queue, serialized, delay);
+      for (const { record } of prepared) await driver.push(queue, JSON.stringify({ ...record, availableAt }), delay);
     };
     // Explicitly through a transaction (`using(trx)`), or joining the ambient one: part of it. Inside a transaction the
     // driver cannot join (another database connection, redis): after the commit.
@@ -286,7 +287,7 @@ export class QueueManager implements Queue {
       let next: string | undefined = serialized;
       while (next !== undefined) {
         const ready = await runner.prepare(next);
-        if (ready.kind !== 'ready') throw new QueueError(ready.kind === 'poison' ? ready.reason : `No job named "${ready.record.job}" is registered.`);
+        if (ready.kind !== 'ready') throw new QueueError(ready.reason);
         const { record } = ready;
         const about = { connection, queue, job: record.job, jobId: record.uuid };
         await this.#emit(new JobProcessing({ ...about, attempt: 1 }));
@@ -306,7 +307,7 @@ export class QueueManager implements Queue {
           await releaseUnique(this.#cache, record, 'done');
         }
         await this.#emit(new JobProcessed({ ...about, attempt: 1, ms: Math.round(performance.now() - started), discarded: requested?.kind === 'discard' }));
-        next = requested?.kind === 'discard' ? undefined : nextInChain(record);
+        next = requested?.kind === 'discard' ? undefined : nextInChain(record, this.#deps.clock.now());
       }
     }
   }
@@ -370,6 +371,7 @@ export async function prepareRecord(
   const requestId = currentRequest()?.requestId ?? currentJob()?.requestId;
   const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
   const record: JobRecord = {
+    v: RECORD_VERSION,
     uuid,
     job: job.job,
     data,

@@ -163,6 +163,7 @@ export declare class JobQueued extends JobEvent {
 }
 // JobRecord
 export interface JobRecord {
+    readonly v: number;
     readonly uuid: string;
     readonly job: string;
     readonly data: unknown;
@@ -170,6 +171,7 @@ export interface JobRecord {
     readonly tries: number;
     readonly backoff: readonly number[];
     readonly dispatchedAt: number;
+    readonly availableAt?: number;
     readonly unique?: UniqueRecord;
     readonly chain?: readonly JobRecord[];
     readonly requestId?: string;
@@ -271,10 +273,13 @@ export type Prepared = {
     readonly kind: 'poison';
     readonly record: JobRecord | undefined;
     readonly reason: string;
+    readonly identity?: RecordIdentity;
 }
  | {
-    readonly kind: 'unknown';
-    readonly record: JobRecord;
+    readonly kind: 'foreign';
+    readonly reason: string;
+    readonly envelope: RecordEnvelope;
+    readonly record: JobRecord | undefined;
 };
 // Queue
 export interface Queue {
@@ -416,7 +421,7 @@ export declare class QueueRetryCommand {
     static command: string;
     static description: string;
     static usage: string;
-    constructor(connections: QueueConnections);
+    constructor(connections: QueueConnections, clock: Clock);
     handle({ args, output }: CommandInput): Promise<number>;
 }
 // QueueServiceProvider
@@ -499,6 +504,7 @@ export interface QueuedPush {
 // ReleaseOptions
 export interface ReleaseOptions {
     readonly refund?: boolean;
+    readonly availableAt?: number;
 }
 // ReservedJob
 export interface ReservedJob extends QueuedJob {
@@ -577,6 +583,20 @@ export declare function withoutOverlapping<J extends {
 ```ts
 // Outcome
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
+// RecordEnvelope
+export interface RecordEnvelope {
+    readonly v: number;
+    readonly uuid: string | undefined;
+    readonly job: string | undefined;
+    readonly dispatchedAt: number | undefined;
+    readonly availableAt: number | undefined;
+}
+// RecordIdentity
+export interface RecordIdentity {
+    readonly uuid?: string;
+    readonly job?: string;
+    readonly unique?: UniqueRecord;
+}
 // Requested
 export type Requested = {
     readonly kind: 'discard';

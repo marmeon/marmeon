@@ -190,8 +190,8 @@ ${keyValues([
   ['Request', job.requestId ? html`<a href="${href('/requests', { requestId: job.requestId })}"><code>${job.requestId}</code></a>` : undefined],
 ])}
 <h3>Error</h3><pre class="block">${job.exception}</pre>
-<h3>Payload</h3>${json(job.payload)}
-<h3>Commands</h3>${command(job.retry)}${command(job.forget)}
+${'payload' in job ? html`<h3>Payload</h3>${json(job.payload)}` : html`<p class="muted">This release cannot read the record, so it shows no payload.</p>`}
+<h3>Commands</h3>${job.retry ? command(job.retry) : ''}${command(job.forget)}
 </details>`;
 }
 

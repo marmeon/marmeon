@@ -20,7 +20,7 @@ import type { QueueDriver } from './driver.ts';
 
 /** A job record as the queue stores it, for the fixture app's jobs. */
 function record(job: string, data: unknown, extra: Record<string, unknown> = {}): string {
-  return JSON.stringify({ uuid: crypto.randomUUID(), job, data, tries: 3, backoff: [], dispatchedAt: Date.now(), ...extra });
+  return JSON.stringify({ v: 1, uuid: crypto.randomUUID(), job, data, tries: 3, backoff: [], dispatchedAt: Date.now(), ...extra });
 }
 
 interface Fixture {
@@ -252,7 +252,7 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
   it('fails a job whose payload no longer matches its schema after ONE attempt (written straight into the table)', { timeout: 30_000 }, async () => {
     await withFixture(kind, async (fixture) => {
       const uuid = crypto.randomUUID();
-      const payload = JSON.stringify({ uuid, job: 'fixture.user', data: { userId: 'x' }, tries: 5, backoff: [0], dispatchedAt: 0 });
+      const payload = JSON.stringify({ v: 1, uuid, job: 'fixture.user', data: { userId: 'x' }, tries: 5, backoff: [0], dispatchedAt: 0 });
       await fixture.driver.push('default', payload, 0);
       const worker = fixture.worker(['--stop-when-empty']);
       expect(await worker.exited()).toBe(0);
