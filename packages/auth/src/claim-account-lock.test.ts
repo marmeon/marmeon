@@ -44,7 +44,7 @@ describe.skipIf(!PGSQL_URL)('the account row while a factor is stored (pgsql)', 
   beforeAll(async () => {
     const fresh = await freshPgsqlDatabase();
     drop = fresh.drop;
-    connections = new Connections({ connections: { default: { driver: 'pgsql', url: fresh.url, poolMax: 3 } }, root: '/', logger: silent });
+    connections = new Connections({ connections: { default: { driver: 'pgsql', url: fresh.url, poolMax: 3, managed: false } }, root: '/', logger: silent });
     await sql`create table accounts (id integer primary key, session_key text)`.execute(connections.get());
     await sql`insert into accounts (id, session_key) values (1, 'first-key')`.execute(connections.get());
   });

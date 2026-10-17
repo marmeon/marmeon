@@ -74,7 +74,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
 
   async function app(env: Record<string, string> = {}): Promise<Application & { seen: Seen }> {
     const seen = new Seen();
-    const database = target.kind === 'sqlite' ? { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file } : { DB_CONNECTION: 'pgsql', DB_URL: target.url };
+    const database = target.kind === 'sqlite' ? { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file } : { DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: target.url };
     const application = await createApplication({
       root: '/tmp',
       discover: false,
