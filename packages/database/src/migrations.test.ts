@@ -94,6 +94,31 @@ describe.each(drivers)('migrations on %s', (driver) => {
     expect(await tables()).toEqual(['migrations', 'schema_markers', 'secret_columns', 'table_owners']);
   });
 
+  it('rolls back a batch in the reverse of the order it ran, not of the names', async () => {
+    const own = await freshConnections(driver);
+    try {
+      const dir = mkdtempSync(join(tempDir('marmeon-migrations-'), 'm-'));
+      for (const name of ['a_b', 'ab']) {
+        writeFileSync(
+          join(dir, `2026_01_01_000000_${name}.ts`),
+          `export default { up: async () => {}, down: async () => { (globalThis as any).__downs.push('${name}'); } };`,
+        );
+      }
+      const ownMigrator = migrator(own.connections, { name: 'x', migrations: dir });
+      await ownMigrator.migrate();
+      const rows = own.connections.get<any>();
+      await rows.updateTable('migrations').set({ id: 99 }).where('name', '=', '2026_01_01_000000_a_b').execute();
+      await rows.updateTable('migrations').set({ id: 1 }).where('name', '=', '2026_01_01_000000_ab').execute();
+      await rows.updateTable('migrations').set({ id: 2 }).where('name', '=', '2026_01_01_000000_a_b').execute();
+      const downs: string[] = ((globalThis as any).__downs = []);
+      await ownMigrator.rollback();
+      expect(downs).toEqual(['a_b', 'ab']);
+    } finally {
+      delete (globalThis as any).__downs;
+      await own.close();
+    }
+  });
+
   it('undoes a failing migration completely and does not record it', async () => {
     const withBroken = migrator(connections, auth, broken);
     await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
@@ -216,6 +241,16 @@ describe('migration files', () => {
     ];
     expect(() => app(twice).files()).toThrow('Two migrations are named "2026_01_01_000000_create_users_table" (modules "a" and "b").');
     expect(() => app([{ name: 'gone', migrations: 'nope' }]).files()).toThrow(/migrations directory of module "gone" does not exist/);
+  });
+
+  it('orders migrations of the same timestamp by code point, whatever the locale', () => {
+    const dir = mkdtempSync(join(root, 'm-'));
+    for (const name of ['ab', 'a_b', 'a1', 'a_1']) writeFileSync(join(dir, `2026_01_01_000000_${name}.ts`), '');
+    expect(
+      app([{ name: 'x', migrations: dir }])
+        .files()
+        .map((file) => file.name.slice('2026_01_01_000000_'.length)),
+    ).toEqual(['a1', 'a_1', 'a_b', 'ab']);
   });
 
   it('ignores declaration and test files, and resolves string paths against the app root', () => {

@@ -89,7 +89,7 @@ export class Migrator {
         files.push({ name: basename(entry, extname(entry)), module: module.name, path: join(directory, entry) });
       }
     }
-    files.sort((a, b) => a.name.localeCompare(b.name));
+    files.sort((a, b) => byCodePoint(a.name, b.name));
     for (let i = 1; i < files.length; i++) {
       if (files[i]!.name === files[i - 1]!.name) {
         throw new Error(`Two migrations are named "${files[i]!.name}" (modules "${files[i - 1]!.module}" and "${files[i]!.module}").`);
@@ -339,7 +339,7 @@ export class Migrator {
 
   async #ran(): Promise<{ id: number; name: string; module: string; batch: number }[]> {
     if (!(await this.#hasTable(MIGRATIONS_TABLE))) return [];
-    return this.#db().selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('name').execute();
+    return this.#db().selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute();
   }
 
   async #lastBatch(): Promise<number> {
