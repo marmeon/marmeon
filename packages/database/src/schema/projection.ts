@@ -110,6 +110,32 @@ export function applyPlan(projection: SchemaProjection, steps: readonly PlanStep
   return { migrations: [...projection.migrations, { name: file.name, module: file.module }], tables };
 }
 
+/** A table as a string that is the same for tables with the same columns, keys and marks, whatever the order they were added in. */
+function signature(table: ProjectedTable): string {
+  const sorted = <T>(items: readonly T[], key: (item: T) => string) => items.toSorted((a, b) => byCodePoint(key(a), key(b)));
+  return JSON.stringify({
+    module: table.module,
+    columns: sorted(table.columns, (column) => column.name),
+    uniques: sorted(table.uniques.map((set) => [...set].toSorted(byCodePoint)), (set) => set.join('\0')),
+    indexes: sorted(table.indexes, (index) => index.name),
+    foreignKeys: sorted(table.foreignKeys, (key) => key.column),
+    markers: [...table.markers].toSorted(byCodePoint),
+  });
+}
+
+/**
+ * The names of the tables that are in one projection only, or that the two describe differently. The order of a table's columns does
+ * not count: two migrations that add a column each, in either order, leave the same table.
+ */
+export function differingTables(a: SchemaProjection, b: SchemaProjection): string[] {
+  const names = new Set([...a.tables.keys(), ...b.tables.keys()]);
+  return [...names].filter((name) => {
+    const left = a.tables.get(name);
+    const right = b.tables.get(name);
+    return left === undefined || right === undefined || signature(left) !== signature(right);
+  }).toSorted(byCodePoint);
+}
+
 /**
  * The projection of migrations, in the order given: each file is loaded and its `up()` plan applied. `only` names the migrations to
  * take — the ones that remain after a rollback.

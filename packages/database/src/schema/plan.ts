@@ -1,26 +1,10 @@
 import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
-import { noBookkeepingWrites, noSchemaChanges } from '../books.ts';
 import type { Connection } from '../builder.ts';
-import { Blueprint, compileColumn, type Driver, type TableMarker } from './blueprint.ts';
+import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
+import { Blueprint, compileColumn, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
-
-/**
- * Keeps the migrator's books: which module owns which table (`marmeon_table_owners`), which columns are secret
- * (`marmeon_secret_columns`), and the markers of tables and foreign keys (`marmeon_schema_markers`).
- */
-export interface SchemaRecorder {
-  created(table: string): Promise<void>;
-  dropped(table: string): Promise<void>;
-  renamed(from: string, to: string): Promise<void>;
-  /** A column was marked `.secret()`. */
-  secret(table: string, column: string): Promise<void>;
-  /** A table was marked (`timestamps()`, `softDeletes()`), or a foreign key named its inverse relation. */
-  marker(table: string, column: string, marker: TableMarker | 'inverse', value: string | null): Promise<void>;
-  columnDropped(table: string, column: string): Promise<void>;
-  columnRenamed(table: string, from: string, to: string): Promise<void>;
-}
 
 /** What a `schema.raw()` step runs per driver; a driver without a statement runs nothing. */
 export interface RawStatements {
@@ -79,14 +63,13 @@ export async function executePlan(
   db: Kysely<any>,
   driver: Driver,
   steps: readonly PlanStep[],
-  recorder?: SchemaRecorder,
   /** Wraps each `data` step, given its position in the plan: the migrator tells the connection what the plan has changed up to there. */
   aroundData?: (index: number, run: () => Promise<void>) => Promise<void>,
 ): Promise<void> {
   check(driver, steps);
   for (const [index, step] of steps.entries()) {
-    if (step.kind === 'data' && aroundData) await aroundData(index, () => run(db, driver, step, recorder));
-    else await run(db, driver, step, recorder);
+    if (step.kind === 'data' && aroundData) await aroundData(index, () => run(db, driver, step));
+    else await run(db, driver, step);
   }
 }
 
@@ -128,20 +111,18 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
   }
 }
 
-async function run(db: Kysely<any>, driver: Driver, step: PlanStep, recorder: SchemaRecorder | undefined): Promise<void> {
+async function run(db: Kysely<any>, driver: Driver, step: PlanStep): Promise<void> {
   switch (step.kind) {
     case 'create':
-      return create(db, driver, step.blueprint, recorder);
+      return create(db, driver, step.blueprint);
     case 'alter':
-      return alter(db, driver, step.blueprint, recorder);
+      return alter(db, driver, step.blueprint);
     case 'drop':
       await (step.ifExists ? db.schema.dropTable(step.table).ifExists() : db.schema.dropTable(step.table)).execute();
-      await recorder?.dropped(step.table);
       return;
     case 'rename':
       await db.schema.alterTable(step.from).renameTo(step.to).execute();
       if (step.indexes) await (driver === 'pgsql' ? renameNamesPgsql(db, driver, step.from, step.to) : renameIndexesSqlite(db, step.from, step.to));
-      await recorder?.renamed(step.from, step.to);
       return;
     case 'raw': {
       const statement = step.statements[driver];
@@ -149,52 +130,32 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, recorder: Sc
       return;
     }
     case 'data':
-      // The books are the migrator's to write, and a schema change here would be missing from the plan.
-      await step.run(db.withPlugin(noBookkeepingWrites()).withPlugin(noSchemaChanges()) as unknown as Connection<any>, { driver });
+      // The migrator's tables are its to write, and a schema change here would be missing from the plan.
+      await step.run(db.withPlugin(noMigratorWrites()).withPlugin(noSchemaChanges()) as unknown as Connection<any>, { driver });
       return;
   }
 }
 
-async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint, recorder: SchemaRecorder | undefined): Promise<void> {
+async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Promise<void> {
   let builder = db.schema.createTable(blueprint.table);
   for (const spec of blueprint.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver));
   await builder.execute();
   await createIndexes(db, blueprint);
-  await recorder?.created(blueprint.table);
-  await recordSecrets(blueprint, recorder);
-  await recordMarkers(blueprint, recorder);
 }
 
 /** Every change runs as its own statement, because SQLite's ALTER TABLE takes one change at a time. */
-async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, recorder: SchemaRecorder | undefined): Promise<void> {
+async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Promise<void> {
   const table = blueprint.table;
   for (const name of blueprint.dropIndexes) await db.schema.dropIndex(name).execute();
   for (const { from, to } of blueprint.renames) {
     await db.schema.alterTable(table).renameColumn(from, to).execute();
-    await recorder?.columnRenamed(table, from, to);
   }
   for (const spec of blueprint.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver)).execute();
   for (const { column, nullable } of blueprint.nullability) {
     await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
   }
   await createIndexes(db, blueprint);
-  await recordSecrets(blueprint, recorder);
-  await recordMarkers(blueprint, recorder);
-  for (const column of blueprint.drops) {
-    await db.schema.alterTable(table).dropColumn(column).execute();
-    await recorder?.columnDropped(table, column);
-  }
-}
-
-async function recordSecrets(blueprint: Blueprint, recorder: SchemaRecorder | undefined): Promise<void> {
-  for (const spec of blueprint.columns) if (spec.secret) await recorder?.secret(blueprint.table, spec.name);
-}
-
-async function recordMarkers(blueprint: Blueprint, recorder: SchemaRecorder | undefined): Promise<void> {
-  for (const marker of blueprint.markers) await recorder?.marker(blueprint.table, '', marker, null);
-  for (const spec of blueprint.columns) {
-    if (spec.references?.inverse) await recorder?.marker(blueprint.table, spec.name, 'inverse', spec.references.inverse);
-  }
+  for (const column of blueprint.drops) await db.schema.alterTable(table).dropColumn(column).execute();
 }
 
 async function createIndexes(db: Kysely<any>, blueprint: Blueprint): Promise<void> {

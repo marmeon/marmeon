@@ -1,8 +1,8 @@
 import { withCode } from '@marmeon/core/internal';
 import type { RawBuilder, RawNode } from 'kysely';
-import { isBookkeepingName } from '../bookkeeping.ts';
-import { bookkeepingAccess, lastSegment, rawText } from '../books.ts';
 import type { Connection } from '../builder.ts';
+import { isMigratorTable } from '../migration-state.ts';
+import { lastSegment, rawText } from '../migrator-connection.ts';
 import { Blueprint, closedPlan } from './blueprint.ts';
 import type { DataContext, PlanStep, RawStatements } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
@@ -50,20 +50,20 @@ export class Schema {
     throw new SchemaError(
       withCode(
         'D4',
-        `The raw SQL names "${name}", a table of the migrator (as a table, column or alias). Changing it would make the secret columns or the soft deletes unreadable; choose another name. ` +
+        `The raw SQL names "${name}", a table of the migrator (as a table, column or alias). Changing it would make it lose track of which migrations ran; choose another name. ` +
           'See docs/migrations.md#how-the-migrator-keeps-track.',
       ),
     );
   }
 
-  /** Refuses a name the migrator keeps its books under (`marmeon_migrations`, …, and the old `migrations`, `secret_columns`, … that stay taken until 1.0). */
+  /** Refuses a name the migrator keeps its tables under: `migrations` and `migration_lock`. */
   #allowed(table: string, action: string): void {
-    // The last segment: `public.marmeon_secret_columns` and `main.marmeon_secret_columns` are the same table.
-    if (bookkeepingAccess.has(this) || !isBookkeepingName(lastSegment(table))) return;
+    // The last segment: `public.migrations` and `main.migrations` are the same table.
+    if (!isMigratorTable(lastSegment(table))) return;
     throw new SchemaError(
       withCode(
         'D4',
-        `Cannot ${action} "${table}": the name belongs to the migrator's bookkeeping, and changing it would make the secret columns or the soft deletes unreadable. ` +
+        `Cannot ${action} "${table}": the name belongs to the migrator, and changing it would make it lose track of which migrations ran. ` +
           'Choose another name. See docs/migrations.md#how-the-migrator-keeps-track.',
       ),
     );
@@ -74,9 +74,8 @@ export class Schema {
    * its string literals, and does not parse it.
    */
   #rawAllowed(text: string): void {
-    if (bookkeepingAccess.has(this)) return;
     const words = text.replace(/'(?:[^']|'')*'/g, '').replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ').match(/[A-Za-z_][\w$]*/g) ?? [];
-    for (const word of words) if (isBookkeepingName(word)) this.#rawNames(word);
+    for (const word of words) if (isMigratorTable(word)) this.#rawNames(word);
   }
 
   /** Runs the callback that describes a table, and closes the description: it is synchronous like `up()`. */

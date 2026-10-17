@@ -4,9 +4,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { ErrorSolutions, type Logger, type ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { appOf as fakeApp, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { appOf as fakeApp, createLegacyTables, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { PAUSE, type Pause } from './__fixtures__/migrations/state-pause/2026_01_31_000000_create_paused_table.ts';
-import { bookkeepingConnection, inspectionConnection } from './books.ts';
+import { inspectionConnection, migratorConnection } from './migrator-connection.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections, DatabaseHealthCheck, MigrationStateError, Migrator, Repository } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
@@ -53,7 +53,7 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
     // Every test starts from a database nothing ran on.
     const scratch = new Connections({ connections: { default: options }, root, logger: silent });
     opened.push(scratch);
-    await dropAllTables(inspectionConnection(scratch), driver, true);
+    await dropAllTables(inspectionConnection(scratch), driver);
   });
   afterAll(async () => {
     for (const connections of opened) await connections.destroy();
@@ -120,14 +120,14 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
   it('refuses a record of migrations with other columns — and so do migrate, rollback, status and migrate:fresh', async () => {
     await migrate([auth]);
     const newer = processOf([auth]);
-    await sql`alter table marmeon_migrations add column checksum varchar(64)`.execute(bookkeepingConnection(newer));
+    await sql`alter table migrations add column checksum varchar(64)`.execute(migratorConnection(newer));
     newer.metadata().reload();
     await expect(select(newer, 'users')).rejects.toMatchObject({ reason: 'newer', message: expect.stringMatching(/^\[marmeon:D1\] .*checksum/s) });
     for (const run of [(m: Migrator) => m.migrate(), (m: Migrator) => m.rollback(), (m: Migrator) => m.status(), (m: Migrator) => m.fresh()]) {
       await expect(run(new Migrator(appOf([auth]), newer))).rejects.toMatchObject({ reason: 'newer' });
     }
     // migrate:fresh dropped nothing.
-    expect((await sql<{ name: string }>`select name from marmeon_migrations`.execute(bookkeepingConnection(newer))).rows).toHaveLength(1);
+    expect((await sql<{ name: string }>`select name from migrations`.execute(migratorConnection(newer))).rows).toHaveLength(1);
   });
 
   it('refuses a database that has tables and no record of migrations', async () => {
@@ -245,11 +245,10 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
     await expect(select(processOf(modules), 'users')).rejects.toMatchObject({ reason: 'pending', missing: ACCOUNTS });
   });
 
-  it('hides a secret column the projection marks when the bookkeeping in the database does not — the runtime does not read it', async () => {
+  it('hides a secret column the projection marks when the tables of 0.3 beside it are empty — the runtime does not read them', async () => {
     const connections = processOf([auth, accounts]);
     await new Migrator(appOf([auth, accounts]), connections).migrate();
-    await sql`delete from marmeon_secret_columns`.execute(bookkeepingConnection(connections));
-    await sql`delete from marmeon_schema_markers`.execute(bookkeepingConnection(connections));
+    await createLegacyTables(migratorConnection(connections));
     // A process that starts now: the migration files and the record of migrations, nothing else.
     const started = processOf([auth, accounts]);
     await started.get<any>().insertInto('accounts').values({ email: 'ada@example.com', password: 'hash' }).execute();

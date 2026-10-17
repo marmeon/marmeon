@@ -1,9 +1,7 @@
-import { CompiledQuery, TableNode, type DatabaseConnection, type RootOperationNode } from 'kysely';
-import { MARKERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE } from './bookkeeping.ts';
+import { CompiledQuery, type DatabaseConnection, type RootOperationNode } from 'kysely';
 import { deriveRelations, introspect, type Introspected, type Relation } from './introspection.ts';
-import { checkMigrationState, MigrationStateError } from './migration-state.ts';
+import { assertNotMigrated, checkMigrationState, MigrationStateError } from './migration-state.ts';
 import { emptyProjection, factsOf, type SchemaProjection } from './schema/projection.ts';
-import { fold } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 /** How a column's values must be converted when they arrive inside nested JSON (relations). */
@@ -334,7 +332,10 @@ export class SchemaMetadata {
   /** Throws when the catalog cannot be read: nothing is loaded then, and every query of the connection fails (stale stays set). */
   async #loadCatalog(connection: DatabaseConnection, owner: object): Promise<void> {
     const run = async <R>(sql: string) => (await connection.executeQuery<R>(CompiledQuery.raw(sql))).rows;
-    this.#published = this.#current = factsFrom(await introspect(run, this.#driver, this.#name, false));
+    const found = await introspect(run, this.#driver);
+    // Not a database Marmeon migrates: with its record of migrations the catalog alone would hide what the migrations say.
+    assertNotMigrated(found.columns, this.#name);
+    this.#published = this.#current = factsFrom(found);
     this.#loadedOn = owner;
     this.#loaded = true;
   }
@@ -381,15 +382,10 @@ export function kindOf(type: string): ColumnKind {
 }
 
 const DDL = new Set(['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode']);
-const BOOKKEEPING = new Set([SECRETS_TABLE, MARKERS_TABLE, VERSIONS_TABLE]);
 
-/** Whether a statement changes what the metadata holds: DDL (indexes too: a unique one makes a hasOne), or the migrator's books. */
+/** Whether a statement changes what a catalog reading holds: DDL (indexes too: a unique one makes a hasOne). */
 export function changesSchema(node: RootOperationNode): boolean {
-  if (DDL.has(node.kind)) return true;
-  if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
-  const target = node.kind === 'InsertQueryNode' ? node.into : node.kind === 'UpdateQueryNode' ? node.table : node.from.froms[0];
-  // In any case: SQLite writes to `MARMEON_SECRET_COLUMNS` as to `marmeon_secret_columns`.
-  return target !== undefined && TableNode.is(target) && BOOKKEEPING.has(fold(target.table.identifier.name));
+  return DDL.has(node.kind);
 }
 
 const STATEMENT_DDL = /(?:create|alter|drop)\b/iy;

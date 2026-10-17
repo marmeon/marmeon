@@ -33,8 +33,8 @@ export interface PostgresConnection {
 
 /**
  * What a connection's `resolve` returns: a SQLite file, or a Postgres server in parts or as a URL ({@link PostgresConnection}).
- * `managed: false` says that another tool owns the database's tables: Marmeon reads no bookkeeping from it (no secret columns, no
- * soft deletes, no timestamps), `marmeon migrate` does not touch it, and its queries are not refused for lacking one. The default is
+ * `managed: false` says that another tool owns the database's tables: Marmeon takes no schema from migrations for it (no secret columns, no
+ * soft deletes, no timestamps), `marmeon migrate` does not touch it, and its queries are not refused for pending migrations. The default is
  * `true`. See `docs/database.md#a-database-another-tool-manages`.
  */
 export type ConnectionDefinitionOptions = { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean | undefined } | PostgresConnection;
@@ -78,7 +78,7 @@ export const DatabaseConfig = defineConfig('database', {
     DB_POOL_MAX: env.integer().min(1).default(10),
     /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions). */
     DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
-    /** `false`: another tool manages the database, so Marmeon neither migrates it nor reads its bookkeeping. */
+    /** `false`: another tool manages the database, so Marmeon neither migrates it nor takes a schema from migrations for it. */
     DB_MANAGED: env.boolean().default(true),
   }),
   resolve: (e): { default: ConnectionOptions } => {

@@ -56,13 +56,6 @@ export declare class Blueprint {
     seal(): void;
     allIndexes(): IndexSpec[];
 }
-// BookkeepingVersionError
-export declare class BookkeepingVersionError extends Error {
-    name: string;
-    readonly connection: string;
-    readonly reason: 'legacy' | 'newer' | 'foreign' | 'incomplete';
-    constructor(reason: BookkeepingVersionError['reason'], connection: string, message: string);
-}
 // CheckPageRequest
 export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never] ? 'this query has no page — spread pageQuery() into the route\'s query schema: r.query({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }' : Q extends PageRequest ? Q : PageRequest;
 // Column
@@ -339,9 +332,6 @@ export declare class MigrateCommand {
         readonly 'no-types': {
             readonly type: 'boolean';
         };
-        readonly 'adopt-existing': {
-            readonly type: 'boolean';
-        };
     };
     constructor(migrator: Migrator, types: TypeGenerator);
     handle(input: CommandInput): Promise<number>;
@@ -368,6 +358,11 @@ export declare class MigrateFreshCommand {
     };
     constructor(migrator: Migrator, types: TypeGenerator, seeding: Seeding);
     handle(input: CommandInput): Promise<number>;
+}
+// MigrateOptions
+export interface MigrateOptions {
+    readonly onUnknown?: (connection: string, found: UnknownSchema) => void;
+    readonly onLegacy?: (connection: string, tables: readonly string[]) => void;
 }
 // MigrateResetCommand
 export declare class MigrateResetCommand {
@@ -451,7 +446,7 @@ export interface MigrationRun {
 export declare class MigrationStateError extends Error {
     name: string;
     readonly connection: string;
-    readonly reason: 'pending' | 'newer' | 'unmigrated';
+    readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged';
     readonly missing: readonly string[];
     constructor(reason: MigrationStateError['reason'], connection: string, message: string, missing?: readonly string[]);
 }
@@ -471,7 +466,6 @@ export interface MigrationUpgrade {
 export declare class Migrator {
     #private;
     constructor(app: Application, connections: Connections);
-    onOneConnection(): this;
     files(): MigrationFile[];
     status(): Promise<MigrationStatus[]>;
     missing(): Promise<{
@@ -488,9 +482,6 @@ export declare class Migrator {
     dropAllTables(): Promise<string[]>;
     connections(): Promise<string[]>;
     projection(): Promise<SchemaProjection>;
-    owners(): Promise<Map<string, string>>;
-    secrets(): Promise<Map<string, Set<string>>>;
-    markers(): Promise<SchemaMarker[]>;
 }
 // ModuleDatabase
 export type ModuleDatabase<All, Owners, Exposed, M extends string, Foreign = {}> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M, Foreign>>, ReadMethods> & {
@@ -809,6 +800,11 @@ export declare class TypeGenerator {
     }>;
     isCurrent(signal?: AbortSignal): Promise<boolean>;
 }
+// UnknownSchema
+export interface UnknownSchema {
+    readonly tables: readonly string[];
+    readonly columns: readonly string[];
+}
 // UuidColumn
 export declare class UuidColumn<T> extends Column<T> {
     useUuidv7(): this;
@@ -941,10 +937,6 @@ type ListNamesOf<DB, T> = T extends keyof Relations ? {
 }[keyof Relations[T]] & string : never;
 // Loaded
 type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof RowOf<DB[T]>>] extends [never] ? RowOf<DB[T]> & O : O>;
-// MigrateOptions
-export interface MigrateOptions {
-    readonly adoptExisting?: (connection: string, tables: readonly string[]) => void;
-}
 // MigrationConnection
 export type MigrationConnection = string | ((container: Resolver) => string);
 // NamesOf
@@ -1142,8 +1134,7 @@ marmeon db:types [--check]
 marmeon make:upgrade-migrations [--check]
 --check (boolean)
 // migrate
-marmeon migrate [--force] [--wait=<seconds>] [--no-types] [--adopt-existing]
---adopt-existing (boolean)
+marmeon migrate [--force] [--wait=<seconds>] [--no-types]
 --force (boolean)
 --no-types (boolean)
 --wait (string)

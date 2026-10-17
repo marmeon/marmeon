@@ -1,6 +1,6 @@
 import type { CommandInput } from 'marmeon';
 import { sql } from 'kysely';
-import { inspectionConnection } from '../books.ts';
+import { inspectionConnection } from '../migrator-connection.ts';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';
 

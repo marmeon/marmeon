@@ -264,9 +264,10 @@ refused with error D1: without the migrations the app cannot tell which columns 
 reads that as "none". That includes a database whose tables are made by another tool, a restore
 that lost the record, and a Postgres role without privileges on it.
 
-For your own database that Marmeon is to migrate from now on, do not use `managed: false`: run `marmeon migrate --adopt-existing` once
-([adopting an existing database](migrations.md#adopting-an-existing-database)). For a database that another tool owns, say so on the
-connection:
+For your own database that Marmeon is to migrate from now on, do not use `managed: false`: run `marmeon migrate`, which writes the
+record of migrations and runs the migrations. Tables it did not make stay as they are and unknown to Marmeon: `migrate` names
+them, and a table has no secret columns, soft deletes or timestamps unless a migration creates it. For a database that another tool owns,
+say so on the connection:
 
 ```ts title="bootstrap/app.ts"
 defineConnection('legacy', {
@@ -280,9 +281,9 @@ catalog, as it always did: it knows every table and column that exists, their fo
 columns, no soft deletes, no timestamps; the query builder treats every column as an ordinary one. A change another tool makes to the
 tables is known to the connection after the schema change it made itself, or after a restart. `marmeon migrate`,
 `migrate:fresh` and the other migration commands refuse to touch it, and a migration cannot run on it. A connection that Marmeon
-migrates and reads through a role with privileges on the record of migrations stays the default. A connection that has the migrator's tables
-(`marmeon_…`, the lock, a placeholder) is refused with `managed: false` as well (D1): Marmeon migrates it, so the option would hide its
-secret columns.
+migrates and reads through a role with privileges on the record of migrations stays the default. A connection that has the record of migrations
+Marmeon writes (a table `migrations` with the columns `batch, id, module, name`) is refused with `managed: false` as well (D1): Marmeon
+migrates it, so the option would hide its secret columns. A `migrations` table of another shape is another tool's.
 
 ## Readiness
 

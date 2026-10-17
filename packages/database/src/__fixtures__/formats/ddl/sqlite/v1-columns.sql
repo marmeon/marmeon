@@ -7,17 +7,3 @@ create unique index "ddl_modifiers_public_id_unique" on "ddl_modifiers" ("public
 create table "ddl_categories" ("id" integer primary key autoincrement, "title" varchar(255) not null);
 create table "ddl_codes" ("code" varchar(255) primary key, "title" varchar(255) not null);
 create table "ddl_keys" ("id" integer primary key autoincrement, "person_id" integer not null references "ddl_people" ("id") on delete cascade, "editor_id" integer references "ddl_people" ("id") on delete set null, "owner_id" integer not null references "ddl_people" ("id") on delete restrict, "plain_id" integer not null references "ddl_people" ("id"), "modifier_id" uuid references "ddl_modifiers" ("id") on delete cascade, "loose_id" integer not null, "ddl_category_id" integer not null references "ddl_categories" ("id"));
--- marmeon_table_owners
--- {"module":"ddl","table_name":"ddl_categories"}
--- {"module":"ddl","table_name":"ddl_codes"}
--- {"module":"ddl","table_name":"ddl_keys"}
--- {"module":"ddl","table_name":"ddl_kinds"}
--- {"module":"ddl","table_name":"ddl_modifiers"}
--- {"module":"ddl","table_name":"ddl_people"}
--- marmeon_secret_columns
--- {"column_name":"api_key","table_name":"ddl_modifiers"}
--- {"column_name":"password","table_name":"ddl_modifiers"}
--- marmeon_schema_markers
--- {"column_name":"","marker":"soft_deletes","table_name":"ddl_modifiers","value":null}
--- {"column_name":"","marker":"timestamps","table_name":"ddl_modifiers","value":null}
--- {"column_name":"editor_id","marker":"inverse","table_name":"ddl_keys","value":"edited_keys"}

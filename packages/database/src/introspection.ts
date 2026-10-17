@@ -1,8 +1,7 @@
-import { assertNotMigrated, readBookkeeping } from './bookkeeping.ts';
 import type { Driver } from './schema/blueprint.ts';
 
-// What the schema says about relations — read from the database's catalog and the migrator's markers, and turned into
-// relations by ONE function: the connection at runtime and `db:types` must agree on every name.
+// What the schema says about relations — read from the database's catalog or taken from the projection of the migrations, and turned
+// into relations by ONE function: the connection at runtime and `db:types` must agree on every name.
 
 /** A single-column foreign key: `table.column` references `references.referenced`. */
 export interface ForeignKey {
@@ -15,7 +14,7 @@ export interface ForeignKey {
 }
 
 /**
- * One row of the migrator's markers: a table's `timestamps()`/`softDeletes()` (column `''`), or a foreign key's `.inverse()`.
+ * One mark of the migrations: a table's `timestamps()`/`softDeletes()` (column `''`), or a foreign key's `.inverse()`.
  * See `docs/migrations.md#timestamps-and-soft-deletes`.
  */
 export interface SchemaMarker {
@@ -68,7 +67,7 @@ export type CatalogQuery = <R>(sql: string) => Promise<R[]>;
 /** Facts plus every column's declared (SQLite) or reported (Postgres) type. */
 export interface Introspected extends SchemaFacts {
   readonly types: ReadonlyMap<string, ReadonlyMap<string, string>>;
-  /** The columns the migrations marked `.secret()`, from the migrator's bookkeeping. */
+  /** The columns the migrations marked `.secret()`: the projection knows them, a catalog does not. */
   readonly secretColumns: readonly { readonly table: string; readonly column: string }[];
 }
 
@@ -76,18 +75,14 @@ export interface Introspected extends SchemaFacts {
 export const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Reads the columns of tables (views are left out on both drivers), single-column foreign keys, unique column sets and the
- * migrator's markers. SQLite lists foreign keys in
+ * Reads the columns of tables (views are left out on both drivers), single-column foreign keys and unique column sets from the
+ * catalog. It knows no markers and no secret columns: only the migrations say those. SQLite lists foreign keys in
  * reverse order and keeps an INTEGER PRIMARY KEY in `pragma_table_info` only; Postgres keeps the blueprint's unique indexes
  * in `pg_index` only (not in `pg_constraint`) — so both are read where they are, and everything is sorted.
  */
-export async function introspect(run: CatalogQuery, driver: Driver, connection = 'default', managed = true): Promise<Introspected> {
-  const { types, nullable, extension } = await tableColumns(run, driver);
+export async function introspect(run: CatalogQuery, driver: Driver): Promise<Introspected> {
+  const { types, nullable } = await tableColumns(run, driver);
   const columns = new Map([...types].map(([table, map]) => [table, [...map.keys()]]));
-  // The bookkeeping first: when it cannot be read, nothing else of the schema is of use.
-  // A connection another tool manages (`managed: false`) has no bookkeeping: no secret columns, no markers.
-  if (!managed) assertNotMigrated(columns, connection);
-  const books = managed ? await readBookkeeping(run, columns, connection, extension) : { secrets: [], markers: [] };
   const uniques = await uniqueSets(run, driver);
   const foreignKeys = (await foreignKeyRows(run, driver))
     .map(({ table, column, references, referenced }) => ({
@@ -98,8 +93,7 @@ export async function introspect(run: CatalogQuery, driver: Driver, connection =
       nullable: nullable.has(`${table}\0${column}`),
     }))
     .sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column));
-  const markers = books.markers.toSorted((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column) || byCodePoint(a.marker, b.marker));
-  return { foreignKeys, uniques, columns, markers, types, secretColumns: books.secrets };
+  return { foreignKeys, uniques, columns, markers: [], types, secretColumns: [] };
 }
 
 /** Every table's columns with their types, in order, and the nullable ones (`table\0column`). Views are left out on both drivers. */
@@ -111,7 +105,7 @@ export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{
       : // Every schema of the search path, not only the first that exists: with `"$user", public` and an empty schema named like the role,
         // `current_schema()` is that empty one while `public.users` is what an unqualified name finds. `to_regclass` picks the relation an unqualified name finds, so a table in an earlier schema hides the same name in a later one — also for an extension's.
         // pg_catalog, not information_schema: that shows a role only the tables it has privileges on, and a table it cannot see is a table
-        // the bookkeeping check would take for missing. Here a table without privileges is seen, and the query on it is refused.
+        // the check after a migration would take for missing. Here a table without privileges is seen, and the query on it is refused.
         await run<ColumnRow>(`select c.relname::text as table_name, a.attname::text as column_name,
           case when t.typname = 'numeric' then 'numeric(' || (case when a.atttypmod = -1 then 0 else ((a.atttypmod - 4) >> 16) & 65535 end) || ', ' || (case when a.atttypmod = -1 then 0 else (a.atttypmod - 4) & 65535 end) || ')' else t.typname::text end as type,
           not a.attnotnull as nullable,
@@ -133,7 +127,7 @@ export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{
     table.set(row.column_name, row.type);
     if (row.nullable === true || row.nullable === 1) nullable.add(`${row.table_name}\0${row.column_name}`);
   }
-  // `extension`: tables an extension created (PostGIS's `spatial_ref_sys`) belong to no app — not what a bookkeeping is missing for.
+  // `extension`: tables an extension created (PostGIS's `spatial_ref_sys`) belong to no app — not an unknown table of it.
   return { types, nullable, extension };
 }
 

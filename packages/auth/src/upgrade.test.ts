@@ -169,11 +169,9 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
 
 describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
   const modules = (...directories: URL[]) => directories.map((migrations, index) => ({ name: `part${index}`, migrations }));
-  const migrator = (connections: Connections, ...directories: URL[]) => new Migrator({ modules: modules(...directories), root: '/' } as unknown as Application, connections).onOneConnection();
-  const marked = async (connections: Connections) => {
-    const { rows } = await sql<{ table_name: string; column_name: string }>`select table_name, column_name from marmeon_secret_columns`.execute(connections.get());
-    return rows.map((row) => `${row.table_name}.${row.column_name}`).sort();
-  };
+  const migrator = (connections: Connections, ...directories: URL[]) => new Migrator({ modules: modules(...directories), root: '/' } as unknown as Application, connections);
+  /** The secret columns the connections hide: what the migrations that ran say. */
+  const marked = async (connections: Connections) => [...connections.metadata().secrets].flatMap(([table, columns]) => [...columns].map((column) => `${table}.${column}`)).sort();
   const expected = ['users.password', 'users.pending_email_token', 'users.session_key', ...Object.entries(SECRETS).flatMap(([table, columns]) => columns.map((column) => `${table}.${column}`))].sort();
   /** Every row of the table as `selectAll()` gives it: the columns it names. */
   const columnsOf = async (connections: Connections, table: string) => Object.keys(await connections.get<any>().selectFrom(table).selectAll().executeTakeFirstOrThrow()).sort();
