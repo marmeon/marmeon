@@ -101,7 +101,6 @@ export interface SsrServer {
 export declare class TestApp {
     #private;
     readonly application: Application;
-    constructor(application: Application, shared: Shared, defaults: Defaults);
     get container(): Container;
     get mail(): MailFake;
     get queue(): QueueFake;
@@ -235,22 +234,6 @@ export declare function startSsrServer(application: ApplicationDefinition): Prom
 type Assertions = {
     [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];
 };
-// DatabaseModule
-type DatabaseModule = typeof import('@marmeon/database');
-// Defaults
-interface Defaults {
-    readonly headers: Readonly<Record<string, string>>;
-    readonly cookies: readonly TestCookie[];
-    readonly session: Readonly<Record<string, unknown>> | undefined;
-    readonly user?: AuthUser;
-    readonly token?: {
-        readonly user: AuthUser;
-        readonly abilities: readonly string[];
-    };
-    readonly sessionId?: {
-        value?: string;
-    };
-}
 // FormValue
 type FormValue = string | readonly string[];
 // Instance
@@ -259,52 +242,13 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
 type IslandSource = {
     handle: (...args: never[]) => unknown;
 };
-// LiveModule
-type LiveModule = typeof import('@marmeon/live') & typeof import('@marmeon/live/testing');
 // MultipartValue
 type MultipartValue = string | Blob | readonly (string | Blob)[];
-// Shared
-interface Shared {
-    readonly kernel: HttpKernel;
-    readonly database: DatabaseModule | undefined;
-    readonly mail: MailFake | undefined;
-    readonly queue: QueueFake | undefined;
-    readonly notifications: NotificationFake | undefined;
-    readonly storage: StorageFake | undefined;
-    readonly devtools: DevtoolsTester | undefined;
-    readonly broadcast: BroadcastRecorder | undefined;
-    readonly live: LiveModule | undefined;
-    readonly events: EventFake;
-    readonly clock: TestClock;
-    readonly schedule: ScheduleTester | undefined;
-    readonly ssr: TestSsr | undefined;
-    readonly cleanups: (() => Promise<void>)[];
-    closing: Promise<void> | undefined;
-}
 // SsrOutcome
 export interface SsrOutcome {
     readonly errors: readonly unknown[];
     readonly rerendered: string | undefined;
     readonly rendered?: string | undefined;
-}
-// TestCookie
-interface TestCookie {
-    readonly name: string;
-    readonly value: string;
-    readonly encrypt: boolean;
-}
-// TestSsr
-export declare class TestSsr {
-    #private;
-    readonly renderer: PageRenderer;
-    private constructor();
-    static start(root: string, options?: {
-        stream?: boolean;
-        server?: SsrServer;
-    }): Promise<TestSsr>;
-    begin(): string;
-    finish(id: string, url: string, page: PageObject | undefined): Promise<SsrOutcome>;
-    close(): Promise<void>;
 }
 // UploadFile
 export type UploadFile = Blob | {
